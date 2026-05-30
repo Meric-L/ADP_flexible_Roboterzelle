@@ -6,8 +6,9 @@ Dieses Repository enthält sowohl die praktische Software-Implementierung als au
 
 ## Projektfokus
 Ziel der Arbeit ist die Untersuchung, Evaluation und **praktische Umsetzung** verschiedener Lokalisierungstechnologien für den Einsatz in einer flexiblen, modularen Labor-Roboterzelle (ca. 5x5 Meter). Betrachtet werden unter anderem:
+* **optische Marker Erkennung:** 
 * **Topologische Erkennung:** Nahbereichslokalisierung an mechanischen Schnittstellen (z.B. Near Field Magnetic Positioning).
-* **Absolute Raumlokalisierung & Sensorfusion:** Konzepte für freistehende Module (z.B. LF-RFID-Raster kombiniert mit Odometrie).
+* **UBW Erkennung:**
 
 ## Repository-Struktur
 Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
