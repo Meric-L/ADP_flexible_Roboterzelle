@@ -10,6 +10,17 @@ Git ist ein Versionierungssystem. Es speichert jeden Stand deiner Dateien, sodas
 
 ---
 
+## Voraussetzungen — Zugang beantragen
+
+Bevor du loslegen kannst, brauchst du Zugang zu beiden Systemen. Bitte den Projektverantwortlichen darum:
+
+| System | Was du brauchst | Wie |
+|---|---|---|
+| **GitHub** | GitHub-Account + Einladung zum Repo | Account erstellen auf github.com, dann Benutzernamen mitteilen |
+| **ShareLaTeX** | TU-Account + Einladung zum Projekt | TU-Darmstadt-Login reicht, Projektverantwortlicher lädt dich über den Share-Button ein |
+
+---
+
 ## Einmalige Einrichtung
 
 ### 1. Git installieren
@@ -30,7 +41,14 @@ git config --global user.name "Dein Name"
 git config --global user.email "deine@email.de"
 ```
 
-### 4. Setup-Skript ausführen (einmalig, pro PC)
+### 4. ShareLaTeX Git-Token holen (einmalig)
+Für die Synchronisation mit ShareLaTeX brauchst du ein persönliches Token — **jeder braucht sein eigenes**.
+
+> ShareLaTeX → oben rechts auf deinen Namen klicken → **Account-Einstellungen** → Abschnitt **Git Integration** → Token anzeigen/generieren
+
+Dieses Token verwendest du als **Passwort**, wenn git nach Zugangsdaten für ShareLaTeX fragt. Dein Benutzername ist deine TU-Darmstadt E-Mail-Adresse.
+
+### 5. Setup-Skript ausführen (einmalig, pro PC)
 Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
 
 **Windows:** `setup.bat` doppelklicken
