@@ -31,7 +31,11 @@ git config --global user.email "deine@email.de"
 ```
 
 ### 4. Setup-Skript ausführen (einmalig, pro PC)
-Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein:
+Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
+
+**Windows:** `setup.bat` doppelklicken
+
+**Mac / Linux:**
 ```bash
 ./setup.sh
 ```
