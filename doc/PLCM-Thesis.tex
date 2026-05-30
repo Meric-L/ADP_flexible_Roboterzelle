@@ -1,0 +1,422 @@
+% Sprache auswählen!!!
+%-> das nicht genutzte auskommentieren
+\newif\ifdocenglish
+\docenglishtrue % for english
+%\docenglishfalse % Für deutsch 
+
+
+% Klassen-Option language:
+\ifdocenglish
+  \PassOptionsToClass{language=english}{tudapub}
+\else
+  \PassOptionsToClass{language=ngerman}{tudapub}
+\fi
+
+\documentclass[
+	thesis={type=msc}, % Type ändern auf ... sta: Studienarbeit, bsc: Bachelor, msc: Master
+%% Die folgenden Parameter sollten nicht geändert werden
+	class=report,% Basisdokumentenklasse. Wählt die Korrespondierende KOMA-Script Klasse
+	ruledheaders=section,% Ebene bis zu der die Überschriften mit Linien abgetrennt werden, vgl. DEMO-TUDaPub
+	accentcolor=1b, % Auswahl der Akzentfarbe
+	marginpar=false,% Kopfzeile und Fußzeile erstrecken sich nicht über die Randnotizspalte
+	parskip=half-,% Absatzkennzeichnung durch Abstand vgl. KOMA-Script
+	fontsize=11pt,% Basisschriftgröße laut Corporate Design ist mit 9pt häufig zu klein
+	IMRAD=false, % Zusätzliche Metadaten nach Wunsch der Universitätsbibliothek deaktivieren
+%	pdfa=false % tudapub hat einen Workaround für pdfa compilation https://github.com/tudace/tuda_latex_templates/issues/321 Falls kein pdfa notwendig ist: pdfa=false nutzen und das \Metadata Command im Document head entfernen
+]{tudapub}
+
+\RedeclareSectionCommand[beforeskip=0pt, afterskip=1.5ex plus .2ex]{chapter}
+
+
+%%%%%%%%%%%%%%%%%%%
+% Sprachanpassung & Verbesserte Trennregeln
+%%%%%%%%%%%%%%%%%%%
+\ifdocenglish
+  \usepackage[main=english, ngerman]{babel}
+  \usepackage[english]{datetime2}
+\else
+  \usepackage[main=ngerman, english]{babel}
+  \usepackage[german]{datetime2}
+\fi
+
+%\usepackage[ngerman, main=ngerman]{babel} % ngerman und englisch bei deutschen Arbeiten tauschen
+%\usepackage[german]{datetime2} % german und english bei der Arbeit anpassen
+\usepackage[autostyle]{csquotes} % Anführungszeichen vereinfacht
+\usepackage{microtype}
+\usepackage[justification=centering]{caption}
+
+%%%%%%%%%%%%%%%%%%%
+% Literaturverzeichnis
+%%%%%%%%%%%%%%%%%%%
+
+\usepackage[
+  backend=biber,
+  bibstyle=ieee,        % IEEE-Layout für Einträge
+  citestyle=alphabetic, % Textverweise benutzen labelalpha
+  sorting=none,
+  maxalphanames=1,
+  minalphanames=1
+]{biblatex}
+\addbibresource{Beispielbib.bib}
+
+% Keine automatische Groß-/Kleinschreibung:
+\DeclareFieldFormat{titlecase}{#1}
+\DeclareFieldFormat{sentencecase}{#1}
+
+\DeclareLabelalphaTemplate{
+  \labelelement{\field[strwidth=3,strside=left]{labelname}}
+  \labelelement{\field[strwidth=2,strside=right]{year}}
+}
+\DeclareFieldFormat{labelnumberwidth}{%
+  \mkbibbrackets{\printfield{labelalpha}\printfield{extraalpha}}}
+
+% Autoren in Kapitälchen, ohne Doppel-Initialen
+\DeclareNameFormat{author}{%
+  \nameparts{#1}%
+  \textsc{%
+    \usebibmacro{name:given-family}
+      {\namepartfamily}
+      {\namepartgiveni}   % <-- NICHT \namepartgiveni
+      {\namepartprefix}
+      {\namepartsuffix}%
+  }%
+  \usebibmacro{name:andothers}%
+}
+
+% Links wie normaler Text
+\usepackage[hidelinks]{hyperref}
+\urlstyle{same}
+
+%%%%%%%%%%%%%%%%%%%
+\usepackage{etoolbox}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage[table,xcdraw]{xcolor}
+\usepackage{hyperref}
+\apptocmd{\UrlBreaks}{\do\f\do\m}{}{}
+\setcounter{biburllcpenalty}{9000}% Kleinbuchstaben
+\setcounter{biburlucpenalty}{9000}% Großbuchstaben
+
+\DeclareCiteCommand{\footpartcite}[\mkbibfootnote]
+    {\usebibmacro{prenote}}
+    {%
+        \usebibmacro{cite}%
+        {\setunit{\addperiod\addnbspace}}%
+        \printnames{labelname}%
+        {\setunit{\addnbspace}}%
+        \printfield[parens]{year}%
+        {\setunit{\addcolon\addnbspace}}%
+        \printfield[emph]{labeltitle}%
+    }
+    {\multicitedelim}
+    {\usebibmacro{postnote}}
+
+\renewcommand*{\labelalphaothers}{}
+
+%%%%%%%%%%%%%%%%%%%
+% Abkürzungen (Akronym Referenzen durch \ac{SG} oder \acp{SG} für Singular oder Plural Formen
+%%%%%%%%%%%%%%%%%%%
+\usepackage{acro}
+\usepackage{mfirstuc}% provides \capitalisewords
+\acsetup{list/template=longtable}
+\input{acronyms}
+
+%%%%%%%%%%%%%%%%%%%
+% Paketvorschläge Tabellen
+%%%%%%%%%%%%%%%%%%%
+%\usepackage{array}     % Basispaket für Tabellenkonfiguration, wird von den folgenden automatisch geladen
+\usepackage{tabularx}   % Tabellen, die sich automatisch der Breite anpassen
+\usepackage{longtable} % Mehrseitige Tabellen
+%\usepackage{xltabular} % Mehrseitige Tabellen mit anpassarer Breite
+\usepackage{booktabs}   % Verbesserte Möglichkeiten für Tabellenlayout über horizontale Linien
+
+%%%%%%%%%%%%%%%%%%%
+% Paketvorschläge Mathematik
+%%%%%%%%%%%%%%%%%%%
+%\usepackage{mathtools} % erweiterte Fassung von amsmath
+\usepackage{amssymb}   % erweiterter Zeichensatz
+\usepackage{siunitx}   % Einheite
+%%%%%%%%%%%%%%%%%%%
+% Weitere teils notwendige Paketvorschläge
+%%%%%%%%%%%%%%%%%%%
+\usepackage{pifont}% Zapf-Dingbats Symbole
+\usepackage{subcaption}
+\usepackage{framed}
+\usepackage{pdfpages}
+\usepackage{setspace}
+\usepackage{float} 
+\usepackage{placeins}
+\usepackage{scrhack}
+\usepackage{xurl}
+
+\input{macros}
+
+\begin{document}
+
+
+\ifdocenglish
+  \title{Title of Thesis}
+  \subtitle{Subtitle}
+\else
+  \title{Titel der Thesis}
+  \subtitle{Untertitel}
+\fi 
+
+%\title{Title of Thesis}
+%\subtitle{Subtitle}
+\author[F. Surname]{Forename Surname} % optionales Argument ist die Signatur
+\reviewer{Prof. Dr.-Ing. habil. Benjamin Schleich \and Supervisor } % Gutachter
+\department{mb}
+\institute{Fachgebiet Product Life Cycle Management}
+
+\Metadata{
+    author=Forename Surname,
+    title=Title,
+}
+
+\submissiondate{\today}
+\examdate{\today}
+
+%\title{Titel der Thesis auf Deutsch}
+%\subtitle{Titel der Thesis auf Englisch}%Untertitel oder englischer Titel
+%\titleintro{Masterthesis}%Platz für zusätzliche Informationen wie bspw. ADP oder Studienbereich falls nicht Maschinenbau
+%\author[M. Musterstudi \and B. Musterstudi]{Master Musterstudi \and Bachelor Musterstudi}%optionales Argument (in eckigen Klammern)ist die Signatur,
+
+\newcommand{\NameA}{Vorname Nachname}%vom Studenten
+%\newcommand{\NameB}{Max Mustermann}
+%\newcommand{\NameC}{Maxi Musterfrau}
+
+\author[NameA]{\NameA}
+\birthplace{}%Geburtsort, bei Dissertationen zwingend notwendig
+\reviewer{}%Gutachter (leer lassen bei studentischen Abschlussarbeiten, ansonsten im Stil {Gutachter 1 \and Gutachter 2 \and noch einer \and falls das immernoch nicht reicht}
+
+\newcommand{\SADABetreuer}{Martina Musterfrau}
+%\newcommand{\SADABetreuerII}{Maxi MusterWimi}
+
+%\titleaddendum{	Betreuer: \SADABetreuer, M.\,Sc.}
+\publishers{}%Ohne diesen Eintrag wird standardmäßig 'Darmstadt' auf der Titelseite angezeigt
+%\submissiondate{\today}
+\examdate{\today}
+\uppertitleback{}
+\lowertitleback{}
+
+%Diese Felder werden untereinander auf der Titelseite platziert.
+\addTitleBoxLogo*{\includegraphics[width=\linewidth]{Bilder/Logo_PLCM.pdf}}
+\department{} %Kürzel für Fachbereich bzw. Studiengang (mb für Maschinenbau, ce für Computational Engineering, wie für Rechts-und Wirtschaftswissenschaften, metro für Mechatronik)
+\institute{}%Institut
+\group{}%Arbeitsgruppe
+
+
+\maketitle
+\pagenumbering{gobble}
+%%%%Informationen auf Titelrückseite (Müssen für einseitiges Dokument in den \lowertitleback{}-Befehl verschoben werden)
+\vspace*{\fill}
+\doublespacing %erhöht den Zeilenabstand auf 1.5-fach
+
+
+%	Studiengang: Maschinenbau – Mechanical and Process Engineering (MPE) %falls nicht bei allen gleich
+
+%\NameB , B.\,Sc. | 1234567
+
+%	Studiengang: Maschinenbau – Mechanical and Process Engineering (MPE) %falls nicht bei allen gleich
+
+%\NameC , B.\,Sc. | 1234567
+
+%	Studiengang: Maschinenbau – Mechanical and Process Engineering (MPE) %falls nicht bei allen gleich
+
+\ifdocenglish
+    Forename Surname, B\,Sc, 
+    
+    Matriculation number: 1234567
+    
+    Course of study: M.\,Sc. Maschinenbau – Mechanical and Process Engineering (MPE) 
+    \\
+    Master's thesis 
+    
+   Subject: Title of thesis in English
+    
+    Date of submission: \today %Datum auf der Titelrückseite
+    
+    Supervisor: \SADABetreuer, M.\,Sc. 
+    
+    \singlespacing %setzt den Zeilenabstand zurück auf einfach
+    Prof. Dr.-Ing. habil. Benjamin Schleich
+    \newline Institut Product Life Cycle Management
+    \newline Department Maschinenbau 
+    \newline Technische Universität Darmstadt 
+    \newline Otto-Berndt-Straße 2 
+    \newline 64287 Darmstadt
+\else
+    \NameA , B.\,Sc.
+
+    Matrikelnr.: 1234567
+    
+    Studiengang: M.\,Sc. Maschinenbau – Mechanical and Process Engineering (MPE) 
+    \\
+    Masterarbeit 
+    
+    Thema: Titel der Thesis auf Deutsch
+    
+    Tag der Einreichung: \today %Datum auf der Titelrückseite
+    
+    Betreuer: \SADABetreuer, M.\,Sc. 
+    
+    \singlespacing %setzt den Zeilenabstand zurück auf einfach
+    Prof. Dr.-Ing. habil. Benjamin Schleich
+    \newline Fachgebiet Product Life Cycle Management
+    \newline Fachbereich Maschinenbau 
+    \newline Technische Universität Darmstadt 
+    \newline Otto-Berndt-Straße 2 
+    \newline 64287 Darmstadt
+\fi 
+
+%%%%--> bis hier Titelrückseite
+
+%Aufgabenstellung einfügen
+\newpage
+\includepdf[pages = 1, scale = 1.0, frame = true]{Aufgabenstellung/Aufgabenstellung_einseitig.pdf}
+
+%\includepdf[pages = 2, scale = 1.0, frame = true]{Aufgabenstellung/Aufgabenstellung_zweiseitig.pdf}
+%falls Aufgabenstellung 2 Seiten umfasst
+
+%%%%% Leere Seite einfügen für doppelseitigen Druck (nicht nötig, wenn Aufgabenstellung 2 Seiten umfasst oder Abgabe nur digital%%%%
+%\newpage 
+%\thispagestyle{empty}
+%\quad 
+%\newpage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\pagenumbering{roman}
+
+%\begin{affidavit*}[ngerman]{Erklärung zur Abschlussarbeit gemäß §\,22 Abs.~7 und APB der TU Darmstadt}
+
+\ifdocenglish
+    \begin{affidavit*}[ngerman]{Thesis Statement pursuant to §\,22 paragraph 7 of APB TU Darmstadt}
+    %\textbf{Thesis Statement pursuant to §\,22 paragraph 7 of APB TU Darmstadt}
+    
+    I herewith formally declare that I, .........., have written the submitted thesis independently pursuant to §\,22 paragraph 7 of APB TU Darmstadt without any outside support and using only the quoted literature and other sources. I did not use any outside support except for the quoted literature and other sources mentioned in the paper. I have clearly marked and separately listed in the text the literature used literally or in terms of content and all other sources I used for the preparation of this academic work. This also applies to sources or aids from the Internet. This thesis has not been handed in or published before in the same or similar form. I am aware, that in case of an attempt at deception based on plagiarism (§\,38 Abs.~2 APB), the thesis would be graded with 5,0 and counted as one failed examination attempt. The thesis may only be repeated once.
+    \\\\\\\\
+    Date: \today\\
+      \hspace*{\fill}\begin{tabular}{@{}l@{}}\hline
+  \makebox[8cm]{Forename Surname}
+  \end{tabular}
+  \end{affidavit*}
+\else
+    \begin{affidavit*}[ngerman]{Erklärung zur Abschlussarbeit gemäß §\,22 Abs.~7 und APB der TU Darmstadt}
+    Hiermit erkläre ich, ........., dass ich die vorliegende Arbeit gemäß §\,22 Abs.~ 7 APB TU Darmstadt selbstständig, ohne Hilfe Dritter und nur mit den angegebenen Quellen und Hilfsmitteln angefertigt habe. Ich habe mit Ausnahme der zitierten Literatur und anderer in der Arbeit genannter Quellen keine fremden Hilfsmittel benutzt. Die von mir bei der Anfertigung dieser wissenschaftlichen Arbeit wörtlich oder inhaltlich benutzte Literatur und alle anderen Quellen habe ich im Text deutlich gekennzeichnet und gesondert aufgeführt. Dies gilt auch für Quellen oder Hilfsmittel aus dem Internet. Diese Arbeit hat in gleicher oder ähnlicher Form noch keiner Prüfungsbehörde vorgelegen. Mir ist bekannt, dass im Falle eines Plagiats (§\,38 Abs.~2 APB) ein Täuschungsversuch vorliegt, der dazu führt, dass die Arbeit mit 5,0 bewertet und damit ein Prüfungsversuch verbraucht wird. Abschlussarbeiten dürfen nur einmal wiederholt werden.  
+    \\\\\\\\
+    Datum: \today\\
+        \hspace*{\fill}\begin{tabular}{@{}l@{}}\hline
+    \makebox[8cm]{Vorname Nachname}
+    \end{tabular}
+    \end{affidavit*}
+\fi
+	
+	%Die folgenden Einträge beliebig erweitern oder löschen
+	%\vspace{5mm}
+	%\hspace*{\fill}\begin{tabular}{@{}l@{}}\hline
+	%	\makebox[8cm]{\NameB}
+	%\end{tabular}
+	
+	%\vspace{5mm}
+	%\hspace*{\fill}\begin{tabular}{@{}l@{}}\hline
+	%	\makebox[8cm]{\NameC}
+	%\end{tabular}
+
+%\end{affidavit*}
+
+\cleardoublepage % Leere Seite einfügen für doppelseitigen Druck
+
+\section*{Kurzfassung}
+Eine halbe Seite Kurzfassung auf Deutsch
+
+Schlüsselbegriffe: Digitaler Zwilling, Internet der Dinge, Virtuelle Produktentwicklung
+
+\section*{Abstract}
+Eine halbe Seite Kurzfassung auf Englisch
+
+Keywords: Digital Twin, Internet of Things, Virtual product development
+
+\cleardoublepage % Leere Seite einfügen für doppelseitigen Druck
+
+\tableofcontents % Inhaltsverzeichnis
+\cleardoublepage
+\listoffigures % Abbildungsverzeichnis
+\ifdocenglish
+    \addcontentsline{toc}{chapter}{List of figures} % erzeugt einen Eintrag im Inhaltsverzeichnis
+    \cleardoublepage
+    \listoftables % Tabellenverzeichnis
+    \addcontentsline{toc}{chapter}{List of tabels} % erzeugt einen Eintrag im Inhaltsverzeichnis
+\else
+    \addcontentsline{toc}{chapter}{Abbildungsverzeichnis} % erzeugt einen Eintrag im Inhaltsverzeichnis
+    \cleardoublepage
+    \listoftables % Tabellenverzeichnis
+    \addcontentsline{toc}{chapter}{Tabellenverzeichnis} % erzeugt einen Eintrag im Inhaltsverzeichnis
+\fi
+\cleardoublepage
+\input{inc/Symbolverzeichnis.tex} % Symbole und Abkürzungen
+
+\mbox{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Hier beginnt das eigentliche Dokument!!!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\onehalfspacing %erhöht den Zeilenabstand auf 1.5-fach
+\input{chapters/1-Einleitung}
+\input{chapters/2-Stand-der-Technik}
+\input{chapters/3-Handlungsbedarf}
+\input{chapters/4-Konzept}
+\input{chapters/5-Anwendung}
+\input{chapters/6-Validierung}
+\input{chapters/7-Ausblick}
+
+\cleardoublepage
+%\singlespacing %setzt den Zeilenabstand zurück auf einfach
+\ifdocenglish
+    \addcontentsline{toc}{chapter}{Bibliography}
+    \printbibliography[title={Bibliography}]
+\else
+    \addcontentsline{toc}{chapter}{Literaturverzeichnis}
+    \printbibliography[title={Literaturverzeichnis}]
+\fi
+%\onehalfspacing %erhöht den Zeilenabstand auf 1.5-fach
+\cleardoublepage
+
+% --- KI-Hilfsmittel-Verzeichnis ---
+\chapter*{KI-Hilfsmittel-Verzeichnis}
+\addcontentsline{toc}{chapter}{KI-Hilfsmittel-Verzeichnis}
+
+KI-Hilfsmittel-Tabelle orientiert an der \href{https://www.ulb.tu-darmstadt.de/media/ulb/forschen_publizieren/ki/ki_empfehlung_kurz.de.pdf}{Vorlage} der TU Darmstadt ausfüllen.
+
+\begin{longtable}{|p{0.175\textwidth}|p{0.175\textwidth}|p{0.175\textwidth}|p{0.175\textwidth}|p{0.175\textwidth}|}
+\hline
+\rowcolor[HTML]{C0C0C0} 
+{\color[HTML]{DEDEDE} } \textbf{Einsatzform} \; (z.B. Formulierungsvorschläge, Textstrukturierung, Formulierung von Überschriften etc.) & {\color[HTML]{DEDEDE} } \textbf{Eigenleistung} (Intellektueller Beitrag; z.B. KI-Generat angepasst, Quellen ergänzt, Faktencheck etc.) & {\color[HTML]{DEDEDE} } \textbf{Betroffene
+Teile der Arbeit} & {\color[HTML]{DEDEDE}}\textbf{KI-Hilfsmittel} \; (Name, ggf. Version und Anbieter) & {\color[HTML]{DEDEDE}} \textbf{Bemerkung} \;\; (Verweis auf einen Prompt- oder Gesprächsverlauf mit dem KI-Hilfsmittel)
+ \\ \hline
+\endfirsthead
+\endhead
+ &   &  &   &  \\ \hline
+
+
+\end{longtable}   
+%\cleardoublepage
+%für den Anhang braucht man folgendes
+
+\appendix
+	\input{appendix/A-Anhang}
+	\input{appendix/B-Anhang}
+	\input{appendix/C-Anhang}
+	\input{appendix/D-Anhang}
+%\end{appendix}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%Erzeugen einer leeren Seite, um zu vermeiden, dass die Rückseite der letzten Seite bedruckt ist. (Kann bei einseitigem Druck weggelassen werden.)
+%\newpage
+%\ \\
+%\pagenumbering{gobble} %Unterdrücken der Seitenzahl auf der letzte leeren Seite
+%\ifoot{} %Unterdrücken der Fußzeile auf der letzte leeren Seite
+%\cleardoublepage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
