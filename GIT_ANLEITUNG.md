@@ -30,9 +30,10 @@ git config --global user.name "Dein Name"
 git config --global user.email "deine@email.de"
 ```
 
-### 4. ShareLaTeX als Remote hinzufügen (einmalig, pro PC)
+### 4. Setup-Skript ausführen (einmalig, pro PC)
+Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein:
 ```bash
-git remote add sharelatex https://git@sharelatex.tu-darmstadt.de/git/6a1ad058164315e6a283e0af
+./setup.sh
 ```
 
 ---
