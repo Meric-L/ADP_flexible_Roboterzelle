@@ -14,9 +14,7 @@ Ziel der Arbeit ist die Untersuchung, Evaluation und **praktische Umsetzung** ve
 Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 
 ### Dokumentation (LaTeX)
-* `/tex` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
-* `/images` - Abbildungen, Systemarchitekturen und Plots.
-* `/bib` - Die Literaturdatenbank (`.bib`-Format).
+* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
 
 ### Implementierung (Source Code)
 * `/src` - Quellcode für die Sensorik, Datenverarbeitung und Sensorfusion.
