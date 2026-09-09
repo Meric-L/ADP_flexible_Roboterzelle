@@ -19,7 +19,7 @@ Zielbild:
 
 Leitplanke: **minimale Eingriffe.** Nicht „möglichst wenige Zeilen um jeden Preis", sondern
 **null Verhaltensänderung an bestehenden Codepfaden**. Alles Neue kommt in neue Dateien.
-
+ADP_flexible_Roboterzelle
 ---
 
 # Teil 1 — Wie das bestehende System funktioniert

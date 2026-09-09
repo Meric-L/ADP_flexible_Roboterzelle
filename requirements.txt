@@ -1,3 +1,4 @@
 opencv-contrib-python>=4.8.0
 pupil-apriltags
 numpy
+asyncua
