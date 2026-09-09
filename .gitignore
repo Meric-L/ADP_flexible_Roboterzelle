@@ -1,1 +1,9 @@
 CLAUDE.md
+concept/
+data/
+hardware/
+*.md
+*.txt
+*.bat
+*.sh
+
