@@ -6,4 +6,10 @@ hardware/
 *.txt
 *.bat
 *.sh
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.pem
+*.der
 
