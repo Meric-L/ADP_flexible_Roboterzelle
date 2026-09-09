@@ -12,12 +12,17 @@ Teil 4 = Soll-Architektur).
 - [x] **Phase 1 (Spike)**: `Opc.Ua.MachineVision.NodeSet2.xml` ist vendoriert,
   lässt sich per `import_xml()` laden und instanziieren. Die bekannten
   `asyncua`-Importrisiken (Issue #651) sind ausgeschlossen.
-- [x] **Phase 2**: eigenes Paket `src/vision_server/` mit eigenem Endpoint
-  (`opc.tcp://0.0.0.0:4841/vision/machine/`), eigener ApplicationURI
-  (`urn:launch-rm:vision:machine`) und eigenem Namespace
-  (`http://launch-rm.de/vision`). `VisionSystem`-Instanz mit `HasNotifier`
-  vom Server-Objekt. Modulaufteilung nach Teil 4.1, aber im `src/`-Layout
-  dieses Repos statt als eigenes uv-Projekt.
+- [x] **Phase 2**: eigenes Paket `src/vision_server/` mit eigenem Namespace
+  (`http://launch-rm.de/vision`), `VisionMachine`-Instanz unter einer stabilen
+  String-NodeId und `HasNotifier` vom Server-Objekt. Modulaufteilung nach
+  Teil 4.1, aber im `src/`-Layout dieses Repos statt als eigenes uv-Projekt.
+  **Abweichung von Teil 4.1/4.6:** *kein* eigener Serverprozess. Das Paket wird
+  per `install_vision_machine(server, config)` in den Server der Zelle
+  (`src/OPCUA/server.py`, Port 4840) eingebaut. Der Split aus dem Plan war für
+  das WSC-Monorepo mit zwei simulierten Servern (2D+3D) gedacht; bei einer
+  Kamera auf einem Pi kostet er nur doppelten Adressraum (~110 MB RSS je
+  Prozess gemessen) und zwingt das Backend zu zwei Sessions. Standalone-Start
+  (`python -m vision_server`) bleibt für Entwicklung erhalten.
 - [x] **Phase 3 (Server 1, mit Platzhalter-Erkennung)**: Zustandsautomaten,
   `StartSingleJob` mit Guard und Validierung, ResultManagement-Ablage,
   vier Events, JSON-Payload im Schema aus Teil 4.3, Fehlerpfad über den
@@ -29,12 +34,18 @@ Teil 4 = Soll-Architektur).
   vorgesehen. **Vorsicht beim manuellem Testen**: ein Vordergrundstart
   kollidiert mit dem laufenden Service (Port belegt) — `systemctl restart`
   benutzen oder einen freien Port wählen.
-- [~] Der alte Hello-World-Smoke-Test steckt **noch** in
-  `src/OPCUA/server.py` (Port 4840). Er bleibt absichtlich bis zum
-  gemeinsamen Test mit dem Teamkollegen erhalten und wird danach auf einem
-  eigenen Branch entfernt (siehe „Nächste Schritte" 2).
+- [x] Der alte Hello-World-Smoke-Test in `src/OPCUA/server.py` ist entfallen —
+  seine Aufgabe erfüllt jetzt das eingebaute Vision-System am selben Server.
+  `RaspiDevice`, der Nodeset-Import, die alte `VisionSystem`-Instanz,
+  `CpuTemperatureResult` und die Polling-Schleife sind **unverändert**;
+  geprüft, dass `ns=2;i=4` (Sollwert) und der Pfad
+  `VisionSystem/ResultManagement/Results/CpuTemperatureResult` weiter gelten.
+- [~] Dadurch liegen **zwei** `VisionSystemType`-Instanzen im Adressraum:
+  `4:VisionMachine` (echt) und die Altlast `2:VisionSystem`, die nur noch
+  `CpuTemperatureResult` trägt. Clients müssen die feste NodeId
+  `ns=4;s=VisionMachine` verwenden und dürfen **nicht** per Typ suchen.
 
-### Verifiziert (lokal, asyncua 2.0.1, Server + Client in zwei Prozessen)
+### Verifiziert (lokal, asyncua 2.0.1, Produktionszuschnitt auf Port 4840)
 
 Happy Path (Payload, Event-Reihenfolge, Korrelation über `jobId`,
 `ResultState`/`IsPartial`/`IsSimulated`/`CreationTime` im Event, beide
@@ -90,27 +101,25 @@ alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
 
 ## Nächste Schritte
 
-1. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
+1. **Auf dem Pi durchspielen** — `git pull`, `systemctl restart
+   opcua-server.service`, dann den Testclient dagegen laufen lassen. Wichtig,
+   weil bisher nur gegen asyncua 2.0.1 lokal verifiziert wurde; auf dem Pi kann
+   eine ältere Version liegen (`requirements.txt` pinnt nur `>=1.1.5`).
+2. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
    durchspielen, Grundlage ist
-   [`vision-server-interface.md`](vision-server-interface.md). Danach
-   `vision-server.service` auf dem Pi einrichten.
-2. **Cleanup-Branch** — den Phase-3-Smoke-Test aus `src/OPCUA/server.py`
-   entfernen (Zeilen des `# --- Phase 3`-Blocks, die State-Machine-Helfer und
-   die dann unbenutzten Imports). **Bleiben** müssen `RaspiDevice`, der
-   Nodeset-Import, die `VisionSystem`-Instanz, `HasNotifier`,
-   `ResultManagement`/`Results`, `CpuTemperatureResult` und die
-   Polling-Schleife — `CpuTemperatureResult` hängt unter `VisionSystem` und
-   wird vom Temperatur-Interface genutzt. NodeId-sicher: die betroffenen Knoten
-   entstehen *vor* dem gelöschten Block, `print_setpoint.py` (`ns=2;i=4`)
-   bleibt gültig. Danach das Nodeset-XML nach `src/vision_server/nodesets/`
-   verschieben und die zwei Pfadkonstanten anpassen.
-3. **Echtes Ergebnis-Payload** — neue `DetectionSource` in
+   [`vision-server-interface.md`](vision-server-interface.md).
+3. **Altlast `2:VisionSystem` entfernen**, sobald das Temperatur-Interface auf
+   `RaspiDevice/CpuTemperature` umgestellt ist. Danach das Nodeset-XML nach
+   `src/vision_server/nodesets/` verschieben und die Pfadkonstanten anpassen.
+4. **Echtes Ergebnis-Payload** — neue `DetectionSource` in
    `src/vision_server/detection/` plus Registry-Eintrag. Das Schema
    (`wsc.vision.detections/1`) bleibt unverändert, es füllen sich nur
    `detections`. Voraussetzung ist die Klärung von Koordinatensystem und
    Kalibrierung (siehe unten).
-4. **Danach Server 2 (3D)** — zweite Instanz auf Port 4842 mit eigener
-   ApplicationURI und eigener `visionSystemId`, nach Teil 4.5/4.6.
+5. **Danach das 3D-Profil** — als zweite `VisionSystemType`-Instanz im
+   *selben* Server (eigener Instanzname, eigene `visionSystemId`), nach
+   Teil 4.5. Ein zweiter Serverprozess wie in Teil 4.6 ist dafür nicht
+   nötig.
 
 > Phase 0 und Phasen 4–12 aus Teil 9 betreffen das **WebSkillComposition-
 > Backend/Frontend** (separates Repo, existiert hier **nicht**). Für dieses

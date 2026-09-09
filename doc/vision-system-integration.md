@@ -538,6 +538,15 @@ reproduzierbare Demo, triviale Verifikation des CAD-Overlays.
 Zwei Instanzen von Anfang an — so fällt sofort auf, wenn irgendwo eine Vision-ID mit einer
 Server-URL verwechselt wird.
 
+> **Abweichung (dieses Repo):** Hier läuft **ein** Server (Port 4840, Endpoint
+> `/raspi/server/`), in den das Vision-System per `install_vision_machine(server, config)`
+> eingebaut wird. Zwei Serverprozesse auf einem Pi laden denselben 40100-Adressraum zweimal
+> (gemessen ~110 MB RSS je Prozess) und zwingen das Backend zu zwei Sessions und zwei
+> Subscriptions — bei einer Kamera in einer Zelle ist das Aufwand ohne Gegenwert. Ein zweites
+> Profil käme als zweite `VisionSystemType`-Instanz im selben Server, unterschieden über
+> Instanznamen und `visionSystemId`. Die Docker-Compose-Variante oben gilt weiter für das
+> WSC-Monorepo mit simulierten Servern.
+
 ---
 
 # Teil 5 — Was im bestehenden System geändert wird

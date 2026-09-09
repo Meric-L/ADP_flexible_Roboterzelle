@@ -27,27 +27,47 @@ class VisionAddressSpace:
     results_folder: Node
 
 
-async def build_address_space(server: Server, config: VisionServerConfig) -> VisionAddressSpace:
-    """Baut den Adressraum in der von asyncua geforderten Reihenfolge auf.
+async def configure_server(server: Server, config: VisionServerConfig) -> None:
+    """Richtet einen eigenstaendigen Server fuer den Vision-Betrieb ein.
 
-    ApplicationURI muss vor `import_xml` gesetzt sein, weil der Import den
-    Namespace-Index fixiert. Der eigene Namespace wird nach dem Import
-    registriert; alle NodeIds werden ausschliesslich ueber die zur Laufzeit
-    ermittelten Indizes gebildet.
+    Wird nur gebraucht, wenn der Vision-Server als eigener Prozess laeuft.
+    Haengt er in einem bestehenden Server, hat dieser Endpoint und
+    ApplicationURI schon gesetzt — dann direkt `attach_vision_system` rufen.
+    ApplicationURI muss vor dem Nodeset-Import gesetzt sein, weil der Import
+    die Namespace-Indizes fixiert.
     """
-    if not config.nodeset_path.is_file():
-        raise FileNotFoundError(f"Nodeset nicht gefunden: {config.nodeset_path}")
-
     await server.init()
     server.set_endpoint(config.endpoint)
     await server.set_application_uri(config.application_uri)
     server.set_server_name(config.server_name)
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
+
+async def _ensure_nodeset(server: Server, config: VisionServerConfig) -> int:
+    """Importiert das Machine-Vision-Nodeset, falls noch nicht vorhanden.
+
+    Haengt das Vision-System in einem Server, der den Nodeset schon geladen
+    hat, wuerde ein zweiter Import den Adressraum verdoppeln.
+    """
+    try:
+        return await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
+    except ValueError:
+        pass
+    if not config.nodeset_path.is_file():
+        raise FileNotFoundError(f"Nodeset nicht gefunden: {config.nodeset_path}")
     _log.info("Importiere Machine-Vision-Nodeset von %s", config.nodeset_path)
     await server.import_xml(str(config.nodeset_path))
+    return await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
 
-    mv_idx = await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
+
+async def attach_vision_system(server: Server, config: VisionServerConfig) -> VisionAddressSpace:
+    """Haengt Nodeset und VisionSystem-Instanz an einen initialisierten Server.
+
+    Muss nach `server.init()` und vor `server.start()` laufen. Der eigene
+    Namespace wird nach dem Import registriert; alle NodeIds werden
+    ausschliesslich ueber die zur Laufzeit ermittelten Indizes gebildet.
+    """
+    mv_idx = await _ensure_nodeset(server, config)
     own_idx = await server.register_namespace(config.namespace_uri)
 
     name = config.vision_system_name

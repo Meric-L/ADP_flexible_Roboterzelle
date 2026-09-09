@@ -7,17 +7,25 @@ für den vollständigen Zielplan
 
 ## Zweck
 
-Auf dem Raspberry Pi laufen **zwei getrennte OPC-UA-Server**:
+**Ein** OPC-UA-Server auf dem Raspberry Pi (`src/OPCUA/server.py`, Port 4840,
+Endpoint `opc.tcp://<pi>:4840/raspi/server/`) mit zwei unabhängigen Bäumen:
 
-| Server | Port | Inhalt |
-| --- | --- | --- |
-| Raspi-Server (`src/OPCUA/server.py`) | 4840 | eigenes `RaspiDevice`-Interface (CPU-Temperatur, Zähler, Sollwert); enthält zusätzlich noch den alten Vision-Smoke-Test |
-| **Vision-Server (`src/vision_server/`)** | 4841 | eigenständige **OPC 40100 (Machine Vision)**-Implementierung mit vollem Job-Ablauf |
+| Baum | Inhalt |
+| --- | --- |
+| `RaspiDevice` | gewachsenes eigenes Interface: CPU-Temperatur, Zähler, Sollwert |
+| `VisionMachine` | **OPC 40100 (Machine Vision)** mit vollem Job-Ablauf, implementiert im Paket `src/vision_server/` |
 
-Der Vision-Server ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans. Seine
+Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans. Seine
 Erkennungsstufe ist bewusst noch ein **Hello-World-Platzhalter**: Zustandsautomaten,
 Events, Ergebnisablage, Validierung und Fehlerpfad sind echt, nur das erkannte
 "Modul" ist erfunden.
+
+Das Vision-Paket ist als **Einbau** gebaut (`install_vision_machine(server, config)`)
+und hängt seine Knoten in einen bestehenden Server. Ein zweiter Serverprozess wäre
+Verschwendung: er würde den 40100-Adressraum ein zweites Mal laden (gemessen
+~110 MB RSS pro Prozess) und das Backend zu zwei Sessions zwingen. Für Entwicklung
+und isolierte Tests lässt sich das Paket zusätzlich standalone starten
+(`python -m vision_server`), das ist aber nicht der Produktionsweg.
 
 ## Dateien
 
@@ -25,7 +33,7 @@ Events, Ergebnisablage, Validierung und Fehlerpfad sind echt, nur das erkannte
 | --- | --- |
 | [`src/vision_server/`](../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
 | [`src/vision_server/tools/hello_world_client.py`](../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
-| [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Raspi-Server (Temperatur-Interface + alter Smoke-Test) |
+| [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server der Zelle: Raspi-Interface + Einbau des Vision-Systems |
 | [`src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml`](../src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../requirements.txt) | u. a. `asyncua` |
 
@@ -43,27 +51,37 @@ Events, Ergebnisablage, Validierung und Fehlerpfad sind echt, nur das erkannte
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 | `errors.py` | Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
-| `runner.py` | Composition Root, `@uamethod`-Wrapper |
+| `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
 | `detection/` | Strategie `DetectionSource`; aktuell nur `hello_world.py` |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung.
 
-## Adressraum (Vision-Server, Port 4841)
+## Adressraum (Port 4840)
 
 ```
 Objects/
-└── VisionMachine                        ns=3;s=VisionMachine  (Typ: 2:VisionSystemType)
+├── RaspiDevice                          ns=2  (unverändert; Setpoint bleibt ns=2;i=4)
+│   ├── CpuTemperature   Double
+│   ├── Counter          Int64
+│   └── Setpoint         Double  (writable)
+├── VisionSystem                         ns=2  Altlast: leere 40100-Instanz,
+│   └── ResultManagement/Results/CpuTemperatureResult   trägt nur die CPU-Temperatur
+└── VisionMachine                        ns=4;s=VisionMachine  (Typ: 3:VisionSystemType)
     ├── VisionStateMachine               Preoperational | Halted | Error | Operational
     │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
     │       └── StartSingleJob           verlinkt (einzige implementierte Methode)
     ├── ResultManagement
-    │   └── Results/LatestResult         (Typ: 2:ResultType, wird pro Job überschrieben)
+    │   └── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │       └── ResultContent[0]         String  <- JSON-Payload
     └── LatestResultJson                 String  <- dasselbe JSON, einfacher Knoten
 ```
 
-Die `VisionSystem`-Instanz bekommt eine **String-NodeId** (`ns=3;s=VisionMachine`),
+Die Reihenfolge im Aufbau ist bindend: erst der raspi-Namespace und die
+`RaspiDevice`-Knoten, dann der Nodeset-Import, dann der Vision-Namespace. Nur so
+bleiben die vorhandenen NodeIds (`ns=2;i=4` für den Sollwert) gültig.
+
+Die `VisionMachine`-Instanz bekommt eine **String-NodeId** (`ns=4;s=VisionMachine`),
 wodurch `instantiate()` auch alle Kinder mit sprechenden, stabilen NodeIds anlegt
 (z. B. `…;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob`).
 Das erspart dem Backend jede Discovery.
@@ -76,9 +94,11 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 
 ## Laufzeitverhalten
 
-- Endpoint `opc.tcp://0.0.0.0:4841/vision/machine/`, ApplicationURI
-  `urn:launch-rm:vision:machine`, `SecurityPolicy: NoSecurity`.
-- Beim Start: `Preoperational → Operational`, innen `Initialized → Ready`.
+- Endpoint `opc.tcp://0.0.0.0:4840/raspi/server/`, `SecurityPolicy: NoSecurity`.
+- Alle 1 s: `Counter` hochzählen, `CpuTemperature` und
+  `CpuTemperatureResult/ResultContent` mit der CPU-Temperatur füllen
+  (unverändertes Verhalten des Raspi-Interfaces).
+- Beim Start des Vision-Systems: `Preoperational → Operational`, innen `Initialized → Ready`.
 - `StartSingleJob` prüft **synchron** Zustand und Eingaben und quittiert mit
   `(JobId, Error)`; der Job selbst läuft asynchron und meldet sich per Events.
 - Zustandsfolge eines Jobs: `Ready → SingleExecution → Ready`, dazu die Events
@@ -95,41 +115,40 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 ```bash
 pip install -r requirements.txt
 
-# Vision-Server
-PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
+# Server der Zelle (Raspi-Interface + Vision-System)
+python3 src/OPCUA/server.py
 
 # Handshake einmal durchspielen
 PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://127.0.0.1:4841/vision/machine/
+    --url opc.tcp://127.0.0.1:4840/raspi/server/
+
+# Nur das Vision-System, isoliert (Entwicklung)
+PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
 ```
 
-Der Raspi-Server läuft auf dem Pi produktiv als systemd-Service
-`opcua-server.service` (`Restart=always`, `RestartSec=5`,
-`/etc/systemd/system/opcua-server.service` — nicht in diesem Repo versioniert).
-Für den Vision-Server ist ein analoger Service `vision-server.service`
-vorgesehen:
+`server.py` legt `src/` selbst auf den `sys.path`, damit der Startbefehl des
+Services unverändert bleiben kann.
 
-```ini
-[Service]
-WorkingDirectory=/home/pi/ADP_flexible_Roboterzelle
-Environment=PYTHONPATH=/home/pi/ADP_flexible_Roboterzelle/src
-ExecStart=/usr/bin/python3 -m vision_server --port 4841
-Restart=always
-RestartSec=5
-```
-
-**Wichtig beim Testen auf dem Pi:** Ein Vordergrundstart kollidiert mit einem
-laufenden Service (Port belegt) — stattdessen `systemctl restart <service>`
-verwenden und mit einem separaten Client dagegen testen, oder den
-Vordergrundlauf auf einen freien Port legen (`--port 4842`).
+Auf dem Pi läuft der Server produktiv als systemd-Service `opcua-server.service`
+(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service` —
+nicht in diesem Repo versioniert). **Wichtig beim Testen auf dem Pi:** Kein
+Vordergrundstart, das kollidiert mit dem Service (Port 4840 belegt) —
+stattdessen `systemctl restart opcua-server.service` und mit einem separaten
+Client dagegen testen.
 
 ## Verifizierter Stand
 
-Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen (Server + Client in zwei
-Prozessen): Happy Path inkl. Payload und Event-Reihenfolge, `BUSY` bei zwei
-gleichzeitigen Aufrufen, `INVALID_ARGUMENT` bei überlanger `MeasId`,
-`UNKNOWN_RECIPE` bei unbekanntem Rezept, Fehlerpfad über den `Error`-Zustand mit
-anschließender Wiederaufnahme.
+Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen, im
+Produktionszuschnitt (`src/OPCUA/server.py` auf 4840) und mit separatem Client:
+Happy Path inkl. Payload und Event-Reihenfolge, `BUSY` bei zwei gleichzeitigen
+Aufrufen, `INVALID_ARGUMENT` bei überlanger `MeasId`, `UNKNOWN_RECIPE` bei
+unbekanntem Rezept, Fehlerpfad über den `Error`-Zustand mit anschließender
+Wiederaufnahme.
+
+Rückwärtskompatibilität geprüft: `ns=2;i=4` ist weiterhin der schreibbare
+Sollwert, `RaspiDevice/CpuTemperature` und `Counter` laufen, und
+`VisionSystem/ResultManagement/Results/CpuTemperatureResult` liefert unverändert
+einen Double.
 
 ## Bekannte Einschränkungen
 
@@ -147,6 +166,10 @@ anschließender Wiederaufnahme.
 - Events erreichen nur ein Abo direkt auf `VisionMachine`. Die
   `HasNotifier`-Referenz ist gesetzt, bewirkt bei asyncua serverseitig aber kein
   Event-Bubbling.
-- Nur eine Instanz — der 3D-Server (Server 2, Port 4842) existiert noch nicht.
-- Der alte Smoke-Test im Raspi-Server ist noch vorhanden (Doppelung), wird nach
-  dem gemeinsamen Test auf einem eigenen Branch entfernt.
+- Nur eine Vision-Instanz — ein zweites Profil (3D) existiert noch nicht.
+- Im Adressraum liegt neben `VisionMachine` noch die alte, leere
+  `VisionSystemType`-Instanz `2:VisionSystem`, die nur `CpuTemperatureResult`
+  trägt. Eine typbasierte Suche nach Vision-Systemen würde deshalb zwei
+  Instanzen finden — Clients müssen `ns=4;s=VisionMachine` fest verwenden. Die
+  Altlast verschwindet, sobald das Temperatur-Interface auf
+  `RaspiDevice/CpuTemperature` umgestellt ist.

@@ -11,31 +11,32 @@ nur das erkannte "Modul" ist erfunden. Der Umstieg auf echte Bilderkennung
 
 ## 1. Systemaufbau
 
-Auf dem Raspberry Pi laufen **zwei getrennte OPC-UA-Server**:
+**Ein** OPC-UA-Server auf dem Raspberry Pi (systemd-Service `opcua-server.service`,
+Port 4840). Er trägt zwei unabhängige Bäume: das gewachsene Raspi-Interface und
+das Vision-System.
 
 ```
-Raspberry Pi
-├── opcua-server.service     Port 4840  opc.tcp://<pi>:4840/raspi/server/
-│   └── RaspiDevice          CPU-Temperatur, Counter, Setpoint
-│                            (unverändert, wird vom Temperatur-Interface genutzt)
-└── vision-server.service    Port 4841  opc.tcp://<pi>:4841/vision/machine/
-    └── VisionMachine        OPC 40100 VisionSystemType   <- dieses Dokument
+Raspberry Pi — opc.tcp://<pi>:4840/raspi/server/
+├── RaspiDevice        CPU-Temperatur, Counter, Setpoint (Temperatur-Interface)
+├── VisionMachine      OPC 40100 VisionSystemType        <- dieses Dokument
+└── VisionSystem       Altlast: leere 40100-Instanz, trägt nur
+                       CpuTemperatureResult (siehe 7.5) — NICHT verwenden
 ```
 
-Adressraum des Vision-Servers:
+Adressraum des Vision-Systems:
 
 ```
 Objects/
-└── VisionMachine                        ns=3;s=VisionMachine   (Typ: 2:VisionSystemType)
+└── VisionMachine                        ns=4;s=VisionMachine   (Typ: 3:VisionSystemType)
     ├── VisionStateMachine               Preoperational | Halted | Error | Operational
     │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
     │       ├── StartSingleJob           <- die einzige verlinkte Methode
     │       └── StartContinuous | Stop | Abort | SimulationMode   (nicht implementiert)
     ├── ResultManagement
-    │   ├── Results/LatestResult         (Typ: 2:ResultType, wird pro Job überschrieben)
+    │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
     │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
-    └── LatestResultJson                 ns=3;s=VisionMachine.LatestResultJson
+    └── LatestResultJson                 ns=4;s=VisionMachine.LatestResultJson
                                          derselbe JSON-String, als einfacher String-Knoten
 ```
 
@@ -58,12 +59,12 @@ Registry-Eintrag**. Der Server-Kern und diese Schnittstelle bleiben unberührt.
 
 | | Wert |
 | --- | --- |
-| Endpoint | `opc.tcp://<pi>:4841/vision/machine/` |
+| Endpoint | `opc.tcp://<pi>:4840/raspi/server/` |
 | Security | `NoSecurity` (keine Authentifizierung/Verschlüsselung) |
-| ApplicationURI | `urn:launch-rm:vision:machine` |
-| ServerName | `Vision Machine` |
-| Namespace Vision | `http://launch-rm.de/vision` (typisch ns=3) |
-| Namespace 40100 | `http://opcfoundation.org/UA/MachineVision` (typisch ns=2) |
+| ServerName | `Raspberry Pi OPC UA Server` |
+| Namespace Vision | `http://launch-rm.de/vision` (aktuell ns=4) |
+| Namespace 40100 | `http://opcfoundation.org/UA/MachineVision` (aktuell ns=3) |
+| Namespace Raspi | `http://launch-rm.de/raspi` (ns=2, nicht Vision-relevant) |
 
 **Namespace-Indizes nie hardcoden** — immer
 `await client.get_namespace_index("<uri>")`. Die Indizes verschieben sich, sobald
@@ -73,7 +74,7 @@ Wichtige NodeIds (sprechende String-Ids, stabil über Neustarts und Änderungen)
 
 | Knoten | NodeId |
 | --- | --- |
-| VisionSystem | `ns=<vision>;s=VisionMachine` |
+| Vision-System | `ns=<vision>;s=VisionMachine` |
 | StartSingleJob | `ns=<vision>;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob` |
 | Zustand außen | `ns=<vision>;s=VisionMachine.VisionStateMachine.CurrentState` |
 | Zustand innen | `ns=<vision>;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.CurrentState` |
@@ -281,7 +282,20 @@ Das Ergebnis kommt stattdessen im Event (primär). Fallback, falls ein Client
 Array-Felder in Events nicht verarbeitet: auf das `ResultReadyEvent` hin **ein**
 `read_value()` auf `LatestResultJson` — weiterhin eventgetrieben, kein Polling.
 
-### 7.4 Nicht implementierte Methoden
+### 7.4 Es gibt zwei 40100-Instanzen im Adressraum — nur eine ist echt
+
+Neben `VisionMachine` existiert eine ältere, leere `VisionSystemType`-Instanz
+`ns=2;s=…VisionSystem` (BrowseName `2:VisionSystem`). Sie ist eine Altlast und
+dient nur noch als Container für `CpuTemperatureResult`, das die CPU-Temperatur
+des Pi trägt — **keine** Erkennung, keine Methoden, keine Events.
+
+Konsequenz: **Nicht per Typ suchen.** Wer Instanzen von `VisionSystemType`
+einsammelt, findet zwei Systeme, davon eines mit einem Temperaturwert im
+`ResultContent`. Immer die feste NodeId `ns=<vision>;s=VisionMachine` verwenden
+(deshalb hat sie eine sprechende String-Id). Die Altlast wird entfernt, sobald
+das Temperatur-Interface auf `RaspiDevice/CpuTemperature` umgestellt ist.
+
+### 7.5 Nicht implementierte Methoden
 
 Verlinkt ist nur `StartSingleJob`. `StartContinuous`, `Stop`, `Abort`,
 `SimulationMode`, `Reset`, `Halt`, `SelectModeAutomatic` und die `Sync`-Methoden
@@ -291,12 +305,12 @@ ein Aufruf tut nichts. Ein Backend darf sie nicht für den Ablauf voraussetzen.
 ## 8. Ablauf einmal durchspielen
 
 ```bash
-# Auf dem Pi (Port 4840 bleibt beim Temperatur-Server):
-PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
+# Auf dem Pi laeuft der Server als Service; nach einem Code-Update:
+sudo systemctl restart opcua-server.service
 
-# Zweite Shell — Referenzimplementierung des Handshakes:
+# Referenzimplementierung des Handshakes (von beliebigem Rechner):
 PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://127.0.0.1:4841/vision/machine/
+    --url opc.tcp://<pi>:4840/raspi/server/
 ```
 
 Der Client gibt `StartSingleJob -> JobId=... Error=0`, das Payload und die
@@ -320,7 +334,10 @@ Vorführbare Sonderfälle:
   Hand-Auge-Kalibrierung. Was `position`/`orientation` real bedeuten, hängt an
   der noch offenen Kalibrierung — ein automatisches Anfahren erkannter Posen
   darf bis dahin nicht scharf geschaltet werden.
-- **Zweiter Server (3D)**: vorgesehen auf Port 4842 mit eigener
-  ApplicationURI/`visionSystemId`; dieselbe Schnittstelle.
+- **Zweite Kamera / 3D-Profil**: würde als zweite `VisionSystemType`-Instanz im
+  selben Server hängen (eigener Instanzname und eigene `visionSystemId`),
+  dieselbe Schnittstelle. Ein zweiter Serverprozess ist nicht vorgesehen —
+  er würde denselben 40100-Adressraum ein zweites Mal laden (~110 MB).
+- **Altlast-Instanz `2:VisionSystem` entfernen** (siehe 7.4).
 - **Structure-Felder der Events** befüllen, sobald asyncua-Issue #1693 gefixt
   ist. Das Payload bleibt auch dann die maßgebliche Quelle.
