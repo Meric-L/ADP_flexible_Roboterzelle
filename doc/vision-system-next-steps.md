@@ -73,10 +73,29 @@ Teil 4 = Soll-Architektur).
   müssen per fester NodeId (mit `mv_idx`) geholt werden, nicht per
   `get_child()` auf der Instanz. Siehe `src/OPCUA/server.py`.
 
-1. **Package-Split** — eigenes `vision-server/`-Package mit eigenem
+1. **`StartSingleJob` absichern (Fehlerbehandlung)** — vor Package-Split und
+   echtem Payload sollten folgende Lücken aus dem aktuellen Smoke-Test
+   geschlossen werden (gefunden beim Vorbereiten des ersten End-to-End-Tests
+   mit einem Backend-Client):
+   - **State-Guard fehlt**: Aufruf ist aktuell auch außerhalb von `Ready`
+     möglich, ohne Fehlermeldung. Laut Nodeset hat `StartSingleJob` eine
+     `HasCause`-Referenz auf die Transition `ReadyToSingleExecution` — sollte
+     also nur aus `Ready` heraus erlaubt sein.
+   - **Kein Input-Validation**: `MeasId`/`PartId`/`RecipeId`/`ProductId`/
+     `Parameters` werden aktuell komplett ignoriert (`server.py:190`).
+   - **`Error`-Output immer `0`**: hartcodiert in `server.py:195`, kein
+     echter Fehlercode-Pfad bei State-Verstoß oder ungültigen Parametern.
+   - **`Error`-State der State Machine nie erreicht** (`i=5030`): Übergänge
+     `OperationalToErrorAuto`/`ErrorToHalted*` aus dem Nodeset sind noch
+     nicht verdrahtet.
+   - **Kein Lock/Concurrency-Schutz**: `asyncio.create_task(_run_hello_world_job(...))`
+     läuft ungeschützt fire-and-forget; zwei schnelle Aufrufe hintereinander
+     können sich State-Machine- und Result-Knoten gegenseitig überschreiben
+     (Race Condition). Bis zum Fix: in Tests nur einen Job auf einmal starten.
+2. **Package-Split** — eigenes `vision-server/`-Package mit eigenem
    Endpoint/App-URI statt im bestehenden `raspi`-Server (Teil 4.1/4.6). Wird
    auf einem eigenen Branch bearbeitet (`feature/vision-server-package-split`).
-2. **Echtes Ergebnis-Payload** — volles JSON-Schema aus Teil 4.3
+3. **Echtes Ergebnis-Payload** — volles JSON-Schema aus Teil 4.3
    (`moduleId`, `instanceId`, `position`, `orientation` als Quaternion `xyzw`,
    `frameId`, `lengthUnit`/`angleUnit` etc.) statt des Hello-World-Platzhalters,
    sobald echte Bilderkennung angeschlossen wird. **Abweichung vom
@@ -85,7 +104,7 @@ Teil 4 = Soll-Architektur).
    beim bestehenden `CpuTemperatureResult`-Muster einen skalaren Wert
    schreiben: `ResultContent.write_value(json_string, ua.VariantType.String)`
    (nach `write_attribute(DataType, ...)`-Override auf `String`).
-3. **Danach erst Server 2 (3D)** — zweite Instanz/Profil nach Teil 4.5/4.6,
+4. **Danach erst Server 2 (3D)** — zweite Instanz/Profil nach Teil 4.5/4.6,
    sobald Server 1 (2D) den Job-Ablauf stabil durchläuft.
 
 > Phase 0 und Phasen 4–12 aus Teil 9 betreffen das **WebSkillComposition-

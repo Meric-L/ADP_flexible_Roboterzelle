@@ -11,4 +11,6 @@ __pycache__/
 *.log
 *.pem
 *.der
+*.jpg
+
 
