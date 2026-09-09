@@ -342,8 +342,14 @@ await server.nodes.server.add_reference(vision_system, ua.ObjectIds.HasNotifier,
 await vision_system.set_event_notifier([ua.EventNotifier.SubscribeToEvents])
 ```
 
-Damit reicht **ein einziger** `subscribeEvent(serverUrl, "i=2253")` für Status *und* Ergebnisse
-— keine Discovery, keine Namespace-Index-Auflösung im Frontend.
+> **Korrektur (verifiziert):** Dieser Kniff funktioniert mit `asyncua` **nicht**. Serverseitig
+> matcht asyncua Events beim Ausliefern strikt nach exaktem `emitting_node`
+> (`monitored_item_service.py: trigger_event`); die `HasNotifier`-Hierarchie wird nicht
+> traversiert. Ein Abo auf `i=2253` empfängt **nichts**. Der Client muss direkt auf dem
+> `VisionSystem`-Knoten abonnieren. Die `HasNotifier`-Referenz bleibt trotzdem gesetzt
+> (spec-korrekt, macht das System vom Server-Objekt aus auffindbar). Statt Discovery gibt
+> die Implementierung dem `VisionSystem` eine **String-NodeId** (`ns=<vision>;s=VisionMachine`),
+> wodurch auch alle Kinderknoten sprechende, stabile NodeIds bekommen.
 
 Für die Zustandsautomaten gibt es `asyncua/common/statemachine.py` (`FiniteStateMachine` mit
 `install()`, `add_state()`, `add_transition()`, `change_state()`); `_state_machine_type` lässt
@@ -357,7 +363,10 @@ Transition-Event.
 | 1 | asyncua-Issue [#651](https://github.com/FreeOpcUa/opcua-asyncio/issues/651): `TypeError: object of type 'ExtObj' has no len()` beim MachineVision-Import | In aktuellem asyncua behoben. **Trotzdem als Erstes isoliert verifizieren** (Spike, s. Phase 1). Fallback `strict_mode=False`. |
 | 2 | asyncua-Issue [#1693](https://github.com/FreeOpcUa/opcua-asyncio/issues/1693) (offen): `load_data_type_definitions()` scheitert bei 40100 an abstrakten Struktur-Basistypen | Betrifft die **Client**-Seite. Unser Backend ruft das heute nirgends auf — **so lassen**. Der JSON-Payload (4.3) macht es überflüssig. |
 | 3 | Namespace-Index-Drift | **Nie** `ns=2;i=…` hardcoden, immer `ua.NodeId(id, mv_idx)`. |
-| 4 | `ResultContent` ist `BaseDataType[]` | Variants explizit bauen: `[ua.Variant(payload, ua.VariantType.String)]` — asyncuas Auto-Erkennung für heterogene Listen ist unzuverlässig. |
+| 4 | `ResultContent` ist `BaseDataType[]` | **Korrigiert (verifiziert):** Der Knoten kommt aus dem Nodeset mit einer **Null-NodeId als DataType**, deshalb scheitert *jeder* Write mit `BadTypeMismatch` — auch `[ua.Variant(payload, String)]`. Erst das DataType-Attribut auf `String` überschreiben, dann als **Array** schreiben: `write_value(ua.Variant([payload], ua.VariantType.String))`. Damit bleibt die `ResultContent[0]`-Semantik erhalten. |
+| 4b | Event-Felder kommen beim Client als `None` an | Feldtypen leitet asyncua aus dem Nodeset ab und erhält hier VariantType `Null`. Jedes Feld als fertigen `ua.Variant(wert, typ)` zuweisen, nicht als rohen Python-Wert. |
+| 4c | `@uamethod`-Handler kann keinen Task starten | Synchrone Handler laufen bei asyncua in einem ThreadPoolExecutor ohne Event-Loop (`RuntimeError: no running event loop`). Handler `async def` machen; die Prüf-/Zulassungslogik bleibt synchron, damit sie atomar ist. |
+| 4d | Methodenrückgabe kommt verschachtelt an | `_format_call_outputs` behandelt nur **Tupel** elementweise; eine `list` wird als *ein* Variant verpackt. Immer `return (Variant(...), Variant(...))`. |
 | 5 | Optional Fields / EncodingMask | Alle Mandatory-Felder befüllen (`ResultId`, `IsPartial`, `ResultState`, `InternalRecipeId`, `InternalConfigurationId`, `JobId`, `CreationTime`). |
 | 6 | `import_xml` muss nach `init()` und vor `start()` laufen | Reihenfolge oben einhalten. |
 
@@ -374,6 +383,14 @@ Transition-Event.
 `ResultContent` ist ein **Array**. Wir belegen `[0]` mit dem JSON-String; später kann `[1]` einen
 echten Structured DataType tragen, **ohne** die Frontend-Kette anzufassen. Abwärtskompatibler
 Ausbaupfad.
+
+> **Ergänzung (verifiziert):** `ResultReadyEventType` (i=1024) trägt **kein** `Result:
+> ResultDataType`, sondern 15 flache Felder — darunter `ResultContent` selbst. Der JSON-String
+> reist deshalb **im Event** mit; ein zweiter Read oder ein Methodenaufruf ist nicht nötig.
+> Dekodierbar sind nur `ResultContent`, `CreationTime`, `IsPartial`, `IsSimulated` und
+> `ResultState`; `ResultId`/`JobId`/`InternalRecipeId`/`InternalConfigurationId` sind Strukturen
+> und werden leer gesendet — ihre Werte stehen im Payload (`resultId`, `jobId`). Die Korrelation
+> Ergebnis→Job läuft über `payload["jobId"]`.
 
 **Schema** (`vision-server/src/vision_server/payload.py`, gespiegelt in
 `frontend/src/features/vision/model/visionResultEvent.ts`):
@@ -445,7 +462,18 @@ async def _run_job(self, job_id, meas_id, part_id, recipe_id, product_id, parame
     await self.ev_ready.trigger(message="Ready")
 ```
 
-Sichtbare Zustandsfolge: `Preoperational → Halted → Operational/Initialized → Ready →
+> **Korrektur (verifiziert):** Die Zustandsfolge über `Halted` ist nicht konform — das Nodeset
+> kennt **keinen** Übergang `Halted → Operational`. Korrekt ist
+> `Preoperational --PreoperationalToOperationalAuto--> Operational` und innen
+> `Initialized --InitializedToReadyAuto--> Ready`. Ebenso setzt die `ua.ResultDataType(...)`-Skizze
+> oben generierte Python-Klassen voraus, die es ohne `load_data_type_definitions()` nicht gibt
+> (Issue #1693) — die Implementierung schreibt die Ergebnisfelder stattdessen knotenweise.
+> Der `Error`-Zustand ist **kein** fester Typknoten (`i=5030`), sondern ein Mandatory-Kind der
+> Instanz; nur die States der `AutomaticModeStateMachine` (i=5056–5059) kommen per fester NodeId.
+> Und `change_state()` darf **kein** `Transition`-Objekt bekommen: der optionale
+> `LastTransition`-Knoten existiert auf der Instanz nicht.
+
+Sichtbare Zustandsfolge: `Preoperational → Operational/Initialized → Ready →
 SingleExecution → Ready`.
 
 ## 4.5 Server 1 vs. Server 2
@@ -966,10 +994,24 @@ Stufe 2, wenn das Backend ohnehin Vision-Sessions kennt.
 | **11** | `EventBus` + Lifecycle-Cleanup im Router | Orchestrator überlebt Client-Reload |
 | **12** | Dispatch-Modus entschieden (6.3), `auto_execute=True` | Zellenversuch |
 
+> **Stand (dieses Repo):** Phase 1 abgeschlossen; Phase 2 und Phase 3 sind für **Server 1**
+> umgesetzt — eigenes Paket `src/vision_server/` mit eigenem Endpoint/ApplicationURI,
+> beide Zustandsautomaten, `StartSingleJob` mit Guard/Validierung/Fehlercodes,
+> ResultManagement-Ablage, vier Events und JSON-Payload im Schema aus 4.3. Die Erkennung ist
+> vorerst der Platzhalter `detection/hello_world.py`; echtes Payload heißt jetzt nur noch, eine
+> `DetectionSource` auszutauschen. Phasen 0 und 4–12 betreffen das WebSkillComposition-Repo.
+> Schnittstelle für dessen Anbindung: [`vision-server-interface.md`](vision-server-interface.md).
+
 Phase 0–8 ändern **keine** bestehende Verhaltenslogik — nur die zwei additiven Fixes, ein
 keyword-only-Default und ein Event-Cap. Das ist die konkrete Einlösung von „minimale Eingriffe".
 
 ---
+
+> **Korrektur zu 6.4/R12 (verifiziert):** `GetResultById` & Co. sind vom asyncua-Client aus
+> nicht aufrufbar — schon ihr **Eingabe**-Argument (`ResultIdDataType`, `JobIdDataType`) ist ein
+> ExtensionObject, das ohne `load_data_type_definitions()` nicht gebaut werden kann (Issue #1693).
+> Es werden folglich keine Handles ausgegeben, und das `ReleaseResultHandle`-Leck ist derzeit
+> gegenstandslos. Das Ergebnis kommt über das `ResultReadyEvent`.
 
 # Teil 10 — Verifikation
 

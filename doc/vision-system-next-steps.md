@@ -2,115 +2,119 @@
 
 Kurzorientierung, damit ein Agent ohne vorherigen Kontext weiß, wo das
 Vision-Server-Vorhaben gerade steht. Ausführlicher Ist-Stand:
-[`vision-system.md`](vision-system.md). Vollständiger Plan:
+[`vision-system.md`](vision-system.md). Backend-Schnittstelle:
+[`vision-server-interface.md`](vision-server-interface.md). Vollständiger Plan:
 [`vision-system-integration.md`](vision-system-integration.md) (Teil 9 = Phasenplan,
 Teil 4 = Soll-Architektur).
 
 ## Aktueller Stand
 
-- [x] **Phase 1 (Spike)** erledigt: `Opc.Ua.MachineVision.NodeSet2.xml` ist
-  vendoriert und lässt sich per `import_xml()` laden; eine Instanz von
-  `VisionSystemType` bzw. `ResultType` lässt sich anlegen und beschreiben.
-  Die bekannten `asyncua`-Importrisiken (Issue #651) sind damit praktisch
-  ausgeschlossen.
-- [x] Server läuft auf dem Raspberry Pi und startet automatisch beim Booten
-  — **nicht** nur "beim Booten", sondern als systemd-Service
-  `opcua-server.service` (`Restart=always`, `RestartSec=5`,
-  `/etc/systemd/system/opcua-server.service`, nicht in diesem Repo
-  versioniert). D.h. jeder Absturz von `server.py` wird automatisch nach
-  5s neu gestartet — praktisch für Robustheit, aber **Vorsicht bei
-  manuellem Testen**: ein einfaches `python src/OPCUA/server.py` im
-  Vordergrund kollidiert mit dem laufenden Service (Port 4840 belegt);
-  zum Testen lieber `systemctl restart opcua-server.service` verwenden
-  und gegen den laufenden Service mit einem separaten Client testen.
-- [~] **Phase 2** teilweise: Die `VisionSystem`-Instanz ist im Adressraum
-  sichtbar und hat die `HasNotifier`-Referenz vom Server-Objekt
-  (Teil 4.2). Sie läuft aber noch **im bestehenden `raspi`-Server**
-  statt als eigenes `vision-server/`-Package mit eigenem Endpoint/App-URI
-  (Teil 4.1/4.6).
-- [~] **Phase 3** teilweise (Smoke-Test): `StartSingleJob` ist verlinkt und
-  durchläuft die volle Zustandsfolge `Preoperational → Halted →
-  Operational/Initialized → Ready → SingleExecution → Ready`; die drei
-  Events (`JobStartedEvent`, `AcquisitionDoneEvent`, `ResultReadyEvent`)
-  feuern; `ResultContent` einer neuen, separaten `HelloWorldResult`-Instanz
-  enthält einen JSON-String (`{"schema": "wsc.vision.test/1", "jobId",
-  "creationTime", "message": "Hello World", "time"}`) — noch **kein**
-  echtes Detection-Payload (Modul-ID + 6D-Pose, Teil 4.3). Die bestehende
-  `CpuTemperatureResult`-Instanz + Polling-Loop bleiben unverändert (wird
-  von einem Teammitglied genutzt). End-to-end gegen den laufenden
-  Produktions-Service verifiziert (siehe unten).
+- [x] **Phase 1 (Spike)**: `Opc.Ua.MachineVision.NodeSet2.xml` ist vendoriert,
+  lässt sich per `import_xml()` laden und instanziieren. Die bekannten
+  `asyncua`-Importrisiken (Issue #651) sind ausgeschlossen.
+- [x] **Phase 2**: eigenes Paket `src/vision_server/` mit eigenem Endpoint
+  (`opc.tcp://0.0.0.0:4841/vision/machine/`), eigener ApplicationURI
+  (`urn:launch-rm:vision:machine`) und eigenem Namespace
+  (`http://launch-rm.de/vision`). `VisionSystem`-Instanz mit `HasNotifier`
+  vom Server-Objekt. Modulaufteilung nach Teil 4.1, aber im `src/`-Layout
+  dieses Repos statt als eigenes uv-Projekt.
+- [x] **Phase 3 (Server 1, mit Platzhalter-Erkennung)**: Zustandsautomaten,
+  `StartSingleJob` mit Guard und Validierung, ResultManagement-Ablage,
+  vier Events, JSON-Payload im Schema aus Teil 4.3, Fehlerpfad über den
+  `Error`-Zustand. Erkennung ist eine `DetectionSource`-Strategie; aktiv ist
+  `hello_world.py`.
+- [x] Der Raspi-Server läuft auf dem Pi als systemd-Service
+  `opcua-server.service` (`Restart=always`, `RestartSec=5`, nicht in diesem
+  Repo versioniert). Für den Vision-Server ist `vision-server.service` analog
+  vorgesehen. **Vorsicht beim manuellem Testen**: ein Vordergrundstart
+  kollidiert mit dem laufenden Service (Port belegt) — `systemctl restart`
+  benutzen oder einen freien Port wählen.
+- [~] Der alte Hello-World-Smoke-Test steckt **noch** in
+  `src/OPCUA/server.py` (Port 4840). Er bleibt absichtlich bis zum
+  gemeinsamen Test mit dem Teamkollegen erhalten und wird danach auf einem
+  eigenen Branch entfernt (siehe „Nächste Schritte" 2).
 
-  **Wichtiger Fund, der Teil 4.2 widerlegt:** Die Aussage "ein einziger
-  `subscribeEvent(serverUrl, 'i=2253')` reicht dank `HasNotifier`" gilt
-  **nicht** für die hier verwendete `asyncua`-Bibliothek. Serverseitig
-  matcht `asyncua` Events beim Ausliefern strikt nach exaktem
-  `emitting_node` (`monitored_item_service.py: trigger_event` prüft
-  `event.emitting_node in self._monitored_events`) — es gibt **keine**
-  Traversierung der `HasNotifier`-Hierarchie. Ein Client muss deshalb
-  direkt auf `VisionSystem` abonnieren (`subscribe_events(vision_system,
-  ...)`), nicht auf `client.nodes.server`. Verifiziert per Testclient:
-  Abo auf `nodes.server` empfängt nichts, Abo auf `VisionSystem` empfängt
-  alle drei Events zuverlässig. Relevant für die spätere
-  Frontend-Anbindung (Teil 5.1/5.2).
+### Verifiziert (lokal, asyncua 2.0.1, Server + Client in zwei Prozessen)
 
-## Nächste Schritte (aus Teil 9 des Plans, Phasen 2–3)
+Happy Path (Payload, Event-Reihenfolge, Korrelation über `jobId`,
+`ResultState`/`IsPartial`/`IsSimulated`/`CreationTime` im Event, beide
+Ergebnisknoten) · `BUSY` bei zwei gleichzeitigen Aufrufen ·
+`INVALID_ARGUMENT` bei überlanger `MeasId` · `UNKNOWN_RECIPE` bei unbekanntem
+Rezept · Fehlerpfad `--parameter force-error` mit `resultState=5`, Durchlauf
+über den `Error`-Zustand und funktionierender Wiederaufnahme.
 
-- [x] **HasNotifier setzen** — `VisionSystem` per
-  `server.nodes.server.add_reference(vision_system, ua.ObjectIds.HasNotifier, forward=True)`
-  und `set_event_notifier([...])` sichtbar gemacht (Teil 4.2), siehe
-  `src/OPCUA/server.py`.
+## Verifizierte Fakten, die den Docs widersprachen
 
-- [x] **State Machine + `StartSingleJob` + Events (Smoke-Test)** — siehe oben.
-  Details: `VisionStateMachine`/`AutomaticModeStateMachine` werden **nicht**
-  per `FiniteStateMachine.install()` neu angelegt (das würde einen
-  doppelten Baum erzeugen), sondern an die von der Nodeset-Instanziierung
-  bereits vorhandenen Knoten gebunden (`_state_machine_node` manuell setzen,
-  dann `init()`). Die States der `AutomaticModeStateMachine`
-  (`Initialized`/`Ready`/`SingleExecution`/`ContinuousExecution`) sind
-  **nicht** als Kinder der Instanz vorhanden (kein `HasModellingRule` auf
-  diesen Knoten im Nodeset), sondern nur als feste Knoten am Typ
-  `VisionAutomaticModeStateMachineType` (ns=1;i=5056/5057/5058/5059) —
-  müssen per fester NodeId (mit `mv_idx`) geholt werden, nicht per
-  `get_child()` auf der Instanz. Siehe `src/OPCUA/server.py`.
+Diese Punkte sind gegen das Nodeset und den asyncua-Quellcode geprüft; die
+alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
 
-1. **`StartSingleJob` absichern (Fehlerbehandlung)** — vor Package-Split und
-   echtem Payload sollten folgende Lücken aus dem aktuellen Smoke-Test
-   geschlossen werden (gefunden beim Vorbereiten des ersten End-to-End-Tests
-   mit einem Backend-Client):
-   - **State-Guard fehlt**: Aufruf ist aktuell auch außerhalb von `Ready`
-     möglich, ohne Fehlermeldung. Laut Nodeset hat `StartSingleJob` eine
-     `HasCause`-Referenz auf die Transition `ReadyToSingleExecution` — sollte
-     also nur aus `Ready` heraus erlaubt sein.
-   - **Kein Input-Validation**: `MeasId`/`PartId`/`RecipeId`/`ProductId`/
-     `Parameters` werden aktuell komplett ignoriert (`server.py:190`).
-   - **`Error`-Output immer `0`**: hartcodiert in `server.py:195`, kein
-     echter Fehlercode-Pfad bei State-Verstoß oder ungültigen Parametern.
-   - **`Error`-State der State Machine nie erreicht** (`i=5030`): Übergänge
-     `OperationalToErrorAuto`/`ErrorToHalted*` aus dem Nodeset sind noch
-     nicht verdrahtet.
-   - **Kein Lock/Concurrency-Schutz**: `asyncio.create_task(_run_hello_world_job(...))`
-     läuft ungeschützt fire-and-forget; zwei schnelle Aufrufe hintereinander
-     können sich State-Machine- und Result-Knoten gegenseitig überschreiben
-     (Race Condition). Bis zum Fix: in Tests nur einen Job auf einmal starten.
-2. **Package-Split** — eigenes `vision-server/`-Package mit eigenem
-   Endpoint/App-URI statt im bestehenden `raspi`-Server (Teil 4.1/4.6). Wird
-   auf einem eigenen Branch bearbeitet (`feature/vision-server-package-split`).
-3. **Echtes Ergebnis-Payload** — volles JSON-Schema aus Teil 4.3
-   (`moduleId`, `instanceId`, `position`, `orientation` als Quaternion `xyzw`,
-   `frameId`, `lengthUnit`/`angleUnit` etc.) statt des Hello-World-Platzhalters,
-   sobald echte Bilderkennung angeschlossen wird. **Abweichung vom
-   Stolperstein-4-Rezept:** `ResultContent.write_value([ua.Variant(json, ...)])`
-   (Liste von Variants) schlägt mit `BadTypeMismatch` fehl. Stattdessen wie
-   beim bestehenden `CpuTemperatureResult`-Muster einen skalaren Wert
-   schreiben: `ResultContent.write_value(json_string, ua.VariantType.String)`
-   (nach `write_attribute(DataType, ...)`-Override auf `String`).
-4. **Danach erst Server 2 (3D)** — zweite Instanz/Profil nach Teil 4.5/4.6,
-   sobald Server 1 (2D) den Job-Ablauf stabil durchläuft.
+1. **`ResultReadyEventType` (i=1024) hat kein `Result: ResultDataType`**,
+   sondern 15 flache Felder. Ohne `load_data_type_definitions()` dekodierbar
+   sind nur `ResultContent` (`BaseDataType`, ValueRank 1), `CreationTime`,
+   `IsPartial`, `IsSimulated`, `ResultState`. ⇒ Das Payload reist **im Event**
+   in `ResultContent[0]`; ein zweiter Read ist unnötig.
+2. **Die `ResultManagement`-Methoden sind vom asyncua-Client unbenutzbar** —
+   nicht wegen der Rückgabe, sondern weil schon die **Eingabe**
+   (`ResultIdDataType`, `JobIdDataType`) ein ExtensionObject ist (Issue #1693).
+   Kein Handle ⇒ der Handle-Leak aus Teil 6.4 ist gegenstandslos.
+3. **Es gibt keinen Übergang `Halted → Operational`.** Die früher
+   dokumentierte Folge `Preoperational → Halted → Operational` ist nicht
+   konform. Korrekt: `Preoperational → Operational`
+   (`PreoperationalToOperationalAuto`), innen `Initialized → Ready`.
+4. **Der `Error`-State ist nicht `i=5030`.** Die States der äußeren
+   `VisionStateMachine` sind Mandatory-Kinder der Instanz
+   (`get_child(f"{mv}:Error")`); `i=5030` ist der **Typ**knoten und würde
+   instanzübergreifend wirken. Nur die States der `AutomaticModeStateMachine`
+   (i=5056–5059) kommen per fester NodeId.
+5. **`LastTransition` existiert auf der Instanz nicht.** asyncuas
+   `change_state(..., transition=...)` schreibt dorthin und würde scheitern ⇒
+   Zustandswechsel ohne `Transition`-Objekt, Übergangsname in der
+   Event-Nachricht.
+6. **`ResultContent` kommt mit einer Null-NodeId als DataType.** Deshalb
+   scheitert *jeder* Write mit `BadTypeMismatch` — auch der in Teil 4.2
+   (Stolperstein 4) empfohlene `[ua.Variant(...)]`-Write. Erst der
+   DataType-Override auf `String` macht den **Array**-Write möglich, womit die
+   `ResultContent[0]`-Semantik erhalten bleibt.
+7. **Event-Felder brauchen fertige `ua.Variant`-Objekte.** asyncua leitet den
+   Feldtyp aus dem Nodeset ab und erhält für diese Felder VariantType `Null`;
+   ein roher Python-Wert kommt beim Client als `None` an.
+8. **`@uamethod`-Handler müssen `async` sein**, wenn sie einen Task starten:
+   synchrone Handler laufen in einem ThreadPoolExecutor ohne Event-Loop.
+9. **Methodenrückgaben müssen ein `tuple` sein.** Eine `list` wird von
+   asyncua als *ein* Variant verpackt, der Client bekommt dann verschachtelte
+   Variants. Betrifft auch `src/OPCUA/server.py:195`.
+10. **Kein Event-Bubbling über `HasNotifier`** (bereits bekannt): asyncua
+    matcht `emitting_node` exakt, ein Abo auf `i=2253` empfängt nichts. Alle
+    Generatoren — auch der der State Machine — müssen aus dem
+    `VisionSystem`-Knoten emittieren.
+
+## Nächste Schritte
+
+1. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
+   durchspielen, Grundlage ist
+   [`vision-server-interface.md`](vision-server-interface.md). Danach
+   `vision-server.service` auf dem Pi einrichten.
+2. **Cleanup-Branch** — den Phase-3-Smoke-Test aus `src/OPCUA/server.py`
+   entfernen (Zeilen des `# --- Phase 3`-Blocks, die State-Machine-Helfer und
+   die dann unbenutzten Imports). **Bleiben** müssen `RaspiDevice`, der
+   Nodeset-Import, die `VisionSystem`-Instanz, `HasNotifier`,
+   `ResultManagement`/`Results`, `CpuTemperatureResult` und die
+   Polling-Schleife — `CpuTemperatureResult` hängt unter `VisionSystem` und
+   wird vom Temperatur-Interface genutzt. NodeId-sicher: die betroffenen Knoten
+   entstehen *vor* dem gelöschten Block, `print_setpoint.py` (`ns=2;i=4`)
+   bleibt gültig. Danach das Nodeset-XML nach `src/vision_server/nodesets/`
+   verschieben und die zwei Pfadkonstanten anpassen.
+3. **Echtes Ergebnis-Payload** — neue `DetectionSource` in
+   `src/vision_server/detection/` plus Registry-Eintrag. Das Schema
+   (`wsc.vision.detections/1`) bleibt unverändert, es füllen sich nur
+   `detections`. Voraussetzung ist die Klärung von Koordinatensystem und
+   Kalibrierung (siehe unten).
+4. **Danach Server 2 (3D)** — zweite Instanz auf Port 4842 mit eigener
+   ApplicationURI und eigener `visionSystemId`, nach Teil 4.5/4.6.
 
 > Phase 0 und Phasen 4–12 aus Teil 9 betreffen das **WebSkillComposition-
-> Backend/Frontend** (ein separates Repo mit `backend/`, `frontend/` — existiert
-> **nicht** in diesem Repo). Für dieses Repo relevant sind nur Phasen 1–3
-> (Aufbau des Vision-Servers selbst).
+> Backend/Frontend** (separates Repo, existiert hier **nicht**). Für dieses
+> Repo sind nur Phasen 1–3 relevant.
 
 ## Offene Entscheidungen (noch nicht getroffen)
 
@@ -123,5 +127,7 @@ Teil 4 = Soll-Architektur).
 - **Konzeptionelle Lücken aus der Lokalisierung selbst** — Koordinatensystem-
   Kette Welt-Tag → Kamera → Roboter, Format der Layer-1→Layer-2-Übergabe,
   Repositionierungsstrategie: siehe [`concept/offene_punkte.md`](../concept/offene_punkte.md).
-  Diese bestimmen letztlich, was `frameId`/`position`/`orientation` im
-  Ergebnis-Payload (Schritt 4 oben) konkret bedeuten müssen.
+  Diese bestimmen, was `frameId`/`position`/`orientation` im Ergebnis-Payload
+  konkret bedeuten müssen.
+- **Strukturtypisierte Event-Felder** befüllen, sobald asyncua-Issue #1693
+  gefixt ist. Das JSON-Payload bleibt auch dann die maßgebliche Quelle.
