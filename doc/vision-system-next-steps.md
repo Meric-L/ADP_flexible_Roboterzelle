@@ -15,19 +15,25 @@ Teil 4 = Soll-Architektur).
   ausgeschlossen.
 - [x] Server läuft auf dem Raspberry Pi und startet automatisch beim Booten.
 - [~] **Phase 2** teilweise: Die `VisionSystem`-Instanz ist im Adressraum
-  sichtbar, aber noch **im bestehenden `raspi`-Server** statt als eigenes
-  `vision-server/`-Package mit eigenem Endpoint/App-URI (Teil 4.1/4.6). Die
-  `HasNotifier`-Referenz vom Server-Objekt auf `VisionSystem` (Teil 4.2, wichtig
-  für späteres Event-Abonnement mit einem einzigen `subscribeEvent`) fehlt noch.
+  sichtbar und hat seit Kurzem die `HasNotifier`-Referenz vom Server-Objekt
+  (Teil 4.2, wichtig für späteres Event-Abonnement mit einem einzigen
+  `subscribeEvent`). Sie läuft aber noch **im bestehenden `raspi`-Server**
+  statt als eigenes `vision-server/`-Package mit eigenem Endpoint/App-URI
+  (Teil 4.1/4.6).
 - [ ] **Phase 3** nicht begonnen: keine State-Machine, keine `StartSingleJob`,
   keine Events, kein JSON-Ergebnis-Payload. `ResultContent` trägt aktuell nur
   die CPU-Temperatur als Platzhalter, keine echte Erkennung (Modul-ID + 6D-Pose).
 
 ## Nächste Schritte (aus Teil 9 des Plans, Phasen 2–3)
 
-1. **HasNotifier setzen** — `VisionSystem` per
-   `server.nodes.server.add_reference(vision_system, ua.ObjectIds.HasNotifier, forward=True)`
-   und `set_event_notifier([...])` sichtbar machen (Teil 4.2).
+- [x] **HasNotifier setzen** — `VisionSystem` per
+  `server.nodes.server.add_reference(vision_system, ua.ObjectIds.HasNotifier, forward=True)`
+  und `set_event_notifier([...])` sichtbar gemacht (Teil 4.2), siehe
+  `src/OPCUA/server.py`.
+
+1. **Package-Split** — eigenes `vision-server/`-Package mit eigenem
+   Endpoint/App-URI statt im bestehenden `raspi`-Server (Teil 4.1/4.6). Wird
+   auf einem eigenen Branch bearbeitet.
 2. **State Machine aufbauen** — `VisionStateMachine` +
    `AutomaticModeStateMachine` über `asyncua.common.statemachine.FiniteStateMachine`;
    Zustandsfolge `Preoperational → Halted → Operational/Initialized → Ready →

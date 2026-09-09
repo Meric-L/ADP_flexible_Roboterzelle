@@ -52,6 +52,11 @@ async def main():
         idx, "VisionSystem", objecttype=vision_system_type
     )
 
+    await server.nodes.server.add_reference(
+        vision_system, ua.ObjectIds.HasNotifier, forward=True
+    )
+    await vision_system.set_event_notifier([ua.EventNotifier.SubscribeToEvents])
+
     result_management = await vision_system.get_child(f"{mv_idx}:ResultManagement")
     results_folder = await result_management.get_child(f"{mv_idx}:Results")
 
