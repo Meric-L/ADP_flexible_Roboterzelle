@@ -4,13 +4,14 @@ import asyncio
 import contextlib
 import logging
 import signal
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from asyncua import Server, ua, uamethod
 
 from .address_space import attach_vision_system, configure_server
 from .config import VisionServerConfig
-from .detection import DetectionSource, build_detection_source
+from .detection import DetectionSource, build_detection_sources
 from .events import VisionEvents, create_event_generators
 from .job import JobRunner
 from .result_management import ResultStore
@@ -68,7 +69,7 @@ class VisionMachine:
     states: VisionStateMachines
     events: VisionEvents
     results: ResultStore
-    source: DetectionSource
+    sources: Mapping[str, DetectionSource]
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
 
@@ -83,10 +84,11 @@ class VisionMachine:
             with contextlib.suppress(asyncio.CancelledError):
                 await self.lag_watchdog
         await self.jobs.cancel_running()
-        try:
-            await self.source.close()
-        except Exception:
-            _log.exception("Schliessen der Quelle '%s' fehlgeschlagen", self.source.profile_id)
+        for source in self.sources.values():
+            try:
+                await source.close()
+            except Exception:
+                _log.exception("Schliessen der Quelle '%s' fehlgeschlagen", source.profile_id)
 
 
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
@@ -100,8 +102,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     states = await VisionStateMachines.bind(space)
     events = await create_event_generators(space)
     results = await ResultStore.create(space)
-    source = build_detection_source(config)
-    jobs = JobRunner(config, states, events, results, source)
+    sources = build_detection_sources(config)
+    jobs = JobRunner(config, states, events, results, sources)
 
     @uamethod
     async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
@@ -130,7 +132,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
     # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
-    if await _open_source(source):
+    opened = [await _open_source(source) for source in sources.values()]
+    if all(opened):
         await states.enter_operational()
     else:
         _log.error(
@@ -141,9 +144,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
     _log.info(
-        "Vision-System '%s' bereit (Profil %s, Namespace %s)",
+        "Vision-System '%s' bereit (Profile %s, Namespace %s)",
         config.vision_system_name,
-        source.profile_id,
+        ", ".join(sorted(sources)),
         config.namespace_uri,
     )
     return VisionMachine(
@@ -151,7 +154,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         states=states,
         events=events,
         results=results,
-        source=source,
+        sources=sources,
         jobs=jobs,
         lag_watchdog=lag_watchdog,
     )

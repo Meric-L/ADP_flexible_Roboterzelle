@@ -3,8 +3,8 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,6 +31,7 @@ class JobRequest:
     recipe_id: str | None
     product_id: str | None
     parameters: tuple[Any, ...]
+    profile_id: str = ""
 
     def to_detection_request(self, job_id: str) -> DetectionRequest:
         """Uebergabe an die Erkennungsquelle; haelt OPC UA aus `detection/` heraus."""
@@ -118,7 +119,7 @@ def build_job_request(
             VisionErrorCode.UNKNOWN_RECIPE,
             f"Unbekannte RecipeId '{request.recipe_id}' (bekannt: {known})",
         )
-    return request
+    return replace(request, profile_id=config.profile_for(request.recipe_id))
 
 
 class JobRunner:
@@ -130,13 +131,13 @@ class JobRunner:
         states: VisionStateMachines,
         events: VisionEvents,
         results: ResultStore,
-        source: DetectionSource,
+        sources: Mapping[str, DetectionSource],
     ) -> None:
         self._config = config
         self._states = states
         self._events = events
         self._results = results
-        self._source = source
+        self._sources = sources
         self._lock = asyncio.Lock()
         self._busy = False
         self._job_counter = 0
@@ -187,7 +188,8 @@ class JobRunner:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
-                detections = await self._source.acquire_and_detect(
+                source = self._sources[request.profile_id]
+                detections = await source.acquire_and_detect(
                     request.to_detection_request(job_id)
                 )
                 await self._events.acquisition_done.trigger(message=job_id)

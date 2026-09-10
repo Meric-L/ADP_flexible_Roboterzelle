@@ -6,7 +6,7 @@ import logging
 import sys
 from pathlib import Path
 
-from .config import DEFAULT_NODESET_PATH, VisionServerConfig
+from .config import DEFAULT_NODESET_PATH, DEFAULT_RECIPE_PROFILES, VisionServerConfig
 from .runner import run
 
 DEFAULT_PORT = 4841
@@ -22,7 +22,7 @@ def build_config(argv: list[str] | None = None) -> VisionServerConfig:
     parser.add_argument("--namespace", default=VisionServerConfig.namespace_uri)
     parser.add_argument("--vision-system-name", default=VisionServerConfig.vision_system_name)
     parser.add_argument("--vision-system-id", default=VisionServerConfig.vision_system_id)
-    parser.add_argument("--profile", default=VisionServerConfig.detection_profile)
+    parser.add_argument("--profile", help="erzwingt ein Profil fuer alle Rezepte")
     parser.add_argument("--latency", type=float, default=VisionServerConfig.detection_latency)
     parser.add_argument("--nodeset", type=Path, default=DEFAULT_NODESET_PATH)
     parser.add_argument("--log-level", default="INFO")
@@ -37,9 +37,13 @@ def build_config(argv: list[str] | None = None) -> VisionServerConfig:
         namespace_uri=args.namespace,
         vision_system_name=args.vision_system_name,
         vision_system_id=args.vision_system_id,
-        detection_profile=args.profile,
         detection_latency=args.latency,
         nodeset_path=args.nodeset,
+        recipe_profiles=(
+            tuple((recipe, args.profile) for recipe, _ in DEFAULT_RECIPE_PROFILES)
+            if args.profile
+            else DEFAULT_RECIPE_PROFILES
+        ),
     )
 
 

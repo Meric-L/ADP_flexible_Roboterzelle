@@ -7,6 +7,17 @@ DEFAULT_NODESET_PATH = (
     Path(__file__).resolve().parent.parent / "OPCUA" / "Opc.Ua.MachineVision.NodeSet2.xml"
 )
 
+#: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
+#: dataclass-Default verboten ist und ein Mapping die frozen dataclass
+#: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
+#: "calibration" fehlt absichtlich: die Kalibrierung ist ein eigenes Skript,
+#: ein Aufruf soll ehrlich mit UNKNOWN_RECIPE abgelehnt werden.
+DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
+    ("", "hello_world"),
+    ("hello-world", "hello_world"),
+    ("image-recognition", "hello_world"),  # -> "apriltag", sobald die Quelle existiert
+)
+
 
 @dataclass(frozen=True)
 class VisionServerConfig:
@@ -19,9 +30,23 @@ class VisionServerConfig:
     vision_system_name: str = "VisionMachine"
     vision_system_id: str = "vision-hello-01"
     configuration_id: str = "hello-world-config"
-    detection_profile: str = "hello_world"
     detection_latency: float = 0.25
     nodeset_path: Path = DEFAULT_NODESET_PATH
-    known_recipe_ids: frozenset[str] = frozenset({"", "hello-world"})
+    recipe_profiles: tuple[tuple[str, str], ...] = DEFAULT_RECIPE_PROFILES
     max_id_length: int = 128
     max_parameters: int = 16
+    frame_id: str = "world"
+
+    @property
+    def known_recipe_ids(self) -> frozenset[str]:
+        """Zugelassene RecipeIds; Property, damit job.py unveraendert bleibt."""
+        return frozenset(recipe for recipe, _ in self.recipe_profiles)
+
+    @property
+    def detection_profiles(self) -> frozenset[str]:
+        """Alle referenzierten Profile."""
+        return frozenset(profile for _, profile in self.recipe_profiles)
+
+    def profile_for(self, recipe_id: str | None) -> str:
+        """Profil zur RecipeId. Nur nach erfolgreicher Zulassung aufrufen."""
+        return dict(self.recipe_profiles)[recipe_id or ""]
