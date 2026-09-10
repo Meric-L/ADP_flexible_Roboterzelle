@@ -1,6 +1,7 @@
 """Validierung und Ausfuehrung von Einzeljobs."""
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from asyncua import ua
 
 from .config import VisionServerConfig
 from .detection import DetectionSource
+from .detection.base import DetectionRequest
 from .errors import VisionErrorCode, VisionJobError
 from .events import VisionEvents, fire_result_ready
 from .payload import build_error_payload, build_result_payload
@@ -29,6 +31,17 @@ class JobRequest:
     recipe_id: str | None
     product_id: str | None
     parameters: tuple[Any, ...]
+
+    def to_detection_request(self, job_id: str) -> DetectionRequest:
+        """Uebergabe an die Erkennungsquelle; haelt OPC UA aus `detection/` heraus."""
+        return DetectionRequest(
+            job_id=job_id,
+            recipe_id=self.recipe_id or "",
+            parameters=self.parameters,
+            meas_id=self.meas_id,
+            part_id=self.part_id,
+            product_id=self.product_id,
+        )
 
 
 def coerce_id(value: Any, field: str, max_length: int) -> str | None:
@@ -129,6 +142,15 @@ class JobRunner:
         self._job_counter = 0
         self._task: asyncio.Task | None = None
 
+    async def cancel_running(self, timeout: float = 2.0) -> None:
+        """Bricht einen noch laufenden Job ab; fuer das Herunterfahren."""
+        task = self._task
+        if task is None or task.done():
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+            await asyncio.wait_for(task, timeout)
+
     def start_single_job(
         self, meas_id, part_id, recipe_id, product_id, parameters
     ) -> tuple[str, VisionErrorCode]:
@@ -165,7 +187,9 @@ class JobRunner:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
-                detections = await self._source.acquire_and_detect(request.parameters)
+                detections = await self._source.acquire_and_detect(
+                    request.to_detection_request(job_id)
+                )
                 await self._events.acquisition_done.trigger(message=job_id)
 
                 now = datetime.now(timezone.utc)

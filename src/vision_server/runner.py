@@ -1,7 +1,9 @@
 """Zusammenbau des Vision-Systems, als Einbau oder als eigener Prozess."""
 
 import asyncio
+import contextlib
 import logging
+import signal
 from dataclasses import dataclass
 
 from asyncua import Server, ua, uamethod
@@ -16,6 +18,47 @@ from .state_machine import VisionStateMachines
 
 _log = logging.getLogger(__name__)
 
+LOOP_LAG_INTERVAL_S = 0.25
+LOOP_LAG_WARN_S = 0.75
+
+
+async def _watch_loop_lag(
+    interval: float = LOOP_LAG_INTERVAL_S, warn: float = LOOP_LAG_WARN_S
+) -> None:
+    """Loggt, wenn der Event-Loop blockiert war.
+
+    Vergisst eine Quelle `run_blocking`, sieht man es hier statt als
+    unerklaerlichen Verbindungsabbruch woanders. Ersetzt `RaspiDevice/Counter`
+    als Referenzsignal (doc/altlasten.md A3/A5).
+    """
+    loop = asyncio.get_running_loop()
+    while True:
+        before = loop.time()
+        await asyncio.sleep(interval)
+        elapsed = loop.time() - before
+        if elapsed > warn:
+            _log.warning(
+                "Event-Loop %d ms blockiert (erwartet %d ms)",
+                int(elapsed * 1000),
+                int(interval * 1000),
+            )
+
+
+async def _open_source(source: DetectionSource) -> bool:
+    """Oeffnet eine Quelle; `False`, wenn sie nicht betriebsbereit ist."""
+    started = asyncio.get_running_loop().time()
+    try:
+        await source.open()
+    except Exception:
+        _log.exception(
+            "Erkennungsquelle '%s' konnte nicht geoeffnet werden", source.profile_id
+        )
+        return False
+    duration = asyncio.get_running_loop().time() - started
+    if duration > 0.5:
+        _log.info("Quelle '%s' in %.1f s bereit", source.profile_id, duration)
+    return True
+
 
 @dataclass(frozen=True)
 class VisionMachine:
@@ -27,6 +70,23 @@ class VisionMachine:
     results: ResultStore
     source: DetectionSource
     jobs: JobRunner
+    lag_watchdog: asyncio.Task | None = None
+
+    async def aclose(self) -> None:
+        """Faehrt Watchdog, laufenden Job und Quelle herunter.
+
+        Best-Effort und idempotent; braucht im Aufrufer einen Signal-Handler,
+        sonst laeuft es unter systemd nicht.
+        """
+        if self.lag_watchdog is not None:
+            self.lag_watchdog.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.lag_watchdog
+        await self.jobs.cancel_running()
+        try:
+            await self.source.close()
+        except Exception:
+            _log.exception("Schliessen der Quelle '%s' fehlgeschlagen", self.source.profile_id)
 
 
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
@@ -67,7 +127,18 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         )
 
     server.link_method(space.start_single_job, start_single_job)
-    await states.enter_operational()
+
+    # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
+    # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
+    if await _open_source(source):
+        await states.enter_operational()
+    else:
+        _log.error(
+            "Vision-System '%s' bleibt in Preoperational, Quelle nicht bereit",
+            config.vision_system_name,
+        )
+
+    lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
     _log.info(
         "Vision-System '%s' bereit (Profil %s, Namespace %s)",
@@ -82,6 +153,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         results=results,
         source=source,
         jobs=jobs,
+        lag_watchdog=lag_watchdog,
     )
 
 
@@ -93,7 +165,15 @@ async def run(config: VisionServerConfig) -> None:
     """
     server = Server()
     await configure_server(server, config)
-    await install_vision_machine(server, config)
+    machine = await install_vision_machine(server, config)
     _log.info("Vision-Server laeuft auf %s", config.endpoint)
-    async with server:
-        await asyncio.Event().wait()
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, stop.set)
+    try:
+        async with server:
+            await stop.wait()
+    finally:
+        await machine.aclose()

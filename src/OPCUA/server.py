@@ -7,7 +7,9 @@ NodeIds (z. B. `ns=2;i=4` fuer den Sollwert) weiter gueltig sind.
 """
 
 import asyncio
+import contextlib
 import logging
+import signal
 import sys
 from pathlib import Path
 
@@ -104,19 +106,31 @@ async def main():
         ua.DataValue(ua.Variant(ua.NodeId(ua.ObjectIds.Double), ua.VariantType.NodeId)),
     )
 
-    await install_vision_machine(server, vision_config())
+    machine = await install_vision_machine(server, vision_config())
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
 
-    async with server:
-        n = 0
-        while True:
-            n += 1
-            temp = read_cpu_temp()
-            await counter.write_value(n)
-            await cpu_temp.write_value(temp)
-            await result_content.write_value(temp, ua.VariantType.Double)
-            await asyncio.sleep(1.0)
+    # Ohne Signal-Handler laeuft `finally` unter systemd nicht: SIGTERM beendet
+    # den Prozess, ohne dass asyncio.run aufraeumt.
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, stop.set)
+
+    try:
+        async with server:
+            n = 0
+            while not stop.is_set():
+                n += 1
+                temp = read_cpu_temp()
+                await counter.write_value(n)
+                await cpu_temp.write_value(temp)
+                await result_content.write_value(temp, ua.VariantType.Double)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=1.0)
+    finally:
+        await machine.aclose()
 
 
 if __name__ == "__main__":
