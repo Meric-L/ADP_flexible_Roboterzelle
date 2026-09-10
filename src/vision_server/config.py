@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from .profiles import AprilTagProfileConfig
+
 DEFAULT_NODESET_PATH = (
     Path(__file__).resolve().parent.parent / "OPCUA" / "Opc.Ua.MachineVision.NodeSet2.xml"
 )
@@ -37,6 +39,7 @@ class VisionServerConfig:
     max_parameters: int = 16
     frame_id: str = "world"
     job_timeout: float = 10.0
+    apriltag: AprilTagProfileConfig | None = None
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:

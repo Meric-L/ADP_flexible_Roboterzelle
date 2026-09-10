@@ -13,7 +13,7 @@ Zwei Repos sind betroffen:
 - **Zelle** = `ADP_flexible_Roboterzelle` (dieses Repo), Branch `feature/vision-server`
 - **WSC** = `webskillcomposition` (Uni-Repo), Branch `Ungetestet`
 
-Stand: 2026-09-10.
+Stand: 2026-09-10. Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
 ---
 
@@ -26,7 +26,7 @@ wurde. Fachlich hat nichts davon mit der Zelle zu tun.
 |---|---|---|---|---|
 | A1 | **`2:VisionSystem`** — zweite, leere `VisionSystemType`-Instanz im Adressraum | Zelle: `src/OPCUA/server.py:84-91` | War der erste 40100-Versuch; trägt heute nur noch A2 | Wenn A2 weg ist. **Blockiert bis dahin nichts, ist aber aktiv gefährlich** — siehe Hinweis unten |
 | A2 | **`CpuTemperatureResult`** — CPU-Temperatur als `Double` im `ResultContent` eines Vision-Ergebnisknotens | Zelle: `src/OPCUA/server.py:97-105`, geschrieben in `:118` | Bequemer Ort, um einen Live-Wert zu haben, bevor `RaspiDevice` existierte | `RaspiDevice/CpuTemperature` (`ns=2;i=2`) ist der einzige Temperaturweg. Der existiert bereits — es hängt nur noch B1/B4 daran |
-| A3 | **`RaspiDevice/Counter`** — 1-Hz-Zähler | Zelle: `src/OPCUA/server.py:72`, `:116` | Sichtprüfung „Server lebt" in UaExpert | Sobald der Liveness-Check im Backend als Beleg reicht. Vorher als Referenzsignal für den Event-Loop-Test nützlich (siehe Hinweis) |
+| A3 | **`RaspiDevice/Counter`** — 1-Hz-Zähler | Zelle: `src/OPCUA/server.py:72`, `:116` | Sichtprüfung „Server lebt" in UaExpert | Sobald der Liveness-Check im Backend als Beleg reicht. Der Ersatz als Referenzsignal ist da: der Loop-Lag-Watchdog in `runner.py` loggt Blockaden über 750 ms |
 | A4 | **`RaspiDevice/Setpoint`** — beschreibbarer `Double` | Zelle: `src/OPCUA/server.py:73-75` | Zielknoten des Temperatur-Relays B2; sonst ohne Funktion | Mit B2 |
 | A5 | **1-Hz-Endlosschleife** im Server | Zelle: `src/OPCUA/server.py:111-119` | Hält A2/A3 aktuell | Mit A2 und A3. Achtung: die Schleife läuft im selben Event-Loop wie das Vision-System |
 | A6 | **`print_setpoint.py`** — Debug-Client | Zelle: `src/OPCUA/print_setpoint.py` | Zum Mitlesen des Sollwerts während der Relay-Entwicklung | Mit B2. Das Muster ist als Vorlage für einen Event-Loop-Latenztest brauchbar, vorher übernehmen |
@@ -64,10 +64,10 @@ Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
 
 | # | Was | Wo | Warum es da ist | Abbaubedingung |
 |---|---|---|---|---|
-| C1 | **`IsSimulated = True`** fest verdrahtet in Event und Ergebnisknoten | Zelle: `src/vision_server/events.py:70`, `result_management.py:92` | Beim Platzhalter korrekt | Muss mit der ersten echten Kamera-Erkennung auf `False` — sonst meldet der Server dauerhaft simulierte Ergebnisse |
+| ~~C1~~ | ~~`IsSimulated = True` fest verdrahtet~~ | — | — | **Erledigt**: kommt jetzt von der Erkennungsquelle (`DetectionSource.is_simulated`) |
 | C2 | **`IsPartial = False`** fest verdrahtet | Zelle: `src/vision_server/events.py:69`, `result_management.py:91` | Es gibt nur Vollergebnisse | Erst relevant, falls je Teilergebnisse gesendet werden |
-| C3 | **`vision_system_id = "vision-hello-01"`** — auf **beiden** Pis identisch | Zelle: `src/vision_server/config.py:20` | Default nie überschrieben | Vor dem Zwei-Pi-Betrieb: je Pi eine eigene Id, sonst kann das Backend die Quellen nicht unterscheiden. **Praktisch dringend** |
-| C4 | **`configuration_id = "hello-world-config"`** — nirgends gelesen | Zelle: `src/vision_server/config.py:21` | Aus dem Entwurf übrig | Entweder mit der Kalibrieridentität füllen oder streichen |
+| ~~C3~~ | ~~`vision_system_id` auf beiden Pis identisch~~ | — | — | **Erledigt**: `vision_identity()` in `src/OPCUA/server.py` (Env → Hostname-Abbildung → Fallback). Die Hostnamen in `PI_IDENTITIES` sind noch geraten und auf den Pis zu prüfen |
+| C4 | **`configuration_id`** wird noch von keiner Quelle gesetzt | Zelle: `src/vision_server/config.py` | Aus dem Entwurf übrig | Weg ist gebaut (`DetectionSource.configuration_id` → `configurationId` und `InternalConfigurationId`); die AprilTag-Quelle muss ihn mit der Kalibrieridentität füllen |
 | C5 | **Nodeset-XML unter `src/OPCUA/`** statt beim Paket, das es braucht | Zelle: `src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml` (786 KB) | Lag da, bevor `vision_server/` existierte | Nach `src/vision_server/nodesets/` verschieben, Pfadkonstanten anpassen |
 | C6 | **`caputure.py`** — ein **QR-Scanner** im AprilTag-Ordner, Tippfehler im Dateinamen, von nichts importiert | Zelle: `src/apriltag/caputure.py` | Erster Kameraversuch | Ersatzlos, sobald die Kamera-Abstraktion steht. Vorher den picamera2-Aufruf daraus übernehmen — es ist die einzige Stelle im Repo, die die Pi-Kamera überhaupt anspricht |
 
@@ -117,7 +117,6 @@ Die Einträge hängen zusammen. Sinnvolle Kette:
 4. **A4**, **A5**, **A3**, **A6** — der Rest der Demo.
 5. **C3** vor dem Zwei-Pi-Betrieb, unabhängig vom Rest.
 
-**Vor Schritt 1 und 2 messen:** Wenn die 1-Hz-Schleife (A5) verschwindet, fällt auch
-`RaspiDevice/Counter` als Referenzsignal weg. Das ist derzeit die einzige regelmäßige
-Änderung im Adressraum, mit der sich prüfen lässt, ob eine laufende Bilderkennung den
-gemeinsamen Event-Loop blockiert. Vorher einen Ersatz für diesen Test schaffen.
+Der frühere Vorbehalt zu A3/A5 ist erledigt: der Loop-Lag-Watchdog in
+`src/vision_server/runner.py` meldet Blockaden des gemeinsamen Event-Loops, `Counter`
+wird als Referenzsignal nicht mehr gebraucht.

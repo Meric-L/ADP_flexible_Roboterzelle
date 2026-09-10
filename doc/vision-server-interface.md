@@ -143,7 +143,7 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 | --- | --- | --- |
 | `MeasId` | `MeasIdDataType` | String (leer erlaubt) |
 | `PartId` | `PartIdDataType` | String (leer erlaubt) |
-| `RecipeId` | `RecipeIdExternalDataType` | String, `""` oder `"hello-world"` |
+| `RecipeId` | `RecipeIdExternalDataType` | String; **waehlt den Job**, siehe unten |
 | `ProductId` | `ProductIdDataType` | String (leer erlaubt) |
 | `Parameters` | `BaseDataType[]` | String-Array, max. 16 Einträge |
 
@@ -158,6 +158,25 @@ asyncua-Client kann solche ExtensionObjects ohne
 deshalb werden hier Strings ausgetauscht. Ein UA-Browser wie UaExpert zeigt
 dementsprechend einen String, wo der Typ eine Struktur erwartet — das ist
 erwartet, kein Fehler.
+
+### RecipeId waehlt den Job
+
+`StartSingleJob` hat keinen eigenen Job-Typ-Knoten — die `RecipeId` ist der
+Selektor. Zugelassen sind:
+
+| RecipeId | Bedeutung |
+| --- | --- |
+| `""` | Standardjob dieser Instanz |
+| `"hello-world"` | Platzhalter, kamerafrei — bleibt dauerhaft als Smoke-Test |
+| `"image-recognition"` | echte Erkennung (bis zur AprilTag-Quelle noch Platzhalter) |
+
+Alles andere wird mit `Error=4` (`UNKNOWN_RECIPE`) abgelehnt; die
+Fehlermeldung listet die bekannten Rezepte. **`"calibration"` ist bewusst
+nicht zugelassen** — die Kalibrierung ist ein eigenstaendiges Skript.
+
+Die gewaehlte Quelle bestimmt `frameId`, `frameConvention`, `configurationId`
+und `IsSimulated` des Ergebnisses. Die `RecipeId` steht danach in
+`InternalRecipeId` am Ergebnisknoten und in `attributes.recipeId`.
 
 ### Fehlercodes (`Error`)
 
@@ -196,7 +215,7 @@ im Event, am Ergebnisknoten und in `LatestResultJson`.
   "jobId": "job-000001",              // Korrelation zum StartSingleJob-Rückgabewert
   "creationTime": "2026-09-09T19:16:59.612+00:00",
   "resultState": 0,                   // 0 = ok, sonst Fehlercode aus Abschnitt 5
-  "frameId": "world",                 // Bezugsrahmen der Posen
+  "frameId": "world",                 // Bezugsrahmen der Posen, siehe unten
   "lengthUnit": "m",                  // immer SI-Meter
   "angleUnit": "rad",
   "rotation": "quaternion_xyzw",      // three.js-Reihenfolge
@@ -227,6 +246,20 @@ leer:
   "detections": []
 }
 ```
+
+**Zwei additive Schlüssel** (nur bei nicht-leerem Wert, das Schema bleibt
+`wsc.vision.detections/1`):
+
+| Schlüssel | Bedeutung |
+| --- | --- |
+| `frameConvention` | Achsenkonvention hinter `frameId`, z. B. `"z_forward_x_right_y_down"` = OpenCV-Optikrahmen: +X rechts im Bild, +Y nach unten, +Z entlang der optischen Achse nach vorn. Pose ist `T_cam_tag`, Tiefe positiv. **Nicht** die Robotik-Konvention (REP-103) und **kein** Weltsystem. |
+| `configurationId` | Identität der wirksamen Konfiguration, z. B. Kalibrierdatei plus Änderungszeit — beantwortet bei falschen Posen die Frage, welche Kalibrierung das war. |
+
+`frameId` kommt jetzt **von der Erkennungsquelle**, nicht mehr fest aus dem
+Modul: eine Instanz kann gleichzeitig eine Platzhalterquelle im Weltrahmen und
+eine Kameraquelle im Optikrahmen bedienen. Ohne `frameConvention` ist eine
+kamerarelative Pose nicht interpretierbar — ein Rahmenname allein sagt nicht,
+wohin +Z zeigt.
 
 Regeln für den Parser: `schema` prüfen und unbekannte Versionen verwerfen statt
 zu crashen; `resultState != 0` als Fehler behandeln; `position` in Metern und
@@ -330,7 +363,11 @@ Vorführbare Sonderfälle:
 
 - **Echte Erkennung**: neue `DetectionSource` in `detection/`, Payload-Schema
   bleibt. Bis dahin ist `moduleId` erfunden und die Pose immer Null.
-- **Koordinatensystem**: `frameId` ist derzeit fest `"world"`, ohne
+- **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (10 s)
+  braucht, wird abgebrochen und als `DETECTION_FAILED` gemeldet; der Automat
+  kehrt nach `Ready` zurueck. Ein blockierter Worker-Thread laesst den
+  *naechsten* Job desselben Profils allerdings ebenfalls in den Timeout laufen.
+- **Koordinatensystem**: `frameId` haengt an der Quelle; ohne
   Hand-Auge-Kalibrierung. Was `position`/`orientation` real bedeuten, hängt an
   der noch offenen Kalibrierung — ein automatisches Anfahren erkannter Posen
   darf bis dahin nicht scharf geschaltet werden.

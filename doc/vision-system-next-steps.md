@@ -99,6 +99,35 @@ alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
     Generatoren — auch der der State Machine — müssen aus dem
     `VisionSystem`-Knoten emittieren.
 
+## Naht fuer die Erkennung — erledigt
+
+Bevor eine echte Erkennung eingesteckt werden kann, war eine Reihe von
+Uebergabestellen zu bauen. Die stehen jetzt:
+
+- **RecipeId waehlt die Quelle** (`config.recipe_profiles`). Zugelassen sind
+  `""`, `"hello-world"` und `"image-recognition"`; `"calibration"` wird
+  bewusst mit `UNKNOWN_RECIPE` abgelehnt.
+- **`DetectionRequest`** statt nur `parameters`, und `run_blocking()` auf der
+  Basisklasse: jede OpenCV-Operation gehoert dort hinein, sonst friert der
+  gemeinsame Event-Loop ein.
+- **`open()`/`close()`** plus Signal-Handler in beiden Einstiegspunkten. Eine
+  Quelle, die nicht oeffnet, laesst den Automaten in Preoperational, statt
+  jeden Job mit `DETECTION_FAILED` zu beantworten.
+- **Job-Timeout** (10 s). Vorher konnte eine haengende Kamera den Server
+  dauerhaft verklemmen; Rettung war nur `systemctl restart`.
+- **`frameId`, `frameConvention`, `configurationId`, `IsSimulated`** kommen
+  von der Quelle, nicht mehr aus Modulkonstanten.
+- **JSON-Sicherheit**: numpy-Werte und `NaN` brechen das Payload nicht mehr
+  stillschweigend.
+- **`vision_system_id` pro Pi** ueber Env, Hostname-Abbildung oder Fallback.
+- **Testgeruest** (45 Tests): `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
+
+Damit ist eine neue Erkennungsquelle: eine Datei unter `detection/`, ein
+Registry-Eintrag mit Lazy-Import, **eine Zeile** in `DEFAULT_RECIPE_PROFILES`
+und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
+`events.py`, `result_management.py`, `state_machine.py` oder
+`address_space.py` muss sich dafuer noch bewegen.
+
 ## Nächste Schritte
 
 1. **Auf dem Pi durchspielen** — `git pull`, `systemctl restart
