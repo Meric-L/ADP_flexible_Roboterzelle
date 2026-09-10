@@ -16,6 +16,10 @@ class Detection:
     orientation: tuple[float, float, float, float]
     confidence: float
     attributes: dict[str, Any] = field(default_factory=dict)
+    # Ausdehnung fuer das 2D-Profil (Teil 4.5). Additiv mit Default, damit
+    # bestehende Konstruktionen unveraendert bleiben; der Payload-Schluessel
+    # `boundingBox` existiert schon.
+    bounding_box: tuple[float, ...] | None = None
 
 
 class DetectionSource(ABC):
