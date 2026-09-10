@@ -37,7 +37,9 @@ class VisionServerConfig:
     max_id_length: int = 128
     max_parameters: int = 16
     frame_id: str = "world"
-    job_timeout: float = 10.0
+    #: Muss ueber der laengsten Job-Laufzeit liegen: der QR-Scan in
+    #: `src/jobs/take_image.py` haelt die Kamera allein schon 30 s offen.
+    job_timeout: float = 40.0
     apriltag: AprilTagProfileConfig | None = None
 
     @property

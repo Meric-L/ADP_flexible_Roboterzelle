@@ -6,7 +6,9 @@ from pathlib import Path
 from ..config import VisionServerConfig
 from .base import Detection, DetectionRequest, DetectionSource
 
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+#: Gesammelter Ablageort aller vom Backend aufgerufenen Job-Scripts, nicht
+#: unter vision_server, damit auch Jobs anderer Backend-Teile hierher passen.
+JOBS_DIR = Path(__file__).resolve().parent.parent.parent / "jobs"
 
 SourceFactory = Callable[[VisionServerConfig], DetectionSource]
 
@@ -20,13 +22,13 @@ def _hello_world(config: VisionServerConfig) -> DetectionSource:
 def _calibration(config: VisionServerConfig) -> DetectionSource:
     from .script_runner import ScriptDetectionSource
 
-    return ScriptDetectionSource("calibration", SCRIPTS_DIR / "calibrate.py")
+    return ScriptDetectionSource("calibration", JOBS_DIR / "calibrate.py")
 
 
 def _image_recognition(config: VisionServerConfig) -> DetectionSource:
     from .script_runner import ScriptDetectionSource
 
-    return ScriptDetectionSource("image_recognition", SCRIPTS_DIR / "take_image.py")
+    return ScriptDetectionSource("image_recognition", JOBS_DIR / "take_image.py")
 
 
 #: Factories importieren ihr Modul **innerhalb** der Funktion. Sonst liegt jede

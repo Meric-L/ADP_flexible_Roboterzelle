@@ -157,15 +157,18 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 Jede `RecipeId` waehlt ein eigenes Script auf dem Pi aus. Alle drei laufen
 ueber denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf
 aus Abschnitt 4 und 6 — nur `attributes.message` und `moduleId` im Ergebnis
-unterscheiden sich. Die Logik hinter den Scripts ist aktuell noch ein
-Platzhalter (siehe Abschnitt 9); die Schnittstelle aendert sich beim Umstieg
-auf echte Logik nicht.
+unterscheiden sich. `calibration` ist weiterhin ein Platzhalter (siehe
+Abschnitt 9); `image-recognition` steuert echt die Pi-Kamera an.
 
 | `RecipeId` | Job | Ausgefuehrtes Script | `attributes.message` im Ergebnis |
 | --- | --- | --- | --- |
 | `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | — (in-process, kein Subprozess) | `"Hello World"` |
-| `"calibration"` | Kalibrierung | `src/vision_server/scripts/calibrate.py` | `"Calibrieren"` |
-| `"image-recognition"` | Bilderkennung | `src/vision_server/scripts/take_image.py` | `"Taking Image"` |
+| `"calibration"` | Kalibrierung | `src/jobs/calibrate.py` | `"Calibrieren"` |
+| `"image-recognition"` | QR-Code-Erkennung | `src/jobs/take_image.py` | dekodierter QR-Text, sonst `"Kein QR Code gefunden"` |
+
+`image-recognition` haelt die Kamera bis zu 30 s offen (`SCAN_DURATION_S` in
+`src/jobs/take_image.py`) und bricht ab, sobald ein QR-Code dekodiert werden
+konnte. Deshalb liegt `job_timeout` (Abschnitt 9) bei 40 s statt 10 s.
 
 Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
 abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
@@ -366,15 +369,17 @@ Vorführbare Sonderfälle:
 
 ## 9. Offen / nächste Schritte
 
-- **Echte Kalibrierung/Erkennung**: `calibration` und `image-recognition`
-  fuehren bereits eigene Scripts aus (`src/vision_server/scripts/`), deren
-  Inhalt aber noch Platzhalter ist. Payload-Schema bleibt beim Nachruesten
-  der echten Logik unveraendert. Bis dahin ist `moduleId` erfunden und die
-  Pose immer Null.
-- **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (10 s)
-  braucht, wird abgebrochen und als `DETECTION_FAILED` gemeldet; der Automat
-  kehrt nach `Ready` zurueck. Ein blockierter Worker-Thread laesst den
-  *naechsten* Job desselben Profils allerdings ebenfalls in den Timeout laufen.
+- **Echte Kalibrierung**: `calibration` fuehrt weiterhin nur einen Platzhalter
+  aus (`src/jobs/calibrate.py`). `image-recognition`
+  (`src/jobs/take_image.py`) steuert echt die Pi-Kamera per Picamera2 an und
+  sucht per OpenCV nach einem QR-Code. Payload-Schema bleibt beim Nachruesten
+  der echten Kalibrierungslogik unveraendert. Bis dahin ist `moduleId`
+  erfunden und die Pose immer Null.
+- **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (40 s, wegen
+  des bis zu 30 s laufenden QR-Scans) braucht, wird abgebrochen und als
+  `DETECTION_FAILED` gemeldet; der Automat kehrt nach `Ready` zurueck. Ein
+  blockierter Worker-Thread laesst den *naechsten* Job desselben Profils
+  allerdings ebenfalls in den Timeout laufen.
 - **Koordinatensystem**: `frameId` haengt an der Quelle; ohne
   Hand-Auge-Kalibrierung. Was `position`/`orientation` real bedeuten, hängt an
   der noch offenen Kalibrierung — ein automatisches Anfahren erkannter Posen
