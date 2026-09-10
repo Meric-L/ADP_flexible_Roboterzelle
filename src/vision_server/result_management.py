@@ -26,6 +26,10 @@ class PublishedResult:
     creation_time: datetime
     result_state: int
     payload_json: str
+    is_simulated: bool = True
+    is_partial: bool = False
+    recipe_id: str = ""
+    configuration_id: str = ""
 
 
 class ResultStore:
@@ -88,11 +92,13 @@ class ResultStore:
         children = self._children
         await children["ResultId"].write_value(result.result_id, ua.VariantType.String)
         await children["JobId"].write_value(result.job_id, ua.VariantType.String)
-        await children["IsPartial"].write_value(False, ua.VariantType.Boolean)
-        await children["IsSimulated"].write_value(True, ua.VariantType.Boolean)
+        await children["IsPartial"].write_value(result.is_partial, ua.VariantType.Boolean)
+        await children["IsSimulated"].write_value(result.is_simulated, ua.VariantType.Boolean)
         await children["ResultState"].write_value(result.result_state, ua.VariantType.Int32)
-        await children["InternalRecipeId"].write_value("", ua.VariantType.String)
-        await children["InternalConfigurationId"].write_value("", ua.VariantType.String)
+        await children["InternalRecipeId"].write_value(result.recipe_id, ua.VariantType.String)
+        await children["InternalConfigurationId"].write_value(
+            result.configuration_id, ua.VariantType.String
+        )
         await children["CreationTime"].write_value(result.creation_time, ua.VariantType.DateTime)
         await children["ResultContent"].write_value(
             ua.Variant([result.payload_json], ua.VariantType.String)

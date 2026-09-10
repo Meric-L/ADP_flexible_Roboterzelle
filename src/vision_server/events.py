@@ -49,7 +49,14 @@ async def create_event_generators(space: VisionAddressSpace) -> VisionEvents:
 
 
 async def fire_result_ready(
-    events: VisionEvents, *, result_id: str, payload_json: str, creation_time, result_state: int
+    events: VisionEvents,
+    *,
+    result_id: str,
+    payload_json: str,
+    creation_time,
+    result_state: int,
+    is_simulated: bool = True,
+    is_partial: bool = False,
 ) -> None:
     """Feuert das ResultReadyEvent mit dem JSON-Payload in `ResultContent[0]`.
 
@@ -66,7 +73,7 @@ async def fire_result_ready(
     event = events.result_ready.event
     event.ResultContent = ua.Variant([payload_json], ua.VariantType.String)
     event.CreationTime = ua.Variant(creation_time, ua.VariantType.DateTime)
-    event.IsPartial = ua.Variant(False, ua.VariantType.Boolean)
-    event.IsSimulated = ua.Variant(True, ua.VariantType.Boolean)
+    event.IsPartial = ua.Variant(is_partial, ua.VariantType.Boolean)
+    event.IsSimulated = ua.Variant(is_simulated, ua.VariantType.Boolean)
     event.ResultState = ua.Variant(result_state, ua.VariantType.Int32)
     await events.result_ready.trigger(message=result_id)

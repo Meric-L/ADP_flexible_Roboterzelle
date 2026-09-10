@@ -36,6 +36,7 @@ class VisionServerConfig:
     max_id_length: int = 128
     max_parameters: int = 16
     frame_id: str = "world"
+    job_timeout: float = 10.0
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:

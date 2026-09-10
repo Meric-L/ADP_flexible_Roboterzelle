@@ -184,13 +184,18 @@ class JobRunner:
 
     async def _run(self, job_id: str, request: JobRequest) -> None:
         """Durchlaeuft einen Einzeljob inklusive Events und Ergebnisablage."""
+        source = self._sources[request.profile_id]
         try:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
-                source = self._sources[request.profile_id]
-                detections = await source.acquire_and_detect(
-                    request.to_detection_request(job_id)
+                # Ohne Timeout bliebe `_busy` bei einer haengenden Kamera fuer
+                # immer gesetzt: jeder weitere Aufruf BUSY, Abort nicht
+                # verlinkt, Rettung nur per Serviceneustart. wait_for bricht
+                # die Koroutine ab, kann den Worker-Thread aber nicht toeten.
+                detections = await asyncio.wait_for(
+                    source.acquire_and_detect(request.to_detection_request(job_id)),
+                    self._config.job_timeout,
                 )
                 await self._events.acquisition_done.trigger(message=job_id)
 
@@ -202,21 +207,45 @@ class JobRunner:
                     job_id=job_id,
                     creation_time=now,
                     detections=detections,
+                    frame_id=source.frame_id or self._config.frame_id,
+                    frame_convention=source.frame_convention,
+                    configuration_id=source.configuration_id,
                 )
-                await self._publish(result_id, job_id, now, int(VisionErrorCode.OK), payload)
+                await self._publish(
+                    source, request, result_id, job_id, now, int(VisionErrorCode.OK), payload
+                )
                 await self._states.to_ready()
                 await self._events.ready.trigger(message=job_id)
                 _log.info("Job %s abgeschlossen", job_id)
+        except TimeoutError:
+            await self._fail(
+                source,
+                request,
+                job_id,
+                VisionJobError(
+                    VisionErrorCode.DETECTION_FAILED,
+                    f"Erkennung ueberschritt {self._config.job_timeout:g} s",
+                ),
+            )
         except VisionJobError as error:
-            await self._fail(job_id, error)
+            await self._fail(source, request, job_id, error)
         except Exception as error:
             _log.exception("Job %s unerwartet fehlgeschlagen", job_id)
-            await self._fail(job_id, VisionJobError(VisionErrorCode.INTERNAL, str(error)))
+            await self._fail(
+                source, request, job_id, VisionJobError(VisionErrorCode.INTERNAL, str(error))
+            )
         finally:
             self._busy = False
 
     async def _publish(
-        self, result_id: str, job_id: str, now: datetime, result_state: int, payload: str
+        self,
+        source: DetectionSource,
+        request: JobRequest,
+        result_id: str,
+        job_id: str,
+        now: datetime,
+        result_state: int,
+        payload: str,
     ) -> None:
         """Schreibt die Ergebnisknoten und feuert das ResultReadyEvent."""
         await self._results.publish(
@@ -226,6 +255,9 @@ class JobRunner:
                 creation_time=now,
                 result_state=result_state,
                 payload_json=payload,
+                is_simulated=source.is_simulated,
+                recipe_id=request.recipe_id or "",
+                configuration_id=source.configuration_id,
             )
         )
         await fire_result_ready(
@@ -234,9 +266,16 @@ class JobRunner:
             payload_json=payload,
             creation_time=now,
             result_state=result_state,
+            is_simulated=source.is_simulated,
         )
 
-    async def _fail(self, job_id: str, error: VisionJobError) -> None:
+    async def _fail(
+        self,
+        source: DetectionSource,
+        request: JobRequest,
+        job_id: str,
+        error: VisionJobError,
+    ) -> None:
         """Meldet den Fehler als Ergebnis und fuehrt den Automaten zurueck.
 
         Auch ein fehlgeschlagener Job feuert ein ResultReadyEvent — sonst
@@ -253,8 +292,13 @@ class JobRunner:
                 creation_time=now,
                 code=error.code,
                 message=error.message,
+                frame_id=source.frame_id or self._config.frame_id,
+                frame_convention=source.frame_convention,
+                configuration_id=source.configuration_id,
             )
-            await self._publish(result_id, job_id, now, int(error.code), payload)
+            await self._publish(
+                source, request, result_id, job_id, now, int(error.code), payload
+            )
             await self._states.abort_to_ready()
             await self._states.to_error(error.message)
             await self._states.recover()
