@@ -90,11 +90,13 @@ class ScriptedSource(DetectionSource):
 
 
 def make_runner(source: DetectionSource, **config_overrides):
+    """Die Attrappe bedient jedes Profil, damit jedes Rezept sie trifft."""
     config = replace(VisionServerConfig(), **config_overrides)
     states = FakeStates()
     events = FakeEvents()
     results = FakeResults(events.log)
-    runner = JobRunner(config, states, events, results, {"hello_world": source})
+    sources = {profile: source for profile in config.detection_profiles}
+    runner = JobRunner(config, states, events, results, sources)
     return runner, states, events, results
 
 
@@ -138,7 +140,7 @@ class AdmissionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_recipe_is_rejected_without_a_job(self):
         runner, _, events, _ = make_runner(ScriptedSource())
-        job_id, code = runner.start_single_job(None, None, "calibration", None, [])
+        job_id, code = runner.start_single_job(None, None, "gibts-nicht", None, [])
         self.assertEqual(code, VisionErrorCode.UNKNOWN_RECIPE)
         self.assertEqual(job_id, "")
         self.assertEqual(events.log, [])
@@ -168,7 +170,8 @@ class TimeoutTest(unittest.IsolatedAsyncioTestCase):
     async def test_accepts_the_next_job_after_a_timeout(self):
         runner, _, _, _ = make_runner(ScriptedSource(delay=5.0), job_timeout=0.1)
         await run_to_completion(runner)
-        runner._sources["hello_world"] = ScriptedSource()
+        for profile in runner._sources:
+            runner._sources[profile] = ScriptedSource()
         _, code = await run_to_completion(runner)
         self.assertEqual(code, VisionErrorCode.OK)
 

@@ -12,12 +12,11 @@ DEFAULT_NODESET_PATH = (
 #: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
 #: dataclass-Default verboten ist und ein Mapping die frozen dataclass
 #: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
-#: "calibration" fehlt absichtlich: die Kalibrierung ist ein eigenes Skript,
-#: ein Aufruf soll ehrlich mit UNKNOWN_RECIPE abgelehnt werden.
 DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
     ("", "hello_world"),
     ("hello-world", "hello_world"),
-    ("image-recognition", "hello_world"),  # -> "apriltag", sobald die Quelle existiert
+    ("calibration", "calibration"),
+    ("image-recognition", "image_recognition"),
 )
 
 

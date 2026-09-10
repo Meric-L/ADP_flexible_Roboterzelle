@@ -1,9 +1,12 @@
 """Registry der Erkennungsprofile."""
 
 from collections.abc import Callable
+from pathlib import Path
 
 from ..config import VisionServerConfig
 from .base import Detection, DetectionRequest, DetectionSource
+
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 
 SourceFactory = Callable[[VisionServerConfig], DetectionSource]
 
@@ -14,11 +17,25 @@ def _hello_world(config: VisionServerConfig) -> DetectionSource:
     return HelloWorldDetectionSource(config.detection_latency)
 
 
+def _calibration(config: VisionServerConfig) -> DetectionSource:
+    from .script_runner import ScriptDetectionSource
+
+    return ScriptDetectionSource("calibration", SCRIPTS_DIR / "calibrate.py")
+
+
+def _image_recognition(config: VisionServerConfig) -> DetectionSource:
+    from .script_runner import ScriptDetectionSource
+
+    return ScriptDetectionSource("image_recognition", SCRIPTS_DIR / "take_image.py")
+
+
 #: Factories importieren ihr Modul **innerhalb** der Funktion. Sonst liegt jede
 #: Abhaengigkeit einer Quelle auf der Importkette des Zellenservers, und ein
 #: `import cv2` in einem Profil macht den Server ohne OpenCV unstartbar.
 DETECTION_SOURCES: dict[str, SourceFactory] = {
     "hello_world": _hello_world,
+    "calibration": _calibration,
+    "image_recognition": _image_recognition,
 }
 
 

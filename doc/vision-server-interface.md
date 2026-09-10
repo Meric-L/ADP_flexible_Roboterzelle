@@ -152,31 +152,36 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 | `JobId` | `JobIdDataType` | String, z. B. `job-000001`; leer bei Ablehnung |
 | `Error` | `Int32` | Fehlercode, siehe unten |
 
+### Verfügbare Jobs (`RecipeId`)
+
+Jede `RecipeId` waehlt ein eigenes Script auf dem Pi aus. Alle drei laufen
+ueber denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf
+aus Abschnitt 4 und 6 — nur `attributes.message` und `moduleId` im Ergebnis
+unterscheiden sich. Die Logik hinter den Scripts ist aktuell noch ein
+Platzhalter (siehe Abschnitt 9); die Schnittstelle aendert sich beim Umstieg
+auf echte Logik nicht.
+
+| `RecipeId` | Job | Ausgefuehrtes Script | `attributes.message` im Ergebnis |
+| --- | --- | --- | --- |
+| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | — (in-process, kein Subprozess) | `"Hello World"` |
+| `"calibration"` | Kalibrierung | `src/vision_server/scripts/calibrate.py` | `"Calibrieren"` |
+| `"image-recognition"` | Bilderkennung | `src/vision_server/scripts/take_image.py` | `"Taking Image"` |
+
+Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
+abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
+
+Die gewaehlte Quelle bestimmt `frameId`, `frameConvention`, `configurationId`
+und `IsSimulated` des Ergebnisses — `hello-world` bleibt damit dauerhaft als
+kamerafreier Smoke-Test brauchbar, auch wenn daneben eine echte Erkennung
+laeuft. Die `RecipeId` steht nach dem Job in `InternalRecipeId` am
+Ergebnisknoten und in `attributes.recipeId`.
+
 **Bewusste Abweichung:** Das Nodeset deklariert die Ids als Strukturen. Ein
 asyncua-Client kann solche ExtensionObjects ohne
 `load_data_type_definitions()` weder bauen noch lesen (asyncua-Issue #1693),
 deshalb werden hier Strings ausgetauscht. Ein UA-Browser wie UaExpert zeigt
 dementsprechend einen String, wo der Typ eine Struktur erwartet — das ist
 erwartet, kein Fehler.
-
-### RecipeId waehlt den Job
-
-`StartSingleJob` hat keinen eigenen Job-Typ-Knoten — die `RecipeId` ist der
-Selektor. Zugelassen sind:
-
-| RecipeId | Bedeutung |
-| --- | --- |
-| `""` | Standardjob dieser Instanz |
-| `"hello-world"` | Platzhalter, kamerafrei — bleibt dauerhaft als Smoke-Test |
-| `"image-recognition"` | echte Erkennung (bis zur AprilTag-Quelle noch Platzhalter) |
-
-Alles andere wird mit `Error=4` (`UNKNOWN_RECIPE`) abgelehnt; die
-Fehlermeldung listet die bekannten Rezepte. **`"calibration"` ist bewusst
-nicht zugelassen** — die Kalibrierung ist ein eigenstaendiges Skript.
-
-Die gewaehlte Quelle bestimmt `frameId`, `frameConvention`, `configurationId`
-und `IsSimulated` des Ergebnisses. Die `RecipeId` steht danach in
-`InternalRecipeId` am Ergebnisknoten und in `attributes.recipeId`.
 
 ### Fehlercodes (`Error`)
 
@@ -361,8 +366,11 @@ Vorführbare Sonderfälle:
 
 ## 9. Offen / nächste Schritte
 
-- **Echte Erkennung**: neue `DetectionSource` in `detection/`, Payload-Schema
-  bleibt. Bis dahin ist `moduleId` erfunden und die Pose immer Null.
+- **Echte Kalibrierung/Erkennung**: `calibration` und `image-recognition`
+  fuehren bereits eigene Scripts aus (`src/vision_server/scripts/`), deren
+  Inhalt aber noch Platzhalter ist. Payload-Schema bleibt beim Nachruesten
+  der echten Logik unveraendert. Bis dahin ist `moduleId` erfunden und die
+  Pose immer Null.
 - **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (10 s)
   braucht, wird abgebrochen und als `DETECTION_FAILED` gemeldet; der Automat
   kehrt nach `Ready` zurueck. Ein blockierter Worker-Thread laesst den

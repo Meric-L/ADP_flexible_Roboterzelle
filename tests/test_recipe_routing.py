@@ -8,8 +8,13 @@ from vision_server.detection import build_detection_sources
 from vision_server.errors import VisionErrorCode, VisionJobError
 from vision_server.job import build_job_request
 
-#: Die Namen, die das Frontend heute schon senden kann (useVisionJob.ts).
-FRONTEND_RECIPES = ("", "hello-world", "image-recognition")
+#: Die Namen, die das Frontend senden kann (useVisionJob.ts), mit ihrem Profil.
+FRONTEND_RECIPES = {
+    "": "hello_world",
+    "hello-world": "hello_world",
+    "calibration": "calibration",
+    "image-recognition": "image_recognition",
+}
 
 
 def request(recipe_id, config=None):
@@ -21,12 +26,6 @@ class AdmissionTest(unittest.TestCase):
         for recipe_id in FRONTEND_RECIPES:
             with self.subTest(recipe_id=recipe_id):
                 self.assertEqual(request(recipe_id).recipe_id, recipe_id or None)
-
-    def test_rejects_calibration_because_it_is_a_script(self):
-        """Bewusst abgelehnt statt still auf hello_world gemappt."""
-        with self.assertRaises(VisionJobError) as caught:
-            request("calibration")
-        self.assertEqual(caught.exception.code, VisionErrorCode.UNKNOWN_RECIPE)
 
     def test_rejects_unknown_recipe(self):
         with self.assertRaises(VisionJobError) as caught:
@@ -40,11 +39,11 @@ class AdmissionTest(unittest.TestCase):
 
 
 class RoutingTest(unittest.TestCase):
-    def test_resolves_a_profile_for_every_admitted_recipe(self):
+    def test_resolves_the_expected_profile_for_every_recipe(self):
         config = VisionServerConfig()
-        for recipe_id in FRONTEND_RECIPES:
+        for recipe_id, profile in FRONTEND_RECIPES.items():
             with self.subTest(recipe_id=recipe_id):
-                self.assertEqual(request(recipe_id, config).profile_id, "hello_world")
+                self.assertEqual(request(recipe_id, config).profile_id, profile)
 
     def test_routes_to_distinct_profiles(self):
         config = replace(
@@ -64,12 +63,17 @@ class RoutingTest(unittest.TestCase):
 
 class SourceBuildingTest(unittest.TestCase):
     def test_builds_one_instance_per_profile(self):
+        """Zwei Rezepte auf dasselbe Profil teilen sich eine Instanz."""
         config = replace(
             VisionServerConfig(),
             recipe_profiles=(("", "hello_world"), ("hello-world", "hello_world")),
         )
         sources = build_detection_sources(config)
         self.assertEqual(sorted(sources), ["hello_world"])
+
+    def test_builds_the_script_profiles(self):
+        sources = build_detection_sources(VisionServerConfig())
+        self.assertEqual(sorted(sources), ["calibration", "hello_world", "image_recognition"])
 
     def test_unknown_profile_fails_at_install_time(self):
         config = replace(VisionServerConfig(), recipe_profiles=(("", "appriltag"),))
