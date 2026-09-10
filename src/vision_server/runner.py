@@ -8,7 +8,7 @@ from asyncua import Server, ua, uamethod
 
 from .address_space import attach_vision_system, configure_server
 from .config import VisionServerConfig
-from .detection import DetectionSource, build_detection_source
+from .detection import DetectionSource, build_detection_sources
 from .events import VisionEvents, create_event_generators
 from .job import JobRunner
 from .result_management import ResultStore
@@ -25,7 +25,7 @@ class VisionMachine:
     states: VisionStateMachines
     events: VisionEvents
     results: ResultStore
-    source: DetectionSource
+    sources: dict[str, DetectionSource]
     jobs: JobRunner
 
 
@@ -40,8 +40,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     states = await VisionStateMachines.bind(space)
     events = await create_event_generators(space)
     results = await ResultStore.create(space)
-    source = build_detection_source(config)
-    jobs = JobRunner(config, states, events, results, source)
+    sources = build_detection_sources(config)
+    jobs = JobRunner(config, states, events, results, sources)
 
     @uamethod
     async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
@@ -70,9 +70,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     await states.enter_operational()
 
     _log.info(
-        "Vision-System '%s' bereit (Profil %s, Namespace %s)",
+        "Vision-System '%s' bereit (Recipes %s, Namespace %s)",
         config.vision_system_name,
-        source.profile_id,
+        ", ".join(sorted(x for x in sources if x)),
         config.namespace_uri,
     )
     return VisionMachine(
@@ -80,7 +80,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         states=states,
         events=events,
         results=results,
-        source=source,
+        sources=sources,
         jobs=jobs,
     )
 

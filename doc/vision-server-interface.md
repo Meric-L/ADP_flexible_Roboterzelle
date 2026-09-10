@@ -143,7 +143,7 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 | --- | --- | --- |
 | `MeasId` | `MeasIdDataType` | String (leer erlaubt) |
 | `PartId` | `PartIdDataType` | String (leer erlaubt) |
-| `RecipeId` | `RecipeIdExternalDataType` | String, `""` oder `"hello-world"` |
+| `RecipeId` | `RecipeIdExternalDataType` | String, siehe Job-Tabelle unten |
 | `ProductId` | `ProductIdDataType` | String (leer erlaubt) |
 | `Parameters` | `BaseDataType[]` | String-Array, max. 16 Einträge |
 
@@ -151,6 +151,24 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 | --- | --- | --- |
 | `JobId` | `JobIdDataType` | String, z. B. `job-000001`; leer bei Ablehnung |
 | `Error` | `Int32` | Fehlercode, siehe unten |
+
+### Verfügbare Jobs (`RecipeId`)
+
+Jede `RecipeId` waehlt ein eigenes Script auf dem Pi aus. Alle drei laufen
+ueber denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf
+aus Abschnitt 4 und 6 — nur `attributes.message` und `moduleId` im Ergebnis
+unterscheiden sich. Die Logik hinter den Scripts ist aktuell noch ein
+Platzhalter (siehe Abschnitt 9); die Schnittstelle aendert sich beim Umstieg
+auf echte Logik nicht.
+
+| `RecipeId` | Job | Ausgefuehrtes Script | `attributes.message` im Ergebnis |
+| --- | --- | --- | --- |
+| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | — (in-process, kein Subprozess) | `"Hello World"` |
+| `"calibration"` | Kalibrierung | `src/vision_server/scripts/calibrate.py` | `"Calibrieren"` |
+| `"image-recognition"` | Bilderkennung | `src/vision_server/scripts/take_image.py` | `"Taking Image"` |
+
+Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
+abgelehnt, siehe Fehlercode-Tabelle unten.
 
 **Bewusste Abweichung:** Das Nodeset deklariert die Ids als Strukturen. Ein
 asyncua-Client kann solche ExtensionObjects ohne
@@ -328,8 +346,11 @@ Vorführbare Sonderfälle:
 
 ## 9. Offen / nächste Schritte
 
-- **Echte Erkennung**: neue `DetectionSource` in `detection/`, Payload-Schema
-  bleibt. Bis dahin ist `moduleId` erfunden und die Pose immer Null.
+- **Echte Kalibrierung/Erkennung**: `calibration` und `image-recognition`
+  fuehren bereits eigene Scripts aus (`src/vision_server/scripts/`), deren
+  Inhalt aber noch Platzhalter ist. Payload-Schema bleibt beim Nachruesten
+  der echten Logik unveraendert. Bis dahin ist `moduleId` erfunden und die
+  Pose immer Null.
 - **Koordinatensystem**: `frameId` ist derzeit fest `"world"`, ohne
   Hand-Auge-Kalibrierung. Was `position`/`orientation` real bedeuten, hängt an
   der noch offenen Kalibrierung — ein automatisches Anfahren erkannter Posen

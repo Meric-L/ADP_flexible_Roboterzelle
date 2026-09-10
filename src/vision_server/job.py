@@ -117,13 +117,13 @@ class JobRunner:
         states: VisionStateMachines,
         events: VisionEvents,
         results: ResultStore,
-        source: DetectionSource,
+        sources: dict[str, DetectionSource],
     ) -> None:
         self._config = config
         self._states = states
         self._events = events
         self._results = results
-        self._source = source
+        self._sources = sources
         self._lock = asyncio.Lock()
         self._busy = False
         self._job_counter = 0
@@ -165,7 +165,8 @@ class JobRunner:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
-                detections = await self._source.acquire_and_detect(request.parameters)
+                source = self._sources[request.recipe_id or ""]
+                detections = await source.acquire_and_detect(request.parameters)
                 await self._events.acquisition_done.trigger(message=job_id)
 
                 now = datetime.now(timezone.utc)

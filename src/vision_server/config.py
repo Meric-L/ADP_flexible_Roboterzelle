@@ -22,6 +22,8 @@ class VisionServerConfig:
     detection_profile: str = "hello_world"
     detection_latency: float = 0.25
     nodeset_path: Path = DEFAULT_NODESET_PATH
-    known_recipe_ids: frozenset[str] = frozenset({"", "hello-world"})
+    known_recipe_ids: frozenset[str] = frozenset(
+        {"", "hello-world", "calibration", "image-recognition"}
+    )
     max_id_length: int = 128
     max_parameters: int = 16
