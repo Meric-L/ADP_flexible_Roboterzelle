@@ -9,7 +9,9 @@ NodeIds (z. B. `ns=2;i=4` fuer den Sollwert) weiter gueltig sind.
 import asyncio
 import contextlib
 import logging
+import os
 import signal
+import socket
 import sys
 from pathlib import Path
 
@@ -41,6 +43,30 @@ def read_cpu_temp() -> float:
         return float("nan")
 
 
+#: Hostname -> Identitaet und Bezugsrahmen. `vision_system_name` darf NICHT
+#: variieren: Interface-Doku und Frontend nageln `ns=<vision>;s=VisionMachine`
+#: fest, ein pi-spezifischer BrowseName bricht jeden Client.
+PI_IDENTITIES: dict[str, tuple[str, str]] = {
+    "pi-decke": ("vision-ceiling-01", "cam_ceiling"),
+    "pi-hand": ("vision-flange-01", "cam_flange"),
+}
+
+
+def vision_identity() -> tuple[str, str]:
+    """Identitaet dieses Pis: Env, dann Hostname-Abbildung, dann Hostname.
+
+    Der Hostname-Rueckfall ist wichtig, weil die systemd-Unit nirgends
+    versioniert ist — ein frisch aufgesetzter Pi darf nicht stillschweigend
+    dieselbe Id senden wie der andere.
+    """
+    host = socket.gethostname()
+    mapped_id, mapped_frame = PI_IDENTITIES.get(host, (f"vision-{host}", "world"))
+    return (
+        os.getenv("VISION_SYSTEM_ID") or mapped_id,
+        os.getenv("VISION_FRAME_ID") or mapped_frame,
+    )
+
+
 def vision_config() -> VisionServerConfig:
     """Konfiguration des eingebauten Vision-Systems.
 
@@ -48,10 +74,14 @@ def vision_config() -> VisionServerConfig:
     Vision-System nutzt daraus nur seinen eigenen Namespace, den Instanznamen
     und den Nodeset-Pfad.
     """
+    vision_system_id, frame_id = vision_identity()
+    _log.info("Vision-Identitaet: %s (Rahmen %s)", vision_system_id, frame_id)
     return VisionServerConfig(
         endpoint=ENDPOINT,
         server_name=SERVER_NAME,
         nodeset_path=NODESET_PATH,
+        vision_system_id=vision_system_id,
+        frame_id=frame_id,
     )
 
 
