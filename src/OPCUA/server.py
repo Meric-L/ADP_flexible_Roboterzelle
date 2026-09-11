@@ -21,6 +21,7 @@ from asyncua.common.instantiate_util import instantiate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vision_server.config import VisionServerConfig  # noqa: E402
+from vision_server.profiles import CameraStreamConfig  # noqa: E402
 from vision_server.runner import install_vision_machine  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -82,6 +83,7 @@ def vision_config() -> VisionServerConfig:
         nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
         frame_id=frame_id,
+        camera_stream=CameraStreamConfig(),
     )
 
 

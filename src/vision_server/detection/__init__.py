@@ -26,9 +26,10 @@ def _calibration(config: VisionServerConfig) -> DetectionSource:
 
 
 def _image_recognition(config: VisionServerConfig) -> DetectionSource:
-    from .script_runner import ScriptDetectionSource
+    from ..profiles import CameraStreamConfig
+    from .image_recognition import ImageRecognitionDetectionSource
 
-    return ScriptDetectionSource("image_recognition", JOBS_DIR / "take_image.py")
+    return ImageRecognitionDetectionSource(config.camera_stream or CameraStreamConfig())
 
 
 #: Factories importieren ihr Modul **innerhalb** der Funktion. Sonst liegt jede

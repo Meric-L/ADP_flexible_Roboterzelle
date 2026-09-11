@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .profiles import AprilTagProfileConfig
+from .profiles import AprilTagProfileConfig, CameraStreamConfig
 
 DEFAULT_NODESET_PATH = (
     Path(__file__).resolve().parent.parent / "OPCUA" / "Opc.Ua.MachineVision.NodeSet2.xml"
@@ -41,6 +41,9 @@ class VisionServerConfig:
     #: `src/jobs/take_image.py` haelt die Kamera allein schon 30 s offen.
     job_timeout: float = 40.0
     apriltag: AprilTagProfileConfig | None = None
+    #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
+    #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `OPCUA/server.py` sie.
+    camera_stream: CameraStreamConfig | None = None
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:

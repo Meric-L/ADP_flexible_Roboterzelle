@@ -9,7 +9,8 @@ from dataclasses import dataclass
 
 from asyncua import Server, ua, uamethod
 
-from .address_space import attach_vision_system, configure_server
+from .address_space import VisionAddressSpace, attach_vision_system, configure_server
+from .camera_stream import CameraStreamPublisher
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
 from .events import VisionEvents, create_event_generators
@@ -45,6 +46,34 @@ async def _watch_loop_lag(
             )
 
 
+def _start_camera_stream(
+    space: VisionAddressSpace,
+    sources: Mapping[str, DetectionSource],
+    *,
+    image_recognition_opened: bool,
+) -> CameraStreamPublisher | None:
+    """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
+
+    Nutzt bewusst dieselbe `SharedCamera`, die auch die QR-Erkennung offen
+    haelt (`ImageRecognitionDetectionSource.camera`) — eine zweite Kamera
+    lohnt sich hier nicht, siehe `camera.py`.
+    """
+    if space.latest_camera_frame is None:
+        return None
+    source = sources.get("image_recognition")
+    if source is None or not image_recognition_opened:
+        _log.error(
+            "Livestream-Knoten konfiguriert, aber Kamera-Quelle fehlt oder nicht bereit "
+            "-- kein Stream"
+        )
+        return None
+    stream = CameraStreamPublisher(
+        source.camera, space.latest_camera_frame, space.config.camera_stream
+    )
+    stream.start()
+    return stream
+
+
 async def _open_source(source: DetectionSource) -> bool:
     """Oeffnet eine Quelle; `False`, wenn sie nicht betriebsbereit ist."""
     started = asyncio.get_running_loop().time()
@@ -72,9 +101,10 @@ class VisionMachine:
     sources: Mapping[str, DetectionSource]
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
+    camera_stream: CameraStreamPublisher | None = None
 
     async def aclose(self) -> None:
-        """Faehrt Watchdog, laufenden Job und Quelle herunter.
+        """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
 
         Best-Effort und idempotent; braucht im Aufrufer einen Signal-Handler,
         sonst laeuft es unter systemd nicht.
@@ -83,6 +113,8 @@ class VisionMachine:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.lag_watchdog
+        if self.camera_stream is not None:
+            await self.camera_stream.stop()
         await self.jobs.cancel_running()
         for source in self.sources.values():
             try:
@@ -132,14 +164,18 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
     # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
-    opened = [await _open_source(source) for source in sources.values()]
-    if all(opened):
+    opened = {profile: await _open_source(source) for profile, source in sources.items()}
+    if all(opened.values()):
         await states.enter_operational()
     else:
         _log.error(
             "Vision-System '%s' bleibt in Preoperational, Quelle nicht bereit",
             config.vision_system_name,
         )
+
+    camera_stream = _start_camera_stream(
+        space, sources, image_recognition_opened=opened.get("image_recognition", False)
+    )
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
@@ -157,6 +193,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         sources=sources,
         jobs=jobs,
         lag_watchdog=lag_watchdog,
+        camera_stream=camera_stream,
     )
 
 

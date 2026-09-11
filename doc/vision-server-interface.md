@@ -4,10 +4,11 @@ Diese Datei beschreibt den eigenständigen OPC-UA-Vision-Server (OPC 40100,
 Machine Vision) und **was ein Backend implementieren muss**, um von ihm ein
 Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 
-Stand: Erkennungsstufe ist ein **Hello-World-Platzhalter** — der komplette
-Job-Ablauf (Zustandsautomaten, Events, Ergebnisablage, Fehlerpfad) ist echt,
-nur das erkannte "Modul" ist erfunden. Der Umstieg auf echte Bilderkennung
-ändert das Payload-Format **nicht**.
+Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung,
+`calibration` ebenso. `image-recognition` steuert echt die Pi-Kamera an und
+sucht per QR-Code — der komplette Job-Ablauf (Zustandsautomaten, Events,
+Ergebnisablage, Fehlerpfad) ist für alle drei identisch. Der Umstieg auf
+echte Bilderkennung ändert das Payload-Format **nicht**.
 
 ## 1. Systemaufbau
 
@@ -36,8 +37,10 @@ Objects/
     │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
     │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
-    └── LatestResultJson                 ns=4;s=VisionMachine.LatestResultJson
-                                         derselbe JSON-String, als einfacher String-Knoten
+    ├── LatestResultJson                 ns=4;s=VisionMachine.LatestResultJson
+    │                                    derselbe JSON-String, als einfacher String-Knoten
+    └── LatestCameraFrame                ns=4;s=VisionMachine.LatestCameraFrame
+                                         Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
 ```
 
 Interner Aufbau (Python-Paket `src/vision_server/`):
@@ -49,7 +52,9 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegel |
 | `job.py` | Validierung, Guard, Job-Ablauf, Fehlerpfad |
-| `detection/` | Strategie `DetectionSource`; aktuell `hello_world.py` |
+| `detection/` | Strategie `DetectionSource`; `hello_world.py`, `image_recognition.py` (QR), `script_runner.py` (Kalibrierung) |
+| `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von QR-Erkennung und Livestream |
+| `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 
 Echte Erkennung anschließen = **eine neue Datei in `detection/` plus ein
@@ -79,6 +84,7 @@ Wichtige NodeIds (sprechende String-Ids, stabil über Neustarts und Änderungen)
 | Zustand außen | `ns=<vision>;s=VisionMachine.VisionStateMachine.CurrentState` |
 | Zustand innen | `ns=<vision>;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.CurrentState` |
 | Letztes Ergebnis (JSON) | `ns=<vision>;s=VisionMachine.LatestResultJson` |
+| Kamera-Livestream (Base64-JPEG) | `ns=<vision>;s=VisionMachine.LatestCameraFrame` — nur vorhanden, wenn `camera_stream` konfiguriert ist (siehe Abschnitt 10) |
 
 ## 3. Was das Backend können muss
 
@@ -154,21 +160,23 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 
 ### Verfügbare Jobs (`RecipeId`)
 
-Jede `RecipeId` waehlt ein eigenes Script auf dem Pi aus. Alle drei laufen
+Jede `RecipeId` waehlt ein Erkennungsprofil (`detection/`). Alle drei laufen
 ueber denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf
 aus Abschnitt 4 und 6 — nur `attributes.message` und `moduleId` im Ergebnis
-unterscheiden sich. `calibration` ist weiterhin ein Platzhalter (siehe
-Abschnitt 9); `image-recognition` steuert echt die Pi-Kamera an.
+unterscheiden sich. `calibration` ist weiterhin ein Platzhalter (Subprozess-
+Script, siehe Abschnitt 9); `image-recognition` steuert echt die Pi-Kamera an.
 
-| `RecipeId` | Job | Ausgefuehrtes Script | `attributes.message` im Ergebnis |
+| `RecipeId` | Job | Implementierung | `attributes.message` im Ergebnis |
 | --- | --- | --- | --- |
-| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | — (in-process, kein Subprozess) | `"Hello World"` |
-| `"calibration"` | Kalibrierung | `src/jobs/calibrate.py` | `"Calibrieren"` |
-| `"image-recognition"` | QR-Code-Erkennung | `src/jobs/take_image.py` | dekodierter QR-Text, sonst `"Kein QR Code gefunden"` |
+| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | in-process, `detection/hello_world.py` | `"Hello World"` |
+| `"calibration"` | Kalibrierung (Platzhalter) | Subprozess, `src/jobs/calibrate.py` | `"Calibrieren"` |
+| `"image-recognition"` | QR-Code-Erkennung | in-process, `detection/image_recognition.py`, liest von der geteilten Kamera (Abschnitt 10) | dekodierter QR-Text, sonst `"Kein QR Code gefunden"` |
 
-`image-recognition` haelt die Kamera bis zu 30 s offen (`SCAN_DURATION_S` in
-`src/jobs/take_image.py`) und bricht ab, sobald ein QR-Code dekodiert werden
-konnte. Deshalb liegt `job_timeout` (Abschnitt 9) bei 40 s statt 10 s.
+`image-recognition` sucht bis zu 30 s (`qr_scan_duration_s` in
+`CameraStreamConfig`) und bricht ab, sobald ein QR-Code dekodiert werden
+konnte. Deshalb liegt `job_timeout` (Abschnitt 9) bei 40 s statt 10 s. Die
+Kamera wird dafuer **nicht** extra geoeffnet — sie laeuft bereits fuer den
+Livestream (Abschnitt 10) und wird nur mitgelesen.
 
 Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
 abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
@@ -371,10 +379,10 @@ Vorführbare Sonderfälle:
 
 - **Echte Kalibrierung**: `calibration` fuehrt weiterhin nur einen Platzhalter
   aus (`src/jobs/calibrate.py`). `image-recognition`
-  (`src/jobs/take_image.py`) steuert echt die Pi-Kamera per Picamera2 an und
-  sucht per OpenCV nach einem QR-Code. Payload-Schema bleibt beim Nachruesten
-  der echten Kalibrierungslogik unveraendert. Bis dahin ist `moduleId`
-  erfunden und die Pose immer Null.
+  (`detection/image_recognition.py`) steuert echt die Pi-Kamera per Picamera2
+  an und sucht per OpenCV nach einem QR-Code. Payload-Schema bleibt beim
+  Nachruesten der echten Kalibrierungslogik unveraendert. Bis dahin ist
+  `moduleId` erfunden und die Pose immer Null.
 - **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (40 s, wegen
   des bis zu 30 s laufenden QR-Scans) braucht, wird abgebrochen und als
   `DETECTION_FAILED` gemeldet; der Automat kehrt nach `Ready` zurueck. Ein
@@ -391,3 +399,36 @@ Vorführbare Sonderfälle:
 - **Altlast-Instanz `2:VisionSystem` entfernen** (siehe 7.4).
 - **Structure-Felder der Events** befüllen, sobald asyncua-Issue #1693 gefixt
   ist. Das Payload bleibt auch dann die maßgebliche Quelle.
+
+## 10. Kamera-Livestream
+
+Transportweg laut Absprache mit dem Backend: **kein neuer Methodenaufruf,
+kein Lifecycle**. Sobald der Server läuft und `camera_stream` konfiguriert
+ist, schreibt er kontinuierlich (Standard: 5 Bilder/s) den jeweils neuesten
+Kamera-Frame als Base64-kodiertes JPEG in einen einfachen String-Knoten:
+
+```
+ns=<vision>;s=VisionMachine.LatestCameraFrame
+```
+
+Das Backend abonniert diesen Knoten wie jeden anderen Wert — dieselbe
+Infrastruktur wie für `LatestResultJson`, kein neues Protokoll. Der Knotenwert
+ist **kein** JSON, sondern der rohe Base64-String des JPEG; ein Client
+dekodiert `atob(value)` bzw. `base64.b64decode(value)` und bekommt direkt die
+JPEG-Bytes.
+
+Verhalten:
+
+- Der Knoten existiert **nur**, wenn der Server mit `camera_stream`
+  konfiguriert wurde (auf dem Pi über `OPCUA/server.py` der Fall, beim
+  lokalen `python -m vision_server` standardmäßig **nicht** — dort fehlt
+  i. d. R. die Kamera).
+- Läuft die Kamera nicht (Fehler beim Öffnen), existiert der Knoten zwar,
+  bleibt aber leer (`""`) — kein Fehlerzustand des Automaten, rein
+  Stream-lokal.
+- Livestream und `image-recognition`-Job teilen sich **dieselbe** Kamera
+  (`SharedCamera` in `camera.py`): ein QR-Job liest nur die zwischengespeicherten
+  Frames mit, öffnet die Hardware nicht erneut. Während eines laufenden
+  QR-Jobs bleibt der Stream daher unverändert aktiv, es gibt kein Aussetzen.
+- Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
+  (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.

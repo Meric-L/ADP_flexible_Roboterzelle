@@ -25,6 +25,8 @@ class VisionAddressSpace:
     automatic_state_machine: Node
     start_single_job: Node
     results_folder: Node
+    #: `None`, wenn `config.camera_stream` nicht gesetzt ist -- kein Livestream.
+    latest_camera_frame: Node | None
 
 
 async def configure_server(server: Server, config: VisionServerConfig) -> None:
@@ -89,6 +91,15 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     result_management = await vision_system.get_child(f"{mv_idx}:ResultManagement")
     results_folder = await result_management.get_child(f"{mv_idx}:Results")
 
+    latest_camera_frame: Node | None = None
+    if config.camera_stream is not None:
+        # Additiver Knoten, nicht Teil des 40100-Nodesets -- analog zu den
+        # eigenen `RaspiDevice`-Variablen in `OPCUA/server.py`. Nur der Server
+        # schreibt hierhin, daher kein `set_writable()`.
+        latest_camera_frame = await vision_system.add_variable(
+            own_idx, config.camera_stream.node_name, "", ua.VariantType.String
+        )
+
     _log.info("VisionSystem '%s' als %s angelegt", name, vision_system.nodeid.to_string())
     return VisionAddressSpace(
         server=server,
@@ -100,4 +111,5 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         automatic_state_machine=automatic_state_machine,
         start_single_job=start_single_job,
         results_folder=results_folder,
+        latest_camera_frame=latest_camera_frame,
     )
