@@ -144,13 +144,47 @@ class JobRunner:
         self._task: asyncio.Task | None = None
 
     async def cancel_running(self, timeout: float = 2.0) -> None:
-        """Bricht einen noch laufenden Job ab; fuer das Herunterfahren."""
+        """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
+
+        Best-Effort: Fehler beim Abbruch werden verschluckt, der Prozess
+        faehrt ohnehin gerade herunter. Fuer die `Stop`-Methode stattdessen
+        `stop()` verwenden, die den Fehlschlag als `VisionErrorCode` meldet.
+        """
         task = self._task
         if task is None or task.done():
             return
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, TimeoutError):
             await asyncio.wait_for(task, timeout)
+
+    async def stop(self) -> VisionErrorCode:
+        """Bricht einen laufenden Job ab; OK, wenn gerade keiner laeuft.
+
+        Fire-and-forget vom Frontend, unabhaengig vom aktuellen Zustand --
+        anders als `start_single_job` gibt es hier bewusst **keinen**
+        `is_ready()`-Guard. Wartet auf den vollstaendigen Abbruch (inkl.
+        Zustandswechsel zurueck nach `Ready` in `_cancel`), damit ein
+        `StartSingleJob` direkt danach nicht auf einen noch aufraeumenden
+        Job trifft.
+        """
+        task = self._task
+        if task is None or task.done():
+            return VisionErrorCode.OK
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, self._config.stop_timeout)
+        except asyncio.CancelledError:
+            pass
+        except TimeoutError:
+            _log.error(
+                "Job liess sich nicht innerhalb von %.1f s abbrechen",
+                self._config.stop_timeout,
+            )
+            return VisionErrorCode.INTERNAL
+        except Exception:
+            _log.exception("Abbruch des laufenden Jobs fehlgeschlagen")
+            return VisionErrorCode.INTERNAL
+        return VisionErrorCode.OK
 
     def start_single_job(
         self, meas_id, part_id, recipe_id, product_id, parameters
@@ -217,6 +251,13 @@ class JobRunner:
                 await self._states.to_ready()
                 await self._events.ready.trigger(message=job_id)
                 _log.info("Job %s abgeschlossen", job_id)
+        except asyncio.CancelledError:
+            # `stop()` bricht diesen Task ab (`Stop`-Methode). Aufraeumen und
+            # den Automaten zurueckfahren, bevor die Cancellation weiter nach
+            # oben durchgereicht wird -- sonst bliebe der Automat fuer immer
+            # in SingleExecution haengen und jeder weitere Job schluege fehl.
+            await self._cancel(source, request, job_id)
+            raise
         except TimeoutError:
             await self._fail(
                 source,
@@ -305,3 +346,44 @@ class JobRunner:
             await self._events.ready.trigger(message=job_id)
         except Exception:
             _log.exception("Fehlerpfad des Jobs %s fehlgeschlagen", job_id)
+
+    async def _cancel(
+        self,
+        source: DetectionSource,
+        request: JobRequest,
+        job_id: str,
+    ) -> None:
+        """Meldet den Nutzerabbruch als Ergebnis und fuehrt den Automaten zurueck.
+
+        Anders als `_fail`: kein Ausflug nach `Error` — ein `Stop` ist ein
+        gewolltes Kommando, kein Fehlerzustand. Laeuft, waehrend `_busy` noch
+        gesetzt ist (siehe `_run`), also ohne Konkurrenz zu einem neuen Job.
+        """
+        _log.info("Job %s durch Stop abgebrochen", job_id)
+        try:
+            now = datetime.now(timezone.utc)
+            result_id = f"res-{job_id}"
+            payload = build_error_payload(
+                vision_system_id=self._config.vision_system_id,
+                result_id=result_id,
+                job_id=job_id,
+                creation_time=now,
+                code=VisionErrorCode.CANCELLED,
+                message="Job durch Stop abgebrochen",
+                frame_id=source.frame_id or self._config.frame_id,
+                frame_convention=source.frame_convention,
+                configuration_id=source.configuration_id,
+            )
+            await self._publish(
+                source,
+                request,
+                result_id,
+                job_id,
+                now,
+                int(VisionErrorCode.CANCELLED),
+                payload,
+            )
+            await self._states.stop_to_ready()
+            await self._events.ready.trigger(message=job_id)
+        except Exception:
+            _log.exception("Abbruchpfad des Jobs %s fehlgeschlagen", job_id)

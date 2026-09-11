@@ -1,11 +1,18 @@
 """Erkennungsquelle, die ein externes Python-Script als Subprozess ausfuehrt."""
 
 import asyncio
+import contextlib
+import logging
 import sys
 from pathlib import Path
 
 from ..errors import VisionErrorCode, VisionJobError
 from .base import Detection, DetectionRequest, DetectionSource
+
+_log = logging.getLogger(__name__)
+
+#: Frist zwischen SIGTERM und SIGKILL bei einem Stop-Abbruch.
+TERMINATE_GRACE_S = 2.0
 
 
 class ScriptDetectionSource(DetectionSource):
@@ -41,7 +48,13 @@ class ScriptDetectionSource(DetectionSource):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await process.communicate()
+        try:
+            stdout, stderr = await process.communicate()
+        except asyncio.CancelledError:
+            # `Stop` bricht diesen `await` ab; ohne Terminate liefe das Script
+            # als verwaister Subprozess weiter (z. B. mit offener Kamera).
+            await self._terminate(process)
+            raise
         if process.returncode != 0:
             raise VisionJobError(
                 VisionErrorCode.DETECTION_FAILED,
@@ -59,3 +72,19 @@ class ScriptDetectionSource(DetectionSource):
                 attributes={"message": message, "recipeId": request.recipe_id},
             )
         ]
+
+    async def _terminate(self, process: asyncio.subprocess.Process) -> None:
+        """SIGTERM, nach `TERMINATE_GRACE_S` SIGKILL, falls es nicht kooperiert."""
+        if process.returncode is not None:
+            return
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), TERMINATE_GRACE_S)
+        except asyncio.TimeoutError:
+            _log.warning(
+                "Script %s reagierte nicht auf terminate(), kill()",
+                self._script_path.name,
+            )
+            process.kill()
+            with contextlib.suppress(Exception):
+                await process.wait()

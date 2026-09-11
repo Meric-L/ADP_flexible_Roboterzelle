@@ -40,6 +40,9 @@ class VisionServerConfig:
     #: Muss ueber der laengsten Job-Laufzeit liegen: der QR-Scan in
     #: `src/jobs/take_image.py` haelt die Kamera allein schon 30 s offen.
     job_timeout: float = 40.0
+    #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
+    #: Zustandswechsel abgeschlossen sein muss.
+    stop_timeout: float = 5.0
     apriltag: AprilTagProfileConfig | None = None
     #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
     #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `OPCUA/server.py` sie.

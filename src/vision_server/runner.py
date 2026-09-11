@@ -162,6 +162,19 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     server.link_method(space.start_single_job, start_single_job)
 
+    @uamethod
+    async def stop_job(parent, cause, cause_description):
+        """OPC-UA-Einstiegspunkt fuer 1:Stop.
+
+        `Cause`/`CauseDescription` schickt das Frontend fire-and-forget immer
+        als 0/"" und wertet sie nicht aus; wir werten sie ebenfalls nicht aus.
+        Muss wie `start_single_job` `async` sein.
+        """
+        error = await jobs.stop()
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    server.link_method(space.stop, stop_job)
+
     # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
     # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
     opened = {profile: await _open_source(source) for profile, source in sources.items()}

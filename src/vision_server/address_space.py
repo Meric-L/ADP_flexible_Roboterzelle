@@ -24,6 +24,7 @@ class VisionAddressSpace:
     vision_state_machine: Node
     automatic_state_machine: Node
     start_single_job: Node
+    stop: Node
     results_folder: Node
     #: `None`, wenn `config.camera_stream` nicht gesetzt ist -- kein Livestream.
     latest_camera_frame: Node | None
@@ -88,6 +89,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         f"{mv_idx}:AutomaticModeStateMachine"
     )
     start_single_job = await automatic_state_machine.get_child(f"{mv_idx}:StartSingleJob")
+    stop = await automatic_state_machine.get_child(f"{mv_idx}:Stop")
     result_management = await vision_system.get_child(f"{mv_idx}:ResultManagement")
     results_folder = await result_management.get_child(f"{mv_idx}:Results")
 
@@ -110,6 +112,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         vision_state_machine=vision_state_machine,
         automatic_state_machine=automatic_state_machine,
         start_single_job=start_single_job,
+        stop=stop,
         results_folder=results_folder,
         latest_camera_frame=latest_camera_frame,
     )

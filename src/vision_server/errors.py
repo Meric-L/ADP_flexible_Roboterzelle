@@ -13,6 +13,7 @@ class VisionErrorCode(IntEnum):
     UNKNOWN_RECIPE = 4
     DETECTION_FAILED = 5
     INTERNAL = 6
+    CANCELLED = 7
 
 
 class VisionJobError(Exception):

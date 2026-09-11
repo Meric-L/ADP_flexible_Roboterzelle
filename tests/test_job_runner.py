@@ -1,6 +1,7 @@
 """Tests fuer JobRunner: Zulassung, Timeout, Ergebniswahrheit."""
 
 import asyncio
+import contextlib
 import unittest
 from dataclasses import replace
 
@@ -29,6 +30,9 @@ class FakeStates:
 
     async def abort_to_ready(self) -> None:
         self.transitions.append("abort_to_ready")
+
+    async def stop_to_ready(self) -> None:
+        self.transitions.append("stop_to_ready")
 
     async def to_error(self, message: str) -> None:
         self.transitions.append("error")
@@ -208,6 +212,70 @@ class ResultTruthTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("recover", states.transitions)
         self.assertIn('"errorText": "kein Tag"', results.published[-1].payload_json)
         self.assertFalse(runner._busy)
+
+
+class SlowToCancelSource(DetectionSource):
+    """Verschluckt die erste Cancellation, um `stop()`s Timeout-Pfad zu testen."""
+
+    profile_id = "hello_world"
+
+    async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(10.0)
+        await asyncio.sleep(0.05)
+        return []
+
+
+class StopTest(unittest.IsolatedAsyncioTestCase):
+    async def test_ok_when_nothing_is_running(self):
+        runner, _, _, _ = make_runner(ScriptedSource())
+        code = await runner.stop()
+        self.assertEqual(code, VisionErrorCode.OK)
+
+    async def test_ok_after_a_job_already_finished(self):
+        runner, _, _, _ = make_runner(ScriptedSource())
+        await run_to_completion(runner)
+        code = await runner.stop()
+        self.assertEqual(code, VisionErrorCode.OK)
+
+    async def test_cancels_a_running_job_and_resets_the_state(self):
+        runner, states, events, results = make_runner(ScriptedSource(delay=5.0))
+        runner.start_single_job(None, None, "", None, [])
+        await asyncio.sleep(0)  # Task muss erst anlaufen (single_execution etc.)
+
+        code = await runner.stop()
+
+        self.assertEqual(code, VisionErrorCode.OK)
+        self.assertFalse(runner._busy, "BUSY darf einen neuen Job nicht mehr blockieren")
+        self.assertIn("stop_to_ready", states.transitions)
+        self.assertNotIn("to_error", states.transitions, "Stop ist kein Fehlerzustand")
+        self.assertEqual(
+            results.published[-1].result_state, int(VisionErrorCode.CANCELLED)
+        )
+        self.assertIn("ready", events.log)
+
+    async def test_accepts_a_new_job_immediately_after_stop(self):
+        runner, _, _, _ = make_runner(ScriptedSource(delay=5.0))
+        runner.start_single_job(None, None, "", None, [])
+        await asyncio.sleep(0)
+        await runner.stop()
+
+        for profile in runner._sources:
+            runner._sources[profile] = ScriptedSource()
+        _, code = await run_to_completion(runner)
+        self.assertEqual(code, VisionErrorCode.OK)
+
+    async def test_reports_internal_error_when_the_job_will_not_cancel_in_time(self):
+        runner, _, _, _ = make_runner(SlowToCancelSource(), stop_timeout=0.01)
+        runner.start_single_job(None, None, "", None, [])
+        await asyncio.sleep(0)
+
+        code = await runner.stop()
+
+        self.assertEqual(code, VisionErrorCode.INTERNAL)
+        # `wait_for` hat den Task bereits bis zum Abschluss (cancelled) durchlaufen
+        # lassen, bevor es TimeoutError geworfen hat -- hier ist nichts mehr offen.
+        self.assertTrue(runner._task.done())
 
 
 if __name__ == "__main__":

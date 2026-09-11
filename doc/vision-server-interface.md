@@ -31,8 +31,9 @@ Objects/
 └── VisionMachine                        ns=4;s=VisionMachine   (Typ: 3:VisionSystemType)
     ├── VisionStateMachine               Preoperational | Halted | Error | Operational
     │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
-    │       ├── StartSingleJob           <- die einzige verlinkte Methode
-    │       └── StartContinuous | Stop | Abort | SimulationMode   (nicht implementiert)
+    │       ├── StartSingleJob           <- Job starten
+    │       ├── Stop                     <- laufenden Job abbrechen, siehe Abschnitt 5
+    │       └── StartContinuous | Abort | SimulationMode   (nicht implementiert)
     ├── ResultManagement
     │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
@@ -194,6 +195,30 @@ deshalb werden hier Strings ausgetauscht. Ein UA-Browser wie UaExpert zeigt
 dementsprechend einen String, wo der Typ eine Struktur erwartet — das ist
 erwartet, kein Fehler.
 
+### `Stop`
+
+Knoten: `AutomaticModeStateMachine/Stop`. Bricht einen laufenden Job **wirklich**
+ab (nicht nur formal) — Subprozess wird beendet (`terminate()`, nach 2 s
+`kill()`, siehe Abschnitt 9), der Automat geht zurueck nach `Ready`, und ein
+`ResultReadyEvent` mit `resultState=7` (`CANCELLED`) wird gefeuert. Der Aufruf
+blockiert, bis das abgeschlossen ist — ein `StartSingleJob` direkt danach
+trifft nie auf einen noch aufraeumenden Job.
+
+| Argument | Nodeset-Typ | **Tatsächlich erwartet** |
+| --- | --- | --- |
+| `Cause` | `Int32` | wird nicht ausgewertet |
+| `CauseDescription` | `String` | wird nicht ausgewertet |
+
+| Ausgabe | Nodeset-Typ | **Tatsächlich geliefert** |
+| --- | --- | --- |
+| `Error` | `Int32` | `0`, wenn abgebrochen oder gar nichts lief; `!= 0`, falls der Abbruch selbst scheiterte |
+
+Fire-and-forget-tauglich: Ein `Stop` ohne laufenden Job (z. B. weil der Job
+schon fertig war) liefert genauso `Error=0` wie ein erfolgreicher Abbruch —
+das Frontend muss den Zustand vorher nicht kennen. Nur wenn der Job sich
+nicht innerhalb von `stop_timeout` (5 s, `config.py`) abbrechen liess, kommt
+`Error=6` (`INTERNAL`) zurueck.
+
 ### Fehlercodes (`Error`)
 
 Das Nodeset definiert für `Error` keinen Enum; diese Codes sind
@@ -208,11 +233,12 @@ projektspezifisch und müssen im Backend gespiegelt werden.
 | 4 | `UNKNOWN_RECIPE` | `RecipeId` nicht bekannt | nein |
 | 5 | `DETECTION_FAILED` | Erkennung fehlgeschlagen | ja, mit `resultState=5` |
 | 6 | `INTERNAL` | unerwarteter Serverfehler | ja, mit `resultState=6` |
+| 7 | `CANCELLED` | Job durch `Stop` abgebrochen | ja, mit `resultState=7` |
 
 Faustregel: **1–4 werden sofort im Rückgabewert abgelehnt** (der Automat bleibt
-`Ready`, es folgt kein Event). **5–6 passieren während der Ausführung** und
+`Ready`, es folgt kein Event). **5–7 passieren während der Ausführung** und
 kommen als `ResultReadyEvent` mit `resultState != 0` — ein eventgetriebener
-Client erfährt einen Erkennungsfehler also nie erst per Timeout.
+Client erfährt einen Erkennungsfehler (oder Abbruch) also nie erst per Timeout.
 
 Nebenläufigkeit: Es läuft immer nur **ein** Job. Ein zweiter Aufruf während
 eines laufenden Jobs wird deterministisch mit `BUSY` abgelehnt, statt Zustände
@@ -346,10 +372,12 @@ das Temperatur-Interface auf `RaspiDevice/CpuTemperature` umgestellt ist.
 
 ### 7.5 Nicht implementierte Methoden
 
-Verlinkt ist nur `StartSingleJob`. `StartContinuous`, `Stop`, `Abort`,
-`SimulationMode`, `Reset`, `Halt`, `SelectModeAutomatic` und die `Sync`-Methoden
-der StepModels sind im Adressraum sichtbar, haben aber keine Implementierung —
-ein Aufruf tut nichts. Ein Backend darf sie nicht für den Ablauf voraussetzen.
+Verlinkt sind `StartSingleJob` und `Stop` (Abschnitt 5). `StartContinuous`,
+`Abort`, `SimulationMode`, `Reset`, `Halt`, `SelectModeAutomatic` und die
+`Sync`-Methoden der StepModels sind im Adressraum sichtbar, haben aber keine
+Implementierung — ein Aufruf liefert `BadNothingToDo` auf OPC-UA-Statusebene
+(asyncua-Default fuer eine unverlinkte Methode), nicht etwa `Error != 0` im
+Output. Ein Backend darf sie nicht für den Ablauf voraussetzen.
 
 ## 8. Ablauf einmal durchspielen
 

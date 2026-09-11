@@ -131,6 +131,10 @@ class VisionStateMachines:
         """SingleExecution -> Ready ueber den Abort-Uebergang."""
         await self._set_inner("Ready", "SingleExecutionToReadyAbort: SingleExecution -> Ready")
 
+    async def stop_to_ready(self) -> None:
+        """SingleExecution -> Ready ueber den Stop-Uebergang (Nutzerabbruch)."""
+        await self._set_inner("Ready", "SingleExecutionToReadyStop: SingleExecution -> Ready")
+
     async def to_error(self, reason: str) -> None:
         """Operational -> Error (OperationalToErrorAuto)."""
         await self._set_outer("Error", f"OperationalToErrorAuto: Operational -> Error ({reason})")
