@@ -13,10 +13,29 @@ Ziel der Arbeit ist die Untersuchung, Evaluation und **praktische Umsetzung** ve
 ## Repository-Struktur
 Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 
-### Dokumentation (LaTeX)
-* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
+### Dokumentation
+* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung **und** die
+  technische Dokumentation als Markdown (siehe unten).
+* `/concept` - Ablaufdiagramm und offene Konzeptfragen.
 
 ### Implementierung (Source Code)
-* `/src` - Quellcode für die Sensorik, Datenverarbeitung und Sensorfusion.
+* `/src/tagloc` - AprilTag-Lokalisierung: Kalibrierung, Erkennung, Koordinatensysteme.
+* `/src/vision_server` - OPC-UA-Vision-Server (OPC 40100) mit der Erkennungsquelle.
+* `/src/OPCUA` - Der Server der Roboterzelle, in den das Vision-System eingebaut wird.
+* `/tools` - Druckbogen für Tags und Boards, synthetische Testszenen.
+* `/config` - Tag-Map (Zellenlayout), versioniert.
 * `/hardware` - CAD-Dateien, Schaltpläne oder 3D-Druck-Modelle für die Sensorhalterungen.
-* `/data` - Aufgezeichnete Sensordaten oder Test-Datensätze zur Evaluierung der Algorithmen.
+* `/data` - Kalibrierdateien und Aufnahmen. Maschinenspezifisch, **nicht** versioniert.
+* `/tests` - `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
+
+## Technische Dokumentation
+
+| Dokument | Wofür |
+| --- | --- |
+| [`doc/apriltag-lokalisierung.md`](doc/apriltag-lokalisierung.md) | Konzept: was AprilTags hier bedeuten, wie Layer 1 und Layer 2 dieselbe Funktionalität benutzen |
+| [`doc/apriltag-referenz.md`](doc/apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate, Payload |
+| [`doc/apriltag-e2e-test.md`](doc/apriltag-e2e-test.md) | **Wie man alles durchtestet** — vom PC bis zur Raspberry-Pi-Kamera |
+| [`doc/vision-server-interface.md`](doc/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend |
+| [`doc/vision-system.md`](doc/vision-system.md) | Ist-Stand des Vision-Systems |
+| [`doc/altlasten.md`](doc/altlasten.md) | Was warum noch drin ist und wann es rausfliegt |
+| [`concept/offene_punkte.md`](concept/offene_punkte.md) | Offene Konzeptfragen der Lokalisierung |
