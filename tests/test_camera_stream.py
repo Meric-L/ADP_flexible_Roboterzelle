@@ -8,6 +8,7 @@ import asyncio
 import unittest
 from dataclasses import replace
 
+from tagloc.modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODES, normalise_mode
 from vision_server.camera import CameraFrame
 from vision_server.camera_stream import CameraStreamPublisher
 from vision_server.profiles import CameraStreamConfig
@@ -26,6 +27,32 @@ class FakeNode:
 
     async def write_value(self, value) -> None:
         self.written.append(value)
+
+
+class FakeModeNode:
+    """The writable node through which the frontend selects the overlay mode."""
+
+    def __init__(self, value, *, fail: bool = False) -> None:
+        self.value = value
+        self.fail = fail
+        self.reads = 0
+
+    async def read_value(self):
+        self.reads += 1
+        if self.fail:
+            raise RuntimeError("Knoten nicht lesbar")
+        return self.value
+
+
+class FakeAnnotator:
+    """Record what it was called with, and mark the image recognisably."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def annotate(self, image, mode: str):
+        self.calls.append((image, mode))
+        return f"annotated:{image}:{mode}"
 
 
 def fake_encode(image, quality: int) -> str:
@@ -89,6 +116,111 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertGreaterEqual(calls, 2)
         self.assertIn("ok", node.written)
+
+
+class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
+    def _publisher(self, mode: str, *, annotator, mode_node=None):
+        camera = FakeCamera()
+        camera.latest_frame = CameraFrame(image="frame-1", timestamp=1.0)
+        node = FakeNode()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            replace(FAST_CONFIG, overlay_mode=mode),
+            encode_frame=fake_encode,
+            annotator=annotator,
+            mode_node=mode_node,
+        )
+        return publisher, node
+
+    async def test_encodes_the_raw_frame_in_mode_off(self):
+        annotator = FakeAnnotator()
+        publisher, node = self._publisher("off", annotator=annotator)
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual(annotator.calls, [])
+        self.assertEqual(node.written[0], f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}")
+
+    async def test_encodes_the_annotated_frame_in_mode_apriltag(self):
+        annotator = FakeAnnotator()
+        publisher, node = self._publisher("apriltag", annotator=annotator)
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertGreaterEqual(len(annotator.calls), 1)
+        self.assertEqual(annotator.calls[0], ("frame-1", "apriltag"))
+        self.assertEqual(
+            node.written[0], f"encoded:annotated:frame-1:apriltag:{FAST_CONFIG.jpeg_quality}"
+        )
+
+    async def test_follows_the_mode_node(self):
+        annotator = FakeAnnotator()
+        publisher, node = self._publisher(
+            "apriltag", annotator=annotator, mode_node=FakeModeNode("  OFF ")
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual(publisher.mode, "off")
+        self.assertEqual(annotator.calls, [])
+        self.assertEqual(node.written[0], f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}")
+
+    async def test_keeps_the_last_known_mode_when_the_node_cannot_be_read(self):
+        """An unreadable node must not stop the stream."""
+        annotator = FakeAnnotator()
+        mode_node = FakeModeNode(None, fail=True)
+        publisher, node = self._publisher(
+            "calibration", annotator=annotator, mode_node=mode_node
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertGreaterEqual(mode_node.reads, 1)
+        self.assertEqual(publisher.mode, "calibration")
+        self.assertEqual(annotator.calls[0], ("frame-1", "calibration"))
+        self.assertGreaterEqual(len(node.written), 1)
+
+    async def test_an_annotator_failure_does_not_kill_the_loop(self):
+        camera = FakeCamera()
+        camera.latest_frame = CameraFrame(image="frame-1", timestamp=1.0)
+        node = FakeNode()
+
+        calls = 0
+
+        class FlakyAnnotator:
+            def annotate(self, image, mode):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise RuntimeError("Overlay kaputt")
+                return "markiert"
+
+        publisher = CameraStreamPublisher(
+            camera, node, FAST_CONFIG, encode_frame=fake_encode, annotator=FlakyAnnotator()
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertGreaterEqual(calls, 2)
+        self.assertIn(f"encoded:markiert:{FAST_CONFIG.jpeg_quality}", node.written)
+
+
+class NormaliseModeTest(unittest.TestCase):
+    def test_keeps_every_known_mode(self):
+        for mode in OVERLAY_MODES:
+            self.assertEqual(normalise_mode(mode), mode)
+
+    def test_falls_back_for_an_empty_value(self):
+        for value in ("", None, "   "):
+            self.assertEqual(normalise_mode(value), DEFAULT_OVERLAY_MODE)
+
+    def test_falls_back_for_an_unknown_value(self):
+        self.assertEqual(normalise_mode("tippfehler"), DEFAULT_OVERLAY_MODE)
+
+    def test_ignores_case_and_surrounding_whitespace(self):
+        self.assertEqual(normalise_mode("  OFF  "), "off")
+        self.assertEqual(normalise_mode("Calibration"), "calibration")
 
 
 if __name__ == "__main__":

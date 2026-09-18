@@ -190,8 +190,8 @@ class ResultTruthTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_recipe_id_reaches_the_result_node(self):
         runner, _, _, results = make_runner(ScriptedSource())
-        await run_to_completion(runner, recipe_id="image-recognition")
-        self.assertEqual(results.published[-1].recipe_id, "image-recognition")
+        await run_to_completion(runner, recipe_id="apriltag")
+        self.assertEqual(results.published[-1].recipe_id, "apriltag")
 
     async def test_frame_id_prefers_the_source(self):
         source = ScriptedSource()

@@ -46,31 +46,84 @@ async def _watch_loop_lag(
             )
 
 
+def _camera_owner(
+    sources: Mapping[str, DetectionSource], opened: Mapping[str, bool]
+) -> DetectionSource | None:
+    """Return the first opened source holding a shared camera.
+
+    Deliberately via the `camera` attribute rather than a profile name:
+    this used to be `sources.get("image_recognition")`, and renaming or
+    removing that profile would have silently killed the livestream.
+    """
+    for profile in sorted(sources):
+        if not opened.get(profile):
+            continue
+        if getattr(sources[profile], "camera", None) is not None:
+            return sources[profile]
+    return None
+
+
+def _build_annotator(source: DetectionSource):
+    """Build the stream overlay for a source, if it can provide one.
+
+    Stream and job then use the same loaded calibration and tag map -- if
+    the image shows something different from the job result, it's not
+    because of two configurations.
+    """
+    detector = getattr(source, "_detector", None)
+    calibration = getattr(source, "_calibration", None)
+    config = getattr(source, "_config", None)
+    camera_config = getattr(source, "_camera_config", None)
+    if detector is None or calibration is None or config is None:
+        return None
+    from .stream_overlay import AprilTagStreamAnnotator
+
+    return AprilTagStreamAnnotator(
+        config,
+        detector=detector,
+        calibration=calibration,
+        tag_map=getattr(source, "_tag_map", None),
+        interval_s=getattr(camera_config, "overlay_interval_s", 0.5),
+    )
+
+
 def _start_camera_stream(
     space: VisionAddressSpace,
     sources: Mapping[str, DetectionSource],
-    *,
-    image_recognition_opened: bool,
+    opened: Mapping[str, bool],
 ) -> CameraStreamPublisher | None:
     """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
 
-    Nutzt bewusst dieselbe `SharedCamera`, die auch die QR-Erkennung offen
-    haelt (`ImageRecognitionDetectionSource.camera`) — eine zweite Kamera
-    lohnt sich hier nicht, siehe `camera.py`.
+    Nutzt dieselbe `SharedCamera`, die auch die Erkennung offen haelt — eine
+    zweite Kamera lohnt sich hier nicht, siehe `camera.py`.
     """
     if space.latest_camera_frame is None:
         return None
-    source = sources.get("image_recognition")
-    if source is None or not image_recognition_opened:
+    source = _camera_owner(sources, opened)
+    if source is None:
         _log.error(
-            "Livestream-Knoten konfiguriert, aber Kamera-Quelle fehlt oder nicht bereit "
-            "-- kein Stream"
+            "Livestream-Knoten konfiguriert, aber keine geoeffnete Quelle haelt eine "
+            "Kamera -- kein Stream"
         )
         return None
+    annotator = None
+    try:
+        annotator = _build_annotator(source)
+    except Exception:
+        _log.exception("Stream-Overlay nicht verfuegbar, Stream laeuft ohne Markierung")
     stream = CameraStreamPublisher(
-        source.camera, space.latest_camera_frame, space.config.camera_stream
+        source.camera,
+        space.latest_camera_frame,
+        space.config.camera_stream,
+        annotator=annotator,
+        mode_node=space.camera_stream_mode,
     )
     stream.start()
+    _log.info(
+        "Livestream aus Profil '%s'%s",
+        source.profile_id,
+        " mit Overlay" if annotator is not None else " ohne Overlay",
+    )
     return stream
 
 
@@ -186,9 +239,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             config.vision_system_name,
         )
 
-    camera_stream = _start_camera_stream(
-        space, sources, image_recognition_opened=opened.get("image_recognition", False)
-    )
+    camera_stream = _start_camera_stream(space, sources, opened)
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 

@@ -16,7 +16,7 @@ DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
     ("", "hello_world"),
     ("hello-world", "hello_world"),
     ("calibration", "calibration"),
-    ("image-recognition", "image_recognition"),
+    ("apriltag", "apriltag"),
 )
 
 
@@ -37,9 +37,10 @@ class VisionServerConfig:
     max_id_length: int = 128
     max_parameters: int = 16
     frame_id: str = "world"
-    #: Muss ueber der laengsten Job-Laufzeit liegen: der QR-Scan in
-    #: `src/jobs/take_image.py` haelt die Kamera allein schon 30 s offen.
-    job_timeout: float = 40.0
+    #: Must exceed the longest job runtime. The AprilTag job is decisive:
+    #: `samples_per_job` captures, each waiting up to `capture_timeout_s`,
+    #: plus detection and margin.
+    job_timeout: float = 20.0
     #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
     #: Zustandswechsel abgeschlossen sein muss.
     stop_timeout: float = 5.0

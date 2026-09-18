@@ -12,7 +12,12 @@ was sie aus `calibration_path` laedt.
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "apriltag" / "calibration.yaml"
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+#: Machine-specific, hence under `data/` (excluded by .gitignore).
+DEFAULT_CALIBRATION_PATH = _REPO_ROOT / "data" / "calibration" / "camera.json"
+#: Cell layout, hence versioned under `config/`.
+DEFAULT_TAG_MAP_PATH = _REPO_ROOT / "config" / "tagmap.json"
 
 
 @dataclass(frozen=True)
@@ -23,7 +28,7 @@ class AprilTagProfileConfig:
     use_picamera: bool = True
     resolution: tuple[int, int] = (2028, 1520)
     calibration_path: Path = DEFAULT_CALIBRATION_PATH
-    tag_map_path: Path | None = None
+    tag_map_path: Path | None = DEFAULT_TAG_MAP_PATH
     tag_family: str = "tag36h11"
     tag_size_m: float = 0.05
     warmup_s: float = 2.0
@@ -32,17 +37,23 @@ class AprilTagProfileConfig:
     max_reproj_error_px: float = 3.0
     frame_id: str = "cam_ceiling"
     frame_convention: str = "z_forward_x_right_y_down"
+    #: "aruco" (default), "pupil" or "auto" -- see tagloc.detector.
+    detector_backend: str = "aruco"
+    #: Scale intrinsics to the actual image size instead of aborting. Only
+    #: enable when deliberately running at a resolution other than the one
+    #: calibrated for.
+    allow_resolution_mismatch: bool = False
 
 
 @dataclass(frozen=True)
 class CameraStreamConfig:
-    """Betriebsparameter der einen Kamera, die sich QR-Erkennung und Livestream teilen.
+    """Betriebsparameter der einen Kamera, die sich Erkennung und Livestream teilen.
 
     Eine einzige `SharedCamera`-Instanz (siehe `camera.py`) wird mit diesen
-    Werten geoeffnet; sowohl die QR-Erkennung (`detection/image_recognition.py`)
-    als auch der Node-Publisher (`camera_stream.py`) lesen von dort, statt
-    selbst je einen eigenen Kamera-Handle zu oeffnen — Picamera2 laesst pro
-    Kamera nur einen offenen Zugriff gleichzeitig zu.
+    Werten geoeffnet; sowohl die Erkennungsquelle (`detection/apriltag.py`) als
+    auch der Node-Publisher (`camera_stream.py`) lesen von dort, statt selbst je
+    einen eigenen Kamera-Handle zu oeffnen — Picamera2 laesst pro Kamera nur
+    einen offenen Zugriff gleichzeitig zu.
     """
 
     camera_index: int = 0
@@ -51,5 +62,13 @@ class CameraStreamConfig:
     warmup_s: float = 2.0
     stream_fps: float = 5.0
     jpeg_quality: int = 70
-    qr_scan_duration_s: float = 30.0
     node_name: str = "LatestCameraFrame"
+    #: Writable node through which the frontend selects the overlay mode.
+    mode_node_name: str = "CameraStreamMode"
+    #: Initial value; valid values are "off", "apriltag", "calibration"
+    #: (tagloc.overlay).
+    overlay_mode: str = "apriltag"
+    #: Minimum gap between two detection runs for the overlay. The stream is
+    #: meant to help debugging, not load the Pi's CPU -- between runs, the
+    #: last result is redrawn.
+    overlay_interval_s: float = 0.5

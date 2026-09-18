@@ -1,6 +1,6 @@
 """Eine Kamera, ein Capture-Loop, mehrere Leser.
 
-QR-Erkennung (`detection/image_recognition.py`) und Livestream-Publisher
+Erkennung (`detection/apriltag.py`) und Livestream-Publisher
 (`camera_stream.py`) brauchen beide Bilder derselben physischen Kamera.
 Picamera2/libcamera lassen pro Kamera aber nur einen offenen Zugriff
 gleichzeitig zu — ein zweiter `Picamera2()`-Open waehrend der Stream laeuft

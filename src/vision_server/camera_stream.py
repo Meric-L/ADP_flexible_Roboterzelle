@@ -4,6 +4,11 @@ Transportweg laut Backend-Absprache: das Backend abonniert diesen Knoten
 ganz normal ueber die bestehende `subscribeNode`-Infrastruktur, keine neue
 Backend-Logik noetig. Dieses Modul kennt daher nur den Knoten, keine
 WebSocket- oder Backend-Details.
+
+The stream can be annotated: an `annotator` draws detected AprilTags or
+board corners onto the image, and a second, **writable** node selects the
+mode ("off", "apriltag", "calibration"). The publisher itself knows neither
+OpenCV nor detection -- it only passes mode and image along.
 """
 
 import asyncio
@@ -14,6 +19,8 @@ from collections.abc import Callable
 from typing import Any
 
 from asyncua.common.node import Node
+
+from tagloc.modes import normalise_mode
 
 from .camera import SharedCamera
 from .profiles import CameraStreamConfig
@@ -40,10 +47,10 @@ class CameraStreamPublisher:
     """Schreibt periodisch den neuesten Kamera-Frame in einen String-Knoten.
 
     Oeffnet und schliesst die Kamera **nicht** selbst — die gehoert der
-    `ImageRecognitionDetectionSource`, die dieselbe `SharedCamera`-Instanz
-    reicht (siehe `runner.py`). Schreibt bewusst jeden Tick, auch bei einem
-    unveraenderten Frame: das Frontend soll ein einfaches "Bild kommt an /
-    kommt nicht an" sehen, keine Diff-Logik.
+    Erkennungsquelle, die dieselbe `SharedCamera`-Instanz reicht (siehe
+    `runner.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
+    Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
+    sehen, keine Diff-Logik.
     """
 
     def __init__(
@@ -53,13 +60,39 @@ class CameraStreamPublisher:
         config: CameraStreamConfig,
         *,
         encode_frame: Callable[[Any, int], str | None] = _encode_jpeg_base64,
+        annotator: Any = None,
+        mode_node: Node | None = None,
     ) -> None:
         self._camera = camera
         self._node = node
         self._config = config
         #: Austauschbar fuer Tests, die ohne `cv2` laufen sollen.
         self._encode_frame = encode_frame
+        #: Draws detection results onto the image; `None` = always raw frame.
+        self._annotator = annotator
+        #: Writable node through which the frontend selects the mode.
+        self._mode_node = mode_node
+        self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
+
+    @property
+    def mode(self) -> str:
+        """Return the last-read overlay mode."""
+        return self._mode
+
+    async def _read_mode(self) -> str:
+        """Read the selected mode. Keeps the last value on failure.
+
+        An unreadable node is no reason to stop the stream -- the image
+        matters more than the markup.
+        """
+        if self._mode_node is None:
+            return self._mode
+        try:
+            self._mode = normalise_mode(await self._mode_node.read_value())
+        except Exception:
+            _log.debug("Overlay-Modus nicht lesbar, bleibe bei '%s'", self._mode)
+        return self._mode
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._publish_loop())
@@ -72,8 +105,17 @@ class CameraStreamPublisher:
             frame = self._camera.latest_frame
             if frame is not None:
                 try:
+                    mode = await self._read_mode()
+                    image = frame.image
+                    if mode != "off" and self._annotator is not None:
+                        # In the worker thread: detection and drawing are
+                        # blocking and have no business on the event loop.
+                        # The annotator works on a copy.
+                        image = await loop.run_in_executor(
+                            None, self._annotator.annotate, frame.image, mode
+                        )
                     encoded = await loop.run_in_executor(
-                        None, self._encode_frame, frame.image, self._config.jpeg_quality
+                        None, self._encode_frame, image, self._config.jpeg_quality
                     )
                     if encoded is not None:
                         await self._node.write_value(encoded)

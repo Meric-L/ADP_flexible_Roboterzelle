@@ -28,6 +28,9 @@ class VisionAddressSpace:
     results_folder: Node
     #: `None`, wenn `config.camera_stream` nicht gesetzt ist -- kein Livestream.
     latest_camera_frame: Node | None
+    #: Writable: the frontend selects what the stream shows through this
+    #: ("off", "apriltag", "calibration"). `None` without a livestream.
+    camera_stream_mode: Node | None = None
 
 
 async def configure_server(server: Server, config: VisionServerConfig) -> None:
@@ -94,13 +97,33 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     results_folder = await result_management.get_child(f"{mv_idx}:Results")
 
     latest_camera_frame: Node | None = None
+    camera_stream_mode: Node | None = None
     if config.camera_stream is not None:
-        # Additiver Knoten, nicht Teil des 40100-Nodesets -- analog zu den
+        # Additive Knoten, nicht Teil des 40100-Nodesets -- analog zu den
         # eigenen `RaspiDevice`-Variablen in `OPCUA/server.py`. Nur der Server
         # schreibt hierhin, daher kein `set_writable()`.
+        # Explicit string NodeId instead of the auto-assigned numeric one:
+        # `add_variable(own_idx, ...)` would produce `ns=X;i=<running number>`,
+        # which shifts whenever someone adds a node before it. The backend
+        # subscribes to these nodes by fixed address -- they must be stable
+        # and match the form documented in doc/vision-server-interface.md.
         latest_camera_frame = await vision_system.add_variable(
-            own_idx, config.camera_stream.node_name, "", ua.VariantType.String
+            ua.NodeId(f"{name}.{config.camera_stream.node_name}", own_idx),
+            ua.QualifiedName(config.camera_stream.node_name, own_idx),
+            "",
+            ua.VariantType.String,
         )
+        # This one is the exception: the frontend selects the stream's
+        # overlay mode through it, so it **must** be writable. An invalid
+        # value can't stop the stream -- the publisher normalises it
+        # (see `tagloc.overlay.normalise_mode`).
+        camera_stream_mode = await vision_system.add_variable(
+            ua.NodeId(f"{name}.{config.camera_stream.mode_node_name}", own_idx),
+            ua.QualifiedName(config.camera_stream.mode_node_name, own_idx),
+            config.camera_stream.overlay_mode,
+            ua.VariantType.String,
+        )
+        await camera_stream_mode.set_writable()
 
     _log.info("VisionSystem '%s' als %s angelegt", name, vision_system.nodeid.to_string())
     return VisionAddressSpace(
@@ -115,4 +138,5 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         stop=stop,
         results_folder=results_folder,
         latest_camera_frame=latest_camera_frame,
+        camera_stream_mode=camera_stream_mode,
     )
