@@ -1,4 +1,10 @@
+# Bildverarbeitung und Marker-Erkennung. `contrib`, weil `cv2.aruco` dort liegt.
 opencv-contrib-python>=4.8.0
-pupil-apriltags
 numpy
+# Optionaler zweiter Detektor-Backend (tagloc.detector, backend="pupil").
+# Nur noetig fuer Vergleichsmessungen gegen cv2.aruco.
+pupil-apriltags
 asyncua>=1.1.5
+# picamera2 wird NICHT hier installiert, sondern per apt
+# (sudo apt install -y python3-picamera2) und braucht deshalb eine venv mit
+# --system-site-packages. Siehe doc/apriltag-e2e-test.md.
