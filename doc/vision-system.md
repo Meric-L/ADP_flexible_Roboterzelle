@@ -99,7 +99,7 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
   Beenden zurückgezogen:
   - **mDNS** (`src/ua_mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
     Vision-Identität. Für Clients im Subnetz.
-  - **LDS-Registrierung** (`src/ua_lds.py`): `RegisterServer2` an
+  - **LDS-Anmeldung** (`src/ua_lds.py`): `RegisterServer` an
     `opc.tcp://10.10.38.27:4840/`, alle 60 s erneuert. **Nur darüber** nimmt
     der Aggregation-Server der Zelle das Modul auf — mDNS allein genügt ihm
     nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.

@@ -44,10 +44,10 @@ Am 21.09.2026 im Labor gemessen, von `10.10.38.110` aus (gleiches Subnetz):
   urn:freeopcua.github.io:python:server` und `ServerType: ClientAndServer` —
   es sind asyncua-Server, die sich aktiv registrieren.
 
-**Schlussfolgerung:** Der Weg in den Aggregation-Server führt über
-`RegisterServer2` am LDS, nicht über mDNS. Die Aussage in
+**Schlussfolgerung:** Der Weg in den Aggregation-Server führt über eine aktive
+Anmeldung am LDS (`RegisterServer`), nicht über mDNS. Die Aussage in
 `betreuer/OPC UA-mDNS-Kurzanleitung.md` und in
-`doc/part10-programm-schnittstelle.md`, `RegisterServer2` sei nicht nötig,
+`doc/part10-programm-schnittstelle.md`, eine Anmeldung sei nicht nötig,
 trifft nicht zu.
 
 ## Betroffene Dateien
@@ -67,9 +67,9 @@ trifft nicht zu.
 | --- | --- |
 | Discovery-Server (LDS) | `opc.tcp://10.10.38.27:4840/` |
 | Aggregation-Server | `opc.tcp://10.10.38.27:48400/` |
-| Dienst | `RegisterServer2`, Rückfall `RegisterServer` |
+| Dienst | `RegisterServer`, **ohne** `MdnsDiscoveryConfiguration` |
 | Verbindung | sessionlos (`connect_sessionless`), `NoSecurity` |
-| Erneuerung | alle 60 s (Spezifikation verlangt ≤ 10 min) |
+| Erneuerung | alle 60 s — notwendig, nicht optional (gemessen, siehe unten) |
 | Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
 | Abschaltung | `OPCUA_LDS_URL=""` |
 | Abweichender LDS | `OPCUA_LDS_URL=opc.tcp://host:4840/` |
@@ -96,16 +96,14 @@ async def register(
     server_name: str,
     port: int,
     path: str,
-    mdns_name: str,
     address: str | None = None,
     url: str | None = None,
-    caps: Sequence[str] = ("DA",),
-    renew_seconds: int = DEFAULT_RENEW_SECONDS,
+    renew_seconds: float = DEFAULT_RENEW_SECONDS,
 ) -> AsyncIterator[str | None]:
-    """Registriert beim LDS, erneuert periodisch, meldet beim Verlassen ab.
+    """Meldet beim LDS an, erneuert periodisch, meldet beim Verlassen ab.
 
-    Liefert die registrierte DiscoveryUrl, oder None, wenn nicht registriert
-    wurde (kein LDS konfiguriert, keine LAN-IPv4, Registrierung gescheitert).
+    Liefert die angemeldete DiscoveryUrl, oder None, wenn nicht angemeldet
+    wurde (kein LDS konfiguriert, keine LAN-IPv4, Anmeldung gescheitert).
     Wirft nichts — Fehler landen im Log.
     """
 ```
@@ -126,7 +124,7 @@ ein, die auch die mDNS-Ankündigung nennt (`ua_mdns.detect_lan_ipv4`).
 | `ServerType` | `ClientAndServer` |
 | `DiscoveryUrls` | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
 | `IsOnline` | `True`; beim Beenden `False` (Abmeldung) |
-| `DiscoveryConfiguration` | `MdnsDiscoveryConfiguration(MdnsServerName=<mDNS-Instanzname>, ServerCapabilities=["DA"])` |
+| `DiscoveryConfiguration` | keine — schlichtes `RegisterServer`, wie bei den Nachbarmodulen |
 
 Im Aggregation-Server erscheint das Modul danach als Objekt unter `Objects` in
 dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
@@ -137,7 +135,6 @@ dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
 | Fall | Verhalten |
 | --- | --- |
 | LDS nicht erreichbar | Warnung im Log, Server läuft weiter, mDNS bleibt aktiv |
-| `RegisterServer2` abgelehnt | Rückfall auf `RegisterServer` ohne mDNS-Angaben |
 | Keine LAN-IPv4 ermittelbar | keine Registrierung, Warnung im Log |
 | Erneuerung scheitert einmalig | Warnung, Schleife läuft weiter |
 | `OPCUA_LDS_URL=""` | Registrierung abgeschaltet, Hinweis im Log |
@@ -160,9 +157,19 @@ dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
   `opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt die
   Adresse wörtlich. `ua_lds` baut den Datensatz deshalb selbst. Als Altlast
   D10 vermerkt.
-- **`MdnsDiscoveryConfiguration` wird als Liste übergeben.** `asyncua` setzt in
-  `Client.register_server` ein einzelnes Objekt, obwohl das Feld
-  `list[ua.ExtensionObject]` ist.
+- **Von `RegisterServer2` auf `RegisterServer` zurückgegangen.** Der erste
+  Entwurf schickte eine `MdnsDiscoveryConfiguration` mit. Danach stand im
+  `FindServersOnNetwork` des LDS einmal
+  `opc.tcp://10.10.38.104.local:4840/raspi/server` — ein an eine IP gehängtes
+  `.local`, das nicht auflöst. **Nicht reproduzierbar:** `flange-01` meldete
+  sich über denselben Codeweg an und bekam einen sauberen Eintrag. Der Effekt
+  ist damit nicht als Fehler belegt, und den Aggregation-Server betrifft er
+  ohnehin nicht. Trotzdem melden wir uns jetzt so an wie Conveyor,
+  CardDispenser und die Roboter — eine Variable weniger. `caps=DA` steht
+  ohnehin in der eigenen mDNS-Ankündigung.
+- **Erneuerung ist belegt notwendig.** Ursprünglich mit „die Spezifikation
+  verlangt ≤ 10 min" begründet — das stammt aber aus dem asyncua-Docstring, war
+  also übernommen und nicht gemessen. Der Beleg kam anders (siehe unten).
 
 ## Ergebnis der Abnahme
 
@@ -175,14 +182,39 @@ Live gegen die laufende Zelle gemessen (21.09.2026, Layer 1 = `ceiling-01` auf
 | 16:18:36 | Aggregation-Server führt das Modul als Objekt unter `Objects`, mit allen neun Namespaces inkl. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01` |
 | 16:18:37 | Nach dem Abmelden (`IsOnline=False`) wieder aus dem LDS verschwunden |
 
-Aufnahme also **31 Sekunden** nach der Registrierung.
+Aufnahme also **31 Sekunden** nach der Anmeldung.
 
-Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 232 Tests,
-davon 14 neu in `tests/test_ua_lds.py`, alle grün.
+### Im Betrieb bestätigt
 
-**Noch offen:** Beide Pis müssen mit diesem Stand neu gestartet werden
-(`systemctl restart opcua-server.service`), damit die Registrierung dauerhaft
-aus dem Server selbst kommt. Zum Zeitpunkt der Abnahme lief nur Layer 1.
+Nach Ausrollen auf die Pis und Neustart des Dienstes stehen **beide** Module im
+Aggregation-Server, die Anmeldung kommt aus dem Server selbst:
+
+```
+urn:plcm:camera-server:ceiling-01
+urn:plcm:camera-server:roboter-hand-01
+```
+
+Für `ceiling-01` zusätzlich über 4,5 Minuten und damit mehrere
+Erneuerungszyklen beobachtet: durchgehend im LDS und im Aggregation-Server,
+ohne Aussetzer.
+
+### Beleg, dass Erneuerung notwendig ist
+
+Kam durch einen Zufall und ist die belastbarste Messung des Tages: Der LDS
+startete am 21.09.2026 um 15:56 neu (`LastCounterResetTime` springt mit).
+Conveyor läuft seit dem 08.09. und CardDispenser seit dem 07.09. durch — beide
+**ohne** eigenen Neustart —, und beide standen danach wieder im
+Anmeldebestand. Eine Anmeldung, die nur einmal beim eigenen Start gesendet
+wurde, lag im alten LDS-Prozess und wäre verloren. Die Nachbarmodule erneuern
+also periodisch; sichtbar ist das in deren Code nicht, weil
+`asyncua.Server.register_to_discovery()` die Schleife selbst startet
+(Standardabstand 60 s).
+
+Nicht gemessen: wie lange ein Eintrag ohne Erneuerung tatsächlich überlebt.
+open62541 räumt nach einem eigenen Timeout ab.
+
+Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 233 Tests,
+davon 15 neu in `tests/test_ua_lds.py`, alle grün.
 
 ## Offene Fragen
 

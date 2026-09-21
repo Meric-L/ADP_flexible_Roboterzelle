@@ -76,7 +76,7 @@ async def anmelden(app_uri, name, discovery_url, online=True):
 
 
 async def erneuern(app_uri, name, discovery_url):
-    """Die Anmeldung verfaellt. Spaetestens alle 10 Minuten erneuern."""
+    """Einmal anmelden genuegt nicht -- siehe unten. Alle 60 s erneuern."""
     while True:
         await asyncio.sleep(60)
         try:
@@ -216,19 +216,38 @@ Minuten liefen und per mDNS funkten, blieben außen vor. Nach einer einzigen
    gegenseitig. `await server.set_application_uri(...)` **vor** dem Aufbau des
    Adressraums aufrufen.
 
-3. **Die Anmeldung verfällt.** Ohne Erneuerung verschwindet das Modul nach
-   einer Weile wieder. Deshalb die Schleife. Umgekehrt gilt: nach einem harten
-   Abbruch bleibt der Eintrag bis zum Ablauf stehen — der Aggregation-Server
-   zeigt das Modul dann noch, kommt aber nicht mehr dran.
+3. **Einmal anmelden genügt nicht.** Das klingt nach Vorsicht, ist aber
+   gemessen: Der LDS wurde am 21.09.2026 um 15:56 neu gestartet. Conveyor läuft
+   seit dem 08.09. und CardDispenser seit dem 07.09. durch — **ohne** eigenen
+   Neustart —, und beide standen danach wieder im Anmeldebestand. Wer sich nur
+   einmal beim eigenen Start anmeldet, ist nach jedem LDS-Neustart still weg,
+   bis er selbst neu startet.
+
+   In fremdem Code sieht man die Erneuerung nur nicht:
+   `asyncua.Server.register_to_discovery()` startet die Schleife selbst,
+   Standardabstand 60 s. Wer die Methode benutzt, bekommt sie geschenkt — wer
+   den Registrierungsdatensatz wie oben selbst baut (wegen Falle 1), muss die
+   Schleife selbst mitbringen.
+
+   Wie lange ein Eintrag ohne Erneuerung überlebt, ist **nicht** gemessen;
+   open62541 räumt nach einem eigenen Timeout ab. Die verbreitete Angabe
+   „mindestens alle 10 Minuten" stammt aus dem asyncua-Docstring.
+
+   Umgekehrt gilt: nach einem harten Abbruch bleibt der Eintrag bis zum Ablauf
+   stehen — der Aggregation-Server zeigt das Modul dann noch, kommt aber nicht
+   mehr dran.
 
 ### Kleinigkeit am Rande
 
-Wer `register_server2` mit einer `MdnsDiscoveryConfiguration` benutzt statt des
-einfachen `register_server` oben, bekommt im `FindServersOnNetwork` des LDS
-eine DiscoveryUrl der Form `opc.tcp://10.10.38.104.local:4840/...` — der LDS
-behandelt den Host als mDNS-Namen und hängt `.local` an eine IP, was nicht
-auflöst. Auf den Aggregation-Server wirkt sich das nicht aus (der nimmt die
-angemeldete Url), aber der einfache Weg oben erzeugt saubere Einträge.
+Bei `register_server2` mit einer `MdnsDiscoveryConfiguration` stand im
+`FindServersOnNetwork` des LDS einmal eine DiscoveryUrl der Form
+`opc.tcp://10.10.38.104.local:4840/...` — ein an eine IP gehängtes `.local`,
+das nicht auflöst. Eine spätere Anmeldung über denselben Weg ergab dagegen
+einen sauberen Eintrag; der Effekt ist also nicht reproduzierbar und hier
+nicht als Fehler behauptet. Auf den Aggregation-Server wirkt er sich ohnehin
+nicht aus, der nimmt die angemeldete Url. Das einfache `register_server` oben
+ist trotzdem der ruhigere Weg — es ist das, womit die vorhandenen Module der
+Zelle nachweislich laufen.
 
 ### Was weiterhin gilt
 

@@ -325,7 +325,6 @@ async def main():
                     server_name=SERVER_NAME,
                     port=MDNS_PORT,
                     path=MDNS_PATH,
-                    mdns_name=instance,
                 ),
             ):
                 n = 0
