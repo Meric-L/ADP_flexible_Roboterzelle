@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"",
+            "timeout": 15,
+            "statusMessage": "Projektregeln und doc/-Index laden"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"",
+            "timeout": 15,
+            "statusMessage": "Projektregeln an Subagent uebergeben"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"",
+            "timeout": 15,
+            "once": true,
+            "statusMessage": "Erinnerung: doc/ lesen und Arbeitsplan anlegen"
+          }
+        ]
+      }
+    ]
+  }
+}
