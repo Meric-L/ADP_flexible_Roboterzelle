@@ -88,8 +88,9 @@ Module einsammelt. Auf **demselben Rechner** läuft unter
 `opc.tcp://10.10.38.27:4840/` ein **open62541 Local Discovery Server (LDS)**.
 
 Der Aggregation-Server führt genau die Module, die im LDS registriert sind —
-und in den LDS kommt man nur durch einen aktiven **`RegisterServer2`**-Aufruf.
-Eine mDNS-Ankündigung allein trägt sich dort nicht ein.
+und in den LDS kommt man nur durch einen aktiven **`RegisterServer`**-Aufruf
+(`RegisterServer2` tut es auch). Eine mDNS-Ankündigung allein trägt sich dort
+nicht ein.
 
 **Wie das gemessen wurde (21.09.2026):**
 
@@ -116,17 +117,49 @@ bringt uns in den Aggregation-Server, mDNS bedient Clients im Subnetz direkt.
 | | Wert |
 | --- | --- |
 | Discovery-Server | `opc.tcp://10.10.38.27:4840/` |
-| Dienst | `RegisterServer2`, Rückfall `RegisterServer` |
+| Dienst | `RegisterServer`, **ohne** `MdnsDiscoveryConfiguration` |
 | Verbindung | sessionlos, `NoSecurity` |
-| Erneuerung | alle 60 s (Spezifikation: mindestens alle 10 min) |
+| Erneuerung | alle 60 s — **notwendig**, siehe unten |
 | Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
 | Abschalten / umbiegen | `OPCUA_LDS_URL=""` bzw. `OPCUA_LDS_URL=opc.tcp://host:4840/` |
 
-**Falle:** `asyncua.Server.register_to_discovery()` trägt
+**Einmal anmelden genügt nicht.** Das ist keine Vorsichtsmaßnahme, sondern
+gemessen: Der LDS wurde am 21.09.2026 um 15:56 neu gestartet
+(`LastCounterResetTime` springt mit). Conveyor läuft seit dem 08.09. und
+CardDispenser seit dem 07.09. durch — beide haben **nicht** neu gestartet, und
+beide stehen nach dem LDS-Neustart wieder im Anmeldebestand. Eine Anmeldung,
+die nur einmal beim eigenen Start gesendet wurde, lag im alten LDS-Prozess und
+wäre weg. Also erneuern die Nachbarmodule periodisch.
+
+Man sieht das in deren Code nur nicht: `asyncua.Server.register_to_discovery()`
+startet die Erneuerungsschleife selbst, Standardabstand **60 s**. Wer die
+Methode benutzt, bekommt sie geschenkt und hält sie für nicht vorhanden. Wir
+bauen den Datensatz aus Falle 1 selbst und brauchen die Schleife deshalb
+explizit.
+
+Wie lange eine Anmeldung ohne Erneuerung genau überlebt, haben wir **nicht**
+gemessen — open62541 räumt alte Einträge nach einem eigenen Timeout ab. Die
+verbreitete Angabe „mindestens alle 10 Minuten" stammt aus dem Docstring von
+`asyncua`, nicht aus einer Messung an dieser Zelle.
+
+**Falle 1:** `asyncua.Server.register_to_discovery()` trägt
 `server.endpoint.geturl()` als DiscoveryUrl ein — bei uns
 `opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt die
 Adresse und verbindet ins Leere. `ua_lds` trägt deshalb dieselbe LAN-IPv4 ein,
 die auch die mDNS-Ankündigung nennt.
+
+**Falle 2 — einmal beobachtet, nicht reproduziert:** Bei einer Anmeldung per
+`RegisterServer2` mit `MdnsDiscoveryConfiguration` stand im
+`FindServersOnNetwork` des LDS einmal die DiscoveryUrl
+`opc.tcp://10.10.38.104.local:4840/…` — ein an eine IP gehängtes `.local`, das
+nicht auflöst. Eine spätere Anmeldung desselben Codewegs (`flange-01`) ergab
+dagegen einen sauberen Eintrag, der Effekt ist also **nicht deterministisch**;
+vermutlich ein Timing-Artefakt beim Auflösen des mDNS-Namens durch den LDS.
+Den Aggregation-Server betrifft es ohnehin nicht, der nimmt die angemeldete
+Url. Wir melden uns trotzdem mit dem schlichten `RegisterServer` an — nicht
+weil der Fehler bewiesen wäre, sondern weil das exakt die Konfiguration ist,
+mit der Conveyor, CardDispenser und die Roboter nachweislich laufen. Eine
+Variable weniger.
 
 Dort erscheint ein Modul unter seiner **ApplicationUri**, nicht unter dem
 mDNS-Namen. Vorhandene Einträge und unsere:

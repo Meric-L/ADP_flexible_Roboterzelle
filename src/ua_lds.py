@@ -4,27 +4,38 @@ Ergaenzt die mDNS-Ankuendigung aus `ua_mdns`, ersetzt sie nicht.
 
 Warum beides noetig ist (am 2026-09-21 im Labor gemessen):
 Der Aggregation-Server (`opc.tcp://10.10.38.27:48400/`) sammelt seine Module
-**nicht** per mDNS ein, obwohl die Kurzanleitung des Betreuers das behauptet.
+**nicht** per mDNS ein, obwohl die Kurzanleitung des Betreuers das behauptete.
 Auf demselben Rechner laeuft unter `opc.tcp://10.10.38.27:4840/` ein
 open62541-Discovery-Server, und der Aggregation-Server fuehrt genau die Server,
-die dort per `RegisterServer2` registriert sind -- UR5e, Conveyor,
-CardDispenser, Franka, EVA. In diesen Bestand kommt man nur durch einen
-aktiven Aufruf; eine mDNS-Ankuendigung allein traegt sich dort nicht ein.
+die dort angemeldet sind -- UR5e, Conveyor, CardDispenser, Franka, EVA. In
+diesen Bestand kommt man nur durch einen aktiven Aufruf; eine mDNS-Ankuendigung
+allein traegt sich dort nicht ein.
 Gegenprobe: der Aggregation-Server startete um 15:56 neu und nahm beim frischen
-Scan alle fuenf registrierten Module auf -- unsere beiden Pis, die zu dem
+Scan alle fuenf angemeldeten Module auf -- unsere beiden Pis, die zu dem
 Zeitpunkt seit zehn Minuten liefen und funkten, blieben aussen vor.
 
 Die mDNS-Ankuendigung bleibt trotzdem: Clients im Subnetz (unter anderem das
 WSC-Frontend) finden uns darueber ohne Umweg ueber den Discovery-Server.
 
-Zwei Entscheidungen, die von `Server.register_to_discovery()` abweichen:
+Drei Entscheidungen, die von `Server.register_to_discovery()` abweichen:
 
 1. `asyncua` traegt als DiscoveryUrl `server.endpoint.geturl()` ein, und das ist
    hier `opc.tcp://0.0.0.0:4840/raspi/server/`. Ein Aggregation-Server kann mit
    `0.0.0.0` nichts anfangen -- er wuerde die Adresse uebernehmen und ins Leere
    verbinden. Deshalb wird dieselbe LAN-IPv4 eingetragen, die auch die
    mDNS-Ankuendigung nennt (`ua_mdns.detect_lan_ipv4`).
-2. Scheitert die Registrierung, laeuft der Server weiter und es steht eine
+2. Angemeldet wird mit dem schlichten `RegisterServer`, **ohne**
+   `MdnsDiscoveryConfiguration` -- so, wie Conveyor, CardDispenser und die
+   Roboter es nachweislich tun. Anlass war eine Beobachtung am 2026-09-21: mit
+   dieser Konfiguration stand im `FindServersOnNetwork` des LDS einmal
+   `opc.tcp://10.10.38.104.local:4840/raspi/server` -- ein an eine IP
+   gehaengtes `.local`, das nicht aufloest. Eine spaetere Anmeldung desselben
+   Codewegs ergab dagegen einen sauberen Eintrag, der Effekt ist also **nicht
+   reproduzierbar** und hier nicht als Fehler behauptet. Den Aggregation-Server
+   betrifft er ohnehin nicht, der nimmt die angemeldete Url. Wir richten uns
+   trotzdem nach den Nachbarmodulen: eine Variable weniger, und unsere
+   Faehigkeiten (`caps=DA`) stehen ohnehin in der eigenen mDNS-Ankuendigung.
+3. Scheitert die Registrierung, laeuft der Server weiter und es steht eine
    Warnung im Log. Ein Server, den man per URL erreicht, ist mehr wert als gar
    keiner -- dieselbe Linie wie bei `ua_mdns`.
 """
@@ -33,7 +44,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 
 from asyncua import Client, ua
 
@@ -44,8 +55,14 @@ _log = logging.getLogger(__name__)
 #: Discovery-Server der Zelle. `OPCUA_LDS_URL=""` schaltet die Registrierung ab.
 DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 
-#: Teil 12 der Spezifikation verlangt eine Erneuerung mindestens alle 10
-#: Minuten. 60 s laesst Raum fuer ausgefallene Versuche, ohne den LDS zu fluten.
+#: Erneuerung ist noetig, nicht optional -- gemessen am 2026-09-21: der LDS
+#: startete um 15:56 neu, und Conveyor (seit 08.09. durchgehend) wie
+#: CardDispenser (seit 07.09.) standen danach wieder im Anmeldebestand, ohne
+#: selbst neu gestartet zu haben. Eine einmalige Anmeldung beim eigenen Start
+#: lag im alten LDS-Prozess und waere weg gewesen.
+#: 60 s ist der Standardabstand von `asyncua.Server.register_to_discovery()`;
+#: wie lange ein Eintrag ohne Erneuerung tatsaechlich ueberlebt, ist nicht
+#: gemessen.
 DEFAULT_RENEW_SECONDS = 60
 
 #: ProductUri der uebrigen Module der Zelle -- alle laufen auf asyncua.
@@ -63,7 +80,7 @@ def _registered_server(
     discovery_url: str,
     is_online: bool,
 ) -> ua.RegisteredServer:
-    """Baut den `RegisteredServer`-Datensatz fuer RegisterServer2.
+    """Baut den `RegisteredServer`-Datensatz fuer die Anmeldung.
 
     `ClientAndServer` und die freeopcua-ProductUri entsprechen dem, womit
     Conveyor, CardDispenser und die Roboter im LDS stehen.
@@ -78,37 +95,17 @@ def _registered_server(
     return server
 
 
-async def _send(
-    url: str,
-    registered: ua.RegisteredServer,
-    mdns_name: str,
-    caps: Sequence[str],
-) -> None:
-    """Schickt eine RegisterServer2-Anfrage an den Discovery-Server.
+async def _send(url: str, registered: ua.RegisteredServer) -> None:
+    """Schickt eine RegisterServer-Anfrage an den Discovery-Server.
 
-    Registrierung ist ein sessionloser Dienst -- es wird nur ein sicherer Kanal
-    aufgebaut, keine Session. Aeltere Discovery-Server kennen `RegisterServer2`
-    nicht; dann greift der Rueckfall auf `RegisterServer`, der ohne die
-    mDNS-Angaben auskommt.
+    Anmeldung ist ein sessionloser Dienst -- es wird nur ein sicherer Kanal
+    aufgebaut, keine Session. Zur bewussten Wahl von `RegisterServer` statt
+    `RegisterServer2` siehe den Modulkopf.
     """
     client = Client(url=url, timeout=10)
     await client.connect_sessionless()
     try:
-        params = ua.RegisterServer2Parameters()
-        params.Server = registered
-        params.DiscoveryConfiguration = [
-            ua.MdnsDiscoveryConfiguration(
-                MdnsServerName=mdns_name,
-                ServerCapabilities=list(caps),
-            )
-        ]
-        try:
-            await client.uaclient.register_server2(params)
-        except ua.UaStatusCodeError as exc:
-            _log.info(
-                "RegisterServer2 abgelehnt (%s); fallback auf RegisterServer", exc
-            )
-            await client.uaclient.register_server(registered)
+        await client.uaclient.register_server(registered)
     finally:
         with contextlib.suppress(Exception):
             await client.disconnect_sessionless()
@@ -120,13 +117,11 @@ async def register(
     server_name: str,
     port: int,
     path: str,
-    mdns_name: str,
     address: str | None = None,
     url: str | None = None,
-    caps: Sequence[str] = ("DA",),
-    renew_seconds: int = DEFAULT_RENEW_SECONDS,
+    renew_seconds: float = DEFAULT_RENEW_SECONDS,
 ) -> AsyncIterator[str | None]:
-    """Registriert den Server beim LDS und meldet ihn beim Verlassen ab.
+    """Meldet den Server beim LDS an und beim Verlassen wieder ab.
 
     Parameters
     ----------
@@ -138,30 +133,26 @@ async def register(
     port, path
         Port und Pfad des Endpoints; daraus entsteht mit der LAN-IPv4 die
         DiscoveryUrl, die der Aggregation-Server spaeter anwaehlt.
-    mdns_name
-        Name, unter dem der Discovery-Server uns seinerseits per mDNS fuehrt.
     address
         Anzukuendigende IPv4; ohne Angabe wird sie ermittelt.
     url
         Discovery-Server; ohne Angabe entscheidet `lds_url()`.
-    caps
-        Server-Faehigkeiten, wie im mDNS-TXT-Eintrag `caps`.
     renew_seconds
-        Abstand der Erneuerungen; `0` registriert einmalig.
+        Abstand der Erneuerungen; `0` meldet einmalig an.
 
     Yields
     ------
-    Die registrierte DiscoveryUrl, oder `None`, wenn nicht registriert wurde.
+    Die angemeldete DiscoveryUrl, oder `None`, wenn nicht angemeldet wurde.
     """
     target = url if url is not None else lds_url()
     if not target:
-        _log.info("Kein Discovery-Server konfiguriert; keine Registrierung")
+        _log.info("Kein Discovery-Server konfiguriert; keine Anmeldung")
         yield None
         return
 
     ip = address or ua_mdns.detect_lan_ipv4()
     if ip is None:
-        _log.warning("Keine LAN-IPv4 ermittelbar; LDS-Registrierung uebersprungen")
+        _log.warning("Keine LAN-IPv4 ermittelbar; LDS-Anmeldung uebersprungen")
         yield None
         return
 
@@ -169,26 +160,26 @@ async def register(
     online = _registered_server(application_uri, server_name, discovery_url, True)
 
     try:
-        await _send(target, online, mdns_name, caps)
+        await _send(target, online)
     except Exception:
         _log.exception(
-            "LDS-Registrierung bei %s fehlgeschlagen; Server laeuft ohne sie weiter",
+            "LDS-Anmeldung bei %s fehlgeschlagen; Server laeuft ohne sie weiter",
             target,
         )
         yield None
         return
 
-    _log.info("Beim Discovery-Server %s registriert: %s", target, discovery_url)
+    _log.info("Beim Discovery-Server %s angemeldet: %s", target, discovery_url)
 
     async def renew() -> None:
-        # Laeuft die Registrierung ab, verschwindet das Modul aus dem
+        # Laeuft die Anmeldung ab, verschwindet das Modul aus dem
         # Aggregation-Server -- ein einzelner Fehlversuch darf die Schleife
         # deshalb nicht beenden.
         while True:
             await asyncio.sleep(renew_seconds)
             try:
-                await _send(target, online, mdns_name, caps)
-                _log.debug("LDS-Registrierung erneuert")
+                await _send(target, online)
+                _log.debug("LDS-Anmeldung erneuert")
             except Exception as exc:
                 _log.warning("LDS-Erneuerung fehlgeschlagen: %s", exc)
 
@@ -204,7 +195,7 @@ async def register(
         # verbindet. Greift nur, wenn der Prozess SIGTERM abfaengt.
         offline = _registered_server(application_uri, server_name, discovery_url, False)
         try:
-            await _send(target, offline, mdns_name, caps)
+            await _send(target, offline)
             _log.info("Beim Discovery-Server abgemeldet")
         except Exception as exc:
             _log.warning("LDS-Abmeldung fehlgeschlagen: %s", exc)
