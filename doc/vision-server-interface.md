@@ -39,7 +39,7 @@ Adressraum des Vision-Systems:
 
 ```
 Objects/
-└── VisionMachine                        ns=4;s=VisionMachine   (Typ: 3:VisionSystemType)
+└── VisionMachine                        ns=<vision>;s=VisionMachine   (Typ: 3:VisionSystemType)
     ├── VisionStateMachine               Preoperational | Halted | Error | Operational
     │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
     │       ├── StartSingleJob           <- Job starten
@@ -51,9 +51,9 @@ Objects/
     │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
     │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
-    ├── LatestResultJson                 ns=4;s=VisionMachine.LatestResultJson
+    ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
     │                                    derselbe JSON-String, als einfacher String-Knoten
-    └── LatestCameraFrame                ns=4;s=VisionMachine.LatestCameraFrame
+    └── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
                                          Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
 ```
 
@@ -81,7 +81,7 @@ Registry-Eintrag**. Der Server-Kern und diese Schnittstelle bleiben unberührt.
 | Endpoint | `opc.tcp://<pi>:4840/raspi/server/` |
 | Security | `NoSecurity` (keine Authentifizierung/Verschlüsselung) |
 | ServerName | `Raspberry Pi OPC UA Server` |
-| Namespace Vision | `http://launch-rm.de/vision` (aktuell ns=4) |
+| Namespace Vision | `http://launch-rm.de/vision` (aktuell **ns=7**, siehe Hinweis oben) |
 | Namespace 40100 | `http://opcfoundation.org/UA/MachineVision` (aktuell ns=3) |
 | Namespace Raspi | `http://launch-rm.de/raspi` (ns=2, nicht Vision-relevant) |
 
@@ -443,10 +443,11 @@ Vorführbare Sonderfälle:
 
 - **Echte Kalibrierung**: `calibration` fuehrt weiterhin nur einen Platzhalter
   aus (`src/jobs/calibrate.py`). `image-recognition`
-  (`detection/image_recognition.py`) steuert echt die Pi-Kamera per Picamera2
-  an und sucht per OpenCV nach einem QR-Code. Payload-Schema bleibt beim
-  Nachruesten der echten Kalibrierungslogik unveraendert. Bis dahin ist
-  `moduleId` erfunden und die Pose immer Null.
+  (`detection/image_recognition.py`) steuert echt die Pi-Kamera an (Picamera2
+  auf dem Decken-Pi, Intel RealSense per `pyrealsense2` auf dem Hand-Pi,
+  siehe Abschnitt 10) und sucht per OpenCV nach einem QR-Code. Payload-Schema
+  bleibt beim Nachruesten der echten Kalibrierungslogik unveraendert. Bis
+  dahin ist `moduleId` erfunden und die Pose immer Null.
 - **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (40 s, wegen
   des bis zu 30 s laufenden QR-Scans) braucht, wird abgebrochen und als
   `DETECTION_FAILED` gemeldet; der Automat kehrt nach `Ready` zurueck. Ein
@@ -496,6 +497,16 @@ Verhalten:
   QR-Jobs bleibt der Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
   (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
+- **Kamera-Backend ist pro Pi verschieden**, `CameraStreamConfig.backend`
+  (`"picamera2"` | `"realsense"` | `"opencv"`) macht das explizit:
+  `OPCUA/server.py` wählt es über `PI_CAMERA_BACKENDS`
+  (Hostname → Backend, Fallback `"picamera2"`, override per Env-Var
+  `VISION_CAMERA_BACKEND`). Aktuell: `ADP-Roboter-Lokalisierung` → Picamera2
+  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense (`realsense_fps`, native Pipeline-Framerate,
+  Standard 30 — unabhängig von der `stream_fps`-Kadenz, mit der
+  `SharedCamera` den jeweils neuesten Frame abholt). Für QR-Erkennung und
+  Livestream ist das Backend unsichtbar — beide lesen nur `CameraFrame`
+  (BGR-Array) von `SharedCamera.latest_frame`.
 
 ---
 

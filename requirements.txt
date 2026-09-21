@@ -5,3 +5,9 @@ asyncua>=1.1.5
 # mDNS-Ankuendigung des Servers (`src/ua_mdns.py`). Optional zur Laufzeit: ohne
 # das Paket startet der Server, kuendigt sich aber nicht an.
 zeroconf>=0.131
+# picamera2 (Decken-Pi) fehlt hier bewusst: kommt per apt, nicht zuverlaessig
+# per pip (siehe doc/altlasten.md D3). pyrealsense2 (Hand-Pi) ebenso NICHT
+# aufgenommen: Intel liefert auf PyPI i. d. R. keine ARM/aarch64-Wheels fuer
+# den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,
+# librealsense muss von Hand bzw. per apt/vorgebautem Paket installiert
+# werden. Vor dem Rollout auf dem Hand-Pi verifizieren.

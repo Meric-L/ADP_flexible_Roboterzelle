@@ -61,8 +61,17 @@ def read_cpu_temp() -> float:
 #: variieren: Interface-Doku und Frontend nageln `ns=<vision>;s=VisionMachine`
 #: fest, ein pi-spezifischer BrowseName bricht jeden Client.
 PI_IDENTITIES: dict[str, tuple[str, str]] = {
-    "pi-decke": ("vision-ceiling-01", "cam_ceiling"),
-    "pi-hand": ("vision-flange-01", "cam_flange"),
+    "ADP-Roboter-Lokalisierung": ("vision-ceiling-01", "cam_ceiling"),
+    "ADP-HandInEye-Kamera-Pi": ("vision-flange-01", "cam_flange"),
+}
+
+#: Hostname -> Kamera-Backend (siehe `CameraStreamConfig.backend`). Deckel-Pi
+#: nutzt weiterhin Picamera2, der Hand-Pi eine Intel RealSense per
+#: `pyrealsense2`. Fehlt ein Host hier, gilt "picamera2" als bisheriger
+#: Default -- ein frisch aufgesetzter dritter Pi bricht damit nicht stumm.
+PI_CAMERA_BACKENDS: dict[str, str] = {
+    "ADP-Roboter-Lokalisierung": "picamera2",
+    "ADP-HandInEye-Kamera-Pi": "realsense",
 }
 
 
@@ -78,7 +87,10 @@ PI_ASSET_PRESETS: dict[str, dict] = {
     },
     "cam_flange": {
         "computing_device_model": "Raspberry Pi",
-        "image_sensor_model": "Raspberry Pi Camera Module",
+        #: Genaues Modell (D415? D435?) noch nicht bestaetigt -- leer waere
+        #: hier schlechter als "irgendein RealSense", aber ein erfundenes
+        #: Modell (z. B. "D315", existiert nicht) waere schlimmer als das.
+        "image_sensor_model": "Intel RealSense",
     },
 }
 
@@ -106,6 +118,12 @@ def vision_identity() -> tuple[str, str]:
     )
 
 
+def vision_camera_backend() -> str:
+    """Kamera-Backend dieses Pis: Env, dann Hostname-Abbildung, dann Picamera2."""
+    host = socket.gethostname()
+    return os.getenv("VISION_CAMERA_BACKEND") or PI_CAMERA_BACKENDS.get(host, "picamera2")
+
+
 def mdns_instance_name() -> str:
     """Dienstname dieses Servers im lokalen Netz.
 
@@ -125,14 +143,20 @@ def vision_config() -> VisionServerConfig:
     und den Nodeset-Pfad.
     """
     vision_system_id, frame_id = vision_identity()
-    _log.info("Vision-Identitaet: %s (Rahmen %s)", vision_system_id, frame_id)
+    backend = vision_camera_backend()
+    _log.info(
+        "Vision-Identitaet: %s (Rahmen %s, Kamera-Backend %s)",
+        vision_system_id,
+        frame_id,
+        backend,
+    )
     return VisionServerConfig(
         endpoint=ENDPOINT,
         server_name=SERVER_NAME,
         nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
         frame_id=frame_id,
-        camera_stream=CameraStreamConfig(),
+        camera_stream=CameraStreamConfig(backend=backend),
         assets=asset_config(frame_id, vision_system_id),
     )
 
