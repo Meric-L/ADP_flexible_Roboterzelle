@@ -29,6 +29,7 @@ from vision_server.profiles import (  # noqa: E402
 )
 from vision_server.runner import install_vision_machine  # noqa: E402
 
+import ua_lds  # noqa: E402
 import ua_mdns  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -307,11 +308,26 @@ async def main():
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
 
+    instance = mdns_instance_name()
+
     try:
         async with server:
-            # Erst der Server, dann die Ankuendigung -- wer den Dienst findet,
-            # soll ihn auch erreichen. Beim Verlassen wird sie zurueckgezogen.
-            async with ua_mdns.announce(mdns_instance_name(), MDNS_PORT, MDNS_PATH):
+            # Erst der Server, dann Ankuendigung und Registrierung -- wer den
+            # Dienst findet, soll ihn auch erreichen. Beim Verlassen werden
+            # beide zurueckgezogen.
+            async with (
+                ua_mdns.announce(instance, MDNS_PORT, MDNS_PATH),
+                # Die Ankuendigung allein genuegt dem Aggregation-Server der
+                # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
+                # registriert ist. Messung und Begruendung stehen in `ua_lds`.
+                ua_lds.register(
+                    application_uri=application_uri(),
+                    server_name=SERVER_NAME,
+                    port=MDNS_PORT,
+                    path=MDNS_PATH,
+                    mdns_name=instance,
+                ),
+            ):
                 n = 0
                 while not stop.is_set():
                     n += 1
