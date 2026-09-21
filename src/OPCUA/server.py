@@ -96,6 +96,16 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.100,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
+        # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
+        # nur die Aufloesung/Kameradistanz unterscheidet sich, nicht das
+        # Blatt. Noch nicht real durchgemessen; falls das Board bei der
+        # Kalibrierfahrt nicht gefunden wird, war die Annahme falsch --
+        # dann mit dem Diagnose-Skript aus der Hand-Pi-Kalibrierung mehrere
+        # cols/rows-Kombinationen gegen einen echten Frame testen.
+        "calibration_board_type": "chessboard",
+        "calibration_board_cols": 7,
+        "calibration_board_rows": 9,
+        "calibration_board_square_size_m": 0.022,
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
