@@ -40,6 +40,15 @@ class ResultStore:
         self._json_node = json_node
         self._children = children
 
+    @property
+    def json_node(self) -> Node:
+        """Der JSON-Spiegelknoten `LatestResultJson`.
+
+        Oeffentlich, weil das Part-10-Programm ihn zusaetzlich unter sich
+        verlinkt -- als Referenz auf denselben Knoten, nicht als Kopie.
+        """
+        return self._json_node
+
     @classmethod
     async def create(cls, space: VisionAddressSpace) -> "ResultStore":
         """Legt die Ergebnisknoten an und macht `ResultContent` beschreibbar.

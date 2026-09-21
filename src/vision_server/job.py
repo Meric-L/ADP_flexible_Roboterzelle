@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -146,6 +146,30 @@ class JobRunner:
         #: `CancelledError` und kann sonst nicht wissen, welches Kommando ihn
         #: getroffen hat -- Stop und Abort nehmen aber verschiedene Uebergaenge.
         self._aborting = False
+        #: Beobachter des Job-Endes. Gebraucht von Aufsaetzen, die einen
+        #: eigenen Zustandsautomaten fuehren -- etwa das Part-10-Programm in
+        #: `vision_program.py`, das aus `Running` zurueck nach `Ready` muss.
+        self._finish_listeners: list[Callable[[str, VisionErrorCode], None]] = []
+
+    def add_finish_listener(
+        self, listener: Callable[[str, VisionErrorCode], None]
+    ) -> None:
+        """Meldet einen Beobachter fuer das Ende eines Jobs an.
+
+        Der Beobachter wird **synchron** aufgerufen, weil das Job-Ende im
+        `finally` eines moeglicherweise gerade abgebrochenen Tasks liegt: ein
+        `await` an dieser Stelle koennte sofort erneut `CancelledError`
+        werfen. Wer asynchron arbeiten muss, startet sich selbst einen Task.
+        """
+        self._finish_listeners.append(listener)
+
+    def _notify_finished(self, job_id: str, code: VisionErrorCode) -> None:
+        """Ruft alle Beobachter; ein Fehler dort darf den Job nicht beruehren."""
+        for listener in self._finish_listeners:
+            try:
+                listener(job_id, code)
+            except Exception:
+                _log.exception("Abschluss-Beobachter von Job %s fehlgeschlagen", job_id)
 
     async def cancel_running(self, timeout: float = 2.0) -> None:
         """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
@@ -259,6 +283,7 @@ class JobRunner:
         """
         source = self._sources[request.profile_id]
         cycle = 0
+        outcome = VisionErrorCode.OK
         try:
             async with self._lock:
                 await self._states.to_continuous_execution()
@@ -289,9 +314,11 @@ class JobRunner:
                     )
                     await asyncio.sleep(self._config.continuous_interval_s)
         except asyncio.CancelledError:
+            outcome = VisionErrorCode.CANCELLED
             await self._cancel(source, request, job_id, continuous=True)
             raise
         except TimeoutError:
+            outcome = VisionErrorCode.DETECTION_FAILED
             await self._fail(
                 source, request, job_id,
                 VisionJobError(
@@ -301,8 +328,10 @@ class JobRunner:
                 continuous=True,
             )
         except VisionJobError as error:
+            outcome = error.code
             await self._fail(source, request, job_id, error, continuous=True)
         except Exception as error:
+            outcome = VisionErrorCode.INTERNAL
             _log.exception("Dauerbetrieb %s unerwartet fehlgeschlagen", job_id)
             await self._fail(
                 source, request, job_id,
@@ -311,10 +340,12 @@ class JobRunner:
             )
         finally:
             self._busy = False
+            self._notify_finished(job_id, outcome)
 
     async def _run(self, job_id: str, request: JobRequest) -> None:
         """Durchlaeuft einen Einzeljob inklusive Events und Ergebnisablage."""
         source = self._sources[request.profile_id]
+        outcome = VisionErrorCode.OK
         try:
             async with self._lock:
                 await self._states.to_single_execution()
@@ -352,9 +383,11 @@ class JobRunner:
             # den Automaten zurueckfahren, bevor die Cancellation weiter nach
             # oben durchgereicht wird -- sonst bliebe der Automat fuer immer
             # in SingleExecution haengen und jeder weitere Job schluege fehl.
+            outcome = VisionErrorCode.CANCELLED
             await self._cancel(source, request, job_id)
             raise
         except TimeoutError:
+            outcome = VisionErrorCode.DETECTION_FAILED
             await self._fail(
                 source,
                 request,
@@ -365,14 +398,17 @@ class JobRunner:
                 ),
             )
         except VisionJobError as error:
+            outcome = error.code
             await self._fail(source, request, job_id, error)
         except Exception as error:
+            outcome = VisionErrorCode.INTERNAL
             _log.exception("Job %s unerwartet fehlgeschlagen", job_id)
             await self._fail(
                 source, request, job_id, VisionJobError(VisionErrorCode.INTERNAL, str(error))
             )
         finally:
             self._busy = False
+            self._notify_finished(job_id, outcome)
 
     async def _publish(
         self,

@@ -19,6 +19,7 @@ from .events import VisionEvents, create_event_generators
 from .job import JobRunner
 from .result_management import ResultStore
 from .state_machine import VisionStateMachines
+from .vision_program import VisionProgram, install_vision_program
 
 _log = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ class VisionMachine:
     camera_stream: CameraStreamPublisher | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
+    #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
+    program: VisionProgram | None = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -258,6 +261,29 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             config.vision_system_name,
         )
 
+    # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
+    # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
+    # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
+    mirror_nodes = {"LatestResultJson": results.json_node}
+    if space.latest_camera_frame is not None:
+        mirror_nodes["LatestCameraFrame"] = space.latest_camera_frame
+    program = await install_vision_program(
+        server,
+        server.nodes.objects,
+        space.own_idx,
+        jobs,
+        known_recipes=config.known_recipe_ids,
+        mirror_nodes=mirror_nodes,
+    )
+    if not states.is_ready():
+        # Ein generischer Client soll nicht `Ready` sehen, wenn kein Job
+        # angenommen wuerde. Teil 10 hat keinen Fehlerzustand -- `Halted` ist
+        # die einzige ehrliche Entsprechung.
+        sm = program.state_machine
+        await sm.change_state(
+            sm.halted, sm.ready_to_halted, "Vision-System nicht betriebsbereit"
+        )
+
     camera_stream = _start_camera_stream(
         space, sources, image_recognition_opened=opened.get("image_recognition", False)
     )
@@ -280,6 +306,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
         assets=assets,
+        program=program,
     )
 
 
