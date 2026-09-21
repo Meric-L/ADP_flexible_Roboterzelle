@@ -67,7 +67,7 @@ trifft nicht zu.
 | --- | --- |
 | Discovery-Server (LDS) | `opc.tcp://10.10.38.27:4840/` |
 | Aggregation-Server | `opc.tcp://10.10.38.27:48400/` |
-| Dienst | `RegisterServer`, **ohne** `MdnsDiscoveryConfiguration` |
+| Dienst | `Server.register_to_discovery()` → `RegisterServer`, ohne `MdnsDiscoveryConfiguration` |
 | Verbindung | sessionlos (`connect_sessionless`), `NoSecurity` |
 | Erneuerung | alle 60 s — notwendig, nicht optional (gemessen, siehe unten) |
 | Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
@@ -85,34 +85,45 @@ Umweg über den Discovery-Server.
 
 DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 DEFAULT_RENEW_SECONDS = 60
-PRODUCT_URI = "urn:freeopcua.github.io:python:server"
 
 def lds_url() -> str:
-    """URL des Discovery-Servers aus `OPCUA_LDS_URL`; leer = nicht registrieren."""
+    """URL des Discovery-Servers aus `OPCUA_LDS_URL`; leer = nicht anmelden."""
+
+def advertised_endpoint(
+    port: int, path: str, address: str | None = None
+) -> str | None:
+    """Endpoint-URL mit der LAN-IPv4, oder None, wenn keine zu ermitteln war."""
 
 @contextlib.asynccontextmanager
 async def register(
-    application_uri: str,
-    server_name: str,
-    port: int,
-    path: str,
-    address: str | None = None,
+    server: Server,
     url: str | None = None,
-    renew_seconds: float = DEFAULT_RENEW_SECONDS,
+    renew_seconds: int = DEFAULT_RENEW_SECONDS,
 ) -> AsyncIterator[str | None]:
     """Meldet beim LDS an, erneuert periodisch, meldet beim Verlassen ab.
 
     Liefert die angemeldete DiscoveryUrl, oder None, wenn nicht angemeldet
-    wurde (kein LDS konfiguriert, keine LAN-IPv4, Anmeldung gescheitert).
-    Wirft nichts — Fehler landen im Log.
+    wurde (kein LDS konfiguriert, Endpoint nennt 0.0.0.0, Anmeldung
+    gescheitert). Wirft nichts — Fehler landen im Log.
     """
 ```
 
-Warum nicht `asyncua.Server.register_to_discovery()`: die Methode trägt
-`server.endpoint.geturl()` als DiscoveryUrl ein, hier also
-`opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt diese
-Adresse und verbindet ins Leere. `ua_lds` trägt stattdessen dieselbe LAN-IPv4
-ein, die auch die mDNS-Ankündigung nennt (`ua_mdns.detect_lan_ipv4`).
+In `src/OPCUA/server.py`:
+
+```python
+endpoint = ua_lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
+server.set_endpoint(endpoint)            # was angekündigt wird: LAN-IPv4
+server.socket_address = ("0.0.0.0", MDNS_PORT)   # woran gelauscht wird
+```
+
+Die Anmeldung selbst macht `asyncua.Server.register_to_discovery()`; `ua_lds`
+ist nur die Klammer darum. Der ursprüngliche Entwurf baute den
+`RegisteredServer` von Hand, weil die Methode `server.endpoint.geturl()`
+einträgt und dort `0.0.0.0` stand. Das war unnötig: `Server.socket_address`
+trennt Bindeadresse und angekündigte Adresse und ist genau dafür gedacht.
+Was die Klammer noch leistet: Anmeldung verweigern, wenn im Endpoint doch
+`0.0.0.0` steht; einen nicht erreichbaren LDS nicht den Serverstart kosten
+lassen; und im `finally` abmelden, weil `Server.stop()` das nicht tut.
 
 ### Registrierungsdatensatz
 
@@ -124,7 +135,7 @@ ein, die auch die mDNS-Ankündigung nennt (`ua_mdns.detect_lan_ipv4`).
 | `ServerType` | `ClientAndServer` |
 | `DiscoveryUrls` | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
 | `IsOnline` | `True`; beim Beenden `False` (Abmeldung) |
-| `DiscoveryConfiguration` | keine — schlichtes `RegisterServer`, wie bei den Nachbarmodulen |
+| `DiscoveryConfiguration` | keine — `register_to_discovery()` ohne `discovery_configuration` schickt `RegisterServer`, wie bei den Nachbarmodulen |
 
 Im Aggregation-Server erscheint das Modul danach als Objekt unter `Objects` in
 dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
@@ -152,11 +163,24 @@ dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
 
 ## Abweichungen vom Plan
 
-- **Nicht `Server.register_to_discovery()` benutzt.** Die Methode trägt
-  `server.endpoint.geturl()` als DiscoveryUrl ein, hier also
-  `opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt die
-  Adresse wörtlich. `ua_lds` baut den Datensatz deshalb selbst. Als Altlast
-  D10 vermerkt.
+- **Erst an `Server.register_to_discovery()` vorbeigebaut, dann doch darauf
+  umgestellt.** Die Methode trägt `server.endpoint.geturl()` als DiscoveryUrl
+  ein, und dort stand `0.0.0.0` — der Aggregation-Server übernimmt das wörtlich
+  und verbindet ins Leere. Der erste Entwurf baute den `RegisteredServer`
+  deshalb von Hand, samt eigener Erneuerungsschleife und Abmeldung: rund 190
+  Zeilen.
+
+  Das war unnötig. `Server.socket_address` trennt Bindeadresse und
+  angekündigte Adresse und ist genau für diesen Fall gedacht („used when the IP
+  address of the network interface is different from the endpoint IP offered to
+  the client during discovery"). Damit nennt der Endpoint die LAN-IPv4, und
+  gelauscht wird weiter auf `0.0.0.0`. `ua_lds` ist jetzt nur noch die Klammer
+  um die Bibliotheksmethode. Als Altlast D10 vermerkt, weil das Übersehen des
+  Attributs Zeit gekostet hat.
+
+  Ebenfalls geprüft und entkräftet: die Sorge, die Bibliotheksschleife käme mit
+  einem LDS-Neustart nicht klar. `_renew_registration()` baut bei jedem
+  Durchlauf einen frischen Kanal auf.
 - **Von `RegisterServer2` auf `RegisterServer` zurückgegangen.** Der erste
   Entwurf schickte eine `MdnsDiscoveryConfiguration` mit. Danach stand im
   `FindServersOnNetwork` des LDS einmal
@@ -213,8 +237,26 @@ also periodisch; sichtbar ist das in deren Code nicht, weil
 Nicht gemessen: wie lange ein Eintrag ohne Erneuerung tatsächlich überlebt.
 open62541 räumt nach einem eigenen Timeout ab.
 
-Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 233 Tests,
-davon 15 neu in `tests/test_ua_lds.py`, alle grün.
+### Nach der Umstellung auf `register_to_discovery()`
+
+Lokal mit dem echten `src/OPCUA/server.py` geprüft (LDS-Anmeldung per
+`OPCUA_LDS_URL=""` abgeschaltet, die Zelle also nicht angefasst):
+
+```
+INFO:raspi-opcua:Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/
+INFO:asyncua.server.binary_server_asyncio:Listening on 0.0.0.0:4840
+```
+
+Erreichbar über `127.0.0.1` **und** über die LAN-IP — die Trennung von
+Endpoint und Bindeadresse funktioniert also, und `print_setpoint.py` sowie der
+Hello-World-Client behalten ihren Weg über Loopback.
+
+**Noch offen:** Die Pis laufen weiter mit dem Stand davor. Erst nach
+`systemctl restart opcua-server.service` kommt die Anmeldung aus
+`register_to_discovery()`; bis dahin ist die Umstellung nur lokal verifiziert.
+
+Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 241 Tests,
+davon 12 in `tests/test_ua_lds.py`, alle grün.
 
 ## Offene Fragen
 

@@ -40,6 +40,14 @@ NODESET_PATH = Path(__file__).parent / "Opc.Ua.MachineVision.NodeSet2.xml"
 MACHINE_VISION_NAMESPACE_URI = "http://opcfoundation.org/UA/MachineVision"
 RESULT_TYPE_NODEID = 2002  # 1:ResultType im Machine-Vision-Nodeset
 
+#: Rueckfall-Endpoint. Im Regelfall nennt der Endpoint zur Laufzeit die
+#: LAN-IPv4 (siehe `ua_lds.advertised_endpoint`), weil `register_to_discovery()`
+#: genau diese Adresse als DiscoveryUrl an den Discovery-Server weitergibt --
+#: mit `0.0.0.0` verbindet der Aggregation-Server ins Leere. Gelauscht wird
+#: unabhaengig davon immer auf allen Schnittstellen (`Server.socket_address`),
+#: damit lokale Werkzeuge weiter ueber 127.0.0.1 herankommen.
+#: Ist keine LAN-IPv4 zu ermitteln, bleibt es bei diesem Wert -- dann laeuft der
+#: Server ohne LDS-Anmeldung weiter.
 ENDPOINT = "opc.tcp://0.0.0.0:4840/raspi/server/"
 SERVER_NAME = "Raspberry Pi OPC UA Server"
 
@@ -222,7 +230,7 @@ def application_uri() -> str:
     return os.getenv("OPCUA_APPLICATION_URI") or f"{APPLICATION_URI_PREFIX}:{name}"
 
 
-def vision_config() -> VisionServerConfig:
+def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     """Konfiguration des eingebauten Vision-Systems.
 
     Endpoint, ApplicationURI und ServerName sind die dieses Servers; das
@@ -238,7 +246,7 @@ def vision_config() -> VisionServerConfig:
         backend,
     )
     return VisionServerConfig(
-        endpoint=ENDPOINT,
+        endpoint=endpoint,
         server_name=SERVER_NAME,
         nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
@@ -254,7 +262,14 @@ async def main():
     server = Server()
     await server.init()
 
-    server.set_endpoint(ENDPOINT)
+    # Der Endpoint nennt die LAN-IPv4, denn `register_to_discovery()` gibt
+    # genau ihn als DiscoveryUrl an den Discovery-Server weiter. `0.0.0.0`
+    # waere dort wertlos. Gelauscht wird trotzdem auf allen Schnittstellen,
+    # sonst verlieren wir 127.0.0.1 -- darueber laufen `print_setpoint.py` und
+    # der Hello-World-Client auf dem Pi.
+    endpoint = ua_lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
+    server.set_endpoint(endpoint)
+    server.socket_address = ("0.0.0.0", MDNS_PORT)
     server.set_server_name(SERVER_NAME)
     # Vor dem Aufbau des Adressraums: die ApplicationUri landet im
     # Namespace-Array auf ns=1 und ist der Name, unter dem der
@@ -304,7 +319,7 @@ async def main():
         ua.DataValue(ua.Variant(ua.NodeId(ua.ObjectIds.Double), ua.VariantType.NodeId)),
     )
 
-    machine = await install_vision_machine(server, vision_config())
+    machine = await install_vision_machine(server, vision_config(endpoint))
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
 
@@ -327,13 +342,8 @@ async def main():
                 ua_mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
-                # registriert ist. Messung und Begruendung stehen in `ua_lds`.
-                ua_lds.register(
-                    application_uri=application_uri(),
-                    server_name=SERVER_NAME,
-                    port=MDNS_PORT,
-                    path=MDNS_PATH,
-                ),
+                # angemeldet ist. Messung und Begruendung stehen in `ua_lds`.
+                ua_lds.register(server),
             ):
                 n = 0
                 while not stop.is_set():

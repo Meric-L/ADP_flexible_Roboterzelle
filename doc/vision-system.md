@@ -94,12 +94,17 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 
 ## Laufzeitverhalten
 
-- Endpoint `opc.tcp://0.0.0.0:4840/raspi/server/`, `SecurityPolicy: NoSecurity`.
+- Endpoint `opc.tcp://<LAN-IPv4>:4840/raspi/server/`, gelauscht wird auf
+  `0.0.0.0:4840` (`Server.socket_address`). Die Trennung ist nötig, weil der
+  Endpoint als DiscoveryUrl beim Discovery-Server landet und `0.0.0.0` dort
+  wertlos wäre; über `127.0.0.1` bleibt der Server trotzdem erreichbar. Ist
+  keine LAN-IPv4 zu ermitteln, bleibt es bei `opc.tcp://0.0.0.0:4840/…` und der
+  Server läuft ohne LDS-Anmeldung. `SecurityPolicy: NoSecurity`.
 - Beim Start zwei Bekanntmachungen nebeneinander, beide werden beim geordneten
   Beenden zurückgezogen:
   - **mDNS** (`src/ua_mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
     Vision-Identität. Für Clients im Subnetz.
-  - **LDS-Anmeldung** (`src/ua_lds.py`): `RegisterServer` an
+  - **LDS-Anmeldung** (`src/ua_lds.py` über `Server.register_to_discovery()`):
     `opc.tcp://10.10.38.27:4840/`, alle 60 s erneuert. **Nur darüber** nimmt
     der Aggregation-Server der Zelle das Modul auf — mDNS allein genügt ihm
     nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
