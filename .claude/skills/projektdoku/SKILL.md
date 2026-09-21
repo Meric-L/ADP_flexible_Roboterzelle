@@ -84,14 +84,24 @@ Erst danach wird Code geschrieben.
    der Plan ist die Planung, die Fach-MD der Stand. Neue Fach-MD? Dann auch in
    die Tabelle in `doc/arbeitsplaene/README.md` aufnehmen.
 
-## 5. Commit vorschlagen
+## 5. Committen — ja. Pushen — nur auf Ansage.
 
 1. `git diff` zeigen.
-2. Commit-Message vorschlagen, Format wie im Repo üblich:
+2. Committen, ohne vorher zu fragen. Message im Format wie im Repo üblich:
    `docs: <kurztitel>` für Dokumentation, `feat(<bereich>): <kurztitel>` für
    Code — z. B. `docs: Arbeitsplan Part-10-Wrapper mit Schnittstellen`.
-3. **Warten.** Nicht committen und nicht pushen ohne ausdrückliche Zustimmung.
-   Das ist ein geteiltes Repo.
+   Nur die Dateien der Aufgabe (`git add <pfade>`, kein `git add -A`), immer auf
+   dem Feature-Branch, nie auf `main`.
+3. **Nicht pushen.** Ein Push passiert ausschließlich auf ausdrückliche
+   Anweisung. Das ist ein geteiltes Repo — solange nichts draußen ist, stört ein
+   lokaler Commit niemanden.
+4. Am Ende jedes Features ein kurzer Hinweis in der Antwort, etwa:
+
+   > Commit `<sha>` auf `<branch>` — **nicht gepusht**.
+   > Zum Teilen: `git push origin <branch>`.
+
+   Der Hinweis fehlt nie, auch nicht bei kleinen Änderungen. Sonst nimmt jemand
+   an, der Stand liege bereits auf dem Remote.
 
 Bei Merge-Konflikt in `doc/arbeitsplaene/README.md`: beide Zeilen behalten. Ein
 Konflikt im Index ist nie eine Entweder-oder-Entscheidung.

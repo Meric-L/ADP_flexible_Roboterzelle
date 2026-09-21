@@ -61,7 +61,7 @@ Dauerhaftes Fachwissen gehört anschließend in die passende Fach-MD unter `doc/
 Für den ganzen Ablauf gibt es die Skill `projektdoku`
 (`.claude/skills/projektdoku/`). Sie liegt im Repo, hat also jeder nach dem
 Clonen: sie findet die relevanten MDs, legt den Plan im festen Format an und
-schlägt den Commit vor, ohne zu pushen.
+committet selbstständig, ohne zu pushen.
 
 ## Regeln für Änderungen
 
@@ -76,8 +76,11 @@ schlägt den Commit vor, ohne zu pushen.
   Datei.
 - Kein Umbenennen oder Löschen von `doc/*.md` ohne Absprache — andere MDs
   verweisen darauf.
-- Nichts pushen ohne ausdrückliche Zustimmung. Commit vorschlagen, Diff zeigen,
-  warten.
+- Committen läuft automatisch: Diff zeigen, committen, weiterarbeiten — kein
+  Nachfragen nötig. Nur die Dateien der Aufgabe, nie auf `main`.
+- Nichts pushen ohne ausdrückliche Anweisung. Am Ende jedes Features ein kurzer
+  Hinweis, dass committet, aber nicht gepusht wurde, samt Branch und
+  `git push origin <branch>`.
 - `main` bekommt nur fertige, funktionierende Features. Gearbeitet wird auf
   Feature-Branches, aktuell `feature/vision-server`.
 - `doc/*.tex` ist die schriftliche Ausarbeitung. Nur anfassen, wenn die Aufgabe
