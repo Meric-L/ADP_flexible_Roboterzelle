@@ -43,6 +43,14 @@ class AprilTagProfileConfig:
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.
     allow_resolution_mismatch: bool = False
+    #: Bewusster Notausgang, kein Dauerzustand: laesst die Quelle ohne echte
+    #: Kalibrierdatei starten (grob geschaetzte Intrinsik statt Preoperational).
+    #: Damit lassen sich Detektor, Overlay und Job-Pfad pruefen, bevor die
+    #: echte Kalibrierfahrt (Testplan Abschnitt 3.3) gemacht wurde. Posen sind
+    #: dann plausibel orientiert, aber nicht masshaltig -- vor dem Rollout
+    #: wieder auf `False`, sonst faellt eine fehlende echte Kalibrierung nie
+    #: mehr auf.
+    allow_placeholder_calibration: bool = False
 
 
 #: Unterstuetzte Werte fuer `CameraStreamConfig.backend`.

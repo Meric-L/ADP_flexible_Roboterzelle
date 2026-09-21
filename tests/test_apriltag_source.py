@@ -361,6 +361,45 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class OpenWithoutCalibrationTest(unittest.IsolatedAsyncioTestCase):
+    """`open()` selbst, mit echtem `build_detector` (braucht cv2) aber einer
+    `FakeCamera` statt echter Hardware -- die Kalibrierdatei existiert bei
+    beiden Tests nicht."""
+
+    def _config(self, *, allow_placeholder: bool) -> AprilTagProfileConfig:
+        missing = Path(tempfile.mkdtemp()) / "does-not-exist.json"
+        return AprilTagProfileConfig(
+            calibration_path=missing,
+            tag_map_path=None,
+            frame_id="cam_ceiling",
+            resolution=(640, 480),
+            allow_placeholder_calibration=allow_placeholder,
+        )
+
+    async def test_fails_without_the_bypass(self):
+        camera = FakeCamera()
+        source = AprilTagDetectionSource(self._config(allow_placeholder=False), camera=camera)
+
+        with self.assertRaises(FileNotFoundError):
+            await source.open()
+
+        self.assertEqual(camera.opened, 0, "Kamera darf bei fehlgeschlagenem open() nicht laufen")
+
+    async def test_falls_back_to_a_placeholder_when_allowed(self):
+        from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+
+        camera = FakeCamera()
+        source = AprilTagDetectionSource(self._config(allow_placeholder=True), camera=camera)
+
+        await source.open()
+
+        self.assertEqual(source._calibration.calibration_id, PLACEHOLDER_CALIBRATION_ID)
+        self.assertEqual(source._calibration.image_size, (640, 480))
+        self.assertEqual(camera.opened, 1)
+        await source.close()
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class CloseTest(unittest.IsolatedAsyncioTestCase):
     async def test_closes_the_camera_and_shuts_the_executor_down(self):
         with tempfile.TemporaryDirectory() as folder:

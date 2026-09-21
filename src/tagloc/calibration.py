@@ -14,6 +14,7 @@ The file belongs to **one physical camera**, not the repo. Stored under
 """
 
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,12 @@ import numpy as np
 from .identity import calibration_identity
 
 SCHEMA = "wsc.vision.calibration/1"
+
+#: Grobe Annahme fuer `default_calibration` -- typischer Wert fuer Pi-Kamera-
+#: und RealSense-Farbsensoren, aber nicht das tatsaechliche Sichtfeld einer
+#: bestimmten Kamera. Nur ein Ausgangspunkt, keine Messung.
+DEFAULT_HORIZONTAL_FOV_DEG = 70.0
+PLACEHOLDER_CALIBRATION_ID = "placeholder-unkalibriert"
 
 
 @dataclass(frozen=True)
@@ -95,6 +102,40 @@ def load_calibration(path: Path) -> CameraCalibration:
     )
 
 
+def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> CameraCalibration:
+    """Grob geschaetzte Kalibrierung, wenn (noch) keine echte existiert.
+
+    **Kein Ersatz fuer eine echte Kalibrierfahrt** (Testplan Abschnitt 3.3) --
+    die Intrinsik ist aus einer angenommenen Sichtfeldbreite gerechnet, nicht
+    gemessen. Posen damit sind plausibel orientiert, aber nicht masshaltig:
+    Distanzen und Groessen koennen deutlich daneben liegen. Nur dafuer da,
+    die AprilTag-Erkennung ohne Kalibrierdatei lauffaehig zu halten, damit
+    Detektor, Overlay und Job-Pfad sich pruefen lassen, waehrend die echte
+    Kalibrierung noch aussteht. `calibration_id` markiert das im Ergebnis
+    unuebersehbar.
+    """
+    width, height = resolution
+    focal_length = width / (2.0 * math.tan(math.radians(DEFAULT_HORIZONTAL_FOV_DEG) / 2.0))
+    matrix = np.array(
+        [
+            [focal_length, 0.0, width / 2.0],
+            [0.0, focal_length, height / 2.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return CameraCalibration(
+        camera_matrix=matrix,
+        distortion=np.zeros(5, dtype=np.float64),
+        image_size=(int(width), int(height)),
+        frame_id=frame_id,
+        calibration_id=PLACEHOLDER_CALIBRATION_ID,
+        rms_reprojection_error=float("nan"),
+        sample_count=0,
+        board={},
+    )
+
+
 def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]) -> None:
     """Raise if the calibration belongs to a different resolution.
 
@@ -150,9 +191,11 @@ def scale_to_resolution(
 #: without numpy.
 __all__ = [
     "SCHEMA",
+    "PLACEHOLDER_CALIBRATION_ID",
     "CameraCalibration",
     "calibration_identity",
     "check_resolution",
+    "default_calibration",
     "load_calibration",
     "save_calibration",
     "scale_to_resolution",

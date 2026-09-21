@@ -4,6 +4,7 @@ Files are created in a tempdir, never in the repo.
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -117,6 +118,44 @@ class CalibrationFileTest(unittest.TestCase):
 class CameraParamsTest(unittest.TestCase):
     def test_returns_fx_fy_cx_cy_in_that_order(self):
         self.assertEqual(sample_calibration().camera_params, (800.0, 810.0, 320.0, 240.0))
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class DefaultCalibrationTest(unittest.TestCase):
+    def test_matches_the_requested_resolution(self):
+        result = calib.default_calibration((1280, 720))
+
+        self.assertEqual(result.image_size, (1280, 720))
+        self.assertEqual(result.camera_matrix.shape, (3, 3))
+        self.assertEqual(result.distortion.shape, (5,))
+
+    def test_centers_the_principal_point(self):
+        result = calib.default_calibration((1280, 720))
+
+        _, _, cx, cy = result.camera_params
+        self.assertEqual((cx, cy), (640.0, 360.0))
+
+    def test_is_usable_by_check_resolution(self):
+        """Must be a drop-in for a real calibration, not a special case."""
+        calib.check_resolution(calib.default_calibration((640, 480)), (640, 480))
+
+    def test_marks_itself_as_a_placeholder(self):
+        self.assertEqual(
+            calib.default_calibration((640, 480)).calibration_id,
+            calib.PLACEHOLDER_CALIBRATION_ID,
+        )
+
+    def test_carries_no_real_measurement(self):
+        result = calib.default_calibration((640, 480))
+
+        self.assertTrue(math.isnan(result.rms_reprojection_error))
+        self.assertEqual(result.sample_count, 0)
+
+    def test_passes_the_frame_id_through(self):
+        self.assertEqual(
+            calib.default_calibration((640, 480), frame_id="cam_flange").frame_id,
+            "cam_flange",
+        )
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")

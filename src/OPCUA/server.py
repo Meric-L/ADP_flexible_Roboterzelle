@@ -95,12 +95,20 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     Calibration belongs to the physical camera, hence named after the frame
     and stored under `data/` (not versioned). The tag map describes the
     cell, is the same for both Pis, and lives under `config/`.
+
+    `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` is a deliberate, temporary
+    bypass (`AprilTagProfileConfig.allow_placeholder_calibration`) for
+    testing detection/overlay/job path before the real calibration run
+    (Testplan Abschnitt 3.3) exists. Poses are then not to scale. Default
+    off -- must be set explicitly per Pi, never baked into the committed
+    default.
     """
     preset = PI_APRILTAG_PRESETS.get(frame_id, {})
     return AprilTagProfileConfig(
         calibration_path=REPO_ROOT / "data" / "calibration" / f"{frame_id}.json",
         tag_map_path=REPO_ROOT / "config" / "tagmap.json",
         frame_id=frame_id,
+        allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
         **preset,
     )
 

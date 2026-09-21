@@ -96,16 +96,30 @@ class AprilTagDetectionSource(DetectionSource):
 
         If calibration is missing, the source doesn't open and the server
         stays in Preoperational -- intentional, since a vision server
-        without calibration would report meaningless numbers.
+        without calibration would report meaningless numbers. The one
+        exception is `allow_placeholder_calibration`: a deliberate, temporary
+        bypass to run detection before the real calibration run exists.
         """
-        from tagloc.calibration import load_calibration
+        from tagloc.calibration import default_calibration, load_calibration
         from tagloc.detector import build_detector
         from tagloc.tagmap import empty_tag_map, load_tag_map
 
         if self._calibration is None:
-            self._calibration = await self.run_blocking(
-                load_calibration, self._config.calibration_path
-            )
+            try:
+                self._calibration = await self.run_blocking(
+                    load_calibration, self._config.calibration_path
+                )
+            except FileNotFoundError:
+                if not self._config.allow_placeholder_calibration:
+                    raise
+                _log.warning(
+                    "Keine Kalibrierung unter %s -- verwende Platzhalter-Intrinsik "
+                    "(allow_placeholder_calibration=True). Posen sind NICHT masshaltig.",
+                    self._config.calibration_path,
+                )
+                self._calibration = default_calibration(
+                    self._config.resolution, frame_id=self._config.frame_id
+                )
         if self._tag_map is None:
             path = self._config.tag_map_path
             if path is not None and path.is_file():
