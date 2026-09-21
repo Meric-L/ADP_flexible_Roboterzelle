@@ -205,6 +205,7 @@ async def install_vision_program(
     *,
     known_recipes: frozenset[str] | None = None,
     mirror_nodes: dict[str, Node] | None = None,
+    mirror_methods: dict[str, Node] | None = None,
 ) -> VisionProgram:
     """Haengt das Part-10-Programm neben das Vision-System.
 
@@ -223,6 +224,13 @@ async def install_vision_program(
         Vorhandene Ergebnisknoten, die zusaetzlich unter `ResultSet`
         auffindbar sein sollen. Es werden **Referenzen** gesetzt, keine
         Kopien -- es bleibt genau ein Knoten mit genau einem Wert.
+    mirror_methods
+        Vorhandene Methodenknoten, die zusaetzlich direkt unter dem Programm
+        aufrufbar sein sollen (die Kalibriermethoden). Ebenfalls nur
+        `HasComponent`-Referenzen: eine Methode, eine Implementierung, zwei
+        Fundorte. Am 21.09.2026 gegen asyncua 2.0.1 nachgemessen -- der
+        Aufruf gelingt mit dem Programm *und* mit dem Vision-System als
+        `objectId`, ohne dass die Methode zweimal registriert wird.
     """
     program = await VisionProgram.init(
         server,
@@ -290,6 +298,10 @@ async def install_vision_program(
     for name, node in (mirror_nodes or {}).items():
         await result_set.add_reference(node, ua.ObjectIds.Organizes, forward=True)
         _log.debug("Ergebnisknoten '%s' zusaetzlich unter %s verlinkt", name, RESULT_SET)
+
+    for name, node in (mirror_methods or {}).items():
+        await program_node.add_reference(node, ua.ObjectIds.HasComponent, forward=True)
+        _log.debug("Methode '%s' zusaetzlich unter %s aufrufbar", name, PROGRAM_NAME)
 
     _log.info(
         "Part-10-Programm '%s' als %s angelegt",

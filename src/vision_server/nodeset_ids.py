@@ -20,6 +20,12 @@ AMCM_NAMESPACE_URI = "http://opcfoundation.org/UA/MachineVision/AMCM/"
 VISION_SYSTEM_TYPE = 1003
 RESULT_TYPE = 2002
 
+#: Machinery: der Standard-Einstiegsordner `Objects/Machines`. Er kommt fertig
+#: aus dem Nodeset (`Organizes` von `i=85`) und ist die vorgesehene Stelle fuer
+#: Maschineninstanzen. Dort haengt `VisionMachine`, damit unter `Objects` nur
+#: noch `VisionProgram` als Bedienoberflaeche steht.
+MACHINES_FOLDER = 1001
+
 #: Part 2: Wurzeltyp der Anlagensicht, mit Ordnern je Komponentenart
 #: (ComputingDevices, ImageSensors, Lenses, SoftwareComponents, ...).
 VISION_SYSTEM_ASSET_TYPE = 1008

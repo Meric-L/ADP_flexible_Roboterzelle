@@ -11,9 +11,12 @@ from asyncua.common.node import Node
 from .config import VisionServerConfig
 from .nodeset_ids import (
     AMCM_NAMESPACE_URI,
+    MACHINERY_NAMESPACE_URI,
+    MACHINES_FOLDER,
     MACHINE_VISION_NAMESPACE_URI,
     VISION_SYSTEM_TYPE,
     mv,
+    node_id,
 )
 
 _log = logging.getLogger(__name__)
@@ -102,6 +105,35 @@ async def _ensure_amcm_nodesets(server: Server, config: VisionServerConfig) -> i
         return None
 
 
+async def _vision_parent(server: Server) -> Node:
+    """`Objects/Machines`, falls Machinery geladen ist, sonst `Objects`.
+
+    Warum ueberhaupt: Direkt unter `Objects` stand `VisionMachine` gleichrangig
+    neben `VisionProgram`, und wer mit UaExpert browste, sah zwei Einstiege und
+    musste raten, welcher gemeint ist. Genau das hat in der Betreuung Verwirrung
+    ausgeloest. `Machines` ist der von OPC UA Machinery dafuer vorgesehene Ort;
+    `VisionProgram` bleibt damit der einzige Punkt unter `Objects`.
+
+    Fuer Clients aendert sich nichts: `VisionMachine` hat eine feste
+    String-NodeId, und die haengt nicht an der Browse-Position.
+
+    Faellt ohne Machinery-Nodeset (also ohne `config.assets`) auf `Objects`
+    zurueck -- ein fehlender Ordner darf den Serverstart nicht verhindern.
+    """
+    try:
+        machinery_idx = await server.get_namespace_index(MACHINERY_NAMESPACE_URI)
+    except ValueError:
+        _log.info("Machinery nicht geladen -- VisionSystem haengt unter Objects")
+        return server.nodes.objects
+    machines = server.get_node(node_id(MACHINES_FOLDER, machinery_idx))
+    try:
+        await machines.read_browse_name()
+    except Exception:
+        _log.warning("Machines-Ordner nicht lesbar -- VisionSystem haengt unter Objects")
+        return server.nodes.objects
+    return machines
+
+
 def _namespace_uri_for(path: Path) -> str:
     """Liest den ModelUri aus dem Kopf eines Nodesets.
 
@@ -132,7 +164,8 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     own_idx = await server.register_namespace(config.namespace_uri)
 
     name = config.vision_system_name
-    vision_system = await server.nodes.objects.add_object(
+    parent = await _vision_parent(server)
+    vision_system = await parent.add_object(
         ua.NodeId(name, own_idx),
         ua.QualifiedName(name, own_idx),
         objecttype=mv(VISION_SYSTEM_TYPE, mv_idx),
@@ -158,9 +191,9 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     latest_camera_frame: Node | None = None
     camera_stream_mode: Node | None = None
     if config.camera_stream is not None:
-        # Additive Knoten, nicht Teil des 40100-Nodesets -- analog zu den
-        # eigenen `RaspiDevice`-Variablen in `OPCUA/server.py`. Nur der Server
-        # schreibt hierhin, daher kein `set_writable()`.
+        # Additive Knoten, nicht Teil des 40100-Nodesets: OPC 40100 kennt
+        # keinen Livestream. Nur der Server schreibt hierhin, daher kein
+        # `set_writable()`.
         # Explicit string NodeId instead of the auto-assigned numeric one:
         # `add_variable(own_idx, ...)` would produce `ns=X;i=<running number>`,
         # which shifts whenever someone adds a node before it. The backend
@@ -197,7 +230,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.VariantType.String,
         )
 
-    _log.info("VisionSystem '%s' als %s angelegt", name, vision_system.nodeid.to_string())
+    _log.info(
+        "VisionSystem '%s' als %s unter %s angelegt",
+        name,
+        vision_system.nodeid.to_string(),
+        (await parent.read_browse_name()).Name,
+    )
     return VisionAddressSpace(
         server=server,
         config=config,

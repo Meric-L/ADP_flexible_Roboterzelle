@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from asyncua import Server, ua, uamethod
+from asyncua import Node, Server, ua, uamethod
 
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
@@ -366,7 +366,16 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     calibration_session = _build_calibration_session(sources, opened, config)
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
 
+    #: Kalibriermethoden, die zusaetzlich unter `VisionProgram` aufrufbar
+    #: werden -- gefuellt nur, wenn es eine Kalibrier-Session gibt.
+    calibration_methods: dict[str, Node] = {}
+
     if calibration_session is not None and space.calibration_progress is not None:
+        #: Praefix der Methoden-NodeIds. Explizit statt der laufenden Nummer,
+        #: die `add_method(own_idx, ...)` vergeben wuerde: die verschiebt sich,
+        #: sobald jemand davor einen Knoten einfuegt, und das Frontend spricht
+        #: die Methoden ueber feste Adressen an.
+        method_prefix = config.vision_system_name
 
         @uamethod
         async def start_calibration(parent):
@@ -391,8 +400,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             _log.info("Kalibrier-Session gestartet")
             return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
 
-        await space.vision_system.add_method(
-            space.own_idx, "StartCalibration", start_calibration, [], [ua.VariantType.Int32]
+        calibration_methods["StartCalibration"] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.StartCalibration", space.own_idx),
+            ua.QualifiedName("StartCalibration", space.own_idx),
+            start_calibration,
+            [],
+            [ua.VariantType.Int32],
         )
 
         @uamethod
@@ -417,9 +430,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                 ua.Variant(int(error), ua.VariantType.Int32),
             )
 
-        await space.vision_system.add_method(
-            space.own_idx,
-            "FinishCalibration",
+        calibration_methods["FinishCalibration"] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.FinishCalibration", space.own_idx),
+            ua.QualifiedName("FinishCalibration", space.own_idx),
             finish_calibration,
             [],
             [ua.VariantType.String, ua.VariantType.Int32],
@@ -436,8 +449,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             _log.info("Kalibrier-Session abgebrochen")
             return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
 
-        await space.vision_system.add_method(
-            space.own_idx, "AbortCalibration", abort_calibration, [], [ua.VariantType.Int32]
+        calibration_methods["AbortCalibration"] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.AbortCalibration", space.own_idx),
+            ua.QualifiedName("AbortCalibration", space.own_idx),
+            abort_calibration,
+            [],
+            [ua.VariantType.Int32],
         )
 
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
@@ -457,6 +474,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs,
         known_recipes=config.known_recipe_ids,
         mirror_nodes=mirror_nodes,
+        mirror_methods=calibration_methods,
     )
     if not states.is_ready():
         # Ein generischer Client soll nicht `Ready` sehen, wenn kein Job

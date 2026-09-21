@@ -91,7 +91,7 @@ async def _write_identification(
 
 
 async def _ensure_folder(
-    server: Server, root: Node, amcm_idx: int, own_idx: int, folder_name: str
+    server: Server, root: Node, amcm_idx: int, own_idx: int, folder_name: str, root_id: str
 ) -> Node:
     """The component folder, created on first use."""
     try:
@@ -100,7 +100,7 @@ async def _ensure_folder(
         nodes = await instantiate(
             root,
             server.get_node(node_id(VISION_ITEM_FOLDER_TYPE, amcm_idx)),
-            nodeid=ua.NodeId(f"VisionMachine.VisionAsset.{folder_name}", own_idx),
+            nodeid=ua.NodeId(f"{root_id}.{folder_name}", own_idx),
             bname=ua.QualifiedName(folder_name, amcm_idx),
             instantiate_optional=False,
         )
@@ -126,13 +126,14 @@ async def _add_component(
     own_idx: int,
     name: str,
     values: dict[str, str],
+    root_id: str,
 ) -> Node | None:
     """Instantiate one component into its folder and identify it."""
     try:
         nodes = await instantiate(
             folder,
             server.get_node(node_id(type_identifier, amcm_idx)),
-            nodeid=ua.NodeId(f"VisionMachine.VisionAsset.{name}", own_idx),
+            nodeid=ua.NodeId(f"{root_id}.{name}", own_idx),
             bname=f"{own_idx}:{name}",
             instantiate_optional=False,
         )
@@ -155,12 +156,16 @@ async def attach_asset_model(
     if space.amcm_idx is None:
         return None
     server, amcm_idx, own_idx = space.server, space.amcm_idx, space.own_idx
+    # Der Praefix folgt dem Instanznamen und wird nicht danebengeschrieben:
+    # sonst haette eine umbenannte Instanz weiterhin NodeIds, die "VisionMachine"
+    # sagen -- zwei Wahrheiten ueber denselben Knoten.
+    root_id = f"{space.config.vision_system_name}.VisionAsset"
     try:
         di_idx = await server.get_namespace_index(DI_NAMESPACE_URI)
         nodes = await instantiate(
             space.vision_system,
             server.get_node(node_id(VISION_SYSTEM_ASSET_TYPE, amcm_idx)),
-            nodeid=ua.NodeId("VisionMachine.VisionAsset", own_idx),
+            nodeid=ua.NodeId(root_id, own_idx),
             bname=f"{own_idx}:VisionAsset",
             instantiate_optional=False,
         )
@@ -193,10 +198,12 @@ async def attach_asset_model(
         if not model:
             components[attribute] = None
             continue
-        folder = await _ensure_folder(server, root, amcm_idx, own_idx, folder_name)
+        folder = await _ensure_folder(
+            server, root, amcm_idx, own_idx, folder_name, root_id
+        )
         components[attribute] = await _add_component(
             server, folder, type_identifier, amcm_idx, di_idx, own_idx,
-            item_name, {"Manufacturer": config.manufacturer, "Model": model},
+            item_name, {"Manufacturer": config.manufacturer, "Model": model}, root_id,
         )
 
     _log.info(

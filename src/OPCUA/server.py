@@ -1,9 +1,14 @@
-"""OPC-UA-Server der Roboterzelle: Raspi-Interface und Vision-System.
+"""OPC-UA-Server der Roboterzelle: das Vision-System.
 
-Ein Server, zwei Baeume: das gewachsene `RaspiDevice`-Interface (CPU-Temperatur,
-Zaehler, Sollwert) und das Vision-System nach OPC 40100 aus `vision_server`.
-Reihenfolge und Namespace-Registrierung bleiben unveraendert, damit vorhandene
-NodeIds (z. B. `ns=2;i=4` fuer den Sollwert) weiter gueltig sind.
+Ein Server, ein Baum. Alles, was er traegt, baut `vision_server` auf:
+`VisionMachine` (OPC 40100) unter `Objects/Machines` und daneben
+`VisionProgram` (OPC UA Teil 10) als Bedienoberflaeche fuer das Frontend.
+
+Die CPU-Temperatur-Demo aus der Anfangszeit -- `RaspiDevice`, die leere
+Zweitinstanz `2:VisionSystem`, `CpuTemperatureResult` und der Namensraum
+`http://launch-rm.de/raspi` -- ist entfernt (Altlasten A1-A6). Damit ruecken
+alle Namespace-Indizes um eins nach unten; wer sie ueber
+`get_namespace_index(uri)` aufloest, merkt davon nichts.
 """
 
 import asyncio
@@ -17,7 +22,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from asyncua import Server, ua
-from asyncua.common.instantiate_util import instantiate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -35,11 +39,12 @@ import ua_mdns  # noqa: E402
 logging.basicConfig(level=logging.INFO)
 _log = logging.getLogger("raspi-opcua")
 
-TEMP_PATH = Path("/sys/class/thermal/thermal_zone0/temp")
 NODESET_PATH = Path(__file__).parent / "Opc.Ua.MachineVision.NodeSet2.xml"
-MACHINE_VISION_NAMESPACE_URI = "http://opcfoundation.org/UA/MachineVision"
-RESULT_TYPE_NODEID = 2002  # 1:ResultType im Machine-Vision-Nodeset
 
+#: Bleibt `/raspi/server/`, obwohl das Raspi-Interface weg ist: der Pfad steht
+#: in der mDNS-Ankuendigung, in der LDS-Registrierung und in jeder Client-
+#: Konfiguration. Ihn umzubenennen bricht jede vorhandene Verbindung, ohne
+#: irgendetwas zu verbessern.
 ENDPOINT = "opc.tcp://0.0.0.0:4840/raspi/server/"
 SERVER_NAME = "Raspberry Pi OPC UA Server"
 
@@ -49,14 +54,6 @@ SERVER_NAME = "Raspberry Pi OPC UA Server"
 _ENDPOINT_URL = urlparse(ENDPOINT)
 MDNS_PORT = _ENDPOINT_URL.port or 4840
 MDNS_PATH = _ENDPOINT_URL.path or "/"
-
-
-def read_cpu_temp() -> float:
-    """Liest die CPU-Temperatur in Grad Celsius."""
-    try:
-        return int(TEMP_PATH.read_text().strip()) / 1000.0
-    except (OSError, ValueError):
-        return float("nan")
 
 
 #: Hostname -> Identitaet und Bezugsrahmen. `vision_system_name` darf NICHT
@@ -250,7 +247,7 @@ def vision_config() -> VisionServerConfig:
 
 
 async def main():
-    """Baut den Adressraum auf und haelt die Werte des Raspi-Interfaces aktuell."""
+    """Baut den Adressraum auf und haelt den Server am Leben."""
     server = Server()
     await server.init()
 
@@ -262,48 +259,11 @@ async def main():
     await server.set_application_uri(application_uri())
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
-    idx = await server.register_namespace("http://launch-rm.de/raspi")
-
-    device = await server.nodes.objects.add_object(idx, "RaspiDevice")
-
-    cpu_temp = await device.add_variable(
-        idx, "CpuTemperature", 0.0, ua.VariantType.Double
-    )
-    counter = await device.add_variable(idx, "Counter", 0, ua.VariantType.Int64)
-    setpoint = await device.add_variable(idx, "Setpoint", 0.0, ua.VariantType.Double)
-
-    await setpoint.set_writable()
-
-    _log.info("Importiere Machine-Vision-Nodeset von %s", NODESET_PATH)
-    await server.import_xml(str(NODESET_PATH))
-    mv_idx = await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
-
-    vision_system_type = await server.nodes.base_object_type.get_child(
-        f"{mv_idx}:VisionSystemType"
-    )
-    vision_system = await server.nodes.objects.add_object(
-        idx, "VisionSystem", objecttype=vision_system_type
-    )
-
-    await server.nodes.server.add_reference(
-        vision_system, ua.ObjectIds.HasNotifier, forward=True
-    )
-    await vision_system.set_event_notifier([ua.EventNotifier.SubscribeToEvents])
-
-    result_management = await vision_system.get_child(f"{mv_idx}:ResultManagement")
-    results_folder = await result_management.get_child(f"{mv_idx}:Results")
-
-    result_type = server.get_node(ua.NodeId(RESULT_TYPE_NODEID, mv_idx))
-    result_nodes = await instantiate(
-        results_folder, result_type, bname=f"{idx}:CpuTemperatureResult"
-    )
-    temperature_result = result_nodes[0]
-    result_content = await temperature_result.get_child(f"{mv_idx}:ResultContent")
-    await result_content.write_attribute(
-        ua.AttributeIds.DataType,
-        ua.DataValue(ua.Variant(ua.NodeId(ua.ObjectIds.Double), ua.VariantType.NodeId)),
-    )
-
+    # Der gesamte Adressraum entsteht in `install_vision_machine`: Nodesets,
+    # `VisionMachine` unter `Objects/Machines` und `VisionProgram` daneben.
+    # Dieser Server legt selbst keine Knoten mehr an -- die CPU-Temperatur-Demo
+    # (`RaspiDevice`, `2:VisionSystem`, `CpuTemperatureResult`) ist entfernt,
+    # samt ihrem Namensraum `http://launch-rm.de/raspi`.
     machine = await install_vision_machine(server, vision_config())
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
@@ -335,15 +295,11 @@ async def main():
                     path=MDNS_PATH,
                 ),
             ):
-                n = 0
-                while not stop.is_set():
-                    n += 1
-                    temp = read_cpu_temp()
-                    await counter.write_value(n)
-                    await cpu_temp.write_value(temp)
-                    await result_content.write_value(temp, ua.VariantType.Double)
-                    with contextlib.suppress(asyncio.TimeoutError):
-                        await asyncio.wait_for(stop.wait(), timeout=1.0)
+                # Frueher lief hier eine 1-Hz-Schleife, die die Demo-Werte
+                # aktuell hielt. Sie lag im selben Event-Loop wie das
+                # Vision-System; der Loop-Lag-Watchdog in `runner.py` meldet
+                # Blockaden jetzt zuverlaessiger, als ein Zaehler es je konnte.
+                await stop.wait()
     finally:
         await machine.aclose()
 

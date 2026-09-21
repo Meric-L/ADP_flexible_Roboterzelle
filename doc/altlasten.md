@@ -4,39 +4,45 @@ Mitlaufende Liste der Dinge, die wir im Laufe des Projekts eingebaut haben und d
 **nicht zur Lokalisierung gehören**: Demo-Aufbauten, Testinstrumente, Platzhalter und
 Deployment-Behelfe. Zweck ist, dass nichts davon unbemerkt produktiv wird.
 
-**Es ist bislang nichts entfernt worden.** Jeder Eintrag nennt die Bedingung, unter der
-er wegfallen kann. Erst wenn die erfüllt ist, wird gelöscht — und dann auch der Eintrag
-hier gestrichen.
+Jeder Eintrag nennt die Bedingung, unter der er wegfallen kann. Erst wenn die erfüllt
+ist, wird gelöscht — und dann auch der Eintrag hier gestrichen.
+
+**Am 21.09.2026 abgebaut:** die vollständige CPU-Temperatur-Demo (A1–A6) samt ihrer
+Gegenstücke im Uni-Repo (B2, B4) und dem `legacy`-Zweig, der nur ihretwegen existierte
+(B6). Siehe [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
 
 Zwei Repos sind betroffen:
 
 - **Zelle** = `ADP_flexible_Roboterzelle` (dieses Repo), Branch `feature/vision-server`
 - **WSC** = `webskillcomposition` (Uni-Repo), Branch `Ungetestet`
 
-Stand: 2026-09-10. Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
+Stand: 2026-09-21. Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
 ---
 
-## A. CPU-Temperatur-Demo
+## A. CPU-Temperatur-Demo — **vollständig entfernt (21.09.2026)**
 
 Der ursprüngliche Aufbau, mit dem die OPC-UA-Strecke überhaupt erst zum Laufen gebracht
-wurde. Fachlich hat nichts davon mit der Zelle zu tun.
+wurde. Fachlich hatte nichts davon mit der Zelle zu tun. Alles weg.
 
-| # | Was | Wo | Warum es da ist | Abbaubedingung |
-|---|---|---|---|---|
-| A1 | **`2:VisionSystem`** — zweite, leere `VisionSystemType`-Instanz im Adressraum | Zelle: `src/OPCUA/server.py:84-91` | War der erste 40100-Versuch; trägt heute nur noch A2 | Wenn A2 weg ist. **Blockiert bis dahin nichts, ist aber aktiv gefährlich** — siehe Hinweis unten |
-| A2 | **`CpuTemperatureResult`** — CPU-Temperatur als `Double` im `ResultContent` eines Vision-Ergebnisknotens | Zelle: `src/OPCUA/server.py:97-105`, geschrieben in `:118` | Bequemer Ort, um einen Live-Wert zu haben, bevor `RaspiDevice` existierte | `RaspiDevice/CpuTemperature` (`ns=2;i=2`) ist der einzige Temperaturweg. Der existiert bereits — es hängt nur noch B1/B4 daran |
-| A3 | **`RaspiDevice/Counter`** — 1-Hz-Zähler | Zelle: `src/OPCUA/server.py:72`, `:116` | Sichtprüfung „Server lebt" in UaExpert | Sobald der Liveness-Check im Backend als Beleg reicht. Der Ersatz als Referenzsignal ist da: der Loop-Lag-Watchdog in `runner.py` loggt Blockaden über 750 ms |
-| A4 | **`RaspiDevice/Setpoint`** — beschreibbarer `Double` | Zelle: `src/OPCUA/server.py:73-75` | Zielknoten des Temperatur-Relays B2; sonst ohne Funktion | Mit B2 |
-| A5 | **1-Hz-Endlosschleife** im Server | Zelle: `src/OPCUA/server.py:111-119` | Hält A2/A3 aktuell | Mit A2 und A3. Achtung: die Schleife läuft im selben Event-Loop wie das Vision-System |
-| A6 | **`print_setpoint.py`** — Debug-Client | Zelle: `src/OPCUA/print_setpoint.py` | Zum Mitlesen des Sollwerts während der Relay-Entwicklung | Mit B2. Das Muster ist als Vorlage für einen Event-Loop-Latenztest brauchbar, vorher übernehmen |
+| # | Was | Erledigt |
+|---|---|---|
+| ~~A1~~ | ~~`2:VisionSystem` — zweite, leere `VisionSystemType`-Instanz~~ | Der Adressraum enthält jetzt genau **eine** Instanz; festgehalten in `tests/test_part10_fassade.py` |
+| ~~A2~~ | ~~`CpuTemperatureResult`~~ | Mit A1 entfallen |
+| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz ist der Loop-Lag-Watchdog in `runner.py` |
+| ~~A4~~ | ~~`RaspiDevice/Setpoint`~~ | Mit B2 entfallen |
+| ~~A5~~ | ~~1-Hz-Endlosschleife im Server~~ | `main()` wartet jetzt nur noch auf das Stopp-Signal |
+| ~~A6~~ | ~~`print_setpoint.py`~~ | Gelöscht |
 
-> **Hinweis zu A1:** Solange die Altlast-Instanz existiert, liegen **zwei**
-> `VisionSystemType`-Instanzen im Adressraum. Ein Client, der per Typ sucht statt die
-> feste NodeId `ns=4;s=VisionMachine` zu nehmen, findet beide. Genau das hat schon einmal
-> zugeschlagen: ein Aufruf auf `ns=2;i=150` (die **nicht verlinkte** `StartSingleJob` der
-> Altlast) beantwortet der Server mit `BadNothingToDo`. Siehe auch
-> [`vision-server-interface.md`](vision-server-interface.md) §7.4.
+Mit `RaspiDevice` ist auch sein Namensraum `http://launch-rm.de/raspi` gefallen. **Alle
+Namespace-Indizes sind dadurch um eins nach unten gerückt** — der Vision-Namespace liegt
+jetzt auf ns=6. Wer `get_namespace_index(uri)` benutzt, merkt nichts; wer einen Index
+fest verdrahtet hat, greift ins Leere.
+
+`VisionMachine` hängt seitdem im Machinery-Standardordner `Objects/Machines` statt
+direkt unter `Objects`. Grund war nicht Technik, sondern Lesbarkeit: unter `Objects`
+standen vier gleichrangige Objekte, und in der Betreuung war unklar, welches der
+Einstieg ist. Jetzt steht dort projektseitig nur noch `VisionProgram`.
 
 ---
 
@@ -48,11 +54,11 @@ festverdrahtet und gehört so nicht in ein Uni-Repo, das andere Gruppen weiterbe
 | # | Was | Wo | Warum es da ist | Abbaubedingung |
 |---|---|---|---|---|
 | B1 | **Hartcodierte Pi-Adressen** `10.10.38.104` / `.109` und Relay-Knoten-IDs | WSC: `backend/src/backend/config/pi_relay.py:3-9`, `frontend/src/features/opcua-server/config/piServers.ts:1-9` | Schnellster Weg zu einer laufenden Verbindung | Server-Auswahl über die vorhandene `ConnectOpcUa`-Eingabe oder Konfiguration statt Konstanten |
-| B2 | **CPU-Temperatur-Relay Pi1↔Pi2** — kopiert 1×/s `ns=2;i=2` → `ns=2;i=4` der jeweils anderen Seite | WSC: `application_service.py:297-384` (`_relay_temperature`, `_ensure_pi_temperature_relays`), `runtime_registry.py:19-28` | Nachweis, dass das Backend gleichzeitig lesen und schreiben kann | Ersatzlos. Nachweis ist erbracht, echte Nutzlast gibt es keine |
+| ~~B2~~ | ~~CPU-Temperatur-Relay Pi1↔Pi2~~ | — | — | **Erledigt** 21.09.2026: ersatzlos entfernt, samt `_relay_tasks` in `runtime_registry.py`. Die Zielknoten gibt es nicht mehr |
 | B3 | **„First Layer" / „Second Layer" als Label zweier fester URLs** | WSC: `piServers.ts:4-7`, `ServerManager.tsx:5`, `:100-103` | Zwei Verbindungspunkte in der UI unterscheidbar machen | Wenn die Layer-Zuordnung aus den Serverdaten kommt statt aus der URL |
-| B4 | **„Test: First Layer CPU-Temperatur"** — Live-Anzeige im Autolocate-Popup | WSC: `AutolocateModulesModal.tsx:128-149`, `:223-227` | Beweis, dass eine Node-Subscription aus dem Popup heraus funktioniert | Ersatzlos, sobald das Popup echte Modulpositionen zeigt |
+| ~~B4~~ | ~~„Test: First Layer CPU-Temperatur" im Autolocate-Popup~~ | — | — | **Erledigt** 21.09.2026: ersatzlos entfernt. Der Knoten, den es abonnierte, existiert nicht mehr |
 | B5 | **`MOCK_MODULES`** — drei erfundene Roboter mit Position 0/0/0 | WSC: `AutolocateModulesModal.tsx:21-36`, `:123` | Füllt den dritten Bildschirm des Popups | Wenn `detections` aus dem Vision-Payload dort landen. Im Code bereits als `TODO` markiert |
-| B6 | **`legacy`-Zweig in `resolveVisionBinding`** — NodeIds des alten Smoke-Tests | WSC: `piServers.ts:67-76` | Übergangsphase, als noch nicht beide Pis den VisionMachine-Server hatten | Wenn beide Pis dauerhaft auf dem neuen Server sind und A1 entfernt ist. Der `unknown`-Zweig muss bleiben |
+| ~~B6~~ | ~~`legacy`-Zweig in `resolveVisionBinding`~~ | — | — | **Erledigt** 21.09.2026: mit A1 hinfällig. Der `unknown`-Zweig ist geblieben — er unterscheidet weiterhin „noch nichts bekannt" von „falscher Server" |
 | B7 | **Deployment-Behelf** `if os.getenv("HOST"): mount StaticFiles("./www")` und `host="0.0.0.0"` | WSC: `backend/src/backend/app.py:18-19`, `:30` | Damit das gebaute Frontend mit ausgeliefert wird | Nicht von uns eingeführt — bei einer Rückgabe ans Uni-Repo mit den Betreuern klären |
 | B8 | **Branchname `Ungetestet`** | WSC | Ehrlich benannter Arbeitsbranch | Beim Merge nach `dev`. Der Name sagt inzwischen weniger als er soll — Backend und Vision-Strecke sind gegen beide Pis verifiziert, das Frontend hat Typecheck und Unit-Tests |
 
@@ -117,18 +123,18 @@ Siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) und
 
 ---
 
-## Reihenfolge, wenn abgebaut wird
+## Reihenfolge, wenn abgebaut wird — **durchlaufen am 21.09.2026**
 
-Die Einträge hängen zusammen. Sinnvolle Kette:
+Die Kette stand hier vorgezeichnet und wurde genau so abgearbeitet:
 
-1. **B4** (Temperaturanzeige im Popup) und **B2** (Relay) entfernen — danach liest
-   nichts mehr die Temperatur über den Vision-Baum.
-2. **A2** (`CpuTemperatureResult`) entfernen, damit **A1** (`2:VisionSystem`) leer ist.
-3. **A1** entfernen. Erst danach ist der Adressraum eindeutig und **B6**
-   (`legacy`-Zweig) kann fallen.
-4. **A4**, **A5**, **A3**, **A6** — der Rest der Demo.
-5. **C3** vor dem Zwei-Pi-Betrieb, unabhängig vom Rest.
+1. ~~**B4** (Temperaturanzeige im Popup) und **B2** (Relay)~~ — danach las nichts mehr
+   eine Temperatur über den Vision-Baum.
+2. ~~**A2** (`CpuTemperatureResult`)~~ — damit war **A1** leer.
+3. ~~**A1** (`2:VisionSystem`)~~ — seitdem ist der Adressraum eindeutig, und **B6**
+   (`legacy`-Zweig) konnte fallen.
+4. ~~**A4**, **A5**, **A3**, **A6**~~ — der Rest der Demo, samt Namensraum.
+5. **C3** ist bereits erledigt (siehe Abschnitt C).
 
-Der frühere Vorbehalt zu A3/A5 ist erledigt: der Loop-Lag-Watchdog in
-`src/vision_server/runner.py` meldet Blockaden des gemeinsamen Event-Loops, `Counter`
-wird als Referenzsignal nicht mehr gebraucht.
+Offen bleiben **B1**, **B3**, **B5**, **B7**, **B8** im WSC-Repo sowie **C2**, **C5**,
+**C7** und der gesamte Abschnitt D. B1 hängt an der mDNS-Umstellung: die Adressen sind
+noch Konstanten, obwohl der Server sich inzwischen selbst ankündigt.

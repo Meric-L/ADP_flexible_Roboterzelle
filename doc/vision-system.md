@@ -8,12 +8,17 @@ für den vollständigen Zielplan
 ## Zweck
 
 **Ein** OPC-UA-Server auf dem Raspberry Pi (`src/OPCUA/server.py`, Port 4840,
-Endpoint `opc.tcp://<pi>:4840/raspi/server/`) mit zwei unabhängigen Bäumen:
+Endpoint `opc.tcp://<pi>:4840/raspi/server/`) mit **zwei Sichten auf denselben
+Job**:
 
-| Baum | Inhalt |
+| Knoten | Inhalt |
 | --- | --- |
-| `RaspiDevice` | gewachsenes eigenes Interface: CPU-Temperatur, Zähler, Sollwert |
-| `VisionMachine` | **OPC 40100 (Machine Vision)** mit vollem Job-Ablauf, implementiert im Paket `src/vision_server/` |
+| `Machines/VisionMachine` | **OPC 40100 (Machine Vision)** mit vollem Job-Ablauf, implementiert im Paket `src/vision_server/` |
+| `VisionProgram` | **OPC UA Teil 10**, generische Bedienoberfläche auf demselben `JobRunner` — der Einstieg für das Frontend |
+
+Der Endpoint-Pfad heißt weiterhin `/raspi/server/`, obwohl das namensgebende
+`RaspiDevice` entfernt ist: er steht in mDNS-Ankündigung, LDS-Registrierung und
+jeder Client-Konfiguration.
 
 Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans. Seine
 Erkennungsstufe ist bewusst noch ein **Hello-World-Platzhalter**: Zustandsautomaten,
@@ -33,7 +38,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | --- | --- |
 | [`src/vision_server/`](../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
 | [`src/vision_server/tools/hello_world_client.py`](../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
-| [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server der Zelle: Raspi-Interface + Einbau des Vision-Systems |
+| [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
 | [`src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml`](../src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../requirements.txt) | u. a. `asyncua` |
 
@@ -61,27 +66,32 @@ Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung.
 
 ```
 Objects/
-├── RaspiDevice                          ns=2  (unverändert; Setpoint bleibt ns=2;i=4)
-│   ├── CpuTemperature   Double
-│   ├── Counter          Int64
-│   └── Setpoint         Double  (writable)
-├── VisionSystem                         ns=2  Altlast: leere 40100-Instanz,
-│   └── ResultManagement/Results/CpuTemperatureResult   trägt nur die CPU-Temperatur
-└── VisionMachine                        ns=4;s=VisionMachine  (Typ: 3:VisionSystemType)
-    ├── VisionStateMachine               Preoperational | Halted | Error | Operational
-    │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
-    │       └── StartSingleJob           verlinkt (einzige implementierte Methode)
-    ├── ResultManagement
-    │   └── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
-    │       └── ResultContent[0]         String  <- JSON-Payload
-    └── LatestResultJson                 String  <- dasselbe JSON, einfacher Knoten
+├── Machines/                            ns=<machinery>;i=1001  (Standardordner Machinery)
+│   └── VisionMachine                    ns=<vision>;s=VisionMachine  (Typ: <mv>:VisionSystemType)
+│       ├── VisionStateMachine           Preoperational | Halted | Error | Operational
+│       │   └── AutomaticModeStateMachine  Initialized | Ready | SingleExecution | ContinuousExecution
+│       │       └── StartSingleJob       verlinkt, siehe vision-server-interface.md 7.5
+│       ├── ResultManagement
+│       │   └── Results/LatestResult     (Typ: <mv>:ResultType, wird pro Job überschrieben)
+│       │       └── ResultContent[0]     String  <- JSON-Payload
+│       └── LatestResultJson             String  <- dasselbe JSON, einfacher Knoten
+└── VisionProgram                        ns=<vision>;s=VisionProgram  (Typ: ProgramStateMachineType)
+    ├── ParameterSet/                    RecipeId, Continuous  (beschreibbar)
+    └── ResultSet/                       JobId, ErrorCode, ExecutionMode
+                                         + Verweise auf LatestResultJson u. a.
 ```
 
-Die Reihenfolge im Aufbau ist bindend: erst der raspi-Namespace und die
-`RaspiDevice`-Knoten, dann der Nodeset-Import, dann der Vision-Namespace. Nur so
-bleiben die vorhandenen NodeIds (`ns=2;i=4` für den Sollwert) gültig.
+`VisionMachine` liegt im Machinery-Standardordner `Machines` statt direkt unter
+`Objects`. Grund ist nicht Technik, sondern Lesbarkeit: wer den Server browst,
+soll **einen** Einstieg sehen. Für Clients ändert das nichts — die String-NodeId
+hängt nicht an der Browse-Position. Ohne geladenes Machinery-Nodeset (also ohne
+`config.assets`) fällt der Aufbau auf `Objects` zurück.
 
-Die `VisionMachine`-Instanz bekommt eine **String-NodeId** (`ns=4;s=VisionMachine`),
+Der frühere raspi-Namespace ist mit `RaspiDevice` entfallen; dadurch sind alle
+Namespace-Indizes um eins nach unten gerückt. Wer sie über
+`get_namespace_index(uri)` auflöst, merkt davon nichts.
+
+Die `VisionMachine`-Instanz bekommt eine **String-NodeId** (`ns=<vision>;s=VisionMachine`),
 wodurch `instantiate()` auch alle Kinder mit sprechenden, stabilen NodeIds anlegt
 (z. B. `…;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob`).
 Das erspart dem Backend jede Discovery.
@@ -105,9 +115,6 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
     nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
     Abschalten mit `OPCUA_LDS_URL=""`.
   Scheitert eine der beiden, läuft der Server weiter und loggt eine Warnung.
-- Alle 1 s: `Counter` hochzählen, `CpuTemperature` und
-  `CpuTemperatureResult/ResultContent` mit der CPU-Temperatur füllen
-  (unverändertes Verhalten des Raspi-Interfaces).
 - Beim Start des Vision-Systems: `Preoperational → Operational`, innen `Initialized → Ready`.
 - `StartSingleJob` prüft **synchron** Zustand und Eingaben und quittiert mit
   `(JobId, Error)`; der Job selbst läuft asynchron und meldet sich per Events.
@@ -125,7 +132,7 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 ```bash
 pip install -r requirements.txt
 
-# Server der Zelle (Raspi-Interface + Vision-System)
+# Server der Zelle (Vision-System + Part-10-Programm + mDNS/LDS)
 python3 src/OPCUA/server.py
 
 # Handshake einmal durchspielen
@@ -155,10 +162,10 @@ Aufrufen, `INVALID_ARGUMENT` bei überlanger `MeasId`, `UNKNOWN_RECIPE` bei
 unbekanntem Rezept, Fehlerpfad über den `Error`-Zustand mit anschließender
 Wiederaufnahme.
 
-Rückwärtskompatibilität geprüft: `ns=2;i=4` ist weiterhin der schreibbare
-Sollwert, `RaspiDevice/CpuTemperature` und `Counter` laufen, und
-`VisionSystem/ResultManagement/Results/CpuTemperatureResult` liefert unverändert
-einen Double.
+Nach dem Abbau der CPU-Temperatur-Demo (Altlasten A1–A6) zusätzlich geprüft:
+Der Adressraum enthält genau **eine** `VisionSystemType`-Instanz, sie hängt unter
+`Objects/Machines`, und der Namensraum `http://launch-rm.de/raspi` ist fort.
+Festgehalten in `tests/test_part10_fassade.py`.
 
 ## Bekannte Einschränkungen
 
@@ -180,9 +187,8 @@ einen Double.
   `HasNotifier`-Referenz ist gesetzt, bewirkt bei asyncua serverseitig aber kein
   Event-Bubbling.
 - Nur eine Vision-Instanz — ein zweites Profil (3D) existiert noch nicht.
-- Im Adressraum liegt neben `VisionMachine` noch die alte, leere
-  `VisionSystemType`-Instanz `2:VisionSystem`, die nur `CpuTemperatureResult`
-  trägt. Eine typbasierte Suche nach Vision-Systemen würde deshalb zwei
-  Instanzen finden — Clients müssen `ns=4;s=VisionMachine` fest verwenden. Die
-  Altlast verschwindet, sobald das Temperatur-Interface auf
-  `RaspiDevice/CpuTemperature` umgestellt ist.
+- Events erreichen **nur** ein Abo auf dem emittierenden Knoten. Ein reiner
+  Part-10-Client, der nur `VisionProgram` abonniert, sieht die 40100-Events
+  deshalb nicht; er holt sein Ergebnis über die Wertänderung von
+  `VisionProgram/ResultSet/LatestResultJson`. Am 21.09.2026 gegen asyncua 2.0.1
+  nachgemessen — auch eine `HasEventSource`-Referenz ändert daran nichts.

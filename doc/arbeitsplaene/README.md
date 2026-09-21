@@ -16,6 +16,7 @@ nicht gibt.
 | Plan | Thema | Status | Verantwortlich | Aktualisiert |
 | --- | --- | --- | --- | --- |
 | [`lds-registrierung.md`](lds-registrierung.md) | mdns | fertig | `Agent: LDS-Registrierung für den Aggregation-Server` | 21.09.2026 |
+| [`altlasten-abbau-part10-fassade.md`](altlasten-abbau-part10-fassade.md) | opcua | in Arbeit | `Agent: RaspiDevice/VisionSystem entfernen, Part-10-Fassade` | 21.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

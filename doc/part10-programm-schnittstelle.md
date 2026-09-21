@@ -208,28 +208,30 @@ Zu beachten:
 | --- | --- |
 | Vision (dieses Dokument) | `http://launch-rm.de/vision` |
 | OPC 40100 | `http://opcfoundation.org/UA/MachineVision` |
-| Raspi-Interface | `http://launch-rm.de/raspi` |
+| Machinery (trägt `Objects/Machines`) | `http://opcfoundation.org/UA/Machinery/` |
 
 Immer `await client.get_namespace_index("<uri>")` benutzen.
 
-> **Achtung, der Index hat sich verschoben.** Der Vision-Namespace liegt auf dem
-> Zellserver inzwischen auf **ns=7**, nicht mehr auf ns=4 — seit die Part-2-
-> Nodesets (DI, Machinery, AMCM) dazugekommen sind. Aktuelle Reihenfolge:
+> **Achtung, der Index hat sich zweimal verschoben.** Der Vision-Namespace lag
+> ursprünglich auf ns=4, wanderte mit den Part-2-Nodesets (DI, Machinery, AMCM)
+> auf ns=7 und liegt seit dem Abbau der CPU-Temperatur-Demo auf **ns=6** — mit
+> `RaspiDevice` ist auch dessen Namensraum entfallen. Aktuelle Reihenfolge,
+> am 21.09.2026 gegen einen laufenden Server ausgelesen:
 
 ```
 ns=0  http://opcfoundation.org/UA/
-ns=1  urn:freeopcua:python:server
-ns=2  http://launch-rm.de/raspi
-ns=3  http://opcfoundation.org/UA/MachineVision          <- OPC 40100
-ns=4  http://opcfoundation.org/UA/DI/
-ns=5  http://opcfoundation.org/UA/Machinery/
-ns=6  http://opcfoundation.org/UA/MachineVision/AMCM/
-ns=7  http://launch-rm.de/vision                          <- VisionMachine, VisionProgram
+ns=1  urn:plcm:camera-server:<einbauort>                  <- ApplicationUri
+ns=2  http://opcfoundation.org/UA/MachineVision           <- OPC 40100
+ns=3  http://opcfoundation.org/UA/DI/
+ns=4  http://opcfoundation.org/UA/Machinery/              <- trägt Objects/Machines
+ns=5  http://opcfoundation.org/UA/MachineVision/AMCM/
+ns=6  http://launch-rm.de/vision                          <- VisionMachine, VisionProgram
 ```
 
-Wer ns=4 noch fest verdrahtet hat, greift ab jetzt ins Leere. Das ist der
-einzige Punkt in diesem Dokument, der bestehenden Code **brechen kann** — und
-er betrifft den 40100-Pfad genauso.
+Wer irgendeinen dieser Indizes fest verdrahtet hat, greift ins Leere. Das ist
+der einzige Punkt in diesem Dokument, der bestehenden Code **brechen kann** —
+und er betrifft den 40100-Pfad genauso. Deshalb ausnahmslos über die URI
+auflösen.
 
 ---
 
@@ -257,10 +259,24 @@ Objects/
 │       ├── JobId           String
 │       ├── ErrorCode       Int32
 │       ├── ExecutionMode   String    idle | single | continuous
-│       └── LatestResultJson          Verweis auf denselben Knoten wie unten
+│       ├── LatestResultJson          Verweis auf denselben Knoten wie unten
+│       ├── LatestCameraFrame         Verweis  (Base64-JPEG, nur mit Kamera)
+│       ├── CameraStreamMode          Verweis, **beschreibbar**
+│       └── CalibrationProgress       Verweis  (JSON, nur mit AprilTag-Profil)
+├── StartCalibration                  Verweis auf die 40100-Methode, keine Eingaben
+├── FinishCalibration                 Verweis; Summary: String, Error: Int32
+└── AbortCalibration                  Verweis; Error: Int32
+
+Machines/
 └── VisionMachine                     ns=<vision>;s=VisionMachine   (OPC 40100, unverändert)
     └── ... StartSingleJob, Stop, ResultManagement, LatestResultJson, LatestCameraFrame ...
 ```
+
+**`VisionProgram` genügt sich selbst.** Alles, was ein Client zum Fahren und
+Auswerten eines Jobs braucht, hängt darunter — als Referenz, nicht als Kopie.
+Es gibt keinen zweiten Wert und keine zweite Implementierung. `VisionMachine`
+liegt seit dem 21.09.2026 im Machinery-Standardordner `Machines` und nicht mehr
+gleichrangig daneben, damit beim Browsen klar ist, wo man anfängt.
 
 Feste NodeIds:
 
@@ -303,8 +319,28 @@ Frontend                                    VisionProgram
    |<-- (die 40100-Events laufen unverändert weiter)   |
    |<-- ProgramTransitionEvent  Running -> Ready ------|  fertig
    |  4. read ResultSet/JobId, ResultSet/ErrorCode
-   |  5. read VisionMachine.LatestResultJson           |  das eigentliche Ergebnis
+   |  5. read ResultSet/LatestResultJson               |  das eigentliche Ergebnis
 ```
+
+> **Wichtig für einen reinen Part-10-Client.** Die 40100-Events erreichen ein
+> Abo auf `VisionProgram` **nicht**. Am 21.09.2026 gegen asyncua 2.0.1
+> nachgemessen: Events gehen ausschließlich an Abos auf dem emittierenden
+> Knoten; die `HasNotifier`/`HasEventSource`-Hierarchie wird serverseitig nicht
+> abgelaufen. Eine `HasEventSource`-Referenz von `VisionProgram` auf
+> `VisionMachine` ändert daran nichts — geprüft.
+>
+> Die 40100-Events zusätzlich auf `VisionProgram` zu emittieren wäre eine echte
+> Doppelung (zwei Events pro Ursache), deshalb tun wir es nicht. Der vollständige
+> Part-10-Weg ohne eine einzige 40100-NodeId lautet stattdessen:
+>
+> 1. `ProgramTransitionEvent` auf `VisionProgram` abonnieren — sagt, **dass**
+>    der Job fertig ist.
+> 2. Wertänderung von `VisionProgram/ResultSet/LatestResultJson` abonnieren —
+>    liefert, **was** erkannt wurde (Schema `wsc.vision.detections/1`).
+> 3. Bei Fehler `ResultSet/ErrorCode` lesen.
+>
+> Wer die 40100-Events will, abonniert weiterhin `VisionMachine` direkt. Beides
+> geht nebeneinander.
 
 Beispiel (asyncua):
 
@@ -511,7 +547,7 @@ Nichts davon ist Pflicht, um weiterzulaufen — alles ist Gewinn.
 ```bash
 pip install -r requirements.txt          # bringt jetzt auch `zeroconf` mit
 
-# Zellserver starten (Raspi-Interface + VisionMachine + VisionProgram + mDNS)
+# Zellserver starten (VisionMachine + VisionProgram + mDNS + LDS)
 python3 src/OPCUA/server.py
 
 # Auf dem Pi laeuft er als Service:

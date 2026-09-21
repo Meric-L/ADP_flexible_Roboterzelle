@@ -36,14 +36,13 @@ Teil 4 = Soll-Architektur).
   benutzen oder einen freien Port wählen.
 - [x] Der alte Hello-World-Smoke-Test in `src/OPCUA/server.py` ist entfallen —
   seine Aufgabe erfüllt jetzt das eingebaute Vision-System am selben Server.
-  `RaspiDevice`, der Nodeset-Import, die alte `VisionSystem`-Instanz,
-  `CpuTemperatureResult` und die Polling-Schleife sind **unverändert**;
-  geprüft, dass `ns=2;i=4` (Sollwert) und der Pfad
-  `VisionSystem/ResultManagement/Results/CpuTemperatureResult` weiter gelten.
-- [~] Dadurch liegen **zwei** `VisionSystemType`-Instanzen im Adressraum:
-  `4:VisionMachine` (echt) und die Altlast `2:VisionSystem`, die nur noch
-  `CpuTemperatureResult` trägt. Clients müssen die feste NodeId
-  `ns=4;s=VisionMachine` verwenden und dürfen **nicht** per Typ suchen.
+- [x] Am 21.09.2026 ist auch der Rest der CPU-Temperatur-Demo gefallen:
+  `RaspiDevice`, die alte `VisionSystem`-Instanz, `CpuTemperatureResult`, die
+  Polling-Schleife und der Namensraum `http://launch-rm.de/raspi`. Der
+  Adressraum enthält seitdem **genau eine** `VisionSystemType`-Instanz, und sie
+  liegt unter `Objects/Machines`. Eine Typsuche ist damit unschädlich geworden;
+  die feste NodeId `ns=<vision>;s=VisionMachine` bleibt trotzdem der
+  empfohlene Weg, weil sie keine Browse-Runde kostet.
 
 ### Verifiziert (lokal, asyncua 2.0.1, Produktionszuschnitt auf Port 4840)
 
@@ -137,9 +136,9 @@ und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
 2. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
    durchspielen, Grundlage ist
    [`vision-server-interface.md`](vision-server-interface.md).
-3. **Altlast `2:VisionSystem` entfernen**, sobald das Temperatur-Interface auf
-   `RaspiDevice/CpuTemperature` umgestellt ist. Danach das Nodeset-XML nach
-   `src/vision_server/nodesets/` verschieben und die Pfadkonstanten anpassen.
+3. ~~Altlast `2:VisionSystem` entfernen~~ — **erledigt am 21.09.2026**. Offen
+   bleibt der zweite Teil: das Nodeset-XML nach `src/vision_server/nodesets/`
+   verschieben und die Pfadkonstanten anpassen (Altlast C5).
 4. **Echtes Ergebnis-Payload** — neue `DetectionSource` in
    `src/vision_server/detection/` plus Registry-Eintrag. Das Schema
    (`wsc.vision.detections/1`) bleibt unverändert, es füllen sich nur

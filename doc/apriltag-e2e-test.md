@@ -364,7 +364,7 @@ Im Log muss stehen:
 
 ```
 Vision-Identitaet: vision-ceiling-01 (Rahmen cam_ceiling)
-VisionSystem 'VisionMachine' als ns=4;s=VisionMachine angelegt
+VisionSystem 'VisionMachine' als ns=6;s=VisionMachine unter Machines angelegt
 Livestream aus Profil 'apriltag' mit Overlay
 Vision-System 'VisionMachine' bereit (Profile apriltag, calibration, hello_world)
 ```

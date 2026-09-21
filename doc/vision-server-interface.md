@@ -12,9 +12,11 @@ Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 > gültig. Siehe
 > [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
 >
-> **Achtung:** Der Vision-Namespace liegt inzwischen auf **ns=7**, nicht mehr
-> auf ns=4 (die Part-2-Nodesets sind dazwischengekommen). Namespace-Indizes
-> immer über die URI auflösen, nie hartcodieren.
+> **Achtung:** Der Vision-Namespace liegt inzwischen auf **ns=6**. Er wanderte
+> erst von ns=4 auf ns=7 (die Part-2-Nodesets kamen dazwischen) und dann auf
+> ns=6, weil mit `RaspiDevice` auch der Namensraum `http://launch-rm.de/raspi`
+> entfallen ist. Genau deshalb gilt ausnahmslos: **Namespace-Indizes immer über
+> die URI auflösen, nie hartcodieren.**
 
 Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung.
 `apriltag` ist die echte Erkennung — sie steuert die Pi-Kamera an, lokalisiert
@@ -31,46 +33,69 @@ Payload-Format `wsc.vision.detections/1` ist **unverändert** geblieben.
 ## 1. Systemaufbau
 
 **Ein** OPC-UA-Server auf dem Raspberry Pi (systemd-Service `opcua-server.service`,
-Port 4840). Er trägt zwei unabhängige Bäume: das gewachsene Raspi-Interface und
-das Vision-System.
+Port 4840). Er trägt **einen** fachlichen Baum: das Vision-System, in zwei
+Sichten auf denselben Job.
 
 ```
 Raspberry Pi — opc.tcp://<pi>:4840/raspi/server/
-├── RaspiDevice        CPU-Temperatur, Counter, Setpoint (Temperatur-Interface)
-├── VisionMachine      OPC 40100 VisionSystemType        <- dieses Dokument
-└── VisionSystem       Altlast: leere 40100-Instanz, trägt nur
-                       CpuTemperatureResult (siehe 7.5) — NICHT verwenden
+├── Machines/          Standardordner aus OPC UA Machinery
+│   └── VisionMachine  OPC 40100 VisionSystemType        <- dieses Dokument
+└── VisionProgram      OPC UA Teil 10, Bedienoberfläche  <- part10-programm-schnittstelle.md
 ```
+
+Beide Sichten bedienen **denselben** `JobRunner`; es gibt keinen zweiten
+Job-Zustand. Wer nur Teil 10 sprechen will, kommt ohne eine einzige
+40100-NodeId aus — siehe
+[`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+
+> **Der Pfad `/raspi/server/` bleibt**, obwohl das Raspi-Interface weg ist. Er
+> steht in der mDNS-Ankündigung, in der LDS-Registrierung und in jeder
+> Client-Konfiguration; ihn umzubenennen bräche jede vorhandene Verbindung,
+> ohne etwas zu verbessern.
+
+Entfallen sind (Altlasten A1–A6): `RaspiDevice` mit CPU-Temperatur, Counter und
+Sollwert, die leere Zweitinstanz `2:VisionSystem`, `CpuTemperatureResult` und
+der Namensraum `http://launch-rm.de/raspi`.
 
 Adressraum des Vision-Systems:
 
 ```
 Objects/
-└── VisionMachine                        ns=<vision>;s=VisionMachine   (Typ: 3:VisionSystemType)
-    ├── VisionStateMachine               Preoperational | Halted | Error | Operational
-    │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
-    │       ├── StartSingleJob           <- Job starten
-    │       ├── Stop                     <- laufenden Job abbrechen, siehe Abschnitt 5
-    │       ├── StartContinuous          <- Dauerbetrieb, siehe Abschnitt 7.5
-    │       ├── Abort                   <- wie Stop, ueber den Abort-Uebergang
-    │       └── SimulationMode          (nicht verlinkt, siehe Abschnitt 7.5)
-    ├── ResultManagement
-    │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
-    │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
-    │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
-    ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
-    │                                    derselbe JSON-String, als einfacher String-Knoten
-    ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
-    │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
-    └── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
-                                         **beschreibbar**: off | apriltag | calibration
+└── Machines/                                ns=<machinery>;i=1001  (Standardordner)
+    └── VisionMachine                        ns=<vision>;s=VisionMachine   (Typ: <mv>:VisionSystemType)
+        ├── VisionStateMachine               Preoperational | Halted | Error | Operational
+        │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
+        │       ├── StartSingleJob           <- Job starten
+        │       ├── Stop                     <- laufenden Job abbrechen, siehe Abschnitt 5
+        │       ├── StartContinuous          <- Dauerbetrieb, siehe Abschnitt 7.5
+        │       ├── Abort                    <- wie Stop, ueber den Abort-Uebergang
+        │       └── SimulationMode           (nicht verlinkt, siehe Abschnitt 7.5)
+        ├── ResultManagement
+        │   ├── Results/LatestResult         (Typ: <mv>:ResultType, wird pro Job überschrieben)
+        │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
+        │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
+        ├── VisionAsset                      OPC 40100-2, siehe Abschnitt 11
+        ├── StartCalibration                 ns=<vision>;s=VisionMachine.StartCalibration
+        ├── FinishCalibration                ns=<vision>;s=VisionMachine.FinishCalibration
+        ├── AbortCalibration                 ns=<vision>;s=VisionMachine.AbortCalibration
+        ├── CalibrationProgress              ns=<vision>;s=VisionMachine.CalibrationProgress
+        ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
+        │                                    derselbe JSON-String, als einfacher String-Knoten
+        ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
+        │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
+        └── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
+                                             **beschreibbar**: off | apriltag | calibration
 ```
+
+Die drei Kalibriermethoden und die vier Wertknoten sind **zusätzlich** unter
+`VisionProgram` erreichbar — als Referenzen, nicht als Kopien. Es bleibt je ein
+Knoten mit einem Wert bzw. einer Implementierung.
 
 Interner Aufbau (Python-Paket `src/vision_server/`):
 
 | Modul | Aufgabe |
 | --- | --- |
-| `address_space.py` | Nodeset-Import, `VisionSystem`-Instanz, `HasNotifier` |
+| `address_space.py` | Nodeset-Import, `VisionMachine`-Instanz unter `Machines`, `HasNotifier` |
 | `state_machine.py` | beide 40100-Zustandsautomaten |
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegel |
@@ -92,9 +117,9 @@ Registry-Eintrag**. Der Server-Kern und diese Schnittstelle bleiben unberührt.
 | Endpoint | `opc.tcp://<pi>:4840/raspi/server/` |
 | Security | `NoSecurity` (keine Authentifizierung/Verschlüsselung) |
 | ServerName | `Raspberry Pi OPC UA Server` |
-| Namespace Vision | `http://launch-rm.de/vision` (aktuell **ns=7**, siehe Hinweis oben) |
-| Namespace 40100 | `http://opcfoundation.org/UA/MachineVision` (aktuell ns=3) |
-| Namespace Raspi | `http://launch-rm.de/raspi` (ns=2, nicht Vision-relevant) |
+| Namespace Vision | `http://launch-rm.de/vision` (aktuell **ns=6**, siehe Hinweis oben) |
+| Namespace 40100 | `http://opcfoundation.org/UA/MachineVision` (aktuell ns=2) |
+| Namespace Machinery | `http://opcfoundation.org/UA/Machinery/` (aktuell ns=4, trägt `Machines`) |
 
 **Namespace-Indizes nie hardcoden** — immer
 `await client.get_namespace_index("<uri>")`. Die Indizes verschieben sich, sobald
@@ -393,18 +418,21 @@ Das Ergebnis kommt stattdessen im Event (primär). Fallback, falls ein Client
 Array-Felder in Events nicht verarbeitet: auf das `ResultReadyEvent` hin **ein**
 `read_value()` auf `LatestResultJson` — weiterhin eventgetrieben, kein Polling.
 
-### 7.4 Es gibt zwei 40100-Instanzen im Adressraum — nur eine ist echt
+### 7.4 Es gibt genau eine 40100-Instanz — die Doppelung ist entfernt
 
-Neben `VisionMachine` existiert eine ältere, leere `VisionSystemType`-Instanz
-`ns=2;s=…VisionSystem` (BrowseName `2:VisionSystem`). Sie ist eine Altlast und
-dient nur noch als Container für `CpuTemperatureResult`, das die CPU-Temperatur
-des Pi trägt — **keine** Erkennung, keine Methoden, keine Events.
+**Erledigt.** Früher lag neben `VisionMachine` eine ältere, leere
+`VisionSystemType`-Instanz `ns=2;s=…VisionSystem`, die nur `CpuTemperatureResult`
+trug. Wer Instanzen per Typ einsammelte, fand zwei Systeme; ein Aufruf auf die
+nicht verlinkte `StartSingleJob` der Altlast (`ns=2;i=150`) wurde mit
+`BadNothingToDo` beantwortet. Das hat mindestens einmal echte Zeit gekostet.
 
-Konsequenz: **Nicht per Typ suchen.** Wer Instanzen von `VisionSystemType`
-einsammelt, findet zwei Systeme, davon eines mit einem Temperaturwert im
-`ResultContent`. Immer die feste NodeId `ns=<vision>;s=VisionMachine` verwenden
-(deshalb hat sie eine sprechende String-Id). Die Altlast wird entfernt, sobald
-das Temperatur-Interface auf `RaspiDevice/CpuTemperature` umgestellt ist.
+Beides ist weg: die Altlast-Instanz und mit ihr `RaspiDevice` und der Namensraum
+`http://launch-rm.de/raspi`. Eine Typsuche findet jetzt genau ein System.
+Verifiziert durch `tests/test_part10_fassade.py`, das den Adressraum durchläuft
+und auf **einer** Instanz besteht.
+
+Die Empfehlung bleibt trotzdem: die feste NodeId `ns=<vision>;s=VisionMachine`
+verwenden. Sie ist über Neustarts stabil und kostet keine Browse-Runde.
 
 ### 7.5 Welche Methoden verlinkt sind — und welche nicht
 
@@ -484,7 +512,6 @@ Vorführbare Sonderfälle:
   selben Server hängen (eigener Instanzname und eigene `visionSystemId`),
   dieselbe Schnittstelle. Ein zweiter Serverprozess ist nicht vorgesehen —
   er würde denselben 40100-Adressraum ein zweites Mal laden (~110 MB).
-- **Altlast-Instanz `2:VisionSystem` entfernen** (siehe 7.4).
 - **Structure-Felder der Events** befüllen, sobald asyncua-Issue #1693 gefixt
   ist. Das Payload bleibt auch dann die maßgebliche Quelle.
 
