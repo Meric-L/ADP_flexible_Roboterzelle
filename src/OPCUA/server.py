@@ -21,10 +21,11 @@ from asyncua.common.instantiate_util import instantiate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vision_server.config import VisionServerConfig  # noqa: E402
-from vision_server.profiles import (
+from vision_server.profiles import (  # noqa: E402
+    AprilTagProfileConfig,
     AssetConfig,
     CameraStreamConfig,
-)  # noqa: E402
+)
 from vision_server.runner import install_vision_machine  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +66,44 @@ PI_CAMERA_BACKENDS: dict[str, str] = {
 }
 
 
+#: What distinguishes Layer 1 from Layer 2 -- nothing else. Both run the same
+#: server with the same detection source; only these values differ.
+#: Ceiling camera: large tags at a distance, full resolution, looser error
+#: bound. Flange camera: small tags up close, more samples, tighter bound
+#: since moves are made from its pose.
+PI_APRILTAG_PRESETS: dict[str, dict] = {
+    "cam_ceiling": {
+        "resolution": (2028, 1520),
+        "tag_size_m": 0.100,
+        "samples_per_job": 3,
+        "max_reproj_error_px": 3.0,
+    },
+    "cam_flange": {
+        "resolution": (1280, 720),
+        "tag_size_m": 0.050,
+        "samples_per_job": 5,
+        "max_reproj_error_px": 1.5,
+    },
+}
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
+    """Return this Pi's AprilTag profile.
+
+    Calibration belongs to the physical camera, hence named after the frame
+    and stored under `data/` (not versioned). The tag map describes the
+    cell, is the same for both Pis, and lives under `config/`.
+    """
+    preset = PI_APRILTAG_PRESETS.get(frame_id, {})
+    return AprilTagProfileConfig(
+        calibration_path=REPO_ROOT / "data" / "calibration" / f"{frame_id}.json",
+        tag_map_path=REPO_ROOT / "config" / "tagmap.json",
+        frame_id=frame_id,
+        **preset,
+    )
+
 
 #: Woraus die beiden Vision-Systeme bestehen (OPC 40100-2). Nur eintragen, was
 #: wirklich verbaut ist -- ein erfundenes Modell ist schlechter als ein leeres
@@ -136,6 +174,7 @@ def vision_config() -> VisionServerConfig:
         vision_system_id=vision_system_id,
         frame_id=frame_id,
         camera_stream=CameraStreamConfig(backend=backend),
+        apriltag=apriltag_config(frame_id),
         assets=asset_config(frame_id, vision_system_id),
     )
 

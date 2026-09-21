@@ -13,7 +13,7 @@ FRONTEND_RECIPES = {
     "": "hello_world",
     "hello-world": "hello_world",
     "calibration": "calibration",
-    "image-recognition": "image_recognition",
+    "apriltag": "apriltag",
 }
 
 
@@ -35,7 +35,7 @@ class AdmissionTest(unittest.TestCase):
     def test_error_text_lists_the_known_recipes(self):
         with self.assertRaises(VisionJobError) as caught:
             request("gibts-nicht")
-        self.assertIn("image-recognition", caught.exception.message)
+        self.assertIn("apriltag", caught.exception.message)
 
 
 class RoutingTest(unittest.TestCase):
@@ -73,7 +73,7 @@ class SourceBuildingTest(unittest.TestCase):
 
     def test_builds_the_script_profiles(self):
         sources = build_detection_sources(VisionServerConfig())
-        self.assertEqual(sorted(sources), ["calibration", "hello_world", "image_recognition"])
+        self.assertEqual(sorted(sources), ["apriltag", "calibration", "hello_world"])
 
     def test_unknown_profile_fails_at_install_time(self):
         config = replace(VisionServerConfig(), recipe_profiles=(("", "appriltag"),))

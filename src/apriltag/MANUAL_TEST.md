@@ -1,5 +1,18 @@
 # Manuelle Testskripte – AprilTags (UNGETESTET)
 
+> **Abgelöst.** Diese Skripte sind der ungetestete Erstentwurf. Produktiv ist
+> das Paket `src/tagloc/`:
+>
+> | statt | benutze |
+> |---|---|
+> | `python src/apriltag/calibrate_camera.py` | `python -m tagloc.cli.calibrate` |
+> | `python src/apriltag/detect_apriltags.py` | `python -m tagloc.cli.detect` |
+>
+> Siehe [`doc/apriltag-referenz.md`](../../doc/apriltag-referenz.md) und
+> [`doc/apriltag-e2e-test.md`](../../doc/apriltag-e2e-test.md). Der Ordner bleibt
+> vorerst als Vergleichsmöglichkeit stehen, bis die neue Kette einmal an der
+> echten Pi-Kamera abgenommen wurde.
+
 Erste Einstiegs-Skripte zum Vertrautmachen mit AprilTags. Noch nicht mit echter Kamera getestet.
 
 ## Setup

@@ -67,9 +67,9 @@ Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
 | ~~C1~~ | ~~`IsSimulated = True` fest verdrahtet~~ | — | — | **Erledigt**: kommt jetzt von der Erkennungsquelle (`DetectionSource.is_simulated`) |
 | C2 | **`IsPartial = False`** fest verdrahtet | Zelle: `src/vision_server/events.py:69`, `result_management.py:91` | Es gibt nur Vollergebnisse | Erst relevant, falls je Teilergebnisse gesendet werden |
 | ~~C3~~ | ~~`vision_system_id` auf beiden Pis identisch~~ | — | — | **Erledigt**: `vision_identity()` in `src/OPCUA/server.py` (Env → Hostname-Abbildung → Fallback). Die Hostnamen in `PI_IDENTITIES` sind noch geraten und auf den Pis zu prüfen |
-| C4 | **`configuration_id`** wird noch von keiner Quelle gesetzt | Zelle: `src/vision_server/config.py` | Aus dem Entwurf übrig | Weg ist gebaut (`DetectionSource.configuration_id` → `configurationId` und `InternalConfigurationId`); die AprilTag-Quelle muss ihn mit der Kalibrieridentität füllen |
+| ~~C4~~ | ~~`configuration_id` wird von keiner Quelle gesetzt~~ | — | — | **Erledigt**: `AprilTagDetectionSource` füllt ihn mit Tag-Familie, Kalibrier- und Tag-Map-Identität (`tagloc.identity`, ohne numpy und ohne cv2) |
 | C5 | **Nodeset-XML unter `src/OPCUA/`** statt beim Paket, das es braucht | Zelle: `src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml` (786 KB) | Lag da, bevor `vision_server/` existierte | Nach `src/vision_server/nodesets/` verschieben, Pfadkonstanten anpassen |
-| C6 | **`caputure.py`** — ein **QR-Scanner** im AprilTag-Ordner, Tippfehler im Dateinamen, von nichts importiert | Zelle: `src/apriltag/caputure.py` | Erster Kameraversuch | Ersatzlos, sobald die Kamera-Abstraktion steht. Vorher den picamera2-Aufruf daraus übernehmen — es ist die einzige Stelle im Repo, die die Pi-Kamera überhaupt anspricht |
+| ~~C6~~ | ~~`caputure.py` — QR-Scanner im AprilTag-Ordner~~ | — | — | **Erledigt**: gelöscht. Die Pi-Kamera spricht jetzt `SharedCamera` an, für CLI-Aufrufe `tagloc.frames.PiCameraSource` |
 
 ---
 
@@ -80,8 +80,8 @@ Keine Altlasten im engeren Sinn, aber Fallen, die uns bereits Zeit gekostet habe
 | # | Was | Wo | Problem |
 |---|---|---|---|
 | D1 | **`.gitignore` schluckt ganze Dateitypen** — `*.txt`, `*.sh`, `*.bat`, `concept/`, `data/`, `hardware/` | Zelle: `.gitignore` | Bereits getrackte Dateien laufen weiter, **neue** `.sh`/`.txt` und alles Neue unter `concept/` sind still unsichtbar für `git add`. Betrifft jedes künftige Setup- oder Deploy-Skript |
-| D2 | **Kaputtes `.venv/`** — kein `bin/`, kein `pyvenv.cfg`, `asyncua` fehlt, dafür OpenCV **5.0.0.93** | Zelle: `.venv/` | Nicht aktivierbar. OpenCV 5 hat eine andere `aruco`-API als der Pi — lokal entwickelter Code läuft dort nicht |
-| D3 | **`requirements.txt` bildet die Realität nicht ab** | Zelle: `requirements.txt` | `picamera2` (Decken-Pi) und `pyrealsense2` (Hand-Pi) fehlen bewusst (beide nicht zuverlässig per pip auf dem jeweiligen Pi installierbar, siehe Kommentar in der Datei), kein Upper Bound auf OpenCV, `pupil-apriltags` fällt mit dem Umstieg auf `cv2.aruco` weg |
+| ~~D2~~ | ~~Kaputtes `.venv/`~~ | — | **Erledigt**: neu angelegt aus `requirements.txt` (OpenCV 5.0.0, numpy 2.5.3, asyncua 2.0.1, pupil-apriltags). Die gesamte Suite läuft damit **ohne einen einzigen Skip**. Das defekte Verzeichnis liegt als `.venv.kaputt/` daneben und kann gelöscht werden. Offen bleibt: verifiziert ist nur OpenCV **5.0.0**; auf dem Pi läuft 4.x. `tagloc.detector`/`boards` haben dafür Laufzeitweichen, die dort aber noch niemand ausgeführt hat |
+| ~~D3~~ | ~~`requirements.txt` bildet die Realität nicht ab~~ | — | **Teilweise erledigt**: die Datei erklärt jetzt, warum `picamera2` (Decken-Pi) per apt kommt (venv braucht `--system-site-packages`) und wozu `pupil-apriltags` noch dient — seit `tagloc.detector` ein optionales zweites Backend, kein Zwang mehr. `pyrealsense2` (Hand-Pi) ebenso bewusst nicht aufgenommen: auf dem Pi live verifiziert, dass Intel dafür keine ARM/aarch64-Wheels auf PyPI liefert — es muss dort separat installiert sein (bei uns lag es unter `/usr/local/lib/python3.13/dist-packages/`, ebenfalls per `--system-site-packages` sichtbar zu machen). Ein Upper Bound auf OpenCV fehlt weiterhin bewusst, weil die Laufzeitweichen 4.x und 5.x abdecken |
 | D4 | **`setup.sh` / `setup.bat` sind kein Projekt-Setup** | Zelle | Richten nur das ShareLaTeX-Remote und zwei Git-Aliase ein. Der Name legt etwas anderes nahe; ein echtes Setup-Skript existiert nicht |
 | D5 | **systemd-Unit und venv sind nirgends versioniert** | — | `opcua-server.service`, der Repo-Pfad auf dem Pi, die Python-Version und die venv-Erzeugung stehen in keinem Repo. Neuaufsetzen eines Pi ist derzeit undokumentiert |
 | D6 | **Node 18 reicht für das WSC-Frontend nicht** | WSC: `frontend/package.json` | `vite`/`vitest` verlangen `^20.19.0 \|\| >=22.12.0`. Unter Node 18 startet vitest nicht, und `npm install` überspringt **stillschweigend** das native `@rolldown/binding-linux-x64-gnu` — man bekommt ein kaputtes `node_modules` ohne Fehlermeldung |
@@ -97,11 +97,20 @@ keine Altlasten:
 
 - `detection/hello_world.py` und das Profil `hello_world`. Es bleibt als kamerafreier
   Smoke-Test dauerhaft nützlich, damit das Backend-Team ohne Hardware testen kann.
-- `frameId = "world"` in `payload.py:11`, obwohl noch kein Weltsystem existiert.
-- Posen fest auf `[0,0,0]` / `[0,0,0,1]`.
-- Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.
+- ~~`frameId = "world"`, obwohl noch kein Weltsystem existiert.~~ **Erledigt**: der
+  Rahmen folgt jetzt dem Bild — `world`, sobald ein Referenz-Tag aus der Tag-Map
+  sichtbar ist, sonst das Kamera-KS der Quelle.
+- ~~Posen fest auf `[0,0,0]` / `[0,0,0,1]`.~~ **Erledigt** für `apriltag`; für
+  `hello_world` und `calibration` bleiben sie Null, und das ist dort richtig.
+- ~~Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.~~
+  **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
+  Prototyp `src/apriltag/detect_apriltags.py` steht noch, ist aber als abgelöst
+  gekennzeichnet.
+- **Offen bleibt die Hand-Auge-Kalibrierung** für Layer 2. Bis sie steht, liefert
+  die Flanschkamera im Kamera-KS und `auto_execute` bleibt `False`.
 
-Diese Punkte stehen im Umsetzungsplan für die AprilTag-Auswertung, nicht hier.
+Siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) und
+[`apriltag-e2e-test.md`](apriltag-e2e-test.md).
 
 ---
 

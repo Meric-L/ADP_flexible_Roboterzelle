@@ -1,6 +1,6 @@
 """Eine Kamera, ein Capture-Loop, mehrere Leser.
 
-QR-Erkennung (`detection/image_recognition.py`) und Livestream-Publisher
+Erkennung (`detection/apriltag.py`) und Livestream-Publisher
 (`camera_stream.py`) brauchen beide Bilder derselben physischen Kamera.
 Picamera2/libcamera **und** RealSense lassen pro Kamera aber nur einen
 offenen Zugriff gleichzeitig zu — ein zweiter Open waehrend der Stream laeuft
@@ -12,7 +12,7 @@ Hardware anzusprechen.
 Welche Hardware das ist, waehlt `CameraStreamConfig.backend`
 (`profiles.CAMERA_BACKENDS`) -- z. B. Picamera2 auf dem Decken-Pi, RealSense
 auf dem Hand-Pi. Alle Backends liefern denselben `CameraFrame` (BGR-Array),
-QR-Erkennung und Stream-Publisher kennen den konkreten Backend-Typ nicht.
+Erkennungsquelle und Stream-Publisher kennen den konkreten Backend-Typ nicht.
 
 `picamera2`/`pyrealsense2`/`cv2` werden erst in `open()` importiert, damit ein
 Server ohne `camera_stream`-Konfiguration (z. B. lokale Entwicklung, Tests)

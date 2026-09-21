@@ -6,6 +6,7 @@ hardware/
 *.bat
 *.sh
 .venv/
+.venv*/
 __pycache__/
 *.pyc
 *.log

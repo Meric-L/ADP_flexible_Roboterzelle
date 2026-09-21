@@ -25,11 +25,14 @@ def _calibration(config: VisionServerConfig) -> DetectionSource:
     return ScriptDetectionSource("calibration", JOBS_DIR / "calibrate.py")
 
 
-def _image_recognition(config: VisionServerConfig) -> DetectionSource:
-    from ..profiles import CameraStreamConfig
-    from .image_recognition import ImageRecognitionDetectionSource
+def _apriltag(config: VisionServerConfig) -> DetectionSource:
+    from ..profiles import AprilTagProfileConfig, CameraStreamConfig
+    from .apriltag import AprilTagDetectionSource
 
-    return ImageRecognitionDetectionSource(config.camera_stream or CameraStreamConfig())
+    return AprilTagDetectionSource(
+        config.apriltag or AprilTagProfileConfig(),
+        config.camera_stream or CameraStreamConfig(),
+    )
 
 
 #: Factories importieren ihr Modul **innerhalb** der Funktion. Sonst liegt jede
@@ -38,7 +41,7 @@ def _image_recognition(config: VisionServerConfig) -> DetectionSource:
 DETECTION_SOURCES: dict[str, SourceFactory] = {
     "hello_world": _hello_world,
     "calibration": _calibration,
-    "image_recognition": _image_recognition,
+    "apriltag": _apriltag,
 }
 
 

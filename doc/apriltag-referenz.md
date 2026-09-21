@@ -581,7 +581,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | `tests/test_tag_geometry.py` | Verkettung, Inversion, Quaternion-Konvention, Mittelung — mit Golden Values | numpy |
 | `tests/test_tag_map.py` | `place_tags` auf konstruierten Ko-Beobachtungen, Schließfehler, unerreichbare Tags, Datei-Round-Trip | numpy |
 | `tests/test_calibration_io.py` | Schreiben/Lesen, Identität, Auflösungsprüfung, Skalierung | numpy |
-| `tests/test_tag_pipeline.py` | **End-to-End auf einem synthetisch gerenderten Bild**: Detektor → Pose → Platzierung → Modulpose gegen die bekannte Wahrheit; Toleranz 2 mm / 0,5° | cv2 (sonst `skipUnless`) |
+| `tests/test_tag_pipeline.py` | **End-to-End auf einem synthetisch gerenderten Bild**: Detektor → Pose → Platzierung → Modulpose gegen die bekannte Wahrheit; Toleranz 2 mm / 1° / 1 px, gemessen 0,29 mm / 0,50° / 0,063 px | cv2 (sonst `skipUnless`) |
 | `tests/test_apriltag_source.py` | `run_blocking`, Aufnahme-Timeout, `configurationId`, `frame_id`/`frame_convention`, Payload-Attribute, `DETECTION_FAILED` | — |
 
 Testbilder werden **im Test erzeugt** (`tools/make_synthetic_scene.py`), nicht

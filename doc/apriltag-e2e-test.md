@@ -24,11 +24,13 @@ CLI-Referenz), [`vision-server-interface.md`](vision-server-interface.md) (OPC-U
 
 ### 0.1 Umgebung am PC
 
-> **Achtung, bekannter Zustand:** Das eingecheckte `.venv` in diesem Repo ist
-> defekt — `numpy/__init__.py` und `cv2/__init__.py` fehlen, beide Pakete sind
-> dort nicht importierbar. `setup.sh` legt keine venv an, es richtet nur das
-> ShareLaTeX-Remote ein. Lege die Umgebung deshalb einmal neu an: das alte
-> `.venv`-Verzeichnis löschen, dann
+Die Umgebung in diesem Repo ist einsatzbereit (OpenCV 5.0.0, numpy 2.5.3,
+asyncua 2.0.1, pupil-apriltags) — springe direkt zur Prüfung unten. Das alte,
+defekte `.venv` liegt als `.venv.kaputt/` daneben und kann gelöscht werden.
+
+> **Auf einem anderen Rechner:** `setup.sh` legt **keine** venv an, es richtet
+> nur das ShareLaTeX-Remote ein. Lege sie deshalb selbst an — altes
+> `.venv`-Verzeichnis entfernen, dann
 
 ```bash
 cd ADP_flexible_Roboterzelle
@@ -132,7 +134,8 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
 **Abbruchkriterium:** `build_tagmap` platziert alle Tags, die Liste „ohne Pfad
 zum Anker" ist leer, und die Schließfehler liegen **unter 1 mm und 0,05°**. Bei
 gerenderten Bildern gibt es keine Messunsicherheit — größere Werte sind ein
-Rechen- oder Konventionsfehler, kein Rauschen.
+Rechen- oder Konventionsfehler, kein Rauschen. Zum Vergleich: auf dieser Szene
+gemessen wurden 0,00–0,02 mm und 0,000°.
 
 ---
 
