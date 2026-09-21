@@ -135,6 +135,18 @@ def mdns_instance_name() -> str:
     return os.getenv("OPCUA_MDNS_NAME") or vision_identity()[0]
 
 
+def application_uri() -> str:
+    """Eindeutige ApplicationUri dieses Servers.
+
+    Der Aggregation-Server der Zelle (`opc.tcp://10.10.38.27:48400/`) fuehrt
+    seine Module unter ihrer ApplicationUri -- `urn:plcm:robot-server:ur5e`,
+    `urn:smart-business-card-factory:conveyor-system` und so fort. Ohne eigene
+    Uri meldete asyncua seinen Default `urn:freeopcua:python:server`:
+    nichtssagend, und beide Pis meldeten denselben Wert.
+    """
+    return os.getenv("OPCUA_APPLICATION_URI") or f"urn:launch-rm:{vision_identity()[0]}"
+
+
 def vision_config() -> VisionServerConfig:
     """Konfiguration des eingebauten Vision-Systems.
 
@@ -168,6 +180,10 @@ async def main():
 
     server.set_endpoint(ENDPOINT)
     server.set_server_name(SERVER_NAME)
+    # Vor dem Aufbau des Adressraums: die ApplicationUri landet im
+    # Namespace-Array auf ns=1 und ist der Name, unter dem der
+    # Aggregation-Server dieses Modul fuehrt.
+    await server.set_application_uri(application_uri())
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
     idx = await server.register_namespace("http://launch-rm.de/raspi")
