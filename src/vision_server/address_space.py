@@ -1,13 +1,20 @@
 """Aufbau des Adressraums: Nodeset-Import und VisionSystem-Instanz."""
 
 import logging
+import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from asyncua import Server, ua
 from asyncua.common.node import Node
 
 from .config import VisionServerConfig
-from .nodeset_ids import MACHINE_VISION_NAMESPACE_URI, VISION_SYSTEM_TYPE, mv
+from .nodeset_ids import (
+    AMCM_NAMESPACE_URI,
+    MACHINE_VISION_NAMESPACE_URI,
+    VISION_SYSTEM_TYPE,
+    mv,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -25,9 +32,16 @@ class VisionAddressSpace:
     automatic_state_machine: Node
     start_single_job: Node
     stop: Node
+    start_continuous: Node
+    abort: Node
+    halt: Node
+    reset: Node
     results_folder: Node
     #: `None`, wenn `config.camera_stream` nicht gesetzt ist -- kein Livestream.
     latest_camera_frame: Node | None
+    #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
+    #: loaded. Never hardcode it -- it shifts with every added nodeset.
+    amcm_idx: int | None = None
 
 
 async def configure_server(server: Server, config: VisionServerConfig) -> None:
@@ -46,21 +60,54 @@ async def configure_server(server: Server, config: VisionServerConfig) -> None:
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
 
-async def _ensure_nodeset(server: Server, config: VisionServerConfig) -> int:
-    """Importiert das Machine-Vision-Nodeset, falls noch nicht vorhanden.
+async def _ensure_nodeset(server: Server, namespace_uri: str, path: Path) -> int:
+    """Importiert ein Nodeset, falls sein Namensraum noch nicht da ist.
 
-    Haengt das Vision-System in einem Server, der den Nodeset schon geladen
+    Haengt das Vision-System in einem Server, der das Nodeset schon geladen
     hat, wuerde ein zweiter Import den Adressraum verdoppeln.
     """
     try:
-        return await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
+        return await server.get_namespace_index(namespace_uri)
     except ValueError:
         pass
-    if not config.nodeset_path.is_file():
-        raise FileNotFoundError(f"Nodeset nicht gefunden: {config.nodeset_path}")
-    _log.info("Importiere Machine-Vision-Nodeset von %s", config.nodeset_path)
-    await server.import_xml(str(config.nodeset_path))
-    return await server.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
+    if not path.is_file():
+        raise FileNotFoundError(f"Nodeset nicht gefunden: {path}")
+    _log.info("Importiere Nodeset %s von %s", namespace_uri, path)
+    await server.import_xml(str(path))
+    return await server.get_namespace_index(namespace_uri)
+
+
+async def _ensure_amcm_nodesets(server: Server, config: VisionServerConfig) -> int | None:
+    """Laedt OPC 40100-2 samt DI und Machinery, in dieser Reihenfolge.
+
+    Nur wenn `config.assets` gesetzt ist -- Part 2 kostet gemessen ~13 MB RSS
+    und ~1,6 s Startzeit und traegt zum Job-Pfad nichts bei. Scheitert der
+    Import, laeuft der Server ohne Anlagensicht weiter: sie ist eine
+    Zusatzsicht fuer Service und Instandhaltung, kein Betriebsmittel.
+    """
+    if config.assets is None:
+        return None
+    try:
+        for path in config.amcm_nodeset_paths:
+            await _ensure_nodeset(server, _namespace_uri_for(path), path)
+        return await server.get_namespace_index(AMCM_NAMESPACE_URI)
+    except Exception:
+        _log.exception("OPC 40100-2 (AMCM) nicht ladbar -- Server laeuft ohne Anlagensicht")
+        return None
+
+
+def _namespace_uri_for(path: Path) -> str:
+    """Liest den ModelUri aus dem Kopf eines Nodesets.
+
+    Billiger und ehrlicher als eine zweite Liste von URIs neben der Pfadliste:
+    die Datei sagt selbst, welchen Namensraum sie mitbringt, und kann damit
+    nicht gegen eine Konstante auseinanderlaufen.
+    """
+    head = path.read_text(encoding="utf-8", errors="replace")[:4096]
+    match = re.search(r'<Model\s[^>]*ModelUri="([^"]+)"', head)
+    if match is None:
+        raise ValueError(f"Kein ModelUri im Kopf von {path}")
+    return match.group(1)
 
 
 async def attach_vision_system(server: Server, config: VisionServerConfig) -> VisionAddressSpace:
@@ -70,7 +117,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     Namespace wird nach dem Import registriert; alle NodeIds werden
     ausschliesslich ueber die zur Laufzeit ermittelten Indizes gebildet.
     """
-    mv_idx = await _ensure_nodeset(server, config)
+    mv_idx = await _ensure_nodeset(
+        server, MACHINE_VISION_NAMESPACE_URI, config.nodeset_path
+    )
+    # Part 2 vor dem eigenen Namensraum, damit dessen Index stabil hinter allen
+    # importierten Nodesets liegt.
+    amcm_idx = await _ensure_amcm_nodesets(server, config)
     own_idx = await server.register_namespace(config.namespace_uri)
 
     name = config.vision_system_name
@@ -90,6 +142,10 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     )
     start_single_job = await automatic_state_machine.get_child(f"{mv_idx}:StartSingleJob")
     stop = await automatic_state_machine.get_child(f"{mv_idx}:Stop")
+    start_continuous = await automatic_state_machine.get_child(f"{mv_idx}:StartContinuous")
+    abort = await automatic_state_machine.get_child(f"{mv_idx}:Abort")
+    halt = await vision_state_machine.get_child(f"{mv_idx}:Halt")
+    reset = await vision_state_machine.get_child(f"{mv_idx}:Reset")
     result_management = await vision_system.get_child(f"{mv_idx}:ResultManagement")
     results_folder = await result_management.get_child(f"{mv_idx}:Results")
 
@@ -113,6 +169,11 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         automatic_state_machine=automatic_state_machine,
         start_single_job=start_single_job,
         stop=stop,
+        start_continuous=start_continuous,
+        abort=abort,
+        halt=halt,
+        reset=reset,
         results_folder=results_folder,
         latest_camera_frame=latest_camera_frame,
+        amcm_idx=amcm_idx,
     )

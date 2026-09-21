@@ -12,6 +12,7 @@ from .nodeset_ids import (
     OUTER_STATE_NAMES,
     STATE_INITIALIZED,
     STATE_READY,
+    STATE_CONTINUOUS_EXECUTION,
     STATE_SINGLE_EXECUTION,
     mv,
 )
@@ -95,6 +96,7 @@ class VisionStateMachines:
                 ("Initialized", STATE_INITIALIZED),
                 ("Ready", STATE_READY),
                 ("SingleExecution", STATE_SINGLE_EXECUTION),
+                ("ContinuousExecution", STATE_CONTINUOUS_EXECUTION),
             )
         }
         return cls(vision_fsm, automatic_fsm, outer, inner)
@@ -126,6 +128,29 @@ class VisionStateMachines:
     async def to_ready(self) -> None:
         """SingleExecution -> Ready (SingleExecutionToReadyAuto)."""
         await self._set_inner("Ready", "SingleExecutionToReadyAuto: SingleExecution -> Ready")
+
+    async def to_continuous_execution(self) -> None:
+        """Ready -> ContinuousExecution (ReadyToContinuousExecution)."""
+        await self._set_inner(
+            "ContinuousExecution", "ReadyToContinuousExecution: Ready -> ContinuousExecution"
+        )
+
+    async def continuous_to_ready(self, *, stopped: bool = True) -> None:
+        """ContinuousExecution -> Ready, per Stop oder Abort.
+
+        Dauerbetrieb endet nie von allein -- er laeuft, bis jemand ihn beendet.
+        Deshalb gibt es hier keinen Auto-Uebergang wie bei SingleExecution.
+        """
+        transition = "Stop" if stopped else "Abort"
+        await self._set_inner(
+            "Ready",
+            f"ContinuousExecutionToReady{transition}: ContinuousExecution -> Ready",
+        )
+
+    async def halt(self) -> None:
+        """Operational -> Halted: der Server nimmt keine Jobs mehr an."""
+        await self._set_outer("Halted", "OperationalToHaltedAuto: Operational -> Halted")
+
 
     async def abort_to_ready(self) -> None:
         """SingleExecution -> Ready ueber den Abort-Uebergang."""

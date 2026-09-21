@@ -33,7 +33,9 @@ Objects/
     │   └── AutomaticModeStateMachine    Initialized | Ready | SingleExecution | ContinuousExecution
     │       ├── StartSingleJob           <- Job starten
     │       ├── Stop                     <- laufenden Job abbrechen, siehe Abschnitt 5
-    │       └── StartContinuous | Abort | SimulationMode   (nicht implementiert)
+    │       ├── StartContinuous          <- Dauerbetrieb, siehe Abschnitt 7.5
+    │       ├── Abort                   <- wie Stop, ueber den Abort-Uebergang
+    │       └── SimulationMode          (nicht verlinkt, siehe Abschnitt 7.5)
     ├── ResultManagement
     │   ├── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │   │   └── ResultContent[0]         JSON-String des letzten Ergebnisses
@@ -370,14 +372,37 @@ einsammelt, findet zwei Systeme, davon eines mit einem Temperaturwert im
 (deshalb hat sie eine sprechende String-Id). Die Altlast wird entfernt, sobald
 das Temperatur-Interface auf `RaspiDevice/CpuTemperature` umgestellt ist.
 
-### 7.5 Nicht implementierte Methoden
+### 7.5 Welche Methoden verlinkt sind — und welche nicht
 
-Verlinkt sind `StartSingleJob` und `Stop` (Abschnitt 5). `StartContinuous`,
-`Abort`, `SimulationMode`, `Reset`, `Halt`, `SelectModeAutomatic` und die
-`Sync`-Methoden der StepModels sind im Adressraum sichtbar, haben aber keine
-Implementierung — ein Aufruf liefert `BadNothingToDo` auf OPC-UA-Statusebene
-(asyncua-Default fuer eine unverlinkte Methode), nicht etwa `Error != 0` im
-Output. Ein Backend darf sie nicht für den Ablauf voraussetzen.
+Das Nodeset bringt **alle** Methoden der Spec als Teil der Typdefinition mit;
+sie stehen im Adressraum, sobald die `VisionSystemType`-Instanz existiert. Ob
+sie etwas tun, entscheidet `server.link_method` in `runner.py`. Eine nicht
+verlinkte Methode antwortet `BadNothingToDo` auf OPC-UA-Statusebene — **nicht**
+`Error != 0` im Output.
+
+**Verlinkt:**
+
+| Methode | Wirkung |
+| --- | --- |
+| `StartSingleJob` | ein Durchlauf, Ergebnis, zurück nach `Ready` |
+| `StartContinuous` | läuft bis `Stop` oder `Abort`; je Durchlauf ein eigenes Ergebnis unter `<jobId>-0001`, `-0002`, … Ein fehlgeschlagener Durchlauf beendet den Dauerbetrieb — sonst erzeugte dieselbe Störung im Sekundentakt dieselbe Meldung. Pause dazwischen: `continuous_interval_s` (Standard 1 s) |
+| `Stop` | bricht den laufenden Job ab, Ergebnis mit `resultState=7` (`CANCELLED`) |
+| `Abort` | wie `Stop`, aber über den Abort-Übergang. Für uns ist das der einzige Unterschied: es gibt keinen Zwischenstand, den ein Abbruch verwerfen könnte |
+| `Halt` | beendet den laufenden Job und fährt nach `Halted`. Danach nimmt der Server keine Jobs mehr an |
+| `Reset` | zurück nach `Operational`, über `Preoperational` — das Nodeset kennt keinen Übergang `Halted -> Operational` |
+
+**Nicht verlinkt, mit Grund:**
+
+| Methode | Warum nicht |
+| --- | --- |
+| `SimulationMode` | bräuchte je Profil eine simulierte Datenquelle. Das Profil `hello_world` ist bereits genau das und ohne Kamera aufrufbar |
+| `SelectModeAutomatic` | es gibt nur eine Betriebsart. Eine Methode, die immer `OK` zurückgibt und nichts umschaltet, wäre irreführender als eine erkennbar nicht implementierte |
+| `ConfirmAll`, `Sync` der StepModels | gehören zum Schrittketten-Modell, das wir nicht benutzen |
+| **`ConfigurationManagement`** vollständig | bräuchte ein Konfigurations-Datenmodell, das die Zelle nicht hat. `configurationId` im Ergebnis benennt die wirksame Kalibrierung |
+| **`RecipeManagement`** vollständig | unsere `RecipeId` ist ein Routing-Schlüssel auf ein Erkennungsprofil, kein verwaltetes Rezeptobjekt |
+| `GetResultById`, `ReleaseResultHandle`, `GetResultListFiltered` | das Ergebnis kommt im Event und steht am Knoten; eine Handle-Verwaltung wäre Aufwand ohne Abnehmer (siehe 7.3) |
+
+Diese Lücken sind Entscheidungen, keine Versäumnisse.
 
 ## 8. Ablauf einmal durchspielen
 
@@ -460,3 +485,61 @@ Verhalten:
   QR-Jobs bleibt der Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
   (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
+
+---
+
+## 11. OPC 40100-2: Anlagensicht
+
+Part 1 beantwortet, **wie man das System bedient**. Part 2 — *Asset Management
+and Condition Monitoring*, veröffentlicht 17.05.2024 — beantwortet, **woraus es
+besteht**: Recheneinheit, Bildsensor, Objektiv, jeweils mit Identifikation. Für
+Service und Instandhaltung, nicht für den Betrieb.
+
+```
+ns=<vision>;s=VisionMachine.VisionAsset
+├── Identification        Manufacturer, Model, SerialNumber, SoftwareRevision
+├── ComputingDevices/ComputingDevice
+├── ImageSensors/ImageSensor
+└── Lenses/Lens
+```
+
+Angelegt wird nur, was in der `AssetConfig` des Pis steht (`src/OPCUA/server.py`,
+`PI_ASSET_PRESETS`). Ein leeres Modellfeld heißt „nicht bekannt" und erzeugt
+**keinen** Eintrag — ein erfundenes Modell wäre in einer Instandhaltungssicht
+schlimmer als eine Lücke.
+
+### 11.1 Was das kostet
+
+Part 2 bringt **DI 1.04.0** und **Machinery 1.03.0** mit; der Server lädt also
+vier Nodesets statt einem. Gemessen (Desktop, asyncua 2.0.1):
+
+| | RSS | Startzeit |
+| --- | --- | --- |
+| nur Part 1 | 108,5 MB | 0,65 s |
+| mit Part 2 | 121,3 MB | +1,6 s |
+| Anlagensicht instanziiert | +2,9 MB | |
+
+Rund **16 MB und knapp zwei Sekunden**. Ohne `assets` in der
+`VisionServerConfig` wird nichts davon geladen. Nachmessen:
+`PYTHONPATH=src python3 tools/measure_nodeset_import.py`.
+
+### 11.2 Zwei Fallen
+
+**Die Nodeset-Versionen sind gepinnt.** Das neueste DI (1.05.0) lässt sich mit
+asyncua 2.0.1 **nicht** importieren — es fordert UA-Basis 1.05.04 und scheitert
+mit `BadParentNodeIdInvalid`. Das neueste Machinery zöge zusätzlich `IA` herein.
+Gewählt sind genau die Versionen, die AMCM als `RequiredModel` nennt. Details in
+[`src/OPCUA/nodesets/README.md`](../src/OPCUA/nodesets/README.md).
+
+**Der Namensraumindex verschiebt sich.** Mit Part 2 liegt
+`http://launch-rm.de/vision` nicht mehr auf Index 3, sondern auf 6. Clients
+müssen ihn zur Laufzeit über `get_namespace_index` auflösen. Wer einen Index
+hart einträgt, bemerkt es erst, wenn jemand ein Nodeset ergänzt.
+
+### 11.3 Warum asyncua Platzhalter anlegt
+
+`<VisionItem>` & Co. tragen die Modelling Rule `MandatoryPlaceholder`. asyncua
+instanziiert sie deshalb als echte Knoten, obwohl sie Vorlagen des Typs sind.
+Sie nachträglich zu löschen kostete **9 s für 26 Knoten** — das rekursive
+Löschen ist dort pathologisch langsam. `asset_model.py` legt deshalb nur die
+Ordner an, die es füllt: rund 50 Knoten statt 700.
