@@ -249,11 +249,25 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     """
     vision_system_id, frame_id = vision_identity()
     backend = vision_camera_backend()
+    apriltag = apriltag_config(frame_id)
     _log.info(
         "Vision-Identitaet: %s (Rahmen %s, Kamera-Backend %s)",
         vision_system_id,
         frame_id,
         backend,
+    )
+    # Picamera2/OpenCV oeffnen die geteilte Kamera mit `CameraStreamConfig.
+    # resolution` (siehe `camera.py:_open_picamera2`) -- weicht das vom
+    # `AprilTagProfileConfig.resolution` ab, hat das erfasste Bild ein
+    # anderes Seitenverhaeltnis als die (Platzhalter- oder echte)
+    # Kalibrierung, und das Stream-Overlay scheitert mit "Seitenverhaeltnis
+    # aendert sich" (`tagloc.calibration.scale_to_resolution`). RealSense
+    # betroffen nicht: die hat mit `realsense_resolution` ein eigenes Feld,
+    # das schon auf cam_flanges Aufloesung (640x480) abgestimmt ist.
+    camera_stream = (
+        CameraStreamConfig(backend=backend)
+        if backend == "realsense"
+        else CameraStreamConfig(backend=backend, resolution=apriltag.resolution)
     )
     return VisionServerConfig(
         endpoint=endpoint,
@@ -261,8 +275,8 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
         nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
         frame_id=frame_id,
-        camera_stream=CameraStreamConfig(backend=backend),
-        apriltag=apriltag_config(frame_id),
+        camera_stream=camera_stream,
+        apriltag=apriltag,
         assets=asset_config(frame_id, vision_system_id),
     )
 
