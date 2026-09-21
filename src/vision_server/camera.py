@@ -39,6 +39,34 @@ class CameraFrame:
     timestamp: float
 
 
+def _list_realsense_color_profiles() -> str:
+    """Fragt die angeschlossene RealSense nach ihren Farb-Stream-Profilen.
+
+    Rein diagnostisch fuer die Fehlermeldung in `_open_realsense` -- darf
+    selbst nie werfen, sonst verschluckt sie den eigentlichen Fehler.
+    """
+    try:
+        import pyrealsense2 as rs
+
+        devices = rs.context().query_devices()
+        if len(devices) == 0:
+            return "keine RealSense gefunden (Kabel/USB-Port pruefen)"
+        profiles = set()
+        for sensor in devices[0].query_sensors():
+            for profile in sensor.get_stream_profiles():
+                if profile.stream_type() != rs.stream.color:
+                    continue
+                video = profile.as_video_stream_profile()
+                profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+        if not profiles:
+            return "Kamera gefunden, aber keine Farb-Profile gemeldet"
+        return ", ".join(
+            f"{w}x{h}@{fps}fps({fmt})" for w, h, fps, fmt in sorted(profiles)
+        )
+    except Exception as error:  # noqa: BLE001 -- rein diagnostisch, siehe Docstring
+        return f"Profile nicht abrufbar ({error})"
+
+
 class SharedCamera:
     """Haelt eine Kamera offen und stellt den jeweils neuesten Frame bereit."""
 
@@ -91,16 +119,31 @@ class SharedCamera:
         return camera
 
     def _open_realsense(self) -> Any:
-        """Startet eine RealSense-Pipeline auf dem Farb-Stream (BGR8)."""
+        """Startet eine RealSense-Pipeline auf dem Farb-Stream (BGR8).
+
+        `pipeline.start()` wirft `RuntimeError("Couldn't resolve requests")`,
+        wenn die angeschlossene Kamera das angeforderte Profil (Aufloesung +
+        fps + Format) nicht unterstuetzt -- z. B. weil die auf dem Pi noetige
+        RSUSB-Backend-Anbindung die Bandbreite begrenzt. Im Fehlerfall listen
+        wir die tatsaechlich unterstuetzten Farb-Profile ins Log, statt blind
+        weiter zu raten.
+        """
         import pyrealsense2 as rs
 
-        width, height = self._config.resolution
+        width, height = self._config.realsense_resolution
+        fps = self._config.realsense_fps
         rs_config = rs.config()
-        rs_config.enable_stream(
-            rs.stream.color, width, height, rs.format.bgr8, self._config.realsense_fps
-        )
+        rs_config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
         pipeline = rs.pipeline()
-        pipeline.start(rs_config)
+        try:
+            pipeline.start(rs_config)
+        except RuntimeError:
+            _log.error(
+                "RealSense lehnt %dx%d@%dfps (bgr8) ab. Tatsaechlich "
+                "unterstuetzte Farb-Profile dieser Kamera: %s",
+                width, height, fps, _list_realsense_color_profiles(),
+            )
+            raise
         return pipeline
 
     def _open_opencv(self) -> Any:

@@ -56,14 +56,26 @@ class CameraStreamConfig:
 
     backend: str = "picamera2"
     camera_index: int = 0
+    #: Nur fuer Picamera2/OpenCV. RealSense hat ein eigenes Feld
+    #: (`realsense_resolution`), weil die Sensoren -- besonders ueber die auf
+    #: dem Pi noetige RSUSB/libuvc-Backend-Anbindung -- nur bestimmte
+    #: Aufloesung/FPS-Kombinationen unterstuetzen; `1280x720` ist dafuer zu
+    #: bandbreitenhungrig und laesst `pipeline.start()` mit
+    #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
     warmup_s: float = 2.0
     stream_fps: float = 5.0
+    #: Konservativ gewaehlt, damit die Pipeline auch ueber die RSUSB-Backend-
+    #: Anbindung (noetig, weil der Pi-Kernel keinen brauchbaren UVC-Treiber
+    #: fuer RealSense mitbringt) zuverlaessig startet. Bei Bedarf hochsetzen,
+    #: sobald `_open_realsense`s Fehlermeldung die tatsaechlich unterstuetzten
+    #: Profile der angeschlossenen Kamera zeigt.
+    realsense_resolution: tuple[int, int] = (640, 480)
     #: Native Aufnahme-Framerate der RealSense-Pipeline; unabhaengig von
     #: `stream_fps`, weil die Sensoren nur bestimmte fps-Werte je Aufloesung
     #: unterstuetzen (typ. 6/15/30/60). `stream_fps` bleibt die Kadenz, mit
     #: der `SharedCamera` den jeweils neuesten Frame abholt.
-    realsense_fps: int = 30
+    realsense_fps: int = 15
     jpeg_quality: int = 70
     qr_scan_duration_s: float = 30.0
     node_name: str = "LatestCameraFrame"

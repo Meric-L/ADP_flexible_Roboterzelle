@@ -491,11 +491,18 @@ Verhalten:
   `OPCUA/server.py` wählt es über `PI_CAMERA_BACKENDS`
   (Hostname → Backend, Fallback `"picamera2"`, override per Env-Var
   `VISION_CAMERA_BACKEND`). Aktuell: `ADP-Roboter-Lokalisierung` → Picamera2
-  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense (`realsense_fps`, native Pipeline-Framerate,
-  Standard 30 — unabhängig von der `stream_fps`-Kadenz, mit der
-  `SharedCamera` den jeweils neuesten Frame abholt). Für QR-Erkennung und
+  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense. Für QR-Erkennung und
   Livestream ist das Backend unsichtbar — beide lesen nur `CameraFrame`
   (BGR-Array) von `SharedCamera.latest_frame`.
+- **RealSense hat eigene, bewusst konservative Defaults** (`realsense_resolution`
+  640×480, `realsense_fps` 15, unabhängig von `resolution`/`stream_fps` der
+  anderen Backends): die auf dem Pi nötige RSUSB/libuvc-Anbindung (der
+  Kernel bringt keinen brauchbaren UVC-Treiber für RealSense mit) limitiert
+  die Bandbreite, `1280×720@30` scheiterte dort mit
+  `RuntimeError: Couldn't resolve requests`. Scheitert `pipeline.start()`,
+  loggt `_open_realsense` zusätzlich die tatsächlich unterstützten
+  Farb-Profile der angeschlossenen Kamera — damit lässt sich der Wert bei
+  Bedarf gezielt hochsetzen, statt zu raten.
 
 ---
 
