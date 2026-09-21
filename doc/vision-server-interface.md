@@ -490,8 +490,8 @@ Verhalten:
   (`"picamera2"` | `"realsense"` | `"opencv"`) macht das explizit:
   `OPCUA/server.py` wählt es über `PI_CAMERA_BACKENDS`
   (Hostname → Backend, Fallback `"picamera2"`, override per Env-Var
-  `VISION_CAMERA_BACKEND`). Aktuell: `pi-decke` → Picamera2 (Deckenkamera),
-  `pi-hand` → RealSense (`realsense_fps`, native Pipeline-Framerate,
+  `VISION_CAMERA_BACKEND`). Aktuell: `ADP-Roboter-Lokalisierung` → Picamera2
+  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense (`realsense_fps`, native Pipeline-Framerate,
   Standard 30 — unabhängig von der `stream_fps`-Kadenz, mit der
   `SharedCamera` den jeweils neuesten Frame abholt). Für QR-Erkennung und
   Livestream ist das Backend unsichtbar — beide lesen nur `CameraFrame`

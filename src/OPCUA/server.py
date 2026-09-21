@@ -51,8 +51,8 @@ def read_cpu_temp() -> float:
 #: variieren: Interface-Doku und Frontend nageln `ns=<vision>;s=VisionMachine`
 #: fest, ein pi-spezifischer BrowseName bricht jeden Client.
 PI_IDENTITIES: dict[str, tuple[str, str]] = {
-    "pi-decke": ("vision-ceiling-01", "cam_ceiling"),
-    "pi-hand": ("vision-flange-01", "cam_flange"),
+    "ADP-Roboter-Lokalisierung": ("vision-ceiling-01", "cam_ceiling"),
+    "ADP-HandInEye-Kamera-Pi": ("vision-flange-01", "cam_flange"),
 }
 
 #: Hostname -> Kamera-Backend (siehe `CameraStreamConfig.backend`). Deckel-Pi
@@ -60,8 +60,8 @@ PI_IDENTITIES: dict[str, tuple[str, str]] = {
 #: `pyrealsense2`. Fehlt ein Host hier, gilt "picamera2" als bisheriger
 #: Default -- ein frisch aufgesetzter dritter Pi bricht damit nicht stumm.
 PI_CAMERA_BACKENDS: dict[str, str] = {
-    "pi-decke": "picamera2",
-    "pi-hand": "realsense",
+    "ADP-Roboter-Lokalisierung": "picamera2",
+    "ADP-HandInEye-Kamera-Pi": "realsense",
 }
 
 
@@ -77,7 +77,10 @@ PI_ASSET_PRESETS: dict[str, dict] = {
     },
     "cam_flange": {
         "computing_device_model": "Raspberry Pi",
-        "image_sensor_model": "Raspberry Pi Camera Module",
+        #: Genaues Modell (D415? D435?) noch nicht bestaetigt -- leer waere
+        #: hier schlechter als "irgendein RealSense", aber ein erfundenes
+        #: Modell (z. B. "D315", existiert nicht) waere schlimmer als das.
+        "image_sensor_model": "Intel RealSense",
     },
 }
 
