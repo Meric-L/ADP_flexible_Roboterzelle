@@ -2,3 +2,9 @@ opencv-contrib-python>=4.8.0
 pupil-apriltags
 numpy
 asyncua>=1.1.5
+# picamera2 (Decken-Pi) fehlt hier bewusst: kommt per apt, nicht zuverlaessig
+# per pip (siehe doc/altlasten.md D3). pyrealsense2 (Hand-Pi) ebenso NICHT
+# aufgenommen: Intel liefert auf PyPI i. d. R. keine ARM/aarch64-Wheels fuer
+# den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,
+# librealsense muss von Hand bzw. per apt/vorgebautem Paket installiert
+# werden. Vor dem Rollout auf dem Hand-Pi verifizieren.

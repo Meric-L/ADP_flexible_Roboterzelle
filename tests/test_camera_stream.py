@@ -85,7 +85,10 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         config = replace(FAST_CONFIG, stream_fps=50.0)
         publisher = CameraStreamPublisher(camera, node, config, encode_frame=flaky_encode)
 
-        await _run_briefly(publisher, 0.1)
+        # Grosszuegiges Fenster: der erste `run_in_executor(None, ...)`-Aufruf
+        # zahlt die Thread-Pool-Anlaufzeit, die auf einer ausgelasteten
+        # Maschine schon mal die erste Iteration allein aufbraucht.
+        await _run_briefly(publisher, 0.5)
 
         self.assertGreaterEqual(calls, 2)
         self.assertIn("ok", node.written)
