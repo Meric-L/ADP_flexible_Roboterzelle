@@ -49,7 +49,7 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--source",
         default="camera:0",
-        help="'camera[:n]', 'picamera', ein Bildordner oder eine Bilddatei",
+        help="'camera[:n]', 'picamera', 'realsense', ein Bildordner oder eine Bilddatei",
     )
     parser.add_argument(
         "--resolution",
@@ -111,7 +111,7 @@ def open_source(args, *, loop: bool = False):
 
 def is_camera_source(spec) -> bool:
     """Return whether `--source` means a live camera rather than stored images."""
-    return str(spec).startswith(("camera", "picamera"))
+    return str(spec).startswith(("camera", "picamera", "realsense"))
 
 
 def load_calibration_or_exit(path: Path) -> CameraCalibration:

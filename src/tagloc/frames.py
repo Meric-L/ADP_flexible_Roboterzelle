@@ -131,6 +131,46 @@ class PiCameraSource:
         self._camera.close()
 
 
+class RealSenseSource:
+    """Intel RealSense via `pyrealsense2`, for CLI calls on the Hand-Pi.
+
+    Wie `PiCameraSource`: der Server nutzt diesen Pfad nicht, sondern die
+    geteilte `SharedCamera` -- eine RealSense-Pipeline laesst pro Kamera nur
+    einen offenen Zugriff zu, der Livestream haelt sie. Fuer eine
+    Kalibrierfahrt muss der Server-Prozess deshalb kurz gestoppt sein.
+    Konservative Default-Aufloesung/-fps wie in
+    `vision_server.profiles.CameraStreamConfig` -- ueber die auf dem Pi
+    noetige RSUSB/libuvc-Backend-Anbindung unterstuetzen nicht alle
+    Kombinationen.
+    """
+
+    def __init__(
+        self, resolution: tuple[int, int] = (640, 480), fps: int = 15, warmup_s: float = 2.0
+    ) -> None:
+        import time
+
+        import numpy as np
+        import pyrealsense2 as rs
+
+        self._np = np
+        width, height = resolution
+        rs_config = rs.config()
+        rs_config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+        self._pipeline = rs.pipeline()
+        self._pipeline.start(rs_config)
+        time.sleep(warmup_s)
+
+    def read(self) -> Any | None:
+        frames = self._pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            return None
+        return self._np.asanyarray(color_frame.get_data())
+
+    def close(self) -> None:
+        self._pipeline.stop()
+
+
 class SharedCameraSource:
     """Adapter over `vision_server.camera.SharedCamera`.
 
@@ -156,12 +196,15 @@ def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: b
 
     * `camera` or `camera:2`  -- `cv2.VideoCapture`
     * `picamera`              -- Picamera2 on the Pi
+    * `realsense`             -- Intel RealSense via `pyrealsense2`
     * a directory             -- all images in it, sorted
     * an image file           -- that one image
     """
     text = str(spec)
     if text == "picamera":
         return PiCameraSource(resolution or (2028, 1520))
+    if text == "realsense":
+        return RealSenseSource(resolution or (640, 480))
     if text == "camera" or text.startswith("camera:"):
         _, _, index = text.partition(":")
         return VideoCaptureSource(int(index or 0), resolution)
@@ -171,7 +214,8 @@ def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: b
     if path.is_file():
         return SingleImageSource(path)
     raise FileNotFoundError(
-        f"--source '{spec}' ist weder 'camera[:n]', 'picamera', Verzeichnis noch Datei"
+        f"--source '{spec}' ist weder 'camera[:n]', 'picamera', 'realsense', "
+        "Verzeichnis noch Datei"
     )
 
 
