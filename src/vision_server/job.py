@@ -142,6 +142,10 @@ class JobRunner:
         self._busy = False
         self._job_counter = 0
         self._task: asyncio.Task | None = None
+        #: Von `stop(abort=True)` gesetzt. Der abgebrochene Task erfaehrt nur
+        #: `CancelledError` und kann sonst nicht wissen, welches Kommando ihn
+        #: getroffen hat -- Stop und Abort nehmen aber verschiedene Uebergaenge.
+        self._aborting = False
 
     async def cancel_running(self, timeout: float = 2.0) -> None:
         """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
@@ -157,7 +161,7 @@ class JobRunner:
         with contextlib.suppress(asyncio.CancelledError, TimeoutError):
             await asyncio.wait_for(task, timeout)
 
-    async def stop(self) -> VisionErrorCode:
+    async def stop(self, *, abort: bool = False) -> VisionErrorCode:
         """Bricht einen laufenden Job ab; OK, wenn gerade keiner laeuft.
 
         Fire-and-forget vom Frontend, unabhaengig vom aktuellen Zustand --
@@ -170,6 +174,7 @@ class JobRunner:
         task = self._task
         if task is None or task.done():
             return VisionErrorCode.OK
+        self._aborting = abort
         task.cancel()
         try:
             await asyncio.wait_for(task, self._config.stop_timeout)
@@ -215,6 +220,97 @@ class JobRunner:
         job_id = f"job-{self._job_counter:06d}"
         self._task = asyncio.create_task(self._run(job_id, request))
         return job_id, VisionErrorCode.OK
+
+    def start_continuous(
+        self, meas_id, part_id, recipe_id, product_id, parameters
+    ) -> tuple[str, VisionErrorCode]:
+        """Wie `start_single_job`, aber der Job endet erst auf Stop oder Abort.
+
+        Dieselbe atomare Zulassung: synchron, kein `await` zwischen Pruefung
+        und Setzen von `_busy`.
+        """
+        if self._busy:
+            return "", VisionErrorCode.BUSY
+        if not self._states.is_ready():
+            outer, inner = self._states.state_names()
+            _log.warning("StartContinuous im Zustand %s/%s abgelehnt", outer, inner)
+            return "", VisionErrorCode.INVALID_STATE
+        try:
+            request = build_job_request(
+                self._config, meas_id, part_id, recipe_id, product_id, parameters
+            )
+        except VisionJobError as error:
+            _log.warning("StartContinuous abgelehnt: %s", error.message)
+            return "", error.code
+        self._busy = True
+        self._job_counter += 1
+        job_id = f"job-{self._job_counter:06d}"
+        self._task = asyncio.create_task(self._run_continuous(job_id, request))
+        return job_id, VisionErrorCode.OK
+
+    async def _run_continuous(self, job_id: str, request: JobRequest) -> None:
+        """Erkennt fortlaufend, bis der Task abgebrochen wird.
+
+        Jeder Durchlauf veroeffentlicht ein eigenes Ergebnis unter einer
+        eigenen Id (`<job>-0001`, `-0002`, ...), damit ein Client die Folge
+        auseinanderhalten kann. Ein einzelner fehlgeschlagener Durchlauf
+        beendet den Dauerbetrieb -- das ist Absicht: liefe er weiter, wuerde
+        dieselbe Stoerung im Sekundentakt dieselbe Fehlermeldung erzeugen.
+        """
+        source = self._sources[request.profile_id]
+        cycle = 0
+        try:
+            async with self._lock:
+                await self._states.to_continuous_execution()
+                await self._events.job_started.trigger(message=job_id)
+                while True:
+                    cycle += 1
+                    cycle_id = f"{job_id}-{cycle:04d}"
+                    detections = await asyncio.wait_for(
+                        source.acquire_and_detect(request.to_detection_request(cycle_id)),
+                        self._config.job_timeout,
+                    )
+                    await self._events.acquisition_done.trigger(message=cycle_id)
+                    now = datetime.now(timezone.utc)
+                    result_id = f"res-{cycle_id}"
+                    payload = build_result_payload(
+                        vision_system_id=self._config.vision_system_id,
+                        result_id=result_id,
+                        job_id=cycle_id,
+                        creation_time=now,
+                        detections=detections,
+                        frame_id=source.frame_id or self._config.frame_id,
+                        frame_convention=source.frame_convention,
+                        configuration_id=source.configuration_id,
+                    )
+                    await self._publish(
+                        source, request, result_id, cycle_id, now,
+                        int(VisionErrorCode.OK), payload,
+                    )
+                    await asyncio.sleep(self._config.continuous_interval_s)
+        except asyncio.CancelledError:
+            await self._cancel(source, request, job_id, continuous=True)
+            raise
+        except TimeoutError:
+            await self._fail(
+                source, request, job_id,
+                VisionJobError(
+                    VisionErrorCode.DETECTION_FAILED,
+                    f"Erkennung ueberschritt {self._config.job_timeout:g} s",
+                ),
+                continuous=True,
+            )
+        except VisionJobError as error:
+            await self._fail(source, request, job_id, error, continuous=True)
+        except Exception as error:
+            _log.exception("Dauerbetrieb %s unerwartet fehlgeschlagen", job_id)
+            await self._fail(
+                source, request, job_id,
+                VisionJobError(VisionErrorCode.INTERNAL, str(error)),
+                continuous=True,
+            )
+        finally:
+            self._busy = False
 
     async def _run(self, job_id: str, request: JobRequest) -> None:
         """Durchlaeuft einen Einzeljob inklusive Events und Ergebnisablage."""
@@ -316,6 +412,7 @@ class JobRunner:
         request: JobRequest,
         job_id: str,
         error: VisionJobError,
+        continuous: bool = False,
     ) -> None:
         """Meldet den Fehler als Ergebnis und fuehrt den Automaten zurueck.
 
@@ -340,7 +437,10 @@ class JobRunner:
             await self._publish(
                 source, request, result_id, job_id, now, int(error.code), payload
             )
-            await self._states.abort_to_ready()
+            if continuous:
+                await self._states.continuous_to_ready(stopped=False)
+            else:
+                await self._states.abort_to_ready()
             await self._states.to_error(error.message)
             await self._states.recover()
             await self._events.ready.trigger(message=job_id)
@@ -352,6 +452,7 @@ class JobRunner:
         source: DetectionSource,
         request: JobRequest,
         job_id: str,
+        continuous: bool = False,
     ) -> None:
         """Meldet den Nutzerabbruch als Ergebnis und fuehrt den Automaten zurueck.
 
@@ -359,7 +460,9 @@ class JobRunner:
         gewolltes Kommando, kein Fehlerzustand. Laeuft, waehrend `_busy` noch
         gesetzt ist (siehe `_run`), also ohne Konkurrenz zu einem neuen Job.
         """
-        _log.info("Job %s durch Stop abgebrochen", job_id)
+        _log.info(
+            "Job %s durch %s abgebrochen", job_id, "Abort" if self._aborting else "Stop"
+        )
         try:
             now = datetime.now(timezone.utc)
             result_id = f"res-{job_id}"
@@ -369,7 +472,7 @@ class JobRunner:
                 job_id=job_id,
                 creation_time=now,
                 code=VisionErrorCode.CANCELLED,
-                message="Job durch Stop abgebrochen",
+                message=f"Job durch {'Abort' if self._aborting else 'Stop'} abgebrochen",
                 frame_id=source.frame_id or self._config.frame_id,
                 frame_convention=source.frame_convention,
                 configuration_id=source.configuration_id,
@@ -383,7 +486,12 @@ class JobRunner:
                 int(VisionErrorCode.CANCELLED),
                 payload,
             )
-            await self._states.stop_to_ready()
+            if continuous:
+                await self._states.continuous_to_ready(stopped=not self._aborting)
+            elif self._aborting:
+                await self._states.abort_to_ready()
+            else:
+                await self._states.stop_to_ready()
             await self._events.ready.trigger(message=job_id)
         except Exception:
             _log.exception("Abbruchpfad des Jobs %s fehlgeschlagen", job_id)

@@ -3,10 +3,18 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .profiles import AprilTagProfileConfig, CameraStreamConfig
+from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
-DEFAULT_NODESET_PATH = (
-    Path(__file__).resolve().parent.parent / "OPCUA" / "Opc.Ua.MachineVision.NodeSet2.xml"
+_OPCUA_DIR = Path(__file__).resolve().parent.parent / "OPCUA"
+
+DEFAULT_NODESET_PATH = _OPCUA_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
+
+#: Part 2 und seine Abhaengigkeiten, in Importreihenfolge: DI, dann Machinery,
+#: dann AMCM. Versionen sind gepinnt, siehe src/OPCUA/nodesets/README.md.
+DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
+    _OPCUA_DIR / "nodesets" / "Opc.Ua.Di.NodeSet2.xml",
+    _OPCUA_DIR / "nodesets" / "Opc.Ua.Machinery.NodeSet2.xml",
+    _OPCUA_DIR / "nodesets" / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
 )
 
 #: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
@@ -43,7 +51,15 @@ class VisionServerConfig:
     #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
     #: Zustandswechsel abgeschlossen sein muss.
     stop_timeout: float = 5.0
+    #: Pause zwischen zwei Durchlaeufen im Dauerbetrieb. Ohne Pause liefe die
+    #: Erkennung so schnell wie die Kamera Bilder gibt und belegte den Pi
+    #: vollstaendig -- der Dauerbetrieb soll beobachten, nicht verdraengen.
+    continuous_interval_s: float = 1.0
     apriltag: AprilTagProfileConfig | None = None
+    #: `None` = Part 2 nicht laden. Kostet gemessen ~13 MB RSS und ~1,6 s
+    #: Startzeit; fuer den Job-Pfad ist es nicht noetig.
+    assets: AssetConfig | None = None
+    amcm_nodeset_paths: tuple[Path, ...] = DEFAULT_AMCM_NODESET_PATHS
     #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
     #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `OPCUA/server.py` sie.
     camera_stream: CameraStreamConfig | None = None
