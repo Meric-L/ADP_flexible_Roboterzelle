@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from asyncua import Server, ua, uamethod
 
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
+from .asset_model import VisionAssetNodes, attach_asset_model
 from .camera_stream import CameraStreamPublisher
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
+from .errors import VisionErrorCode
 from .events import VisionEvents, create_event_generators
 from .job import JobRunner
 from .result_management import ResultStore
@@ -155,6 +157,8 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
+    #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
+    assets: VisionAssetNodes | None = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -184,6 +188,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     ServerName bleiben unberuehrt.
     """
     space = await attach_vision_system(server, config)
+    # Part 2 vor den Automaten: es haengt an nichts und soll auch dann stehen,
+    # wenn der Job-Pfad spaeter nicht in Operational kommt -- gerade dann ist
+    # die Frage "welche Kamera, welcher Zustand" interessant.
+    assets = (
+        await attach_asset_model(space, config.assets) if config.assets is not None else None
+    )
     states = await VisionStateMachines.bind(space)
     events = await create_event_generators(space)
     results = await ResultStore.create(space)
@@ -228,6 +238,68 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     server.link_method(space.stop, stop_job)
 
+    @uamethod
+    async def start_continuous(parent, meas_id, part_id, recipe_id, product_id, parameters):
+        """1:StartContinuous -- Dauerbetrieb bis Stop oder Abort."""
+        job_id, error = jobs.start_continuous(
+            meas_id, part_id, recipe_id, product_id, parameters
+        )
+        return (
+            ua.Variant(job_id, ua.VariantType.String),
+            ua.Variant(int(error), ua.VariantType.Int32),
+        )
+
+    server.link_method(space.start_continuous, start_continuous)
+
+    @uamethod
+    async def abort_job(parent, cause, cause_description):
+        """1:Abort -- wie Stop, aber ueber den Abort-Uebergang.
+
+        Fuer uns ist der Unterschied nur der Zustandsuebergang und die Meldung
+        im Ergebnis: es gibt keinen Zwischenstand, den ein Abbruch verwerfen
+        koennte. Beide melden `CANCELLED`.
+        """
+        error = await jobs.stop(abort=True)
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    server.link_method(space.abort, abort_job)
+
+    @uamethod
+    async def halt_system(parent, cause, cause_description):
+        """1:Halt -- laufenden Job beenden, dann keine Jobs mehr annehmen.
+
+        Aus Halted fuehrt nur `Reset` zurueck. Das ist der Sinn: Halt ist die
+        Bremse fuer den Bediener, nicht ein weiterer Betriebszustand.
+        """
+        error = await jobs.stop()
+        if error != VisionErrorCode.OK:
+            return (ua.Variant(int(error), ua.VariantType.Int32),)
+        try:
+            await states.halt()
+        except Exception:
+            _log.exception("Halt fehlgeschlagen")
+            return (ua.Variant(int(VisionErrorCode.INTERNAL), ua.VariantType.Int32),)
+        return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+
+    server.link_method(space.halt, halt_system)
+
+    @uamethod
+    async def reset_system(parent, cause, cause_description):
+        """1:Reset -- zurueck in den betriebsbereiten Zustand.
+
+        Ueber Preoperational, weil das Nodeset keinen Uebergang
+        Halted -> Operational kennt; `enter_operational` faehrt genau diesen
+        konformen Weg.
+        """
+        try:
+            await states.enter_operational()
+        except Exception:
+            _log.exception("Reset fehlgeschlagen")
+            return (ua.Variant(int(VisionErrorCode.INTERNAL), ua.VariantType.Int32),)
+        return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+
+    server.link_method(space.reset, reset_system)
+
     # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
     # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
     opened = {profile: await _open_source(source) for profile, source in sources.items()}
@@ -258,6 +330,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs=jobs,
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
+        assets=assets,
     )
 
 

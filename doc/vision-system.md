@@ -154,10 +154,13 @@ einen Double.
 
 - Die Erkennung ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`, die Pose immer
   Null. Das Payload-Schema ist aber schon das endgültige.
-- `frameId` ist fest `"world"`; ohne Hand-Auge-Kalibrierung haben die Posen keine
-  reale Bedeutung.
-- Verlinkt ist nur `StartSingleJob`. `StartContinuous`/`Stop`/`Abort`/
-  `SimulationMode`/`Reset`/`Halt` existieren im Adressraum, tun aber nichts.
+- `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
+  Tag-Map sichtbar ist, sonst das Kamera-KS. Für Layer 2 fehlt weiterhin die
+  Hand-Auge-Kalibrierung, bis dahin darf keine Pose automatisch angefahren werden.
+- Verlinkt sind `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`
+  und `Reset`. `SimulationMode` und `SelectModeAutomatic` existieren im
+  Adressraum, tun aber bewusst nichts — Begründung je Methode in
+  [`vision-server-interface.md`](vision-server-interface.md) Abschnitt 7.5.
 - Die `ResultManagement`-Methoden (`GetResultById` & Co.) sind nicht
   implementiert und vom asyncua-Client aus auch nicht aufrufbar — sie erwarten
   Struktur-ExtensionObjects als Eingabe (asyncua-Issue #1693).

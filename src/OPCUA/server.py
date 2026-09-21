@@ -21,7 +21,11 @@ from asyncua.common.instantiate_util import instantiate
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from vision_server.config import VisionServerConfig  # noqa: E402
-from vision_server.profiles import AprilTagProfileConfig, CameraStreamConfig  # noqa: E402
+from vision_server.profiles import (  # noqa: E402
+    AprilTagProfileConfig,
+    AssetConfig,
+    CameraStreamConfig,
+)
 from vision_server.runner import install_vision_machine  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +93,28 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         tag_map_path=REPO_ROOT / "config" / "tagmap.json",
         frame_id=frame_id,
         **preset,
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+#: Woraus die beiden Vision-Systeme bestehen (OPC 40100-2). Nur eintragen, was
+#: wirklich verbaut ist -- ein erfundenes Modell ist schlechter als ein leeres
+#: Feld, weil die Anlagensicht fuer Service und Instandhaltung gedacht ist.
+PI_ASSET_PRESETS: dict[str, dict] = {
+    "cam_ceiling": {
+        "computing_device_model": "Raspberry Pi",
+        "image_sensor_model": "Raspberry Pi Camera Module",
+    },
+    "cam_flange": {
+        "computing_device_model": "Raspberry Pi",
+        "image_sensor_model": "Raspberry Pi Camera Module",
+    },
+}
+
+
+def asset_config(frame_id: str, vision_system_id: str) -> AssetConfig:
+    """Anlagensicht dieses Pis. Die Seriennummer ist seine Vision-Identitaet."""
+    return AssetConfig(
+        serial_number=vision_system_id,
+        **PI_ASSET_PRESETS.get(frame_id, {}),
     )
 
 
@@ -124,6 +150,7 @@ def vision_config() -> VisionServerConfig:
         frame_id=frame_id,
         camera_stream=CameraStreamConfig(),
         apriltag=apriltag_config(frame_id),
+        assets=asset_config(frame_id, vision_system_id),
     )
 
 

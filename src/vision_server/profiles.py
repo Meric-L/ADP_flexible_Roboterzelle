@@ -72,3 +72,24 @@ class CameraStreamConfig:
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
     #: last result is redrawn.
     overlay_interval_s: float = 0.5
+
+
+@dataclass(frozen=True)
+class AssetConfig:
+    """Woraus dieses Vision-System besteht -- Part 2 (AMCM).
+
+    Reine Stammdaten, wie die uebrigen Profile nur Stdlib-Typen und hashbar.
+    Was sich zur Laufzeit aendert (CPU-Temperatur, Kamerazustand) steht nicht
+    hier, sondern wird von `asset_model` aus den laufenden Objekten gelesen.
+    """
+
+    manufacturer: str = "TU Darmstadt PLCM"
+    model: str = "Flexible Roboterzelle -- Vision"
+    serial_number: str = ""
+    software_revision: str = "0.1.0"
+    #: Die Recheneinheit, auf der dieser Server laeuft.
+    computing_device_model: str = "Raspberry Pi"
+    #: Kameramodul und Objektiv. Leer lassen, was nicht bekannt ist -- ein
+    #: erfundener Wert waere schlimmer als ein leeres Feld.
+    image_sensor_model: str = ""
+    lens_model: str = ""

@@ -34,6 +34,14 @@ class FakeStates:
     async def stop_to_ready(self) -> None:
         self.transitions.append("stop_to_ready")
 
+    async def to_continuous_execution(self) -> None:
+        self.transitions.append("continuous_execution")
+
+    async def continuous_to_ready(self, *, stopped: bool = True) -> None:
+        self.transitions.append(
+            "continuous_stop_to_ready" if stopped else "continuous_abort_to_ready"
+        )
+
     async def to_error(self, message: str) -> None:
         self.transitions.append("error")
 
@@ -280,3 +288,78 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContinuousTest(unittest.IsolatedAsyncioTestCase):
+    """Dauerbetrieb: laeuft, bis jemand ihn beendet.
+
+    Anders als ein Einzeljob endet er nie von allein, also pruefen die Tests
+    beides -- dass er wirklich mehrfach liefert, und dass er sich wirklich
+    beenden laesst.
+    """
+
+    async def _run_briefly(self, cycles: int = 2, **overrides):
+        source = ScriptedSource()
+        runner, states, events, results = make_runner(
+            source, continuous_interval_s=0.0, **overrides
+        )
+        job_id, code = runner.start_continuous(None, None, "", None, [])
+        self.assertEqual(VisionErrorCode.OK, code)
+        for _ in range(200):
+            await asyncio.sleep(0)
+            if len(results.published) >= cycles:
+                break
+        return runner, states, events, results, job_id
+
+    async def test_publishes_one_result_per_cycle(self):
+        runner, states, _, results, _ = await self._run_briefly(cycles=3)
+        self.assertGreaterEqual(len(results.published), 3)
+        await runner.stop()
+        self.assertIn("continuous_execution", states.transitions)
+
+    async def test_gives_every_cycle_its_own_result_id(self):
+        """Ein Client muss die Folge auseinanderhalten koennen."""
+        runner, _, _, results, job_id = await self._run_briefly(cycles=3)
+        await runner.stop()
+        ids = [entry.result_id for entry in results.published[:3]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue(all(identifier.startswith(f"res-{job_id}-") for identifier in ids))
+
+    async def test_stop_ends_it_through_the_stop_transition(self):
+        runner, states, _, results, _ = await self._run_briefly()
+        self.assertEqual(VisionErrorCode.OK, await runner.stop())
+        self.assertIn("continuous_stop_to_ready", states.transitions)
+        self.assertEqual(int(VisionErrorCode.CANCELLED), results.published[-1].result_state)
+
+    async def test_abort_ends_it_through_the_abort_transition(self):
+        runner, states, _, _, _ = await self._run_briefly()
+        self.assertEqual(VisionErrorCode.OK, await runner.stop(abort=True))
+        self.assertIn("continuous_abort_to_ready", states.transitions)
+
+    async def test_refuses_a_second_job_while_running(self):
+        runner, _, _, _, _ = await self._run_briefly()
+        _, code = runner.start_continuous(None, None, "", None, [])
+        self.assertEqual(VisionErrorCode.BUSY, code)
+        _, single = runner.start_single_job(None, None, "", None, [])
+        self.assertEqual(VisionErrorCode.BUSY, single)
+        await runner.stop()
+
+    async def test_refuses_to_start_when_not_ready(self):
+        source = ScriptedSource()
+        runner, states, _, _ = make_runner(source)
+        states.ready = False
+        _, code = runner.start_continuous(None, None, "", None, [])
+        self.assertEqual(VisionErrorCode.INVALID_STATE, code)
+
+    async def test_a_failing_cycle_ends_the_run(self):
+        """Sonst erzeugte dieselbe Stoerung im Sekundentakt dieselbe Meldung."""
+        source = ScriptedSource(error=VisionJobError(
+            VisionErrorCode.DETECTION_FAILED, "kaputt"
+        ))
+        runner, states, _, results = make_runner(source, continuous_interval_s=0.0)
+        runner.start_continuous(None, None, "", None, [])
+        with contextlib.suppress(asyncio.CancelledError):
+            await runner._task
+        self.assertEqual(int(VisionErrorCode.DETECTION_FAILED), results.published[-1].result_state)
+        self.assertIn("continuous_abort_to_ready", states.transitions)
+        self.assertFalse(runner._busy)
