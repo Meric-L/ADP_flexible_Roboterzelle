@@ -79,7 +79,11 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "max_reproj_error_px": 3.0,
     },
     "cam_flange": {
-        "resolution": (1280, 720),
+        # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
+        # Frames kommen ueber SharedCamera in dieser Aufloesung an, nicht in
+        # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
+        # ersten Job als ValueError ("Kalibrierung gilt fuer ...") auf.
+        "resolution": (640, 480),
         "tag_size_m": 0.050,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,

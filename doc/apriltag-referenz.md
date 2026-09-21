@@ -504,9 +504,14 @@ Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/OPCUA/server.p
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_map_path` | `config/tagmap.json` | `config/tagmap.json` |
 | `tag_size_m` | 0.100 | 0.050 |
-| `resolution` | 2028×1520 | 1280×720 |
+| `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
+
+`resolution` bei Layer 2 muss zu `CameraStreamConfig.realsense_resolution`
+passen (Standard 640×480) — die tatsächlichen Frames kommen über die geteilte
+`SharedCamera`, nicht direkt aus `AprilTagProfileConfig`. Eine Abweichung
+fällt erst beim ersten Job als `ValueError` auf ("Kalibrierung gilt für …").
 
 `tag_size_m` bleibt als Rückfallwert für Tags, die nicht in der Karte stehen;
 steht ein Tag in der Karte, gewinnt deren `sizeM`.

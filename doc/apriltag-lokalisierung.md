@@ -352,7 +352,7 @@ Server mit genau einer `AprilTagProfileConfig`; der Unterschied steht in
 | `frame_id` | `world` | `cam_flange` |
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_size_m` | 0.100 | 0.050 |
-| `resolution` | 2028×1520 | 1280×720 |
+| `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
 
