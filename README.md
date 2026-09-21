@@ -16,6 +16,13 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 ### Dokumentation (LaTeX)
 * `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
 
+### Schnittstellen-Dokumentation
+
+| Dokument | Wofür |
+| --- | --- |
+| [`doc/vision-server-interface.md`](doc/vision-server-interface.md) | OPC-UA-Schnittstelle des Vision-Servers nach OPC 40100 (Machine Vision) |
+| [`doc/part10-programm-schnittstelle.md`](doc/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche, mit der die Zelle ihre Module steuert, und die Auffindbarkeit im Netz |
+
 ### Implementierung (Source Code)
 * `/src` - Quellcode für die Sensorik, Datenverarbeitung und Sensorfusion.
 * `/hardware` - CAD-Dateien, Schaltpläne oder 3D-Druck-Modelle für die Sensorhalterungen.

@@ -4,6 +4,17 @@ Diese Datei beschreibt den eigenständigen OPC-UA-Vision-Server (OPC 40100,
 Machine Vision) und **was ein Backend implementieren muss**, um von ihm ein
 Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 
+> **Ergänzend, seit 2026-09-21:** Derselbe Job lässt sich zusätzlich über ein
+> generisches **OPC-UA-Part-10-Programm** starten — dieselbe Bedienform, die
+> Conveyor und CardDispenser in dieser Zelle benutzen. Der Server kündigt sich
+> außerdem per mDNS an. Beides ist additiv, alles unten Beschriebene bleibt
+> unverändert gültig. Siehe
+> [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+>
+> **Achtung:** Der Vision-Namespace liegt inzwischen auf **ns=7**, nicht mehr
+> auf ns=4 (die Part-2-Nodesets sind dazwischengekommen). Namespace-Indizes
+> immer über die URI auflösen, nie hartcodieren.
+
 Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung,
 `calibration` ebenso. `image-recognition` steuert echt die Pi-Kamera an und
 sucht per QR-Code — der komplette Job-Ablauf (Zustandsautomaten, Events,
