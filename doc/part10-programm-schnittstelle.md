@@ -72,6 +72,32 @@ Conveyor-Conveyor._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.41:4840/conveyo
 CardDispenser-Black-CDBlack._opcua-tcp._tcp.local. -> opc.tcp://10.10.38.40:4840/card-dispenser/  caps=DA
 ```
 
+### Der Aggregation-Server findet uns von selbst
+
+Die Zelle betreibt unter `opc.tcp://10.10.38.27:48400/` einen
+`AggregationServer` (`roboteach.plcm.tu-darmstadt.de/agg-server`), der die
+Module einsammelt. **Er durchsucht mDNS selbst** — es gibt keine Registrierung,
+die ein Modul aktiv senden müsste, und `RegisterServer2` ist nicht nötig. Es
+genügt, dass der Server läuft und sich ankündigt.
+
+Dort erscheint ein Modul unter seiner **ApplicationUri**, nicht unter dem
+mDNS-Namen. Vorhandene Einträge und unsere:
+
+| Modul | ApplicationUri |
+| --- | --- |
+| UR5e | `urn:plcm:robot-server:ur5e` |
+| CardDispenser | `urn:smart-business-card-factory:card-dispenser-system` |
+| Conveyor | `urn:smart-business-card-factory:conveyor-system` |
+| **Vision Decke** | **`urn:plcm:camera-server:ceiling-01`** |
+| **Vision Roboterhand** | **`urn:plcm:camera-server:roboter-hand-01`** |
+
+Der Aggregation-Server hängt die ApplicationUri an jeden Namespace des Moduls
+an (z. B. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01`) und
+legt das Modul als Objekt unter `Objects` in seinem eigenen ns=1 ab. Wer über
+den Aggregation-Server auf unsere Knoten zugreift, löst den Namensraum also
+über die **zusammengesetzte** URI auf — direkt am Pi bleibt es bei
+`http://launch-rm.de/vision`.
+
 Zu beachten:
 
 - **Keine feste IP nötig.** Die Adresse wird beim Start ermittelt; eine

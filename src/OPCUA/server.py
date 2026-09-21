@@ -135,6 +135,20 @@ def mdns_instance_name() -> str:
     return os.getenv("OPCUA_MDNS_NAME") or vision_identity()[0]
 
 
+#: Praefix der ApplicationUri, nach der Konvention der Zelle: der Roboterserver
+#: meldet `urn:plcm:robot-server:ur5e`, wir entsprechend `camera-server`.
+APPLICATION_URI_PREFIX = "urn:plcm:camera-server"
+
+#: Vision-Identitaet -> Name in der ApplicationUri. Bewusst eine eigene Tabelle
+#: und nicht die Identitaet selbst: die Uri benennt den *Einbauort* in der
+#: Zelle, die Vision-Identitaet benennt das Erkennungssystem. Ein unbekannter
+#: Pi faellt auf seine Identitaet zurueck, damit er nicht namenlos auftaucht.
+PI_APPLICATION_NAMES: dict[str, str] = {
+    "vision-ceiling-01": "ceiling-01",
+    "vision-flange-01": "roboter-hand-01",
+}
+
+
 def application_uri() -> str:
     """Eindeutige ApplicationUri dieses Servers.
 
@@ -144,7 +158,9 @@ def application_uri() -> str:
     Uri meldete asyncua seinen Default `urn:freeopcua:python:server`:
     nichtssagend, und beide Pis meldeten denselben Wert.
     """
-    return os.getenv("OPCUA_APPLICATION_URI") or f"urn:launch-rm:{vision_identity()[0]}"
+    vision_system_id = vision_identity()[0]
+    name = PI_APPLICATION_NAMES.get(vision_system_id, vision_system_id)
+    return os.getenv("OPCUA_APPLICATION_URI") or f"{APPLICATION_URI_PREFIX}:{name}"
 
 
 def vision_config() -> VisionServerConfig:
