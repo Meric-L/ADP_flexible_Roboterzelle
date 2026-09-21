@@ -70,6 +70,7 @@ Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
 | ~~C4~~ | ~~`configuration_id` wird von keiner Quelle gesetzt~~ | — | — | **Erledigt**: `AprilTagDetectionSource` füllt ihn mit Tag-Familie, Kalibrier- und Tag-Map-Identität (`tagloc.identity`, ohne numpy und ohne cv2) |
 | C5 | **Nodeset-XML unter `src/OPCUA/`** statt beim Paket, das es braucht | Zelle: `src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml` (786 KB) | Lag da, bevor `vision_server/` existierte | Nach `src/vision_server/nodesets/` verschieben, Pfadkonstanten anpassen |
 | ~~C6~~ | ~~`caputure.py` — QR-Scanner im AprilTag-Ordner~~ | — | — | **Erledigt**: gelöscht. Die Pi-Kamera spricht jetzt `SharedCamera` an, für CLI-Aufrufe `tagloc.frames.PiCameraSource` |
+| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/ua_lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. `OPCUA_LDS_URL` biegt sie bereits ohne Codeänderung um, `OPCUA_LDS_URL=""` schaltet ab — für einen Umzug der Zelle reicht das |
 
 ---
 
@@ -87,6 +88,8 @@ Keine Altlasten im engeren Sinn, aber Fallen, die uns bereits Zeit gekostet habe
 | D6 | **Node 18 reicht für das WSC-Frontend nicht** | WSC: `frontend/package.json` | `vite`/`vitest` verlangen `^20.19.0 \|\| >=22.12.0`. Unter Node 18 startet vitest nicht, und `npm install` überspringt **stillschweigend** das native `@rolldown/binding-linux-x64-gnu` — man bekommt ein kaputtes `node_modules` ohne Fehlermeldung |
 | D7 | **`tests/test_asyncua_discovery.py` bricht beim Collect ab** | WSC: Backend | Importiert `discover_variables`, das es in `asyncua_discovery.py` nicht mehr gibt. `uv run pytest` läuft dadurch gar nicht durch. Nicht von uns verursacht |
 | D8 | **Ein fehlschlagender Frontend-Test** | WSC: `entities/robot/model/store.test.ts:188` | Vorbestehend auf dem Branch, reproduziert sich ohne unsere Änderungen. Solange er rot ist, taugt `npm test` nicht als Signal |
+| D9 | **Die Betreuer-Kurzanleitung zur Discovery stimmt nicht** | `betreuer/OPC UA-mDNS-Kurzanleitung.md` | Sie sagt, der Aggregation-Server durchsuche mDNS selbst und `RegisterServer2` sei nicht nötig. Am 21.09.2026 gemessen: er führt ausschliesslich die Module, die beim LDS `opc.tcp://10.10.38.27:4840/` registriert sind. Eine mDNS-Ankündigung allein genügt nicht — das hat einen Nachmittag gekostet. Die Betreuer-Datei bleibt unangetastet (fremdes Dokument); die Korrektur samt Messung steht in [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2 |
+| D10 | **`asyncua.Server.register_to_discovery()` registriert `0.0.0.0`** | `asyncua` 2.0.1: `client/client.py`, `register_server` | Die Methode trägt `server.endpoint.geturl()` als DiscoveryUrl ein. Unser Endpoint bindet auf `0.0.0.0`, und der Aggregation-Server übernimmt diese Adresse wörtlich und verbindet ins Leere. Deshalb baut `src/ua_lds.py` den Registrierungsdatensatz selbst, mit der LAN-IPv4 aus `ua_mdns.detect_lan_ipv4()` |
 
 ---
 

@@ -60,25 +60,73 @@ die hartcodierten Pi-Adressen (`10.10.38.104` / `.109` in
 | TXT `caps` | `DA` |
 
 **Endpoint-URL zusammenbauen:** `opc.tcp://<adresse>:<port><path>` — also
-`opc.tcp://10.10.38.109:4840/raspi/server/`. Den Pfad **aus dem TXT-Eintrag
+`opc.tcp://10.10.38.104:4840/raspi/server/`. Den Pfad **aus dem TXT-Eintrag
 lesen**, nicht annehmen; die Nachbarn benutzen andere Pfade
 (`/conveyor/`, `/card-dispenser/`).
 
-So sieht eine Suche im Netz aus (real gemessen):
+So sieht eine Suche im Netz aus (real gemessen am 21.09.2026; die Pi-Adressen
+kommen per DHCP und wechseln, deshalb immer den Eintrag lesen statt die IP
+abzuschreiben):
 
 ```
-vision-ceiling-01._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.109:4840/raspi/server/   caps=DA
+vision-ceiling-01._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.104:4840/raspi/server/   caps=DA
+vision-flange-01._opcua-tcp._tcp.local.    -> opc.tcp://10.10.38.109:4840/raspi/server/   caps=DA
 Conveyor-Conveyor._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.41:4840/conveyor/        caps=DA
 CardDispenser-Black-CDBlack._opcua-tcp._tcp.local. -> opc.tcp://10.10.38.40:4840/card-dispenser/  caps=DA
 ```
 
-### Der Aggregation-Server findet uns von selbst
+### Der Aggregation-Server findet uns *nicht* von selbst
+
+> **Korrektur vom 21.09.2026.** Hier stand, der Aggregation-Server durchsuche
+> mDNS selbst und `RegisterServer2` sei nicht nötig — so steht es auch in
+> `betreuer/OPC UA-mDNS-Kurzanleitung.md`. Das trifft nicht zu und hat einen
+> Nachmittag gekostet. Die Messung steht unten.
 
 Die Zelle betreibt unter `opc.tcp://10.10.38.27:48400/` einen
 `AggregationServer` (`roboteach.plcm.tu-darmstadt.de/agg-server`), der die
-Module einsammelt. **Er durchsucht mDNS selbst** — es gibt keine Registrierung,
-die ein Modul aktiv senden müsste, und `RegisterServer2` ist nicht nötig. Es
-genügt, dass der Server läuft und sich ankündigt.
+Module einsammelt. Auf **demselben Rechner** läuft unter
+`opc.tcp://10.10.38.27:4840/` ein **open62541 Local Discovery Server (LDS)**.
+
+Der Aggregation-Server führt genau die Module, die im LDS registriert sind —
+und in den LDS kommt man nur durch einen aktiven **`RegisterServer2`**-Aufruf.
+Eine mDNS-Ankündigung allein trägt sich dort nicht ein.
+
+**Wie das gemessen wurde (21.09.2026):**
+
+- Beide Pis waren per mDNS sauber sichtbar und per OPC UA direkt erreichbar,
+  mit korrekter ApplicationUri — der Aggregation-Server führte sie trotzdem
+  nicht.
+- `FindServers` am LDS lieferte exakt die Module, die der Aggregation-Server
+  unter `Objects` zeigte.
+- Der Aggregation-Server startete um 15:56 neu und nahm beim frischen Scan
+  alle fünf registrierten Module auf. Unsere Pis liefen da seit zehn Minuten
+  und funkten — sie blieben aussen vor. Es liegt also nicht am Scan-Zeitpunkt.
+- Die Namen im LDS-Bestand (`Festo Conveyor OPC UA Server-10-10-38-41`,
+  `OJIES-Aggregation-LDS-reuther`) stehen in 15 s Avahi-Suche **nirgends auf
+  dem Draht**: das ist sein Registrierungsbestand, nicht sein mDNS-Empfang.
+- Gegenprobe: eine einzelne `RegisterServer2`-Anfrage für
+  `urn:plcm:camera-server:ceiling-01` — **31 Sekunden später** stand das Modul
+  samt aller neun Namespaces im Aggregation-Server. Nach dem Abmelden war es
+  wieder weg.
+
+**Umgesetzt in `src/ua_lds.py`**, aufgerufen aus `src/OPCUA/server.py` neben
+der mDNS-Ankündigung. Beide Wege bleiben nebeneinander bestehen: der LDS
+bringt uns in den Aggregation-Server, mDNS bedient Clients im Subnetz direkt.
+
+| | Wert |
+| --- | --- |
+| Discovery-Server | `opc.tcp://10.10.38.27:4840/` |
+| Dienst | `RegisterServer2`, Rückfall `RegisterServer` |
+| Verbindung | sessionlos, `NoSecurity` |
+| Erneuerung | alle 60 s (Spezifikation: mindestens alle 10 min) |
+| Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
+| Abschalten / umbiegen | `OPCUA_LDS_URL=""` bzw. `OPCUA_LDS_URL=opc.tcp://host:4840/` |
+
+**Falle:** `asyncua.Server.register_to_discovery()` trägt
+`server.endpoint.geturl()` als DiscoveryUrl ein — bei uns
+`opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt die
+Adresse und verbindet ins Leere. `ua_lds` trägt deshalb dieselbe LAN-IPv4 ein,
+die auch die mDNS-Ankündigung nennt.
 
 Dort erscheint ein Modul unter seiner **ApplicationUri**, nicht unter dem
 mDNS-Namen. Vorhandene Einträge und unsere:
@@ -105,11 +153,19 @@ Zu beachten:
   zeigt die Ankündigung bis zum Dienstneustart ins Leere.
 - **mDNS endet an der Subnetzgrenze** (UDP-Multicast `224.0.0.251:5353`, TTL 1).
   Aus einem anderen VLAN oder aus dem Gast-WLAN findet man nichts, obwohl der
-  Server läuft. Das ist der häufigste „geht nicht"-Fall.
+  Server läuft. Das ist der häufigste „geht nicht"-Fall. Die
+  LDS-Registrierung ist davon **nicht** betroffen — sie ist eine normale
+  TCP-Verbindung zu `10.10.38.27:4840`.
 - **Die manuelle Eingabe muss bleiben.** Die vorhandene `ConnectOpcUa`-Eingabe
   ist weiterhin der Rückfallweg, wenn mDNS blockiert ist.
-- Beim geordneten Beenden wird die Ankündigung zurückgezogen; nach einem harten
-  Abbruch steht sie noch bis zum TTL-Ablauf in den Client-Caches.
+- Beim geordneten Beenden werden Ankündigung **und** Registrierung
+  zurückgezogen; nach einem harten Abbruch steht die Ankündigung noch bis zum
+  TTL-Ablauf in den Client-Caches, und der LDS-Eintrag bleibt bis zum Ablauf
+  seiner Frist stehen — der Aggregation-Server zeigt das Modul dann noch, kommt
+  aber nicht mehr dran.
+- **Der Aggregation-Server räumt Namespaces nicht auf.** Franka und EVA hatten
+  nach ihrem Verschwinden noch Namespaces, aber kein Objekt mehr. Ein fehlendes
+  Objekt ist das verlässliche Zeichen, kein fehlender Namespace.
 
 ---
 

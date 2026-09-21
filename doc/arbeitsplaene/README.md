@@ -15,7 +15,7 @@ nicht gibt.
 
 | Plan | Thema | Status | Verantwortlich | Aktualisiert |
 | --- | --- | --- | --- | --- |
-| _(noch keiner)_ | | | | |
+| [`lds-registrierung.md`](lds-registrierung.md) | mdns | fertig | `Agent: LDS-Registrierung für den Aggregation-Server` | 21.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

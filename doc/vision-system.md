@@ -95,6 +95,16 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 ## Laufzeitverhalten
 
 - Endpoint `opc.tcp://0.0.0.0:4840/raspi/server/`, `SecurityPolicy: NoSecurity`.
+- Beim Start zwei Bekanntmachungen nebeneinander, beide werden beim geordneten
+  Beenden zurückgezogen:
+  - **mDNS** (`src/ua_mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
+    Vision-Identität. Für Clients im Subnetz.
+  - **LDS-Registrierung** (`src/ua_lds.py`): `RegisterServer2` an
+    `opc.tcp://10.10.38.27:4840/`, alle 60 s erneuert. **Nur darüber** nimmt
+    der Aggregation-Server der Zelle das Modul auf — mDNS allein genügt ihm
+    nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
+    Abschalten mit `OPCUA_LDS_URL=""`.
+  Scheitert eine der beiden, läuft der Server weiter und loggt eine Warnung.
 - Alle 1 s: `Counter` hochzählen, `CpuTemperature` und
   `CpuTemperatureResult/ResultContent` mit der CPU-Temperatur füllen
   (unverändertes Verhalten des Raspi-Interfaces).
