@@ -211,29 +211,42 @@ python3 -m venv --system-site-packages .venv
 
 ### 3.3 Kalibrieren mit der Pi-Kamera
 
-Der Pi hat meist keinen Bildschirm. Zwei Wege:
+> **Server vorher stoppen.** `tagloc.cli.calibrate` öffnet die Kamera selbst
+> und exklusiv -- genau wie `SharedCamera` im laufenden Server. Beide
+> gleichzeitig geht nicht (RSUSB/libuvc bzw. Picamera2 lassen nur einen
+> offenen Zugriff zu). Solange kalibriert wird, gibt es also **keinen**
+> Livestream im Frontend; `sudo systemctl stop opcua-server.service` vorher,
+> `start` danach.
+
+Der Pi hat meist keinen Bildschirm. Zwei Wege, hier für den Decken-Pi
+(`--source picamera`) — für den Hand-Pi `--source realsense --resolution 640 480`
+statt `--source picamera --resolution 2028 1520` einsetzen, sonst identisch:
 
 **Weg A — mit Display (X11-Weiterleitung oder VNC), interaktiv:**
 
 ```bash
 ssh -X pi@pi-decke
 cd ~/ADP_flexible_Roboterzelle
+sudo systemctl stop opcua-server.service
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source picamera --resolution 2028 1520 \
     --board charuco --cols 7 --rows 5 --square-size-m 0.030 --marker-size-m 0.022 \
     --frame-id cam_ceiling --out data/calibration/cam_ceiling.json \
     --capture-to data/calibration/aufnahmen_decke
+sudo systemctl start opcua-server.service
 ```
 
 **Weg B — ohne Display, zweistufig.** Robuster, und mit Nebennutzen: die Bilder
 bleiben liegen, die Kalibrierung ist am PC exakt reproduzierbar.
 
 ```bash
-# auf dem Pi: nur aufnehmen
+# auf dem Pi: Server stoppen, dann nur aufnehmen
+sudo systemctl stop opcua-server.service
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source picamera --resolution 2028 1520 --no-gui \
     --board charuco --capture-to data/calibration/aufnahmen_decke \
     --frame-id cam_ceiling --out data/calibration/cam_ceiling.json
+sudo systemctl start opcua-server.service
 
 # am PC nachrechnen (identischer Rechenkern)
 scp -r pi@pi-decke:~/ADP_flexible_Roboterzelle/data/calibration/aufnahmen_decke /tmp/
@@ -254,6 +267,9 @@ für die Decke und `cam_flange.json` für den Flansch — unter diesem Namen suc
 der Server sie.
 
 ### 3.4 Erkennung live prüfen
+
+Server bleibt gestoppt (siehe 3.3) — auch hier öffnet das CLI-Tool die Kamera
+exklusiv. Für den Hand-Pi wieder `--source realsense --resolution 640 480`.
 
 ```bash
 # mit Display
