@@ -7,19 +7,26 @@ Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 > **Ergänzend, seit 2026-09-21:** Derselbe Job lässt sich zusätzlich über ein
 > generisches **OPC-UA-Part-10-Programm** starten — dieselbe Bedienform, die
 > Conveyor und CardDispenser in dieser Zelle benutzen. Der Server kündigt sich
-> außerdem per mDNS an. Beides ist additiv, alles unten Beschriebene bleibt
-> unverändert gültig. Siehe
+> außerdem per mDNS an und wird vom Aggregation-Server der Zelle von selbst
+> gefunden. Beides ist additiv, alles unten Beschriebene bleibt unverändert
+> gültig. Siehe
 > [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
 >
 > **Achtung:** Der Vision-Namespace liegt inzwischen auf **ns=7**, nicht mehr
 > auf ns=4 (die Part-2-Nodesets sind dazwischengekommen). Namespace-Indizes
 > immer über die URI auflösen, nie hartcodieren.
 
-Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung,
-`calibration` ebenso. `image-recognition` steuert echt die Pi-Kamera an und
-sucht per QR-Code — der komplette Job-Ablauf (Zustandsautomaten, Events,
-Ergebnisablage, Fehlerpfad) ist für alle drei identisch. Der Umstieg auf
-echte Bilderkennung ändert das Payload-Format **nicht**.
+Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung.
+`apriltag` ist die echte Erkennung — sie steuert die Pi-Kamera an, lokalisiert
+mit AprilTags bestückte Module und liefert echte Posen; `calibration` prüft die
+Messbereitschaft dieser Zelle. Der komplette Job-Ablauf (Zustandsautomaten,
+Events, Ergebnisablage, Fehlerpfad) ist für alle drei identisch, und das
+Payload-Format `wsc.vision.detections/1` ist **unverändert** geblieben.
+
+> Die frühere QR-Code-Erkennung (`image-recognition`) ist entfallen. Sie war der
+> Machbarkeitsnachweis für die Kamerastrecke; was von ihr bleibt, ist die
+> `SharedCamera` darunter. Siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md)
+> Abschnitt 6.
 
 ## 1. Systemaufbau
 
@@ -53,8 +60,10 @@ Objects/
     │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
     ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
     │                                    derselbe JSON-String, als einfacher String-Knoten
-    └── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
-                                         Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
+    ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
+    │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
+    └── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
+                                         **beschreibbar**: off | apriltag | calibration
 ```
 
 Interner Aufbau (Python-Paket `src/vision_server/`):
@@ -66,9 +75,11 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegel |
 | `job.py` | Validierung, Guard, Job-Ablauf, Fehlerpfad |
-| `detection/` | Strategie `DetectionSource`; `hello_world.py`, `image_recognition.py` (QR), `script_runner.py` (Kalibrierung) |
-| `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von QR-Erkennung und Livestream |
+| `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
+| `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
+| `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
+| `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 
 Echte Erkennung anschließen = **eine neue Datei in `detection/` plus ein
@@ -174,23 +185,35 @@ Knoten: `AutomaticModeStateMachine/StartSingleJob`. Der Aufruf ist
 
 ### Verfügbare Jobs (`RecipeId`)
 
-Jede `RecipeId` waehlt ein Erkennungsprofil (`detection/`). Alle drei laufen
-ueber denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf
-aus Abschnitt 4 und 6 — nur `attributes.message` und `moduleId` im Ergebnis
-unterscheiden sich. `calibration` ist weiterhin ein Platzhalter (Subprozess-
-Script, siehe Abschnitt 9); `image-recognition` steuert echt die Pi-Kamera an.
+Jede `RecipeId` waehlt ein Erkennungsprofil (`detection/`). Alle laufen ueber
+denselben `StartSingleJob`-Aufruf und denselben Event-/Payload-Ablauf aus
+Abschnitt 4 und 6.
 
-| `RecipeId` | Job | Implementierung | `attributes.message` im Ergebnis |
+| `RecipeId` | Job | Implementierung | Ergebnis |
 | --- | --- | --- | --- |
-| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | in-process, `detection/hello_world.py` | `"Hello World"` |
-| `"calibration"` | Kalibrierung (Platzhalter) | Subprozess, `src/jobs/calibrate.py` | `"Calibrieren"` |
-| `"image-recognition"` | QR-Code-Erkennung | in-process, `detection/image_recognition.py`, liest von der geteilten Kamera (Abschnitt 10) | dekodierter QR-Text, sonst `"Kein QR Code gefunden"` |
+| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | in-process, `detection/hello_world.py` | `attributes.message` = `"Hello World"` |
+| `"calibration"` | Messbereitschaft dieser Zelle pruefen | Subprozess, `src/jobs/calibrate.py` | `attributes.message` = Kalibrier-Id, Aufloesung, RMS, Aufnahmezahl, Alter, Tag-Map |
+| `"apriltag"` | **Module lokalisieren** | in-process, `detection/apriltag.py`, liest von der geteilten Kamera (Abschnitt 10) | eine Detektion je erkanntem Modul-Tag mit echter Pose |
 
-`image-recognition` sucht bis zu 30 s (`qr_scan_duration_s` in
-`CameraStreamConfig`) und bricht ab, sobald ein QR-Code dekodiert werden
-konnte. Deshalb liegt `job_timeout` (Abschnitt 9) bei 40 s statt 10 s. Die
-Kamera wird dafuer **nicht** extra geoeffnet — sie laeuft bereits fuer den
-Livestream (Abschnitt 10) und wird nur mitgelesen.
+`apriltag` nimmt `samples_per_job` Bilder auf (Decke 3, Flansch 5), mittelt die
+Posen und verwirft Tags oberhalb von `max_reproj_error_px`. Daraus ergibt sich
+`job_timeout` (Abschnitt 9) von 20 s. Die Kamera wird dafuer **nicht** extra
+geoeffnet — sie laeuft bereits fuer den Livestream (Abschnitt 10) und wird nur
+mitgelesen.
+
+`attributes` einer AprilTag-Detektion: `tagId`, `reprojErrorPx`, `ambiguous`,
+`sampleCount`, `frameTimestamp`, `recipeId`; fehlen erwartete Module aus der
+Tag-Map, zusaetzlich `missingModules`. Ist kein Tag im Bild, liefert der Job
+**kein** leeres Erfolgsergebnis, sondern `Error=5` (`DETECTION_FAILED`).
+
+`frameId` haengt am Bild: sieht die Kamera einen Referenz-Tag aus der Tag-Map
+(Welt-Board, Robotertisch), liefert die Quelle Posen im Welt-KS; sonst im
+Kamera-KS. **Deshalb `frameId` nie annehmen, sondern lesen** — zusammen mit
+`frameConvention`, die sagt, wohin +Z zeigt.
+
+Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
+unterscheiden sich nur in der `AprilTagProfileConfig`, die `OPCUA/server.py` je
+Pi setzt.
 
 Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
 abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
@@ -441,22 +464,22 @@ Vorführbare Sonderfälle:
 
 ## 9. Offen / nächste Schritte
 
-- **Echte Kalibrierung**: `calibration` fuehrt weiterhin nur einen Platzhalter
-  aus (`src/jobs/calibrate.py`). `image-recognition`
-  (`detection/image_recognition.py`) steuert echt die Pi-Kamera an (Picamera2
-  auf dem Decken-Pi, Intel RealSense per `pyrealsense2` auf dem Hand-Pi,
-  siehe Abschnitt 10) und sucht per OpenCV nach einem QR-Code. Payload-Schema
-  bleibt beim Nachruesten der echten Kalibrierungslogik unveraendert. Bis
-  dahin ist `moduleId` erfunden und die Pose immer Null.
-- **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (40 s, wegen
-  des bis zu 30 s laufenden QR-Scans) braucht, wird abgebrochen und als
-  `DETECTION_FAILED` gemeldet; der Automat kehrt nach `Ready` zurueck. Ein
-  blockierter Worker-Thread laesst den *naechsten* Job desselben Profils
-  allerdings ebenfalls in den Timeout laufen.
-- **Koordinatensystem**: `frameId` haengt an der Quelle; ohne
-  Hand-Auge-Kalibrierung. Was `position`/`orientation` real bedeuten, hängt an
-  der noch offenen Kalibrierung — ein automatisches Anfahren erkannter Posen
-  darf bis dahin nicht scharf geschaltet werden.
+- **Kalibrierung**: `calibration` ist jetzt eine **Bereitschaftspruefung** und
+  meldet Kalibrier-Id, Aufloesung, RMS, Aufnahmezahl, Alter und Tag-Map. Die
+  Kalibrierung selbst bleibt bedienergefuehrt (`python -m tagloc.cli.calibrate`)
+  — sie braucht jemanden, der ein Board durchs Bildfeld fuehrt, und laesst sich
+  deshalb nicht sinnvoll aus der Ferne ausloesen.
+- **Job-Timeout**: eine Erkennung, die laenger als `job_timeout` (20 s) braucht,
+  wird abgebrochen und als `DETECTION_FAILED` gemeldet; der Automat kehrt nach
+  `Ready` zurueck. Ein blockierter Worker-Thread laesst den *naechsten* Job
+  desselben Profils allerdings ebenfalls in den Timeout laufen — deshalb hat die
+  AprilTag-Quelle mit `capture_timeout_s` ein eigenes, kuerzeres Aufnahme-Timeout.
+- **Koordinatensystem**: Posen sind jetzt echt. `frameId` ist `world`, sobald ein
+  Referenz-Tag aus der Tag-Map im Bild ist, sonst das Kamera-KS der Quelle.
+  **Offen bleibt die Hand-Auge-Kalibrierung** fuer Layer 2: die Kette Kamera →
+  Roboterbasis ist nicht eingemessen, ein automatisches Anfahren erkannter Posen
+  darf bis dahin nicht scharf geschaltet werden. Layer 2 liefert deshalb im
+  Kamera-KS mit gesetzter `frameConvention`, und das Backend verkettet.
 - **Zweite Kamera / 3D-Profil**: würde als zweite `VisionSystemType`-Instanz im
   selben Server hängen (eigener Instanzname und eigene `visionSystemId`),
   dieselbe Schnittstelle. Ein zweiter Serverprozess ist nicht vorgesehen —
@@ -491,10 +514,10 @@ Verhalten:
 - Läuft die Kamera nicht (Fehler beim Öffnen), existiert der Knoten zwar,
   bleibt aber leer (`""`) — kein Fehlerzustand des Automaten, rein
   Stream-lokal.
-- Livestream und `image-recognition`-Job teilen sich **dieselbe** Kamera
-  (`SharedCamera` in `camera.py`): ein QR-Job liest nur die zwischengespeicherten
-  Frames mit, öffnet die Hardware nicht erneut. Während eines laufenden
-  QR-Jobs bleibt der Stream daher unverändert aktiv, es gibt kein Aussetzen.
+- Livestream und `apriltag`-Job teilen sich **dieselbe** Kamera (`SharedCamera`
+  in `camera.py`): der Job liest nur die zwischengespeicherten Frames mit,
+  öffnet die Hardware nicht erneut. Während eines laufenden Jobs bleibt der
+  Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
   (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
 - **Kamera-Backend ist pro Pi verschieden**, `CameraStreamConfig.backend`
@@ -502,11 +525,57 @@ Verhalten:
   `OPCUA/server.py` wählt es über `PI_CAMERA_BACKENDS`
   (Hostname → Backend, Fallback `"picamera2"`, override per Env-Var
   `VISION_CAMERA_BACKEND`). Aktuell: `ADP-Roboter-Lokalisierung` → Picamera2
-  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense (`realsense_fps`, native Pipeline-Framerate,
-  Standard 30 — unabhängig von der `stream_fps`-Kadenz, mit der
-  `SharedCamera` den jeweils neuesten Frame abholt). Für QR-Erkennung und
-  Livestream ist das Backend unsichtbar — beide lesen nur `CameraFrame`
+  (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense. Für die Erkennung und
+  den Livestream ist das Backend unsichtbar — beide lesen nur `CameraFrame`
   (BGR-Array) von `SharedCamera.latest_frame`.
+- **RealSense hat eigene, bewusst konservative Defaults** (`realsense_resolution`
+  640×480, `realsense_fps` 15, unabhängig von `resolution`/`stream_fps` der
+  anderen Backends): die auf dem Pi nötige RSUSB/libuvc-Anbindung (der
+  Kernel bringt keinen brauchbaren UVC-Treiber für RealSense mit) limitiert
+  die Bandbreite, `1280×720@30` scheiterte dort mit
+  `RuntimeError: Couldn't resolve requests`. Scheitert `pipeline.start()`,
+  loggt `_open_realsense` zusätzlich die tatsächlich unterstützten
+  Farb-Profile der angeschlossenen Kamera — damit lässt sich der Wert bei
+  Bedarf gezielt hochsetzen, statt zu raten.
+- Welche Quelle den Stream speist, entscheidet sich über die Eigenschaft: der
+  Server nimmt die erste geöffnete Quelle, die eine `SharedCamera` hält. Früher
+  stand hier der feste Profilname `image_recognition`; ein Umbenennen hätte den
+  Stream still sterben lassen.
+
+### 10.1 Overlay — was im Bild markiert wird
+
+Der Stream ist ein **Debugwerkzeug**: er soll nicht nur zeigen, dass ein Bild
+ankommt, sondern was die Erkennung darin sieht. Ein zweiter, **beschreibbarer**
+Knoten wählt den Modus:
+
+```
+ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
+```
+
+| Wert | Anzeige im Frontend | Was markiert wird |
+| --- | --- | --- |
+| `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
+| `apriltag` (Standard) | „AprilTags markieren" | Umriss jedes erkannten Tags, **Achsenkreuz im Tag** (X rot, Y grün, Z blau), ID, Modulname aus der Tag-Map, Distanz, Reprojektionsfehler; mehrdeutige Posen orange statt grün |
+| `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
+
+Verhalten:
+
+- Ein **ungültiger oder leerer Wert hält den Stream nicht an** — er fällt auf
+  `apriltag` zurück. Das Bild ist wichtiger als die Markierung.
+- Das Overlay rechnet höchstens alle `overlay_interval_s` (Standard 0,5 s) neu
+  und zeichnet dazwischen das letzte Ergebnis weiter. Bei fest montierter Kamera
+  sieht man davon nichts, die CPU des Pi schon.
+- Overlay und Job benutzen **dieselbe geladene Kalibrierung und Tag-Map**. Sieht
+  man im Stream etwas anderes als im Jobergebnis, liegt es folglich nicht an
+  zwei verschiedenen Konfigurationen.
+- Gezeichnet wird auf einer Kopie; der geteilte Frame bleibt unverändert.
+- Ein Fehler im Overlay beendet den Stream nicht — dann kommt das unmarkierte
+  Bild, und der Fehler steht im Log.
+
+Das Frontend braucht dafür nur ein Auswahlfeld, das beim Wechsel diesen Knoten
+schreibt. Die Beschriftungen stehen serverseitig in
+`tagloc.modes.OVERLAY_MODE_LABELS`. Ablauf und Abnahme:
+[`apriltag-e2e-test.md`](apriltag-e2e-test.md) Abschnitt 4.
 
 ---
 

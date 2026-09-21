@@ -504,12 +504,30 @@ Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/OPCUA/server.p
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_map_path` | `config/tagmap.json` | `config/tagmap.json` |
 | `tag_size_m` | 0.100 | 0.050 |
-| `resolution` | 2028×1520 | 1280×720 |
+| `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
 
+`resolution` bei Layer 2 muss zu `CameraStreamConfig.realsense_resolution`
+passen (Standard 640×480) — die tatsächlichen Frames kommen über die geteilte
+`SharedCamera`, nicht direkt aus `AprilTagProfileConfig`. Eine Abweichung
+fällt erst beim ersten Job als `ValueError` auf ("Kalibrierung gilt für …").
+
 `tag_size_m` bleibt als Rückfallwert für Tags, die nicht in der Karte stehen;
 steht ein Tag in der Karte, gewinnt deren `sizeM`.
+
+**Ohne Kalibrierdatei** scheitert `open()` normalerweise, und der Server
+bleibt in `Preoperational` (Absicht: bedeutungslose Zahlen sollen nicht
+unbemerkt rausgehen). Für Tests **vor** der echten Kalibrierfahrt (Abschnitt
+3.3 im Testplan) gibt es einen expliziten, temporären Notausgang:
+`AprilTagProfileConfig.allow_placeholder_calibration = True` — gesetzt über
+die Env-Var `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` in
+`src/OPCUA/server.py`, Standard aus. Dann startet die Quelle mit einer grob
+geschätzten Intrinsik (`tagloc.calibration.default_calibration`, aus einer
+angenommenen Sichtfeldbreite von 70° gerechnet). Detektor, Overlay und
+Job-Pfad lassen sich damit prüfen; die Posen sind aber **nicht masshaltig**.
+`calibration_id` im Ergebnis heißt dann `"placeholder-unkalibriert"` — vor
+dem Rollout die Env-Var wieder entfernen.
 
 ### 10.2 Was im Ergebnis ankommt
 
@@ -581,7 +599,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -t .
 | `tests/test_tag_geometry.py` | Verkettung, Inversion, Quaternion-Konvention, Mittelung — mit Golden Values | numpy |
 | `tests/test_tag_map.py` | `place_tags` auf konstruierten Ko-Beobachtungen, Schließfehler, unerreichbare Tags, Datei-Round-Trip | numpy |
 | `tests/test_calibration_io.py` | Schreiben/Lesen, Identität, Auflösungsprüfung, Skalierung | numpy |
-| `tests/test_tag_pipeline.py` | **End-to-End auf einem synthetisch gerenderten Bild**: Detektor → Pose → Platzierung → Modulpose gegen die bekannte Wahrheit; Toleranz 2 mm / 0,5° | cv2 (sonst `skipUnless`) |
+| `tests/test_tag_pipeline.py` | **End-to-End auf einem synthetisch gerenderten Bild**: Detektor → Pose → Platzierung → Modulpose gegen die bekannte Wahrheit; Toleranz 2 mm / 1° / 1 px, gemessen 0,29 mm / 0,50° / 0,063 px | cv2 (sonst `skipUnless`) |
 | `tests/test_apriltag_source.py` | `run_blocking`, Aufnahme-Timeout, `configurationId`, `frame_id`/`frame_convention`, Payload-Attribute, `DETECTION_FAILED` | — |
 
 Testbilder werden **im Test erzeugt** (`tools/make_synthetic_scene.py`), nicht

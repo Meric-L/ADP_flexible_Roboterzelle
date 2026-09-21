@@ -79,9 +79,9 @@ class HelloWorldTest(unittest.IsolatedAsyncioTestCase):
     async def test_reports_the_recipe_id(self):
         source = HelloWorldDetectionSource(latency=0.0)
         [detection] = await source.acquire_and_detect(
-            DetectionRequest(job_id="job-000001", recipe_id="image-recognition")
+            DetectionRequest(job_id="job-000001", recipe_id="apriltag")
         )
-        self.assertEqual(detection.attributes["recipeId"], "image-recognition")
+        self.assertEqual(detection.attributes["recipeId"], "apriltag")
 
     async def test_stays_simulated_and_in_world_frame(self):
         source = HelloWorldDetectionSource(latency=0.0)

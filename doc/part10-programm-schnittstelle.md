@@ -356,16 +356,20 @@ Aktuell auf diesem Stand:
 | --- | --- |
 | `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung, kamerafreier Smoke-Test |
 | `"calibration"` | Messbereitschaft der Zelle prüfen |
-| `"image-recognition"` | QR-Erkennung über die Kamera |
+| `"apriltag"` | **Module lokalisieren** — echte Posen aus der Kamera |
 
-**Angekündigt, noch nicht gemergt:** `"apriltag"` — die AprilTag-Lokalisierung
-(echte Modulposen). Sie liegt auf einem eigenen Branch und ist noch ungetestet,
-kommt also als **späterer Schritt**. Für Backend und Frontend ändert sich dann
-**nichts an dieser Schnittstelle**: derselbe `Start()`, dasselbe `ParameterSet`,
-dasselbe Payload-Schema — nur die Werte in `detections[]` werden echt, und
-`attributes` trägt zusätzlich `tagId`, `reprojErrorPx`, `ambiguous`,
-`sampleCount`. Es lohnt sich deshalb, die Rezeptauswahl jetzt schon
-datengetrieben aus der Description zu bauen statt fest zu verdrahten.
+`apriltag` ist inzwischen gemergt und damit die eigentliche Erkennung. Die
+frühere QR-Erkennung `image-recognition` ist entfallen; wer sie noch fest
+verdrahtet hat, bekommt `ErrorCode=4` (`UNKNOWN_RECIPE`). **Genau deshalb die
+Rezeptauswahl datengetrieben aus der Description bauen statt fest zu
+verdrahten** — die Liste hat sich schon einmal geändert.
+
+An dieser Schnittstelle ändert die echte Erkennung **nichts**: derselbe
+`Start()`, dasselbe `ParameterSet`, dasselbe Payload-Schema. Nur die Werte in
+`detections[]` sind echt, und `attributes` trägt zusätzlich `tagId`,
+`reprojErrorPx`, `ambiguous`, `sampleCount`. Ein AprilTag-Job dauert deutlich
+länger als der Platzhalter (mehrere Aufnahmen je Job), der Zustand bleibt
+entsprechend länger auf `Running`.
 
 ---
 

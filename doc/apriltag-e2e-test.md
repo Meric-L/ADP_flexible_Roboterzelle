@@ -24,11 +24,13 @@ CLI-Referenz), [`vision-server-interface.md`](vision-server-interface.md) (OPC-U
 
 ### 0.1 Umgebung am PC
 
-> **Achtung, bekannter Zustand:** Das eingecheckte `.venv` in diesem Repo ist
-> defekt — `numpy/__init__.py` und `cv2/__init__.py` fehlen, beide Pakete sind
-> dort nicht importierbar. `setup.sh` legt keine venv an, es richtet nur das
-> ShareLaTeX-Remote ein. Lege die Umgebung deshalb einmal neu an: das alte
-> `.venv`-Verzeichnis löschen, dann
+Die Umgebung in diesem Repo ist einsatzbereit (OpenCV 5.0.0, numpy 2.5.3,
+asyncua 2.0.1, pupil-apriltags) — springe direkt zur Prüfung unten. Das alte,
+defekte `.venv` liegt als `.venv.kaputt/` daneben und kann gelöscht werden.
+
+> **Auf einem anderen Rechner:** `setup.sh` legt **keine** venv an, es richtet
+> nur das ShareLaTeX-Remote ein. Lege sie deshalb selbst an — altes
+> `.venv`-Verzeichnis entfernen, dann
 
 ```bash
 cd ADP_flexible_Roboterzelle
@@ -132,7 +134,8 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
 **Abbruchkriterium:** `build_tagmap` platziert alle Tags, die Liste „ohne Pfad
 zum Anker" ist leer, und die Schließfehler liegen **unter 1 mm und 0,05°**. Bei
 gerenderten Bildern gibt es keine Messunsicherheit — größere Werte sind ein
-Rechen- oder Konventionsfehler, kein Rauschen.
+Rechen- oder Konventionsfehler, kein Rauschen. Zum Vergleich: auf dieser Szene
+gemessen wurden 0,00–0,02 mm und 0,000°.
 
 ---
 
@@ -208,29 +211,42 @@ python3 -m venv --system-site-packages .venv
 
 ### 3.3 Kalibrieren mit der Pi-Kamera
 
-Der Pi hat meist keinen Bildschirm. Zwei Wege:
+> **Server vorher stoppen.** `tagloc.cli.calibrate` öffnet die Kamera selbst
+> und exklusiv -- genau wie `SharedCamera` im laufenden Server. Beide
+> gleichzeitig geht nicht (RSUSB/libuvc bzw. Picamera2 lassen nur einen
+> offenen Zugriff zu). Solange kalibriert wird, gibt es also **keinen**
+> Livestream im Frontend; `sudo systemctl stop opcua-server.service` vorher,
+> `start` danach.
+
+Der Pi hat meist keinen Bildschirm. Zwei Wege, hier für den Decken-Pi
+(`--source picamera`) — für den Hand-Pi `--source realsense --resolution 640 480`
+statt `--source picamera --resolution 2028 1520` einsetzen, sonst identisch:
 
 **Weg A — mit Display (X11-Weiterleitung oder VNC), interaktiv:**
 
 ```bash
 ssh -X pi@pi-decke
 cd ~/ADP_flexible_Roboterzelle
+sudo systemctl stop opcua-server.service
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source picamera --resolution 2028 1520 \
     --board charuco --cols 7 --rows 5 --square-size-m 0.030 --marker-size-m 0.022 \
     --frame-id cam_ceiling --out data/calibration/cam_ceiling.json \
     --capture-to data/calibration/aufnahmen_decke
+sudo systemctl start opcua-server.service
 ```
 
 **Weg B — ohne Display, zweistufig.** Robuster, und mit Nebennutzen: die Bilder
 bleiben liegen, die Kalibrierung ist am PC exakt reproduzierbar.
 
 ```bash
-# auf dem Pi: nur aufnehmen
+# auf dem Pi: Server stoppen, dann nur aufnehmen
+sudo systemctl stop opcua-server.service
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source picamera --resolution 2028 1520 --no-gui \
     --board charuco --capture-to data/calibration/aufnahmen_decke \
     --frame-id cam_ceiling --out data/calibration/cam_ceiling.json
+sudo systemctl start opcua-server.service
 
 # am PC nachrechnen (identischer Rechenkern)
 scp -r pi@pi-decke:~/ADP_flexible_Roboterzelle/data/calibration/aufnahmen_decke /tmp/
@@ -251,6 +267,9 @@ für die Decke und `cam_flange.json` für den Flansch — unter diesem Namen suc
 der Server sie.
 
 ### 3.4 Erkennung live prüfen
+
+Server bleibt gestoppt (siehe 3.3) — auch hier öffnet das CLI-Tool die Kamera
+exklusiv. Für den Hand-Pi wieder `--source realsense --resolution 640 480`.
 
 ```bash
 # mit Display
