@@ -14,6 +14,7 @@ import signal
 import socket
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from asyncua import Server, ua
 from asyncua.common.instantiate_util import instantiate
@@ -27,6 +28,8 @@ from vision_server.profiles import (
 )  # noqa: E402
 from vision_server.runner import install_vision_machine  # noqa: E402
 
+import ua_mdns  # noqa: E402
+
 logging.basicConfig(level=logging.INFO)
 _log = logging.getLogger("raspi-opcua")
 
@@ -37,6 +40,13 @@ RESULT_TYPE_NODEID = 2002  # 1:ResultType im Machine-Vision-Nodeset
 
 ENDPOINT = "opc.tcp://0.0.0.0:4840/raspi/server/"
 SERVER_NAME = "Raspberry Pi OPC UA Server"
+
+#: Port und Pfad fuer die mDNS-Ankuendigung, aus dem Endpoint abgeleitet statt
+#: daneben gepflegt. Ein Client baut `opc.tcp://<ip>:<port><path>` zusammen --
+#: ein abweichender Pfad ergibt bei jedem Client eine unbrauchbare URL.
+_ENDPOINT_URL = urlparse(ENDPOINT)
+MDNS_PORT = _ENDPOINT_URL.port or 4840
+MDNS_PATH = _ENDPOINT_URL.path or "/"
 
 
 def read_cpu_temp() -> float:
@@ -94,6 +104,17 @@ def vision_identity() -> tuple[str, str]:
         os.getenv("VISION_SYSTEM_ID") or mapped_id,
         os.getenv("VISION_FRAME_ID") or mapped_frame,
     )
+
+
+def mdns_instance_name() -> str:
+    """Dienstname dieses Servers im lokalen Netz.
+
+    Muss im Netz eindeutig sein: kuendigen beide Pis denselben Namen an,
+    haengt zeroconf zur Konfliktaufloesung ein `-2` an und der Name wird
+    unvorhersehbar. Die Vision-Identitaet ist bereits pro Pi eindeutig --
+    deshalb keine zweite Namensquelle danebenstellen.
+    """
+    return os.getenv("OPCUA_MDNS_NAME") or vision_identity()[0]
 
 
 def vision_config() -> VisionServerConfig:
@@ -181,15 +202,18 @@ async def main():
 
     try:
         async with server:
-            n = 0
-            while not stop.is_set():
-                n += 1
-                temp = read_cpu_temp()
-                await counter.write_value(n)
-                await cpu_temp.write_value(temp)
-                await result_content.write_value(temp, ua.VariantType.Double)
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(stop.wait(), timeout=1.0)
+            # Erst der Server, dann die Ankuendigung -- wer den Dienst findet,
+            # soll ihn auch erreichen. Beim Verlassen wird sie zurueckgezogen.
+            async with ua_mdns.announce(mdns_instance_name(), MDNS_PORT, MDNS_PATH):
+                n = 0
+                while not stop.is_set():
+                    n += 1
+                    temp = read_cpu_temp()
+                    await counter.write_value(n)
+                    await cpu_temp.write_value(temp)
+                    await result_content.write_value(temp, ua.VariantType.Double)
+                    with contextlib.suppress(asyncio.TimeoutError):
+                        await asyncio.wait_for(stop.wait(), timeout=1.0)
     finally:
         await machine.aclose()
 

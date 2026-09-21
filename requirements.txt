@@ -2,3 +2,6 @@ opencv-contrib-python>=4.8.0
 pupil-apriltags
 numpy
 asyncua>=1.1.5
+# mDNS-Ankuendigung des Servers (`src/ua_mdns.py`). Optional zur Laufzeit: ohne
+# das Paket startet der Server, kuendigt sich aber nicht an.
+zeroconf>=0.131
