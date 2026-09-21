@@ -53,6 +53,26 @@ class AprilTagStreamAnnotator:
         self._last_tag_poses: list = []
         self._last_board = None
         self._scaled: dict[tuple[int, int], Any] = {}
+        #: Waehrend `runner.py`s `StartCalibration`/`FinishCalibration`/
+        #: `AbortCalibration` gesetzt bzw. wieder auf `None` -- siehe
+        #: `set_calibration_session`.
+        self._calibration_session: Any = None
+
+    def set_calibration_session(self, session: Any) -> None:
+        """Haengt eine laufende `CalibrationSession` ein oder aus (`None`).
+
+        Aufgerufen von `runner.py`s Kalibrier-Methoden; der Publisher-Loop
+        laeuft in einem eigenen Worker-Thread, das Setzen selbst aber auf dem
+        Event-Loop -- eine einfache Attribut-Zuweisung ist dafuer sicher
+        genug, ohne dass eine Sperre noetig waere.
+        """
+        self._calibration_session = session
+
+    @property
+    def calibration_progress(self) -> dict | None:
+        """Fortschritt der aktiven Session, oder `None` ohne eine."""
+        session = self._calibration_session
+        return session.progress if session is not None else None
 
     def _calibration_for(self, size: tuple[int, int]):
         """Return calibration matching the stream resolution.
@@ -117,14 +137,30 @@ class AprilTagStreamAnnotator:
                         frame_tools.to_gray(canvas), self._board_spec()
                     )
                     self._last_run = now
-                draw_board_overlay(canvas, self._last_board)
-                draw_status_bar(
+                progress = self.calibration_progress
+                draw_board_overlay(
                     canvas,
-                    [
-                        f"Modus: Kalibrierung   Board: {self._board_spec().type}",
-                        f"Kalibrierung: {self._calibration.calibration_id or 'unbenannt'}",
-                    ],
+                    self._last_board,
+                    coverage=(progress["coverageX"], progress["coverageY"]) if progress else None,
                 )
+                if progress is not None:
+                    draw_status_bar(
+                        canvas,
+                        [
+                            "Modus: Kalibrierung   Session laeuft",
+                            f"Aufnahmen {progress['samples']}/{progress['minSamples']}"
+                            f"   Abdeckung x {progress['coverageX'] * 100:.0f}%"
+                            f" y {progress['coverageY'] * 100:.0f}%",
+                        ],
+                    )
+                else:
+                    draw_status_bar(
+                        canvas,
+                        [
+                            f"Modus: Kalibrierung   Board: {self._board_spec().type}",
+                            f"Kalibrierung: {self._calibration.calibration_id or 'unbenannt'}",
+                        ],
+                    )
                 return canvas
 
             if due:

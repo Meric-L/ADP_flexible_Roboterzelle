@@ -51,6 +51,25 @@ class AprilTagProfileConfig:
     #: wieder auf `False`, sonst faellt eine fehlende echte Kalibrierung nie
     #: mehr auf.
     allow_placeholder_calibration: bool = False
+    #: Geometrie des Kalibrierboards fuer `CalibrationSession`
+    #: (`vision_server/calibration_session.py`). Skalare statt eines
+    #: `tagloc.boards.BoardSpec`-Objekts, aus demselben Grund wie `tag_family`:
+    #: diese Datei bleibt frei von einer `tagloc`-Abhaengigkeit, das Objekt
+    #: wird erst dort gebaut, wo es gebraucht wird.
+    calibration_board_type: str = "chessboard"
+    calibration_board_cols: int = 9
+    calibration_board_rows: int = 6
+    calibration_board_square_size_m: float = 0.030
+    calibration_board_marker_size_m: float = 0.022
+    calibration_board_dictionary: str = "DICT_4X4_50"
+    #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
+    #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
+    calibration_min_samples: int = 15
+    #: Mindestabstand zwischen zwei automatischen Aufnahmen einer laufenden
+    #: `CalibrationSession` -- verhindert, dass eine ruhig gehaltene Kamera
+    #: denselben Blickwinkel dutzendfach aufnimmt, ohne dass der Operator
+    #: das Board bewegen muss.
+    calibration_capture_interval_s: float = 1.0
 
 
 #: Unterstuetzte Werte fuer `CameraStreamConfig.backend`.

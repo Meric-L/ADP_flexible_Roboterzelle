@@ -2,15 +2,18 @@
 
 import asyncio
 import contextlib
+import json
 import logging
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from asyncua import Server, ua, uamethod
 
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
+from .calibration_session import CalibrationSession
 from .camera_stream import CameraStreamPublisher
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
@@ -94,21 +97,23 @@ def _start_camera_stream(
     space: VisionAddressSpace,
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
-) -> CameraStreamPublisher | None:
+) -> tuple[CameraStreamPublisher | None, Any]:
     """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
 
     Nutzt dieselbe `SharedCamera`, die auch die Erkennung offen haelt — eine
-    zweite Kamera lohnt sich hier nicht, siehe `camera.py`.
+    zweite Kamera lohnt sich hier nicht, siehe `camera.py`. Gibt den
+    Annotator zusaetzlich zurueck, damit `install_vision_machine` ihm spaeter
+    eine laufende `CalibrationSession` anhaengen kann (`set_calibration_session`).
     """
     if space.latest_camera_frame is None:
-        return None
+        return None, None
     source = _camera_owner(sources, opened)
     if source is None:
         _log.error(
             "Livestream-Knoten konfiguriert, aber keine geoeffnete Quelle haelt eine "
             "Kamera -- kein Stream"
         )
-        return None
+        return None, None
     annotator = None
     try:
         annotator = _build_annotator(source)
@@ -120,6 +125,7 @@ def _start_camera_stream(
         space.config.camera_stream,
         annotator=annotator,
         mode_node=space.camera_stream_mode,
+        progress_node=space.calibration_progress,
     )
     stream.start()
     _log.info(
@@ -127,7 +133,27 @@ def _start_camera_stream(
         source.profile_id,
         " mit Overlay" if annotator is not None else " ohne Overlay",
     )
-    return stream
+    return stream, annotator
+
+
+def _build_calibration_session(
+    sources: Mapping[str, DetectionSource],
+    opened: Mapping[str, bool],
+    config: VisionServerConfig,
+) -> CalibrationSession | None:
+    """Baut die (wiederverwendbare) Kalibrier-Session, falls moeglich.
+
+    Nur wenn die `apriltag`-Quelle offen ist -- dieselbe `SharedCamera` wie
+    Job und Livestream, kein zweiter Kamera-Zugriff -- und `config.apriltag`
+    gesetzt ist (auf den echten Pis der Fall, siehe `OPCUA/server.py`; lokale
+    Entwicklung/Tests ohne explizite Konfiguration lassen das Feature aus).
+    """
+    if config.apriltag is None:
+        return None
+    source = sources.get("apriltag")
+    if source is None or not opened.get("apriltag") or getattr(source, "camera", None) is None:
+        return None
+    return CalibrationSession(source.camera, config.apriltag)
 
 
 async def _open_source(source: DetectionSource) -> bool:
@@ -162,6 +188,9 @@ class VisionMachine:
     assets: VisionAssetNodes | None = None
     #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
     program: VisionProgram | None = None
+    #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
+    #: `StartCalibration`/`FinishCalibration`/`AbortCalibration`.
+    calibration_session: CalibrationSession | None = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -169,6 +198,8 @@ class VisionMachine:
         Best-Effort und idempotent; braucht im Aufrufer einen Signal-Handler,
         sonst laeuft es unter systemd nicht.
         """
+        if self.calibration_session is not None and self.calibration_session.running:
+            await self.calibration_session.abort()
         if self.lag_watchdog is not None:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -202,6 +233,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     results = await ResultStore.create(space)
     sources = build_detection_sources(config)
     jobs = JobRunner(config, states, events, results, sources)
+    #: Erst spaeter auf ihren echten Wert gesetzt (siehe unten, nach dem
+    #: Oeffnen der Quellen) -- die Closures hier greifen erst beim
+    #: tatsaechlichen Methodenaufruf darauf zu, also lange danach. Python loest
+    #: Namen in Closures spaet auf, das ist hier bewusst genutzt.
+    calibration_session: CalibrationSession | None = None
+    annotator: Any = None
 
     @uamethod
     async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
@@ -218,6 +255,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         Rueckgabe muss ein Tupel sein; eine Liste wuerde asyncua als einen
         einzigen Variant verpacken.
         """
+        if calibration_session is not None and calibration_session.running:
+            _log.warning("StartSingleJob waehrend laufender Kalibrierung abgelehnt")
+            return (
+                ua.Variant("", ua.VariantType.String),
+                ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
+            )
         job_id, error = jobs.start_single_job(
             meas_id, part_id, recipe_id, product_id, parameters
         )
@@ -244,6 +287,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     @uamethod
     async def start_continuous(parent, meas_id, part_id, recipe_id, product_id, parameters):
         """1:StartContinuous -- Dauerbetrieb bis Stop oder Abort."""
+        if calibration_session is not None and calibration_session.running:
+            _log.warning("StartContinuous waehrend laufender Kalibrierung abgelehnt")
+            return (
+                ua.Variant("", ua.VariantType.String),
+                ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
+            )
         job_id, error = jobs.start_continuous(
             meas_id, part_id, recipe_id, product_id, parameters
         )
@@ -314,6 +363,83 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             config.vision_system_name,
         )
 
+    calibration_session = _build_calibration_session(sources, opened, config)
+    camera_stream, annotator = _start_camera_stream(space, sources, opened)
+
+    if calibration_session is not None and space.calibration_progress is not None:
+
+        @uamethod
+        async def start_calibration(parent):
+            """1:StartCalibration -- beginnt automatisches Erfassen von
+            Board-Aufnahmen gegen die bereits offene Kamera.
+
+            Kein Kalibrierdurchlauf gegen einen laufenden Job oder eine
+            zweite Session gleichzeitig -- beide teilen sich Kamera und
+            Detektor.
+            """
+            if jobs.busy:
+                _log.warning("StartCalibration waehrend laufendem Job abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if calibration_session.running:
+                _log.warning("StartCalibration waehrend laufender Session abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if not states.is_ready():
+                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
+            calibration_session.start()
+            if annotator is not None:
+                annotator.set_calibration_session(calibration_session)
+            _log.info("Kalibrier-Session gestartet")
+            return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+
+        await space.vision_system.add_method(
+            space.own_idx, "StartCalibration", start_calibration, [], [ua.VariantType.Int32]
+        )
+
+        @uamethod
+        async def finish_calibration(parent):
+            """1:FinishCalibration -- rechnet aus den gesammelten Aufnahmen
+            und speichert bei Erfolg `data/calibration/<frame_id>.json`.
+
+            `Summary` ist immer gueltiges JSON, auch im Fehlerfall (dann mit
+            `message` statt `rms`/`samples`/... ), damit das Frontend nicht
+            zwischen Erfolgs- und Fehlerform unterscheiden muss.
+            """
+            if not calibration_session.running:
+                return (
+                    ua.Variant('{"message": "keine Session aktiv"}', ua.VariantType.String),
+                    ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),
+                )
+            error, summary = await calibration_session.finish()
+            if annotator is not None:
+                annotator.set_calibration_session(None)
+            return (
+                ua.Variant(json.dumps(summary), ua.VariantType.String),
+                ua.Variant(int(error), ua.VariantType.Int32),
+            )
+
+        await space.vision_system.add_method(
+            space.own_idx,
+            "FinishCalibration",
+            finish_calibration,
+            [],
+            [ua.VariantType.String, ua.VariantType.Int32],
+        )
+
+        @uamethod
+        async def abort_calibration(parent):
+            """1:AbortCalibration -- stoppt ohne zu speichern."""
+            if not calibration_session.running:
+                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
+            await calibration_session.abort()
+            if annotator is not None:
+                annotator.set_calibration_session(None)
+            _log.info("Kalibrier-Session abgebrochen")
+            return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+
+        await space.vision_system.add_method(
+            space.own_idx, "AbortCalibration", abort_calibration, [], [ua.VariantType.Int32]
+        )
+
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
     # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
     # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
@@ -322,6 +448,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["LatestCameraFrame"] = space.latest_camera_frame
     if space.camera_stream_mode is not None:
         mirror_nodes["CameraStreamMode"] = space.camera_stream_mode
+    if space.calibration_progress is not None:
+        mirror_nodes["CalibrationProgress"] = space.calibration_progress
     program = await install_vision_program(
         server,
         server.nodes.objects,
@@ -338,8 +466,6 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         await sm.change_state(
             sm.halted, sm.ready_to_halted, "Vision-System nicht betriebsbereit"
         )
-
-    camera_stream = _start_camera_stream(space, sources, opened)
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
@@ -360,6 +486,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         camera_stream=camera_stream,
         assets=assets,
         program=program,
+        calibration_session=calibration_session,
     )
 
 

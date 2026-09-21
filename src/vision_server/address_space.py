@@ -42,6 +42,9 @@ class VisionAddressSpace:
     #: Writable: the frontend selects what the stream shows through this
     #: ("off", "apriltag", "calibration"). `None` without a livestream.
     camera_stream_mode: Node | None = None
+    #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
+    #: `runner.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
+    calibration_progress: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -181,6 +184,19 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         )
         await camera_stream_mode.set_writable()
 
+    calibration_progress: Node | None = None
+    if config.apriltag is not None:
+        # Nur lesen: die laufende `CalibrationSession` in `runner.py` schreibt
+        # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
+        # eine Kalibrier-Session ist auch ohne Livestream denkbar (z. B. lokale
+        # Entwicklung), auch wenn sie in der Praxis immer zusammen laufen.
+        calibration_progress = await vision_system.add_variable(
+            ua.NodeId(f"{name}.CalibrationProgress", own_idx),
+            ua.QualifiedName("CalibrationProgress", own_idx),
+            '{"running": false}',
+            ua.VariantType.String,
+        )
+
     _log.info("VisionSystem '%s' als %s angelegt", name, vision_system.nodeid.to_string())
     return VisionAddressSpace(
         server=server,
@@ -199,5 +215,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         results_folder=results_folder,
         latest_camera_frame=latest_camera_frame,
         camera_stream_mode=camera_stream_mode,
+        calibration_progress=calibration_progress,
         amcm_idx=amcm_idx,
     )

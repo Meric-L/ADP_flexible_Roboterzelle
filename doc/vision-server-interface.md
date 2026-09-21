@@ -634,3 +634,98 @@ instanziiert sie deshalb als echte Knoten, obwohl sie Vorlagen des Typs sind.
 Sie nachträglich zu löschen kostete **9 s für 26 Knoten** — das rekursive
 Löschen ist dort pathologisch langsam. `asset_model.py` legt deshalb nur die
 Ordner an, die es füllt: rund 50 Knoten statt 700.
+
+---
+
+## 12. Interaktive Kalibrierung (frontend-gesteuert)
+
+Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
+(`tagloc.cli.calibrate` per SSH) — es öffnet die Kamera exklusiv, der Server
+muss dafür gestoppt sein. Diese drei Methoden plus ein Knoten erlauben
+dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Board vor
+die Kamera halten, Fortschritt live sehen, `FinishCalibration` aufrufen.
+
+Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
+`SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
+kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
+
+**Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
+in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/OPCUA/server.py`) —
+das Frontend sendet und kennt keine Board-Parameter, es startet/beendet nur.
+
+### 12.1 `StartCalibration`
+
+Setzt gesammelte Samples zurück und beginnt automatisches Erfassen.
+
+| Ausgabe | Typ | Bedeutung |
+| --- | --- | --- |
+| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job oder eine Session) |
+
+### 12.2 `FinishCalibration`
+
+Stoppt das Erfassen, rechnet aus den gesammelten Samples und speichert
+`data/calibration/<frame_id>.json` — derselbe Rechenkern wie im CLI-Tool
+(`tagloc.boards.calibrate_from_samples`).
+
+| Ausgabe | Typ | Bedeutung |
+| --- | --- | --- |
+| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "...", "samples": N}` |
+| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
+
+### 12.3 `AbortCalibration`
+
+Stoppt das Erfassen, **ohne** zu speichern — für den Fall, dass sich der
+Operator vertan hat oder neu anfangen will.
+
+| Ausgabe | Typ | Bedeutung |
+| --- | --- | --- |
+| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, keine Session aktiv) |
+
+### 12.4 `CalibrationProgress` (nur lesen)
+
+```
+ns=<vision>;s=VisionMachine.CalibrationProgress     Datentyp String (JSON)
+```
+
+Wird bei jedem Publish-Tick des Livestreams mitgeschrieben (kein eigener
+Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
+
+| Feld | Bedeutung |
+| --- | --- |
+| `running` | `bool` — Session aktiv? |
+| `samples` | Anzahl bisher erfasster Aufnahmen |
+| `minSamples` | Mindestanzahl für ein erfolgreiches `FinishCalibration` (Config, Standard 15) |
+| `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
+
+Im Ruhezustand (keine Session je gestartet oder nach `Finish`/`Abort`):
+`{"running": false}`.
+
+### 12.5 Automatisches Erfassen
+
+Kein Button pro Aufnahme: sobald die Session läuft, nimmt sie automatisch
+einen neuen Sample auf, wenn das Board erkannt wird **und** seit der letzten
+Aufnahme mindestens `calibration_capture_interval_s` (Config, Standard 1,0 s)
+vergangen sind. Kein Bewegungsabgleich — ein Operator, der das Board sichtbar
+bewegt, erzeugt von selbst unterschiedliche Posen. Mitverfolgen lässt sich das
+über `CalibrationProgress` oder visuell über den Livestream
+(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
+zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
+`Aufnahmen X/minSamples`.
+
+### 12.6 Sperren
+
+`StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft. Umgekehrt lehnen
+`StartSingleJob`/`StartContinuous` ab (`BUSY`), solange eine Kalibrier-Session
+läuft — beide teilen sich Kamera und Detektor, gleichzeitig ergibt keinen
+Sinn. Es gibt dafür **keinen eigenen State-Machine-Zustand**: das Nodeset
+kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt in
+`Ready`, die Sperre läuft rein über die beiden Busy-Flags — dieselbe
+`BUSY`-Semantik wie zwischen zwei Jobs (Abschnitt 5, Fehlercodes).
+
+### 12.7 Stand
+
+Aktuell nur für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense)
+konfiguriert und real verifiziert (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei
+21 Aufnahmen über das CLI-Tool). Layer 1 (Deckenkamera) bekommt dieselbe
+Funktionalität, sobald die reale Board-Geometrie dort feststeht — der Code ist
+pi-unabhängig, es fehlen nur die bestätigten Werte in `PI_APRILTAG_PRESETS["cam_ceiling"]`.

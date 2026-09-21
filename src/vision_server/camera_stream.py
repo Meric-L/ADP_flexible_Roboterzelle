@@ -14,6 +14,7 @@ OpenCV nor detection -- it only passes mode and image along.
 import asyncio
 import base64
 import contextlib
+import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -62,6 +63,7 @@ class CameraStreamPublisher:
         encode_frame: Callable[[Any, int], str | None] = _encode_jpeg_base64,
         annotator: Any = None,
         mode_node: Node | None = None,
+        progress_node: Node | None = None,
     ) -> None:
         self._camera = camera
         self._node = node
@@ -72,6 +74,10 @@ class CameraStreamPublisher:
         self._annotator = annotator
         #: Writable node through which the frontend selects the mode.
         self._mode_node = mode_node
+        #: `CalibrationProgress`-Knoten; nur beschrieben, wenn der Annotator
+        #: gerade eine `CalibrationSession` haengen hat (siehe
+        #: `AprilTagStreamAnnotator.calibration_progress`).
+        self._progress_node = progress_node
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
 
@@ -121,6 +127,16 @@ class CameraStreamPublisher:
                         await self._node.write_value(encoded)
                 except Exception:
                     _log.exception("Kamera-Frame konnte nicht veroeffentlicht werden")
+                if self._progress_node is not None and self._annotator is not None:
+                    # Unabhaengig vom gewaehlten `mode` -- der Fortschritt soll
+                    # auch sichtbar sein, wenn der Viewer gerade "off" zeigt.
+                    try:
+                        progress = self._annotator.calibration_progress
+                        await self._progress_node.write_value(
+                            json.dumps(progress if progress is not None else {"running": False})
+                        )
+                    except Exception:
+                        _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
             elapsed = loop.time() - started
             await asyncio.sleep(max(0.0, interval - elapsed))
 

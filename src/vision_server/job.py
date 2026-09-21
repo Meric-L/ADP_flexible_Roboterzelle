@@ -151,6 +151,13 @@ class JobRunner:
         #: `vision_program.py`, das aus `Running` zurueck nach `Ready` muss.
         self._finish_listeners: list[Callable[[str, VisionErrorCode], None]] = []
 
+    @property
+    def busy(self) -> bool:
+        """Laeuft gerade ein Job? Fuer Aufsaetze, die sich denselben Detektor/
+        dieselbe Kamera teilen (z. B. `CalibrationSession`) und sich damit
+        gegenseitig ausschliessen muessen."""
+        return self._busy
+
     def add_finish_listener(
         self, listener: Callable[[str, VisionErrorCode], None]
     ) -> None:

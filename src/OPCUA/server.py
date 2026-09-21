@@ -98,6 +98,14 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.050,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
+        # Echtes Board, am Hand-Pi durchgemessen (RMS 0,2945 px, Abdeckung
+        # 96 %/95 %, siehe data/calibration/cam_flange.json): ein simples
+        # Schachbrett aus dem Internet, 22 mm/Feld, 7x9 innere Ecken -- kein
+        # ChArUco-Board, das braeuchte zusaetzliche ArUco-Marker im Druck.
+        "calibration_board_type": "chessboard",
+        "calibration_board_cols": 7,
+        "calibration_board_rows": 9,
+        "calibration_board_square_size_m": 0.022,
     },
 }
 
