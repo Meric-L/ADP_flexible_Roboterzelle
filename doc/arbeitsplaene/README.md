@@ -15,7 +15,7 @@ nicht gibt.
 
 | Plan | Thema | Status | Verantwortlich | Aktualisiert |
 | --- | --- | --- | --- | --- |
-| _(noch keiner)_ | | | | |
+| [`opcua-part10-vervollstaendigen.md`](opcua-part10-vervollstaendigen.md) | `opcua` | geplant | `Agent: Part-10-Programm vervollständigen` | 21.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
@@ -47,7 +47,8 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 
 | Datei | Inhalt |
 | --- | --- |
-| [`../vision-server-interface.md`](../vision-server-interface.md) | OPC-UA-Vision-Server: Adressraum, Methoden, Backend-Anbindung |
+| [`../vision-server-interface.md`](../vision-server-interface.md) | OPC-UA-Vision-Server: Adressraum, Methoden, Backend-Anbindung (OPC 40100) |
+| [`../part10-programm-schnittstelle.md`](../part10-programm-schnittstelle.md) | Part-10-Programm und mDNS: generische Bedienoberfläche der Zelle, Auffindbarkeit im Netz |
 | [`../vision-system.md`](../vision-system.md) | Vision-System — Ist-Stand auf dem Raspberry Pi |
 | [`../vision-system-integration.md`](../vision-system-integration.md) | Integration der Vision-Systeme in WebSkillComposition |
 | [`../vision-system-next-steps.md`](../vision-system-next-steps.md) | Vision-System — offene Punkte und nächste Schritte |
