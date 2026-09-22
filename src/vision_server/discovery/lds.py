@@ -56,7 +56,8 @@ from . import mdns
 _log = logging.getLogger(__name__)
 
 #: Discovery-Server der Zelle. `OPCUA_LDS_URL=""` schaltet die Anmeldung ab.
-DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
+#DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
+DEFAULT_LDS_URL = ""
 
 #: Erneuerung ist noetig, nicht optional -- gemessen am 2026-09-21: der LDS
 #: startete um 15:56 neu, und Conveyor (seit 08.09. durchgehend) wie
