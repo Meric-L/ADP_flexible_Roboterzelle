@@ -242,6 +242,28 @@ class AprilTagDetectionSource(DetectionSource):
         self.configuration_id = self._build_configuration_id()
         await self.camera.open()
 
+    def apply_tag_map(self, tag_map: Any) -> list[str]:
+        """Uebernimmt eine neue Tag-Map in die laufende Quelle.
+
+        Gibt die Beanstandungen von `validate_tag_map` zurueck -- sie sind
+        Bericht, kein Fehler: eine Zelle im Aufbau darf messen.
+
+        Der Anker wird dabei **verworfen**. Er wurde gegen die Weltposen der
+        alten Karte gerechnet; gegenueber einer neuen waere er stumm falsch,
+        und ein stiller Versatz in jeder Modulpose ist genau die Sorte Fehler,
+        die erst beim Danebengreifen auffaellt.
+        """
+        from tagloc.tagmap import validate_tag_map
+
+        self._tag_map = tag_map
+        self._anchor = None
+        self._drift = None
+        self._localization = None
+        # Die Karte gehoert zur Identitaet der Konfiguration -- sonst sieht ein
+        # spaeteres Ergebnis aus wie eines von vorher.
+        self.configuration_id = self._build_configuration_id()
+        return validate_tag_map(tag_map)
+
     async def close(self) -> None:
         await self.camera.close()
         await self.shutdown_executor()

@@ -436,5 +436,36 @@ class SolverTest(unittest.TestCase):
             handeye.solve_hand_eye(arms, tags[:-1])
 
 
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class NeueKarteVerwirftAnkerTest(unittest.TestCase):
+    """Eine neue Tag-Map macht den Anker ungueltig.
+
+    Der Anker wurde gegen die Weltposen der alten Karte gerechnet. Ihn stehen
+    zu lassen hiesse, jede Modulpose stumm um die Differenz zu verschieben --
+    genau die Sorte Fehler, die erst beim Danebengreifen auffaellt.
+    """
+
+    def test_apply_tag_map_drops_the_anchor(self):
+        from dataclasses import replace as dc_replace
+
+        from vision_server.detection.apriltag import AprilTagDetectionSource
+        from vision_server.profiles import AprilTagProfileConfig
+
+        source = AprilTagDetectionSource(
+            dc_replace(AprilTagProfileConfig(), tag_map_path=None, hand_eye_path=None)
+        )
+        source._tag_map = cell_map()
+        source._anchor = handeye.RobotAnchor(
+            pose_world_base=pose_world_base(), world_tag_id=WORLD_TAG_ID
+        )
+        source._drift = (0.001, 0.0001)
+
+        problems = source.apply_tag_map(cell_map())
+
+        self.assertIsNone(source._anchor)
+        self.assertIsNone(source._drift)
+        self.assertIsInstance(problems, list)
+
+
 if __name__ == "__main__":
     unittest.main()

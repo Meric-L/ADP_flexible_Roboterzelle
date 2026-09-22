@@ -279,7 +279,15 @@ def _migrate_role(role: str, tag_id: int, pose_in_world, path: Path):
 
 
 def load_tag_map(path: Path) -> TagMap:
-    """Read a tag map from JSON.
+    """Read a tag map from a JSON file."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
+    return tag_map_from_json(path.read_text(encoding="utf-8"), source=str(path))
+
+
+def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
+    """Read a tag map from JSON text.
 
     Eine Karte im alten Schema wird **migriert, nicht abgelehnt**: sie laut
     zurueckzuweisen klingt richtig, legt aber in der Praxis die ganze Erkennung
@@ -287,10 +295,13 @@ def load_tag_map(path: Path) -> TagMap:
     CAD-Versaetze aus der alten Karte bleiben damit erhalten; was sich in der
     Bedeutung aendert, meldet `_migrate_role` einzeln.
     """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
+    path = source
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Tag-Map {source} ist kein gueltiges JSON: {error}") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"Tag-Map {source} muss ein JSON-Objekt sein")
     schema = data.get("schema")
     if schema == LEGACY_SCHEMA:
         _log.warning(
@@ -338,6 +349,15 @@ def save_tag_map(path: Path, tag_map: TagMap) -> None:
     """Write a tag map as JSON, sorted by tag ID."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(tag_map_to_json(tag_map), encoding="utf-8")
+
+
+def tag_map_to_json(tag_map: TagMap) -> str:
+    """Return the map as JSON text -- exactly what `save_tag_map` writes.
+
+    Dasselbe Format fuer Datei und OPC-UA-Methode: was das Backend schickt,
+    laesst sich unveraendert ablegen und umgekehrt.
+    """
     tags = []
     for tag_id in sorted(tag_map.entries):
         entry = tag_map.entries[tag_id]
@@ -359,7 +379,7 @@ def save_tag_map(path: Path, tag_map: TagMap) -> None:
         "tagFamily": tag_map.tag_family,
         "tags": tags,
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return json.dumps(payload, indent=2) + "\n"
 
 
 # --------------------------------------------------------------------------
@@ -557,7 +577,9 @@ __all__ = [
     "relative_poses",
     "residuals",
     "save_tag_map",
+    "tag_map_from_json",
     "tag_map_identity",
+    "tag_map_to_json",
     "validate_tag_map",
     "with_world_poses",
 ]

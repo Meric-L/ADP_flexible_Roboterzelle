@@ -445,5 +445,59 @@ class TagMapFileTest(unittest.TestCase):
         np.testing.assert_allclose(loaded[2].tag_to_module, geometry.identity(), atol=1e-15)
 
 
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class TagMapJsonTextTest(unittest.TestCase):
+    """Karte als Text -- dasselbe Format fuer Datei und `SetTagMap`.
+
+    Weil beide Wege denselben Serialisierer benutzen, laesst sich das, was das
+    Backend schickt, unveraendert ablegen und umgekehrt.
+    """
+
+    def _map(self):
+        return tagmap.TagMap(
+            frame_id="world",
+            anchor_tag_id=0,
+            entries={
+                0: tagmap.TagEntry(
+                    tag_id=0, role="world", size_m=0.10, pose_in_world=geometry.identity()
+                ),
+                5: tagmap.TagEntry(
+                    tag_id=5, role="module", size_m=0.04, module_id="MOD-A"
+                ),
+            },
+        )
+
+    def test_round_trips_through_text(self):
+        original = self._map()
+
+        loaded = tagmap.tag_map_from_json(tagmap.tag_map_to_json(original))
+
+        self.assertEqual(sorted(loaded.entries), [0, 5])
+        self.assertEqual(loaded[5].module_id, "MOD-A")
+        np.testing.assert_allclose(
+            loaded[0].pose_in_world, geometry.identity(), atol=1e-15
+        )
+
+    def test_text_matches_what_the_file_contains(self):
+        original = self._map()
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "tagmap.json"
+            tagmap.save_tag_map(path, original)
+            from_file = path.read_text(encoding="utf-8")
+
+        self.assertEqual(from_file, tagmap.tag_map_to_json(original))
+
+    def test_rejects_broken_json_with_the_source_named(self):
+        with self.assertRaises(ValueError) as caught:
+            tagmap.tag_map_from_json("{ kaputt", source="SetTagMap")
+
+        self.assertIn("SetTagMap", str(caught.exception))
+
+    def test_rejects_a_json_document_that_is_not_an_object(self):
+        with self.assertRaises(ValueError):
+            tagmap.tag_map_from_json("[1, 2, 3]")
+
+
 if __name__ == "__main__":
     unittest.main()
