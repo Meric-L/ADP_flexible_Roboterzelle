@@ -258,6 +258,25 @@ Hello-World-Client behalten ihren Weg über Loopback.
 Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 241 Tests,
 davon 12 in `tests/test_ua_lds.py`, alle grün.
 
+## Nachtrag: Paketumzug vom 22.09.2026
+
+Ein Tag nach diesem Plan hat `altlasten-abbau-part10-fassade.md` das Paket
+umgebaut. Die oben genannten Pfade existieren **nicht mehr**:
+
+| Dieser Plan nennt | Liegt jetzt unter |
+| --- | --- |
+| `src/ua_lds.py` | `src/vision_server/discovery/lds.py` |
+| `src/ua_mdns.py` | `src/vision_server/discovery/mdns.py` |
+| Einbau in `src/OPCUA/server.py` | `src/vision_server/server.py` (`src/OPCUA/server.py` ist seither nur noch ein 15-Zeilen-Starter, siehe Altlast D11) |
+| `tests/test_ua_lds.py` | `tests/test_discovery_lds.py` |
+
+Die Python-Schnittstelle selbst (`lds_url()`, `advertised_endpoint()`,
+`register()`, Konstanten, Verhalten) ist unverändert — reine Verschiebung,
+keine Signaturänderung. Der aktuelle Stand steht in
+[`vision-server-interface.md`](../vision-server-interface.md) und
+[`vision-system.md`](../vision-system.md); dieser Plan bleibt als historisches
+Protokoll der Messung stehen.
+
 ## Offene Fragen
 
 - Der Aggregation-Server hängt Namespaces dauerhaft an (Franka und EVA hatten

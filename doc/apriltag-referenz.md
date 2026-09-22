@@ -83,7 +83,15 @@ def to_position_quaternion(pose: Pose) -> tuple[
 def translation_distance_m(a: Pose, b: Pose) -> float
 def rotation_distance_rad(a: Pose, b: Pose) -> float
 def average_poses(poses: Sequence[Pose]) -> Pose
+
+def pose_to_dict(pose: Pose) -> dict[str, list[float]]
+    # {"position": [x, y, z], "orientation": [x, y, z, w]}
+def pose_from_dict(data) -> Pose   # Umkehrung von pose_to_dict
 ```
+
+`pose_to_dict`/`pose_from_dict` sind das gemeinsame JSON-Scharnier für **jedes**
+Datenformat im Projekt, das eine Pose speichert: Kalibrierung, Tag-Map,
+Hand-Auge-Datei und das CLI-Austauschformat von `transform` (Abschnitt 9.3).
 
 Anmerkungen, die im Betrieb zählen:
 
@@ -120,7 +128,18 @@ def save_calibration(path: Path, calibration: CameraCalibration) -> None
 def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]) -> None
 def scale_to_resolution(calibration: CameraCalibration,
                         image_size: tuple[int, int]) -> CameraCalibration
+
+PLACEHOLDER_CALIBRATION_ID = "placeholder-unkalibriert"
+def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> CameraCalibration
 ```
+
+- `default_calibration` liefert eine grob aus der Sichtfeldbreite geschätzte
+  Kalibrierung — **kein Ersatz** für eine echte Kalibrierfahrt (Posen sind dann
+  plausibel orientiert, aber nicht maßhaltig). Nur dazu da, Erkennung/Overlay/
+  Job-Pfad ohne Kalibrierdatei lauffähig zu halten; aktiv nur mit
+  `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` bzw.
+  `AprilTagProfileConfig.allow_placeholder_calibration=True` (Abschnitt 10.1).
+  `calibration_id` ist dann `PLACEHOLDER_CALIBRATION_ID`, erkennbar im Payload.
 
 - `calibration_identity(path)` (aus `tagloc.identity`, hier re-exportiert) bildet
   `"<name>#<mtime>"`, **ohne die Datei zu öffnen** und ohne numpy. Das ist der
@@ -182,6 +201,8 @@ class TagMap:
 
 def load_tag_map(path: Path) -> TagMap
 def save_tag_map(path: Path, tag_map: TagMap) -> None
+def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap
+    # leere Karte -- Betrieb ohne Karte bleibt ein normaler Fall
 ```
 
 ### Die Platzierungsfunktionen
@@ -193,7 +214,24 @@ def merge_tag_poses(poses: Sequence[Pose]) -> Pose
 def residuals(observations: Sequence[Mapping[int, Pose]],
               placed: Mapping[int, Pose]) -> dict[tuple[int, int], tuple[float, float]]
 def with_world_poses(tag_map: TagMap, placed: Mapping[int, Pose]) -> TagMap
+
+def observed_tag_ids(observations: Sequence[Observation]) -> set[int]
+    # alle jemals gesehenen Tag-IDs
+def relative_poses(observations: Sequence[Observation]
+                   ) -> dict[tuple[int, int], list[Pose]]
+    # kamerafreie Relationen T_a_b aus Ko-Beobachtungen -- Vorstufe von place_tags
+def missing_tags(observations: Sequence[Observation],
+                 placed: Mapping[int, Pose]) -> list[int]
+    # beobachtete Tags ohne Pfad zum Anker
+def format_residual_report(
+    residual_map: Mapping[tuple[int, int], tuple[float, float]]
+) -> str
+    # menschenlesbare Zusammenfassung der Schließfehler, groesster zuerst
 ```
+
+Diese vier sind die Bausteine, aus denen `place_tags`/`residuals` sich
+zusammensetzen; `cli/build_tagmap.py` benutzt sie direkt beim schrittweisen
+Aufbau der Karte (Abschnitt 9.4).
 
 `place_tags` ist der Kern. Eingabe ist eine Folge von Aufnahmen; jede Aufnahme
 ist ein Dict `tag_id → T_cam_tag`, also alles, was in **einem** Bild gleichzeitig
@@ -314,18 +352,29 @@ Detektor — sonst hinge die Posenqualität am Backend und wäre nicht vergleich
 class TagPose:
     tag_id: int
     pose_cam_tag: Pose
-    reprojection_error_px: float
-    ambiguity_ratio: float          # Fehler der besten / Fehler der zweitbesten
+    reprojection_error_px: float = float("nan")
+    ambiguity_ratio: float = 0.0    # Fehler der besten / Fehler der zweitbesten
                                     # Lösung, in (0, 1]; nahe 1 = mehrdeutig
+    observation: TagObservation | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_ambiguous(self) -> bool  # ambiguity_ratio > 0.6
 
+    def is_usable(self, max_reprojection_error_px: float | None = None) -> bool
+        # False bei NaN/Inf-Reprojektionsfehler (sonst würde payload.py bei
+        # allow_nan=False mit INTERNAL statt DETECTION_FAILED abbrechen);
+        # sonst False nur, wenn ueber der Schwelle
+
 def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray
 def estimate_tag_pose(observation: TagObservation, size_m: float,
                       calibration: CameraCalibration) -> TagPose
-def estimate_tag_poses(observations, tag_map: TagMap,
-                       calibration: CameraCalibration) -> list[TagPose]
+def estimate_tag_poses(observations: Sequence[TagObservation],
+                       calibration: CameraCalibration, *,
+                       tag_map: TagMap | None = None,
+                       default_size_m: float = 0.05,
+                       max_reprojection_error_px: float | None = None,
+                       ) -> list[TagPose]
 ```
 
 Zwei Punkte, die der Prototyp heute falsch macht und die hier behoben sind:
@@ -363,6 +412,7 @@ class ModuleLocation:
     source: str                     # "ceiling" | "flange"
     reference_tag_id: int           # naechster Welttag, -1 = unbekannt
     pose_in_reference_tag: Pose | None    # T_worldtag_module
+    attributes: dict[str, Any] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class CameraLocalization:
@@ -371,16 +421,36 @@ class CameraLocalization:
     primary_tag_id: int             # der naechste Welttag
     spread_m: float                 # Streuung der Einzelschaetzungen
     spread_rad: float
+    origin: str = ORIGIN_WORLD_TAGS # oder ORIGIN_ROBOT_POSE, siehe unten
 
 def localize_camera(tag_poses: Sequence[TagPose], tag_map: TagMap, *,
                     max_reprojection_error_px: float = 3.0) -> CameraLocalization | None
 def locate_modules(tag_poses: Sequence[TagPose], tag_map: TagMap, *,
                    localization: CameraLocalization | None, frame_id: str,
-                   source: str = "") -> list[ModuleLocation]
+                   source: str = "",
+                   max_reprojection_error_px: float = 3.0) -> list[ModuleLocation]
 def merge_by_module(locations, *, tag_map: TagMap | None = None) -> list[ModuleLocation]
 def merge_locations(*groups) -> list[ModuleLocation]
 def world_tag_for_robot(tag_map: TagMap, locations) -> tuple[int, float] | None
+
+def confidence_from(tag_pose: TagPose, *,
+                    max_reprojection_error_px: float = 3.0) -> float
+    # aus Reprojektionsfehler + Mehrdeutigkeit, in [0, 1] -- bewusst nicht
+    # konstant 1.0, das waere Information ohne Inhalt
+def merge_samples(samples: Sequence[Sequence[ModuleLocation]]) -> list[ModuleLocation]
+    # mehrere Aufnahmen desselben Jobs -> ein Ergebnis je Modul; Anzahl
+    # gemittelter Aufnahmen landet als sampleCount in attributes
+def robot_locations(locations: Sequence[ModuleLocation]) -> list[ModuleLocation]
+    # role == "robot", normalerweise genau ein Treffer
+def expected_but_missing(tag_map: TagMap,
+                         located: Sequence[ModuleLocation]) -> list[str]
+    # Module aus der Karte, die nicht gefunden wurden (Abbruchkriterium aus
+    # concept/offene_punkte.md Nr. 6, ohne zusaetzliche Konfiguration)
 ```
+
+`merge_samples` ist die Funktion, die `detection/apriltag.py` tatsächlich zum
+Mitteln mehrerer Job-Aufnahmen benutzt — nicht zu verwechseln mit
+`merge_by_module` (mittelt mehrere Tags **einer** Aufnahme zu einer Modulpose).
 
 `localize_camera` bestimmt `T_world_cam` aus allen sichtbaren Welttags —
 **nur** die Rolle `world` zählt. Mehrere Welttags werden nach Konfidenz
@@ -447,6 +517,27 @@ def load_hand_eye(path) -> HandEye
 def save_hand_eye(path, hand_eye) -> None
 ```
 
+### Dateiformat `data/handeye/<frame_id>.json`
+
+```jsonc
+{
+  "schema": "wsc.vision.handeye/1",
+  "frameId": "cam_flange",
+  "calibrationId": "cam_flange@2026-09-22T09:14:03Z",
+  "poseFlangeCam": { "position": [0.02, -0.015, 0.045],
+                     "orientation": [0, 0, 0.707, 0.707] },
+  "rmsPositionM": 0.0031,
+  "rmsRotationDeg": 0.42,
+  "sampleCount": 14,
+  "createdAt": "2026-09-22T09:14:03Z"
+}
+```
+
+Gehört wie die Kamerakalibrierung zur physischen Hardware, nicht zum Repo
+(`data/` ist gitignored). `rmsPositionM`/`rmsRotationDeg` können `null` sein
+(NaN lässt sich nicht als JSON schreiben), wenn keine belastbare Streuung
+vorliegt.
+
 `solve_hand_eye` rechnet nach **Park und Martin** in numpy, nicht über
 `cv2.calibrateHandEye`: OpenCV 5.0 exportiert die Funktion nicht mehr nach
 Python (nur die `CALIB_HAND_EYE_*`-Konstanten sind übrig), und das Repo trägt
@@ -489,7 +580,23 @@ def draw_tag_overlay(image, tag_poses, calibration, *,
 def draw_board_overlay(image, board_sample, *, coverage=None)
 def draw_status_bar(image, lines: Sequence[str])
 def summarise(tag_poses, tag_map=None) -> str
+
+def has_display() -> bool
+    # ob ueberhaupt ein Bildschirm erreichbar ist (Linux: $DISPLAY/$WAYLAND_DISPLAY)
+
+class Window:
+    def __init__(self, title: str, *, enabled: bool = True) -> None
+    @property
+    def enabled(self) -> bool
+    def show(self, image, wait_ms: int = 1) -> str   # gedrueckte Taste, klein, "" = keine
+    def close(self) -> None
 ```
+
+`Window` faengt ab, dass `cv2.imshow` auf einem Pi ohne Bildschirm bzw. in
+einer SSH-Sitzung ohne X-Forwarding **mitten im Lauf** abstürzt — der erste
+Fehlschlag wird einmal geloggt, danach läuft die Erkennung ohne Fenster weiter
+(das Ziel ist die Erkennung, nicht das Bild). `cli/detect.py` und
+`cli/calibrate.py` benutzen sie für ihre interaktiven Fenster.
 
 Die übliche Darstellung bei Markern ist das **Achsenkreuz im Tag** — X rot,
 Y grün, Z blau — zusätzlich der Umriss und die ID. Genau das zeichnet
@@ -554,19 +661,74 @@ Referenztags sichtbar sind, die Weltpose.
 ### 9.3 Koordinatentransformation
 
 ```bash
-# einzelne Pose von einem KS ins andere
+# einzelne Pose mit bekannter Kamerapose transformieren
 PYTHONPATH=src python3 -m tagloc.cli.transform \
-    --tag-map config/tagmap.json --from cam_ceiling --to world \
+    --camera-pose roboterpose.json \
     --position 0.12 -0.04 0.85 --orientation 0 0 0 1
 
-# ganze Ergebnisdatei umrechnen
+# ganze Ergebnisdatei von detect, Kamerapose aus den Referenztags der Eingabe
 PYTHONPATH=src python3 -m tagloc.cli.transform \
-    --tag-map config/tagmap.json --from cam_flange --to world \
-    --input posen.json --out posen_welt.json --camera-pose roboterpose.json
+    --input posen.json --tag-map config/tagmap.json \
+    --from-reference --out posen_welt.json
+
+# umgekehrte Richtung
+PYTHONPATH=src python3 -m tagloc.cli.transform \
+    --camera-pose roboterpose.json --invert \
+    --position 1.20 0.33 0.04 --orientation 0 0 0.3827 0.9239
 ```
 
-Reine Rechnung, keine Kamera, kein cv2. Das Werkzeug ist auch der schnellste Weg,
-eine Konventionsfrage zu klären, bevor man sie sich im Produktivcode einfängt.
+Es gibt **kein** `--from`-Flag. Die Herkunft der Transformation `T_ziel_quelle`
+ist entweder `--camera-pose <datei>` (JSON mit `position`/`orientation`) oder
+`--from-reference` (rechnet `T_world_cam` selbst aus den Referenz-Tags der
+`--input`-Datei, braucht dafür `--tag-map`); ohne beides ist die Transformation
+die Identität. `--to` benennt nur das Ziel-KS für die Ausgabe (Default
+`world`), nicht die Quelle. Weitere Optionen: `--position`/`--orientation` für
+eine einzelne Pose ohne `--input`, `--invert` zum Umkehren, `--out` zum
+Schreiben. Reine Rechnung, keine Kamera, kein cv2. Das Werkzeug ist auch der
+schnellste Weg, eine Konventionsfrage zu klären, bevor man sie sich im
+Produktivcode einfängt.
+
+### 9.3a Hand-Auge-Kalibrierung
+
+```bash
+PYTHONPATH=src python3 -m tagloc.cli.calibrate_handeye \
+    --samples fahrt/aufnahmen.json \
+    --calibration data/calibration/cam_flange.json \
+    --out data/handeye/cam_flange.json
+```
+
+Optionen: `--samples` (Aufnahmeliste, siehe unten, Pflicht), `--calibration`
+(Kamerakalibrierung, Pflicht), `--out` (Zieldatei, Pflicht), `--family`
+(Tag-Familie, Default `tag36h11`), `--backend` (Detektor-Backend, Default
+`aruco`), `--frame-id` (Bezugsrahmen, leer = aus der Kalibrierung),
+`--max-reproj-error-px` (Aufnahmen darüber werden verworfen, Default 2.0),
+`-v`/`--verbose`.
+
+Aufnahmeliste (`--samples`, getrennt von der Rechnung, damit sie sich ohne
+neue Roboterfahrt wiederholen lässt):
+
+```jsonc
+{
+  "schema": "wsc.vision.handeye.samples/1",
+  "tagId": 2,
+  "tagSizeM": 0.100,
+  "samples": [
+    { "image": "pose_000.png",
+      "poseBaseFlange": { "position": [0.20, 0.05, 0.50],
+                          "orientation": [0, 0.131, 0, 0.991] } },
+    { "image": "pose_001.png", "poseBaseFlange": { "...": "..." } }
+  ]
+}
+```
+
+Bildpfade sind relativ zur Aufnahmeliste. Ablauf: einen Tag ortsfest hinlegen
+(er muss während der ganzen Fahrt liegen bleiben), den Roboter mindestens ein
+Dutzend deutlich verschiedene Posen anfahren lassen (**um mehrere Achsen
+drehen**, reines Verschieben bestimmt die Rotation nicht), je Pose ein Bild
+plus `T_base_flansch` notieren. Das Gütemaß (`target_spread`) steht danach in
+der Ausgabe: der Tag lag fest, also muss er aus jeder Roboterpose an
+derselben Stelle herauskommen — streut das über `SPREAD_WARNING_M` (5 mm),
+wird die Datei trotzdem geschrieben, aber mit unübersehbarem Hinweis.
 
 ### 9.4 Tag-Map bauen
 
@@ -631,6 +793,7 @@ Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/vision_server/
 | `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
+| `hand_eye_path` | `None` (keine Kamera am Flansch) | `data/handeye/cam_flange.json` |
 
 `resolution` bei Layer 2 muss zu `CameraStreamConfig.realsense_resolution`
 passen (Standard 640×480) — die tatsächlichen Frames kommen über die geteilte
@@ -682,12 +845,38 @@ sind additiv erlaubt, ein Versionssprung würde das Backend brechen.
         "ambiguous": "false",
         "sampleCount": "3",
         "frameTimestamp": "1757500123.417",
-        "recipeId": "apriltag"
+        "recipeId": "apriltag",
+        "source": "ceiling",
+        "role": "module",
+        "referenceTagId": "0",
+        "referencePosition": "[1.204, 0.336, 0.041]",
+        "referenceOrientation": "[0.0, 0.0, 0.3827, 0.9239]",
+        "referenceDistanceM": "1.258",
+        "worldTagIds": "[0, 1]",
+        "cameraSpreadM": "0.004",
+        "cameraSpreadDeg": "0.31",
+        "cameraPoseOrigin": "world_tags"
       }
     }
   ]
 }
 ```
+
+Vollständige, tatsächlich mögliche Attribute (alle `attributes`-Werte sind
+Strings, OPC UA kennt hier keine gemischten Typen):
+
+| Feld | Wann gesetzt | Bedeutung |
+| --- | --- | --- |
+| `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `frameTimestamp`, `recipeId` | immer | wie oben |
+| `source` | immer | `"ceiling"` \| `"flange"` |
+| `role` | immer | `"module"` \| `"robot"`, aus der Tag-Map |
+| `tagIds`, `tagCount` | mehrere Tags derselben Modulinstanz gemessen | welche Tags beigetragen haben |
+| `referenceTagId` | ein Welttag als Bezug bekannt | nächster Welttag |
+| `referencePosition`, `referenceOrientation`, `referenceDistanceM` | s. o. | Pose relativ zu diesem Welttag |
+| `worldTagIds`, `cameraSpreadM`, `cameraSpreadDeg`, `cameraPoseOrigin` | Kamera lokalisiert (`localize_camera`/Anker) | beitragende Welttags, Streuung, `"world_tags"` (optisch gemessen) oder `"robot_pose"` (aus dem Anker fortgeschrieben) |
+| `anchorWorldTagId` | Hand-Auge-Anker gesetzt | Welttag, an dem geankert wurde |
+| `anchorDriftM`, `anchorDriftDeg` | s. o., mit aktueller Sichtung vergleichbar | Abweichung Anker vs. jetzige Messung |
+| `missingModules` | Module aus der Tag-Map nicht gefunden | kommagetrennte Liste |
 
 - `configurationId` trägt Tag-Familie, Kalibrieridentität und Tag-Map-Identität.
   Damit ist bei einer falschen Pose nachträglich klar, welche Kalibrierung und
@@ -744,3 +933,8 @@ Fixture-Dateien aus. Gemockt wird mit handgeschriebenen Fakes (`FakeCamera`,
 | Schließfehler in `residuals` groß | Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht; die Karte ist erst brauchbar, wenn sie sich schließt |
 | Server bleibt in Preoperational | `open()` der Quelle ist gescheitert — meist fehlende Kalibrier- oder Tag-Map-Datei; Logmeldung nennt den Pfad |
 | Livestream weg, obwohl konfiguriert | keine geöffnete Quelle hält eine `SharedCamera` |
+| Layer 2 liefert Posen im Kamera-KS statt `world`, obwohl ein Welttag sichtbar sein sollte | `AprilTagProfileConfig.hand_eye_path` fehlt oder zeigt auf keine Datei — ohne Hand-Auge-Kalibrierung ankert nichts |
+| `anchorDriftM`/`anchorDriftDeg` im Payload wachsen über die Zeit | Anker ist veraltet oder der Roboter hat sich seit dem letzten Ankern stark bewegt — neu ankern (Welttag wieder ins Bild bringen) |
+| `calibrate_handeye` bricht mit „Keine Aufnahmen" oder ähnlichem ab | Aufnahmeliste leer, falsches Schema, oder alle Aufnahmen über `--max-reproj-error-px` verworfen |
+| `solve_hand_eye`-Ergebnis mit großer Streuung (`target_spread` > `SPREAD_WARNING_M`) | zu wenige oder zu ähnliche Roboterposen (Rotation nicht ausreichend variiert), oder Kamerakalibrierung/Tag-Größe falsch |
+| Job meldet `DETECTION_FAILED`, obwohl ein Tag sichtbar war | `TagPose.is_usable()` hat die Pose verworfen — NaN/Inf-Reprojektionsfehler oder über `max_reprojection_error_px` |

@@ -20,10 +20,14 @@ Der Endpoint-Pfad heißt weiterhin `/raspi/server/`, obwohl das namensgebende
 `RaspiDevice` entfernt ist: er steht in mDNS-Ankündigung, LDS-Registrierung und
 jeder Client-Konfiguration.
 
-Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans. Seine
-Erkennungsstufe ist bewusst noch ein **Hello-World-Platzhalter**: Zustandsautomaten,
-Events, Ergebnisablage, Validierung und Fehlerpfad sind echt, nur das erkannte
-"Modul" ist erfunden.
+Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans.
+Neben dem `hello-world`-Platzhalterrezept (nur zu Testzwecken, `moduleId`
+immer `HELLO-WORLD`) gibt es inzwischen eine echte Erkennung: das Rezept
+`apriltag` liefert reale AprilTag-Posen samt Welttag-Referenz und
+Hand-Auge-Ankerung (siehe [`apriltag-referenz.md`](apriltag-referenz.md)),
+und `calibration` ist eine echte Bereitschaftsprüfung der Kamerakalibrierung.
+Details zu allen drei Rezepten und zur Part-2-Anlagensicht (AMCM) stehen in
+[`vision-server-interface.md`](vision-server-interface.md).
 
 Das Vision-Paket ist als **Einbau** gebaut (`install_vision_machine(server, config)`)
 und hängt seine Knoten in einen bestehenden Server. Ein zweiter Serverprozess wäre
@@ -47,20 +51,32 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | Modul | Aufgabe |
 | --- | --- |
 | `__main__.py` | argparse, Konfiguration, Start |
-| `config.py` | `VisionServerConfig` (frozen dataclass) |
-| `nodeset_ids.py` | NodeId-Konstanten des Nodesets |
-| `address_space.py` | Nodeset-Import, `VisionSystem`-Instanz, `HasNotifier` |
+| `server.py` | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau von Vision-System + Part-10-Programm |
+| `config.py` | `VisionServerConfig` (frozen dataclass), Rezept-Profile |
+| `nodeset_ids.py` | NodeId-Konstanten der Nodesets |
+| `address_space.py` | Nodeset-Import (MachineVision, DI, Machinery, AMCM), `VisionMachine`-Instanz, `HasNotifier` |
+| `asset_model.py` | Part-2-Anlagensicht (AMCM), `VisionAsset` |
 | `state_machine.py` | Bindung beider 40100-Zustandsautomaten |
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegelknoten |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
-| `errors.py` | Fehlercodes für den `Error`-Ausgang |
+| `errors.py` | `VisionJobError`, Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
+| `profiles.py` | `AprilTagProfileConfig` u. a. — Kamera, Hand-Auge-Pfad, Tag-Map je Pi |
 | `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
-| `detection/` | Strategie `DetectionSource`; aktuell nur `hello_world.py` |
+| `vision_program.py` | Part-10-Programmfassade `VisionProgram`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
+| `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
+| `camera_stream.py` | schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame` |
+| `stream_overlay.py` | markiert erkannte Tags im Livestream-Bild |
+| `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA |
+| `discovery/mdns.py` | mDNS-Ankündigung |
+| `discovery/lds.py` | LDS-Registrierung beim Aggregation-Server |
+| `detection/` | Strategie `DetectionSource`: `hello_world.py` (Platzhalter), `apriltag.py` (echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
-Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung.
+Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung. Details zu
+allen Modulen und der vollständigen Schnittstelle stehen in
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 1.
 
 ## Adressraum (Port 4840)
 
@@ -81,15 +97,24 @@ Objects/
                                          + Verweise auf LatestResultJson u. a.
 ```
 
+Gekürzt dargestellt — die vollständige, aktuelle Baumdarstellung inklusive
+Part-2-Anlagensicht (`VisionAsset` unter AMCM), der vier Kalibriermethoden
+(`StartCalibration` u. a.), `LatestCameraFrame` und `CameraStreamMode` steht in
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 1.
+
 `VisionMachine` liegt im Machinery-Standardordner `Machines` statt direkt unter
 `Objects`. Grund ist nicht Technik, sondern Lesbarkeit: wer den Server browst,
 soll **einen** Einstieg sehen. Für Clients ändert das nichts — die String-NodeId
 hängt nicht an der Browse-Position. Ohne geladenes Machinery-Nodeset (also ohne
 `config.assets`) fällt der Aufbau auf `Objects` zurück.
 
-Der frühere raspi-Namespace ist mit `RaspiDevice` entfallen; dadurch sind alle
-Namespace-Indizes um eins nach unten gerückt. Wer sie über
-`get_namespace_index(uri)` auflöst, merkt davon nichts.
+Der frühere raspi-Namespace ist mit `RaspiDevice` entfallen, gleichzeitig kamen
+mit Part 2 (AMCM) drei weitere Nodesets dazu (DI, Machinery, AMCM). Die
+Namespace-Indizes haben sich dadurch mehrfach verschoben — aktuell (Import-
+Reihenfolge MachineVision → DI → Machinery → AMCM → eigener Vision-Namespace):
+ns=2 MachineVision, ns=4 Machinery, ns=6 der eigene Vision-Namespace, siehe
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 1. Wer sie
+über `get_namespace_index(uri)` auflöst, merkt von Verschiebungen nichts.
 
 Die `VisionMachine`-Instanz bekommt eine **String-NodeId** (`ns=<vision>;s=VisionMachine`),
 wodurch `instantiate()` auch alle Kinder mit sprechenden, stabilen NodeIds anlegt
@@ -148,6 +173,13 @@ PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
 PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
 ```
 
+Zwei Umschalter verändern den Adressraum bzw. das Verhalten:
+
+| Variable/Option | Wirkung |
+| --- | --- |
+| `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` | AprilTag-Erkennung läuft auch ohne echte Kamerakalibrierung (Posen dann nicht maßstabsgetreu) — bewusster, temporärer Bypass zum Testen von Erkennung/Overlay/Job-Pfad vor der echten Kalibrierung, nie im Standard aktiv, siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
+| `VisionServerConfig.assets` (`config.assets`) | `None` = Part 2 (AMCM) nicht geladen, spart ~13 MB RSS/~1,6 s Startzeit; gesetzt lädt der Server zusätzlich DI/Machinery/AMCM-Nodesets und legt `VisionAsset` an |
+
 ### Zwei Wege auf denselben Server
 
 | Weg | Wofür |
@@ -188,11 +220,15 @@ Festgehalten in `tests/test_part10_fassade.py`.
 
 ## Bekannte Einschränkungen
 
-- Die Erkennung ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`, die Pose immer
-  Null. Das Payload-Schema ist aber schon das endgültige.
+- Nur das Rezept `hello-world` ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`,
+  die Pose immer Null. Das Rezept `apriltag` liefert echte Posen, `calibration`
+  eine echte Bereitschaftsprüfung.
 - `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
-  Tag-Map sichtbar ist, sonst das Kamera-KS. Für Layer 2 fehlt weiterhin die
-  Hand-Auge-Kalibrierung, bis dahin darf keine Pose automatisch angefahren werden.
+  Tag-Map sichtbar ist, sonst das Kamera-KS. Die Hand-Auge-Kalibrierung für
+  Layer 2 ist implementiert (`AprilTagProfileConfig.hand_eye_path`, verkettet
+  in `detection/apriltag.py`) — offen ist nur noch die reale Vermessung der
+  Hand-Auge-Datei je Zelle, siehe [`vision-server-interface.md`](vision-server-interface.md)
+  Abschnitt 9.
 - Verlinkt sind `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`
   und `Reset`. `SimulationMode` und `SelectModeAutomatic` existieren im
   Adressraum, tun aber bewusst nichts — Begründung je Methode in

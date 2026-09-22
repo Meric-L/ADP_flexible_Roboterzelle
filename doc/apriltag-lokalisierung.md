@@ -183,16 +183,18 @@ src/tagloc/
   calibration.py   numpy           Kalibrierdatei lesen/schreiben, Auflösungsprüfung
   tagmap.py        numpy           Tag-Map lesen/schreiben, Tags in ein KS platzieren
   localize.py      numpy           Observations + Tag-Map -> Modulposen
+  handeye.py       numpy           Hand-Auge-Kalibrierung (Park/Martin) und Anker-Datentyp
   boards.py        cv2             Schachbrett/ChArUco auf einem Frame, Kalibrierrechnung
   detector.py      cv2 | pupil     Detektor-Adapter -> TagObservation
   pose.py          cv2             TagObservation -> T_cam_tag inkl. Reprojektionsfehler
   overlay.py       cv2             Erkennungsergebnisse ins Bild zeichnen
   frames.py        cv2/picamera2   Frame-Quellen: Pi-Kamera, Webcam, Bildordner, Einzelbild
   cli/
-    calibrate.py       Kalibrierskript
-    detect.py          AprilTag-Erkennungsskript
-    transform.py       Koordinatentransformationsskript
-    build_tagmap.py    Tags in ein gemeinsames KS platzieren
+    calibrate.py           Kalibrierskript
+    calibrate_handeye.py   Hand-Auge-Kalibrierskript
+    detect.py              AprilTag-Erkennungsskript
+    transform.py           Koordinatentransformationsskript
+    build_tagmap.py        Tags in ein gemeinsames KS platzieren
 ```
 
 Dazu `src/vision_server/stream_overlay.py` als Brücke zwischen der Bibliothek

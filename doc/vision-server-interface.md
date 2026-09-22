@@ -96,15 +96,25 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 
 | Modul | Aufgabe |
 | --- | --- |
-| `address_space.py` | Nodeset-Import, `VisionMachine`-Instanz unter `Machines`, `HasNotifier` |
+| `__main__.py` | Einstieg `python3 -m vision_server.server` |
+| `config.py` | `VisionServerConfig`, Nodeset-Pfade, Env-Variablen, Rezept-Profile |
+| `address_space.py` | Nodeset-Import (MachineVision, DI, Machinery, AMCM), `VisionMachine`-Instanz unter `Machines`, `HasNotifier` |
+| `asset_model.py` | Part-2-Anlagensicht (AMCM), `VisionAsset`, siehe Abschnitt 11 |
 | `state_machine.py` | beide 40100-Zustandsautomaten |
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegel |
 | `job.py` | Validierung, Guard, Job-Ablauf, Fehlerpfad |
+| `errors.py` | `VisionJobError`, Fehlercodes (Abschnitt 5) |
+| `nodeset_ids.py` | feste NodeIds/BrowseNames für Nodeset-Importe und Events |
+| `profiles.py` | `AprilTagProfileConfig` u. a. je-Pi-Profile (Kamera, Hand-Auge-Pfad, Tag-Map) |
 | `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
+| `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA, siehe Abschnitt 12 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
+| `runner.py` | verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server |
+| `vision_program.py` | Part-10-Programmfassade `VisionProgram` auf Basis von `src/ua_program`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
+| `discovery/mdns.py`, `discovery/lds.py` | mDNS-Ankündigung und LDS-Registrierung, siehe [`vision-system.md`](vision-system.md) |
 | `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 
@@ -524,10 +534,16 @@ Vorführbare Sonderfälle:
   AprilTag-Quelle mit `capture_timeout_s` ein eigenes, kuerzeres Aufnahme-Timeout.
 - **Koordinatensystem**: Posen sind jetzt echt. `frameId` ist `world`, sobald ein
   Referenz-Tag aus der Tag-Map im Bild ist, sonst das Kamera-KS der Quelle.
-  **Offen bleibt die Hand-Auge-Kalibrierung** fuer Layer 2: die Kette Kamera →
-  Roboterbasis ist nicht eingemessen, ein automatisches Anfahren erkannter Posen
-  darf bis dahin nicht scharf geschaltet werden. Layer 2 liefert deshalb im
-  Kamera-KS mit gesetzter `frameConvention`, und das Backend verkettet.
+  **Die Hand-Auge-Kalibrierung für Layer 2 ist implementiert** (Arbeitsplan
+  [`apriltag-hand-auge-ankern.md`](arbeitsplaene/apriltag-hand-auge-ankern.md),
+  Status fertig): `src/vision_server/detection/apriltag.py` lädt die Kette
+  Kamera → Flansch aus `AprilTagProfileConfig.hand_eye_path` (siehe Abschnitt
+  10.1 in [`apriltag-referenz.md`](apriltag-referenz.md)) und verkettet sie
+  mit der Roboterpose des Jobs zu `T_world_cam`. Ohne Welttag im Bild ankert
+  die Kette am zuletzt gemessenen Wert; die Abweichung dazu liefert die Quelle
+  im Payload als `anchorDriftM`/`anchorDriftDeg` (Abschnitt 6). Offen ist nur
+  noch die reale Vermessung/Verifikation der Hand-Auge-Datei je Zelle, nicht
+  mehr die Implementierung.
 - **Zweite Kamera / 3D-Profil**: würde als zweite `VisionSystemType`-Instanz im
   selben Server hängen (eigener Instanzname und eigene `visionSystemId`),
   dieselbe Schnittstelle. Ein zweiter Serverprozess ist nicht vorgesehen —
@@ -745,7 +761,7 @@ Beendet die Session, rechnet aus den gesammelten Samples und speichert
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "...", "samples": N}` |
+| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "..."}`; nur beim Fall „weniger als 3 Aufnahmen" zusätzlich `"samples": N` (`calibration_session.py`, weniger-als-3-Fall vs. Fehler aus `calibrate_from_samples` selbst) — Konsumenten dürfen `"samples"` im Fehlerfall nicht voraussetzen |
 | `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
 
 ### 12.4 `AbortCalibration`

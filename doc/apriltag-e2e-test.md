@@ -392,6 +392,33 @@ Modul müssen im **selben Bild** liegen. Das Ankern (Abschnitt 1.4 der
 heißen: Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht. Eine Karte,
 die sich nicht schließt, ist wertlos — dann zurück zu Schritt 3.3.
 
+### 3.6a Hand-Auge kalibrieren und ankern (nur Handkamera / Layer 2)
+
+Ohne diesen Schritt liefert die Handkamera Posen im Kamera-KS, sobald kein
+Welttag im selben Bild liegt (siehe oben). Für `frameId: world` ohne
+Welttag-Zwang braucht sie `data/handeye/cam_flange.json`:
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate_handeye \
+    --samples fahrt/aufnahmen.json \
+    --calibration data/calibration/cam_flange.json \
+    --out data/handeye/cam_flange.json
+```
+
+Aufnahme davor: einen Tag ortsfest hinlegen, den Roboter mindestens ein
+Dutzend deutlich verschiedene Posen anfahren lassen (**um mehrere Achsen
+drehen**), je Pose ein Bild und `T_base_flansch` notieren — Format und Ablauf
+in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 9.3a.
+
+**Abnahmekriterien:**
+
+| Prüfung | Erwartung |
+|---|---|
+| `target_spread` (Ausgabe von `calibrate_handeye`) | unter `SPREAD_WARNING_M` (5 mm); sonst neu aufnehmen mit stärker variierten Posen |
+| Job ohne Welttag im Bild, mit Hand-Auge-Datei | `frameId = world`, Payload trägt `anchorWorldTagId` und `attributes.cameraPoseOrigin = "robot_pose"` |
+| Welttag wieder ins Bild bringen | `cameraPoseOrigin` wechselt zurück auf `"world_tags"`, `anchorDriftM`/`anchorDriftDeg` zeigen die Abweichung zum Anker |
+| Hand-Auge-Datei entfernt/verschoben | Server startet weiterhin, Layer 2 fällt auf Kamera-KS zurück (kein Absturz) |
+
 ### 3.7 Server starten und über OPC UA messen
 
 ```bash
@@ -450,7 +477,7 @@ PY
 | `frameId` | `world`, sobald ein Referenz-Tag im Bild ist; sonst `cam_ceiling` |
 | `frameConvention` | `z_forward_x_right_y_down` |
 | `configurationId` | enthält Tag-Familie, Kalibrier- **und** Tag-Map-Identität |
-| `attributes` | `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `recipeId` |
+| `attributes` | mindestens `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `recipeId`, `source`, `role`; zusätzlich `referenceTagId`/`referencePosition`/`referenceOrientation`/`referenceDistanceM` sobald ein Welttag als Bezug bekannt ist, `worldTagIds`/`cameraSpreadM`/`cameraSpreadDeg`/`cameraPoseOrigin` sobald die Kamera lokalisiert ist, `anchorWorldTagId`/`anchorDriftM`/`anchorDriftDeg` mit Hand-Auge-Anker — volle Liste [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 10.2 |
 | `sampleCount` | gleich `samples_per_job` des Profils (Decke 3, Flansch 5) |
 | Kein Tag im Bild | `resultState = 5` (`DETECTION_FAILED`), **kein** leeres Erfolgsergebnis |
 | `Stop` während des Jobs | `resultState = 7` (`CANCELLED`) |

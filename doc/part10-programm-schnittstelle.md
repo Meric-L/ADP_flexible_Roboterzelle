@@ -315,6 +315,31 @@ Feste NodeIds:
 (`ns=0;i=2391`) browsen. Das ist der Weg, der auch beim Conveyor funktioniert —
 dessen Programme haben numerische Ids (`ns=7;i=6100`) und sind nur so auffindbar.
 
+### Implementierung: `src/ua_program` + `vision_server.vision_program`
+
+`VisionProgram` ist keine Insellösung, sondern die konkrete Instanz eines
+generischen, wiederverwendbaren Teil-10-Programmgerüsts:
+
+- **`src/ua_program/program.py`** (Paket-Exporte in `src/ua_program/__init__.py`:
+  `Program`, `ProgramException`, `ProgramStateMachine`) — herkunftsmäßig aus
+  einer Betreuer-Vorlage übernommen (Docstring nennt die vier Abweichungen
+  davon: konkretes `__init__`, `resume_inputs` statt eines Vorlagenbugs,
+  optionale String-NodeIds, zusammengezogene Methodenschleife). `Program` ist
+  eine abstrakte Basisklasse: `init()` legt die Instanz im Adressraum an,
+  `start`/`halt`/`reset`/`suspend`/`resume` sind von der Unterklasse zu
+  implementieren (`async … -> str | None`; `None` = Zustandswechsel erfolgt,
+  `str` = Ablehnung mit dieser Meldung). `ProgramStateMachine` bindet die
+  festen ns=0-Zustands-/Übergangsknoten (`i=2406…2424`) an eine Instanz von
+  `ProgramStateMachineType` (`ua.NodeId(2391,0)`), inklusive einer dokumentierten
+  Umgehung eines asyncua-2.0.1-Bugs bei `set_available_transitions()`.
+- **`src/vision_server/vision_program.py`** — `class VisionProgram(Program)`,
+  die vision-spezifische Umsetzung: verdrahtet Start/Halt/Reset/Suspend/Resume
+  mit dem `JobRunner` aus `runner.py` und legt `ParameterSet`/`ResultSet` wie
+  oben beschrieben an.
+
+Wer ein weiteres Teil-10-Programm für ein anderes Modul dieses Repos bauen
+will, erbt von `ua_program.Program` statt bei null anzufangen.
+
 ---
 
 ## 5. Ablauf: einen Job fahren

@@ -43,6 +43,26 @@ Teil 4 = Soll-Architektur).
   liegt unter `Objects/Machines`. Eine Typsuche ist damit unschädlich geworden;
   die feste NodeId `ns=<vision>;s=VisionMachine` bleibt trotzdem der
   empfohlene Weg, weil sie keine Browse-Runde kostet.
+- [x] **Phase 4 (echte Erkennung, 22.09.2026)**: das Rezept `apriltag` liefert
+  reale AprilTag-Posen (`detection/apriltag.py`), inklusive Welttag-Konzept
+  (Arbeitsplan `apriltag-welttag-konzept.md`) und Hand-Auge-Kalibrierung/
+  -Ankerung für Layer 2 (Arbeitsplan `apriltag-hand-auge-ankern.md`, beide
+  Status fertig). Details: [`apriltag-referenz.md`](apriltag-referenz.md).
+- [x] **Kamera-Livestream und interaktive Kalibrierung**: `camera.py`
+  (geteilter Capture-Loop), `camera_stream.py`/`stream_overlay.py`
+  (`LatestCameraFrame`, `CameraStreamMode`) sowie `calibration_session.py`
+  (`StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
+  `AbortCalibration`) — siehe [`vision-server-interface.md`](vision-server-interface.md)
+  Abschnitt 10/12.
+- [x] **Part 2 (AMCM) und Part-10-Programmfassade**: `asset_model.py`
+  (`VisionAsset`) sowie `src/ua_program/program.py` +
+  `vision_server/vision_program.py` (`VisionProgram`) — siehe
+  [`vision-server-interface.md`](vision-server-interface.md) Abschnitt 11 und
+  [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+- [x] **mDNS-Ankündigung und LDS-Registrierung** (`discovery/mdns.py`,
+  `discovery/lds.py`): der Aggregation-Server der Zelle nimmt beide
+  Vision-Server automatisch auf, siehe
+  [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
 
 ### Verifiziert (lokal, asyncua 2.0.1, Produktionszuschnitt auf Port 4840)
 
@@ -103,23 +123,28 @@ alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
 Bevor eine echte Erkennung eingesteckt werden kann, war eine Reihe von
 Uebergabestellen zu bauen. Die stehen jetzt:
 
-- **RecipeId waehlt die Quelle** (`config.recipe_profiles`). Zugelassen sind
-  `""`, `"hello-world"` und `"image-recognition"`; `"calibration"` wird
-  bewusst mit `UNKNOWN_RECIPE` abgelehnt.
+- **RecipeId waehlt die Quelle** (`config.recipe_profiles`, siehe
+  `DEFAULT_RECIPE_PROFILES` in `config.py`). Zugelassen sind aktuell `""`
+  (→ `hello_world`), `"hello-world"`, `"calibration"` (→ Bereitschaftsprüfung,
+  `script_runner.py`) und `"apriltag"` (→ echte Erkennung). Das frühere
+  Rezept `"image-recognition"` (QR-Code-Vorläufer) gibt es nicht mehr, und
+  `"calibration"` wird **nicht** mehr abgelehnt.
 - **`DetectionRequest`** statt nur `parameters`, und `run_blocking()` auf der
   Basisklasse: jede OpenCV-Operation gehoert dort hinein, sonst friert der
   gemeinsame Event-Loop ein.
 - **`open()`/`close()`** plus Signal-Handler in beiden Einstiegspunkten. Eine
   Quelle, die nicht oeffnet, laesst den Automaten in Preoperational, statt
   jeden Job mit `DETECTION_FAILED` zu beantworten.
-- **Job-Timeout** (10 s). Vorher konnte eine haengende Kamera den Server
-  dauerhaft verklemmen; Rettung war nur `systemctl restart`.
+- **Job-Timeout** (aktuell 20 s, `config.job_timeout`). Vorher konnte eine
+  haengende Kamera den Server dauerhaft verklemmen; Rettung war nur
+  `systemctl restart`.
 - **`frameId`, `frameConvention`, `configurationId`, `IsSimulated`** kommen
   von der Quelle, nicht mehr aus Modulkonstanten.
 - **JSON-Sicherheit**: numpy-Werte und `NaN` brechen das Payload nicht mehr
   stillschweigend.
 - **`vision_system_id` pro Pi** ueber Env, Hostname-Abbildung oder Fallback.
-- **Testgeruest** (45 Tests): `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
+- **Testgeruest** (inzwischen deutlich über 300 Tests, Stand 22.09.2026 316):
+  `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
 Damit ist eine neue Erkennungsquelle: eine Datei unter `detection/`, ein
 Registry-Eintrag mit Lazy-Import, **eine Zeile** in `DEFAULT_RECIPE_PROFILES`
@@ -136,17 +161,16 @@ und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
 2. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
    durchspielen, Grundlage ist
    [`vision-server-interface.md`](vision-server-interface.md).
-3. ~~Altlast `2:VisionSystem` entfernen~~ — **erledigt am 21.09.2026**. Offen
-   bleibt der zweite Teil: das Nodeset-XML nach `src/vision_server/nodesets/`
-   verschieben und die Pfadkonstanten anpassen (Altlast C5).
-4. **Echtes Ergebnis-Payload** — neue `DetectionSource` in
-   `src/vision_server/detection/` plus Registry-Eintrag. Das Schema
-   (`wsc.vision.detections/1`) bleibt unverändert, es füllen sich nur
-   `detections`. Voraussetzung ist die Klärung von Koordinatensystem und
-   Kalibrierung (siehe unten).
-5. **Danach das 3D-Profil** — als zweite `VisionSystemType`-Instanz im
-   *selben* Server (eigener Instanzname, eigene `visionSystemId`), nach
-   Teil 4.5. Ein zweiter Serverprozess wie in Teil 4.6 ist dafür nicht
+3. ~~Altlast `2:VisionSystem` entfernen~~ — **erledigt am 21.09.2026**. ~~Nodeset-XML
+   nach `src/vision_server/nodesets/` verschieben~~ — **ebenfalls erledigt**
+   (Altlast C5, siehe [`altlasten.md`](altlasten.md)).
+4. ~~**Echtes Ergebnis-Payload**~~ — **erledigt**: `detection/apriltag.py`
+   liefert echte Posen im Schema `wsc.vision.detections/1`, Koordinatensystem
+   und Kalibrierung sind über das Welttag-Konzept und die Hand-Auge-Kalibrierung
+   geklärt (siehe [`apriltag-referenz.md`](apriltag-referenz.md)).
+5. **Danach das 3D-Profil** — weiterhin offen. Als zweite `VisionSystemType`-
+   Instanz im *selben* Server (eigener Instanzname, eigene `visionSystemId`),
+   nach Teil 4.5. Ein zweiter Serverprozess wie in Teil 4.6 ist dafür nicht
    nötig.
 
 > Phase 0 und Phasen 4–12 aus Teil 9 betreffen das **WebSkillComposition-
@@ -159,11 +183,19 @@ und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
   wird (`cartesian` via `LinMoveTcp` vs. `frontendIk`) — abhängig davon, ob der
   reale Robotics-Server `LinMoveTcp`/`RotMoveTcp` exponiert. Betrifft die
   Backend-Seite, nicht diesen Server.
-- **Hand-Auge-Kalibrierung** — noch nicht spezifiziert, `auto_execute` bleibt
-  bis dahin `False`.
+- ~~**Hand-Auge-Kalibrierung** — noch nicht spezifiziert.~~ **Erledigt**
+  (Arbeitsplan [`apriltag-hand-auge-ankern.md`](arbeitsplaene/apriltag-hand-auge-ankern.md)):
+  `AprilTagProfileConfig.hand_eye_path` + `detection/apriltag.py` verketten
+  Kamera → Flansch → Roboterbasis und liefern die Drift-Metadaten im Payload.
+  Ein Flag `auto_execute` gibt es im Code nicht (auch nicht mehr in Plänen) —
+  das Backend entscheidet anhand der gelieferten Posen/Drift-Werte selbst,
+  ob automatisch angefahren wird.
 - **Konzeptionelle Lücken aus der Lokalisierung selbst** — Koordinatensystem-
   Kette Welt-Tag → Kamera → Roboter, Format der Layer-1→Layer-2-Übergabe,
-  Repositionierungsstrategie: siehe [`concept/offene_punkte.md`](../concept/offene_punkte.md).
+  Repositionierungsstrategie: größtenteils durch das Welttag-Konzept
+  (Arbeitsplan [`apriltag-welttag-konzept.md`](arbeitsplaene/apriltag-welttag-konzept.md))
+  geklärt, siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md).
+  Verbleibende offene Punkte: [`concept/offene_punkte.md`](../concept/offene_punkte.md).
   Diese bestimmen, was `frameId`/`position`/`orientation` im Ergebnis-Payload
   konkret bedeuten müssen.
 - **Strukturtypisierte Event-Felder** befüllen, sobald asyncua-Issue #1693
