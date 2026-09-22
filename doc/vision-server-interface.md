@@ -697,7 +697,12 @@ Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
 `PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, nur noch für
 „Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
 10 (Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs
-Puffer à 37 MB passen nicht in den CMA-Speicher). Ohne `preview_resolution` —
+Puffer à 37 MB passen nicht in den CMA-Speicher), `overlay_timeout_s` **8,0**
+statt des globalen Defaults 2,0 (`profiles.py`) — Erkennung + Zeichnen auf
+4056×3040 überschritt die 2,0 s zuverlässig, das Overlay fiel dann jeden Tick
+auf das unmarkierte Rohbild zurück (Bug: Overlay-Text fehlte komplett auf
+Pi 1, gefunden 2026-09-22). Pi 2 behält den knappen Default — dort hat sich
+an der Erkennungsauflösung nichts geändert. Ohne `preview_resolution` —
 Hand-Pi mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst, dort
 sind Job- und Stream-Auflösung ohnehin identisch (640×480).
 

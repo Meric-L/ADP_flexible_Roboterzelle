@@ -47,6 +47,13 @@ class CeilingCameraTest(unittest.TestCase):
     def test_accepts_the_old_binned_calibration_until_recalibrated(self):
         self.assertTrue(self.config.apriltag.allow_resolution_mismatch)
 
+    def test_overlay_gets_more_time_for_the_full_12_megapixels(self):
+        """Der globale Default (2,0 s, profiles.py) reichte nicht fuer
+        Erkennung + Zeichnen auf 4056x3040 -- das Overlay fiel jeden Tick auf
+        das unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte komplett
+        auf Pi 1, siehe camera_stream.py._annotate)."""
+        self.assertGreater(self.config.camera_stream.overlay_timeout_s, 2.0)
+
 
 class FlangeCameraTest(unittest.TestCase):
     """Pi 2 (RealSense): von der Umstellung unberuehrt."""
@@ -57,6 +64,13 @@ class FlangeCameraTest(unittest.TestCase):
         self.assertIsNone(config.camera_stream.preview_resolution)
         self.assertIsNone(config.camera_stream.buffer_count)
         self.assertFalse(config.apriltag.allow_resolution_mismatch)
+
+    def test_keeps_the_default_overlay_timeout(self):
+        """Erkennungsaufloesung hat sich fuer cam_flange nicht geaendert
+        (640x480 war schon immer der volle Frame) -- der Watchdog soll seinen
+        urspruenglichen, knappen Wert behalten."""
+        config = config_for("cam_flange", "realsense")
+        self.assertEqual(config.camera_stream.overlay_timeout_s, 2.0)
 
 
 if __name__ == "__main__":
