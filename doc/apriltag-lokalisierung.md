@@ -366,6 +366,13 @@ lokalisiert. Die Positionen oben sind Platzhalter — die echten Weltposen der
 vier Welttags werden einmalig per `python -m tagloc.cli.build_tagmap`
 eingemessen.
 
+Für den ersten Aufbautest braucht es die vier Welttags noch nicht: ein Welttag
+im Ursprung (Identitätspose, dann *ist* er das Welt-KS) und ein Modultag
+genügen. Vorlage dafür ist
+[`config/tagmap.test.example.json`](../config/tagmap.test.example.json);
+`validate_tag_map` beanstandet die fehlenden Welttags dann, bricht aber nicht ab
+(siehe [E2E-Testanleitung](apriltag-e2e-test.md), „Kleiner Aufbautest").
+
 Schema `/1` wird beim Laden **abgelehnt**, mit einer Meldung, die die Migration
 benennt. Ein stilles Umdeuten von `robot_table` zu „beweglich" wäre die
 gefährlichere Variante: die Weltpose stünde weiter in der Datei und sähe gültig

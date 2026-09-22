@@ -352,6 +352,42 @@ CAD-Versatz `tagToModule` eintragen. Vorlage:
 [`config/tagmap.example.json`](../config/tagmap.example.json), Feldbeschreibung
 in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 5.
 
+#### Kleiner Aufbautest: ein Welttag, ein Modul
+
+Für den ersten Funktionstest braucht es die vier Welttags **nicht**. Ein
+Welttag und ein Modultag genügen, und `build_tagmap` entfällt dabei ganz:
+liegt der Welttag im Ursprung mit Identitätspose, *ist* er das Welt-KS, es
+gibt also nichts einzumessen.
+
+Vorlage dafür:
+[`config/tagmap.test.example.json`](../config/tagmap.test.example.json) — nach
+`config/tagmap.json` kopieren, Tag-IDs und die **gemessenen** Kantenlängen
+anpassen, fertig:
+
+```bash
+PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
+    --source picamera \
+    --calibration data/calibration/cam_ceiling.json \
+    --tag-map config/tagmap.json --save-overlay overlays/
+```
+
+Beim Start meldet `validate_tag_map` zwei Beanstandungen — „Erwartet 4 Welttags
+… gefunden 1" und „Kein Tag mit der Rolle 'robot'". Das ist **kein Abbruch**,
+sondern genau der Hinweis, dass der Endausbau noch fehlt; die Erkennung läuft
+vollständig. Die zweite Meldung verschwindet, sobald ein Robotertag in der
+Karte steht.
+
+Was dieser Aufbau **nicht** liefert: `cameraSpreadM` bleibt bei einem einzigen
+Welttag immer 0. Die Zahl misst die Uneinigkeit *zwischen* Welttags, es gibt
+hier also keine Gegenprobe — die Genauigkeit hängt vollständig an diesem einen
+Tag und an seiner eingetragenen Größe. Aussagekräftig wird der Wert erst mit
+dem zweiten Welttag.
+
+Für die Handkamera gilt ohne gemessene Hand-Auge-Datei weiterhin: Welttag und
+Modul müssen im **selben Bild** liegen. Das Ankern (Abschnitt 1.4 der
+[Konzeptdoku](apriltag-lokalisierung.md)) greift erst mit
+`data/handeye/cam_flange.json`.
+
 **Abbruchkriterium:** Schließfehler unter **3 mm** und **0,5°**. Größere Werte
 heißen: Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht. Eine Karte,
 die sich nicht schließt, ist wertlos — dann zurück zu Schritt 3.3.
