@@ -104,6 +104,11 @@ class CameraStreamConfig:
     #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
     warmup_s: float = 2.0
+    #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
+    capture_fps: float = 15.0
+    #: Rate des OPC-UA-Knotens `LatestCameraFrame`. Bewusst niedrig: er ist nur
+    #: noch der Rueckfallweg, Base64 ueber OPC UA und Backend taugt nicht fuer
+    #: Video. Das Live-Bild kommt ueber `http_port`.
     stream_fps: float = 5.0
     #: Konservativ gewaehlt, damit die Pipeline auch ueber die RSUSB-Backend-
     #: Anbindung (noetig, weil der Pi-Kernel keinen brauchbaren UVC-Treiber
@@ -124,6 +129,13 @@ class CameraStreamConfig:
     #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein. `None` schaltet
     #: die Skalierung ab.
     max_stream_width: int | None = 960
+    #: Port des MJPEG-Streams (`http://<pi>:<port>/stream.mjpg`); 0 = aus.
+    #: Das Frontend liest ihn aus `http_port_node_name` und baut die URL aus
+    #: der Adresse, unter der es den OPC-UA-Server erreicht.
+    http_port: int = 8080
+    #: Bildrate des MJPEG-Streams, solange mindestens ein Zuschauer da ist.
+    http_fps: float = 15.0
+    http_port_node_name: str = "CameraStreamHttpPort"
     node_name: str = "LatestCameraFrame"
     #: Writable node through which the frontend selects the overlay mode.
     mode_node_name: str = "CameraStreamMode"

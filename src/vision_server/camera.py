@@ -234,14 +234,14 @@ class SharedCamera:
         return "ok"
 
     async def _capture_loop(self) -> None:
-        """Nimmt Frames mit `stream_fps` auf, bis die Task abgebrochen wird.
+        """Nimmt Frames mit `capture_fps` auf, bis die Task abgebrochen wird.
 
         Eskalation: Fehler zaehlen, ab `max_capture_failures` (ein Haenger
         zaehlt sofort voll) die Kamera neu oeffnen, nach `max_reopen_attempts`
         Neu-Oeffnungen ohne einen Frame dazwischen aufgeben.
         """
         loop = asyncio.get_running_loop()
-        interval = 1.0 / self._config.stream_fps
+        interval = 1.0 / self._config.capture_fps
         failures = 0
         reopens = 0
         while True:
