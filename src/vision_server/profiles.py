@@ -72,6 +72,23 @@ class CameraStreamConfig:
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
     #: last result is redrawn.
     overlay_interval_s: float = 0.5
+    #: Watchdog: so lange darf ein einzelnes `capture_array()` dauern. Danach
+    #: gilt die Kamera als haengend -- Picamera2 wartet sonst ewig auf einen
+    #: Frame, den libcamera nie liefert (Pi 1, 2026-09-22).
+    frame_timeout_s: float = 3.0
+    #: So viele Aufnahmefehler in Folge, bevor die Kamera neu geoeffnet wird.
+    #: Ein Timeout zaehlt sofort voll: der Worker haengt, jeder weitere Aufruf
+    #: stuende nur hinter ihm an.
+    max_capture_failures: int = 3
+    #: So viele Neu-Oeffnungen ohne einen einzigen Frame dazwischen, bevor der
+    #: Prozess sich beendet und systemd (`Restart=always`) ihn neu startet.
+    max_reopen_attempts: int = 2
+    #: Aelter als das wird ein Frame nicht mehr veroeffentlicht; der Knoten
+    #: wird geleert, damit das Frontend "Warte auf Bild" statt eines
+    #: eingefrorenen Bildes zeigt.
+    stale_frame_s: float = 2.0
+    #: Laenger darf ein Overlay-Lauf nicht dauern, sonst geht das Rohbild raus.
+    overlay_timeout_s: float = 2.0
 
 
 @dataclass(frozen=True)

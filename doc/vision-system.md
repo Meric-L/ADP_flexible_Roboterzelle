@@ -139,6 +139,17 @@ Vordergrundstart, das kollidiert mit dem Service (Port 4840 belegt) —
 stattdessen `systemctl restart opcua-server.service` und mit einem separaten
 Client dagegen testen.
 
+**Kamera-Watchdog** (`camera.py`): `capture_array()` kann ohne Fehlermeldung
+ewig haengen, wenn libcamera keinen Frame mehr liefert (Pi 1, 2026-09-22: der
+Livestream zeigte ein eingefrorenes Bild, Jobs scheiterten mit „Kein Kamerabild
+innerhalb von 5.0 s“). Jede Aufnahme hat deshalb `frame_timeout_s` (3 s); bei
+einem Haenger wird die Kamera neu geoeffnet, nach `max_reopen_attempts` (2)
+erfolglosen Neu-Oeffnungen beendet sich der Prozess hart und systemd startet
+ihn neu. Der Livestream leert seinen Knoten, sobald der Frame älter als
+`stale_frame_s` (2 s) ist. Im Journal danach suchen mit
+`journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|pausiert|beende den Prozess"`.
+Häufen sich die Meldungen, ist die Ursache meist Hardware (Flachbandkabel).
+
 ## Verifizierter Stand
 
 Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen, im
