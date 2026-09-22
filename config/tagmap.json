@@ -1,0 +1,17 @@
+{
+  "schema": "wsc.vision.tagmap/1",
+  "frameId": "world",
+  "anchorTagId": 0,
+  "tagFamily": "tag36h11",
+  "tags": [
+    {
+      "tagId": 0,
+      "role": "world",
+      "sizeM": 0.1,
+      "poseInWorld": {
+        "position": [0.0, 0.0, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    }
+  ]
+}

@@ -17,11 +17,22 @@ Erkennungsquelle und Stream-Publisher kennen den konkreten Backend-Typ nicht.
 `picamera2`/`pyrealsense2`/`cv2` werden erst in `open()` importiert, damit ein
 Server ohne `camera_stream`-Konfiguration (z. B. lokale Entwicklung, Tests)
 ohne diese Abhaengigkeiten startet.
+
+Watchdog: `capture_array()` kann ohne jede Fehlermeldung ewig haengen, wenn
+libcamera keinen Frame mehr liefert (so auf Pi 1 am 2026-09-22 per `py-spy`
+beobachtet). Der Capture-Loop begrenzt deshalb jede Aufnahme, oeffnet die
+Kamera bei Haengern neu und beendet als letztes Mittel den Prozess, damit
+systemd ihn neu startet. Das gilt fuer alle Backends gleich -- auch
+`wait_for_frames()` der RealSense laeuft durch denselben Timeout. Ein
+haengender Worker-Thread laesst sich in Python nicht abbrechen -- er wird
+zurueckgelassen, nicht beendet.
 """
 
 import asyncio
 import contextlib
 import logging
+import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
@@ -67,20 +78,43 @@ def _list_realsense_color_profiles() -> str:
         return f"Profile nicht abrufbar ({error})"
 
 
+def _exit_process() -> None:
+    """Beendet den Prozess hart, damit systemd (`Restart=always`) neu startet.
+
+    `os._exit` statt `sys.exit`: ein normales Beenden wartet beim Shutdown auf
+    alle Executor-Threads -- und damit auf den, der in `capture_array()`
+    haengt. Der Prozess wuerde nie enden.
+    """
+    logging.shutdown()
+    os._exit(1)
+
+
 class SharedCamera:
     """Haelt eine Kamera offen und stellt den jeweils neuesten Frame bereit."""
 
-    def __init__(self, config: CameraStreamConfig) -> None:
+    def __init__(
+        self,
+        config: CameraStreamConfig,
+        *,
+        on_give_up: Callable[[], None] = _exit_process,
+    ) -> None:
         self._config = config
         self._camera: Any = None
         self._executor: ThreadPoolExecutor | None = None
         self._loop_task: asyncio.Task | None = None
         self._latest: CameraFrame | None = None
+        #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen.
+        self._on_give_up = on_give_up
 
     @property
     def latest_frame(self) -> CameraFrame | None:
         """Der zuletzt aufgenommene Frame, oder `None` vor dem ersten Capture."""
         return self._latest
+
+    @property
+    def is_open(self) -> bool:
+        """Ob der Capture-Loop laeuft."""
+        return self._loop_task is not None
 
     async def open(self) -> None:
         """Oeffnet die Kamera und startet den Capture-Loop. Nicht idempotent."""
@@ -177,19 +211,112 @@ class SharedCamera:
             raise RuntimeError("Kamera lieferte kein Bild")
         return frame
 
+    async def _capture_once(self, loop: asyncio.AbstractEventLoop) -> str:
+        """Eine Aufnahme mit Timeout: `"ok"`, `"error"` oder `"hung"`."""
+        if self._camera is None:
+            # Die letzte Neu-Oeffnung ist gescheitert; nichts zu lesen.
+            return "hung"
+        try:
+            image = await asyncio.wait_for(
+                loop.run_in_executor(self._executor, self._read_frame),
+                timeout=self._config.frame_timeout_s,
+            )
+        except TimeoutError:
+            _log.error(
+                "Kamera liefert seit %.1f s kein Bild -- capture haengt",
+                self._config.frame_timeout_s,
+            )
+            return "hung"
+        except Exception:
+            _log.exception("Kamera-Frame konnte nicht aufgenommen werden")
+            return "error"
+        self._latest = CameraFrame(image=image, timestamp=loop.time())
+        return "ok"
+
     async def _capture_loop(self) -> None:
-        """Nimmt Frames mit `stream_fps` auf, bis die Task abgebrochen wird."""
+        """Nimmt Frames mit `capture_fps` auf, bis die Task abgebrochen wird.
+
+        Eskalation: Fehler zaehlen, ab `max_capture_failures` (ein Haenger
+        zaehlt sofort voll) die Kamera neu oeffnen, nach `max_reopen_attempts`
+        Neu-Oeffnungen ohne einen Frame dazwischen aufgeben.
+        """
         loop = asyncio.get_running_loop()
-        interval = 1.0 / self._config.stream_fps
+        interval = 1.0 / self._config.capture_fps
+        failures = 0
+        reopens = 0
         while True:
             started = loop.time()
-            try:
-                image = await loop.run_in_executor(self._executor, self._read_frame)
-                self._latest = CameraFrame(image=image, timestamp=loop.time())
-            except Exception:
-                _log.exception("Kamera-Frame konnte nicht aufgenommen werden")
+            outcome = await self._capture_once(loop)
+            if outcome == "ok":
+                failures = 0
+                reopens = 0
+            elif outcome == "hung":
+                failures = self._config.max_capture_failures
+            else:
+                failures += 1
+            if failures >= self._config.max_capture_failures:
+                failures = 0
+                reopens += 1
+                if reopens > self._config.max_reopen_attempts:
+                    _log.critical(
+                        "Kamera nach %d Neu-Oeffnungen ohne Bild -- beende den Prozess, "
+                        "systemd startet ihn neu",
+                        self._config.max_reopen_attempts,
+                    )
+                    self._on_give_up()
+                    return
+                await self._reopen(reopens)
+                continue
             elapsed = loop.time() - started
             await asyncio.sleep(max(0.0, interval - elapsed))
+
+    async def _reopen(self, attempt: int) -> None:
+        """Gibt die Kamera frei und oeffnet sie mit frischem Worker neu.
+
+        Der alte Worker haengt womoeglich noch in `capture_array()`; er wird
+        samt Executor zurueckgelassen. Ein Fehlschlag laesst `_camera` auf
+        `None`, der naechste Durchlauf eskaliert dann weiter.
+        """
+        _log.warning(
+            "Kamera haengt, oeffne sie neu (Versuch %d/%d)",
+            attempt,
+            self._config.max_reopen_attempts,
+        )
+        camera, self._camera = self._camera, None
+        executor, self._executor = self._executor, None
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
+        if camera is not None:
+            await self._close_in_own_thread(camera)
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera")
+        loop = asyncio.get_running_loop()
+        try:
+            self._camera = await asyncio.wait_for(
+                loop.run_in_executor(self._executor, self._open_camera),
+                timeout=self._config.frame_timeout_s + self._config.warmup_s,
+            )
+        except Exception:
+            _log.exception("Kamera laesst sich nicht neu oeffnen")
+            return
+        _log.info("Kamera neu geoeffnet")
+
+    async def _close_in_own_thread(self, camera: Any) -> None:
+        """Schliesst die Kamera in einem Wegwerf-Thread, mit Timeout.
+
+        Nicht im Kamera-Worker: der kann in `capture_array()` haengen, ein
+        `close` stuende dann ewig hinter ihm an. Haengt auch das Schliessen,
+        bleibt dieser Thread eben zurueck.
+        """
+        closer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera-close")
+        try:
+            await asyncio.wait_for(
+                asyncio.get_running_loop().run_in_executor(closer, self._close_camera, camera),
+                timeout=self._config.frame_timeout_s,
+            )
+        except Exception:
+            _log.exception("Kamera liess sich nicht sauber schliessen")
+        finally:
+            closer.shutdown(wait=False, cancel_futures=True)
 
     async def close(self) -> None:
         """Stoppt den Capture-Loop und gibt die Kamera frei. Idempotent."""
@@ -198,11 +325,9 @@ class SharedCamera:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
             self._loop_task = None
-        if self._camera is not None and self._executor is not None:
+        if self._camera is not None:
             camera, self._camera = self._camera, None
-            await asyncio.get_running_loop().run_in_executor(
-                self._executor, self._close_camera, camera
-            )
+            await self._close_in_own_thread(camera)
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None

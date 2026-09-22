@@ -15,6 +15,7 @@ from .address_space import VisionAddressSpace, attach_vision_system, configure_s
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .calibration_session import CalibrationSession
 from .camera_stream import CameraStreamPublisher
+from .mjpeg_server import MjpegServer
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
 from .errors import VisionErrorCode
@@ -137,6 +138,34 @@ def _start_camera_stream(
     return stream, annotator
 
 
+async def _start_mjpeg_server(
+    space: VisionAddressSpace, stream: CameraStreamPublisher
+) -> MjpegServer | None:
+    """Startet den MJPEG-Stream und nennt seinen Port im Adressraum.
+
+    Scheitert das Binden (Port belegt), laeuft der Server ohne weiter: der
+    Knoten bleibt auf 0 und das Frontend faellt auf `LatestCameraFrame`
+    zurueck. Der Livestream ist ein Debugwerkzeug, kein Grund fuer einen
+    Startabbruch.
+    """
+    config = space.config.camera_stream
+    if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:
+        return None
+    server = MjpegServer(stream, config.http_port)
+    try:
+        await server.start()
+    except OSError:
+        _log.exception(
+            "MJPEG-Livestream auf Port %d nicht startbar -- nur der OPC-UA-Rueckfallweg",
+            config.http_port,
+        )
+        return None
+    await space.camera_stream_http_port.write_value(
+        ua.Variant(server.port, ua.VariantType.Int32)
+    )
+    return server
+
+
 def _build_calibration_session(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
@@ -185,6 +214,8 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
+    #: MJPEG livestream over HTTP; `None` when disabled or the port was taken.
+    camera_http: MjpegServer | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
     #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
@@ -206,6 +237,8 @@ class VisionMachine:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.lag_watchdog
+        if self.camera_http is not None:
+            await self.camera_http.stop()
         if self.camera_stream is not None:
             await self.camera_stream.stop()
         await self.jobs.cancel_running()
@@ -367,6 +400,11 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     calibration_session = _build_calibration_session(sources, opened, config)
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
+    camera_http = (
+        await _start_mjpeg_server(space, camera_stream)
+        if camera_stream is not None
+        else None
+    )
 
     #: Kalibriermethoden, die zusaetzlich unter `VisionProgram` aufrufbar
     #: werden -- gefuellt nur, wenn es eine Kalibrier-Session gibt.
@@ -528,6 +566,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs=jobs,
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
+        camera_http=camera_http,
         assets=assets,
         program=program,
         calibration_session=calibration_session,

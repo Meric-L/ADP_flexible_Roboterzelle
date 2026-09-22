@@ -104,6 +104,11 @@ class CameraStreamConfig:
     #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
     warmup_s: float = 2.0
+    #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
+    capture_fps: float = 15.0
+    #: Rate des OPC-UA-Knotens `LatestCameraFrame`. Bewusst niedrig: er ist nur
+    #: noch der Rueckfallweg, Base64 ueber OPC UA und Backend taugt nicht fuer
+    #: Video. Das Live-Bild kommt ueber `http_port`.
     stream_fps: float = 5.0
     #: Konservativ gewaehlt, damit die Pipeline auch ueber die RSUSB-Backend-
     #: Anbindung (noetig, weil der Pi-Kernel keinen brauchbaren UVC-Treiber
@@ -124,6 +129,13 @@ class CameraStreamConfig:
     #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein. `None` schaltet
     #: die Skalierung ab.
     max_stream_width: int | None = 960
+    #: Port des MJPEG-Streams (`http://<pi>:<port>/stream.mjpg`); 0 = aus.
+    #: Das Frontend liest ihn aus `http_port_node_name` und baut die URL aus
+    #: der Adresse, unter der es den OPC-UA-Server erreicht.
+    http_port: int = 8080
+    #: Bildrate des MJPEG-Streams, solange mindestens ein Zuschauer da ist.
+    http_fps: float = 15.0
+    http_port_node_name: str = "CameraStreamHttpPort"
     node_name: str = "LatestCameraFrame"
     #: Writable node through which the frontend selects the overlay mode.
     mode_node_name: str = "CameraStreamMode"
@@ -134,6 +146,23 @@ class CameraStreamConfig:
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
     #: last result is redrawn.
     overlay_interval_s: float = 0.5
+    #: Watchdog: so lange darf ein einzelnes `capture_array()` dauern. Danach
+    #: gilt die Kamera als haengend -- Picamera2 wartet sonst ewig auf einen
+    #: Frame, den libcamera nie liefert (Pi 1, 2026-09-22).
+    frame_timeout_s: float = 3.0
+    #: So viele Aufnahmefehler in Folge, bevor die Kamera neu geoeffnet wird.
+    #: Ein Timeout zaehlt sofort voll: der Worker haengt, jeder weitere Aufruf
+    #: stuende nur hinter ihm an.
+    max_capture_failures: int = 3
+    #: So viele Neu-Oeffnungen ohne einen einzigen Frame dazwischen, bevor der
+    #: Prozess sich beendet und systemd (`Restart=always`) ihn neu startet.
+    max_reopen_attempts: int = 2
+    #: Aelter als das wird ein Frame nicht mehr veroeffentlicht; der Knoten
+    #: wird geleert, damit das Frontend "Warte auf Bild" statt eines
+    #: eingefrorenen Bildes zeigt.
+    stale_frame_s: float = 2.0
+    #: Laenger darf ein Overlay-Lauf nicht dauern, sonst geht das Rohbild raus.
+    overlay_timeout_s: float = 2.0
 
 
 @dataclass(frozen=True)
