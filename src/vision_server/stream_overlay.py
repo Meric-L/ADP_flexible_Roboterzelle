@@ -43,12 +43,20 @@ class AprilTagStreamAnnotator:
         calibration: Any,
         tag_map: Any,
         interval_s: float = 0.5,
+        detection_max_width: int | None = None,
     ) -> None:
         self._config = config
         self._detector = detector
         self._calibration = calibration
         self._tag_map = tag_map
         self._interval_s = interval_s
+        #: Im Kalibrier-Modus wird vor `detect_board` auf diese Breite
+        #: herunterskaliert (typischerweise dieselbe wie
+        #: `CameraStreamConfig.max_stream_width`) -- Ecken-Erkennung auf dem
+        #: vollen Kamera-Frame (z. B. 2028x1520 bei cam_ceiling) dauert auf
+        #: dem Pi spuerbar lang und drueckt die Stream-Framerate. `None`
+        #: laesst den Original-Frame unangetastet.
+        self._detection_max_width = detection_max_width
         self._last_run = 0.0
         self._last_tag_poses: list = []
         self._last_board = None
@@ -92,19 +100,25 @@ class AprilTagStreamAnnotator:
         return cached
 
     def _board_spec(self):
-        """Return board geometry from the calibration file, else the default."""
+        """Return the board geometry from config.
+
+        Dieselbe Quelle wie `CalibrationSession._spec()` -- fruher las diese
+        Methode `self._calibration.board`, was bei einer Platzhalter-
+        Kalibrierung (kein `board`-Feld) auf den `BoardSpec()`-Default
+        (9x6/30mm) zurueckfiel und damit eine andere Geometrie annahm als die
+        tatsaechlich laufende Session: die Ecken-Erkennung im Stream fand nie
+        etwas, obwohl `CaptureCalibrationSample` (mit der Config-Geometrie)
+        das Board korrekt fand.
+        """
         from tagloc.boards import BoardSpec
 
-        board = dict(getattr(self._calibration, "board", {}) or {})
-        if not board:
-            return BoardSpec()
         return BoardSpec(
-            type=str(board.get("type", "chessboard")),
-            cols=int(board.get("cols", 9)),
-            rows=int(board.get("rows", 6)),
-            square_size_m=float(board.get("squareSizeM", 0.030)),
-            marker_size_m=float(board.get("markerSizeM", 0.022)),
-            dictionary=str(board.get("dictionary", "DICT_4X4_50")),
+            type=self._config.calibration_board_type,
+            cols=self._config.calibration_board_cols,
+            rows=self._config.calibration_board_rows,
+            square_size_m=self._config.calibration_board_square_size_m,
+            marker_size_m=self._config.calibration_board_marker_size_m,
+            dictionary=self._config.calibration_board_dictionary,
         )
 
     def annotate(self, image: Any, mode: str) -> Any:
@@ -130,6 +144,13 @@ class AprilTagStreamAnnotator:
             due = now - self._last_run >= self._interval_s
 
             if mode == "calibration":
+                if self._detection_max_width is not None:
+                    from .camera_stream import _resize_for_stream
+
+                    # Gleiche Zielbreite wie der Stream selbst: Ecken-Koordi-
+                    # naten aus `detect_board` bleiben damit zwischen Ticks
+                    # gueltig, weil jeder Tick auf derselben Groesse zeichnet.
+                    canvas = _resize_for_stream(canvas, self._detection_max_width)
                 if due:
                     from tagloc.boards import detect_board
 

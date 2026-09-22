@@ -601,6 +601,16 @@ Verhalten:
 - Overlay und Job benutzen **dieselbe geladene Kalibrierung und Tag-Map**. Sieht
   man im Stream etwas anderes als im Jobergebnis, liegt es folglich nicht an
   zwei verschiedenen Konfigurationen.
+- Im `calibration`-Modus sucht das Overlay mit **derselben Board-Geometrie**
+  wie `CaptureCalibrationSample` (Abschnitt 12.2, aus `AprilTagProfileConfig`)
+  — nicht aus der geladenen Kalibrierdatei. Bei einer Platzhalter-Kalibrierung
+  (Abschnitt 9, `allow_placeholder_calibration`) gibt es dort kein Board-Feld;
+  eine andere Geometrie anzunehmen hätte die Ecken-Erkennung im Stream leer
+  laufen lassen, obwohl das eigentliche Erfassen die Ecken findet.
+- Ebenfalls nur im `calibration`-Modus: die Ecken-Suche läuft auf einer auf
+  `max_stream_width` herunterskalierten Kopie, nicht auf dem vollen
+  Kamera-Frame — bei `cam_ceiling` (2028×1520) kostete die volle Auflösung
+  auf dem Pi spürbar Zeit und drückte die Framerate.
 - Gezeichnet wird auf einer Kopie; der geteilte Frame bleibt unverändert.
 - Ein Fehler im Overlay beendet den Stream nicht — dann kommt das unmarkierte
   Bild, und der Fehler steht im Log.

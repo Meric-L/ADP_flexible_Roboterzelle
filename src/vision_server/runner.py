@@ -90,6 +90,7 @@ def _build_annotator(source: DetectionSource):
         calibration=calibration,
         tag_map=getattr(source, "_tag_map", None),
         interval_s=getattr(camera_config, "overlay_interval_s", 0.5),
+        detection_max_width=getattr(camera_config, "max_stream_width", None),
     )
 
 
