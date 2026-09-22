@@ -669,18 +669,24 @@ keine Rolle spielt:
 | --- | --- | --- |
 | AprilTag-Job, Kalibrier-Session | `CameraFrame.image` | 4056×3040 |
 | Livestream/Overlay **„AprilTags markieren“** (MJPEG und Knoten) | `CameraFrame.image` | 4056×3040, fürs Publizieren auf `max_stream_width` (960 px) verkleinert |
-| Livestream **„Rohbild“**, Overlay **„Kalibrierboard markieren“** | `CameraFrame.preview` | 960×720 |
+| Livestream **„Rohbild“** (`off`) | `CameraFrame.image` | 4056×3040, fürs Publizieren auf `max_stream_width` (960 px) verkleinert |
+| Overlay **„Kalibrierboard markieren“** (`calibration`) | `CameraFrame.preview` | 960×720 |
 
-> **Geändert 2026-09-22:** Der Modus „AprilTags markieren“ lief zuerst auf
-> `CameraFrame.preview` (siehe unten, Ursprungsgrund: Framerate). Das hieß
-> aber, dass Stream und Job unterschiedliche Bilder auswerten — ein Tag, der
-> im Stream nicht markiert erscheint, war damit kein verlässlicher Beleg dafür,
-> dass der Job ihn auch verpasst. Jetzt erkennt das Overlay in diesem Modus auf
-> demselben Bild wie der Job (`CameraFrame.image`) und wird erst danach für die
+> **Geändert 2026-09-22:** Die Modi „AprilTags markieren“ und „Rohbild“
+> liefen zuerst auf `CameraFrame.preview` (siehe unten, Ursprungsgrund:
+> Framerate). Bei „AprilTags markieren“ hieß das, dass Stream und Job
+> unterschiedliche Bilder auswerten — ein Tag, der im Stream nicht markiert
+> erscheint, war damit kein verlässlicher Beleg dafür, dass der Job ihn auch
+> verpasst. Bei „Rohbild“ zeigte das Debugbild nicht, was der Pi tatsächlich
+> sieht (Fokus, Belichtung, Bildausschnitt), sondern schon eine verkleinerte
+> Kopie. Beide Modi nutzen jetzt `CameraFrame.image`; das Overlay im
+> „AprilTags markieren“-Modus wird erst nach der Erkennung für die
 > Übertragung verkleinert — die Treffer selbst sind also identisch mit dem
-> Job, nur die Framerate sinkt spürbar (volle 12-MP-Verarbeitung pro Tick statt
-> ~0,7 MP), bewusst in Kauf genommen. „Rohbild“ und „Kalibrierboard markieren“
-> bleiben aus Bandbreiten- bzw. Geschwindigkeitsgründen beim kleinen Vorschaubild.
+> Job. Framerate sinkt dadurch spürbar (volle 12-MP-Verarbeitung/Kodierung
+> pro Tick statt ~0,7 MP), bewusst in Kauf genommen; für „Rohbild“ ohne
+> Erkennung fällt nur der größere Encode ins Gewicht. „Kalibrierboard
+> markieren“ bleibt aus Geschwindigkeitsgründen beim kleinen Vorschaubild
+> (eigenes, separat getuntes Downscale vor `detect_board`).
 
 Beide Bilder kommen aus **einem** Request, stammen also immer aus derselben
 Aufnahme. Rechnet ein Overlay auf `preview` (960×720), rechnet es die
@@ -689,7 +695,7 @@ weicht dabei um 0,07 % ab, unter der Schranke von 0,1 %.
 
 Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
 `PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, nur noch für
-„Rohbild“/„Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
+„Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
 10 (Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs
 Puffer à 37 MB passen nicht in den CMA-Speicher). Ohne `preview_resolution` —
 Hand-Pi mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst, dort

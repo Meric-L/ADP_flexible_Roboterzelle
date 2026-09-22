@@ -327,13 +327,16 @@ class NormaliseModeTest(unittest.TestCase):
 
 
 class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
-    """Mit einem kleinen ISP-Bild rechnet der Stream im `off`/`calibration`-Modus
-    nie auf dem vollen Frame -- genau das liess die Deckenkamera ruckeln.
+    """Mit einem kleinen ISP-Bild rechnet der Stream im `calibration`-Modus
+    auf dem verkleinerten Vorschaubild -- genau das liess die Deckenkamera
+    ruckeln, als noch jeder Modus auf dem vollen Frame rechnete.
 
-    Ausnahme `apriltag`: der Stream muss dasselbe Bild zeigen wie der echte
-    Job, sonst laesst sich nicht vertrauenswuerdig sehen, ob der Pi ein Tag
-    wirklich erkennt (Absprache 2026-09-22) -- dort wird bewusst der volle
-    Frame genommen, auch wenn das mehr pro Tick kostet.
+    `apriltag` und `off` nutzen dagegen bewusst den vollen Frame
+    (Absprache 2026-09-22): `apriltag`, damit der Stream dasselbe Bild zeigt
+    wie der echte Job -- sonst laesst sich nicht vertrauenswuerdig sehen, ob
+    der Pi ein Tag wirklich erkennt. `off` ist das Debug-Rohbild und soll
+    zeigen, was der Pi tatsaechlich sieht (Fokus/Belichtung/Ausschnitt),
+    nicht die Vorschau -- kostet ohne Erkennung kaum mehr.
     """
 
     async def test_apriltag_mode_overlays_and_encodes_the_full_frame(self):
@@ -373,7 +376,9 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
 
-    async def test_raw_mode_sends_the_preview_unmarked(self):
+    async def test_raw_mode_sends_the_full_frame_unmarked(self):
+        """'off' ist das Debug-Rohbild: soll zeigen, was der Pi tatsaechlich
+        sieht (Fokus/Belichtung/Ausschnitt pruefen), nicht die Vorschau."""
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
@@ -391,7 +396,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         await _run_briefly(publisher, 0.1)
 
         self.assertEqual(annotator.calls, [])
-        self.assertIn(f"encoded:klein:{FAST_CONFIG.jpeg_quality}", node.written)
+        self.assertIn(f"encoded:voll:{FAST_CONFIG.jpeg_quality}", node.written)
 
     async def test_without_a_preview_the_full_frame_is_used_as_before(self):
         camera = FakeCamera()

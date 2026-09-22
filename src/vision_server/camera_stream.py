@@ -213,17 +213,23 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # Im "apriltag"-Modus muss der Stream exakt das Bild zeigen, auf dem
-        # auch der Job erkennt -- sonst laesst sich nicht vertrauenswuerdig
-        # sehen, ob der Pi ein Tag wirklich findet oder das nur auf dem
-        # kleineren Vorschaubild klappt/scheitert. Kostet mehr pro Tick (volle
-        # Aufloesung statt ~0,7 MP an der Deckenkamera); die Framerate sinkt
-        # dadurch von selbst ueber die Sleep-Anpassung unten -- bewusst in
-        # Kauf genommen (Absprache 2026-09-22). "off"/"calibration" bleiben
-        # beim kleinen Vorschaubild: dort geht es nicht um Erkennungstreue
-        # (calibration hat ohnehin ein eigenes, separat getuntes Downscale vor
-        # `detect_board`, siehe `detection_max_width`).
-        if mode == "apriltag":
+        # "apriltag" und "off" zeigen den vollen Frame, nicht die kleine
+        # ISP-Vorschau:
+        # - "apriltag" muss exakt das Bild zeigen, auf dem auch der Job
+        #   erkennt -- sonst laesst sich nicht vertrauenswuerdig sehen, ob der
+        #   Pi ein Tag wirklich findet oder das nur auf dem kleineren
+        #   Vorschaubild klappt/scheitert. Kostet mehr pro Tick (volle
+        #   Aufloesung statt ~0,7 MP an der Deckenkamera); die Framerate sinkt
+        #   dadurch von selbst ueber die Sleep-Anpassung unten -- bewusst in
+        #   Kauf genommen (Absprache 2026-09-22).
+        # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
+        #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
+        #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
+        #   ohne Erkennung/Overlay ist hier nur der groessere Encode neu.
+        # "calibration" bleibt beim kleinen Vorschaubild: dort geht es nicht
+        # um Erkennungstreue, und die Session hat ohnehin ein eigenes, separat
+        # getuntes Downscale vor `detect_board` (`detection_max_width`).
+        if mode in ("apriltag", "off"):
             source = frame.image
         else:
             source = getattr(frame, "preview", None)
