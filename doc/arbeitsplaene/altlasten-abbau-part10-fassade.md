@@ -91,6 +91,7 @@ Objects/
     │                  LatestResultJson, LatestCameraFrame,
     │                  CameraStreamMode, CalibrationProgress   (Verweise)
     ├── StartCalibration                             (Verweis, s. u.)
+    ├── CaptureCalibrationSample                     (Verweis)
     ├── FinishCalibration                            (Verweis)
     └── AbortCalibration                             (Verweis)
 ```
@@ -100,7 +101,7 @@ erreichbar. Sie hängt nur nicht mehr direkt unter `Objects`.
 
 ### Neu unter VisionProgram
 
-Die drei Kalibriermethoden werden **nicht zweitregistriert**, sondern per
+Die vier Kalibriermethoden werden **nicht zweitregistriert**, sondern per
 `HasComponent`-Referenz zusätzlich unter `VisionProgram` sichtbar gemacht —
 dasselbe Muster wie die bereits vorhandenen `Organizes`-Verweise im
 `ResultSet`. Es bleibt genau ein Methodenknoten mit genau einer Implementierung.
@@ -108,6 +109,7 @@ dasselbe Muster wie die bereits vorhandenen `Organizes`-Verweise im
 | Methode | NodeId | Eingang | Ausgang |
 | --- | --- | --- | --- |
 | `StartCalibration` | `ns=<vision>;s=VisionMachine.StartCalibration` | — | `Error: Int32` |
+| `CaptureCalibrationSample` | `ns=<vision>;s=VisionMachine.CaptureCalibrationSample` | — | `Error: Int32` |
 | `FinishCalibration` | `ns=<vision>;s=VisionMachine.FinishCalibration` | — | `Summary: String`, `Error: Int32` |
 | `AbortCalibration` | `ns=<vision>;s=VisionMachine.AbortCalibration` | — | `Error: Int32` |
 

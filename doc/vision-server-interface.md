@@ -76,6 +76,7 @@ Objects/
         │   └── GetResultById | ReleaseResultHandle | ...   (nicht implementiert, siehe 7.3)
         ├── VisionAsset                      OPC 40100-2, siehe Abschnitt 11
         ├── StartCalibration                 ns=<vision>;s=VisionMachine.StartCalibration
+        ├── CaptureCalibrationSample         ns=<vision>;s=VisionMachine.CaptureCalibrationSample
         ├── FinishCalibration                ns=<vision>;s=VisionMachine.FinishCalibration
         ├── AbortCalibration                 ns=<vision>;s=VisionMachine.AbortCalibration
         ├── CalibrationProgress              ns=<vision>;s=VisionMachine.CalibrationProgress
@@ -87,7 +88,7 @@ Objects/
                                              **beschreibbar**: off | apriltag | calibration
 ```
 
-Die drei Kalibriermethoden und die vier Wertknoten sind **zusätzlich** unter
+Die vier Kalibriermethoden und die vier Wertknoten sind **zusätzlich** unter
 `VisionProgram` erreichbar — als Referenzen, nicht als Kopien. Es bleibt je ein
 Knoten mit einem Wert bzw. einer Implementierung.
 
@@ -547,6 +548,11 @@ Verhalten:
   Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
   (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
+- **Für den Stream herunterskaliert, falls breiter als `max_stream_width`**
+  (Standard 960 px) — Erkennung und Kalibrierung sehen weiterhin den vollen
+  Kamera-Frame, nur die veröffentlichte Kopie wird kleiner. Ohne das kostete
+  z. B. `cam_ceiling` (2028×1520, siehe unten) pro Tick ein JPEG-Encode eines
+  ~3-MP-Bildes und die Framerate brach spürbar ein.
 - **Kamera-Backend ist pro Pi verschieden**, `CameraStreamConfig.backend`
   (`"picamera2"` | `"realsense"` | `"opencv"`) macht das explizit:
   `server.py` wählt es über `PI_CAMERA_BACKENDS`
@@ -668,9 +674,10 @@ Ordner an, die es füllt: rund 50 Knoten statt 700.
 
 Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
 (`tagloc.cli.calibrate` per SSH) — es öffnet die Kamera exklusiv, der Server
-muss dafür gestoppt sein. Diese drei Methoden plus ein Knoten erlauben
-dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Board vor
-die Kamera halten, Fortschritt live sehen, `FinishCalibration` aufrufen.
+muss dafür gestoppt sein. Diese vier Methoden plus ein Knoten erlauben
+dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Session
+starten, Board vor die Kamera halten, Aufnahme auslösen, Fortschritt live
+sehen, `FinishCalibration` aufrufen.
 
 Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
@@ -678,19 +685,32 @@ kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
 
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
 in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
-das Frontend sendet und kennt keine Board-Parameter, es startet/beendet nur.
+das Frontend sendet und kennt keine Board-Parameter.
 
 ### 12.1 `StartCalibration`
 
-Setzt gesammelte Samples zurück und beginnt automatisches Erfassen.
+Setzt gesammelte Samples zurück und beginnt eine neue Session. Aufnahmen
+kommen danach ausschließlich über `CaptureCalibrationSample` (Abschnitt
+12.2) — kein automatisches Erfassen.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
 | `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job oder eine Session) |
 
-### 12.2 `FinishCalibration`
+### 12.2 `CaptureCalibrationSample`
 
-Stoppt das Erfassen, rechnet aus den gesammelten Samples und speichert
+Versucht **eine** Aufnahme vom aktuellen Kamerabild. Manuell ausgelöst —
+kein Zeitintervall, kein Bewegungsabgleich: der Operator sieht das Live-Bild
+(Livestream oder `stream_viewer.py`, Abschnitt 12.5) und entscheidet selbst,
+wann eine Pose gut ist, bevor er auslöst.
+
+| Ausgabe | Typ | Bedeutung |
+| --- | --- | --- |
+| `Error` | `Int32` | `0` (`OK`, Board gefunden und übernommen), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, Board in diesem Frame nicht gefunden — die Session läuft weiter, einfach erneut auslösen) |
+
+### 12.3 `FinishCalibration`
+
+Beendet die Session, rechnet aus den gesammelten Samples und speichert
 `data/calibration/<frame_id>.json` — derselbe Rechenkern wie im CLI-Tool
 (`tagloc.boards.calibrate_from_samples`).
 
@@ -699,16 +719,16 @@ Stoppt das Erfassen, rechnet aus den gesammelten Samples und speichert
 | `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "...", "samples": N}` |
 | `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
 
-### 12.3 `AbortCalibration`
+### 12.4 `AbortCalibration`
 
-Stoppt das Erfassen, **ohne** zu speichern — für den Fall, dass sich der
+Beendet die Session, **ohne** zu speichern — für den Fall, dass sich der
 Operator vertan hat oder neu anfangen will.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
 | `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, keine Session aktiv) |
 
-### 12.4 `CalibrationProgress` (nur lesen)
+### 12.5 `CalibrationProgress` (nur lesen)
 
 ```
 ns=<vision>;s=VisionMachine.CalibrationProgress     Datentyp String (JSON)
@@ -725,19 +745,17 @@ Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
 | `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
 
 Im Ruhezustand (keine Session je gestartet oder nach `Finish`/`Abort`):
-`{"running": false}`.
+`{"running": false}`. Mitverfolgen lässt sich das auch visuell über den
+Livestream (`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild
+erscheinen dann zusätzlich zur aktuellen Board-Erkennung die kumulierte
+Abdeckung und `Aufnahmen X/minSamples`.
 
-### 12.5 Automatisches Erfassen
-
-Kein Button pro Aufnahme: sobald die Session läuft, nimmt sie automatisch
-einen neuen Sample auf, wenn das Board erkannt wird **und** seit der letzten
-Aufnahme mindestens `calibration_capture_interval_s` (Config, Standard 1,0 s)
-vergangen sind. Kein Bewegungsabgleich — ein Operator, der das Board sichtbar
-bewegt, erzeugt von selbst unterschiedliche Posen. Mitverfolgen lässt sich das
-über `CalibrationProgress` oder visuell über den Livestream
-(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
-zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
-`Aufnahmen X/minSamples`.
+Für Pis mit angeschlossenem Monitor gibt es dafür zwei Kommandozeilen-Tools
+unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
+Teil des Frontends): `calibration_client.py` startet/beendet eine Session und
+loggt `CalibrationProgress`; `stream_viewer.py` zeigt den Livestream in einem
+lokalen Fenster und löst mit der Leertaste `CaptureCalibrationSample` aus —
+zusammen der Handshake, den ein Frontend nachbilden muss.
 
 ### 12.6 Sperren
 
@@ -751,8 +769,9 @@ kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt 
 
 ### 12.7 Stand
 
-Aktuell nur für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense)
-konfiguriert und real verifiziert (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei
-21 Aufnahmen über das CLI-Tool). Layer 1 (Deckenkamera) bekommt dieselbe
-Funktionalität, sobald die reale Board-Geometrie dort feststeht — der Code ist
-pi-unabhängig, es fehlen nur die bestätigten Werte in `PI_APRILTAG_PRESETS["cam_ceiling"]`.
+Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
+(`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).
+Layer 1 (Deckenkamera, `ADP-Roboter-Lokalisierung`, Picamera2) ist auf
+dieselbe Board-Geometrie eingestellt (Annahme: dasselbe gedruckte Blatt),
+aber noch **nicht** real durchgemessen — `PI_APRILTAG_PRESETS["cam_ceiling"]`
+trägt einen entsprechenden Kommentar. Der Code selbst ist pi-unabhängig.

@@ -2,7 +2,7 @@
 
 One source for both layers. Layer 1 (ceiling camera) and Layer 2 (flange
 camera) use the same class and code; they differ only in the
-`AprilTagProfileConfig` that `OPCUA/server.py` sets per Pi, and in where
+`AprilTagProfileConfig` that `vision_server/server.py` sets per Pi, and in where
 `T_world_cam` comes from:
 
 * if reference tags from the map are in the image (world board, robot

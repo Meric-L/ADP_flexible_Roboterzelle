@@ -3,11 +3,13 @@ Funktionen aus `tagloc.boards`/`tagloc.calibration` sind injiziert (Muster
 aus `test_apriltag_source.py`). `tagloc.frames.image_size`/`to_gray` laufen
 dagegen echt (brauchen numpy, `to_gray` zusaetzlich cv2 fuer ein 3-Kanal-Bild)
 -- ein Fake-"Bild" muss deshalb ein echtes Array sein, kein Platzhalter.
+
+Aufnahmen sind manuell (`capture()`), kein automatisches Zeitintervall mehr
+-- Tests rufen `capture()` darum direkt auf, statt auf einen Hintergrund-Loop
+zu warten.
 """
 
-import asyncio
 import unittest
-from dataclasses import replace
 from types import SimpleNamespace
 
 try:
@@ -19,10 +21,7 @@ from vision_server.calibration_session import CalibrationSession
 from vision_server.errors import VisionErrorCode
 from vision_server.profiles import AprilTagProfileConfig
 
-FAST_CONFIG = AprilTagProfileConfig(
-    calibration_min_samples=2,
-    calibration_capture_interval_s=0.0,  # jeder neue Frame darf sofort erfassen
-)
+FAST_CONFIG = AprilTagProfileConfig(calibration_min_samples=2)
 
 #: Kleines echtes Bild -- `tagloc.frames.image_size`/`to_gray` sind nicht
 #: injiziert und brauchen ein echtes Array, kein String-Platzhalter.
@@ -35,8 +34,8 @@ class FakeCamera:
     def __init__(self) -> None:
         self.latest_frame = None
 
-    def push(self, timestamp: float) -> None:
-        self.latest_frame = SimpleNamespace(image=_FRAME, timestamp=timestamp)
+    def push(self) -> None:
+        self.latest_frame = SimpleNamespace(image=_FRAME, timestamp=0.0)
 
 
 class FakeSample:
@@ -53,6 +52,11 @@ def fake_detect_board(gray, spec, board):
     """Findet das Board immer -- Tests steuern ueber die Kamera, nicht ueber
     einen Erkennungsfehlschlag."""
     return FakeSample()
+
+
+def fake_detect_board_never(gray, spec, board):
+    """Findet das Board nie -- fuer den Fehlschlag-Test."""
+    return None
 
 
 def fake_build_board(spec):
@@ -91,40 +95,53 @@ def make_session(config=FAST_CONFIG, **overrides):
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
-class StartAndCaptureTest(unittest.IsolatedAsyncioTestCase):
-    async def test_captures_a_sample_once_the_board_is_seen(self):
+class CaptureTest(unittest.IsolatedAsyncioTestCase):
+    async def test_capture_adds_a_sample_when_board_is_seen(self):
         session, camera, _, _ = make_session()
         session.start()
-        camera.push(timestamp=1.0)
+        camera.push()
 
-        await asyncio.sleep(0.2)
-        await session.abort()
+        found = await session.capture()
 
-        self.assertGreaterEqual(session.progress["samples"], 1)
+        self.assertTrue(found)
+        self.assertEqual(session.progress["samples"], 1)
 
-    async def test_never_captures_without_any_frame(self):
+    async def test_capture_without_a_frame_returns_false(self):
         session, _camera, _, _ = make_session()
         session.start()
 
-        await asyncio.sleep(0.1)
-        await session.abort()
+        found = await session.capture()
 
+        self.assertFalse(found)
         self.assertEqual(session.progress["samples"], 0)
 
-    async def test_respects_the_capture_interval(self):
-        """Ein grosses Intervall darf nur die allererste Aufnahme zulassen."""
-        config = replace(FAST_CONFIG, calibration_capture_interval_s=10.0)
-        session, camera, _, _ = make_session(config)
-        session.start()
-        camera.push(timestamp=1.0)
-        await asyncio.sleep(0.05)
-        camera.push(timestamp=2.0)
-        await asyncio.sleep(0.05)
-        camera.push(timestamp=3.0)
-        await asyncio.sleep(0.1)
-        await session.abort()
+    async def test_capture_before_start_returns_false(self):
+        session, camera, _, _ = make_session()
+        camera.push()
 
-        self.assertEqual(session.progress["samples"], 1)
+        found = await session.capture()
+
+        self.assertFalse(found)
+
+    async def test_capture_without_board_found_returns_false(self):
+        session, camera, _, _ = make_session(detect_board=fake_detect_board_never)
+        session.start()
+        camera.push()
+
+        found = await session.capture()
+
+        self.assertFalse(found)
+        self.assertEqual(session.progress["samples"], 0)
+
+    async def test_repeated_captures_accumulate_samples(self):
+        session, camera, _, _ = make_session()
+        session.start()
+        camera.push()
+
+        for _ in range(3):
+            await session.capture()
+
+        self.assertEqual(session.progress["samples"], 3)
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
@@ -132,8 +149,8 @@ class ProgressTest(unittest.IsolatedAsyncioTestCase):
     async def test_reports_running_min_samples_and_coverage(self):
         session, camera, _, _ = make_session()
         session.start()
-        camera.push(timestamp=1.0)
-        await asyncio.sleep(0.1)
+        camera.push()
+        await session.capture()
 
         progress = session.progress
 
@@ -141,7 +158,6 @@ class ProgressTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(progress["minSamples"], 2)
         self.assertEqual(progress["coverageX"], 0.42)
         self.assertEqual(progress["coverageY"], 0.37)
-        await session.abort()
 
     async def test_running_is_false_before_start_and_after_abort(self):
         session, _camera, _, _ = make_session()
@@ -157,9 +173,9 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
     async def test_ok_and_saves_with_enough_samples(self):
         session, camera, calibrate_calls, save_calls = make_session()
         session.start()
-        for i in range(3):
-            camera.push(timestamp=float(i))
-            await asyncio.sleep(0.05)
+        camera.push()
+        for _ in range(3):
+            await session.capture()
 
         error, summary = await session.finish()
 
@@ -173,8 +189,8 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
     async def test_detection_failed_with_too_few_samples(self):
         session, camera, _calibrate_calls, save_calls = make_session()
         session.start()
-        camera.push(timestamp=1.0)
-        await asyncio.sleep(0.05)
+        camera.push()
+        await session.capture()
 
         error, summary = await session.finish()
 
@@ -197,9 +213,9 @@ class AbortTest(unittest.IsolatedAsyncioTestCase):
     async def test_does_not_save(self):
         session, camera, _calibrate_calls, save_calls = make_session()
         session.start()
-        for i in range(3):
-            camera.push(timestamp=float(i))
-            await asyncio.sleep(0.05)
+        camera.push()
+        for _ in range(3):
+            await session.capture()
 
         await session.abort()
 
@@ -219,9 +235,9 @@ class RestartTest(unittest.IsolatedAsyncioTestCase):
     async def test_start_resets_samples_from_a_previous_run(self):
         session, camera, _calibrate_calls, _save_calls = make_session()
         session.start()
-        camera.push(timestamp=1.0)
-        await asyncio.sleep(0.1)
-        self.assertGreaterEqual(session.progress["samples"], 1)
+        camera.push()
+        await session.capture()
+        self.assertEqual(session.progress["samples"], 1)
         await session.abort()
 
         session.start()  # neuer Lauf, gleiche Instanz

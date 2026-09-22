@@ -44,6 +44,23 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
     return base64.b64encode(buffer).decode("ascii")
 
 
+def _resize_for_stream(image, max_width: int):
+    """Skaliert nur fuers Publizieren herunter, falls breiter als `max_width`.
+
+    Erkennung und Kalibrierung sehen weiter den vollen Kamera-Frame -- diese
+    Funktion laeuft erst nach dem Overlay, auf einer Kopie fuers Encoding.
+    Ohne das kostet z. B. cam_ceiling (2028x1520) pro Tick ein JPEG-Encode
+    eines ~3-MP-Bildes, was die Stream-Framerate spuerbar drueckt.
+    """
+    import cv2
+
+    height, width = image.shape[:2]
+    if width <= max_width:
+        return image
+    scale = max_width / width
+    return cv2.resize(image, (max_width, round(height * scale)), interpolation=cv2.INTER_AREA)
+
+
 class CameraStreamPublisher:
     """Schreibt periodisch den neuesten Kamera-Frame in einen String-Knoten.
 
@@ -119,6 +136,10 @@ class CameraStreamPublisher:
                         # The annotator works on a copy.
                         image = await loop.run_in_executor(
                             None, self._annotator.annotate, frame.image, mode
+                        )
+                    if self._config.max_stream_width is not None:
+                        image = await loop.run_in_executor(
+                            None, _resize_for_stream, image, self._config.max_stream_width
                         )
                     encoded = await loop.run_in_executor(
                         None, self._encode_frame, image, self._config.jpeg_quality

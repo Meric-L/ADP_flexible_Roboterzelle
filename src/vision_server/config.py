@@ -65,7 +65,7 @@ class VisionServerConfig:
     assets: AssetConfig | None = None
     amcm_nodeset_paths: tuple[Path, ...] = DEFAULT_AMCM_NODESET_PATHS
     #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
-    #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `OPCUA/server.py` sie.
+    #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `vision_server/server.py` sie.
     camera_stream: CameraStreamConfig | None = None
 
     @property
