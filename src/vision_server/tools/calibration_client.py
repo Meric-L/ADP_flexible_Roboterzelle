@@ -10,8 +10,10 @@ wird; das beendet die Session per `FinishCalibration` (Standard) oder mit
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
+import signal
 import sys
 
 from asyncua import Client, ua
@@ -39,17 +41,29 @@ async def run(args: argparse.Namespace) -> int:
 
         print("Session laeuft. Board vor die Kamera halten und langsam bewegen.")
         print("Strg+C zum Beenden (FinishCalibration; mit --abort ohne zu speichern).\n")
+
+        # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
+        # Coroutine abgefangen -- eine `except KeyboardInterrupt` hier drin
+        # wird nie erreicht, der Prozess stirbt sofort ohne FinishCalibration.
+        # Ein echter Signal-Handler setzt stattdessen nur ein Event, auf das
+        # der Loop reagieren kann.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
         try:
-            while True:
-                await asyncio.sleep(args.poll_interval)
-                progress = json.loads(await progress_node.read_value())
-                print(
-                    f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
-                    f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
-                    f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
-                )
-        except KeyboardInterrupt:
-            print()
+            loop.add_signal_handler(signal.SIGINT, stop.set)
+        except NotImplementedError:
+            pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
+
+        while not stop.is_set():
+            progress = json.loads(await progress_node.read_value())
+            print(
+                f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
+                f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
+                f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
+            )
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=args.poll_interval)
+        print()
 
         if args.abort:
             error = await vision.call_method(abort_node)
