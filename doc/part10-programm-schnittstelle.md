@@ -131,22 +131,38 @@ beide stehen nach dem LDS-Neustart wieder im Anmeldebestand. Eine Anmeldung,
 die nur einmal beim eigenen Start gesendet wurde, lag im alten LDS-Prozess und
 wäre weg. Also erneuern die Nachbarmodule periodisch.
 
-Man sieht das in deren Code nur nicht: `asyncua.Server.register_to_discovery()`
-startet die Erneuerungsschleife selbst, Standardabstand **60 s**. Wer die
-Methode benutzt, bekommt sie geschenkt und hält sie für nicht vorhanden. Wir
-bauen den Datensatz aus Falle 1 selbst und brauchen die Schleife deshalb
-explizit.
+Man sieht das in deren Code nur nicht — und in unserem auch nicht mehr:
+`asyncua.Server.register_to_discovery()` startet die Erneuerungsschleife
+selbst, Standardabstand **60 s** (`period`). Bei jedem Durchlauf baut sie einen
+frischen Kanal auf, übersteht also auch einen LDS-Neustart. Wer die Methode
+benutzt, bekommt das geschenkt und hält es für nicht vorhanden.
+
+Was sie **nicht** tut: abmelden. `Server.stop()` bricht nur die Schleife ab und
+trennt. Ohne `unregister_from_discovery()` bliebe der Eintrag bis zum Ablauf
+stehen, und der Aggregation-Server zeigte ein Modul, das er nicht mehr
+erreicht. `ua_lds.register()` ruft es im `finally`.
 
 Wie lange eine Anmeldung ohne Erneuerung genau überlebt, haben wir **nicht**
 gemessen — open62541 räumt alte Einträge nach einem eigenen Timeout ab. Die
 verbreitete Angabe „mindestens alle 10 Minuten" stammt aus dem Docstring von
 `asyncua`, nicht aus einer Messung an dieser Zelle.
 
-**Falle 1:** `asyncua.Server.register_to_discovery()` trägt
-`server.endpoint.geturl()` als DiscoveryUrl ein — bei uns
-`opc.tcp://0.0.0.0:4840/raspi/server/`. Der Aggregation-Server übernimmt die
-Adresse und verbindet ins Leere. `ua_lds` trägt deshalb dieselbe LAN-IPv4 ein,
-die auch die mDNS-Ankündigung nennt.
+**Falle 1:** `register_to_discovery()` trägt `server.endpoint.geturl()` als
+DiscoveryUrl ein. Ein Endpoint auf `0.0.0.0` — naheliegend, damit der Server
+über jede Schnittstelle erreichbar ist — meldet dem Aggregation-Server also
+`0.0.0.0`, und der verbindet ins Leere.
+
+Beides gleichzeitig geht mit **`Server.socket_address`**: Der Endpoint nennt
+die LAN-IPv4, gelauscht wird weiter auf `0.0.0.0`. Genau dafür ist das Attribut
+gedacht („used when the IP address of the network interface is different from
+the endpoint IP offered to the client during discovery"). `server.py` setzt
+beides; die URL baut `ua_lds.advertised_endpoint()`.
+
+Verifiziert am 21.09.2026 mit dem echten `server.py` lokal: Log meldet
+`Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/` und
+`Listening on 0.0.0.0:4840`, erreichbar über `127.0.0.1` **und** die LAN-IP.
+Das ist wichtig, weil `print_setpoint.py` und der Hello-World-Client auf dem Pi
+über `127.0.0.1` gehen.
 
 **Falle 2 — einmal beobachtet, nicht reproduziert:** Bei einer Anmeldung per
 `RegisterServer2` mit `MdnsDiscoveryConfiguration` stand im

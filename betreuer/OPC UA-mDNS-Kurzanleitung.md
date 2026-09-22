@@ -36,7 +36,7 @@ python -m pip install asyncua zeroconf
 ```python
 import asyncio
 
-from asyncua import Client, Server, ua
+from asyncua import Server
 from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
@@ -53,42 +53,18 @@ APP_URI = "urn:meine-gruppe:gruppe-01"
 LDS = "opc.tcp://10.10.38.27:4840/"   # Discovery-Server der Zelle
 
 
-async def anmelden(app_uri, name, discovery_url, online=True):
-    """Meldet den Server beim Discovery-Server an -- oder mit online=False ab.
-
-    Anmeldung ist ein sessionloser Dienst: es wird nur ein Kanal aufgebaut,
-    keine Session.
-    """
-    eintrag = ua.RegisteredServer()
-    eintrag.ServerUri = app_uri
-    eintrag.ProductUri = "urn:freeopcua.github.io:python:server"
-    eintrag.ServerNames = [ua.LocalizedText(name)]
-    eintrag.ServerType = ua.ApplicationType.ClientAndServer
-    eintrag.DiscoveryUrls = [discovery_url]   # echte IP, niemals 0.0.0.0
-    eintrag.IsOnline = online
-
-    client = Client(url=LDS, timeout=10)
-    await client.connect_sessionless()
-    try:
-        await client.uaclient.register_server(eintrag)
-    finally:
-        await client.disconnect_sessionless()
-
-
-async def erneuern(app_uri, name, discovery_url):
-    """Einmal anmelden genuegt nicht -- siehe unten. Alle 60 s erneuern."""
-    while True:
-        await asyncio.sleep(60)
-        try:
-            await anmelden(app_uri, name, discovery_url)
-        except Exception as fehler:
-            print(f"Erneuerung fehlgeschlagen: {fehler}")
-
-
 async def main():
     server = Server()
     await server.init()
+
+    # Angekuendigt wird die echte IP: register_to_discovery() gibt genau
+    # diesen Endpoint als DiscoveryUrl an den Discovery-Server weiter, und
+    # mit 0.0.0.0 verbindet der Aggregation-Server spaeter ins Leere.
     server.set_endpoint(f"opc.tcp://{IP}:{PORT}{PATH}")
+    # Gelauscht wird trotzdem auf allen Schnittstellen -- sonst ist der Server
+    # auf dem eigenen Rechner nicht mehr ueber 127.0.0.1 erreichbar.
+    server.socket_address = ("0.0.0.0", PORT)
+
     server.set_server_name(NAME)
     await server.set_application_uri(APP_URI)
     # Hier bei Bedarf eigene Nodes und Serverkonfiguration ergaenzen.
@@ -102,33 +78,36 @@ async def main():
         port=PORT,
         properties={"path": PATH, "caps": "DA"},
     )
-    discovery_url = f"opc.tcp://{IP}:{PORT}{PATH}"
 
     async with server:  # Startet den Server; stoppt ihn beim Verlassen.
         mdns = AsyncZeroconf(interfaces=[IP], ip_version=IPVersion.V4Only)
-        erneuerung = None
+        angemeldet = False
         try:
             # 1. mDNS: fuer Clients im Subnetz.
             await (await mdns.async_register_service(info))
 
             # 2. Discovery-Server: nur hierueber nimmt der Aggregation-Server
-            #    das Modul auf.
-            await anmelden(APP_URI, NAME, discovery_url)
-            erneuerung = asyncio.create_task(
-                erneuern(APP_URI, NAME, discovery_url)
-            )
+            #    das Modul auf. period=60 haelt die Anmeldung frisch; das ist
+            #    noetig, siehe unten.
+            try:
+                await server.register_to_discovery(LDS, period=60)
+                angemeldet = True
+            except Exception as fehler:
+                # Ein Server, den man per URL erreicht, ist mehr wert als gar
+                # keiner -- also weiterlaufen statt abbrechen.
+                print(f"LDS-Anmeldung fehlgeschlagen: {fehler}")
 
-            print(f"Server, mDNS und Anmeldung aktiv: {discovery_url}")
+            print(f"Server und mDNS aktiv: opc.tcp://{IP}:{PORT}{PATH}")
             await asyncio.Event().wait()  # Oder hier eigene Server-Schleife.
         finally:
-            if erneuerung is not None:
-                erneuerung.cancel()
-            # Abmelden, damit der Aggregation-Server nicht auf eine tote
-            # Adresse verbindet.
-            try:
-                await anmelden(APP_URI, NAME, discovery_url, online=False)
-            except Exception:
-                pass
+            # Achtung: server.stop() meldet NICHT ab. Ohne das hier bleibt eine
+            # tote Adresse im Discovery-Server stehen, und der
+            # Aggregation-Server zeigt ein Modul, das er nicht mehr erreicht.
+            if angemeldet:
+                try:
+                    await server.unregister_from_discovery(LDS)
+                except Exception:
+                    pass
             await mdns.async_close()
 
 
@@ -202,13 +181,19 @@ Minuten liefen und per mDNS funkten, blieben außen vor. Nach einer einzigen
 
 ### Drei Fallen, die Zeit kosten
 
-1. **`Server.register_to_discovery()` von asyncua registriert `0.0.0.0`.**
-   Die Methode trägt `server.endpoint.geturl()` als DiscoveryUrl ein. Wer den
-   Endpoint auf `0.0.0.0` bindet — üblich, damit der Server über jede
-   Schnittstelle erreichbar ist —, meldet dem Aggregation-Server die Adresse
-   `0.0.0.0`. Der übernimmt sie wörtlich und verbindet ins Leere. Deshalb oben
-   der eigene `RegisteredServer` mit echter IP. Wer `0.0.0.0` nicht braucht,
-   kann stattdessen den Endpoint direkt auf die LAN-IP setzen.
+1. **Ein Endpoint auf `0.0.0.0` meldet `0.0.0.0` an.**
+   `register_to_discovery()` trägt `server.endpoint.geturl()` als DiscoveryUrl
+   ein. Wer den Endpoint auf `0.0.0.0` setzt — naheliegend, damit der Server
+   über jede Schnittstelle erreichbar ist —, meldet dem Aggregation-Server die
+   Adresse `0.0.0.0`. Der übernimmt sie wörtlich und verbindet ins Leere.
+
+   Beides gleichzeitig geht mit **`Server.socket_address`**: Der Endpoint nennt
+   die echte LAN-IP, die Bindeadresse bleibt `0.0.0.0`. Genau dafür ist das
+   Attribut da („used when the IP address of the network interface is different
+   from the endpoint IP offered to the client during discovery"). Im Beispiel
+   oben sind es die zwei Zeilen `set_endpoint(...)` und `socket_address = ...`.
+   Verifiziert: darüber ist der Server sowohl über `127.0.0.1` als auch über
+   die LAN-IP erreichbar, und angemeldet wird die LAN-IP.
 
 2. **Ohne eigene ApplicationUri heißen alle gleich.** asyncua meldet sonst
    `urn:freeopcua:python:server`. Der Aggregation-Server führt Module unter
@@ -224,10 +209,13 @@ Minuten liefen und per mDNS funkten, blieben außen vor. Nach einer einzigen
    bis er selbst neu startet.
 
    In fremdem Code sieht man die Erneuerung nur nicht:
-   `asyncua.Server.register_to_discovery()` startet die Schleife selbst,
-   Standardabstand 60 s. Wer die Methode benutzt, bekommt sie geschenkt — wer
-   den Registrierungsdatensatz wie oben selbst baut (wegen Falle 1), muss die
-   Schleife selbst mitbringen.
+   `register_to_discovery()` startet die Schleife selbst, Standardabstand 60 s
+   (`period`). Bei jedem Durchlauf baut sie einen frischen Kanal auf, übersteht
+   also auch einen Neustart des Discovery-Servers.
+
+   Was sie **nicht** tut: abmelden. `server.stop()` bricht nur die Schleife ab.
+   Ohne `unregister_from_discovery()` im `finally` bleibt eine tote Adresse
+   stehen.
 
    Wie lange ein Eintrag ohne Erneuerung überlebt, ist **nicht** gemessen;
    open62541 räumt nach einem eigenen Timeout ab. Die verbreitete Angabe

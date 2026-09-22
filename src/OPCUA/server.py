@@ -41,10 +41,19 @@ _log = logging.getLogger("raspi-opcua")
 
 NODESET_PATH = Path(__file__).parent / "Opc.Ua.MachineVision.NodeSet2.xml"
 
-#: Bleibt `/raspi/server/`, obwohl das Raspi-Interface weg ist: der Pfad steht
-#: in der mDNS-Ankuendigung, in der LDS-Registrierung und in jeder Client-
-#: Konfiguration. Ihn umzubenennen bricht jede vorhandene Verbindung, ohne
-#: irgendetwas zu verbessern.
+#: Rueckfall-Endpoint. Im Regelfall nennt der Endpoint zur Laufzeit die
+#: LAN-IPv4 (siehe `ua_lds.advertised_endpoint`), weil `register_to_discovery()`
+#: genau diese Adresse als DiscoveryUrl an den Discovery-Server weitergibt --
+#: mit `0.0.0.0` verbindet der Aggregation-Server ins Leere. Gelauscht wird
+#: unabhaengig davon immer auf allen Schnittstellen (`Server.socket_address`),
+#: damit lokale Werkzeuge weiter ueber 127.0.0.1 herankommen.
+#: Ist keine LAN-IPv4 zu ermitteln, bleibt es bei diesem Wert -- dann laeuft der
+#: Server ohne LDS-Anmeldung weiter.
+#:
+#: Der Pfad bleibt `/raspi/server/`, obwohl das Raspi-Interface entfernt ist: er
+#: steht in der mDNS-Ankuendigung, in der LDS-Registrierung und in jeder
+#: Client-Konfiguration. Ihn umzubenennen braeche jede vorhandene Verbindung,
+#: ohne irgendetwas zu verbessern.
 ENDPOINT = "opc.tcp://0.0.0.0:4840/raspi/server/"
 SERVER_NAME = "Raspberry Pi OPC UA Server"
 
@@ -85,6 +94,16 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.100,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
+        # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
+        # nur die Aufloesung/Kameradistanz unterscheidet sich, nicht das
+        # Blatt. Noch nicht real durchgemessen; falls das Board bei der
+        # Kalibrierfahrt nicht gefunden wird, war die Annahme falsch --
+        # dann mit dem Diagnose-Skript aus der Hand-Pi-Kalibrierung mehrere
+        # cols/rows-Kombinationen gegen einen echten Frame testen.
+        "calibration_board_type": "chessboard",
+        "calibration_board_cols": 7,
+        "calibration_board_rows": 9,
+        "calibration_board_square_size_m": 0.022,
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -219,7 +238,7 @@ def application_uri() -> str:
     return os.getenv("OPCUA_APPLICATION_URI") or f"{APPLICATION_URI_PREFIX}:{name}"
 
 
-def vision_config() -> VisionServerConfig:
+def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     """Konfiguration des eingebauten Vision-Systems.
 
     Endpoint, ApplicationURI und ServerName sind die dieses Servers; das
@@ -228,20 +247,34 @@ def vision_config() -> VisionServerConfig:
     """
     vision_system_id, frame_id = vision_identity()
     backend = vision_camera_backend()
+    apriltag = apriltag_config(frame_id)
     _log.info(
         "Vision-Identitaet: %s (Rahmen %s, Kamera-Backend %s)",
         vision_system_id,
         frame_id,
         backend,
     )
+    # Picamera2/OpenCV oeffnen die geteilte Kamera mit `CameraStreamConfig.
+    # resolution` (siehe `camera.py:_open_picamera2`) -- weicht das vom
+    # `AprilTagProfileConfig.resolution` ab, hat das erfasste Bild ein
+    # anderes Seitenverhaeltnis als die (Platzhalter- oder echte)
+    # Kalibrierung, und das Stream-Overlay scheitert mit "Seitenverhaeltnis
+    # aendert sich" (`tagloc.calibration.scale_to_resolution`). RealSense
+    # betroffen nicht: die hat mit `realsense_resolution` ein eigenes Feld,
+    # das schon auf cam_flanges Aufloesung (640x480) abgestimmt ist.
+    camera_stream = (
+        CameraStreamConfig(backend=backend)
+        if backend == "realsense"
+        else CameraStreamConfig(backend=backend, resolution=apriltag.resolution)
+    )
     return VisionServerConfig(
-        endpoint=ENDPOINT,
+        endpoint=endpoint,
         server_name=SERVER_NAME,
         nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
         frame_id=frame_id,
-        camera_stream=CameraStreamConfig(backend=backend),
-        apriltag=apriltag_config(frame_id),
+        camera_stream=camera_stream,
+        apriltag=apriltag,
         assets=asset_config(frame_id, vision_system_id),
     )
 
@@ -251,7 +284,14 @@ async def main():
     server = Server()
     await server.init()
 
-    server.set_endpoint(ENDPOINT)
+    # Der Endpoint nennt die LAN-IPv4, denn `register_to_discovery()` gibt
+    # genau ihn als DiscoveryUrl an den Discovery-Server weiter. `0.0.0.0`
+    # waere dort wertlos. Gelauscht wird trotzdem auf allen Schnittstellen,
+    # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Hello-World-Client
+    # auf dem Pi.
+    endpoint = ua_lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
+    server.set_endpoint(endpoint)
+    server.socket_address = ("0.0.0.0", MDNS_PORT)
     server.set_server_name(SERVER_NAME)
     # Vor dem Aufbau des Adressraums: die ApplicationUri landet im
     # Namespace-Array auf ns=1 und ist der Name, unter dem der
@@ -264,7 +304,7 @@ async def main():
     # Dieser Server legt selbst keine Knoten mehr an -- die CPU-Temperatur-Demo
     # (`RaspiDevice`, `2:VisionSystem`, `CpuTemperatureResult`) ist entfernt,
     # samt ihrem Namensraum `http://launch-rm.de/raspi`.
-    machine = await install_vision_machine(server, vision_config())
+    machine = await install_vision_machine(server, vision_config(endpoint))
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
 
@@ -287,13 +327,8 @@ async def main():
                 ua_mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
-                # registriert ist. Messung und Begruendung stehen in `ua_lds`.
-                ua_lds.register(
-                    application_uri=application_uri(),
-                    server_name=SERVER_NAME,
-                    port=MDNS_PORT,
-                    path=MDNS_PATH,
-                ),
+                # angemeldet ist. Messung und Begruendung stehen in `ua_lds`.
+                ua_lds.register(server),
             ):
                 # Frueher lief hier eine 1-Hz-Schleife, die die Demo-Werte
                 # aktuell hielt. Sie lag im selben Event-Loop wie das
