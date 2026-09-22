@@ -1,6 +1,6 @@
 # Altlasten A1–A6/B2/B4/B6 abbauen und VisionProgram zur alleinigen Fassade machen
 
-**Status:** in Arbeit — 21.09.2026
+**Status:** fertig — 22.09.2026
 **Verantwortlich:** `Agent: RaspiDevice/VisionSystem entfernen, Part-10-Fassade`
 **Thema:** opcua
 **Branch:** worktree-altlasten-abbau (aus `feature/vision-server`)
@@ -29,8 +29,11 @@ verwirrt und möchte ausschließlich auf dem Part-10-Teil arbeiten.
 
 **Zelle** (dieses Repo)
 
-- `src/OPCUA/server.py`
+- `src/OPCUA/server.py` → `src/vision_server/cell_server.py` (verschoben)
 - `src/OPCUA/print_setpoint.py` (gelöscht)
+- `src/ua_lds.py` → `src/vision_server/discovery/lds.py` (verschoben)
+- `src/ua_mdns.py` → `src/vision_server/discovery/mdns.py` (verschoben)
+- `src/OPCUA/*.xml`, `src/OPCUA/nodesets/` → `src/vision_server/nodesets/`
 - `src/vision_server/address_space.py`
 - `src/vision_server/asset_model.py`
 - `src/vision_server/runner.py`
@@ -191,10 +194,71 @@ async def install_vision_program(
 
 ## Abweichungen vom Plan
 
-Wird während der Umsetzung gefüllt.
+**1. Events lassen sich nicht spiegeln — gemessen, nicht angenommen.**
+Der Plan ging davon aus, dass eine `HasEventSource`-Referenz genügt, damit ein
+Abo auf `VisionProgram` auch die 40100-Events sieht. Das ist falsch. Am
+21.09.2026 gegen asyncua 2.0.1 mit zwei Objekten, zwei Abos und zwei
+Generatoren nachgestellt: jedes Event erreicht **ausschließlich** das Abo auf
+dem emittierenden Knoten, mit und ohne Referenz. Kontrollfall lief, der
+Testaufbau war also nicht schuld.
+
+Folge: Die 40100-Events bleiben auf `VisionMachine`. Ein reiner Part-10-Client
+holt sein Ergebnis über die Wertänderung von
+`VisionProgram/ResultSet/LatestResultJson` statt über ein Event. Sie zusätzlich
+auf `VisionProgram` zu emittieren wäre echte Doppelung gewesen — zwei Events
+pro Ursache — und genau das sollte dieser Umbau ja beenden.
+
+**2. Methodenspiegelung geht per Referenz.** Ebenfalls vorab gemessen: eine
+`HasComponent`-Referenz reicht, der Aufruf gelingt mit beiden Objekten als
+`objectId`, ohne zweite Registrierung.
+
+**3. Zusätzlich gemacht, weil es unmittelbar anschloss:**
+
+* `origin/feature/vision-server` (20617c7) eingezogen — die Umstellung auf
+  `Server.register_to_discovery()` und vier weitere Commits. Ein Konflikt in
+  `server.py`, beide Male Kommentare bzw. die gelöschte Demo gegen ihren
+  Wegfall.
+* **Paketumzug:** `src/OPCUA/` ist aufgelöst. Nach dem Altlasten-Abbau enthielt
+  `server.py` nur noch Pi-Konfiguration, mDNS und LDS — das gehört neben das
+  Paket, das es benutzt. Erledigt damit Altlast **C5** (Nodesets) mit.
+
+**4. B4 und B5 waren schon weg.** Der Plan sah vor, die Temperaturanzeige und
+`MOCK_MODULES` aus dem Autolocate-Popup zu entfernen. Beide waren am 22.09.2026
+nicht mehr vorhanden — das Popup hatte sich zwischenzeitlich weiterentwickelt.
+
+**5. Nicht gemacht:** `legacyCameraFrameNodeId` im Frontend bleibt. Der Name
+täuscht — gemeint ist der numerische Kamera-Knoten des *älteren Pi-Builds*,
+nicht die entfernte `2:VisionSystem`. Solange die beiden Pis zeitversetzt
+umgestellt werden (und das stehen sie gerade, siehe D5), ist der Rückfall
+nützlich.
+
+**6. Betriebsfolge, die der Plan nicht hatte:** Die systemd-Unit auf beiden Pis
+startet `src/OPCUA/server.py`. Diesen Pfad gibt es nicht mehr; die Unit ist
+nirgends versioniert (Altlast D5) und muss von Hand auf
+`python3 -m vision_server.cell_server` mit `WorkingDirectory=<repo>/src`
+umgestellt werden.
 
 ## Nach Abschluss
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
-- `doc/altlasten.md`: A1–A6, B2, B4, B6 gestrichen.
+- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
+- [x] Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
+- [x] `doc/altlasten.md`: A1–A6, B2, B4, B5, B6, C5 gestrichen; B1 auf den
+      Frontend-Rest eingekürzt; D5 als akut markiert.
+- [x] Fachdoku nachgezogen: `vision-system.md`, `vision-server-interface.md`,
+      `part10-programm-schnittstelle.md`, `vision-system-next-steps.md`,
+      `apriltag-e2e-test.md`, `apriltag-referenz.md`, `praesentation.md`,
+      `README.md`.
+
+### Geprüft
+
+| Was | Ergebnis |
+| --- | --- |
+| Zelle: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` | 249 Tests, grün |
+| Zelle: Server unter neuem Einstiegspunkt gestartet | Nodesets aus dem Paket, `ns=6;s=VisionMachine` unter `Machines`, `VisionProgram` daneben, mDNS aktiv |
+| WSC Frontend: `npx vitest run src/features/opcua-server` | 16 Tests, grün |
+| WSC Frontend: `npx tsc --noEmit` | ohne Befund |
+| WSC Frontend: volle Suite | 121 grün, 1 rot — `entities/robot/model/store.test.ts:188`, vorbestehend (Altlast D8), keine Robot-Datei angefasst |
+| WSC Backend | `pytest` ist im venv nicht installiert (Altlast D7: die Suite lief ohnehin nicht durch). Stattdessen Importe von `application_service` und `runtime_registry` geprüft — ziehen sauber |
+
+**Offen:** Die systemd-Units auf beiden Pis. Bis sie umgestellt sind, startet
+der Dienst dort nach einem Pull nicht mehr.

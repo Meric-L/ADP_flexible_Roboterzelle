@@ -8,8 +8,7 @@ Jeder Eintrag nennt die Bedingung, unter der er wegfallen kann. Erst wenn die er
 ist, wird gelöscht — und dann auch der Eintrag hier gestrichen.
 
 **Am 21.09.2026 abgebaut:** die vollständige CPU-Temperatur-Demo (A1–A6) samt ihrer
-Gegenstücke im Uni-Repo (B2, B4) und dem `legacy`-Zweig, der nur ihretwegen existierte
-(B6). Siehe [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
+Gegenstücke im Uni-Repo (B2, B6). B4 und B5 waren zu dem Zeitpunkt bereits fort. Siehe [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
 
 Zwei Repos sind betroffen:
 
@@ -53,11 +52,11 @@ festverdrahtet und gehört so nicht in ein Uni-Repo, das andere Gruppen weiterbe
 
 | # | Was | Wo | Warum es da ist | Abbaubedingung |
 |---|---|---|---|---|
-| B1 | **Hartcodierte Pi-Adressen** `10.10.38.104` / `.109` und Relay-Knoten-IDs | WSC: `backend/src/backend/config/pi_relay.py:3-9`, `frontend/src/features/opcua-server/config/piServers.ts:1-9` | Schnellster Weg zu einer laufenden Verbindung | Server-Auswahl über die vorhandene `ConnectOpcUa`-Eingabe oder Konfiguration statt Konstanten |
+| B1 | **Hartcodierte Pi-Adressen** `10.10.38.104` / `.109` | WSC: `frontend/src/features/opcua-server/config/piServers.ts:1-6` | Schnellster Weg zu einer laufenden Verbindung | Server-Auswahl über die vorhandene `ConnectOpcUa`-Eingabe oder über mDNS statt Konstanten. **Teilweise erledigt** 22.09.2026: der Backend-Teil ist mit `config/pi_relay.py` entfallen (die Datei enthielt nur Relay-Konfiguration). Im Frontend hängen die Konstanten noch an sechs Stellen — `ServerManager`, `CameraStreamPanel`, `AutolocateModulesModal`, `ViewportHeaderControls`, `sceneState` |
 | ~~B2~~ | ~~CPU-Temperatur-Relay Pi1↔Pi2~~ | — | — | **Erledigt** 21.09.2026: ersatzlos entfernt, samt `_relay_tasks` in `runtime_registry.py`. Die Zielknoten gibt es nicht mehr |
 | B3 | **„First Layer" / „Second Layer" als Label zweier fester URLs** | WSC: `piServers.ts:4-7`, `ServerManager.tsx:5`, `:100-103` | Zwei Verbindungspunkte in der UI unterscheidbar machen | Wenn die Layer-Zuordnung aus den Serverdaten kommt statt aus der URL |
-| ~~B4~~ | ~~„Test: First Layer CPU-Temperatur" im Autolocate-Popup~~ | — | — | **Erledigt** 21.09.2026: ersatzlos entfernt. Der Knoten, den es abonnierte, existiert nicht mehr |
-| B5 | **`MOCK_MODULES`** — drei erfundene Roboter mit Position 0/0/0 | WSC: `AutolocateModulesModal.tsx:21-36`, `:123` | Füllt den dritten Bildschirm des Popups | Wenn `detections` aus dem Vision-Payload dort landen. Im Code bereits als `TODO` markiert |
+| ~~B4~~ | ~~„Test: First Layer CPU-Temperatur" im Autolocate-Popup~~ | — | — | **Erledigt**: war beim Abbau am 22.09.2026 bereits fort — das Popup hatte sich zwischenzeitlich weiterentwickelt. Der Knoten, den es abonnierte, existiert ohnehin nicht mehr |
+| ~~B5~~ | ~~`MOCK_MODULES` — drei erfundene Roboter mit Position 0/0/0~~ | — | — | **Erledigt**: am 22.09.2026 nicht mehr im Popup vorhanden. Wie B4 im Zuge der Autolocate-Arbeit entfallen |
 | ~~B6~~ | ~~`legacy`-Zweig in `resolveVisionBinding`~~ | — | — | **Erledigt** 21.09.2026: mit A1 hinfällig. Der `unknown`-Zweig ist geblieben — er unterscheidet weiterhin „noch nichts bekannt" von „falscher Server" |
 | B7 | **Deployment-Behelf** `if os.getenv("HOST"): mount StaticFiles("./www")` und `host="0.0.0.0"` | WSC: `backend/src/backend/app.py:18-19`, `:30` | Damit das gebaute Frontend mit ausgeliefert wird | Nicht von uns eingeführt — bei einer Rückgabe ans Uni-Repo mit den Betreuern klären |
 | B8 | **Branchname `Ungetestet`** | WSC | Ehrlich benannter Arbeitsbranch | Beim Merge nach `dev`. Der Name sagt inzwischen weniger als er soll — Backend und Vision-Strecke sind gegen beide Pis verifiziert, das Frontend hat Typecheck und Unit-Tests |
@@ -136,6 +135,9 @@ Die Kette stand hier vorgezeichnet und wurde genau so abgearbeitet:
 4. ~~**A4**, **A5**, **A3**, **A6**~~ — der Rest der Demo, samt Namensraum.
 5. **C3** ist bereits erledigt (siehe Abschnitt C).
 
-Offen bleiben **B1**, **B3**, **B5**, **B7**, **B8** im WSC-Repo sowie **C2**, **C5**,
-**C7** und der gesamte Abschnitt D. B1 hängt an der mDNS-Umstellung: die Adressen sind
+Offen bleiben **B1** (nur noch im Frontend), **B3**, **B7**, **B8** im WSC-Repo sowie
+**C2**, **C7** und der Abschnitt D. B1 hängt an der mDNS-Umstellung: die Adressen sind
 noch Konstanten, obwohl der Server sich inzwischen selbst ankündigt.
+
+**D5 ist durch den Paketumzug vom 22.09.2026 akut geworden** — die systemd-Unit auf
+beiden Pis zeigt auf einen Pfad, den es nicht mehr gibt. Siehe Abschnitt D.
