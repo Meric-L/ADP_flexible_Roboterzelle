@@ -760,12 +760,17 @@ Livestream (`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild
 erscheinen dann zusätzlich zur aktuellen Board-Erkennung die kumulierte
 Abdeckung und `Aufnahmen X/minSamples`.
 
-Für Pis mit angeschlossenem Monitor gibt es dafür zwei Kommandozeilen-Tools
+Für Pis mit angeschlossenem Monitor gibt es dafür drei Kommandozeilen-Tools
 unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
 Teil des Frontends): `calibration_client.py` startet/beendet eine Session und
 loggt `CalibrationProgress`; `stream_viewer.py` zeigt den Livestream in einem
 lokalen Fenster und löst mit der Leertaste `CaptureCalibrationSample` aus —
-zusammen der Handshake, den ein Frontend nachbilden muss.
+zusammen der Handshake, den ein Frontend nachbilden muss. `diagnose_board.py`
+ist reine Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und
+probiert mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board`
+durch, falls das Board im Stream zwar sichtbar, aber nicht erkannt wird —
+z. B. weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
+tatsächlich aufgehängten Board passt.
 
 ### 12.6 Sperren
 
