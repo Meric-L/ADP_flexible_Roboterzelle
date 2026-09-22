@@ -387,6 +387,27 @@ Vermessung der Zelle; der untere ist Bedeutung. Die Weltposen lassen sich
 nicht auslagern: `localize_camera` läuft je Bild im Erkennungsjob auf dem Pi,
 und die Verkettung soll an genau einer Stelle stehen (Abschnitt 1.2).
 
+#### Tag-Größen: zwei Sorten, zwei Orte
+
+Die **Welttags werden in einer anderen Größe gedruckt als alle übrigen Tags**,
+und alle Modultags haben untereinander dieselbe Größe. Daraus folgt, wo eine
+Größe gepflegt wird:
+
+| Tag | Größe kommt aus | Wird geändert |
+|---|---|---|
+| **Welttag** | `sizeM` seines Eintrags in `config/tagmap.json` | nur beim Umbau der Zelle |
+| **Modultag** | `tag_size_m` des Profils (`PI_APRILTAG_PRESETS`) | einmal, gilt für alle Module |
+| abweichender Sonderfall | eigener Eintrag mit `sizeM` in der Tag-Map | über `SetTagMap`, ohne Dateizugriff |
+
+`TagMap.size_for` setzt das um: steht ein Tag in der Karte, gewinnt dessen
+`sizeM`; sonst gilt der Profilwert. Ein neues Modul braucht deshalb **keinen
+Eintrag auf dem Pi** — es erbt die Modulgröße und wird als `TAG-<id>` gemeldet,
+bis der Konsument ihm einen Namen gibt.
+
+Eine falsche Tag-Größe skaliert die gemessene Distanz linear mit und fällt
+sonst nicht auf. Deshalb: **die gedruckte Kante messen**, nicht die bestellte
+eintragen — und je Sorte nur an einer Stelle.
+
 **Achtung, Doppelversatz.** `tagToModule` darf nur an *einer* Stelle stehen.
 Das Frontend der WebSkillComposition rechnet den Versatz selbst
 (`cell-modules/model/cellModules.ts`, `moduleWorldPose`) und nimmt an, der Pi

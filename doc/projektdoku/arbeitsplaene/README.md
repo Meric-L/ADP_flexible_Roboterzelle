@@ -20,6 +20,7 @@ nicht gibt.
 | [`apriltag-welttag-konzept.md`](apriltag-welttag-konzept.md) | apriltag | fertig | `Agent: Koordinatentransformation auf das Welttag-Konzept ziehen` | 22.09.2026 |
 | [`apriltag-hand-auge-ankern.md`](apriltag-hand-auge-ankern.md) | apriltag | fertig | `Agent: Hand-Auge-Kalibrierung und Ankern am Welttag` | 22.09.2026 |
 | [`apriltag-tagmap-robustheit.md`](apriltag-tagmap-robustheit.md) | apriltag | fertig | `Agent: Tag-Map-Migration und Platzhalter-Module` | 22.09.2026 |
+| [`apriltag-tagmap-ueber-opcua.md`](apriltag-tagmap-ueber-opcua.md) | apriltag | fertig | `Agent: Tag-Map per OPC-UA-Methode setzen` | 22.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

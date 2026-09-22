@@ -80,6 +80,8 @@ Objects/
         ├── FinishCalibration                ns=<vision>;s=VisionMachine.FinishCalibration
         ├── AbortCalibration                 ns=<vision>;s=VisionMachine.AbortCalibration
         ├── CalibrationProgress              ns=<vision>;s=VisionMachine.CalibrationProgress
+        ├── SetTagMap                        ns=<vision>;s=VisionMachine.SetTagMap
+        ├── TagMapJson                       ns=<vision>;s=VisionMachine.TagMapJson
         ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
         │                                    derselbe JSON-String, als einfacher String-Knoten
         ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
@@ -772,6 +774,48 @@ Operator vertan hat oder neu anfangen will.
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
 | `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, keine Session aktiv) |
+
+### 12.5a `SetTagMap` — Tag-Map der Zelle setzen
+
+```
+ns=<vision>;s=<VisionSystemName>.SetTagMap
+
+SetTagMap(TagMapJson : String) -> (Error : Int32)
+```
+
+Damit wird das **Backend zur Pflegestelle der Tag-Map**: eine neue Tag-Größe
+oder ein verschobener Welttag brauchen keinen Dateizugriff auf dem Pi mehr.
+Das Argument ist exakt der Dateiinhalt von `config/tagmap.json`
+(Schema `wsc.vision.tagmap/2`) — was das Backend schickt, lässt sich
+unverändert ablegen und umgekehrt.
+
+| `Error` | Wann |
+| --- | --- |
+| `OK` (0) | Karte übernommen, Datei geschrieben, Erkennung nutzt sie sofort |
+| `INVALID_ARGUMENT` (2) | kein gültiges JSON, unbekanntes Schema, unbekannte Rolle |
+| `BUSY` (3) | ein Job oder eine Kalibrier-Session läuft |
+| `INTERNAL` (6) | Datei nicht schreibbar — die Karte ist **trotzdem aktiv**, nur ein Neustart fällt auf die alte zurück |
+
+**Erst prüfen, dann übernehmen:** eine abgelehnte Karte lässt die laufende
+unangetastet. Beanstandungen von `validate_tag_map` (etwa nur ein Welttag statt
+vier) sind **kein** Fehler — sie werden protokolliert und die Karte gilt.
+
+Der Anker der Handkamera wird dabei **verworfen**: er war gegen die Weltposen
+der alten Karte gerechnet und wäre gegenüber der neuen stumm falsch. Der
+nächste Blick auf einen Welttag ankert neu.
+
+Geschrieben wird nach `config/tagmap.json`, damit der Pi nach einem Neustart
+ohne Backend weitermisst.
+
+### 12.5b `TagMapJson` (nur lesen)
+
+```
+ns=<vision>;s=VisionMachine.TagMapJson              Datentyp String (JSON)
+```
+
+Die **aktuell geladene** Karte, im selben Format. Bewusst nicht schreibbar: eine
+Tag-Map muss geprüft werden, bevor sie gilt, und ein Schreibzugriff könnte eine
+unbrauchbare Karte nicht ablehnen. Dafür gibt es `SetTagMap`.
 
 ### 12.5 `CalibrationProgress` (nur lesen)
 
