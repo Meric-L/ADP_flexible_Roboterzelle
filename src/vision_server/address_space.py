@@ -134,6 +134,10 @@ class VisionAddressSpace:
     #: Writable: the frontend selects what the stream shows through this
     #: ("off", "apriltag", "calibration"). `None` without a livestream.
     camera_stream_mode: Node | None = None
+    #: Int32: port of the MJPEG stream (`mjpeg_server.py`), 0 = none. The
+    #: frontend builds the URL from the host it reaches OPC UA under. `None`
+    #: without a livestream.
+    camera_stream_http_port: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -249,6 +253,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
 
     latest_camera_frame: Node | None = None
     camera_stream_mode: Node | None = None
+    camera_stream_http_port: Node | None = None
     if config.camera_stream is not None:
         # Additive Knoten, nicht Teil des 40100-Nodesets -- analog zu den
         # eigenen `RaspiDevice`-Variablen in `OPCUA/server.py`. Nur der Server
@@ -275,6 +280,15 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.VariantType.String,
         )
         await camera_stream_mode.set_writable()
+        # Starts at 0: the runner writes the real port only once the MJPEG
+        # server is actually listening, so a failed bind never advertises a
+        # dead URL.
+        camera_stream_http_port = await vision_system.add_variable(
+            ua.NodeId(f"{name}.{config.camera_stream.http_port_node_name}", own_idx),
+            ua.QualifiedName(config.camera_stream.http_port_node_name, own_idx),
+            0,
+            ua.VariantType.Int32,
+        )
 
     calibration = (
         await _attach_calibration(vision_system, own_idx, name)
@@ -300,6 +314,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         results_folder=results_folder,
         latest_camera_frame=latest_camera_frame,
         camera_stream_mode=camera_stream_mode,
+        camera_stream_http_port=camera_stream_http_port,
         amcm_idx=amcm_idx,
         calibration=calibration,
     )

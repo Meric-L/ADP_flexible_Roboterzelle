@@ -52,6 +52,8 @@ Objects/
     │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
     ├── CameraStreamMode                 ns=4;s=VisionMachine.CameraStreamMode
     │                                    **beschreibbar**: off | apriltag | calibration
+    ├── CameraStreamHttpPort             ns=4;s=VisionMachine.CameraStreamHttpPort
+    │                                    Int32: Port des MJPEG-Streams, 0 = keiner (Abschnitt 10.2)
     └── Calibration                      ns=4;s=VisionMachine.Calibration
                                          Fernkalibrierung der Kamera, siehe Abschnitt 12
 ```
@@ -67,7 +69,8 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `job.py` | Validierung, Guard, Job-Ablauf, Fehlerpfad |
 | `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
-| `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
+| `camera_stream.py` | Markiert und kodiert jeden Frame einmal; schreibt ihn als Base64-JPEG in `LatestCameraFrame` und reicht ihn an den MJPEG-Server, siehe Abschnitt 10 |
+| `mjpeg_server.py` | Livestream als MJPEG über HTTP (`/stream.mjpg`, `/snapshot.jpg`), siehe Abschnitt 10.2 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
 | `calibration_session.py` | Fernkalibrierung: Aufnahmeschleife, Status-JSON, eigenes Overlay, siehe Abschnitt 12 |
 | `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
@@ -101,6 +104,7 @@ Wichtige NodeIds (sprechende String-Ids, stabil über Neustarts und Änderungen)
 | Zustand innen | `ns=<vision>;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.CurrentState` |
 | Letztes Ergebnis (JSON) | `ns=<vision>;s=VisionMachine.LatestResultJson` |
 | Kamera-Livestream (Base64-JPEG) | `ns=<vision>;s=VisionMachine.LatestCameraFrame` — nur vorhanden, wenn `camera_stream` konfiguriert ist (siehe Abschnitt 10) |
+| Port des MJPEG-Streams | `ns=<vision>;s=VisionMachine.CameraStreamHttpPort` — Int32, 0 = kein HTTP-Stream (siehe Abschnitt 10.2) |
 
 ## 3. Was das Backend können muss
 
@@ -510,7 +514,11 @@ Verhalten:
   öffnet die Hardware nicht erneut. Während eines laufenden Jobs bleibt der
   Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
-  (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
+  (`profiles.py`) — Standard 1280×720, Aufnahme 15 fps, Knoten 5 fps,
+  HTTP-Stream 15 fps, Qualität 70.
+- Der Knoten ist seit dem MJPEG-Stream (10.2) nur noch der **Rückfallweg**.
+  Base64 über OPC UA, Backend, WebSocket und React-Store taugt für ein
+  Kontrollbild, nicht für Video.
 - Welche Quelle den Stream speist, entscheidet sich über die Eigenschaft: der
   Server nimmt die erste geöffnete Quelle, die eine `SharedCamera` hält. Früher
   stand hier der feste Profilname `image_recognition`; ein Umbenennen hätte den
@@ -552,6 +560,32 @@ schreibt. Die Beschriftungen stehen serverseitig in
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md) Abschnitt 4.
 
 ---
+
+### 10.2 MJPEG über HTTP — das flüssige Live-Bild
+
+Zusätzlich zum Knoten liefert der Pi den Stream direkt per HTTP aus, als
+`multipart/x-mixed-replace` (MJPEG). Ein Browser spielt das ohne Bibliothek in
+einem `<img>` ab; Backend und OPC UA sind nicht beteiligt.
+
+```
+http://<pi>:<port>/stream.mjpg     endloser Stream, ~15 fps
+http://<pi>:<port>/snapshot.jpg    das neueste Einzelbild (503, solange keins da ist)
+```
+
+- **Port**: steht im Knoten `CameraStreamHttpPort` (Standard 8080). Er wird
+  erst gesetzt, wenn der Server wirklich lauscht; bis dahin und bei belegtem
+  Port steht dort 0. Die Adresse `<pi>` nimmt der Client aus seiner
+  OPC-UA-Endpoint-URL — der Pi kennt seine von außen erreichbare Adresse nicht
+  verlässlich.
+- **Dieselben Bilder** wie im Knoten, dasselbe Overlay (`CameraStreamMode`
+  gilt für beide). Jeder Frame wird genau einmal markiert und kodiert.
+- **Rate**: ohne Zuschauer tickt der Publisher nur mit `stream_fps`; ab einer
+  offenen HTTP-Verbindung mit `http_fps`. Höchstens 4 gleichzeitige Zuschauer,
+  weitere bekommen 503.
+- **Kamera hängt** (Watchdog, siehe `vision-system.md`): es kommen keine neuen
+  Bilder, die Verbindung bleibt offen, der Browser zeigt das letzte Bild.
+- **Rückfall**: Ist der Port 0 oder die URL nicht erreichbar (Firewall, altes
+  Pi-Build), nutzt das Frontend weiter `LatestCameraFrame`.
 
 ## 11. OPC 40100-2: Anlagensicht
 

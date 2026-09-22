@@ -13,7 +13,7 @@ from vision_server.camera import SharedCamera
 from vision_server.profiles import CameraStreamConfig
 
 FAST_CONFIG = CameraStreamConfig(
-    stream_fps=100.0,
+    capture_fps=100.0,
     warmup_s=0.0,
     frame_timeout_s=0.05,
     max_capture_failures=3,

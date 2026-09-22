@@ -13,6 +13,7 @@ from asyncua import Server, ua, uamethod
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .camera_stream import CameraStreamPublisher
+from .mjpeg_server import MjpegServer
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
 from .errors import VisionErrorCode
@@ -155,6 +156,34 @@ def _start_camera_stream(
     return stream
 
 
+async def _start_mjpeg_server(
+    space: VisionAddressSpace, stream: CameraStreamPublisher
+) -> MjpegServer | None:
+    """Startet den MJPEG-Stream und nennt seinen Port im Adressraum.
+
+    Scheitert das Binden (Port belegt), laeuft der Server ohne weiter: der
+    Knoten bleibt auf 0 und das Frontend faellt auf `LatestCameraFrame`
+    zurueck. Der Livestream ist ein Debugwerkzeug, kein Grund fuer einen
+    Startabbruch.
+    """
+    config = space.config.camera_stream
+    if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:
+        return None
+    server = MjpegServer(stream, config.http_port)
+    try:
+        await server.start()
+    except OSError:
+        _log.exception(
+            "MJPEG-Livestream auf Port %d nicht startbar -- nur der OPC-UA-Rueckfallweg",
+            config.http_port,
+        )
+        return None
+    await space.camera_stream_http_port.write_value(
+        ua.Variant(server.port, ua.VariantType.Int32)
+    )
+    return server
+
+
 def _calibration_handler(command, arity: int):
     """Wrap a session command as OPC-UA method: `(Error: Int32, Message: String)`.
 
@@ -279,6 +308,8 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
+    #: MJPEG livestream over HTTP; `None` when disabled or the port was taken.
+    camera_http: MjpegServer | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
     #: Remote calibration (`calibration_session.CalibrationSession`); `None`
@@ -295,6 +326,8 @@ class VisionMachine:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.lag_watchdog
+        if self.camera_http is not None:
+            await self.camera_http.stop()
         if self.camera_stream is not None:
             await self.camera_stream.stop()
         if self.calibration is not None:
@@ -439,6 +472,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         )
 
     camera_stream = None
+    camera_http = None
     calibration = None
     if space.latest_camera_frame is not None:
         camera_source = await _camera_source(sources, opened)
@@ -458,6 +492,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             )
             annotator.session = calibration
             camera_stream = _start_camera_stream(space, camera_source, annotator)
+            camera_http = await _start_mjpeg_server(space, camera_stream)
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
@@ -476,6 +511,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs=jobs,
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
+        camera_http=camera_http,
         assets=assets,
         calibration=calibration,
     )
