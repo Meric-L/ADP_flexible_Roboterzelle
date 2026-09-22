@@ -8,6 +8,7 @@ in `ResizeForStreamTest` unten.
 """
 
 import asyncio
+import threading
 import unittest
 from dataclasses import replace
 
@@ -69,6 +70,11 @@ def fake_encode(image, quality: int) -> str:
     return f"encoded:{image}:{quality}"
 
 
+def _fresh_frame(image: str) -> CameraFrame:
+    """Ein Frame von eben -- aeltere gelten als veraltet und gehen nicht raus."""
+    return CameraFrame(image=image, timestamp=asyncio.get_running_loop().time())
+
+
 async def _run_briefly(publisher: CameraStreamPublisher, seconds: float) -> None:
     publisher.start()
     await asyncio.sleep(seconds)
@@ -78,7 +84,7 @@ async def _run_briefly(publisher: CameraStreamPublisher, seconds: float) -> None
 class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_writes_the_encoded_frame_to_the_node(self):
         camera = FakeCamera()
-        camera.latest_frame = CameraFrame(image="frame-1", timestamp=1.0)
+        camera.latest_frame = _fresh_frame("frame-1")
         node = FakeNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
@@ -107,7 +113,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_an_encode_failure_does_not_kill_the_loop(self):
         """Ein einzelner kaputter Frame darf den Stream nicht dauerhaft stoppen."""
         camera = FakeCamera()
-        camera.latest_frame = CameraFrame(image="bad", timestamp=1.0)
+        camera.latest_frame = _fresh_frame("bad")
         node = FakeNode()
 
         calls = 0
@@ -134,7 +140,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
 class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
     def _publisher(self, mode: str, *, annotator, mode_node=None):
         camera = FakeCamera()
-        camera.latest_frame = CameraFrame(image="frame-1", timestamp=1.0)
+        camera.latest_frame = _fresh_frame("frame-1")
         node = FakeNode()
         publisher = CameraStreamPublisher(
             camera,
@@ -196,7 +202,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_an_annotator_failure_does_not_kill_the_loop(self):
         camera = FakeCamera()
-        camera.latest_frame = CameraFrame(image="frame-1", timestamp=1.0)
+        camera.latest_frame = _fresh_frame("frame-1")
         node = FakeNode()
 
         calls = 0
@@ -235,6 +241,70 @@ class ResizeForStreamTest(unittest.TestCase):
 
         self.assertEqual(result.shape[1], 960)
         self.assertEqual(result.shape[0], round(1520 * 960 / 2028))
+
+
+class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
+    """Ein haengendes capture darf im Frontend nicht wie ein lebendes Bild aussehen."""
+
+    async def test_clears_the_node_once_instead_of_republishing_an_old_frame(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
+        node = FakeNode()
+        publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual(node.written, [""])
+
+    async def test_resumes_as_soon_as_a_fresh_frame_arrives(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
+        node = FakeNode()
+        publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
+
+        publisher.start()
+        await asyncio.sleep(0.06)
+        camera.latest_frame = _fresh_frame("neu")
+        await asyncio.sleep(0.06)
+        await publisher.stop()
+
+        self.assertEqual(node.written[0], "")
+        self.assertIn(f"encoded:neu:{FAST_CONFIG.jpeg_quality}", node.written)
+
+
+class OverlayTimeoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sends_the_raw_frame_while_the_overlay_hangs(self):
+        release = threading.Event()
+        calls = 0
+
+        class HangingAnnotator:
+            def annotate(self, image, mode):
+                nonlocal calls
+                calls += 1
+                release.wait(timeout=5.0)
+                return "markiert"
+
+        camera = FakeCamera()
+        camera.latest_frame = _fresh_frame("frame-1")
+        node = FakeNode()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            replace(FAST_CONFIG, overlay_timeout_s=0.02),
+            encode_frame=fake_encode,
+            annotator=HangingAnnotator(),
+        )
+
+        try:
+            await _run_briefly(publisher, 0.15)
+        finally:
+            release.set()
+
+        self.assertIn(f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}", node.written)
+        # Solange der erste Lauf haengt, startet kein zweiter.
+        self.assertEqual(calls, 1)
 
 
 class NormaliseModeTest(unittest.TestCase):

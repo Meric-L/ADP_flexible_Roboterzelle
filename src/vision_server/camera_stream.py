@@ -69,6 +69,10 @@ class CameraStreamPublisher:
     `runner.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
     Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
     sehen, keine Diff-Logik.
+
+    Ausnahme: ein Frame aelter als `stale_frame_s` geht nicht raus, der Knoten
+    wird einmal geleert. Sonst sieht ein haengendes `capture_array()` im
+    Frontend aus wie ein lebendes, nur stehendes Bild.
     """
 
     def __init__(
@@ -97,6 +101,10 @@ class CameraStreamPublisher:
         self._progress_node = progress_node
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
+        #: True, solange der Knoten wegen eines veralteten Frames geleert ist.
+        self._stale = False
+        #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
+        self._overlay_run: asyncio.Future | None = None
 
     @property
     def mode(self) -> str:
@@ -120,23 +128,64 @@ class CameraStreamPublisher:
     def start(self) -> None:
         self._task = asyncio.create_task(self._publish_loop())
 
+    async def _annotate(self, loop: asyncio.AbstractEventLoop, image, mode: str):
+        """Overlay mit Timeout; bei Timeout oder noch laufendem Lauf das Rohbild.
+
+        Ein haengender Lauf blockiert einen Thread des Default-Executors, der
+        sich nicht abbrechen laesst. Deshalb startet kein neuer, bevor er
+        fertig ist -- sonst liefe der Executor Tick fuer Tick voll.
+        """
+        if self._overlay_run is not None and not self._overlay_run.done():
+            return image
+        # In the worker thread: detection and drawing are blocking and have no
+        # business on the event loop. The annotator works on a copy.
+        run = loop.run_in_executor(None, self._annotator.annotate, image, mode)
+        # Holt die Exception eines abgehaengten Laufs ab, sonst meldet asyncio
+        # "Future exception was never retrieved".
+        run.add_done_callback(lambda done: done.cancelled() or done.exception())
+        self._overlay_run = run
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(run), timeout=self._config.overlay_timeout_s
+            )
+        except TimeoutError:
+            _log.warning(
+                "Overlay laenger als %.1f s, sende das Rohbild",
+                self._config.overlay_timeout_s,
+            )
+            return image
+
+    async def _mark_stale(self, age: float) -> None:
+        """Leert den Knoten einmal, wenn der neueste Frame zu alt ist."""
+        if self._stale:
+            return
+        _log.warning(
+            "Neuester Kamera-Frame ist %.1f s alt -- Livestream pausiert, bis wieder "
+            "Bilder kommen",
+            age,
+        )
+        self._stale = True
+        with contextlib.suppress(Exception):
+            await self._node.write_value("")
+
     async def _publish_loop(self) -> None:
         loop = asyncio.get_running_loop()
         interval = 1.0 / self._config.stream_fps
         while True:
             started = loop.time()
             frame = self._camera.latest_frame
-            if frame is not None:
+            age = None if frame is None else started - frame.timestamp
+            if age is not None and age > self._config.stale_frame_s:
+                await self._mark_stale(age)
+            elif frame is not None:
+                if self._stale:
+                    _log.info("Kamera liefert wieder Bilder, Livestream laeuft weiter")
+                    self._stale = False
                 try:
                     mode = await self._read_mode()
                     image = frame.image
                     if mode != "off" and self._annotator is not None:
-                        # In the worker thread: detection and drawing are
-                        # blocking and have no business on the event loop.
-                        # The annotator works on a copy.
-                        image = await loop.run_in_executor(
-                            None, self._annotator.annotate, frame.image, mode
-                        )
+                        image = await self._annotate(loop, frame.image, mode)
                     if self._config.max_stream_width is not None:
                         image = await loop.run_in_executor(
                             None, _resize_for_stream, image, self._config.max_stream_width
