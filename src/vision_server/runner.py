@@ -189,7 +189,8 @@ class VisionMachine:
     #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
     program: VisionProgram | None = None
     #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
-    #: `StartCalibration`/`FinishCalibration`/`AbortCalibration`.
+    #: `StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
+    #: `AbortCalibration`.
     calibration_session: CalibrationSession | None = None
 
     async def aclose(self) -> None:
@@ -370,8 +371,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
         @uamethod
         async def start_calibration(parent):
-            """1:StartCalibration -- beginnt automatisches Erfassen von
-            Board-Aufnahmen gegen die bereits offene Kamera.
+            """1:StartCalibration -- setzt eine neue Session auf; Aufnahmen
+            kommen danach ausschliesslich ueber `CaptureCalibrationSample`.
 
             Kein Kalibrierdurchlauf gegen einen laufenden Job oder eine
             zweite Session gleichzeitig -- beide teilen sich Kamera und
@@ -393,6 +394,28 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
         await space.vision_system.add_method(
             space.own_idx, "StartCalibration", start_calibration, [], [ua.VariantType.Int32]
+        )
+
+        @uamethod
+        async def capture_calibration_sample(parent):
+            """1:CaptureCalibrationSample -- versucht eine Aufnahme vom
+            aktuellen Kamerabild, manuell ausgeloest (z. B. per Leertaste im
+            Stream-Viewer). `Error=OK` heisst: Board gefunden und
+            uebernommen; `DETECTION_FAILED` heisst nur "dieser Versuch nicht"
+            -- die Session laeuft weiter, ein erneuter Versuch ist ok.
+            """
+            if not calibration_session.running:
+                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
+            found = await calibration_session.capture()
+            error = VisionErrorCode.OK if found else VisionErrorCode.DETECTION_FAILED
+            return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+        await space.vision_system.add_method(
+            space.own_idx,
+            "CaptureCalibrationSample",
+            capture_calibration_sample,
+            [],
+            [ua.VariantType.Int32],
         )
 
         @uamethod

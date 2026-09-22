@@ -1,7 +1,10 @@
 """Tests fuer den Livestream-Publisher.
 
 `encode_frame` wird durch einen Fake ersetzt, damit die Tests ohne `cv2`
-laufen und ohne echte Bilddaten auskommen.
+laufen und ohne echte Bilddaten auskommen. `max_stream_width=None` schaltet
+das Herunterskalieren vor dem Encode ab -- das braeuchte ein echtes Array
+mit `.shape` statt der hier verwendeten Platzhalter-Strings; eigens getestet
+in `ResizeForStreamTest` unten.
 """
 
 import asyncio
@@ -10,10 +13,17 @@ from dataclasses import replace
 
 from tagloc.modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODES, normalise_mode
 from vision_server.camera import CameraFrame
-from vision_server.camera_stream import CameraStreamPublisher
+from vision_server.camera_stream import CameraStreamPublisher, _resize_for_stream
 from vision_server.profiles import CameraStreamConfig
 
-FAST_CONFIG = CameraStreamConfig(stream_fps=50.0)
+try:
+    import cv2
+    import numpy as np
+except Exception:  # OpenCV nicht installiert
+    cv2 = None
+    np = None
+
+FAST_CONFIG = CameraStreamConfig(stream_fps=50.0, max_stream_width=None)
 
 
 class FakeCamera:
@@ -207,6 +217,24 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertGreaterEqual(calls, 2)
         self.assertIn(f"encoded:markiert:{FAST_CONFIG.jpeg_quality}", node.written)
+
+
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class ResizeForStreamTest(unittest.TestCase):
+    def test_leaves_a_narrower_image_untouched(self):
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        result = _resize_for_stream(image, 960)
+
+        self.assertIs(result, image)
+
+    def test_downscales_a_wider_image_keeping_aspect_ratio(self):
+        image = np.zeros((1520, 2028, 3), dtype=np.uint8)
+
+        result = _resize_for_stream(image, 960)
+
+        self.assertEqual(result.shape[1], 960)
+        self.assertEqual(result.shape[0], round(1520 * 960 / 2028))
 
 
 class NormaliseModeTest(unittest.TestCase):

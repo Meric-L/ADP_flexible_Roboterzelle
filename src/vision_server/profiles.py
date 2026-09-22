@@ -65,11 +65,6 @@ class AprilTagProfileConfig:
     #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
     #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
     calibration_min_samples: int = 15
-    #: Mindestabstand zwischen zwei automatischen Aufnahmen einer laufenden
-    #: `CalibrationSession` -- verhindert, dass eine ruhig gehaltene Kamera
-    #: denselben Blickwinkel dutzendfach aufnimmt, ohne dass der Operator
-    #: das Board bewegen muss.
-    calibration_capture_interval_s: float = 1.0
 
 
 #: Unterstuetzte Werte fuer `CameraStreamConfig.backend`.
@@ -115,6 +110,13 @@ class CameraStreamConfig:
     #: der `SharedCamera` den jeweils neuesten Frame abholt.
     realsense_fps: int = 15
     jpeg_quality: int = 70
+    #: Maximale Bildbreite im Stream; breitere Frames werden vor dem
+    #: JPEG-Encode herunterskaliert (nur fuer den Stream -- Erkennung und
+    #: Kalibrierung arbeiten weiter auf dem vollen Kamera-Frame). Ohne das
+    #: kostet z. B. cam_ceiling (2028x1520) auf dem Pi pro Tick ein Encode
+    #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein. `None` schaltet
+    #: die Skalierung ab.
+    max_stream_width: int | None = 960
     node_name: str = "LatestCameraFrame"
     #: Writable node through which the frontend selects the overlay mode.
     mode_node_name: str = "CameraStreamMode"

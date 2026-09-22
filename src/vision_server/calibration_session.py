@@ -6,17 +6,15 @@ Gegenteil: sie liest nur aus der bereits laufenden `SharedCamera` mit, genau
 wie `AprilTagDetectionSource` und der Livestream. Damit kann ein Operator per
 Frontend kalibrieren, waehrend Server und Livestream weiterlaufen.
 
-Automatisches Erfassen statt eines Buttons pro Aufnahme: sobald das Board
-erkannt wird und seit der letzten Aufnahme `capture_interval_s` vergangen
-sind, wird ein neuer Sample genommen. Kein Bewegungsabgleich -- ein Operator,
-der das Board sichtbar bewegt, erzeugt von selbst unterschiedliche Posen.
+Aufnahmen werden manuell ausgeloest (`capture()`, z. B. per Leertaste im
+Stream-Viewer oder ein Frontend-Button) statt automatisch nach Zeitintervall
+-- der Operator sieht das Live-Bild und entscheidet selbst, wann eine Pose
+gut ist, statt dass die Kamera im Sekundentakt mitschreibt.
 """
 
 import asyncio
-import contextlib
 import importlib
 import logging
-import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -25,8 +23,6 @@ from .errors import VisionErrorCode
 from .profiles import AprilTagProfileConfig
 
 _log = logging.getLogger(__name__)
-
-POLL_INTERVAL_S = 0.05
 
 
 def _lazy(module: str, name: str) -> Callable:
@@ -79,10 +75,7 @@ class CalibrationSession:
         self._board_spec: Any = None  # lazy: braucht cv2, siehe `_spec()`
         self._samples: list = []
         self._image_size: tuple[int, int] = (0, 0)
-        self._last_seen_timestamp: float | None = None
-        self._last_capture_monotonic: float = 0.0
         self._executor: ThreadPoolExecutor | None = None
-        self._task: asyncio.Task | None = None
         self.running = False
 
     def _spec(self):
@@ -116,47 +109,41 @@ class CalibrationSession:
         return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
 
     def start(self) -> None:
-        """Setzt Samples zurueck und startet den Erfassungs-Loop."""
+        """Setzt Samples zurueck. Aufnahmen kommen ab jetzt nur noch ueber
+        `capture()`."""
         self._samples = []
         self._image_size = (0, 0)
-        self._last_seen_timestamp = None
-        self._last_capture_monotonic = 0.0
         self.running = True
-        self._task = asyncio.create_task(self._loop())
 
-    async def _loop(self) -> None:
+    async def capture(self) -> bool:
+        """Versucht, aus dem aktuellsten Kamera-Frame eine Aufnahme zu machen.
+
+        Manuell ausgeloest, kein automatisches Zeitintervall. Gibt zurueck,
+        ob das Board gefunden und die Aufnahme uebernommen wurde -- bei
+        `False` liegt es meist an Unschaerfe, falschem Bildausschnitt oder
+        einer falschen Board-Geometrie in der Konfiguration.
+        """
+        if not self.running:
+            return False
+        frame = self._camera.latest_frame
+        if frame is None:
+            return False
+
         from tagloc import frames as frame_tools
 
         spec = self._spec()
         board = self._build_board(spec)  # None fuer chessboard
-        try:
-            while True:
-                frame = self._camera.latest_frame
-                if frame is not None and frame.timestamp != self._last_seen_timestamp:
-                    self._last_seen_timestamp = frame.timestamp
-                    self._image_size = frame_tools.image_size(frame.image)
-                    now = time.monotonic()
-                    due = (
-                        now - self._last_capture_monotonic
-                        >= self._config.calibration_capture_interval_s
-                    )
-                    if due:
-                        sample = await self._run_blocking(
-                            self._detect_board, frame_tools.to_gray(frame.image), spec, board
-                        )
-                        if sample is not None:
-                            self._samples.append(sample)
-                            self._last_capture_monotonic = now
-                            _log.info(
-                                "Kalibrierung: Aufnahme %d (%d Ecken)",
-                                len(self._samples),
-                                sample.count(),
-                            )
-                await asyncio.sleep(POLL_INTERVAL_S)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            _log.exception("Kalibrier-Session abgebrochen")
+        self._image_size = frame_tools.image_size(frame.image)
+        sample = await self._run_blocking(
+            self._detect_board, frame_tools.to_gray(frame.image), spec, board
+        )
+        if sample is None:
+            return False
+        self._samples.append(sample)
+        _log.info(
+            "Kalibrierung: Aufnahme %d (%d Ecken)", len(self._samples), sample.count()
+        )
+        return True
 
     @property
     def progress(self) -> dict:
@@ -174,23 +161,18 @@ class CalibrationSession:
             "coverageY": round(coverage[1], 3),
         }
 
-    async def _stop_loop(self) -> None:
+    async def _stop(self) -> None:
         self.running = False
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
 
     async def finish(self) -> tuple[VisionErrorCode, dict]:
-        """Stoppt den Loop, rechnet und speichert. Immer aufraeumend, auch
-        bei Fehlschlag -- eine Session bleibt nie unbeendet haengen."""
+        """Rechnet und speichert. Immer aufraeumend, auch bei Fehlschlag --
+        eine Session bleibt nie unbeendet haengen."""
         samples = list(self._samples)
         image_size = self._image_size
-        await self._stop_loop()
+        await self._stop()
 
         if len(samples) < 3:
             return VisionErrorCode.DETECTION_FAILED, {
@@ -232,7 +214,7 @@ class CalibrationSession:
 
     async def abort(self) -> None:
         """Stoppt ohne zu speichern."""
-        await self._stop_loop()
+        await self._stop()
 
 
 __all__ = ["CalibrationSession"]
