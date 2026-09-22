@@ -116,8 +116,14 @@ keine Altlasten:
   **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
   Prototyp `src/apriltag/detect_apriltags.py` steht noch, ist aber als abgelöst
   gekennzeichnet.
-- **Offen bleibt die Hand-Auge-Kalibrierung** für Layer 2. Bis sie steht, liefert
-  die Flanschkamera im Kamera-KS und `auto_execute` bleibt `False`.
+- **Hand-Auge-Kalibrierung**: Rechnung, Dateiformat und Werkzeug stehen
+  (`tagloc.handeye`, `python -m tagloc.cli.calibrate_handeye`). Offen ist die
+  Durchführung an der echten Hardware — `T_flansch_cam` ist eine Konstante
+  (Kamera starr am Roboter) und muss einmal gemessen werden. Solange keine
+  gemessene Datei unter `data/handeye/cam_flange.json` liegt, wirkt nur der
+  optische Weg: ohne Welttag im Bild liefert die Flanschkamera im Kamera-KS.
+  `auto_execute` bleibt in jedem Fall `False`, bis die Kalibrierung am Roboter
+  belegt ist.
 
 Siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) und
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md).

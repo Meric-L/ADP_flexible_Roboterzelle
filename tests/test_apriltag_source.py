@@ -92,7 +92,7 @@ class FakeSolverSource(AprilTagDetectionSource):
     production code.
     """
 
-    def _locate(self, image):
+    def _locate(self, image, pose_base_flange=None):
         from tagloc.localize import locate_modules, localize_camera
 
         from vision_server.detection.apriltag import SOURCE_BY_FRAME

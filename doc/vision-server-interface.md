@@ -243,6 +243,19 @@ Nur die Welttags stehen fest. Jede Detektion traegt zusaetzlich `source`
 (`T_worldtag_module`) und `referenceDistanceM`, sowie `worldTagIds`,
 `cameraSpreadM` und `cameraSpreadDeg` als Guete der Kameralokalisierung.
 
+`cameraPoseOrigin` sagt, **woher** die Kamerapose stammt: `world_tags` heisst
+optisch gemessen, `robot_pose` heisst aus dem Anker und der Kinematik
+fortgeschrieben. Die beiden sind nicht gleich genau — wer die Pose anfaehrt,
+muss den Unterschied kennen. Dazu `anchorWorldTagId` (Welttag des Ankers) und,
+sobald wieder ein Welttag im Bild war, `anchorDriftM`/`anchorDriftDeg` als
+aufgelaufene Abweichung des Ankers.
+
+Die Roboterpose `T_base_flansch` uebergibt der Aufrufer als Job-Parameter:
+sieben Doubles `(x, y, z, qx, qy, qz, qw)`, Meter und Quaternion xyzw. Fehlt
+sie, bleibt es beim optischen Weg. Der Hand-Pi liest sie **nicht** selbst vom
+Roboter-Server — der Roboter steht waehrend der Aufnahmen ohnehin still, und
+so entsteht keine Abhaengigkeit zwischen den beiden Servern.
+
 Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
 unterscheiden sich nur in der `AprilTagProfileConfig`, die `server.py` je
 Pi setzt.

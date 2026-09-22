@@ -11,13 +11,21 @@ they get to see (doc/arbeitsplaene/apriltag-welttag-konzept.md):
   same image. That is the overview, and it is the only place the question
   "which world tag does the robot stand closest to" can be answered, because
   it is the only camera that sees both at once.
-* **Eye-in-hand camera** -- sees one world tag and localises itself precisely
-  against it, then measures the modules from close up. It needs no hand-eye
-  calibration for that: it reads its own pose off the world tag optically.
+* **Eye-in-hand camera** -- localises itself against a world tag **once** at
+  the start of a run, then measures every module within reach from close up.
+  It does not keep the world tag in view: standing 0.3 m in front of a module,
+  the nearest world tag is a metre or two away and out of frame. The gap is
+  bridged by the kinematics -- see `anchor_from_localization` and
+  `localize_camera_from_anchor`, and `handeye.py` for the algebra.
 
 **Only the world tags are fixed.** Everything else in the cell is movable --
 the modules and the robot alike. The robot is a module like any other; it is
 simply the one that is always in use.
+
+`T_world_cam` can therefore come from two places, and `CameraLocalization.origin`
+says which: optically from the world tags (`ORIGIN_WORLD_TAGS`, the accurate
+one, always preferred when a world tag is in the image) or carried over from
+the anchor plus the current robot pose (`ORIGIN_ROBOT_POSE`).
 """
 
 import logging
@@ -35,6 +43,7 @@ from .geometry import (
     rotation_distance_rad,
     translation_distance_m,
 )
+from .handeye import HandEye, RobotAnchor, anchor_world_base, camera_pose_from_robot
 from .observations import TagPose
 from .tagmap import ROBOT_ROLE, TagMap, merge_tag_poses, nearest_world_tag
 
@@ -46,6 +55,13 @@ _log = logging.getLogger(__name__)
 SOURCE_CEILING = "ceiling"
 SOURCE_FLANGE = "flange"
 SOURCE_PRECEDENCE = (SOURCE_CEILING, SOURCE_FLANGE)
+
+#: Woher `T_world_cam` stammt. Optisch aus den Welttags ist der genaue Weg und
+#: gewinnt immer, wenn ein Welttag im Bild liegt. Aus dem Anker plus Kinematik
+#: ist der Weg dazwischen -- er traegt den Roboter von Modul zu Modul, wenn
+#: kein Welttag mehr zu sehen ist.
+ORIGIN_WORLD_TAGS = "world_tags"
+ORIGIN_ROBOT_POSE = "robot_pose"
 
 
 @dataclass(frozen=True)
@@ -62,6 +78,10 @@ class CameraLocalization:
     #: and this number says so instead of disappearing into an average.
     spread_m: float = 0.0
     spread_rad: float = 0.0
+    #: `ORIGIN_WORLD_TAGS` or `ORIGIN_ROBOT_POSE` -- how this pose was
+    #: obtained. A consumer must be able to tell a directly measured pose from
+    #: one carried over by the kinematics; they do not have the same accuracy.
+    origin: str = ORIGIN_WORLD_TAGS
 
 
 @dataclass(frozen=True)
@@ -437,6 +457,77 @@ def world_tag_for_robot(
     return nearest_world_tag(tag_map, robot.pose)
 
 
+def anchor_from_localization(
+    localization: CameraLocalization,
+    pose_base_flange: Pose,
+    hand_eye: HandEye,
+) -> RobotAnchor:
+    """Anchor the robot base in the world frame from one world-tag sighting.
+
+    Der Ankerschritt, **einmal zu Beginn eines Lokalisierungsvorgangs**: der
+    Roboter richtet die Handkamera auf den Welttag, den die Deckenkamera als
+    naechstgelegenen bestimmt hat, und rechnet daraus, wo seine eigene Basis
+    im Welt-KS steht. Danach braucht er den Welttag nicht mehr im Bild.
+
+    Der Anker ist nie besser als die Messung, aus der er stammt -- deshalb
+    wandert die Streuung der Welttag-Lokalisierung in den Anker mit.
+    """
+    return RobotAnchor(
+        pose_world_base=anchor_world_base(
+            localization.pose_world_cam, pose_base_flange, hand_eye.pose_flange_cam
+        ),
+        world_tag_id=localization.primary_tag_id,
+        spread_m=localization.spread_m,
+        spread_rad=localization.spread_rad,
+    )
+
+
+def localize_camera_from_anchor(
+    anchor: RobotAnchor, pose_base_flange: Pose, hand_eye: HandEye
+) -> CameraLocalization:
+    """Carry the camera pose over to a new robot pose, without a world tag.
+
+    Das ist der Weg von Modul zu Modul: die Kamera steht dicht vor einem
+    Modul, der naechste Welttag liegt laengst ausserhalb des Bildfelds, und
+    die Pose kommt aus dem Anker plus der aktuellen Kinematik.
+
+    `world_tag_ids` bleibt leer -- es hat kein Welttag zu dieser Pose
+    beigetragen, und das zu behaupten waere die Unwahrheit. `primary_tag_id`
+    nennt weiterhin den Tag, an dem geankert wurde.
+    """
+    return CameraLocalization(
+        pose_world_cam=camera_pose_from_robot(
+            anchor.pose_world_base, pose_base_flange, hand_eye.pose_flange_cam
+        ),
+        world_tag_ids=(),
+        primary_tag_id=anchor.world_tag_id,
+        spread_m=anchor.spread_m,
+        spread_rad=anchor.spread_rad,
+        origin=ORIGIN_ROBOT_POSE,
+    )
+
+
+def anchor_drift(
+    anchor: RobotAnchor,
+    localization: CameraLocalization,
+    pose_base_flange: Pose,
+    hand_eye: HandEye,
+) -> tuple[float, float]:
+    """Return `(m, rad)` between the optical pose and the carried-over one.
+
+    Kommt waehrend eines Vorgangs wieder ein Welttag ins Bild, laesst sich der
+    Anker pruefen, statt ihm zu glauben: die Abweichung zwischen gemessener
+    und weitergerechneter Kamerapose ist die aufgelaufene Drift. Sie gehoert
+    ins Ergebnis -- ein stiller Anker, der langsam wegwandert, ist genau die
+    Sorte Fehler, die erst beim Danebengreifen auffaellt.
+    """
+    carried = localize_camera_from_anchor(anchor, pose_base_flange, hand_eye)
+    return (
+        translation_distance_m(localization.pose_world_cam, carried.pose_world_cam),
+        rotation_distance_rad(localization.pose_world_cam, carried.pose_world_cam),
+    )
+
+
 def expected_but_missing(
     tag_map: TagMap, located: Sequence[ModuleLocation]
 ) -> list[str]:
@@ -454,16 +545,21 @@ def expected_but_missing(
 
 
 __all__ = [
+    "ORIGIN_ROBOT_POSE",
+    "ORIGIN_WORLD_TAGS",
     "SOURCE_CEILING",
     "SOURCE_FLANGE",
     "SOURCE_PRECEDENCE",
     "CameraLocalization",
     "ModuleLocation",
+    "anchor_drift",
+    "anchor_from_localization",
     "camera_pose_from_reference_tags",
     "confidence_from",
     "expected_but_missing",
     "locate_modules",
     "localize_camera",
+    "localize_camera_from_anchor",
     "merge_by_module",
     "merge_locations",
     "merge_samples",

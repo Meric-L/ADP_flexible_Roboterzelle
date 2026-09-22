@@ -45,6 +45,38 @@ POLL_INTERVAL_S = 0.02
 SOURCE_BY_FRAME = {"cam_ceiling": "ceiling", "cam_flange": "flange"}
 
 
+def robot_pose_from_parameters(parameters) -> Any | None:
+    """Return `T_base_flansch` from the job parameters, or `None`.
+
+    Sieben Floats: `(x, y, z, qx, qy, qz, qw)` -- Meter und Quaternion xyzw wie
+    ueberall im Projekt. Der Roboter steht waehrend der Aufnahmen still, also
+    gilt eine Pose fuer den ganzen Job; ein Zeitstempel-Abgleich mit dem
+    einzelnen Frame eruebrigt sich damit.
+
+    Fehlt der Parameter oder ist er unbrauchbar, kommt `None` zurueck und der
+    Anker bleibt ungenutzt. Es wird nicht geraten -- eine falsche Roboterpose
+    verschiebt jede Modulpose, ohne dass man es dem Ergebnis ansieht.
+    """
+    if not parameters or len(parameters) < 7:
+        return None
+    try:
+        values = [float(value) for value in parameters[:7]]
+    except (TypeError, ValueError):
+        _log.warning("Roboterpose im Job ist nicht numerisch: %r", parameters[:7])
+        return None
+    if not all(math.isfinite(value) for value in values):
+        _log.warning("Roboterpose im Job enthaelt NaN/Inf: %r", values)
+        return None
+
+    from tagloc.geometry import from_position_quaternion
+
+    norm = math.sqrt(sum(value * value for value in values[3:]))
+    if norm < 1e-9:
+        _log.warning("Roboterpose im Job hat ein Quaternion der Laenge 0")
+        return None
+    return from_position_quaternion(values[:3], values[3:])
+
+
 def _finite_or_none(value: float | None) -> float | None:
     """Map NaN and infinity to `None` before they reach the payload.
 
@@ -85,8 +117,18 @@ class AprilTagDetectionSource(DetectionSource):
         self._calibration = calibration
         self._tag_map = tag_map
         #: Camera pose of the last evaluated image, set by `_locate`. `None`
-        #: until the first image, and again whenever no world tag was visible.
+        #: until the first image, and again whenever no world tag was visible
+        #: and no anchor could carry it.
         self._localization = None
+        #: Hand-Auge, einmal kalibriert -- die Kamera sitzt starr am Roboter.
+        self._hand_eye = None
+        #: Wo die Roboterbasis im Welt-KS steht. Wird beim ersten Welttag im
+        #: Bild gesetzt und traegt danach ueber alle Module hinweg, auch wenn
+        #: kein Welttag mehr zu sehen ist. Lebt bewusst ueber Jobs hinweg:
+        #: geankert wird einmal je Lokalisierungsvorgang, nicht je Modul.
+        self._anchor = None
+        #: Letzte gemessene Drift gegen den Anker, `None` solange ungeprueft.
+        self._drift = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -152,6 +194,29 @@ class AprilTagDetectionSource(DetectionSource):
                     path,
                 )
                 self._tag_map = empty_tag_map()
+        if self._hand_eye is None and self._config.hand_eye_path is not None:
+            from tagloc.handeye import load_hand_eye
+
+            try:
+                self._hand_eye = await self.run_blocking(
+                    load_hand_eye, self._config.hand_eye_path
+                )
+                _log.info(
+                    "Hand-Auge geladen: %s (Streuung %.2f mm / %.3f deg ueber %d Posen)",
+                    self._config.hand_eye_path,
+                    (self._hand_eye.rms_position_m or 0.0) * 1000.0,
+                    self._hand_eye.rms_rotation_deg or 0.0,
+                    self._hand_eye.sample_count,
+                )
+            except FileNotFoundError:
+                # Kein Fehler: die Deckenkamera hat keine, und der Hand-Pi darf
+                # auch ohne messen -- dann eben nur mit Welttag im Bild.
+                _log.warning(
+                    "Keine Hand-Auge-Kalibrierung unter %s -- ohne Welttag im Bild "
+                    "bleiben die Posen im Kamera-KS",
+                    self._config.hand_eye_path,
+                )
+
         if self._detector is None:
             self._detector = await self.run_blocking(
                 build_detector, self._config.tag_family, self._config.detector_backend
@@ -182,11 +247,17 @@ class AprilTagDetectionSource(DetectionSource):
             f"Kein Kamerabild innerhalb von {self._config.capture_timeout_s:.1f} s",
         )
 
-    def _locate(self, image) -> list:
+    def _locate(self, image, pose_base_flange=None) -> list:
         """Evaluate one image. Runs in the worker thread, never on the loop."""
         from tagloc import frames as frame_tools
         from tagloc.calibration import check_resolution, scale_to_resolution
-        from tagloc.localize import locate_modules, localize_camera
+        from tagloc.localize import (
+            anchor_drift,
+            anchor_from_localization,
+            locate_modules,
+            localize_camera,
+            localize_camera_from_anchor,
+        )
         from tagloc.pose import estimate_tag_poses
 
         size = frame_tools.image_size(image)
@@ -208,6 +279,24 @@ class AprilTagDetectionSource(DetectionSource):
             self._tag_map,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+
+        # Der optische Wert gewinnt immer, wenn ein Welttag im Bild liegt --
+        # er ist die Messung, alles andere ist Fortschreibung. Liegt keiner
+        # im Bild, traegt der Anker: genau der Fall zwischen zwei Modulen.
+        if self._hand_eye is not None and pose_base_flange is not None:
+            if localization is not None:
+                if self._anchor is not None:
+                    self._drift = anchor_drift(
+                        self._anchor, localization, pose_base_flange, self._hand_eye
+                    )
+                self._anchor = anchor_from_localization(
+                    localization, pose_base_flange, self._hand_eye
+                )
+            elif self._anchor is not None:
+                localization = localize_camera_from_anchor(
+                    self._anchor, pose_base_flange, self._hand_eye
+                )
+
         # Kept for `acquire_and_detect`, which reports the world tags and
         # their spread alongside the poses. Only ever written from the single
         # worker thread, so no lock is needed.
@@ -227,12 +316,17 @@ class AprilTagDetectionSource(DetectionSource):
         from tagloc.geometry import to_position_quaternion
         from tagloc.localize import expected_but_missing, merge_by_module, merge_samples
 
+        pose_base_flange = robot_pose_from_parameters(request.parameters)
+        self._drift = None
+
         samples: list[list] = []
         seen_timestamp: float | None = None
         for _ in range(max(1, self._config.samples_per_job)):
             frame = await self._next_frame(seen_timestamp)
             seen_timestamp = frame.timestamp
-            samples.append(await self.run_blocking(self._locate, frame.image))
+            samples.append(
+                await self.run_blocking(self._locate, frame.image, pose_base_flange)
+            )
 
         located = merge_samples(samples)
         if not located:
@@ -291,6 +385,15 @@ class AprilTagDetectionSource(DetectionSource):
                 attributes["cameraSpreadDeg"] = _finite_or_none(
                     math.degrees(localization.spread_rad)
                 )
+                # Ob die Kamerapose gemessen oder fortgeschrieben wurde, ist
+                # kein Detail: die beiden haben nicht dieselbe Genauigkeit.
+                attributes["cameraPoseOrigin"] = localization.origin
+            if self._anchor is not None:
+                attributes["anchorWorldTagId"] = self._anchor.world_tag_id
+            if self._drift is not None:
+                drift_m, drift_rad = self._drift
+                attributes["anchorDriftM"] = _finite_or_none(drift_m)
+                attributes["anchorDriftDeg"] = _finite_or_none(math.degrees(drift_rad))
             if missing:
                 attributes["missingModules"] = ", ".join(missing)
             detections.append(

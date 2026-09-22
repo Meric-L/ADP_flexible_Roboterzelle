@@ -147,9 +147,18 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     default.
     """
     preset = PI_APRILTAG_PRESETS.get(frame_id, {})
+    # Hand-Auge nur dort, wo eine Kamera am Roboter sitzt. Die Deckenkamera
+    # ist fest montiert und hat keinen Flansch -- ein Pfad fuer sie waere eine
+    # Datei, die nie entsteht und beim Start jedes Mal eine Warnung erzeugt.
+    hand_eye_path = (
+        REPO_ROOT / "data" / "handeye" / f"{frame_id}.json"
+        if frame_id == "cam_flange"
+        else None
+    )
     return AprilTagProfileConfig(
         calibration_path=REPO_ROOT / "data" / "calibration" / f"{frame_id}.json",
         tag_map_path=REPO_ROOT / "config" / "tagmap.json",
+        hand_eye_path=hand_eye_path,
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
         **preset,

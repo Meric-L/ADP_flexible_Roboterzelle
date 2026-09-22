@@ -19,6 +19,11 @@ DEFAULT_CALIBRATION_PATH = _REPO_ROOT / "data" / "calibration" / "camera.json"
 #: Cell layout, hence versioned under `config/`.
 DEFAULT_TAG_MAP_PATH = _REPO_ROOT / "config" / "tagmap.json"
 
+#: Hand-Auge je Kamera. Gehoert zur Hardware (Kamera starr am Roboter),
+#: deshalb wie die Kalibrierung unter `data/` und nicht versioniert. Nur der
+#: Hand-Pi hat eine; die Deckenkamera sitzt nicht am Roboter.
+DEFAULT_HAND_EYE_PATH: Path | None = None
+
 
 @dataclass(frozen=True)
 class AprilTagProfileConfig:
@@ -29,6 +34,9 @@ class AprilTagProfileConfig:
     resolution: tuple[int, int] = (2028, 1520)
     calibration_path: Path = DEFAULT_CALIBRATION_PATH
     tag_map_path: Path | None = DEFAULT_TAG_MAP_PATH
+    #: `None` = keine Hand-Auge-Kalibrierung. Dann wirkt nur der optische
+    #: Pfad: ohne Welttag im Bild bleiben die Posen im Kamera-KS.
+    hand_eye_path: Path | None = DEFAULT_HAND_EYE_PATH
     tag_family: str = "tag36h11"
     tag_size_m: float = 0.05
     warmup_s: float = 2.0

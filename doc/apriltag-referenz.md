@@ -401,6 +401,64 @@ steht.
 `camera_pose_from_reference_tags(tag_poses, tag_map) -> Pose | None` bleibt als
 schlanke Hülle für die CLI-Werkzeuge erhalten, die nur die Matrix brauchen.
 
+### Hand-Auge und Ankern — `tagloc.handeye`
+
+Die Kamera sitzt starr am Roboter, `T_flansch_cam` ist also eine Konstante der
+Hardware und wird **einmal** kalibriert. Sie schließt die Lücke zwischen zwei
+Welttag-Sichtungen: die Handkamera sieht den Welttag nur beim Ankern, danach
+trägt die Kinematik.
+
+```python
+SCHEMA = "wsc.vision.handeye/1"          # data/handeye/<frame_id>.json
+
+@dataclass(frozen=True)
+class HandEye:
+    pose_flange_cam: Pose
+    frame_id: str = ""
+    calibration_id: str = ""
+    rms_position_m: float = float("nan")   # Streuung des rekonstruierten Tag-Orts
+    rms_rotation_deg: float = float("nan")
+    sample_count: int = 0
+
+@dataclass(frozen=True)
+class RobotAnchor:
+    pose_world_base: Pose
+    world_tag_id: int = -1     # Welttag, an dem geankert wurde
+    spread_m: float = 0.0      # Guete der Lokalisierung beim Ankern
+    spread_rad: float = 0.0
+
+def anchor_world_base(pose_world_cam, pose_base_flange, pose_flange_cam) -> Pose
+def camera_pose_from_robot(pose_world_base, pose_base_flange, pose_flange_cam) -> Pose
+def target_spread(poses_base_flange, poses_cam_tag, pose_flange_cam) -> tuple[float, float]
+def solve_hand_eye(poses_base_flange, poses_cam_tag) -> tuple[Pose, float, float]
+def load_hand_eye(path) -> HandEye
+def save_hand_eye(path, hand_eye) -> None
+```
+
+`solve_hand_eye` rechnet nach **Park und Martin** in numpy, nicht über
+`cv2.calibrateHandEye`: OpenCV 5.0 exportiert die Funktion nicht mehr nach
+Python (nur die `CALIB_HAND_EYE_*`-Konstanten sind übrig), und das Repo trägt
+bewusst 4.x wie 5.x. Damit bleibt `tagloc.handeye` außerdem OpenCV-frei — der
+Vision-Server lädt den Anker, ohne OpenCV auf die Importkette zu holen.
+
+Gütemaß ist `target_spread`: der Tag der Kalibrierfahrt lag fest, also muss
+`T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` für jedes `i` dieselbe Pose
+ergeben. Streut das, stimmt die Kamerakalibrierung, die Tag-Größe oder die
+gemeldete Roboterpose nicht.
+
+In `tagloc.localize` hängen daran:
+
+```python
+def anchor_from_localization(localization, pose_base_flange, hand_eye) -> RobotAnchor
+def localize_camera_from_anchor(anchor, pose_base_flange, hand_eye) -> CameraLocalization
+def anchor_drift(anchor, localization, pose_base_flange, hand_eye) -> tuple[float, float]
+```
+
+`CameraLocalization.origin` sagt, woher die Pose stammt: `ORIGIN_WORLD_TAGS`
+(optisch gemessen, gewinnt immer wenn ein Welttag im Bild ist) oder
+`ORIGIN_ROBOT_POSE` (aus dem Anker fortgeschrieben). Die beiden haben nicht
+dieselbe Genauigkeit, deshalb steht es im Payload.
+
 `confidence` wird aus Reprojektionsfehler und Mehrdeutigkeit gebildet, nicht
 konstant auf `1.0` gesetzt.
 

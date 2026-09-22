@@ -31,10 +31,20 @@ PURE_MODULES = (
     "tagloc.calibration",
     "tagloc.tagmap",
     "tagloc.localize",
+    # Auch der Hand-Auge-Solver rechnet in numpy: cv2.calibrateHandEye ist in
+    # OpenCV 5.0 nicht mehr nach Python exportiert, und der Vision-Server soll
+    # den Anker ohne OpenCV auf der Importkette laden koennen.
+    "tagloc.handeye",
 )
 
 #: Modules that use cv2 -- but only inside functions, never at import time.
-LAZY_CV2_MODULES = ("tagloc.detector", "tagloc.pose", "tagloc.boards", "tagloc.overlay", "tagloc.frames")
+LAZY_CV2_MODULES = (
+    "tagloc.detector",
+    "tagloc.pose",
+    "tagloc.boards",
+    "tagloc.overlay",
+    "tagloc.frames",
+)
 
 STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes")
 

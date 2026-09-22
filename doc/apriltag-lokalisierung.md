@@ -65,9 +65,20 @@ den dieses Konzept behebt.
                beiden Kameras gleich
 ```
 
-Beide Kameras beziehen `T_world_cam` aus derselben Quelle: den Welttags im
-selben Bild. Die Handkamera braucht dafür **keine** Hand-Auge-Kalibrierung —
-sie liest ihre Pose optisch am Welttag ab.
+`T_world_cam` kann aus **zwei** Quellen kommen, und das Ergebnis sagt in
+`cameraPoseOrigin`, aus welcher:
+
+| Herkunft | Wie | Wann |
+|---|---|---|
+| `world_tags` | optisch: `T_world_cam = T_world_tag · inv(T_cam_tag)` | sobald ein Welttag im Bild liegt — die Messung, gewinnt immer |
+| `robot_pose` | `T_world_cam = T_world_base · T_base_flansch · T_flansch_cam` | dazwischen, wenn kein Welttag zu sehen ist |
+
+Der zweite Weg ist der Grund, warum die **Hand-Auge-Kalibrierung gebraucht
+wird**. Die Handkamera sieht den Welttag nicht dauerhaft: steht sie 0,3 m vor
+einem Modul, liegt der nächste Welttag ein bis zwei Meter entfernt außerhalb
+des Bildfelds. Der Welttag wird deshalb **einmal zu Beginn eines
+Lokalisierungsvorgangs** gebraucht — zum Ankern —, danach trägt die Kinematik.
+Siehe Abschnitt 1.5.
 
 Zusätzlich bekommt jedes Modul den Welttag, dem es am nächsten steht, und seine
 Pose relativ zu diesem Tag (`T_worldtag_module`). Die Zelle ist um die Welttags
@@ -109,15 +120,46 @@ ihre Posen im Kamera-KS mit gesetztem `frameConvention`. Das ist kein
 Provisorium, sondern der ehrliche Fall: ohne Anker im Bild wäre eine Weltpose
 geraten.
 
-### 1.4 Der Ablauf in der Zelle
+### 1.4 Ankern: einmal am Welttag, dann alle Module in Reichweite
+
+Die Kamera sitzt **starr** am Roboter; nur der Roboter als Ganzes bewegt sich.
+`T_flansch_cam` ist damit eine Konstante der Hardware und wird **einmal**
+kalibriert (`python -m tagloc.cli.calibrate_handeye`), nicht je Vorgang.
+
+```
+Einmalig:            T_flansch_cam                     Hand-Auge, Konstante
+
+Einmal je Vorgang:   T_world_base = T_world_cam · inv(T_flansch_cam) · inv(T_base_flansch)
+                     mit T_world_cam optisch aus dem Welttag
+
+Je Modul danach:     T_world_cam  = T_world_base · T_base_flansch(jetzt) · T_flansch_cam
+                     kein Welttag im Bild noetig
+```
+
+Kommt später doch wieder ein Welttag ins Bild, wird neu geankert — und die
+Abweichung zwischen optischem und weitergerechnetem Wert ist die aufgelaufene
+**Drift** (`anchorDriftM`/`anchorDriftDeg` im Payload). Ein Anker, der still
+wegwandert, ist genau die Sorte Fehler, die sonst erst beim Danebengreifen
+auffällt.
+
+Die Roboterpose `T_base_flansch` kommt als Job-Parameter an den Hand-Pi (sieben
+Floats, Meter und Quaternion xyzw). Fehlt sie oder fehlt die Hand-Auge-Datei,
+bleibt alles beim optischen Weg: ohne Welttag im Bild dann eben im Kamera-KS.
+Geraten wird nicht — eine falsche Roboterpose verschiebt jede Modulpose, ohne
+dass man es dem Ergebnis ansieht.
+
+### 1.5 Der Ablauf in der Zelle
 
 1. **Deckenkamera**: sieht die Welttags, den Roboter und die Module in einem
    Bild. Sie liefert die Grobübersicht und beantwortet als Einzige die Frage,
    welcher Welttag dem Roboter am nächsten steht (`world_tag_for_robot`) —
    denn nur sie sieht beides gleichzeitig.
-2. **Roboter**: richtet seine Hand-in-Eye-Kamera auf genau diesen Welttag.
-3. **Handkamera**: lokalisiert sich am Welttag (`localize_camera`) und misst
-   von dort die Module genau ein — immer auf die Welttags bezogen.
+2. **Roboter**: richtet seine Hand-in-Eye-Kamera auf genau diesen Welttag und
+   **ankert** sich daran (`anchor_from_localization`) — einmal je Vorgang.
+3. **Handkamera**: fährt danach jedes Modul in Reichweite an und misst es genau
+   ein. Der Welttag muss dabei nicht mehr im Bild sein; die Kamerapose kommt
+   aus dem Anker und der Kinematik (`localize_camera_from_anchor`). Die
+   Ergebnisse bleiben trotzdem im Welt-KS und auf die Welttags bezogen.
 4. **Zusammenführen**: `merge_locations(decke, hand)` vereint beide Bilder der
    Zelle. Wo beide dasselbe Modul gemessen haben, gewinnt die Handmessung; was
    nur die Decke gesehen hat, bleibt erhalten. Bewusst eine reine Funktion und
@@ -603,6 +645,6 @@ Entscheidungen des Teams. Was dieser Entwurf nahelegt:
 | Rolle des Robotertisch-Tags | **entfällt.** Der Tisch war nie ein fester Anker — das war der Denkfehler. Der Roboter trägt eigene Tags mit der Rolle `robot` und wird gemessen wie jedes Modul. |
 | Welcher Welttag gilt für den Roboter? | der ihm nächstgelegene, aus dem Deckenbild bestimmt (`world_tag_for_robot`). Nur die Deckenkamera sieht Roboter und Welttags gleichzeitig, also kann nur sie diese Frage beantworten. |
 | Wie fallen Decken- und Handmessung zusammen? | `merge_locations(decke, hand)` — reine Funktion in `tagloc`. Die genauere Quelle (`flange`) gewinnt, was nur die Decke sah bleibt erhalten. Keine Verbindung zwischen den beiden Pis nötig. |
-| Hand-Auge-Kalibrierung für Layer 2 | **bleibt offen.** Bis dahin liefert Layer 2 im Kamera-KS mit gesetztem `frameConvention`, und `auto_execute` bleibt `False` — ein automatisches Anfahren erkannter Posen darf nicht scharf geschaltet werden. |
+| Hand-Auge-Kalibrierung für die Handkamera | **gerechnet und werkzeugseitig da**, aber an der echten Hardware noch nicht durchgeführt. `T_flansch_cam` ist eine Konstante (Kamera starr am Roboter) und wird einmal per `tagloc.cli.calibrate_handeye` bestimmt. Solange keine gemessene Datei vorliegt, wirkt nur der optische Weg, und `auto_execute` bleibt `False` — ein automatisches Anfahren erkannter Posen darf erst scharf geschaltet werden, wenn die Kalibrierung am Roboter belegt ist. |
 | Repositionierungsstrategie Layer 2 | **nicht Teil dieser Bibliothek.** `tagloc` meldet „kein Tag gefunden" als `DETECTION_FAILED`; was der Roboter daraufhin tut, gehört in die Ablaufsteuerung. |
 | Soll-Anzahl der Module | aus der Tag-Map ableitbar: jeder Eintrag mit `role: "module"` ist ein erwartetes Modul. Damit ist das Abbruchkriterium „alle Modul-Tags gesehen" ohne zusätzliche Konfiguration formulierbar. |
