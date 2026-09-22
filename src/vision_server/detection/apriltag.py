@@ -368,6 +368,25 @@ class AprilTagDetectionSource(DetectionSource):
         self.frame_id = located[0].frame_id or self._config.frame_id
 
         localization = self._localization
+        if localization is None:
+            # Ohne Welttag bleiben die Posen im Kamera-KS, und jeder Konsument
+            # muss sie ablehnen -- eine Kamerapose laesst sich nicht in der
+            # Zelle platzieren. Bisher stand nirgends, WARUM keiner gefunden
+            # wurde; genau daran scheitert die Fehlersuche beim Aufbau.
+            known = sorted(self._tag_map.reference_poses())
+            _log.warning(
+                "Kein Welttag im Bild -- Posen bleiben im Kamera-KS ('%s'). "
+                "Gesehen: %s. Die Karte kennt als eingemessenen Welttag: %s. "
+                "%s",
+                self._config.frame_id,
+                sorted(location.tag_id for location in located),
+                known or "keinen",
+                "Mindestens ein Tag braucht role='world' MIT 'poseInWorld' in "
+                "config/tagmap.json -- sonst gibt es kein Welt-KS."
+                if not known
+                else "Keiner davon war in diesem Bild zu sehen.",
+            )
+
         detections: list[Detection] = []
         for location in located:
             position, orientation = to_position_quaternion(location.pose)
