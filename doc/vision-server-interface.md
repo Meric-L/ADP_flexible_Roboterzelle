@@ -237,7 +237,7 @@ Kamera-KS. **Deshalb `frameId` nie annehmen, sondern lesen** — zusammen mit
 `frameConvention`, die sagt, wohin +Z zeigt.
 
 Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
-unterscheiden sich nur in der `AprilTagProfileConfig`, die `cell_server.py` je
+unterscheiden sich nur in der `AprilTagProfileConfig`, die `server.py` je
 Pi setzt.
 
 Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
@@ -535,7 +535,7 @@ JPEG-Bytes.
 Verhalten:
 
 - Der Knoten existiert **nur**, wenn der Server mit `camera_stream`
-  konfiguriert wurde (auf dem Pi über `cell_server.py` der Fall, beim
+  konfiguriert wurde (auf dem Pi über `server.py` der Fall, beim
   lokalen `python -m vision_server` standardmäßig **nicht** — dort fehlt
   i. d. R. die Kamera).
 - Läuft die Kamera nicht (Fehler beim Öffnen), existiert der Knoten zwar,
@@ -549,7 +549,7 @@ Verhalten:
   (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
 - **Kamera-Backend ist pro Pi verschieden**, `CameraStreamConfig.backend`
   (`"picamera2"` | `"realsense"` | `"opencv"`) macht das explizit:
-  `cell_server.py` wählt es über `PI_CAMERA_BACKENDS`
+  `server.py` wählt es über `PI_CAMERA_BACKENDS`
   (Hostname → Backend, Fallback `"picamera2"`, override per Env-Var
   `VISION_CAMERA_BACKEND`). Aktuell: `ADP-Roboter-Lokalisierung` → Picamera2
   (Deckenkamera), `ADP-HandInEye-Kamera-Pi` → RealSense. Für die Erkennung und
@@ -621,7 +621,7 @@ ns=<vision>;s=VisionMachine.VisionAsset
 └── Lenses/Lens
 ```
 
-Angelegt wird nur, was in der `AssetConfig` des Pis steht (`src/vision_server/cell_server.py`,
+Angelegt wird nur, was in der `AssetConfig` des Pis steht (`src/vision_server/server.py`,
 `PI_ASSET_PRESETS`). Ein leeres Modellfeld heißt „nicht bekannt" und erzeugt
 **keinen** Eintrag — ein erfundenes Modell wäre in einer Instandhaltungssicht
 schlimmer als eine Lücke.
@@ -677,7 +677,7 @@ Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
 
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
-in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/cell_server.py`) —
+in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
 das Frontend sendet und kennt keine Board-Parameter, es startet/beendet nur.
 
 ### 12.1 `StartCalibration`

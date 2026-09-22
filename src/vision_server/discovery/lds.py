@@ -27,7 +27,7 @@ ist nur die Klammer darum:
    --, uebernimmt der Aggregation-Server die Adresse woertlich und verbindet ins
    Leere. Loesung ist `Server.socket_address`: der Endpoint nennt die LAN-IPv4,
    gelauscht wird trotzdem auf `0.0.0.0`. `advertised_endpoint()` baut die URL,
-   `cell_server.py` setzt beides. Als Netz gegen Rueckfaelle verweigert `register()`
+   `server.py` setzt beides. Als Netz gegen Rueckfaelle verweigert `register()`
    die Anmeldung, wenn im Endpoint doch `0.0.0.0` steht.
 2. **Ein nicht erreichbarer LDS darf den Start nicht verhindern.**
    `register_to_discovery()` wirft dann; hier bleibt es bei einer Warnung im
@@ -79,7 +79,7 @@ def advertised_endpoint(port: int, path: str, address: str | None = None) -> str
     Traegt die LAN-IPv4 statt `0.0.0.0`, damit die daraus gebildete
     DiscoveryUrl fuer den Aggregation-Server brauchbar ist. Gelauscht wird
     davon unabhaengig auf allen Schnittstellen -- siehe `Server.socket_address`
-    in `cell_server.py`.
+    in `server.py`.
 
     Returns
     -------

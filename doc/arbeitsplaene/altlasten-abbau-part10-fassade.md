@@ -29,7 +29,7 @@ verwirrt und möchte ausschließlich auf dem Part-10-Teil arbeiten.
 
 **Zelle** (dieses Repo)
 
-- `src/OPCUA/server.py` → `src/vision_server/cell_server.py` (verschoben)
+- `src/OPCUA/server.py` → `src/vision_server/server.py` (verschoben)
 - `src/OPCUA/print_setpoint.py` (gelöscht)
 - `src/ua_lds.py` → `src/vision_server/discovery/lds.py` (verschoben)
 - `src/ua_mdns.py` → `src/vision_server/discovery/mdns.py` (verschoben)
@@ -235,7 +235,7 @@ nützlich.
 **6. Betriebsfolge, die der Plan nicht hatte:** Die systemd-Unit auf beiden Pis
 startet `src/OPCUA/server.py`. Diesen Pfad gibt es nicht mehr; die Unit ist
 nirgends versioniert (Altlast D5) und muss von Hand auf
-`python3 -m vision_server.cell_server` mit `WorkingDirectory=<repo>/src`
+`python3 -m vision_server.server` mit `WorkingDirectory=<repo>/src`
 umgestellt werden.
 
 ## Nach Abschluss

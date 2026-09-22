@@ -11,7 +11,7 @@ Adressraum entsteht vollstaendig in `runner.install_vision_machine`.
 
 Starten:
 
-    python3 -m vision_server.cell_server
+    python3 -m vision_server.server
 
 Die CPU-Temperatur-Demo aus der Anfangszeit -- `RaspiDevice`, die leere
 Zweitinstanz `2:VisionSystem`, `CpuTemperatureResult` und der Namensraum
@@ -125,7 +125,7 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
     },
 }
 
-#: Wurzel des Repos, von `src/vision_server/cell_server.py` aus drei Ebenen
+#: Wurzel des Repos, von `src/vision_server/server.py` aus drei Ebenen
 #: hoch. Zeigt auf `data/` und `config/` -- beide liegen bewusst neben dem
 #: Quelltext, nicht im Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map
 #: zur Zelle.

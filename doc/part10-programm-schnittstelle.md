@@ -110,7 +110,7 @@ nicht ein.
   samt aller neun Namespaces im Aggregation-Server. Nach dem Abmelden war es
   wieder weg.
 
-**Umgesetzt in `src/vision_server/discovery/lds.py`**, aufgerufen aus `src/vision_server/cell_server.py` neben
+**Umgesetzt in `src/vision_server/discovery/lds.py`**, aufgerufen aus `src/vision_server/server.py` neben
 der mDNS-Ankündigung. Beide Wege bleiben nebeneinander bestehen: der LDS
 bringt uns in den Aggregation-Server, mDNS bedient Clients im Subnetz direkt.
 
@@ -564,7 +564,7 @@ Nichts davon ist Pflicht, um weiterzulaufen — alles ist Gewinn.
 pip install -r requirements.txt          # bringt jetzt auch `zeroconf` mit
 
 # Zellserver starten (VisionMachine + VisionProgram + mDNS + LDS)
-python3 -m vision_server.cell_server
+python3 -m vision_server.server
 
 # Auf dem Pi laeuft er als Service:
 sudo systemctl restart opcua-server.service

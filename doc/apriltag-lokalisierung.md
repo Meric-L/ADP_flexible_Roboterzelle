@@ -344,7 +344,7 @@ DEFAULT_RECIPE_PROFILES = (
 
 **Layer 1 und Layer 2 bekommen kein eigenes Profil.** Jeder Pi fährt einen eigenen
 Server mit genau einer `AprilTagProfileConfig`; der Unterschied steht in
-`src/vision_server/cell_server.py`, wo `PI_IDENTITIES` ohnehin schon zwischen `pi-decke` und
+`src/vision_server/server.py`, wo `PI_IDENTITIES` ohnehin schon zwischen `pi-decke` und
 `pi-hand` unterscheidet:
 
 | Feld | Layer 1 (`pi-decke`) | Layer 2 (`pi-hand`) |
@@ -506,7 +506,7 @@ Die Schritte 1–7 und 9 sind umgesetzt, die Suite ist grün.
 | 6 | `detection/apriltag.py` + Registry + Rezept + Tests | erledigt |
 | 7 | QR-Ausbau nach Abschnitt 6 | erledigt |
 | 8 | `src/apriltag/` auflösen | **zurückgestellt** |
-| 9 | Konfiguration je Pi in `cell_server.py`, Doku nachziehen | erledigt |
+| 9 | Konfiguration je Pi in `server.py`, Doku nachziehen | erledigt |
 
 Zu Schritt 8: Der Prototypordner bleibt vorerst stehen und ist in
 [`MANUAL_TEST.md`](../src/apriltag/MANUAL_TEST.md) als abgelöst gekennzeichnet.

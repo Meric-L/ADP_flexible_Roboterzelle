@@ -7,7 +7,7 @@ für den vollständigen Zielplan
 
 ## Zweck
 
-**Ein** OPC-UA-Server auf dem Raspberry Pi (`src/vision_server/cell_server.py`, Port 4840,
+**Ein** OPC-UA-Server auf dem Raspberry Pi (`src/vision_server/server.py`, Port 4840,
 Endpoint `opc.tcp://<pi>:4840/raspi/server/`) mit **zwei Sichten auf denselben
 Job**:
 
@@ -38,7 +38,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | --- | --- |
 | [`src/vision_server/`](../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
 | [`src/vision_server/tools/hello_world_client.py`](../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
-| [`src/vision_server/cell_server.py`](../src/vision_server/cell_server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
+| [`src/vision_server/server.py`](../src/vision_server/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
 | [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../requirements.txt) | u. a. `asyncua` |
 
@@ -138,7 +138,7 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 pip install -r requirements.txt
 
 # Server der Zelle (Vision-System + Part-10-Programm + mDNS/LDS)
-PYTHONPATH=src python3 -m vision_server.cell_server
+PYTHONPATH=src python3 -m vision_server.server
 
 # Handshake einmal durchspielen
 PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
@@ -148,22 +148,22 @@ PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
 PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
 ```
 
-Der frühere `sys.path`-Eingriff in `server.py` ist entfallen: das Modul liegt
-jetzt im Paket und wird als Modul gestartet. Dafür braucht es `PYTHONPATH=src`
-oder ein `WorkingDirectory` auf `src/`.
+### Zwei Wege auf denselben Server
 
-> **Achtung, die systemd-Unit auf den Pis bricht.** Sie startet
-> `src/OPCUA/server.py`, und den Pfad gibt es seit dem Umzug nicht mehr. Auf
-> **beiden** Pis ist `ExecStart` umzustellen:
->
-> ```ini
-> WorkingDirectory=/home/<user>/ADP_flexible_Roboterzelle/src
-> ExecStart=/home/<user>/ADP_flexible_Roboterzelle/.venv/bin/python -m vision_server.cell_server
-> ```
->
-> Danach `systemctl daemon-reload && systemctl restart opcua-server.service`.
-> Die Unit ist nirgends versioniert (Altlast D5) — sie muss von Hand angefasst
-> werden, sonst läuft der Dienst nach dem nächsten Pull nicht mehr an.
+| Weg | Wofür |
+| --- | --- |
+| `python3 -m vision_server.server` | Entwicklung und Handarbeit. Braucht `PYTHONPATH=src` oder `WorkingDirectory=…/src`. |
+| `python3 src/OPCUA/server.py` | **Die systemd-Unit auf den Pis.** Ein 15-Zeilen-Starter ohne Logik, der `src/` auf den Pfad legt und `vision_server.server.main()` aufruft. |
+
+`src/OPCUA/server.py` existiert **nur** deshalb: die Unit zeigt seit jeher auf
+diesen Pfad, sie ist in keinem Repo versioniert (Altlast D5), und sie auf zwei
+Pis von Hand nachzuziehen wäre eine Fehlerquelle bei jedem Neuaufsetzen. Sie
+kann wegfallen, sobald die Unit versioniert ist und mit ausgerollt wird.
+
+Beim Umzug ins Paket war diese Datei kurzzeitig gelöscht — der Dienst startete
+nach einem Reboot nicht mehr. Der Starter ist die Lehre daraus: **an einem
+Einstiegspunkt, den ein nicht versioniertes Deployment festhält, wird nicht
+ohne Ersatz gezogen.**
 
 Auf dem Pi läuft der Server produktiv als systemd-Service `opcua-server.service`
 (`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service` —
@@ -175,7 +175,7 @@ Client dagegen testen.
 ## Verifizierter Stand
 
 Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen, im
-Produktionszuschnitt (`src/vision_server/cell_server.py` auf 4840) und mit separatem Client:
+Produktionszuschnitt (`src/vision_server/server.py` auf 4840) und mit separatem Client:
 Happy Path inkl. Payload und Event-Reihenfolge, `BUSY` bei zwei gleichzeitigen
 Aufrufen, `INVALID_ARGUMENT` bei überlanger `MeasId`, `UNKNOWN_RECIPE` bei
 unbekanntem Rezept, Fehlerpfad über den `Error`-Zustand mit anschließender
