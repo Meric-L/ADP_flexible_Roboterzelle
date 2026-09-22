@@ -327,13 +327,16 @@ class NormaliseModeTest(unittest.TestCase):
 
 
 class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
-    """Mit einem kleinen ISP-Bild rechnet der Stream nie auf dem vollen Frame.
+    """Mit einem kleinen ISP-Bild rechnet der Stream im `off`/`calibration`-Modus
+    nie auf dem vollen Frame -- genau das liess die Deckenkamera ruckeln.
 
-    Genau das liess die Deckenkamera ruckeln: das AprilTag-Overlay kopierte
-    und durchsuchte jedes Bild in voller Aufloesung, bevor es verkleinert wurde.
+    Ausnahme `apriltag`: der Stream muss dasselbe Bild zeigen wie der echte
+    Job, sonst laesst sich nicht vertrauenswuerdig sehen, ob der Pi ein Tag
+    wirklich erkennt (Absprache 2026-09-22) -- dort wird bewusst der volle
+    Frame genommen, auch wenn das mehr pro Tick kostet.
     """
 
-    async def test_overlay_and_encode_use_the_preview(self):
+    async def test_apriltag_mode_overlays_and_encodes_the_full_frame(self):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
@@ -345,11 +348,30 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
 
         await _run_briefly(publisher, 0.1)
 
-        self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
+        self.assertEqual({image for image, _ in annotator.calls}, {"voll"})
         self.assertIn(
-            f"encoded:annotated:klein:{DEFAULT_OVERLAY_MODE}:{FAST_CONFIG.jpeg_quality}",
+            f"encoded:annotated:voll:{DEFAULT_OVERLAY_MODE}:{FAST_CONFIG.jpeg_quality}",
             node.written,
         )
+
+    async def test_calibration_mode_still_uses_the_preview(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
+        node = FakeNode()
+        annotator = FakeAnnotator()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            FAST_CONFIG,
+            encode_frame=fake_encode,
+            annotator=annotator,
+            mode_node=FakeModeNode("calibration"),
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
 
     async def test_raw_mode_sends_the_preview_unmarked(self):
         camera = FakeCamera()

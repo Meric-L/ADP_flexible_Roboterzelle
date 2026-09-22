@@ -213,20 +213,31 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # Das kleine Bild des Kamera-ISP, falls es eins gibt: Overlay,
-        # Verkleinern und Kodieren rechnen dann auf ~0,7 MP statt auf dem
-        # vollen Frame (12 MP an der Deckenkamera). Jobs lesen weiter
-        # `frame.image`; das Overlay rechnet seine Kalibrierung auf die
-        # kleinere Groesse um (`AprilTagStreamAnnotator._calibration_for`).
-        source = getattr(frame, "preview", None)
-        if source is None:
+        # Im "apriltag"-Modus muss der Stream exakt das Bild zeigen, auf dem
+        # auch der Job erkennt -- sonst laesst sich nicht vertrauenswuerdig
+        # sehen, ob der Pi ein Tag wirklich findet oder das nur auf dem
+        # kleineren Vorschaubild klappt/scheitert. Kostet mehr pro Tick (volle
+        # Aufloesung statt ~0,7 MP an der Deckenkamera); die Framerate sinkt
+        # dadurch von selbst ueber die Sleep-Anpassung unten -- bewusst in
+        # Kauf genommen (Absprache 2026-09-22). "off"/"calibration" bleiben
+        # beim kleinen Vorschaubild: dort geht es nicht um Erkennungstreue
+        # (calibration hat ohnehin ein eigenes, separat getuntes Downscale vor
+        # `detect_board`, siehe `detection_max_width`).
+        if mode == "apriltag":
             source = frame.image
+        else:
+            source = getattr(frame, "preview", None)
+            if source is None:
+                source = frame.image
         image, complete = source, True
         if mode != "off" and self._annotator is not None:
             image, complete = await self._annotate(loop, source, mode)
         if self._config.max_stream_width is not None:
             # Nach dem Overlay und nur fuers Publizieren -- beide Wege
-            # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild.
+            # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im
+            # "apriltag"-Modus lief die Erkennung vorher bereits in voller
+            # Aufloesung; hier wird nur noch die fertig markierte Kopie fuers
+            # Uebertragen verkleinert, die Treffer selbst bleiben unveraendert.
             image = await loop.run_in_executor(
                 None, _resize_for_stream, image, self._config.max_stream_width
             )

@@ -660,29 +660,40 @@ http://<pi>:<port>/snapshot.jpg    das neueste Einzelbild (503, solange keins da
 ### 10.3 Zwei Bildströme an der Deckenkamera
 
 Die Deckenkamera (Pi 1, HQ-Kamera IMX477) nimmt mit der vollen
-Sensorauflösung **4056×3040** auf. Der Livestream rechnet darauf nicht: die
-Pi-Kamera liefert aus demselben Frame einen zweiten, vom ISP skalierten Strom
-(`lores`, 960×720), praktisch ohne CPU-Last.
+Sensorauflösung **4056×3040** auf. Die Pi-Kamera liefert aus demselben Frame
+zusätzlich einen zweiten, vom ISP skalierten Strom (`lores`, 960×720),
+praktisch ohne CPU-Last — genutzt wird er aber nur noch, wo Erkennungstreue
+keine Rolle spielt:
 
 | Wer | Bild | Auflösung |
 | --- | --- | --- |
 | AprilTag-Job, Kalibrier-Session | `CameraFrame.image` | 4056×3040 |
-| Livestream (MJPEG und Knoten), Overlay „AprilTags markieren“ und „Kalibrierboard markieren“ | `CameraFrame.preview` | 960×720 |
+| Livestream/Overlay **„AprilTags markieren“** (MJPEG und Knoten) | `CameraFrame.image` | 4056×3040, fürs Publizieren auf `max_stream_width` (960 px) verkleinert |
+| Livestream **„Rohbild“**, Overlay **„Kalibrierboard markieren“** | `CameraFrame.preview` | 960×720 |
+
+> **Geändert 2026-09-22:** Der Modus „AprilTags markieren“ lief zuerst auf
+> `CameraFrame.preview` (siehe unten, Ursprungsgrund: Framerate). Das hieß
+> aber, dass Stream und Job unterschiedliche Bilder auswerten — ein Tag, der
+> im Stream nicht markiert erscheint, war damit kein verlässlicher Beleg dafür,
+> dass der Job ihn auch verpasst. Jetzt erkennt das Overlay in diesem Modus auf
+> demselben Bild wie der Job (`CameraFrame.image`) und wird erst danach für die
+> Übertragung verkleinert — die Treffer selbst sind also identisch mit dem
+> Job, nur die Framerate sinkt spürbar (volle 12-MP-Verarbeitung pro Tick statt
+> ~0,7 MP), bewusst in Kauf genommen. „Rohbild“ und „Kalibrierboard markieren“
+> bleiben aus Bandbreiten- bzw. Geschwindigkeitsgründen beim kleinen Vorschaubild.
 
 Beide Bilder kommen aus **einem** Request, stammen also immer aus derselben
-Aufnahme. Das Overlay rechnet die Kalibrierung auf 960×720 um
-(`scale_to_resolution`); das Seitenverhältnis weicht um 0,07 % ab, unter der
-Schranke von 0,1 %.
-
-Folge: Das Overlay sucht Tags im kleinen Bild. Ein sehr kleiner, weit
-entfernter Tag kann dort fehlen, den der Job im vollen Bild trotzdem findet —
-nie umgekehrt. Das Jobergebnis ist maßgeblich, das Overlay ist die Vorschau.
+Aufnahme. Rechnet ein Overlay auf `preview` (960×720), rechnet es die
+Kalibrierung entsprechend um (`scale_to_resolution`); das Seitenverhältnis
+weicht dabei um 0,07 % ab, unter der Schranke von 0,1 %.
 
 Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
-`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720), `capture_fps` 10
-(Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs Puffer à
-37 MB passen nicht in den CMA-Speicher). Ohne `preview_resolution` — Hand-Pi
-mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst.
+`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, nur noch für
+„Rohbild“/„Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
+10 (Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs
+Puffer à 37 MB passen nicht in den CMA-Speicher). Ohne `preview_resolution` —
+Hand-Pi mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst, dort
+sind Job- und Stream-Auflösung ohnehin identisch (640×480).
 
 Hauptstrom im Format `RGB888`: Picamera2 legt es als B,G,R ab, also direkt
 OpenCV-BGR — die frühere Farbumrechnung auf jedem Frame entfällt.
