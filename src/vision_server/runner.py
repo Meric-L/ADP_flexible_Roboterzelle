@@ -6,6 +6,7 @@ import logging
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from asyncua import Server, ua, uamethod
 
@@ -89,30 +90,55 @@ def _build_annotator(source: DetectionSource):
     )
 
 
+def _safe_build_annotator(source: DetectionSource):
+    """`_build_annotator`, but a failure only costs the markup, never the stream."""
+    try:
+        return _build_annotator(source)
+    except Exception:
+        _log.exception("Stream-Overlay nicht verfuegbar, Stream laeuft ohne Markierung")
+        return None
+
+
+async def _camera_source(
+    sources: Mapping[str, DetectionSource], opened: Mapping[str, bool]
+) -> DetectionSource | None:
+    """Return the source whose camera feeds the livestream and the remote calibration.
+
+    An opened source first. Failing that, a source that holds a camera but
+    could not open -- in practice the AprilTag source without a calibration
+    file. Its camera is then opened on its own: the operator needs the image
+    exactly in that situation, to calibrate. The source itself stays closed
+    and the system in Preoperational until a calibration exists.
+    """
+    owner = _camera_owner(sources, opened)
+    if owner is not None:
+        return owner
+    for profile in sorted(sources):
+        camera = getattr(sources[profile], "camera", None)
+        if camera is None:
+            continue
+        try:
+            await camera.open()
+        except Exception:
+            _log.exception("Kamera von Profil '%s' laesst sich nicht oeffnen", profile)
+            return None
+        _log.warning(
+            "Profil '%s' ist nicht betriebsbereit; Kamera trotzdem geoeffnet, damit "
+            "Livestream und Kalibrierung laufen",
+            profile,
+        )
+        return sources[profile]
+    return None
+
+
 def _start_camera_stream(
-    space: VisionAddressSpace,
-    sources: Mapping[str, DetectionSource],
-    opened: Mapping[str, bool],
-) -> CameraStreamPublisher | None:
-    """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
+    space: VisionAddressSpace, source: DetectionSource, annotator: Any
+) -> CameraStreamPublisher:
+    """Startet den Livestream-Publisher auf der Kamera der Quelle.
 
     Nutzt dieselbe `SharedCamera`, die auch die Erkennung offen haelt — eine
     zweite Kamera lohnt sich hier nicht, siehe `camera.py`.
     """
-    if space.latest_camera_frame is None:
-        return None
-    source = _camera_owner(sources, opened)
-    if source is None:
-        _log.error(
-            "Livestream-Knoten konfiguriert, aber keine geoeffnete Quelle haelt eine "
-            "Kamera -- kein Stream"
-        )
-        return None
-    annotator = None
-    try:
-        annotator = _build_annotator(source)
-    except Exception:
-        _log.exception("Stream-Overlay nicht verfuegbar, Stream laeuft ohne Markierung")
     stream = CameraStreamPublisher(
         source.camera,
         space.latest_camera_frame,
@@ -124,9 +150,105 @@ def _start_camera_stream(
     _log.info(
         "Livestream aus Profil '%s'%s",
         source.profile_id,
-        " mit Overlay" if annotator is not None else " ohne Overlay",
+        " mit Overlay" if getattr(annotator, "base", None) is not None else " ohne Overlay",
     )
     return stream
+
+
+def _calibration_handler(command, arity: int):
+    """Wrap a session command as OPC-UA method: `(Error: Int32, Message: String)`.
+
+    Checks the argument count itself -- a TypeError from inside the command
+    must surface as INTERNAL, not be mistaken for a wrong call.
+    """
+
+    @uamethod
+    async def handler(parent, *args):
+        if len(args) != arity:
+            code, message = (
+                VisionErrorCode.INVALID_ARGUMENT,
+                f"Erwartet {arity} Argument(e), erhalten {len(args)}.",
+            )
+        else:
+            try:
+                code, message = await command(*args)
+            except Exception:
+                _log.exception("Kalibrierbefehl fehlgeschlagen")
+                code, message = VisionErrorCode.INTERNAL, "Interner Fehler, siehe Server-Log."
+        return (
+            ua.Variant(int(code), ua.VariantType.Int32),
+            ua.Variant(message, ua.VariantType.String),
+        )
+
+    return handler
+
+
+async def _install_calibration(
+    server: Server,
+    space: VisionAddressSpace,
+    states: VisionStateMachines,
+    source: DetectionSource,
+    sources: Mapping[str, DetectionSource],
+    opened: dict[str, bool],
+    annotator: Any,
+):
+    """Wire the remote calibration to the camera source and link its methods.
+
+    `None` if the source does not use a calibration file. After `Save`, the
+    source takes the new file: reloaded if it was running, opened for the
+    first time if it was waiting for exactly this -- and then the system
+    leaves Preoperational.
+    """
+    nodes = space.calibration
+    calibration_path = getattr(source, "calibration_path", None)
+    if nodes is None or calibration_path is None:
+        return None
+    from .calibration_session import CalibrationSession
+
+    profile = next(name for name, candidate in sources.items() if candidate is source)
+
+    async def apply_calibration() -> tuple[bool, str]:
+        if opened.get(profile):
+            await source.reload_calibration()
+        else:
+            opened[profile] = await _open_source(source)
+            if not opened[profile]:
+                return (
+                    False,
+                    "Gespeichert, aber die Erkennung startet noch nicht. Ursache im Server-Log.",
+                )
+        if annotator.base is None:
+            annotator.base = _safe_build_annotator(source)
+        else:
+            annotator.base.set_calibration(source.calibration)
+        outer_state, _ = states.state_names()
+        if all(opened.values()) and outer_state in ("", "Preoperational"):
+            await states.enter_operational()
+            return True, "Kalibrierung übernommen. Das Vision-System ist jetzt betriebsbereit."
+        return True, "Kalibrierung übernommen."
+
+    async def publish(text: str) -> None:
+        await nodes.status.write_value(ua.Variant(text, ua.VariantType.String))
+
+    session = CalibrationSession(
+        source.camera,
+        calibration_path=calibration_path,
+        frame_id=getattr(source, "calibration_frame_id", ""),
+        publish=publish,
+        on_saved=apply_calibration,
+        mode_node=space.camera_stream_mode,
+    )
+    for node, command, arity in (
+        (nodes.start, session.start, 1),
+        (nodes.capture, session.capture, 0),
+        (nodes.compute, session.compute, 0),
+        (nodes.save, session.save, 0),
+        (nodes.cancel, session.cancel, 0),
+    ):
+        server.link_method(node, _calibration_handler(command, arity))
+    await session.refresh_current()
+    _log.info("Fernkalibrierung bereit, Ziel %s", calibration_path)
+    return session
 
 
 async def _open_source(source: DetectionSource) -> bool:
@@ -159,6 +281,9 @@ class VisionMachine:
     camera_stream: CameraStreamPublisher | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
+    #: Remote calibration (`calibration_session.CalibrationSession`); `None`
+    #: without a camera.
+    calibration: Any = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -172,6 +297,8 @@ class VisionMachine:
                 await self.lag_watchdog
         if self.camera_stream is not None:
             await self.camera_stream.stop()
+        if self.calibration is not None:
+            await self.calibration.close()
         await self.jobs.cancel_running()
         for source in self.sources.values():
             try:
@@ -311,7 +438,26 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             config.vision_system_name,
         )
 
-    camera_stream = _start_camera_stream(space, sources, opened)
+    camera_stream = None
+    calibration = None
+    if space.latest_camera_frame is not None:
+        camera_source = await _camera_source(sources, opened)
+        if camera_source is None:
+            _log.error(
+                "Livestream-Knoten konfiguriert, aber keine Quelle haelt eine nutzbare "
+                "Kamera -- kein Stream, keine Kalibrierung"
+            )
+        else:
+            # Imported here: the session pulls numpy in via tagloc, and a server
+            # without a camera must not need it.
+            from .calibration_session import StreamAnnotator
+
+            annotator = StreamAnnotator(base=_safe_build_annotator(camera_source))
+            calibration = await _install_calibration(
+                server, space, states, camera_source, sources, opened, annotator
+            )
+            annotator.session = calibration
+            camera_stream = _start_camera_stream(space, camera_source, annotator)
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 
@@ -331,6 +477,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
         assets=assets,
+        calibration=calibration,
     )
 
 

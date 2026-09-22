@@ -38,7 +38,8 @@ def main() -> str:
     if not calibration_path.is_file():
         return (
             f"Rahmen {frame_id}: KEINE KALIBRIERUNG unter {calibration_path}. "
-            "Erzeugen mit: python -m tagloc.cli.calibrate --source picamera "
+            "Erzeugen im Frontend ueber 'Kamera kalibrieren', oder an der "
+            "Kommandozeile: python -m tagloc.cli.calibrate --source picamera "
             f"--board charuco --frame-id {frame_id} --out {calibration_path}"
         )
 

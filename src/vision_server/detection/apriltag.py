@@ -128,6 +128,37 @@ class AprilTagDetectionSource(DetectionSource):
         await self.camera.close()
         await self.shutdown_executor()
 
+    # -- Calibration ------------------------------------------------------------
+
+    @property
+    def calibration_path(self):
+        """Where this camera's calibration lives -- the remote calibration writes here."""
+        return self._config.calibration_path
+
+    @property
+    def calibration_frame_id(self) -> str:
+        """The camera's own frame, recorded in the calibration file."""
+        return self._config.frame_id
+
+    @property
+    def calibration(self) -> Any:
+        """The calibration in use, or `None` before the source opened."""
+        return self._calibration
+
+    async def reload_calibration(self) -> None:
+        """Swap in the calibration file as it is now on disk.
+
+        For a source that is already open (after a recalibration). The new
+        object replaces the old one in one assignment; a job running right
+        now keeps the reference it started with.
+        """
+        from tagloc.calibration import load_calibration
+
+        self._calibration = await self.run_blocking(
+            load_calibration, self._config.calibration_path
+        )
+        self.configuration_id = self._build_configuration_id()
+
     # -- Capture ---------------------------------------------------------------
 
     async def _next_frame(self, seen_timestamp: float | None):

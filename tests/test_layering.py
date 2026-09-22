@@ -31,6 +31,7 @@ PURE_MODULES = (
     "tagloc.calibration",
     "tagloc.tagmap",
     "tagloc.localize",
+    "tagloc.calibration_guide",
 )
 
 #: Modules that use cv2 -- but only inside functions, never at import time.

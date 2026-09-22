@@ -9,11 +9,24 @@ selection goes by the presence of an opened camera.
 import unittest
 
 from vision_server.detection.base import Detection, DetectionRequest, DetectionSource
-from vision_server.runner import _build_annotator, _camera_owner
+from vision_server.runner import _build_annotator, _camera_owner, _camera_source
 
 
 class FakeCamera:
     """Stands in for a source holding a camera."""
+
+
+class OpenableCamera(FakeCamera):
+    """A camera the runner may open on its own."""
+
+    def __init__(self, fails: bool = False) -> None:
+        self.opened = False
+        self._fails = fails
+
+    async def open(self) -> None:
+        if self._fails:
+            raise RuntimeError("Kamera belegt")
+        self.opened = True
 
 
 class CameralessSource(DetectionSource):
@@ -57,6 +70,33 @@ class CameraOwnerTest(unittest.TestCase):
         source = CameraSource(camera=None)
         source.camera = None
         self.assertIsNone(_camera_owner({"x": source}, {"x": True}))
+
+
+class CameraSourceTest(unittest.IsolatedAsyncioTestCase):
+    """Without a calibration the source stays closed -- the camera must not.
+
+    That is exactly the situation in which the operator wants the livestream
+    and the remote calibration: a Pi whose calibration file is missing.
+    """
+
+    async def test_prefers_an_opened_source(self):
+        sources = {"a": CameraSource(), "b": CameraSource(OpenableCamera())}
+        source = await _camera_source(sources, {"a": True, "b": False})
+        self.assertIs(source, sources["a"])
+        self.assertFalse(sources["b"].camera.opened)
+
+    async def test_opens_the_camera_of_a_source_that_failed_to_open(self):
+        sources = {"b": CameraSource(OpenableCamera())}
+        source = await _camera_source(sources, {"b": False})
+        self.assertIs(source, sources["b"])
+        self.assertTrue(source.camera.opened)
+
+    async def test_no_stream_when_the_camera_itself_refuses(self):
+        sources = {"b": CameraSource(OpenableCamera(fails=True))}
+        self.assertIsNone(await _camera_source(sources, {"b": False}))
+
+    async def test_no_stream_without_any_camera(self):
+        self.assertIsNone(await _camera_source({"a": CameralessSource()}, {"a": False}))
 
 
 class BuildAnnotatorTest(unittest.TestCase):

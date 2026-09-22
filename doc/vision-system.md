@@ -53,6 +53,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
 | `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
 | `detection/` | Strategie `DetectionSource`; aktuell nur `hello_world.py` |
+| `calibration_session.py` | Fernkalibrierung der Kamera aus dem Frontend (Abschnitt 12 der Schnittstelle) |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung.
@@ -74,7 +75,9 @@ Objects/
     ├── ResultManagement
     │   └── Results/LatestResult         (Typ: 3:ResultType, wird pro Job überschrieben)
     │       └── ResultContent[0]         String  <- JSON-Payload
-    └── LatestResultJson                 String  <- dasselbe JSON, einfacher Knoten
+    ├── LatestResultJson                 String  <- dasselbe JSON, einfacher Knoten
+    └── Calibration                      Fernkalibrierung: Status + Start/Capture/
+                                         Compute/Save/Cancel (nur mit Kamera)
 ```
 
 Die Reihenfolge im Aufbau ist bindend: erst der raspi-Namespace und die
@@ -154,6 +157,10 @@ einen Double.
 
 - Die Erkennung ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`, die Pose immer
   Null. Das Payload-Schema ist aber schon das endgültige.
+- Fehlt die Kalibrierdatei, bleibt die AprilTag-Quelle zu und das System in
+  `Preoperational` — die **Kamera** wird trotzdem geöffnet, damit Livestream und
+  Fernkalibrierung genau dann laufen. Nach dem Speichern einer Kalibrierung
+  öffnet die Quelle nach und das System geht nach `Operational`.
 - `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
   Tag-Map sichtbar ist, sonst das Kamera-KS. Für Layer 2 fehlt weiterhin die
   Hand-Auge-Kalibrierung, bis dahin darf keine Pose automatisch angefahren werden.

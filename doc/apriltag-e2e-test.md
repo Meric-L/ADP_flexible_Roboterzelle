@@ -211,9 +211,27 @@ python3 -m venv --system-site-packages .venv
 
 ### 3.3 Kalibrieren mit der Pi-Kamera
 
-Der Pi hat meist keinen Bildschirm. Zwei Wege:
+Der Pi hat meist keinen Bildschirm. Drei Wege, der erste ist der bequemste:
 
-**Weg A — mit Display (X11-Weiterleitung oder VNC), interaktiv:**
+**Weg A — aus dem Frontend (empfohlen).** Im WSC-Frontend rechts im
+Server-Panel auf **„Kamera kalibrieren"**: Kamera wählen, Board eintragen
+(Typ, Felder, Feldgröße in mm — bei ChArUco zusätzlich Markergröße und
+Dictionary), starten. Der Server wertet den Livestream aus, nimmt jede neue
+Ansicht selbst auf, sobald das Board ruhig gehalten wird, und schreibt in den
+Kalibrierstatus, was als Nächstes fehlt. Nach **Berechnen** zeigt das Popup RMS,
+Abdeckung und eine Bewertung; erst **Speichern & übernehmen** schreibt die Datei
+(die alte wird als `.bak-<Zeitstempel>` gesichert) und die Erkennung lädt sie.
+
+Das geht auch auf einem Pi **ohne** Kalibrierdatei, also im Zustand
+`Preoperational`: die Kamera wird dafür trotzdem geöffnet. Der Weg hat außerdem
+den Vorteil, dass die Kalibrierung **automatisch zur Auflösung der Erkennung
+passt** — sie entsteht aus denselben Bildern. Schnittstelle:
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 12.
+
+Abnahme wie unten: RMS unter 0,5 px, Abdeckung über 70 %. Das Popup nennt
+beides und sagt bei „unbrauchbar" den Grund.
+
+**Weg B — mit Display (X11-Weiterleitung oder VNC), interaktiv:**
 
 ```bash
 ssh -X pi@pi-decke
@@ -225,7 +243,7 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --capture-to data/calibration/aufnahmen_decke
 ```
 
-**Weg B — ohne Display, zweistufig.** Robuster, und mit Nebennutzen: die Bilder
+**Weg C — ohne Display, zweistufig.** Robuster, und mit Nebennutzen: die Bilder
 bleiben liegen, die Kalibrierung ist am PC exakt reproduzierbar.
 
 ```bash

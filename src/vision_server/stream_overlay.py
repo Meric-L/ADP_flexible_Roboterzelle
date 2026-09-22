@@ -52,7 +52,20 @@ class AprilTagStreamAnnotator:
         self._last_run = 0.0
         self._last_tag_poses: list = []
         self._last_board = None
+        #: Scaled copies of exactly this calibration, per image size.
         self._scaled: dict[tuple[int, int], Any] = {}
+        self._state = (calibration, self._scaled)
+
+    def set_calibration(self, calibration: Any) -> None:
+        """Use a new calibration from now on, e.g. after a remote recalibration.
+
+        Calibration and its scale cache are replaced as one tuple: the
+        publisher thread sees either the old pair or the new one, never a
+        scaled copy of the old calibration filed under the new one.
+        """
+        self._calibration = calibration
+        self._scaled = {}
+        self._state = (calibration, self._scaled)
 
     def _calibration_for(self, size: tuple[int, int]):
         """Return calibration matching the stream resolution.
@@ -63,12 +76,13 @@ class AprilTagStreamAnnotator:
         """
         from tagloc.calibration import scale_to_resolution
 
-        if tuple(self._calibration.image_size) == tuple(size):
-            return self._calibration
-        cached = self._scaled.get(size)
+        calibration, scaled = self._state
+        if tuple(calibration.image_size) == tuple(size):
+            return calibration
+        cached = scaled.get(size)
         if cached is None:
-            cached = scale_to_resolution(self._calibration, size)
-            self._scaled[size] = cached
+            cached = scale_to_resolution(calibration, size)
+            scaled[size] = cached
         return cached
 
     def _board_spec(self):

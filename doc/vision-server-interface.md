@@ -50,8 +50,10 @@ Objects/
     │                                    derselbe JSON-String, als einfacher String-Knoten
     ├── LatestCameraFrame                ns=4;s=VisionMachine.LatestCameraFrame
     │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
-    └── CameraStreamMode                 ns=4;s=VisionMachine.CameraStreamMode
-                                         **beschreibbar**: off | apriltag | calibration
+    ├── CameraStreamMode                 ns=4;s=VisionMachine.CameraStreamMode
+    │                                    **beschreibbar**: off | apriltag | calibration
+    └── Calibration                      ns=4;s=VisionMachine.Calibration
+                                         Fernkalibrierung der Kamera, siehe Abschnitt 12
 ```
 
 Interner Aufbau (Python-Paket `src/vision_server/`):
@@ -67,6 +69,7 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
+| `calibration_session.py` | Fernkalibrierung: Aufnahmeschleife, Status-JSON, eigenes Overlay, siehe Abschnitt 12 |
 | `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 
@@ -605,3 +608,165 @@ instanziiert sie deshalb als echte Knoten, obwohl sie Vorlagen des Typs sind.
 Sie nachträglich zu löschen kostete **9 s für 26 Knoten** — das rekursive
 Löschen ist dort pathologisch langsam. `asset_model.py` legt deshalb nur die
 Ordner an, die es füllt: rund 50 Knoten statt 700.
+
+---
+
+## 12. Kamerakalibrierung aus der Ferne
+
+Ohne Kalibrierdatei öffnet die AprilTag-Quelle nicht, das Vision-System bleibt
+in `Preoperational` und jeder Job wird abgelehnt. Erzeugt wurde die Datei bisher
+nur an der Kommandozeile mit `tagloc.cli.calibrate` — also mit Tastatur neben
+der Kamera oder über den Umweg Bilder sammeln und nachrechnen
+([`apriltag-e2e-test.md`](apriltag-e2e-test.md) 3.3). Über diese Schnittstelle
+kalibriert stattdessen jemand aus dem Frontend, während er das Board vor die
+Kamera hält.
+
+**Ausdrücklich kein Teil von OPC 40100** — der Standard kennt keinen
+Kalibriermodus. Die Knoten liegen deshalb im eigenen Namensraum unterhalb von
+`VisionMachine` und rühren die Zustandsautomaten nicht an: kalibriert werden
+muss gerade dann, wenn das System **nicht** betriebsbereit ist.
+
+### 12.1 Knoten
+
+```
+ns=<vision>;s=VisionMachine.Calibration
+├── Status     String, JSON (wsc.vision.calibration-status/1), nur der Server schreibt
+├── Start      (Settings: String)  -> (Error: Int32, Message: String)
+├── Capture    ()                  -> (Error: Int32, Message: String)
+├── Compute    ()                  -> (Error: Int32, Message: String)
+├── Save       ()                  -> (Error: Int32, Message: String)
+└── Cancel     ()                  -> (Error: Int32, Message: String)
+```
+
+Alle Knoten haben sprechende String-NodeIds, auch die `InputArguments`- und
+`OutputArguments`-Eigenschaften der Methoden. `Error` benutzt dieselben Codes
+wie `StartSingleJob` (Abschnitt 5); `Message` ist ein Satz **für den Bediener**
+und sollte angezeigt werden, statt den Code zu übersetzen.
+
+Die Knoten existieren nur, wenn der Server mit `camera_stream` konfiguriert ist
+— die Kalibrierung braucht dieselbe Kamera. Fehlen sie, antwortet der Server auf
+einen Aufruf mit `BadNodeIdUnknown`.
+
+### 12.2 Ablauf
+
+```
+Frontend                                   Vision-Server
+   |  subscribe(Calibration.Status)            |   (wie jeder andere Knoten)
+   |------- Start(Board als JSON) ------------>|   prueft Board, startet die Auswertung
+   |<------ (0, "Kalibrierung cal-0001 ...") --|   state: collecting
+   |                                           |
+   |   Status ~3x/s: Board sichtbar? ruhig? wie viele Aufnahmen? naechster Schritt?
+   |   Der Server nimmt selbst auf, sobald das Board ruhig in einer NEUEN Ansicht steht
+   |------- Capture() ------------------------>|   (optional, nimmt sofort auf)
+   |------- Compute() ------------------------>|   state: computing -> review
+   |<------ Status mit result (RMS, Abdeckung, Bewertung)
+   |------- Save() --------------------------->|   Backup, Datei schreiben, Quelle uebernimmt
+   |<------ Status mit saved, state: done      |   Preoperational -> Operational
+```
+
+`Cancel` verwirft jederzeit (außer während `Save`, das mit `BUSY` antwortet).
+Das Ergebnis wird **erst mit `Save` geschrieben**: eine schlechte Kalibrierung
+darf eine gute nicht unbemerkt überschreiben. Die alte Datei bleibt als
+`<name>.json.bak-<Zeitstempel>` liegen, geschrieben wird über eine temporäre
+Datei und `os.replace`.
+
+### 12.3 `Start`-Einstellungen
+
+```jsonc
+{
+  "board": {
+    "type": "charuco",        // oder "chessboard"
+    "cols": 7,                // ChArUco: Felder. Schachbrett: INNERE ECKEN (9 bei 10 Feldern)
+    "rows": 5,
+    "squareSizeM": 0.030,     // SI-Meter, nicht Millimeter
+    "markerSizeM": 0.022,     // nur ChArUco, muss kleiner als squareSizeM sein
+    "dictionary": "DICT_4X4_50"
+  },
+  "targetSamples": 20,        // Ziel fuer die automatische Aufnahme (min. 15)
+  "autoCapture": true
+}
+```
+
+Die Schlüssel sind die des `board`-Eintrags in der Kalibrierdatei
+(`BoardSpec.as_dict`) — was eine Datei dokumentiert, lässt sich unverändert
+wieder als Einstellung schicken. Ungültige Werte werden mit `INVALID_ARGUMENT`
+und einem Klartextgrund abgelehnt, ohne dass eine Sitzung startet.
+
+### 12.4 Status-Dokument
+
+```jsonc
+{
+  "schema": "wsc.vision.calibration-status/1",
+  "state": "collecting",      // idle | collecting | computing | review | saving | done
+  "sessionId": "cal-0001",
+  "frameId": "cam_ceiling",
+  "calibrationPath": "/home/pi/.../data/calibration/cam_ceiling.json",
+  "minSamples": 15, "maxSamples": 60,
+  "settings": { "board": { }, "targetSamples": 20, "autoCapture": true },
+  "imageSize": [1280, 720],
+  "sampleCount": 7,
+  "cameraOk": true,           // kommen ueberhaupt Bilder?
+  "boardVisible": true, "boardStill": false, "cornerCount": 24,
+  "progress": { "x": 0.8, "y": 0.4, "size": 0.3, "skew": 0.2 },  // je [0,1]
+  "coverage": [0.72, 0.55],   // Bildabdeckung aller Aufnahmen
+  "grid": [[2,0,1],[1,3,0],[0,0,0]],   // Aufnahmen je Bilddrittel, Zeile 0 = oben
+  "hint": { "code": "move_to_region", "text": "Board in den Bildbereich oben links bewegen." },
+  "lastCapture": { "index": 7, "reason": "auto", "at": "2026-09-21T12:10:03+00:00" },
+  "result": null,             // nach Compute: rmsReprojectionError, coverage, quality, notes, ...
+  "saved": null,              // nach Save: path, backupPath, applied, message
+  "current": { "exists": true, "calibrationId": "...", "imageSize": [1280, 720] },
+  "error": null,
+  "updatedAt": "2026-09-21T12:10:04+00:00"
+}
+```
+
+`hint.text` ist die eigentliche Bedienerführung — **anzeigen, nicht selbst
+formulieren**. `hint.code` ist stabil und eignet sich für eigene Texte oder
+Icons: `no_camera`, `show_board`, `hold_still`, `capturing`, `move_to_region`,
+`tilt`, `vary_distance`, `move_horizontal`, `move_vertical`, `new_pose`,
+`enough`.
+
+`current` beschreibt die Datei, die **gerade gilt** — damit lässt sich vor dem
+Start anzeigen, womit zuletzt kalibriert wurde, und das Board-Formular
+vorbelegen.
+
+### 12.5 Was der Server dabei selbst entscheidet
+
+- **Welche Aufnahme zählt.** Jede Ansicht wird auf vier Zahlen reduziert
+  (Position x/y, scheinbare Größe, Verkippung — `tagloc.calibration_guide`,
+  nach dem Vorbild von ROS `camera_calibration`). Aufgenommen wird nur, was
+  sich von allen bisherigen Ansichten ausreichend unterscheidet und dabei ruhig
+  gehalten wird. Das verhindert 20 Aufnahmen derselben Pose — die häufigste
+  Ursache für eine Kalibrierung mit gutem RMS und unbrauchbarer Verzeichnung.
+- **Was als Nächstes zu tun ist** (`hint`): fehlender Bildbereich vor
+  Verkippung vor Abstand.
+- **Wie gut das Ergebnis ist** (`result.quality`): `good` bei RMS < 0,5 px
+  **und** Abdeckung ≥ 70 %, `usable` bis RMS < 1,0 px und Abdeckung ≥ 60 %,
+  sonst `poor`. `result.notes` nennt jeden Grund im Klartext. Dieselben
+  Schwellen wie in [`apriltag-e2e-test.md`](apriltag-e2e-test.md).
+
+### 12.6 Auflösung — der eigentliche Gewinn
+
+Die Kalibrierung entsteht aus den Bildern der **geteilten Kamera**
+(`SharedCamera`, Abschnitt 10), also mit genau der Auflösung, die auch die
+Erkennung sieht. Eine mit der CLI bei anderer Auflösung erzeugte Datei lehnt
+`check_resolution` beim ersten Job ab; bei anderem Seitenverhältnis lässt sie
+sich nicht einmal umrechnen. Über diesen Weg kann das nicht passieren.
+
+### 12.7 Nebenwirkungen, die ein Client kennen sollte
+
+- Während `collecting` stellt der Server `CameraStreamMode` auf `calibration`
+  und zeichnet sein eigenes Overlay (gefundene Ecken, abgedeckte Bildbereiche,
+  Aufnahmezähler, grüner Rahmen bei jeder Aufnahme). Danach setzt er den Modus
+  auf den vorherigen Wert zurück — außer jemand hat ihn inzwischen selbst
+  geändert.
+- Nach `Save` lädt die AprilTag-Quelle die neue Datei. War sie mangels
+  Kalibrierung nie geöffnet, wird sie jetzt geöffnet, und das System geht von
+  `Preoperational` nach `Operational`. `saved.applied` sagt, ob das geklappt
+  hat, `saved.message` warum nicht.
+- Damit das überhaupt möglich ist, öffnet der Server die **Kamera auch dann**,
+  wenn die Erkennungsquelle nicht startet. Livestream und Kalibrierung laufen
+  also auch auf einem Pi ohne Kalibrierdatei; die Quelle selbst bleibt zu.
+- Es läuft höchstens **eine** Sitzung. Ein zweites `Start` wird mit
+  `INVALID_STATE` abgelehnt, statt die laufende zu überschreiben — zwei
+  Frontends sehen über `Status` dieselbe Sitzung.

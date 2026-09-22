@@ -20,6 +20,98 @@ _log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class CalibrationNodes:
+    """`VisionMachine.Calibration`: remote camera calibration, not part of OPC 40100.
+
+    The methods are created unlinked (the server answers `BadNothingToDo`)
+    and linked by `runner.py`, like the nodeset methods.
+    """
+
+    folder: Node
+    #: JSON status (`wsc.vision.calibration-status/1`), written by the server.
+    status: Node
+    start: Node
+    capture: Node
+    compute: Node
+    save: Node
+    cancel: Node
+
+
+#: Every calibration method answers `(Error: Int32, Message: String)`.
+_CALIBRATION_OUTPUTS = (
+    ("Error", ua.VariantType.Int32, "0 = OK, sonst Fehlercode wie bei StartSingleJob"),
+    ("Message", ua.VariantType.String, "Meldung fuer den Bediener"),
+)
+
+#: Method name -> input arguments. Order is the order of creation.
+_CALIBRATION_METHODS: dict[str, tuple[tuple[str, ua.VariantType, str], ...]] = {
+    "Start": (("Settings", ua.VariantType.String, "Board und Aufnahmeziel als JSON"),),
+    "Capture": (),
+    "Compute": (),
+    "Save": (),
+    "Cancel": (),
+}
+
+
+def _argument(name: str, variant_type: ua.VariantType, description: str) -> ua.Argument:
+    """A scalar method argument with a name the backend can show in error messages."""
+    argument = ua.Argument()
+    argument.Name = name
+    argument.DataType = ua.NodeId(variant_type.value)
+    argument.ValueRank = -1
+    argument.Description = ua.LocalizedText(description)
+    return argument
+
+
+async def _attach_calibration(vision_system: Node, own_idx: int, name: str) -> CalibrationNodes:
+    """Create `Calibration` with its status node and five methods, all with string NodeIds."""
+    root = f"{name}.Calibration"
+    folder = await vision_system.add_object(
+        ua.NodeId(root, own_idx), ua.QualifiedName("Calibration", own_idx)
+    )
+    status = await folder.add_variable(
+        ua.NodeId(f"{root}.Status", own_idx),
+        ua.QualifiedName("Status", own_idx),
+        "",
+        ua.VariantType.String,
+    )
+    methods: dict[str, Node] = {}
+    for method_name, inputs in _CALIBRATION_METHODS.items():
+        method_id = f"{root}.{method_name}"
+        # Without argument lists here: asyncua would give the argument
+        # properties running numeric NodeIds in our namespace. The frontend
+        # still subscribes `ns=<vision>;i=1` as the legacy camera node, so
+        # every node here gets a string id, the properties included.
+        method = await folder.add_method(
+            ua.NodeId(method_id, own_idx), ua.QualifiedName(method_name, own_idx), None
+        )
+        for property_name, arguments in (
+            ("InputArguments", inputs),
+            ("OutputArguments", _CALIBRATION_OUTPUTS),
+        ):
+            if not arguments:
+                continue
+            argument_property = await method.add_property(
+                ua.NodeId(f"{method_id}.{property_name}", own_idx),
+                ua.QualifiedName(property_name, 0),
+                [_argument(*spec) for spec in arguments],
+                varianttype=ua.VariantType.ExtensionObject,
+                datatype=ua.ObjectIds.Argument,
+            )
+            await argument_property.set_modelling_rule(True)
+        methods[method_name] = method
+    return CalibrationNodes(
+        folder=folder,
+        status=status,
+        start=methods["Start"],
+        capture=methods["Capture"],
+        compute=methods["Compute"],
+        save=methods["Save"],
+        cancel=methods["Cancel"],
+    )
+
+
+@dataclass(frozen=True)
 class VisionAddressSpace:
     """Die beim Aufbau aufgeloesten Knoten des Vision-Systems."""
 
@@ -45,6 +137,9 @@ class VisionAddressSpace:
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
+    #: Remote calibration; `None` without a livestream, since it needs the
+    #: same camera.
+    calibration: CalibrationNodes | None = None
 
 
 async def configure_server(server: Server, config: VisionServerConfig) -> None:
@@ -181,6 +276,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         )
         await camera_stream_mode.set_writable()
 
+    calibration = (
+        await _attach_calibration(vision_system, own_idx, name)
+        if config.camera_stream is not None
+        else None
+    )
+
     _log.info("VisionSystem '%s' als %s angelegt", name, vision_system.nodeid.to_string())
     return VisionAddressSpace(
         server=server,
@@ -200,4 +301,5 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         latest_camera_frame=latest_camera_frame,
         camera_stream_mode=camera_stream_mode,
         amcm_idx=amcm_idx,
+        calibration=calibration,
     )

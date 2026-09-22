@@ -49,11 +49,30 @@ class SharedCamera:
         """Der zuletzt aufgenommene Frame, oder `None` vor dem ersten Capture."""
         return self._latest
 
+    @property
+    def is_open(self) -> bool:
+        """Whether the capture loop is running."""
+        return self._loop_task is not None
+
     async def open(self) -> None:
-        """Oeffnet die Kamera und startet den Capture-Loop. Nicht idempotent."""
+        """Oeffnet die Kamera und startet den Capture-Loop. Idempotent.
+
+        Idempotent because two parties may open it: the runner opens the
+        camera on its own when the detection source cannot open for lack of a
+        calibration (livestream and remote calibration need the image exactly
+        then), and the source opens it again once a calibration exists.
+        """
+        if self.is_open:
+            return
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera")
         loop = asyncio.get_running_loop()
-        self._camera = await loop.run_in_executor(self._executor, self._open_camera)
+        try:
+            self._camera = await loop.run_in_executor(self._executor, self._open_camera)
+        except BaseException:
+            # A failed open must not leave a worker behind for the next attempt.
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+            raise
         self._loop_task = asyncio.create_task(self._capture_loop())
 
     def _open_camera(self) -> Any:
