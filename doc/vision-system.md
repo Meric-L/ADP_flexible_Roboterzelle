@@ -20,6 +20,28 @@ Der Endpoint-Pfad heißt weiterhin `/raspi/server/`, obwohl das namensgebende
 `RaspiDevice` entfernt ist: er steht in mDNS-Ankündigung, LDS-Registrierung und
 jeder Client-Konfiguration.
 
+### Wer ist wer
+
+Die Namen ähneln sich, deshalb einmal auseinandergezogen. Vier Dinge, die leicht
+verwechselt werden:
+
+| Name | Was es ist | Wo |
+| --- | --- | --- |
+| **Server** | Der *Prozess* auf dem Pi und sein Endpoint. Trägt den Adressraum, kündigt sich per mDNS an, meldet sich beim Discovery-Server. Fachlich tut er selbst nichts. | `src/vision_server/server.py`, Einstieg über `src/OPCUA/server.py` |
+| **VisionMachine** | Das *Vision-System* nach OPC 40100 — der ganze Job-Ablauf: Zustandsautomaten, `StartSingleJob`, Events, Ergebnisse, Livestream, Kalibrierung. Eine Instanz vom Typ `VisionSystemType`. | `ns=<vision>;s=VisionMachine`, unter `Objects/Machines` |
+| **VisionProgram** | Eine *Bedienoberfläche* nach OPC UA Teil 10 auf **demselben** Job. Hält keinen eigenen Zustand, ruft denselben `JobRunner`. Der Einstieg für das Frontend. | `ns=<vision>;s=VisionProgram`, direkt unter `Objects` |
+| **VisionAsset** | Die *Anlagensicht* nach OPC 40100-2: woraus das System gebaut ist (Rechner, Bildsensor, Objektiv). Für Service und Instandhaltung, ohne Kopplung an den Job. | `ns=<vision>;s=VisionMachine.VisionAsset` |
+
+Der häufigste Irrtum: `VisionMachine` ist eine Instanz vom Typ
+`VisionSystemType` — „Machine" und „System" meinen hier dasselbe. Früher lag
+daneben noch eine leere zweite Instanz namens `VisionSystem`; sie ist am
+21.09.2026 entfernt worden (Altlast A1).
+
+Zwei weitere Namen, die keine OPC-UA-Objekte sind: `VisionMachine` heißt auch
+die Python-Dataclass in `runner.py`, die das fertig verdrahtete System
+zusammenhält, und `install_vision_machine()` ist die Funktion, die den ganzen
+Baum aufbaut.
+
 Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans. Seine
 Erkennungsstufe ist bewusst noch ein **Hello-World-Platzhalter**: Zustandsautomaten,
 Events, Ergebnisablage, Validierung und Fehlerpfad sind echt, nur das erkannte
@@ -46,18 +68,29 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 
 | Modul | Aufgabe |
 | --- | --- |
-| `__main__.py` | argparse, Konfiguration, Start |
-| `config.py` | `VisionServerConfig` (frozen dataclass) |
-| `nodeset_ids.py` | NodeId-Konstanten des Nodesets |
-| `address_space.py` | Nodeset-Import, `VisionSystem`-Instanz, `HasNotifier` |
+| `server.py` | **Der Zellserver.** Identität des Pi, Kamera-Backend, AprilTag- und Anlagenwerte je Pi, mDNS und LDS. Baut selbst keine Knoten. |
+| `runner.py` | `install_vision_machine()` (Einbau in einen Server) und `run()` (standalone). Verdrahtet alles Folgende. |
+| `__main__.py` | argparse, Konfiguration, Start für `python -m vision_server` |
+| `config.py` | `VisionServerConfig` (frozen dataclass), Nodeset-Pfade |
+| `profiles.py` | `AprilTagProfileConfig`, `AssetConfig`, `CameraStreamConfig` |
+| `nodeset_ids.py` | NodeId-Konstanten der Nodesets, inkl. `Machines`-Ordner |
+| `address_space.py` | Nodeset-Import, `VisionMachine`-Instanz unter `Machines`, `HasNotifier` |
 | `state_machine.py` | Bindung beider 40100-Zustandsautomaten |
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegelknoten |
 | `payload.py` | JSON-Schema `wsc.vision.detections/1` |
 | `errors.py` | Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
-| `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
-| `detection/` | Strategie `DetectionSource`; aktuell nur `hello_world.py` |
+| **`vision_program.py`** | Der **Part-10-Aufsatz**: `VisionProgram`, ohne eigenen Job-Zustand |
+| `asset_model.py` | Die **Anlagensicht** `VisionAsset` nach OPC 40100-2 |
+| `calibration_session.py` | Kalibrier-Session: Aufnahmen sammeln, rechnen, speichern |
+| `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
+| `camera_stream.py` | Schreibt Frames als Base64-JPEG in `LatestCameraFrame` |
+| `stream_overlay.py` | Markiert erkannte Tags bzw. das Kalibrierboard im Stream |
+| `detection/` | Strategie `DetectionSource`: `hello_world.py` (kamerafrei), `apriltag.py` (echte Erkennung), `script_runner.py` (Messbereitschaft) |
+| `discovery/` | Auffindbarkeit im Netz: `mdns.py` (Subnetz) und `lds.py` (Discovery-Server der Zelle) |
+| `nodesets/` | Die vendorierten Nodesets: OPC 40100, DI, Machinery, AMCM |
+| `tools/` | Kommandozeilen-Werkzeuge, kein Teil des Servers: Handshake-Client, Kalibrier-Client, Stream-Viewer |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung.
