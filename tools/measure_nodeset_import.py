@@ -18,14 +18,17 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-NODESETS = REPO_ROOT / "src" / "OPCUA" / "nodesets"
+#: Die Nodesets liegen im Paket, das sie braucht (Altlast C5, erledigt) --
+#: frueher unter `src/OPCUA/nodesets`, worauf dieses Werkzeug zeigte, bis es
+#: damit nicht mehr lief.
+NODESETS = REPO_ROOT / "src" / "vision_server" / "nodesets"
 
 #: Dependency order, with versions pinned to what AMCM 1.00.0 actually requires:
 #: DI 1.04.0 and Machinery 1.03.0. The newest Machinery (1.04.1) would drag in
 #: IA as well, and the newest DI (1.05.0) fails to import against asyncua's base
 #: address space with BadParentNodeIdInvalid -- so pinning is not pedantry.
 IMPORT_ORDER = [
-    ("Part 1  MachineVision", REPO_ROOT / "src" / "OPCUA" / "Opc.Ua.MachineVision.NodeSet2.xml"),
+    ("Part 1  MachineVision", NODESETS / "Opc.Ua.MachineVision.NodeSet2.xml"),
     ("        DI 1.04.0", NODESETS / "Opc.Ua.Di.NodeSet2.xml"),
     ("        Machinery 1.03.0", NODESETS / "Opc.Ua.Machinery.NodeSet2.xml"),
     ("Part 2  AMCM 1.00.0", NODESETS / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml"),

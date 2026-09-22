@@ -15,6 +15,8 @@ from asyncua import Node, Server, ua, uamethod
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .calibration_session import CalibrationSession
+from .camera import exit_process
+from .camera_health import CameraHealthPublisher, write_device_health
 from .camera_stream import CameraStreamPublisher
 from .mjpeg_server import MjpegServer
 from .config import VisionServerConfig
@@ -22,6 +24,7 @@ from .detection import DetectionSource, build_detection_sources
 from .errors import VisionErrorCode
 from .events import VisionEvents, create_event_generators
 from .job import JobRunner
+from .nodeset_ids import DeviceHealth
 from .result_management import ResultStore
 from .state_machine import VisionStateMachines
 from .vision_program import VisionProgram, install_vision_program
@@ -167,6 +170,65 @@ async def _start_mjpeg_server(
     return server
 
 
+def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
+    """Die Konfiguration der Kamera, die wirklich laeuft.
+
+    `space.config.camera_stream` kann `None` sein, waehrend die Quelle sehr
+    wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
+    haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
+    """
+    from .profiles import CameraStreamConfig
+
+    return (
+        getattr(source, "_camera_config", None)
+        or space.config.camera_stream
+        or CameraStreamConfig()
+    )
+
+
+async def _start_camera_health(
+    space: VisionAddressSpace,
+    assets: VisionAssetNodes | None,
+    sources: Mapping[str, DetectionSource],
+    opened: Mapping[str, bool],
+) -> CameraHealthPublisher | None:
+    """Verbindet den Kamera-Watchdog mit `DeviceHealth` der Anlagensicht.
+
+    Der Watchdog in `camera.py` erkennt haengende Kameras, meldet das aber nur
+    ins Log. Hier wird daraus ein Wert, den ein generischer OPC-UA-Client
+    sieht -- ohne Kenntnis dieses Repos.
+
+    Bewusst nicht an `_start_camera_stream` gehaengt: der Livestream ist eine
+    Debughilfe und kann fehlen, waehrend die Job-Quelle eine Kamera haelt.
+    Ohne Part 2 oder ohne Zustandsknoten passiert nichts.
+    """
+    if assets is None or not assets.device_health:
+        return None
+    source = _camera_owner(sources, opened)
+    if source is None:
+        # Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort, und sie
+        # bleibt stehen -- es gibt nichts, was sie spaeter widerlegen koennte.
+        _log.warning(
+            "Zustandsknoten der Anlagensicht vorhanden, aber keine geoeffnete "
+            "Kamera -- DeviceHealth bleibt auf FAILURE"
+        )
+        await write_device_health(assets.device_health, DeviceHealth.FAILURE)
+        return None
+    publisher = CameraHealthPublisher(
+        source.camera, assets.device_health, _camera_config_of(space, source)
+    )
+    # Der Watchdog reisst den Prozess, wenn er aufgibt; vorher soll noch ein
+    # letztes FAILURE rausgehen.
+    source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
+    publisher.start()
+    _log.info(
+        "Kamerazustand (OPC 40100-2) aus Profil '%s' auf %d Knoten",
+        source.profile_id,
+        len(assets.device_health),
+    )
+    return publisher
+
+
 def _build_calibration_session(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
@@ -272,6 +334,9 @@ class VisionMachine:
     camera_http: MjpegServer | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
+    #: Schreibt `DeviceHealth` der Anlagensicht; `None` ohne Part 2, ohne
+    #: Zustandsknoten oder ohne geoeffnete Kamera.
+    camera_health: CameraHealthPublisher | None = None
     #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
     program: VisionProgram | None = None
     #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
@@ -287,6 +352,11 @@ class VisionMachine:
         """
         if self.calibration_session is not None and self.calibration_session.running:
             await self.calibration_session.abort()
+        # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
+        # sonst als Haenger durch, und der letzte Wert im Adressraum waere
+        # OFF_SPEC statt des letzten echten Zustands.
+        if self.camera_health is not None:
+            await self.camera_health.stop()
         if self.lag_watchdog is not None:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -454,6 +524,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     calibration_session = _build_calibration_session(sources, opened, config)
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
+    camera_health = await _start_camera_health(space, assets, sources, opened)
     camera_http = (
         await _start_mjpeg_server(space, camera_stream)
         if camera_stream is not None
@@ -648,6 +719,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs=jobs,
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
+        camera_health=camera_health,
         camera_http=camera_http,
         assets=assets,
         program=program,

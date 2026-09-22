@@ -140,5 +140,91 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(camera.is_open)
 
 
+class _ScriptedCameraTest(unittest.IsolatedAsyncioTestCase):
+    """Gemeinsames Aufraeumen: haengende Leser freigeben, dann schliessen."""
+
+    async def asyncTearDown(self):
+        for camera in getattr(self, "_cameras", []):
+            camera.release.set()
+            await camera.close()
+
+    def _camera(self, behaviours: list[str]) -> ScriptedCamera:
+        camera = ScriptedCamera(behaviours)
+        self._cameras = [*getattr(self, "_cameras", []), camera]
+        return camera
+
+
+class StatusTest(_ScriptedCameraTest):
+    """`status()` ist die einzige Wahrheit, aus der `DeviceHealth` entsteht.
+
+    Ohne sie muesste `camera_health.py` den Zustand ein zweites Mal
+    herleiten -- und die beiden Herleitungen wuerden auseinanderlaufen.
+    """
+
+    async def test_an_unopened_camera_is_not_running(self):
+        camera = self._camera(["ok"])
+
+        status = camera.status(now=0.0)
+
+        self.assertFalse(status.running)
+        self.assertFalse(status.has_handle)
+        self.assertIsNone(status.frame_age_s)
+        self.assertEqual(status.last_outcome, "none")
+
+    async def test_reports_ok_while_frames_arrive(self):
+        camera = self._camera(["ok"])
+        await camera.open()
+        await _wait_until(lambda: camera.latest_frame is not None)
+
+        status = camera.status(now=asyncio.get_running_loop().time())
+
+        self.assertTrue(status.running)
+        self.assertTrue(status.has_handle)
+        self.assertEqual(status.last_outcome, "ok")
+        self.assertEqual(status.consecutive_failures, 0)
+        self.assertEqual(status.reopen_attempts, 0)
+        self.assertFalse(status.gave_up)
+
+    async def test_reports_the_age_against_the_passed_clock(self):
+        """Die Uhr kommt von aussen -- sonst waere die Methode nicht ohne
+        laufenden Loop testbar."""
+        camera = self._camera(["ok"])
+        await camera.open()
+        await _wait_until(lambda: camera.latest_frame is not None)
+        captured_at = camera.latest_frame.timestamp
+
+        status = camera.status(now=captured_at + 7.5)
+
+        self.assertAlmostEqual(status.frame_age_s, 7.5, places=6)
+
+    async def test_counts_reopen_attempts_until_it_gives_up(self):
+        camera = self._camera(["hang", "hang", "fail_open"])
+        await camera.open()
+
+        await _wait_until(lambda: camera.gave_up == 1)
+        status = camera.status(now=asyncio.get_running_loop().time())
+
+        self.assertTrue(status.gave_up)
+        self.assertEqual(status.last_outcome, "hung")
+        self.assertFalse(status.has_handle)
+
+
+class GiveUpHandlerTest(_ScriptedCameraTest):
+    async def test_awaits_an_asynchronous_handler(self):
+        """Der Runner schreibt hier ein letztes FAILURE, bevor der Prozess
+        faellt -- ein synchron aufgerufener Handler kaeme nicht dazu."""
+        camera = self._camera(["hang", "hang", "fail_open"])
+        done = asyncio.Event()
+
+        async def handler() -> None:
+            await asyncio.sleep(0)
+            done.set()
+
+        camera.set_give_up_handler(handler)
+        await camera.open()
+
+        await asyncio.wait_for(done.wait(), timeout=2.0)
+
+
 if __name__ == "__main__":
     unittest.main()

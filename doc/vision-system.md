@@ -57,6 +57,8 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `errors.py` | Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
 | `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
+| `camera_health.py` | Kamerazustand als `DeviceHealth` (OPC 40100-2) |
+| `asset_model.py` | Anlagensicht nach OPC 40100-2 (AMCM) samt Zustandsblock |
 | `detection/` | Strategie `DetectionSource`; aktuell nur `hello_world.py` |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein

@@ -4,6 +4,10 @@ Diese Datei beschreibt den eigenständigen OPC-UA-Vision-Server (OPC 40100,
 Machine Vision) und **was ein Backend implementieren muss**, um von ihm ein
 Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 
+**Nur die Adressen und Signaturen gesucht?** Abschnitt 13 fasst die
+komplette Schnittstelle in Tabellen zusammen — Knoten, Methoden, Events,
+Fehlercodes, Betrieb. Der Rest dieses Dokuments erklärt das Warum.
+
 > **Ergänzend, seit 2026-09-21:** Derselbe Job lässt sich zusätzlich über ein
 > generisches **OPC-UA-Part-10-Programm** starten — dieselbe Bedienform, die
 > Conveyor und CardDispenser in dieser Zelle benutzen. Der Server kündigt sich
@@ -765,6 +769,131 @@ Sie nachträglich zu löschen kostete **9 s für 26 Knoten** — das rekursive
 Löschen ist dort pathologisch langsam. `asset_model.py` legt deshalb nur die
 Ordner an, die es füllt: rund 50 Knoten statt 700.
 
+### 11.4 Zustand: `DeviceHealth`
+
+Der Normtitel von Part 2 lautet *Asset Management **and Condition
+Monitoring***. 11.1–11.3 beschreiben die erste Hälfte — woraus das System
+besteht. Dies ist die zweite: **wie es ihm geht.**
+
+Konkret beantwortet sie die Frage, die vorher über OPC UA gar nicht zu stellen
+war: *läuft die Kamera noch, oder ist sie eingefroren?* Ein hängendes
+`capture_array()` blieb bis dahin unsichtbar — der Livestream sendete
+denselben alten Frame weiter, der Zustandsautomat blieb auf `Ready`, und erst
+ein laufender Job scheiterte mit `DETECTION_FAILED`.
+
+```
+ns=<vision>;s=VisionMachine.VisionAsset
+├── <amcm>:Health                                      (HasAddIn)
+│   └── <di>:DeviceHealth   Int32
+│       ns=<vision>;s=VisionMachine.VisionAsset.Health.DeviceHealth
+├── <di>:Identification
+├── <amcm>:ComputingDevices/ComputingDevice
+├── <amcm>:ImageSensors/ImageSensor
+│   └── <amcm>:Health
+│       └── <di>:DeviceHealth   Int32
+│           ns=<vision>;s=VisionMachine.VisionAsset.ImageSensor.Health.DeviceHealth
+└── <amcm>:Lenses/Lens
+```
+
+**Beide Knoten tragen denselben Wert.** Das ist keine Aggregation, sondern
+eine Tatsache: es gibt genau eine Zustandsquelle, die Kamera. Den Knoten an
+der Wurzel gibt es trotzdem, weil `ImageSensor` nur existiert, wenn
+`image_sensor_model` in der `AssetConfig` gesetzt ist — sonst bliebe gar keine
+Meldestelle. Kommt eine zweite Komponente mit eigenem Zustand dazu, braucht
+die Wurzel eine echte Regel; die verlangt eine Rangfolge über die
+NE-107-Zustände, die DI **nicht** definiert, und wird deshalb erst dann
+geschrieben. Für ein Frontend heißt das heute: **die Wurzeladresse abonnieren**
+— sie existiert unabhängig von der Konfiguration.
+
+#### Die Werte
+
+`DeviceHealth` ist DI's `DeviceHealthEnumeration` nach NAMUR NE 107 und geht
+als `Int32` über die Leitung.
+
+| Wert | Name | Wann | Farbe im HMI |
+| --- | --- | --- | --- |
+| 0 | `NORMAL` | Frisches Kamerabild | grün |
+| 1 | `FAILURE` | Kamera nie geöffnet, oder endgültig aufgegeben — der Prozess beendet sich gleich | rot |
+| 2 | `CHECK_FUNCTION` | Warmup, oder die Kamera wird gerade neu geöffnet | gelb |
+| 3 | `OFF_SPEC` | Bild älter als `stale_frame_s` — Hänger erkannt, noch nicht eskaliert | gelb |
+| 4 | `MAINTENANCE_REQUIRED` | **wird nie geschrieben** — es gibt keinen Verschleißzähler | — |
+
+Der typische Ablauf eines Hängers, mit den Vorgabewerten aus
+`CameraStreamConfig`:
+
+```
+NORMAL ──(Bild älter als stale_frame_s = 2 s)──> OFF_SPEC
+       ──(Watchdog schlägt nach frame_timeout_s = 3 s zu, öffnet neu)──> CHECK_FUNCTION
+       ──(Kamera liefert wieder)──> NORMAL
+       ──(2 Neu-Öffnungen ohne Bild)──> FAILURE, dann Prozessabbruch
+```
+
+Das **`OFF_SPEC`-Fenster ist `frame_timeout_s − stale_frame_s` breit**, mit den
+Vorgabewerten also 1,0 s. Deshalb fragt der Publisher alle
+`health_interval_s` = 0,5 s ab und nicht sekündlich: bei 1 Hz würde das
+Fenster regelmäßig verfehlt. Wird `stale_frame_s` über `frame_timeout_s`
+gesetzt, verschwindet `OFF_SPEC` ganz — ein Test in
+`tests/test_camera_health.py` hält das fest.
+
+Warum ein veraltetes Bild `OFF_SPEC` ist und nicht `FAILURE`: Hänger heilen
+sich nachweislich selbst. Mit `OFF_SPEC` kann ein HMI „hakt gerade" von „tot"
+unterscheiden und bekommt rund eine Sekunde Vorwarnung, bevor der Watchdog
+eingreift. Wer das anders will, ändert genau eine Zeile in
+`camera_health.device_health()`.
+
+#### Was ein Client beachten muss
+
+- **Geschrieben wird nur bei Zustandswechsel.** Ein Abo sieht echte Übergänge;
+  im Normalbetrieb bleibt der Knoten nach dem ersten Bild still. Wer pollt,
+  bekommt jederzeit den gültigen Wert — der Knoten ist immer beschrieben.
+- **Der Startwert ist `CHECK_FUNCTION`**, nicht `NORMAL`. Beim Aufbau des
+  Adressraums ist die Kamera noch nicht geöffnet; `NORMAL` wäre eine
+  Behauptung, die bis zum ersten Bild unwidersprochen stünde.
+- **`FAILURE` kann das letzte Lebenszeichen sein.** Gibt der Watchdog auf,
+  wird `FAILURE` geschrieben und unmittelbar danach der Prozess beendet, damit
+  systemd ihn neu startet. Die Session bricht also gleich darauf ab. Ein
+  Client sollte den Verbindungsabriss nach `FAILURE` erwarten und neu
+  verbinden.
+- **Namespace-Indizes zur Laufzeit auflösen** (11.2). Der BrowseName von
+  `DeviceHealth` liegt im **DI**-Namensraum, der von `Health` im **AMCM**-
+  Namensraum, die NodeIds im Vision-Namensraum — drei verschiedene Indizes an
+  einem Pfad.
+
+#### Was nicht angelegt ist
+
+`VisionHealthInfoType` bringt außerdem `DeviceHealthAlarms` (echte
+OPC-UA-Conditions), `State` (SEMI E10), `Temperature` und `RemainingLifeTime`
+mit; alle vier sind optional und haben hier keine Quelle. Ebenso fehlt
+`Maintenance` (`VisionMaintenanceInfoType`) — ohne Wartungsintervalle und
+Kalibrierhistorie gäbe es nichts hineinzuschreiben. `DeviceHealthAlarms` wäre
+der nächste sinnvolle Schritt: es würde das Pollen endgültig überflüssig
+machen.
+
+#### Kosten
+
+Gemessen (Desktop, asyncua 2.0.1, zwei Läufe je Variante):
+
+| | Knoten der Anlagensicht | Aufbau |
+| --- | --- | --- |
+| ohne Zustandsblock | 19 | 0,150 s / 0,169 s |
+| mit Zustandsblock | 23 | 0,179 s / 0,186 s |
+
+Vier Knoten und rund **20 ms**; die RSS-Differenz lag unter der Messauflösung
+(0,1 MB). Keine zusätzlichen Nodesets — DI und AMCM sind mit `assets` ohnehin
+geladen. Nachmessen: `PYTHONPATH=src python3 tools/measure_nodeset_import.py`
+(dessen Pfade zeigten bis hierher noch auf das verschobene
+`src/OPCUA/nodesets` und sind mitkorrigiert).
+
+#### Verhältnis zu Altlast A3
+
+Mit `RaspiDevice/Counter` ist das letzte Lebenszeichen aus dem Adressraum
+verschwunden (`doc/altlasten.md`, A3); als Ersatz blieb der Loop-Lag-Watchdog,
+der aber nur ins Log schreibt. `DeviceHealth` schließt diese Lücke — und ist
+ausdrücklich **kein** wiederauferstandener Zähler: A3 war ein Wert *ohne
+Quelle*, der nur bewies, dass irgendeine Schleife lief. Hier gibt es eine
+Quelle, der Wert steht in der Norm, und im Ruhezustand wird gar nichts
+geschrieben.
+
 ---
 
 ## 12. Interaktive Kalibrierung (frontend-gesteuert)
@@ -969,3 +1098,135 @@ die Kamera noch nicht fest montiert ist und das Board zu wenig gekippt
 wurde. Sobald die Kamera fest hängt, muss neu kalibriert werden, jetzt mit
 Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
 `warning` in Abschnitt 12.5). Der Code selbst ist pi-unabhängig.
+
+---
+
+## 13. Schnittstelle auf einen Blick
+
+Diese Tabellen sind der **vollständige Vertrag**. Alles, was ein anderes
+Teilsystem vom Vision-Server braucht, steht hier; die Abschnitte davor
+erklären das Warum und die Stolpersteine. Wer gegen diese Liste entwickelt,
+braucht weder den Code noch dieses Repo.
+
+Der Vision-Server ist damit **abgeschlossen**: was danach kommt, baut *auf*
+ihm auf und ändert ihn nicht. Eine Ergänzung dieser Tabellen ist eine
+Schnittstellenänderung und geht den Weg über `doc/arbeitsplaene/` (siehe
+`CLAUDE.md`).
+
+### 13.1 Adressen
+
+Alle NodeIds sind feste String-Ids. `<vision>` ist der Index von
+`http://launch-rm.de/vision`, `<mv>` der von
+`http://opcfoundation.org/UA/MachineVision`, `<amcm>` und `<di>` die der
+Part-2-Namensräume. **Indizes zur Laufzeit über die URI auflösen, nie
+hartcodieren** (Abschnitt 11.2) — sie haben sich in diesem Projekt schon
+dreimal verschoben.
+
+| Zweck | NodeId | Zugriff |
+| --- | --- | --- |
+| Vision-System (Wurzel, Event-Quelle) | `ns=<vision>;s=VisionMachine` | Abo von Events |
+| Job starten | `…s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob` | Aufruf |
+| Job abbrechen | `…AutomaticModeStateMachine.Stop` | Aufruf |
+| Dauerbetrieb starten | `…AutomaticModeStateMachine.StartContinuous` | Aufruf |
+| Dauerbetrieb abbrechen | `…AutomaticModeStateMachine.Abort` | Aufruf |
+| Anhalten / entstören | `…VisionStateMachine.Halt` bzw. `.Reset` | Aufruf |
+| Letztes Ergebnis (JSON) | `ns=<vision>;s=VisionMachine.LatestResultJson` | Lesen / Abo |
+| Letztes Ergebnis (40100-Weg) | `…ResultManagement/Results/LatestResult` → `ResultContent[0]` | Lesen |
+| Livestream-Bild | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | Abo |
+| Overlay-Modus | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **Schreiben** |
+| Kalibrier-Fortschritt | `ns=<vision>;s=VisionMachine.CalibrationProgress` | Abo |
+| Kalibrierung steuern | `…VisionMachine.{StartCalibration,CaptureCalibrationSample,FinishCalibration,AbortCalibration}` | Aufruf |
+| **Zustand der Anlage** | `ns=<vision>;s=VisionMachine.VisionAsset.Health.DeviceHealth` | Lesen / Abo |
+| **Zustand der Kamera** | `ns=<vision>;s=VisionMachine.VisionAsset.ImageSensor.Health.DeviceHealth` | Lesen / Abo |
+| Part-10-Programm | `ns=<vision>;s=VisionProgram` | siehe 13.5 |
+
+Knoten mit Vorbehalt: `LatestCameraFrame` und `CameraStreamMode` nur bei
+konfiguriertem `camera_stream`; `CalibrationProgress` und die
+Kalibriermethoden nur bei konfiguriertem `apriltag`; die `VisionAsset`-Knoten
+nur bei konfigurierten `assets`. Ein Abo auf einen fehlenden Knoten liefert
+schlicht keinen Wert.
+
+### 13.2 `StartSingleJob`
+
+Eingang `(MeasId, PartId, RecipeId, ProductId, Parameters)` — alle String,
+`Parameters` ein String-Array mit höchstens 16 Einträgen. Ausgang
+`(JobId: String, Error: Int32)`. Der Aufruf ist **nicht blockierend**: er
+quittiert nur die Annahme, das Ergebnis kommt per Event.
+
+`RecipeId` wählt den Job: `""` und `hello-world` (Platzhalter ohne
+Bildverarbeitung), `calibration` (Bereitschaftsprüfung), `apriltag` (echte
+Erkennung). Details in Abschnitt 5.
+
+| `Error` | Name | Bedeutung |
+| --- | --- | --- |
+| 0 | `OK` | angenommen |
+| 1 | `INVALID_STATE` | Automat nicht `Ready` |
+| 2 | `INVALID_ARGUMENT` | z. B. überlange `MeasId` oder zu viele `Parameters` |
+| 3 | `BUSY` | es läuft bereits ein Job oder eine Kalibrier-Session |
+| 4 | `UNKNOWN_RECIPE` | `RecipeId` nicht zugelassen |
+| 5 | `DETECTION_FAILED` | Erkennung fehlgeschlagen (auch: kein Kamerabild) |
+| 6 | `INTERNAL` | unerwarteter Fehler |
+| 7 | `CANCELLED` | Job abgebrochen |
+
+### 13.3 Events
+
+Alle vom Knoten `VisionMachine` emittiert, Typen im **MachineVision**-Namensraum.
+Ohne explizite Event-Typ-Liste im Abo kommt **kein** Payload an (Abschnitt 7.1),
+und das Abo muss auf `VisionMachine` sitzen, nicht auf dem Server-Objekt (7.2).
+
+| Event | Wann |
+| --- | --- |
+| `JobStartedEvent` | Job angenommen |
+| `StateChangedEvent` | jeder Zustandswechsel beider Automaten |
+| `AcquisitionDoneEvent` | Bildaufnahme fertig |
+| `ResultReadyEvent` | Ergebnis da — **trägt das JSON in `ResultContent[0]`** |
+| `ReadyEvent` | wieder aufnahmebereit |
+
+Korrelation über `jobId`. Kein Polling nötig: das Ergebnis reist im Event mit.
+
+### 13.4 Nutzlast
+
+`ResultReadyEvent` und `LatestResultJson` tragen dasselbe JSON nach Schema
+`wsc.vision.detections/1`. Feldbedeutung in Abschnitt 6 — das Format ist seit
+Einführung **unverändert** und bleibt es.
+
+### 13.5 Part-10-Programm
+
+Derselbe Job über die generische Bedienform der Zelle
+(`ProgramStateMachineType`), wie sie Conveyor und CardDispenser benutzen:
+
+| Knoten | Richtung | Inhalt |
+| --- | --- | --- |
+| `VisionProgram/ParameterSet/RecipeId` | schreiben | wie oben |
+| `VisionProgram/ParameterSet/Continuous` | schreiben | `Boolean` — Dauerbetrieb |
+| `VisionProgram/ResultSet/JobId` | lesen | laufende bzw. letzte Job-Id |
+| `VisionProgram/ResultSet/ErrorCode` | lesen | Fehlercode aus 13.2 |
+| `VisionProgram/ResultSet/ExecutionMode` | lesen | Ausführungsart |
+
+Dazu spiegelt `ResultSet` `LatestResultJson`, `LatestCameraFrame`,
+`CameraStreamMode` und `CalibrationProgress`, damit ein generischer Client
+alles an einer Stelle findet. Vollständig in
+[`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+
+### 13.6 Betrieb
+
+| | |
+| --- | --- |
+| Endpoint | `opc.tcp://<LAN-IPv4>:4840/raspi/server/`, Security `NoSecurity` |
+| systemd | `opcua-server.service`, `Restart=always`, `RestartSec=5` |
+| Auffindbar über | mDNS (`_opcua-tcp._tcp.local.`) **und** LDS-Anmeldung beim Aggregation-Server; für den Zellbetrieb zählt die LDS-Anmeldung |
+| Zwei Instanzen | Decken-Pi (`cam_ceiling`, Picamera2) und Hand-Pi (`cam_flange`, RealSense) — **gleiche Schnittstelle**, unterschiedliche `visionSystemId` und `frameId` |
+
+### 13.7 Was ein Client mindestens können muss
+
+1. Verbinden, Namensraumindizes über die URIs auflösen.
+2. Auf `VisionMachine` abonnieren, **mit** Event-Typ-Liste.
+3. `StartSingleJob` aufrufen, `Error` auswerten, `JobId` merken.
+4. `ResultReadyEvent` entgegennehmen, `ResultContent[0]` als JSON lesen und
+   über `jobId` zuordnen.
+5. Verbindungsabriss überstehen und neu verbinden — der Server kann sich bei
+   hängender Kamera absichtlich beenden (11.4) und wird von systemd neu
+   gestartet.
+
+Punkt 5 ist der einzige, der in der bisherigen Backend-Umsetzung noch fehlt
+(`vision-system-integration.md`, Risiko R9).

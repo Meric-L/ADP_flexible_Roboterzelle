@@ -173,6 +173,14 @@ class CameraStreamConfig:
     stale_frame_s: float = 2.0
     #: Laenger darf ein Overlay-Lauf nicht dauern, sonst geht das Rohbild raus.
     overlay_timeout_s: float = 2.0
+    #: Kadenz der Zustandsabfrage fuer `DeviceHealth` (camera_health.py).
+    #: Nicht gegriffen, sondern aus dem schmalsten Zustandsfenster abgeleitet:
+    #: OFF_SPEC gilt, sobald der Frame aelter als `stale_frame_s` ist, und
+    #: endet, wenn der Watchdog nach `frame_timeout_s` eskaliert -- mit den
+    #: Vorgabewerten also 3,0 - 2,0 = 1,0 s. Bei 1 Hz abgetastet wuerde es oft
+    #: verfehlt; halb so lang trifft es mindestens einmal. Kostet nichts: die
+    #: Abfrage liest nur Zaehlerstaende, geschrieben wird erst bei Aenderung.
+    health_interval_s: float = 0.5
 
 
 @dataclass(frozen=True)

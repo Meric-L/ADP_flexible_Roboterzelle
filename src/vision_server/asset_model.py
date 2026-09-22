@@ -2,8 +2,11 @@
 
 Part 1 answers "how do I operate the system"; Part 2 answers "what is it built
 from and what is its condition" -- computing device, image sensor, lens, with
-identification per component. It carries no runtime coupling to the job path:
-nothing here can fail a job, and a job cannot change anything here.
+identification per component, plus a `Health` block carrying `DeviceHealth`.
+Written into that block is what `camera_health.py` derives from the camera
+watchdog; this module only builds the nodes. It carries no runtime coupling to
+the job path: nothing here can fail a job, and a job cannot change anything
+here.
 
 Only the folders we actually fill are created. Instantiating the type with all
 its optional folders would also materialise their `<Placeholder>` templates as
@@ -22,12 +25,16 @@ from asyncua.common.node import Node
 
 from .address_space import VisionAddressSpace
 from .nodeset_ids import (
+    DI_DEVICE_HEALTH_ENUMERATION,
+    DI_DEVICE_HEALTH_INTERFACE,
     DI_NAMESPACE_URI,
     VISION_COMPUTING_DEVICE_TYPE,
+    VISION_HEALTH_INFO_TYPE,
     VISION_IMAGE_SENSOR_TYPE,
     VISION_ITEM_FOLDER_TYPE,
     VISION_LENS_TYPE,
     VISION_SYSTEM_ASSET_TYPE,
+    DeviceHealth,
     node_id,
 )
 from .profiles import AssetConfig
@@ -53,6 +60,14 @@ class VisionAssetNodes:
     computing_device: Node | None = None
     image_sensor: Node | None = None
     lens: Node | None = None
+    #: Alle `DeviceHealth`-Knoten, die denselben Kamerazustand spiegeln:
+    #: der an der Wurzel und, falls der Bildsensor bekannt ist, seiner.
+    #: Leer, wenn Part 2 fehlt oder der Block nicht anlegbar war.
+    #:
+    #: Kein eigenes Feld je Komponente: fuer Recheneinheit und Objektiv gibt
+    #: es keine Zustandsquelle, und ein Knoten, den niemand schreibt, wird als
+    #: "NORMAL fuer immer" gelesen -- schlimmer als gar kein Knoten.
+    device_health: tuple[Node, ...] = ()
 
 
 async def _write_identification(
@@ -144,6 +159,71 @@ async def _add_component(
     return nodes[0]
 
 
+async def _add_health(
+    server: Server, owner: Node, amcm_idx: int, di_idx: int, own_idx: int
+) -> Node | None:
+    """Haengt `Health` an eine Komponente und gibt deren `DeviceHealth` zurueck.
+
+    Drei Eigenheiten, alle im Nodeset bzw. in asyncua begruendet:
+
+    * `Health` ist an jedem Item optional und per `HasAddIn` referenziert.
+      asyncuas `instantiate()` setzt die Referenz aber immer auf
+      `HasComponent` (`copy_node_util._rdesc_from_node` kennt nur
+      `Organizes` fuer Ordner und sonst `HasComponent`) -- sie wird danach
+      getauscht.
+    * `VisionHealthInfoType` hat ausschliesslich optionale Kinder; der
+      instanziierte Block ist leer. `DeviceHealth` kommt einzeln dazu, genau
+      wie die optionalen Identification-Felder in `_write_identification`.
+    * Der Startwert ist CHECK_FUNCTION, nicht NORMAL: beim Aufbau des
+      Adressraums ist die Kamera noch nicht einmal geoeffnet. NORMAL waere
+      hier eine Behauptung, die genau so lange steht, bis der Publisher
+      laeuft. Der ausdrueckliche Int32-Startwert haelt ausserdem
+      `BadTypeMismatch` fern: asyncua prueft eine Schreibanfrage gegen den
+      VariantType des vorhandenen Werts.
+
+    Wirft nie -- die Anlagensicht ist eine Zusatzsicht, kein Betriebsmittel.
+    """
+    base = owner.nodeid.Identifier
+    try:
+        nodes = await instantiate(
+            owner,
+            server.get_node(node_id(VISION_HEALTH_INFO_TYPE, amcm_idx)),
+            nodeid=ua.NodeId(f"{base}.Health", own_idx),
+            bname=ua.QualifiedName("Health", amcm_idx),
+            instantiate_optional=False,
+        )
+    except Exception:
+        _log.exception("Zustandsblock unter %s nicht anlegbar", base)
+        return None
+    health = nodes[0]
+    try:
+        # Als `ua.NodeId`, nicht als blanke Zahl: asyncuas `_to_nodeid` macht
+        # aus einem int einen `TwoByteNodeId` und wirft ueber 255 -- und
+        # HasAddIn (17604) wie HasInterface (17603) liegen darueber.
+        # Erst die richtige Referenz setzen, dann die falsche loeschen: bricht
+        # es dazwischen ab, ist der Knoten doppelt erreichbar statt gar nicht.
+        await owner.add_reference(health, ua.NodeId(ua.ObjectIds.HasAddIn))
+        await owner.delete_reference(health, ua.NodeId(ua.ObjectIds.HasComponent))
+        await health.add_reference(
+            node_id(DI_DEVICE_HEALTH_INTERFACE, di_idx),
+            ua.NodeId(ua.ObjectIds.HasInterface),
+        )
+    except Exception:
+        # Ein falscher Referenztyp macht den Knoten unschoen, nicht unbrauchbar.
+        _log.debug("HasAddIn-Referenz fuer %s nicht setzbar", base, exc_info=True)
+    try:
+        return await health.add_variable(
+            ua.NodeId(f"{base}.Health.DeviceHealth", own_idx),
+            ua.QualifiedName("DeviceHealth", di_idx),
+            int(DeviceHealth.CHECK_FUNCTION),
+            ua.VariantType.Int32,
+            datatype=node_id(DI_DEVICE_HEALTH_ENUMERATION, di_idx),
+        )
+    except Exception:
+        _log.exception("DeviceHealth unter %s nicht anlegbar", base)
+        return None
+
+
 async def attach_asset_model(
     space: VisionAddressSpace, config: AssetConfig
 ) -> VisionAssetNodes | None:
@@ -206,12 +286,32 @@ async def attach_asset_model(
             item_name, {"Manufacturer": config.manufacturer, "Model": model}, root_id,
         )
 
+    # Zustandsblock an der Wurzel und am Bildsensor. Die Wurzel bekommt ihn
+    # immer: ohne bekanntes Kameramodell gibt es keinen ImageSensor-Knoten,
+    # und dann bliebe gar keine Meldestelle. Beide tragen heute denselben
+    # Wert -- es gibt genau eine Zustandsquelle. Kommt eine zweite Komponente
+    # mit eigenem Zustand dazu, braucht die Wurzel eine echte Regel; die
+    # verlangt eine Rangfolge ueber die NE-107-Zustaende, die DI nicht
+    # definiert, und wird deshalb nicht vorweggenommen.
+    health_owners = [root]
+    if components["image_sensor"] is not None:
+        health_owners.append(components["image_sensor"])
+    device_health = tuple(
+        node
+        for node in [
+            await _add_health(server, owner, amcm_idx, di_idx, own_idx)
+            for owner in health_owners
+        ]
+        if node is not None
+    )
+
     _log.info(
-        "Anlagensicht (OPC 40100-2) unter %s, Komponenten: %s",
+        "Anlagensicht (OPC 40100-2) unter %s, Komponenten: %s, Zustandsknoten: %d",
         root.nodeid.to_string(),
         ", ".join(name for name, node in components.items() if node is not None) or "keine",
+        len(device_health),
     )
-    return VisionAssetNodes(root=root, **components)
+    return VisionAssetNodes(root=root, device_health=device_health, **components)
 
 
 __all__ = ["VisionAssetNodes", "attach_asset_model"]

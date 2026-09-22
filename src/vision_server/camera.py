@@ -32,7 +32,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
@@ -63,6 +63,32 @@ class CameraFrame:
     image: Any
     timestamp: float
     preview: Any = None
+
+
+@dataclass(frozen=True)
+class CameraStatus:
+    """Momentaufnahme dessen, was der Watchdog ohnehin schon weiss.
+
+    Eine Datenklasse statt sieben Properties: wer den Zustand auswertet, soll
+    ein in sich stimmiges Bild sehen und nicht zwischen zwei Abfragen einen
+    Reopen erwischen. `camera_health.py` macht daraus `DeviceHealth` nach
+    OPC 40100-2; diese Datei bleibt frei von OPC UA.
+    """
+
+    #: Der Capture-Loop laeuft (entspricht `is_open`).
+    running: bool
+    #: Ein Kamera-Handle ist offen. Waehrend `_reopen` kurzzeitig False.
+    has_handle: bool
+    #: Ergebnis der letzten Aufnahme: "none" | "ok" | "error" | "hung".
+    last_outcome: str
+    #: Aufnahmefehler in Folge, zurueckgesetzt von jedem "ok".
+    consecutive_failures: int
+    #: Neu-Oeffnungen ohne einen Frame dazwischen; 0 heisst "gesund".
+    reopen_attempts: int
+    #: Das Reopen-Budget ist erschoepft, der Prozess beendet sich gleich.
+    gave_up: bool
+    #: Alter des neuesten Frames in Sekunden, `None` vor dem ersten Capture.
+    frame_age_s: float | None
 
 
 def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
@@ -112,7 +138,7 @@ def _list_realsense_color_profiles() -> str:
         return f"Profile nicht abrufbar ({error})"
 
 
-def _exit_process() -> None:
+def exit_process() -> None:
     """Beendet den Prozess hart, damit systemd (`Restart=always`) neu startet.
 
     `os._exit` statt `sys.exit`: ein normales Beenden wartet beim Shutdown auf
@@ -153,15 +179,23 @@ class SharedCamera:
         self,
         config: CameraStreamConfig,
         *,
-        on_give_up: Callable[[], None] = _exit_process,
+        on_give_up: Callable[[], Awaitable[None] | None] = exit_process,
     ) -> None:
         self._config = config
         self._camera: Any = None
         self._executor: ThreadPoolExecutor | None = None
         self._loop_task: asyncio.Task | None = None
         self._latest: CameraFrame | None = None
-        #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen.
+        #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen, und
+        #: fuer den Runner, der vorher noch FAILURE veroeffentlichen will.
         self._on_give_up = on_give_up
+        #: Zaehlerstaende des Watchdogs. Bewusst auf Instanzebene und nicht als
+        #: lokale Variablen im Capture-Loop: sonst kennt nur die Schleife den
+        #: Zustand, und `status()` muesste ihn ein zweites Mal herleiten.
+        self._failures = 0
+        self._reopens = 0
+        self._last_outcome = "none"
+        self._gave_up = False
         #: Groesse des `lores`-Stroms, sobald Picamera2 damit konfiguriert ist;
         #: sonst `None` und jede Aufnahme liefert nur `image`.
         self._preview_size: tuple[int, int] | None = None
@@ -175,6 +209,36 @@ class SharedCamera:
     def is_open(self) -> bool:
         """Ob der Capture-Loop laeuft."""
         return self._loop_task is not None
+
+    def status(self, now: float) -> CameraStatus:
+        """Zustand zum Zeitpunkt `now` (derselbe `loop.time()`-Zeitstrahl).
+
+        `now` wird uebergeben statt selbst geholt: `CameraFrame.timestamp`
+        kommt aus `loop.time()`, und nur der Aufrufer weiss, ob er auf
+        demselben Loop laeuft. So bleibt die Methode synchron und ohne
+        laufenden Loop testbar.
+        """
+        latest = self._latest
+        return CameraStatus(
+            running=self.is_open,
+            has_handle=self._camera is not None,
+            last_outcome=self._last_outcome,
+            consecutive_failures=self._failures,
+            reopen_attempts=self._reopens,
+            gave_up=self._gave_up,
+            frame_age_s=None if latest is None else now - latest.timestamp,
+        )
+
+    def set_give_up_handler(
+        self, handler: Callable[[], Awaitable[None] | None]
+    ) -> None:
+        """Ersetzt, was beim endgueltigen Aufgeben passiert.
+
+        Noetig, weil die Kamera in `build_detection_sources` entsteht -- lange
+        bevor es einen Zustandsknoten gibt, in den sich ein letztes FAILURE
+        schreiben liesse.
+        """
+        self._on_give_up = handler
 
     async def open(self) -> None:
         """Oeffnet die Kamera und startet den Capture-Loop. Nicht idempotent."""
@@ -297,6 +361,7 @@ class SharedCamera:
         """Eine Aufnahme mit Timeout: `"ok"`, `"error"` oder `"hung"`."""
         if self._camera is None:
             # Die letzte Neu-Oeffnung ist gescheitert; nichts zu lesen.
+            self._last_outcome = "hung"
             return "hung"
         try:
             image, preview = await asyncio.wait_for(
@@ -308,11 +373,14 @@ class SharedCamera:
                 "Kamera liefert seit %.1f s kein Bild -- capture haengt",
                 self._config.frame_timeout_s,
             )
+            self._last_outcome = "hung"
             return "hung"
         except Exception:
             _log.exception("Kamera-Frame konnte nicht aufgenommen werden")
+            self._last_outcome = "error"
             return "error"
         self._latest = CameraFrame(image=image, timestamp=loop.time(), preview=preview)
+        self._last_outcome = "ok"
         return "ok"
 
     async def _capture_loop(self) -> None:
@@ -324,30 +392,35 @@ class SharedCamera:
         """
         loop = asyncio.get_running_loop()
         interval = 1.0 / self._config.capture_fps
-        failures = 0
-        reopens = 0
         while True:
             started = loop.time()
             outcome = await self._capture_once(loop)
             if outcome == "ok":
-                failures = 0
-                reopens = 0
+                self._failures = 0
+                self._reopens = 0
             elif outcome == "hung":
-                failures = self._config.max_capture_failures
+                self._failures = self._config.max_capture_failures
             else:
-                failures += 1
-            if failures >= self._config.max_capture_failures:
-                failures = 0
-                reopens += 1
-                if reopens > self._config.max_reopen_attempts:
+                self._failures += 1
+            if self._failures >= self._config.max_capture_failures:
+                self._failures = 0
+                self._reopens += 1
+                if self._reopens > self._config.max_reopen_attempts:
                     _log.critical(
                         "Kamera nach %d Neu-Oeffnungen ohne Bild -- beende den Prozess, "
                         "systemd startet ihn neu",
                         self._config.max_reopen_attempts,
                     )
-                    self._on_give_up()
+                    self._gave_up = True
+                    # Der Handler darf asynchron sein: der Runner schreibt hier
+                    # ein letztes FAILURE in die Anlagensicht, bevor der
+                    # Prozess gerissen wird. Der Standardhandler ist synchron
+                    # und kehrt ohnehin nie zurueck.
+                    result = self._on_give_up()
+                    if result is not None:
+                        await result
                     return
-                await self._reopen(reopens)
+                await self._reopen(self._reopens)
                 continue
             elapsed = loop.time() - started
             await asyncio.sleep(max(0.0, interval - elapsed))
