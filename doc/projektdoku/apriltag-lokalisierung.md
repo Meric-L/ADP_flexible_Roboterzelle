@@ -368,6 +368,38 @@ lokalisiert. Die Positionen oben sind Platzhalter — die echten Weltposen der
 vier Welttags werden einmalig per `python -m tagloc.cli.build_tagmap`
 eingemessen.
 
+#### Wer was pflegt: Pi misst, Frontend benennt
+
+Die Tag-Map enthält zwei verschiedene Sorten Information, und sie gehören
+**nicht** an denselben Ort:
+
+| Feld | Wofür | Ort |
+|---|---|---|
+| `poseInWorld` der Welttags | der Pi rechnet daraus `T_world_cam` | **Pi** — ohne das entsteht keine Weltpose |
+| `sizeM` | geht in `solvePnP` ein; falsche Größe skaliert die Distanz linear mit | **Pi** — reine Optik |
+| `tagFamily` | Detektor-Einstellung | **Pi** |
+| `moduleId`, `instanceId` | welches Modul ein Tag ist | **Konsument** |
+| `tagToModule` | CAD-Versatz Tag → Modulursprung | **Konsument** |
+| Name, Box-Größe, 3D-Modell | Darstellung | **Konsument** |
+
+Der obere Teil ist Messtechnik und hängt an den gedruckten Tags und der
+Vermessung der Zelle; der untere ist Bedeutung. Die Weltposen lassen sich
+nicht auslagern: `localize_camera` läuft je Bild im Erkennungsjob auf dem Pi,
+und die Verkettung soll an genau einer Stelle stehen (Abschnitt 1.2).
+
+**Achtung, Doppelversatz.** `tagToModule` darf nur an *einer* Stelle stehen.
+Das Frontend der WebSkillComposition rechnet den Versatz selbst
+(`cell-modules/model/cellModules.ts`, `moduleWorldPose`) und nimmt an, der Pi
+schicke die **Tag**-Pose. Steht derselbe Versatz zusätzlich in der Tag-Map,
+wendet ihn der Pi ebenfalls an — das Modul landet dann um den doppelten Betrag
+versetzt, plausibel aussehend und falsch. Solange der Konsument den Versatz
+pflegt, bleibt er aus der Karte des Pi heraus.
+
+`config/tagmap.json` ist deshalb im Betrieb sehr klein: die Welttags, sonst
+nichts. Die Beispieldatei zeigt zwar `moduleId` und `tagToModule` mit, weil sie
+das **Schema** dokumentiert — für den Betrieb mit diesem Frontend werden beide
+Felder nicht gebraucht.
+
 Für den ersten Aufbautest braucht es die vier Welttags noch nicht: ein Welttag
 im Ursprung (Identitätspose, dann *ist* er das Welt-KS) und ein Modultag
 genügen. Vorlage dafür ist
