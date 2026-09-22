@@ -7,7 +7,7 @@ description: Projektdokumentation der ADP-Roboterzelle lesen und fortschreiben. 
 
 Mehrere Leute arbeiten in getrennten Chats am selben Projekt. Ohne gemeinsame
 Ablage findet jeder dasselbe zweimal heraus, und zwei Implementierungen
-derselben Schnittstelle laufen auseinander. Diese Skill hält `doc/` konsistent.
+derselben Schnittstelle laufen auseinander. Diese Skill hält `doc/projektdoku/` konsistent.
 
 Alles auf **Deutsch** — Dateiinhalte, Kommentare, Commit-Messages.
 
@@ -17,8 +17,8 @@ Nach `main` kommen nur fertige, funktionierende Features.
 ## 1. Lesen — immer zuerst
 
 1. `git pull` — die anderen schreiben in dieselben Dateien.
-2. `ls doc/*.md doc/arbeitsplaene/*.md`
-3. `doc/arbeitsplaene/README.md` lesen: **Arbeitet daran schon jemand?**
+2. `ls doc/projektdoku/*.md doc/projektdoku/arbeitsplaene/*.md`
+3. `doc/projektdoku/arbeitsplaene/README.md` lesen: **Arbeitet daran schon jemand?**
    Steht zum Thema ein Plan auf `in Arbeit`, der jemand anderem gehört, wird
    nicht parallel implementiert — andocken oder nachfragen.
 4. Die Fach-MDs lesen, die das Thema betreffen. Gezielt den relevanten
@@ -26,13 +26,13 @@ Nach `main` kommen nur fertige, funktionierende Features.
 
 | Thema | Zuerst lesen |
 | --- | --- |
-| OPC-UA-Server, OPC 40100, Adressraum, Methoden, Payload | `doc/vision-server-interface.md`, `doc/vision-system.md` |
-| Anbindung an WebSkillComposition, Frontend, mehrere Vision-Systeme | `doc/vision-system-integration.md` |
-| Offene Punkte am Vision-System | `doc/vision-system-next-steps.md` |
-| AprilTag: Konzept, Tag-Familien, Pose | `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md` |
-| AprilTag testen | `doc/apriltag-e2e-test.md` |
-| Unerwartetes Verhalten, historische Eigenheiten | `doc/altlasten.md` |
-| Präsentation / Betreuung | `doc/praesentation.md`, `betreuer/` |
+| OPC-UA-Server, OPC 40100, Adressraum, Methoden, Payload | `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/vision-system.md` |
+| Anbindung an WebSkillComposition, Frontend, mehrere Vision-Systeme | `doc/projektdoku/vision-system-integration.md` |
+| Offene Punkte am Vision-System | `doc/projektdoku/vision-system-next-steps.md` |
+| AprilTag: Konzept, Tag-Familien, Pose | `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/apriltag-referenz.md` |
+| AprilTag testen | `doc/projektdoku/apriltag-e2e-test.md` |
+| Unerwartetes Verhalten, historische Eigenheiten | `doc/projektdoku/altlasten.md` |
+| Präsentation / Betreuung | `doc/projektdoku/praesentation.md`, `betreuer/` |
 
 Steht die Antwort in einer dieser Dateien, wird sie gelesen statt erfragt.
 Fehlt sie dort, ist das selbst eine Erkenntnis — nach der Klärung kommt sie rein.
@@ -41,7 +41,7 @@ Fehlt sie dort, ist das selbst eine Erkenntnis — nach der Klärung kommt sie r
 
 Für jede Aufgabe, die mehr ist als ein Einzeiler-Fix, **vor** der Umsetzung:
 
-1. `doc/arbeitsplaene/_vorlage.md` nach `doc/arbeitsplaene/<thema>.md` kopieren
+1. `doc/projektdoku/arbeitsplaene/_vorlage.md` nach `doc/projektdoku/arbeitsplaene/<thema>.md` kopieren
    (klein, mit Bindestrichen, z. B. `opcua-part10-wrapper.md`).
 2. Kopf ausfüllen — genau dieses Format, der Hook liest es aus:
 
@@ -62,7 +62,7 @@ Für jede Aufgabe, die mehr ist als ein Einzeiler-Fix, **vor** der Umsetzung:
    - Betrieb: Ports, Services, mDNS-Namen, systemd-Units
    - Fehlerfälle: Timeout, fehlende Kamera, ungültiger Job, Abbruch
 4. Unter „Bereits gelesen" die ausgewerteten MDs eintragen.
-5. Eine Zeile in die Tabelle in `doc/arbeitsplaene/README.md` eintragen.
+5. Eine Zeile in die Tabelle in `doc/projektdoku/arbeitsplaene/README.md` eintragen.
 
 Erst danach wird Code geschrieben.
 
@@ -72,17 +72,17 @@ Erst danach wird Code geschrieben.
   **und** den Schnittstellenteil korrigieren. Eine veraltete
   Schnittstellenbeschreibung ist schlimmer als gar keine.
 - Ändert sich eine bereits dokumentierte Schnittstelle: erst die Fach-MD unter
-  `doc/` anpassen, damit es alle sehen, dann den Code.
+  `doc/projektdoku/` anpassen, damit es alle sehen, dann den Code.
 - Bestehende Dokumente nicht umschreiben, um etwas Neues unterzubringen —
   eigener Abschnitt oder eigene Datei.
 
 ## 4. Nach Abschluss
 
 1. Status im Plan auf `fertig`, tatsächliche Schnittstellen eingetragen.
-2. Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
-3. Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/` übernommen —
+2. Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
+3. Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/projektdoku/` übernommen —
    der Plan ist die Planung, die Fach-MD der Stand. Neue Fach-MD? Dann auch in
-   die Tabelle in `doc/arbeitsplaene/README.md` aufnehmen.
+   die Tabelle in `doc/projektdoku/arbeitsplaene/README.md` aufnehmen.
 
 ## 5. Committen — ja. Pushen — nur auf Ansage.
 
@@ -103,5 +103,5 @@ Erst danach wird Code geschrieben.
    Der Hinweis fehlt nie, auch nicht bei kleinen Änderungen. Sonst nimmt jemand
    an, der Stand liege bereits auf dem Remote.
 
-Bei Merge-Konflikt in `doc/arbeitsplaene/README.md`: beide Zeilen behalten. Ein
+Bei Merge-Konflikt in `doc/projektdoku/arbeitsplaene/README.md`: beide Zeilen behalten. Ein
 Konflikt im Index ist nie eine Entweder-oder-Entscheidung.

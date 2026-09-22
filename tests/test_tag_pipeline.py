@@ -10,7 +10,7 @@ Checks the whole chain:
     detector -> estimate_tag_pose -> place_tags -> locate_modules
 
 plus the calibration path (rendered chessboards -> `calibrate_from_samples`).
-Tolerance per doc/apriltag-lokalisierung.md section 7: **2 mm and 0.5 degrees**.
+Tolerance per doc/projektdoku/apriltag-lokalisierung.md section 7: **2 mm and 0.5 degrees**.
 
 Skips instead of failing without OpenCV. The probe access to `cv2.imread` is
 deliberate: an incomplete install can still be imported but lacks functions

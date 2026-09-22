@@ -19,13 +19,15 @@ from pathlib import Path
 
 REGELN = """PROJEKTREGELN (CLAUDE.md, verbindlich fuer alle Teammitglieder und Agenten):
 
-1. VOR der ersten inhaltlichen Aenderung die relevanten MDs unter doc/ lesen.
+1. VOR der ersten inhaltlichen Aenderung die relevanten MDs unter
+   doc/projektdoku/ lesen.
 2. Aufgaben groesser als ein Einzeiler bekommen VOR der Umsetzung einen Plan
-   unter doc/arbeitsplaene/<thema>.md (Vorlage: doc/arbeitsplaene/_vorlage.md),
-   inklusive Abschnitt "Schnittstellen" (OPC-UA-NodeIds/Methoden,
-   Python-Signaturen, Payloads, Ports) - damit andere ohne diesen Code dagegen
-   entwickeln koennen.
-3. Neuen Plan in die Tabelle in doc/arbeitsplaene/README.md eintragen.
+   unter doc/projektdoku/arbeitsplaene/<thema>.md (Vorlage:
+   doc/projektdoku/arbeitsplaene/_vorlage.md), inklusive Abschnitt
+   "Schnittstellen" (OPC-UA-NodeIds/Methoden, Python-Signaturen, Payloads,
+   Ports) - damit andere ohne diesen Code dagegen entwickeln koennen.
+3. Neuen Plan in die Tabelle in doc/projektdoku/arbeitsplaene/README.md
+   eintragen.
 4. Steht zum Thema bereits ein Plan "in Arbeit" von jemand anderem: nicht
    parallel implementieren, sondern dort andocken oder nachfragen.
 """
@@ -51,15 +53,15 @@ def erste_ueberschrift(pfad: Path) -> str:
 
 def fachdoku(wurzel: Path) -> str:
     zeilen = [
-        f"- doc/{p.name} — {erste_ueberschrift(p)}".rstrip(" —")
-        for p in sorted((wurzel / "doc").glob("*.md"))
+        f"- doc/projektdoku/{p.name} — {erste_ueberschrift(p)}".rstrip(" —")
+        for p in sorted((wurzel / "doc" / "projektdoku").glob("*.md"))
     ]
     return "\n".join(zeilen) if zeilen else "  (keine)"
 
 
 def arbeitsplaene(wurzel: Path) -> str:
     zeilen = []
-    for p in sorted((wurzel / "doc" / "arbeitsplaene").glob("*.md")):
+    for p in sorted((wurzel / "doc" / "projektdoku" / "arbeitsplaene").glob("*.md")):
         if p.name in {"README.md", "_vorlage.md"}:
             continue
         try:
@@ -67,7 +69,7 @@ def arbeitsplaene(wurzel: Path) -> str:
         except OSError:
             kopf = {}
         zeilen.append(
-            f"- doc/arbeitsplaene/{p.name} — Status: {kopf.get('Status', '?')}"
+            f"- doc/projektdoku/arbeitsplaene/{p.name} — Status: {kopf.get('Status', '?')}"
             f" | Verantwortlich: {kopf.get('Verantwortlich', '?')}"
         )
     return "\n".join(zeilen) if zeilen else "  (noch keine Arbeitsplaene vorhanden)"

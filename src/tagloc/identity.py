@@ -5,7 +5,7 @@ building the detection source -- before anything is loaded, so numpy and
 OpenCV must not be on the import chain.
 
 The value later answers which calibration and which map produced a bad pose
-(doc/altlasten.md C4). Filename plus mtime: both come for free without
+(doc/projektdoku/altlasten.md C4). Filename plus mtime: both come for free without
 parsing, and change on every recalibration.
 """
 

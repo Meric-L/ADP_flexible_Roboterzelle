@@ -7,7 +7,7 @@ sie gemeinsam benutzen und dass sie ohne Hardware end-to-end testbar bleibt.
 Nachbardokumente: [`apriltag-referenz.md`](apriltag-referenz.md) (Funktionsreferenz),
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md) (Testanleitung inkl. Pi-Kamera),
 [`vision-server-interface.md`](vision-server-interface.md) (OPC-UA-Schnittstelle),
-[`altlasten.md`](altlasten.md), [`concept/offene_punkte.md`](../concept/offene_punkte.md).
+[`altlasten.md`](altlasten.md), [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
 
 > **Stand:** umgesetzt. Was hier steht, beschreibt den gebauten Zustand; die
 > Abschnitte 6 und 9 tragen ab, was davon noch offen ist.
@@ -232,7 +232,7 @@ deshalb in fünf Zeilen numpy statt `cv2.Rodrigues` zu rufen.
 ### 2.2 Detektor-Adapter
 
 Der Prototyp benutzt `pupil_apriltags`, die geplante Architektur laut
-[`profiles.py`](../src/vision_server/profiles.py) und [`altlasten.md`](altlasten.md) D3
+[`profiles.py`](../../src/vision_server/profiles.py) und [`altlasten.md`](altlasten.md) D3
 `cv2.aruco`. Statt jetzt zu entscheiden und später umzubauen, kommt beides hinter
 ein Protokoll:
 
@@ -371,7 +371,7 @@ eingemessen.
 Für den ersten Aufbautest braucht es die vier Welttags noch nicht: ein Welttag
 im Ursprung (Identitätspose, dann *ist* er das Welt-KS) und ein Modultag
 genügen. Vorlage dafür ist
-[`config/tagmap.test.example.json`](../config/tagmap.test.example.json);
+[`config/tagmap.test.example.json`](../../config/tagmap.test.example.json);
 `validate_tag_map` beanstandet die fehlenden Welttags dann, bricht aber nicht ab
 (siehe [E2E-Testanleitung](apriltag-e2e-test.md), „Kleiner Aufbautest").
 
@@ -627,7 +627,7 @@ Die Schritte 1–7 und 9 sind umgesetzt, die Suite ist grün.
 | 9 | Konfiguration je Pi in `server.py`, Doku nachziehen | erledigt |
 
 Zu Schritt 8: Der Prototypordner bleibt vorerst stehen und ist in
-[`MANUAL_TEST.md`](../src/apriltag/MANUAL_TEST.md) als abgelöst gekennzeichnet.
+[`MANUAL_TEST.md`](../../src/apriltag/MANUAL_TEST.md) als abgelöst gekennzeichnet.
 Ihn zu löschen, bevor die neue Kette einmal an der echten Pi-Kamera gelaufen
 ist, nähme die einzige Vergleichsmöglichkeit weg. `src/jobs/calibrate.py` ist
 dagegen bereits umgestellt — es ist jetzt eine Bereitschaftsprüfung statt eines
@@ -647,7 +647,7 @@ Dazu kamen zwei Dinge, die im ursprünglichen Plan fehlten:
 
 ## 10. Offene Punkte und was dieser Plan dazu vorschlägt
 
-Die Fragen aus [`concept/offene_punkte.md`](../concept/offene_punkte.md) bleiben
+Die Fragen aus [`concept/offene_punkte.md`](../../concept/offene_punkte.md) bleiben
 Entscheidungen des Teams. Was dieser Entwurf nahelegt:
 
 | Offener Punkt | Vorschlag aus diesem Entwurf |

@@ -698,7 +698,7 @@ Rund **16 MB und knapp zwei Sekunden**. Ohne `assets` in der
 asyncua 2.0.1 **nicht** importieren — es fordert UA-Basis 1.05.04 und scheitert
 mit `BadParentNodeIdInvalid`. Das neueste Machinery zöge zusätzlich `IA` herein.
 Gewählt sind genau die Versionen, die AMCM als `RequiredModel` nennt. Details in
-[`src/vision_server/nodesets/README.md`](../src/vision_server/nodesets/README.md).
+[`src/vision_server/nodesets/README.md`](../../src/vision_server/nodesets/README.md).
 
 **Der Namensraumindex verschiebt sich.** Mit Part 2 liegt
 `http://launch-rm.de/vision` nicht mehr auf Index 3, sondern auf 6. Clients

@@ -2,7 +2,7 @@
 
 Phase A of the AMCM plan: OPC 40100-2 pulls in DI, IA and Machinery on top of
 Part 1, and the vision server runs on a Raspberry Pi that also drives the
-camera. doc/altlasten.md records ~110 MB RSS per process for Part 1 alone, so
+camera. doc/projektdoku/altlasten.md records ~110 MB RSS per process for Part 1 alone, so
 the question is whether four more nodesets still fit -- measured, not guessed.
 
     PYTHONPATH=src python3 tools/measure_nodeset_import.py

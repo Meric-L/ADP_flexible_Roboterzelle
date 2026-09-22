@@ -349,7 +349,7 @@ Welttags, `robot` fuer die Tags am Roboter, sonst `module`), bei den
 beweglichen Tags `poseInWorld` auf `null` setzen, Modulzuordnung
 (`moduleId`, `instanceId`) und den
 CAD-Versatz `tagToModule` eintragen. Vorlage:
-[`config/tagmap.example.json`](../config/tagmap.example.json), Feldbeschreibung
+[`config/tagmap.example.json`](../../config/tagmap.example.json), Feldbeschreibung
 in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 5.
 
 #### Kleiner Aufbautest: ein Welttag, ein Modul
@@ -360,7 +360,7 @@ liegt der Welttag im Ursprung mit Identitätspose, *ist* er das Welt-KS, es
 gibt also nichts einzumessen.
 
 Vorlage dafür:
-[`config/tagmap.test.example.json`](../config/tagmap.test.example.json) — nach
+[`config/tagmap.test.example.json`](../../config/tagmap.test.example.json) — nach
 `config/tagmap.json` kopieren, Tag-IDs und die **gemessenen** Kantenlängen
 anpassen, fertig:
 

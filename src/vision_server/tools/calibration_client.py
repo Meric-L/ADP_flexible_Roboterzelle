@@ -3,7 +3,7 @@ AbortCalibration ausloesen, Fortschritt live mitloggen.
 
 Fuer Pis, an denen das Frontend die Kalibrierung noch nicht anbietet -- ruft
 dieselben additiven Methoden wie ein spaeteres Frontend, siehe
-doc/vision-server-interface.md Abschnitt 12. Laeuft, bis Strg+C gedrueckt
+doc/projektdoku/vision-server-interface.md Abschnitt 12. Laeuft, bis Strg+C gedrueckt
 wird; das beendet die Session per `FinishCalibration` (Standard) oder mit
 `--abort` ohne zu speichern.
 """

@@ -195,7 +195,7 @@ und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
   Repositionierungsstrategie: größtenteils durch das Welttag-Konzept
   (Arbeitsplan [`apriltag-welttag-konzept.md`](arbeitsplaene/apriltag-welttag-konzept.md))
   geklärt, siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md).
-  Verbleibende offene Punkte: [`concept/offene_punkte.md`](../concept/offene_punkte.md).
+  Verbleibende offene Punkte: [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
   Diese bestimmen, was `frameId`/`position`/`orientation` im Ergebnis-Payload
   konkret bedeuten müssen.
 - **Strukturtypisierte Event-Felder** befüllen, sobald asyncua-Issue #1693

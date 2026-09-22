@@ -8,8 +8,8 @@
 > | `python src/apriltag/calibrate_camera.py` | `python -m tagloc.cli.calibrate` |
 > | `python src/apriltag/detect_apriltags.py` | `python -m tagloc.cli.detect` |
 >
-> Siehe [`doc/apriltag-referenz.md`](../../doc/apriltag-referenz.md) und
-> [`doc/apriltag-e2e-test.md`](../../doc/apriltag-e2e-test.md). Der Ordner bleibt
+> Siehe [`doc/projektdoku/apriltag-referenz.md`](../../doc/projektdoku/apriltag-referenz.md) und
+> [`doc/projektdoku/apriltag-e2e-test.md`](../../doc/projektdoku/apriltag-e2e-test.md). Der Ordner bleibt
 > vorerst als Vergleichsmöglichkeit stehen, bis die neue Kette einmal an der
 > echten Pi-Kamera abgenommen wurde.
 

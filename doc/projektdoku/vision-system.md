@@ -40,11 +40,11 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 
 | Datei | Inhalt |
 | --- | --- |
-| [`src/vision_server/`](../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
-| [`src/vision_server/tools/hello_world_client.py`](../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
-| [`src/vision_server/server.py`](../src/vision_server/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
-| [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
-| [`requirements.txt`](../requirements.txt) | u. a. `asyncua` |
+| [`src/vision_server/`](../../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
+| [`src/vision_server/tools/hello_world_client.py`](../../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
+| [`src/vision_server/server.py`](../../src/vision_server/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
+| [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
+| [`requirements.txt`](../../requirements.txt) | u. a. `asyncua` |
 
 ## Aufbau des Vision-Servers
 

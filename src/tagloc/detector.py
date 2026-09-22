@@ -1,7 +1,7 @@
 """Tag detection behind a protocol: cv2.aruco or pupil_apriltags.
 
 The prototype used `pupil_apriltags`; the target architecture per
-`vision_server/profiles.py` and doc/altlasten.md D3 is `cv2.aruco`. Rather
+`vision_server/profiles.py` and doc/projektdoku/altlasten.md D3 is `cv2.aruco`. Rather
 than decide and rewrite later, both sit behind the same interface. Pose
 estimation deliberately lives in `pose.py`, not here -- otherwise pose
 quality would depend on the backend and the two wouldn't be comparable.
@@ -86,7 +86,7 @@ class ArucoTagDetector:
 
     Bridges the new API (OpenCV >= 4.7: `ArucoDetector`,
     `getPredefinedDictionary`) and the old one (`Dictionary_get`,
-    `detectMarkers` as a free function). Not a luxury: per doc/altlasten.md
+    `detectMarkers` as a free function). Not a luxury: per doc/projektdoku/altlasten.md
     D2, local is OpenCV 5.x while the Pi runs 4.x -- without the bridge, the
     code would only work on one of the two.
     """

@@ -1,6 +1,6 @@
 """Tag-based localisation: calibration, AprilTag detection, coordinate frames.
 
-Layout follows dependencies, not topics (see doc/apriltag-lokalisierung.md):
+Layout follows dependencies, not topics (see doc/projektdoku/apriltag-lokalisierung.md):
 
     geometry, calibration, tagmap, localize   -- numpy, **no cv2**
     boards, detector, pose, overlay, frames   -- cv2

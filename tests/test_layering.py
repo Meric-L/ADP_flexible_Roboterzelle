@@ -1,6 +1,6 @@
 """The dependency direction is a rule, so it's tested.
 
-Three guarantees the rest builds on (doc/apriltag-lokalisierung.md 2.1):
+Three guarantees the rest builds on (doc/projektdoku/apriltag-lokalisierung.md 2.1):
 
 * `tagloc.identity` and `tagloc.modes` need **not even numpy** -- the server
   builds `configurationId` and normalises the stream mode before anything

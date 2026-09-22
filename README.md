@@ -14,8 +14,8 @@ Ziel der Arbeit ist die Untersuchung, Evaluation und **praktische Umsetzung** ve
 Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 
 ### Dokumentation
-* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung **und** die
-  technische Dokumentation als Markdown (siehe unten).
+* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
+* `/doc/projektdoku` - Die technische Projektdokumentation als Markdown (siehe unten).
 * `/concept` - Ablaufdiagramm und offene Konzeptfragen.
 
 ### Implementierung (Source Code)
@@ -34,11 +34,11 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 
 | Dokument | Wofür |
 | --- | --- |
-| [`doc/apriltag-lokalisierung.md`](doc/apriltag-lokalisierung.md) | Konzept: was AprilTags hier bedeuten, wie Layer 1 und Layer 2 dieselbe Funktionalität benutzen |
-| [`doc/apriltag-referenz.md`](doc/apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate, Payload |
-| [`doc/apriltag-e2e-test.md`](doc/apriltag-e2e-test.md) | **Wie man alles durchtestet** — vom PC bis zur Raspberry-Pi-Kamera |
-| [`doc/vision-server-interface.md`](doc/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend (OPC 40100) |
-| [`doc/part10-programm-schnittstelle.md`](doc/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche der Zelle und die Auffindbarkeit im Netz |
-| [`doc/vision-system.md`](doc/vision-system.md) | Ist-Stand des Vision-Systems |
-| [`doc/altlasten.md`](doc/altlasten.md) | Was warum noch drin ist und wann es rausfliegt |
+| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | Konzept: was AprilTags hier bedeuten, wie Layer 1 und Layer 2 dieselbe Funktionalität benutzen |
+| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate, Payload |
+| [`doc/projektdoku/apriltag-e2e-test.md`](doc/projektdoku/apriltag-e2e-test.md) | **Wie man alles durchtestet** — vom PC bis zur Raspberry-Pi-Kamera |
+| [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend (OPC 40100) |
+| [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche der Zelle und die Auffindbarkeit im Netz |
+| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | Ist-Stand des Vision-Systems |
+| [`doc/projektdoku/altlasten.md`](doc/projektdoku/altlasten.md) | Was warum noch drin ist und wann es rausfliegt |
 | [`concept/offene_punkte.md`](concept/offene_punkte.md) | Offene Konzeptfragen der Lokalisierung |

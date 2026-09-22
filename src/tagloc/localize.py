@@ -5,7 +5,7 @@ This is the **only** place in the project where the chain
     T_world_module = T_world_cam @ T_cam_tag @ T_tag_module
 
 is executed. Both cameras call the same function; they differ only in what
-they get to see (doc/arbeitsplaene/apriltag-welttag-konzept.md):
+they get to see (doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md):
 
 * **Ceiling camera** -- sees the world tags, the robot and the modules in the
   same image. That is the overview, and it is the only place the question

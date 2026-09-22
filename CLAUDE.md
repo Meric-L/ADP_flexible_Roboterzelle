@@ -2,8 +2,8 @@
 
 Gruppenarbeit zur Positions- und Topologieerfassung mechatronischer Module in
 einer rekonfigurierbaren Labor-Roboterzelle (ca. 5x5 m). Das Repo enthält die
-Implementierung (`src/`, `tests/`, `hardware/`, `data/`) und die Dokumentation
-samt LaTeX-Ausarbeitung (`doc/`).
+Implementierung (`src/`, `tests/`, `hardware/`, `data/`), die Projektdokumentation
+(`doc/projektdoku/`) und die LaTeX-Ausarbeitung der Thesis (`doc/`).
 
 Diese Datei ist **verbindlich für alle**: für jedes Teammitglied und für jeden
 Agenten (Claude-Chat, Subagent, Hintergrund-Job). Sie liegt im Repository — wer
@@ -17,10 +17,11 @@ Dokumentation, Commit-Messages — werden auf Deutsch geschrieben.
 Vor der **ersten** inhaltlichen Aktion — Code schreiben, Datei ändern, Konzept
 entwerfen — gilt ausnahmslos:
 
-1. **Schauen, was schon da ist.** `ls doc/*.md doc/arbeitsplaene/*.md`. Die für
-   das Thema relevanten MDs lesen, **bevor** etwas entsteht. `doc/` ist der
-   gemeinsame Wissensstand des Projekts, nicht bloß Beiwerk.
-2. **Doppelarbeits-Check.** [`doc/arbeitsplaene/README.md`](doc/arbeitsplaene/README.md)
+1. **Schauen, was schon da ist.** `ls doc/projektdoku/*.md doc/projektdoku/arbeitsplaene/*.md`.
+   Die für das Thema relevanten MDs lesen, **bevor** etwas entsteht.
+   `doc/projektdoku/` ist der gemeinsame Wissensstand des Projekts, nicht bloß
+   Beiwerk.
+2. **Doppelarbeits-Check.** [`doc/projektdoku/arbeitsplaene/README.md`](doc/projektdoku/arbeitsplaene/README.md)
    listet, wer gerade woran arbeitet. Steht dort zum Thema schon ein Plan auf
    `in Arbeit`, der jemand anderem gehört: **nicht** parallel implementieren,
    sondern dort andocken oder die Person ansprechen.
@@ -33,8 +34,8 @@ zweimal.
 ## Arbeitsplan mit Schnittstellen
 
 Jede Aufgabe, die mehr ist als ein Einzeiler-Fix, bekommt **vor** der Umsetzung
-eine eigene Datei `doc/arbeitsplaene/<thema>.md`
-(Vorlage: [`doc/arbeitsplaene/_vorlage.md`](doc/arbeitsplaene/_vorlage.md)).
+eine eigene Datei `doc/projektdoku/arbeitsplaene/<thema>.md`
+(Vorlage: [`doc/projektdoku/arbeitsplaene/_vorlage.md`](doc/projektdoku/arbeitsplaene/_vorlage.md)).
 
 Pflichtangaben im Kopf: Status (`geplant` / `in Arbeit` / `fertig` /
 `verworfen`), Verantwortlich, Thema, Branch. Dazu Ziel, betroffene Dateien,
@@ -50,13 +51,13 @@ gelesene Dokumente, offene Fragen — und vor allem:
 - Betrieb: Ports, Services, mDNS-Namen, systemd-Units
 - Fehlerfälle: Timeout, fehlende Kamera, ungültiger Job, Abbruch
 
-Danach eine Zeile in die Tabelle in `doc/arbeitsplaene/README.md` eintragen.
-Nach Abschluss Status auf `fertig` setzen und die **tatsächlichen**
+Danach eine Zeile in die Tabelle in `doc/projektdoku/arbeitsplaene/README.md`
+eintragen. Nach Abschluss Status auf `fertig` setzen und die **tatsächlichen**
 Schnittstellen nachtragen; weicht die Umsetzung vom Plan ab, wird der Plan
 korrigiert. Eine veraltete Schnittstellenbeschreibung ist schlimmer als keine.
 
-Dauerhaftes Fachwissen gehört anschließend in die passende Fach-MD unter `doc/`
-— der Arbeitsplan ist die Planung, die Fach-MD der Stand.
+Dauerhaftes Fachwissen gehört anschließend in die passende Fach-MD unter
+`doc/projektdoku/` — der Arbeitsplan ist die Planung, die Fach-MD der Stand.
 
 Für den ganzen Ablauf gibt es die Skill `projektdoku`
 (`.claude/skills/projektdoku/`). Sie liegt im Repo, hat also jeder nach dem
@@ -65,17 +66,17 @@ committet selbstständig, ohne zu pushen.
 
 ## Regeln für Änderungen
 
-- Vor dem Lesen von `doc/` ein `git pull` — die anderen schreiben in dieselben
-  Dateien.
+- Vor dem Lesen von `doc/projektdoku/` ein `git pull` — die anderen schreiben in
+  dieselben Dateien.
 - Keine parallele Zweitimplementierung eines Themas, das laut
-  `doc/arbeitsplaene/README.md` jemand anderem gehört.
+  `doc/projektdoku/arbeitsplaene/README.md` jemand anderem gehört.
 - Eine dokumentierte Schnittstelle wird nicht stillschweigend geändert: erst den
   Arbeitsplan bzw. die Fach-MD anpassen, damit es alle sehen, dann den Code.
-- Bestehende Dokumente in `doc/` und `concept/` nicht umschreiben, um etwas
-  Neues unterzubringen. Neues kommt in einen eigenen Abschnitt oder eine eigene
-  Datei.
-- Kein Umbenennen oder Löschen von `doc/*.md` ohne Absprache — andere MDs
-  verweisen darauf.
+- Bestehende Dokumente in `doc/projektdoku/` und `concept/` nicht umschreiben,
+  um etwas Neues unterzubringen. Neues kommt in einen eigenen Abschnitt oder
+  eine eigene Datei.
+- Kein Umbenennen oder Löschen von `doc/projektdoku/*.md` ohne Absprache —
+  andere MDs verweisen darauf.
 - Committen läuft automatisch: Diff zeigen, committen, weiterarbeiten — kein
   Nachfragen nötig. Nur die Dateien der Aufgabe, nie auf `main`.
 - Nichts pushen ohne ausdrückliche Anweisung. Am Ende jedes Features ein kurzer
@@ -92,9 +93,9 @@ committet selbstständig, ohne zu pushen.
 
 | Pfad | Inhalt |
 | --- | --- |
-| `doc/*.md` | Fachdokumentation: Schnittstellen, Konzepte, Testanleitungen |
-| `doc/arbeitsplaene/` | Laufende und abgeschlossene Arbeitspläne (siehe oben) |
-| `doc/*.tex` | LaTeX-Ausarbeitung |
+| `doc/projektdoku/*.md` | Fachdokumentation: Schnittstellen, Konzepte, Testanleitungen |
+| `doc/projektdoku/arbeitsplaene/` | Laufende und abgeschlossene Arbeitspläne (siehe oben) |
+| `doc/*.tex` | LaTeX-Ausarbeitung der Thesis |
 | `src/` | Implementierung: OPC-UA-Server, Vision, Sensorik |
 | `tests/` | Pytest-Tests |
 | `tools/` | Hilfsskripte |

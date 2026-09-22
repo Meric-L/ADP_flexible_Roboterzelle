@@ -3,7 +3,7 @@
 The prototype (`src/apriltag/detect_apriltags.py`) does two things worse:
 
 1. No undistortion. `D` there only went to `drawFrameAxes`; the pose was
-   computed on the distorted image (doc/altlasten.md, "Was nicht hier
+   computed on the distorted image (doc/projektdoku/altlasten.md, "Was nicht hier
    steht"). Here, corners are undistorted first, then solved with an ideal
    pinhole model.
 2. No ambiguity reporting. A square marker seen at a shallow angle has two

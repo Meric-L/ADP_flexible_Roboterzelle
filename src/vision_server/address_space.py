@@ -198,7 +198,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         # `add_variable(own_idx, ...)` would produce `ns=X;i=<running number>`,
         # which shifts whenever someone adds a node before it. The backend
         # subscribes to these nodes by fixed address -- they must be stable
-        # and match the form documented in doc/vision-server-interface.md.
+        # and match the form documented in doc/projektdoku/vision-server-interface.md.
         latest_camera_frame = await vision_system.add_variable(
             ua.NodeId(f"{name}.{config.camera_stream.node_name}", own_idx),
             ua.QualifiedName(config.camera_stream.node_name, own_idx),

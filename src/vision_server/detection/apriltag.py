@@ -140,7 +140,7 @@ class AprilTagDetectionSource(DetectionSource):
         """Combine tag family, calibration and map into one string.
 
         Later answers which calibration and map were active behind a bad
-        pose (doc/altlasten.md C4). Deliberately needs no OpenCV and doesn't
+        pose (doc/projektdoku/altlasten.md C4). Deliberately needs no OpenCV and doesn't
         read the files.
         """
         from tagloc.identity import calibration_identity, tag_map_identity
