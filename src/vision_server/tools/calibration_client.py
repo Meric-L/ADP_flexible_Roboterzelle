@@ -20,6 +20,25 @@ from asyncua import Client, ua
 
 _log = logging.getLogger("calibration-client")
 
+#: Fehlercodes aus doc/vision-server-interface.md ("Fehlercodes (Error)") --
+#: kein Import aus `vision_server`, dieses Skript bleibt ein reiner
+#: OPC-UA-Client, unabhaengig vom Server-Code.
+BUSY = 3
+
+
+async def _start_session(vision, start_node, abort_node) -> int:
+    """Ruft `StartCalibration`; bei `BUSY` einmal `AbortCalibration` +
+    Retry, falls das die hängengebliebene Session eines frueher
+    abgestuerzten Clients ist (die Session lebt im Server-Prozess, nicht im
+    Client -- ein hart beendeter Client raeumt sie nicht auf)."""
+    error = await vision.call_method(start_node)
+    if error == BUSY:
+        print("StartCalibration -> BUSY: vermutlich eine haengengebliebene")
+        print("Session eines frueheren Laufs -- breche sie ab und starte neu.")
+        await vision.call_method(abort_node)
+        error = await vision.call_method(start_node)
+    return error
+
 
 async def run(args: argparse.Namespace) -> int:
     """Startet eine Session, loggt den Fortschritt, beendet sie bei Strg+C."""
@@ -31,9 +50,7 @@ async def run(args: argparse.Namespace) -> int:
         abort_node = await vision.get_child(f"{own_idx}:AbortCalibration")
         progress_node = await vision.get_child(f"{own_idx}:CalibrationProgress")
 
-        # Ein Ausgabewert: `call_method` liefert ihn direkt, keine Liste
-        # (asyncua/common/methods.py, `call_method`).
-        error = await vision.call_method(start_node)
+        error = await _start_session(vision, start_node, abort_node)
         print(f"StartCalibration -> Error={error}")
         if error != 0:
             print(f"FEHLER: Start abgelehnt mit Error={error}", file=sys.stderr)
