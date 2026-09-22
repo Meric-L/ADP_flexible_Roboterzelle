@@ -7,6 +7,7 @@ import logging
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from asyncua import Node, Server, ua, uamethod
@@ -184,6 +185,59 @@ def _build_calibration_session(
     if source is None or not opened.get("apriltag") or getattr(source, "camera", None) is None:
         return None
     return CalibrationSession(source.camera, config.apriltag)
+
+
+def _calibration_info_payload(calibration: Any, path: Any) -> dict:
+    """JSON-faehige Kurzfassung der gerade *aktiven* Kalibrierung.
+
+    Anders als `CalibrationSession.progress`/`last_result` (Fortschritt
+    *einer Session*) beschreibt das hier, was `AprilTagDetectionSource`
+    tatsaechlich fuer Posen benutzt -- direkt nach dem Laden beim Start und
+    nach jeder interaktiven Neu-Kalibrierung.
+
+    `calibrationId`/`createdAt` liest diese Funktion aus der Datei nach,
+    statt sie hier ein zweites Mal zu erzeugen: `CameraCalibration` selbst
+    kennt `createdAt` gar nicht, und `calibration_id` ist bei einem frisch
+    berechneten Objekt noch leer -- das Format entsteht erst beim Schreiben
+    in `tagloc.calibration.save_calibration`. Einzige Ausnahme: die
+    Platzhalter-Kalibrierung, zu der keine Datei existiert.
+    """
+    from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+
+    is_placeholder = calibration.calibration_id == PLACEHOLDER_CALIBRATION_ID
+    info = {
+        "placeholder": is_placeholder,
+        "frameId": calibration.frame_id,
+        "rms": None if is_placeholder else round(calibration.rms_reprojection_error, 4),
+        "samples": calibration.sample_count,
+        "board": dict(calibration.board),
+        "calibrationId": calibration.calibration_id or None,
+        "createdAt": None,
+        "path": str(path),
+    }
+    if not is_placeholder:
+        try:
+            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+            info["calibrationId"] = raw.get("calibrationId")
+            info["createdAt"] = raw.get("createdAt")
+        except OSError:
+            pass
+    return info
+
+
+async def _write_calibration_info(node: Node | None, calibration: Any, path: Any) -> None:
+    """Schreibt `_calibration_info_payload` in `ActiveCalibrationInfo`.
+
+    Fehler landen nur im Log -- ein nicht schreibbarer Info-Knoten darf
+    weder den Start noch eine gerade erfolgreich gespeicherte Kalibrierung
+    zu Fall bringen.
+    """
+    if node is None or calibration is None:
+        return
+    try:
+        await node.write_value(json.dumps(_calibration_info_payload(calibration, path)))
+    except Exception:
+        _log.exception("ActiveCalibrationInfo konnte nicht geschrieben werden")
 
 
 async def _open_source(source: DetectionSource) -> bool:
@@ -406,6 +460,32 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         else None
     )
 
+    apriltag_source = sources.get("apriltag")
+    if config.apriltag is not None and opened.get("apriltag"):
+        # Was `open()` gerade geladen hat (echte Datei oder Platzhalter) --
+        # ohne das waere ActiveCalibrationInfo leer, bis zum ersten
+        # StartCalibration.
+        await _write_calibration_info(
+            space.active_calibration_info,
+            getattr(apriltag_source, "_calibration", None),
+            config.apriltag.calibration_path,
+        )
+    if calibration_session is not None:
+
+        async def _apply_live_calibration(calibration: Any) -> None:
+            """Bringt Erkennung, Overlay und den Info-Knoten sofort auf den
+            neuen Stand -- kein Server-Neustart noetig, siehe
+            `AprilTagDetectionSource.apply_calibration`."""
+            if apriltag_source is not None and hasattr(apriltag_source, "apply_calibration"):
+                apriltag_source.apply_calibration(calibration)
+            if annotator is not None and hasattr(annotator, "apply_calibration"):
+                annotator.apply_calibration(calibration)
+            await _write_calibration_info(
+                space.active_calibration_info, calibration, config.apriltag.calibration_path
+            )
+
+        calibration_session.set_on_calibrated(_apply_live_calibration)
+
     #: Kalibriermethoden, die zusaetzlich unter `VisionProgram` aufrufbar
     #: werden -- gefuellt nur, wenn es eine Kalibrier-Session gibt.
     calibration_methods: dict[str, Node] = {}
@@ -531,6 +611,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["CameraStreamMode"] = space.camera_stream_mode
     if space.calibration_progress is not None:
         mirror_nodes["CalibrationProgress"] = space.calibration_progress
+    if space.active_calibration_info is not None:
+        mirror_nodes["ActiveCalibrationInfo"] = space.active_calibration_info
     program = await install_vision_program(
         server,
         server.nodes.objects,

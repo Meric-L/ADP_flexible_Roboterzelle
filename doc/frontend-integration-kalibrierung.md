@@ -71,7 +71,8 @@ Frontend                                          Vision-Server
 | `CaptureCalibrationSample` | `ns=<vision>;s=VisionMachine.CaptureCalibrationSample` | Methode, kein Input, `Error: Int32` | Eine Aufnahme vom aktuellen Bild |
 | `FinishCalibration` | `ns=<vision>;s=VisionMachine.FinishCalibration` | Methode, kein Input, `Summary: String, Error: Int32` | Manueller Abschluss (optional, siehe oben) |
 | `AbortCalibration` | `ns=<vision>;s=VisionMachine.AbortCalibration` | Methode, kein Input, `Error: Int32` | Verwirft ohne zu speichern |
-| `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **nur lesen** | Live-Fortschritt, siehe unten |
+| `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **nur lesen** | Live-Fortschritt *einer Session*, siehe unten |
+| `ActiveCalibrationInfo` | `ns=<vision>;s=VisionMachine.ActiveCalibrationInfo` | String (JSON), **nur lesen** | Metadaten der **gerade aktiven** Kalibrierung — bleibt stehen, unabhängig von einer laufenden Session, siehe unten |
 | `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64-JPEG), nur lesen | Bild fürs `<img>`/Canvas |
 | `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **schreibbar** | `"off"` \| `"apriltag"` \| `"calibration"` — vor/bei Kalibrierstart auf `"calibration"` setzen |
 
@@ -101,6 +102,32 @@ Frontend startet/löst aus/liest, sonst nichts.
 **UI-Logik ist damit simpel:** `result` fehlt → Fortschrittsbalken/Prozent
 aus `coverageX`/`coverageY` zeigen. `result` erscheint → Ergebnis-Ansicht
 zeigen (RMS, Samples, ggf. Warnung), fertig.
+
+### `ActiveCalibrationInfo` — für eine dauerhafte "Zuletzt kalibriert am ..."-Anzeige
+
+`CalibrationProgress` gehört zu *einer* Session und ist bei jedem neuen
+`StartCalibration` wieder leer. Für eine feste Anzeige im Settings-Menü (auch
+ohne dass gerade jemand kalibriert) diesen Knoten lesen — er wird beim
+Serverstart und nach jeder erfolgreichen Kalibrierung aktualisiert und bleibt
+sonst unverändert stehen:
+
+```jsonc
+{
+  "placeholder": false,
+  "frameId": "cam_flange",
+  "calibrationId": "cam_flange@2026-09-22T10:00:00+00:00",
+  "createdAt": "2026-09-22T10:00:00+00:00",
+  "rms": 0.2945,
+  "samples": 21,
+  "board": {"type": "chessboard", "cols": 7, "rows": 9, "squareSizeM": 0.022},
+  "path": "data/calibration/cam_flange.json"
+}
+```
+
+`placeholder: true` heißt: noch nie echt kalibriert, Posen sind nicht
+maßhaltig — `rms`/`createdAt` sind dann `null`. Eine erfolgreiche
+Kalibrierung wirkt **sofort** hier und in den echten Posen, ganz ohne
+Server-Neustart.
 
 ## 4. Wichtige Fallstricke
 
@@ -155,7 +182,7 @@ Frontend nachbilden muss:
 ## 6. Stand / was noch nicht existiert
 
 - Kein eigener State-Machine-Zustand für "Kalibrierung läuft" — der Automat
-  bleibt in `Ready`, die Sperre läuft rein über `BUSY` (Abschnitt 12.6).
+  bleibt in `Ready`, die Sperre läuft rein über `BUSY` (Abschnitt 12.7).
 - Kein Event für "Kalibrierung fertig" — nur der Progress-Knoten. Falls das
   Frontend eventgetrieben statt pollend arbeiten will: `CalibrationProgress`
   ganz normal über die bestehende `subscribeNode`-Infrastruktur abonnieren

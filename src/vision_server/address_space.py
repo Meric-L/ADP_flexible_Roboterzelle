@@ -48,6 +48,12 @@ class VisionAddressSpace:
     #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
     #: `runner.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
     calibration_progress: Node | None = None
+    #: Metadaten der gerade aktiven (fuer Posen/Job genutzten) Kalibrierung
+    #: (JSON-String) -- anders als `calibration_progress` unabhaengig vom
+    #: Session-Zustand: bleibt stehen, egal ob/wann als naechstes wieder
+    #: `StartCalibration` laeuft. `None`, wenn `config.apriltag` nicht
+    #: gesetzt ist.
+    active_calibration_info: Node | None = None
     #: Int32: port of the MJPEG stream (`mjpeg_server.py`), 0 = none. The
     #: frontend builds the URL from the host it reaches OPC UA under. `None`
     #: without a livestream.
@@ -232,6 +238,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         )
 
     calibration_progress: Node | None = None
+    active_calibration_info: Node | None = None
     if config.apriltag is not None:
         # Nur lesen: die laufende `CalibrationSession` in `runner.py` schreibt
         # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
@@ -241,6 +248,15 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.NodeId(f"{name}.CalibrationProgress", own_idx),
             ua.QualifiedName("CalibrationProgress", own_idx),
             '{"running": false}',
+            ua.VariantType.String,
+        )
+        # Leer, bis `runner.py` nach dem Oeffnen der Erkennungsquelle den
+        # ersten Wert schreibt (echte Datei oder Platzhalter) -- kein
+        # sinnvoller Default vorher, ohne die Kalibrierdatei gelesen zu haben.
+        active_calibration_info = await vision_system.add_variable(
+            ua.NodeId(f"{name}.ActiveCalibrationInfo", own_idx),
+            ua.QualifiedName("ActiveCalibrationInfo", own_idx),
+            "",
             ua.VariantType.String,
         )
 
@@ -268,6 +284,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         latest_camera_frame=latest_camera_frame,
         camera_stream_mode=camera_stream_mode,
         calibration_progress=calibration_progress,
+        active_calibration_info=active_calibration_info,
         camera_stream_http_port=camera_stream_http_port,
         amcm_idx=amcm_idx,
     )

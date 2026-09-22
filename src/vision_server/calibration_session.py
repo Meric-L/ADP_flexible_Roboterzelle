@@ -24,6 +24,7 @@ sichtbar statt sie zu verstecken.
 
 import asyncio
 import importlib
+import inspect
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
@@ -83,10 +84,16 @@ class CalibrationSession:
         calibrate_from_samples: Callable | None = None,
         compute_coverage: Callable | None = None,
         save_calibration: Callable | None = None,
+        on_calibrated: Callable[[Any], Any] | None = None,
     ) -> None:
         self._camera = camera
         self._config = config
         self._out_path = config.calibration_path
+        #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
+        #: frisch berechneten `CameraCalibration`-Objekt -- `runner.py` setzt
+        #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
+        #: Server-Neustart auf den neuen Stand zu bringen.
+        self._on_calibrated = on_calibrated
         self._detect_board = detect_board or _lazy("tagloc.boards", "detect_board")
         self._build_board = build_board or _lazy("tagloc.boards", "build_board")
         self._calibrate_from_samples = calibrate_from_samples or _lazy(
@@ -106,6 +113,15 @@ class CalibrationSession:
         #: `progress` mit ausgeliefert, damit ein Beobachter des reinen
         #: Fortschritts-Knotens auch das Endergebnis sieht.
         self.last_result: dict | None = None
+
+    def set_on_calibrated(self, callback: Callable[[Any], Any] | None) -> None:
+        """Setzt/entfernt den `on_calibrated`-Callback nachtraeglich.
+
+        `runner.py` braucht dafuer sowohl die Erkennungsquelle als auch den
+        Stream-Annotator, die beide erst nach der Session gebaut werden --
+        ein Setter macht das moeglich, ohne die Bau-Reihenfolge umzustellen.
+        """
+        self._on_calibrated = callback
 
     def _spec(self):
         """Baut `BoardSpec` aus den Skalaren der Config. Importiert `tagloc`
@@ -251,6 +267,10 @@ class CalibrationSession:
 
         coverage = self._compute_coverage(samples, image_size)
         await self._run_blocking(self._save_calibration, self._out_path, calibration)
+        if self._on_calibrated is not None:
+            outcome = self._on_calibrated(calibration)
+            if inspect.isawaitable(outcome):
+                await outcome
         rms = round(calibration.rms_reprojection_error, 4)
         summary = {
             "rms": rms,

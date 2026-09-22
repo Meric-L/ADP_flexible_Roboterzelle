@@ -142,6 +142,19 @@ class AprilTagDetectionSource(DetectionSource):
         await self.camera.close()
         await self.shutdown_executor()
 
+    def apply_calibration(self, calibration: Any) -> None:
+        """Ersetzt die aktive Kalibrierung ohne Neustart.
+
+        Aufgerufen aus `runner.py`, direkt nachdem eine interaktive
+        `CalibrationSession` (`StartCalibration`/`CaptureCalibrationSample`/
+        `FinishCalibration`) eine neue Kalibrierung berechnet und gespeichert
+        hat. `_locate()` liest `self._calibration` bei jedem Job frisch --
+        der Tausch hier wirkt also ab dem naechsten Job, ohne dass jemand den
+        Server neu starten muss.
+        """
+        self._calibration = calibration
+        self.configuration_id = self._build_configuration_id()
+
     # -- Capture ---------------------------------------------------------------
 
     async def _next_frame(self, seen_timestamp: float | None):

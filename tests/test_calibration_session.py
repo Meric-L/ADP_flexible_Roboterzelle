@@ -210,6 +210,68 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class OnCalibratedTest(unittest.IsolatedAsyncioTestCase):
+    """`on_calibrated` -- `runner.py` haengt hier den Hot-Reload von
+    Erkennung/Overlay ein (`AprilTagDetectionSource.apply_calibration` &
+    Co.), ausgeloest direkt nach dem Speichern."""
+
+    async def test_calls_a_sync_callback_after_a_successful_finish(self):
+        received: list = []
+        session, camera, _, _ = make_session(on_calibrated=received.append)
+        session.start()
+        camera.push()
+        for _ in range(3):
+            await session.capture()
+
+        await session.finish()
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].rms_reprojection_error, 0.1234)
+
+    async def test_calls_an_async_callback_after_a_successful_finish(self):
+        received: list = []
+
+        async def on_calibrated(calibration):
+            received.append(calibration)
+
+        session, camera, _, _ = make_session(on_calibrated=on_calibrated)
+        session.start()
+        camera.push()
+        for _ in range(3):
+            await session.capture()
+
+        await session.finish()
+
+        self.assertEqual(len(received), 1)
+
+    async def test_not_called_when_finish_fails(self):
+        received: list = []
+        session, camera, _, _ = make_session(on_calibrated=received.append)
+        session.start()
+        camera.push()
+        await session.capture()  # nur 1, zu wenig fuer eine Kalibrierung
+
+        await session.finish()
+
+        self.assertEqual(received, [])
+
+    async def test_called_on_automatic_threshold_finish_too(self):
+        received: list = []
+        session, camera, _, _ = make_session(
+            compute_coverage=lambda samples, image_size: (0.9, 0.9),
+            on_calibrated=received.append,
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()
+        await session.capture()
+        await session.capture()  # 3/3 -- Schwelle + Mindest-Samples erreicht
+
+        self.assertEqual(len(received), 1)
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class AbortTest(unittest.IsolatedAsyncioTestCase):
     async def test_does_not_save(self):
         session, camera, _calibrate_calls, save_calls = make_session()

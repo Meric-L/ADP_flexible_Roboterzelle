@@ -80,6 +80,7 @@ Objects/
         ├── FinishCalibration                ns=<vision>;s=VisionMachine.FinishCalibration
         ├── AbortCalibration                 ns=<vision>;s=VisionMachine.AbortCalibration
         ├── CalibrationProgress              ns=<vision>;s=VisionMachine.CalibrationProgress
+        ├── ActiveCalibrationInfo            ns=<vision>;s=VisionMachine.ActiveCalibrationInfo
         ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
         │                                    derselbe JSON-String, als einfacher String-Knoten
         ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
@@ -90,7 +91,7 @@ Objects/
                                              Int32: Port des MJPEG-Streams, 0 = keiner (Abschnitt 10.2)
 ```
 
-Die vier Kalibriermethoden und die vier Wertknoten sind **zusätzlich** unter
+Die vier Kalibriermethoden und die fünf Wertknoten sind **zusätzlich** unter
 `VisionProgram` erreichbar — als Referenzen, nicht als Kopien. Es bleibt je ein
 Knoten mit einem Wert bzw. einer Implementierung.
 
@@ -760,6 +761,14 @@ Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
 kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
 
+**Eine frisch gespeicherte Kalibrierung wirkt sofort, ohne Server-Neustart.**
+Direkt nach dem Speichern übernehmen die laufende Erkennung (`apriltag`-Job)
+und das Stream-Overlay die neuen Werte — der nächste Job nach einer
+erfolgreichen Kalibrierung rechnet bereits damit. (Bis 2026-09-22 stimmte
+das nicht: die Datei lag zwar auf der Platte, die laufende Erkennung merkte
+das aber erst nach einem manuellen `systemctl restart`. Falls ihr das noch
+irgendwo dokumentiert oder umgangen habt, ist das jetzt nicht mehr nötig.)
+
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
 in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
 das Frontend sendet und kennt keine Board-Parameter.
@@ -879,7 +888,42 @@ durch, falls das Board im Stream zwar sichtbar, aber nicht erkannt wird —
 z. B. weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
 tatsächlich aufgehängten Board passt.
 
-### 12.6 Sperren
+### 12.6 `ActiveCalibrationInfo` (nur lesen)
+
+```
+ns=<vision>;s=VisionMachine.ActiveCalibrationInfo     Datentyp String (JSON)
+```
+
+Anders als `CalibrationProgress` (Fortschritt *einer laufenden Session*,
+verschwindet mit dem nächsten `StartCalibration`) beschreibt dieser Knoten,
+**was gerade tatsächlich für Posen benutzt wird** — er bleibt stehen, egal
+was mit einer Session passiert, und ist die richtige Quelle für eine
+dauerhafte "Zuletzt kalibriert am ..."-Anzeige im Frontend. Geschrieben beim
+Start (was `open()` geladen hat) und nach jeder erfolgreichen interaktiven
+Kalibrierung (derselbe Moment, in dem sie auch live übernommen wird, siehe
+oben).
+
+```jsonc
+{
+  "placeholder": false,
+  "frameId": "cam_flange",
+  "calibrationId": "cam_flange@2026-09-22T10:00:00+00:00",
+  "createdAt": "2026-09-22T10:00:00+00:00",
+  "rms": 0.2945,
+  "samples": 21,
+  "board": {"type": "chessboard", "cols": 7, "rows": 9, "squareSizeM": 0.022, ...},
+  "path": "data/calibration/cam_flange.json"
+}
+```
+
+| Feld | Bedeutung |
+| --- | --- |
+| `placeholder` | `true`, wenn noch nie echt kalibriert wurde (`allow_placeholder_calibration`, Abschnitt 9) — dann sind `rms`/`createdAt` `null`, Posen sind nicht maßhaltig |
+| `calibrationId`, `createdAt` | aus der Kalibrierdatei, stabil über Neustarts |
+| `rms`, `samples`, `board` | wie im `result`-Objekt aus `CalibrationProgress`/`FinishCalibration` |
+| `path` | Pfad der Datei auf dem Pi (Diagnose, keine Backend-Bedeutung) |
+
+### 12.7 Sperren
 
 `StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft. Umgekehrt lehnen
 `StartSingleJob`/`StartContinuous` ab (`BUSY`), solange eine Kalibrier-Session
@@ -889,7 +933,7 @@ kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt 
 `Ready`, die Sperre läuft rein über die beiden Busy-Flags — dieselbe
 `BUSY`-Semantik wie zwischen zwei Jobs (Abschnitt 5, Fehlercodes).
 
-### 12.7 Stand
+### 12.8 Stand
 
 Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
 (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).

@@ -66,6 +66,16 @@ class AprilTagStreamAnnotator:
         #: `set_calibration_session`.
         self._calibration_session: Any = None
 
+    def apply_calibration(self, calibration: Any) -> None:
+        """Ersetzt die Kalibrierung, die das Overlay fuers Achsenkreuz nutzt
+        -- Gegenstueck zu `AprilTagDetectionSource.apply_calibration`, damit
+        Job und Livestream nach einer frischen interaktiven Kalibrierung
+        wieder dieselbe Quelle zeigen. `_scaled` muss dabei geleert werden,
+        sonst rechnet `_calibration_for` mit dem alten, jetzt falschen
+        Ergebnis von `scale_to_resolution` weiter."""
+        self._calibration = calibration
+        self._scaled = {}
+
     def set_calibration_session(self, session: Any) -> None:
         """Haengt eine laufende `CalibrationSession` ein oder aus (`None`).
 
