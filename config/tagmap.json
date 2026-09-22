@@ -12,18 +12,6 @@
         "position": [0.0, 0.0, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
       }
-    },
-    {
-      "tagId": 1,
-      "role": "module",
-      "sizeM": 0.1,
-      "moduleId": "MOD-1",
-      "instanceId": "mod-1-1",
-      "tagToModule": {
-        "position": [0.0, 0.0, 0.0],
-        "orientation": [0.0, 0.0, 0.0, 1.0]
-      },
-      "poseInWorld": null
     }
   ]
 }
