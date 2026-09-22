@@ -7,7 +7,7 @@ für den vollständigen Zielplan
 
 ## Zweck
 
-**Ein** OPC-UA-Server auf dem Raspberry Pi (`src/OPCUA/server.py`, Port 4840,
+**Ein** OPC-UA-Server auf dem Raspberry Pi (`src/vision_server/cell_server.py`, Port 4840,
 Endpoint `opc.tcp://<pi>:4840/raspi/server/`) mit **zwei Sichten auf denselben
 Job**:
 
@@ -38,8 +38,8 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | --- | --- |
 | [`src/vision_server/`](../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
 | [`src/vision_server/tools/hello_world_client.py`](../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
-| [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
-| [`src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml`](../src/OPCUA/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
+| [`src/vision_server/cell_server.py`](../src/vision_server/cell_server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
+| [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../requirements.txt) | u. a. `asyncua` |
 
 ## Aufbau des Vision-Servers
@@ -112,9 +112,9 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
   Server läuft ohne LDS-Anmeldung. `SecurityPolicy: NoSecurity`.
 - Beim Start zwei Bekanntmachungen nebeneinander, beide werden beim geordneten
   Beenden zurückgezogen:
-  - **mDNS** (`src/ua_mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
+  - **mDNS** (`src/vision_server/discovery/mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
     Vision-Identität. Für Clients im Subnetz.
-  - **LDS-Anmeldung** (`src/ua_lds.py` über `Server.register_to_discovery()`):
+  - **LDS-Anmeldung** (`src/vision_server/discovery/lds.py` über `Server.register_to_discovery()`):
     `opc.tcp://10.10.38.27:4840/`, alle 60 s erneuert. **Nur darüber** nimmt
     der Aggregation-Server der Zelle das Modul auf — mDNS allein genügt ihm
     nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
@@ -138,7 +138,7 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 pip install -r requirements.txt
 
 # Server der Zelle (Vision-System + Part-10-Programm + mDNS/LDS)
-python3 src/OPCUA/server.py
+PYTHONPATH=src python3 -m vision_server.cell_server
 
 # Handshake einmal durchspielen
 PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
@@ -148,8 +148,22 @@ PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
 PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
 ```
 
-`server.py` legt `src/` selbst auf den `sys.path`, damit der Startbefehl des
-Services unverändert bleiben kann.
+Der frühere `sys.path`-Eingriff in `server.py` ist entfallen: das Modul liegt
+jetzt im Paket und wird als Modul gestartet. Dafür braucht es `PYTHONPATH=src`
+oder ein `WorkingDirectory` auf `src/`.
+
+> **Achtung, die systemd-Unit auf den Pis bricht.** Sie startet
+> `src/OPCUA/server.py`, und den Pfad gibt es seit dem Umzug nicht mehr. Auf
+> **beiden** Pis ist `ExecStart` umzustellen:
+>
+> ```ini
+> WorkingDirectory=/home/<user>/ADP_flexible_Roboterzelle/src
+> ExecStart=/home/<user>/ADP_flexible_Roboterzelle/.venv/bin/python -m vision_server.cell_server
+> ```
+>
+> Danach `systemctl daemon-reload && systemctl restart opcua-server.service`.
+> Die Unit ist nirgends versioniert (Altlast D5) — sie muss von Hand angefasst
+> werden, sonst läuft der Dienst nach dem nächsten Pull nicht mehr an.
 
 Auf dem Pi läuft der Server produktiv als systemd-Service `opcua-server.service`
 (`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service` —
@@ -161,7 +175,7 @@ Client dagegen testen.
 ## Verifizierter Stand
 
 Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen, im
-Produktionszuschnitt (`src/OPCUA/server.py` auf 4840) und mit separatem Client:
+Produktionszuschnitt (`src/vision_server/cell_server.py` auf 4840) und mit separatem Client:
 Happy Path inkl. Payload und Event-Reihenfolge, `BUSY` bei zwei gleichzeitigen
 Aufrufen, `INVALID_ARGUMENT` bei überlanger `MeasId`, `UNKNOWN_RECIPE` bei
 unbekanntem Rezept, Fehlerpfad über den `Error`-Zustand mit anschließender

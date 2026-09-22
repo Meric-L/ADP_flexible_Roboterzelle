@@ -1,4 +1,4 @@
-"""Tests fuer die Anmeldung beim Local Discovery Server (`ua_lds`).
+"""Tests fuer die Anmeldung beim Local Discovery Server (`discovery.lds`).
 
 Die Anmeldung selbst macht `asyncua.Server.register_to_discovery()`. Getestet
 wird deshalb die Klammer darum: dass die angekuendigte Adresse stimmt, dass ein
@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 from urllib.parse import urlparse
 
-import ua_lds
+from vision_server.discovery import lds
 
 
 class FakeServer:
@@ -34,15 +34,15 @@ class FakeServer:
 class LdsUrlTest(unittest.TestCase):
     def test_default_ist_der_lds_der_zelle(self):
         with mock.patch.dict("os.environ", {}, clear=True):
-            self.assertEqual(ua_lds.lds_url(), ua_lds.DEFAULT_LDS_URL)
+            self.assertEqual(lds.lds_url(), lds.DEFAULT_LDS_URL)
 
     def test_env_ueberschreibt(self):
         with mock.patch.dict("os.environ", {"OPCUA_LDS_URL": "opc.tcp://host:4840/"}):
-            self.assertEqual(ua_lds.lds_url(), "opc.tcp://host:4840/")
+            self.assertEqual(lds.lds_url(), "opc.tcp://host:4840/")
 
     def test_leerer_wert_schaltet_ab(self):
         with mock.patch.dict("os.environ", {"OPCUA_LDS_URL": "  "}):
-            self.assertEqual(ua_lds.lds_url(), "")
+            self.assertEqual(lds.lds_url(), "")
 
 
 class AdvertisedEndpointTest(unittest.TestCase):
@@ -50,25 +50,25 @@ class AdvertisedEndpointTest(unittest.TestCase):
         """Der Kern: aus diesem Endpoint wird die DiscoveryUrl, die der
         Aggregation-Server spaeter anwaehlt."""
         with mock.patch.object(
-            ua_lds.ua_mdns, "detect_lan_ipv4", return_value="10.10.38.104"
+            lds.mdns, "detect_lan_ipv4", return_value="10.10.38.104"
         ):
-            url = ua_lds.advertised_endpoint(4840, "/raspi/server/")
+            url = lds.advertised_endpoint(4840, "/raspi/server/")
         self.assertEqual(url, "opc.tcp://10.10.38.104:4840/raspi/server/")
         self.assertNotIn("0.0.0.0", url)
 
     def test_adresse_kann_vorgegeben_werden(self):
-        url = ua_lds.advertised_endpoint(4840, "/raspi/server/", address="10.0.0.9")
+        url = lds.advertised_endpoint(4840, "/raspi/server/", address="10.0.0.9")
         self.assertEqual(url, "opc.tcp://10.0.0.9:4840/raspi/server/")
 
     def test_ohne_lan_ip_keine_url(self):
-        with mock.patch.object(ua_lds.ua_mdns, "detect_lan_ipv4", return_value=None):
-            self.assertIsNone(ua_lds.advertised_endpoint(4840, "/raspi/server/"))
+        with mock.patch.object(lds.mdns, "detect_lan_ipv4", return_value=None):
+            self.assertIsNone(lds.advertised_endpoint(4840, "/raspi/server/"))
 
 
 class RegisterTest(unittest.IsolatedAsyncioTestCase):
     async def test_meldet_an_und_wieder_ab(self):
         server = FakeServer("opc.tcp://10.10.38.104:4840/raspi/server/")
-        async with ua_lds.register(
+        async with lds.register(
             server, url="opc.tcp://lds:4840/", renew_seconds=60
         ) as url:
             self.assertEqual(url, "opc.tcp://10.10.38.104:4840/raspi/server/")
@@ -80,14 +80,14 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
         """Ohne diese Bremse traegt `register_to_discovery()` `0.0.0.0` ein,
         und der Aggregation-Server verbindet ins Leere."""
         server = FakeServer("opc.tcp://0.0.0.0:4840/raspi/server/")
-        async with ua_lds.register(server, url="opc.tcp://lds:4840/") as url:
+        async with lds.register(server, url="opc.tcp://lds:4840/") as url:
             self.assertIsNone(url)
         self.assertEqual(server.registriert, [])
         self.assertEqual(server.abgemeldet, [])
 
     async def test_ohne_lds_keine_anmeldung(self):
         server = FakeServer("opc.tcp://10.0.0.9:4840/raspi/server/")
-        async with ua_lds.register(server, url="") as url:
+        async with lds.register(server, url="") as url:
             self.assertIsNone(url)
         self.assertEqual(server.registriert, [])
 
@@ -96,7 +96,7 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
         server = FakeServer(
             "opc.tcp://10.0.0.9:4840/raspi/server/", fail_register=True
         )
-        async with ua_lds.register(server, url="opc.tcp://lds:4840/") as url:
+        async with lds.register(server, url="opc.tcp://lds:4840/") as url:
             self.assertIsNone(url)
         # Nie angemeldet -> auch nicht abmelden, sonst KeyError in asyncua.
         self.assertEqual(server.abgemeldet, [])
@@ -109,12 +109,12 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
             raise ConnectionError("LDS weg")
 
         server.unregister_from_discovery = kaputt
-        async with ua_lds.register(server, url="opc.tcp://lds:4840/") as url:
+        async with lds.register(server, url="opc.tcp://lds:4840/") as url:
             self.assertIsNotNone(url)
 
     async def test_erneuerungsabstand_wird_durchgereicht(self):
         server = FakeServer("opc.tcp://10.0.0.9:4840/raspi/server/")
-        async with ua_lds.register(
+        async with lds.register(
             server, url="opc.tcp://lds:4840/", renew_seconds=30
         ):
             pass

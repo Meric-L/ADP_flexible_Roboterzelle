@@ -5,16 +5,19 @@ from pathlib import Path
 
 from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
-_OPCUA_DIR = Path(__file__).resolve().parent.parent / "OPCUA"
+#: Die Nodesets liegen im Paket, das sie braucht -- frueher lagen sie unter
+#: `src/OPCUA/`, weil das Verzeichnis aelter war als `vision_server/`
+#: (Altlast C5, erledigt).
+_NODESET_DIR = Path(__file__).resolve().parent / "nodesets"
 
-DEFAULT_NODESET_PATH = _OPCUA_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
+DEFAULT_NODESET_PATH = _NODESET_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
 
 #: Part 2 und seine Abhaengigkeiten, in Importreihenfolge: DI, dann Machinery,
-#: dann AMCM. Versionen sind gepinnt, siehe src/OPCUA/nodesets/README.md.
+#: dann AMCM. Versionen sind gepinnt, siehe nodesets/README.md.
 DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
-    _OPCUA_DIR / "nodesets" / "Opc.Ua.Di.NodeSet2.xml",
-    _OPCUA_DIR / "nodesets" / "Opc.Ua.Machinery.NodeSet2.xml",
-    _OPCUA_DIR / "nodesets" / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
+    _NODESET_DIR / "Opc.Ua.Di.NodeSet2.xml",
+    _NODESET_DIR / "Opc.Ua.Machinery.NodeSet2.xml",
+    _NODESET_DIR / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
 )
 
 #: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als

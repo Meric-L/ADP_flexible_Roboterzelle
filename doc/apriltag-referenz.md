@@ -495,7 +495,7 @@ aus.
 | `IsSimulated` | `False` |
 
 Layer 1 und Layer 2 benutzen **dasselbe Profil**; jeder Pi fährt einen eigenen
-Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/OPCUA/server.py`.
+Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/vision_server/cell_server.py`.
 
 | Feld | Layer 1 (`pi-decke`) | Layer 2 (`pi-hand`) |
 |---|---|---|
@@ -522,7 +522,7 @@ unbemerkt rausgehen). Für Tests **vor** der echten Kalibrierfahrt (Abschnitt
 3.3 im Testplan) gibt es einen expliziten, temporären Notausgang:
 `AprilTagProfileConfig.allow_placeholder_calibration = True` — gesetzt über
 die Env-Var `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` in
-`src/OPCUA/server.py`, Standard aus. Dann startet die Quelle mit einer grob
+`src/vision_server/cell_server.py`, Standard aus. Dann startet die Quelle mit einer grob
 geschätzten Intrinsik (`tagloc.calibration.default_calibration`, aus einer
 angenommenen Sichtfeldbreite von 70° gerechnet). Detektor, Overlay und
 Job-Pfad lassen sich damit prüfen; die Posen sind aber **nicht masshaltig**.

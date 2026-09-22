@@ -21,7 +21,9 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 ### Implementierung (Source Code)
 * `/src/tagloc` - AprilTag-Lokalisierung: Kalibrierung, Erkennung, Koordinatensysteme.
 * `/src/vision_server` - OPC-UA-Vision-Server (OPC 40100) mit der Erkennungsquelle.
-* `/src/OPCUA` - Der Server der Roboterzelle, in den das Vision-System eingebaut wird.
+* `/src/vision_server` - Das Vision-System (OPC 40100 + Teil 10) samt dem Server
+  der Zelle (`cell_server.py`), der Auffindbarkeit (`discovery/`) und den
+  vendorierten Nodesets (`nodesets/`).
 * `/tools` - Druckbogen für Tags und Boards, synthetische Testszenen.
 * `/config` - Tag-Map (Zellenlayout), versioniert.
 * `/hardware` - CAD-Dateien, Schaltpläne oder 3D-Druck-Modelle für die Sensorhalterungen.

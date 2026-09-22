@@ -18,7 +18,7 @@ Teil 4 = Soll-Architektur).
   Teil 4.1, aber im `src/`-Layout dieses Repos statt als eigenes uv-Projekt.
   **Abweichung von Teil 4.1/4.6:** *kein* eigener Serverprozess. Das Paket wird
   per `install_vision_machine(server, config)` in den Server der Zelle
-  (`src/OPCUA/server.py`, Port 4840) eingebaut. Der Split aus dem Plan war für
+  (`src/vision_server/cell_server.py`, Port 4840) eingebaut. Der Split aus dem Plan war für
   das WSC-Monorepo mit zwei simulierten Servern (2D+3D) gedacht; bei einer
   Kamera auf einem Pi kostet er nur doppelten Adressraum (~110 MB RSS je
   Prozess gemessen) und zwingt das Backend zu zwei Sessions. Standalone-Start
@@ -34,7 +34,7 @@ Teil 4 = Soll-Architektur).
   vorgesehen. **Vorsicht beim manuellem Testen**: ein Vordergrundstart
   kollidiert mit dem laufenden Service (Port belegt) — `systemctl restart`
   benutzen oder einen freien Port wählen.
-- [x] Der alte Hello-World-Smoke-Test in `src/OPCUA/server.py` ist entfallen —
+- [x] Der alte Hello-World-Smoke-Test in `src/vision_server/cell_server.py` ist entfallen —
   seine Aufgabe erfüllt jetzt das eingebaute Vision-System am selben Server.
 - [x] Am 21.09.2026 ist auch der Rest der CPU-Temperatur-Demo gefallen:
   `RaspiDevice`, die alte `VisionSystem`-Instanz, `CpuTemperatureResult`, die
@@ -92,7 +92,7 @@ alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
    synchrone Handler laufen in einem ThreadPoolExecutor ohne Event-Loop.
 9. **Methodenrückgaben müssen ein `tuple` sein.** Eine `list` wird von
    asyncua als *ein* Variant verpackt, der Client bekommt dann verschachtelte
-   Variants. Betrifft auch `src/OPCUA/server.py:195`.
+   Variants. Betrifft auch `src/vision_server/cell_server.py`.
 10. **Kein Event-Bubbling über `HasNotifier`** (bereits bekannt): asyncua
     matcht `emitting_node` exakt, ein Abo auf `i=2253` empfängt nichts. Alle
     Generatoren — auch der der State Machine — müssen aus dem

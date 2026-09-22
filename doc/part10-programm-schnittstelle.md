@@ -110,7 +110,7 @@ nicht ein.
   samt aller neun Namespaces im Aggregation-Server. Nach dem Abmelden war es
   wieder weg.
 
-**Umgesetzt in `src/ua_lds.py`**, aufgerufen aus `src/OPCUA/server.py` neben
+**Umgesetzt in `src/vision_server/discovery/lds.py`**, aufgerufen aus `src/vision_server/cell_server.py` neben
 der mDNS-Ankündigung. Beide Wege bleiben nebeneinander bestehen: der LDS
 bringt uns in den Aggregation-Server, mDNS bedient Clients im Subnetz direkt.
 
@@ -140,7 +140,7 @@ benutzt, bekommt das geschenkt und hält es für nicht vorhanden.
 Was sie **nicht** tut: abmelden. `Server.stop()` bricht nur die Schleife ab und
 trennt. Ohne `unregister_from_discovery()` bliebe der Eintrag bis zum Ablauf
 stehen, und der Aggregation-Server zeigte ein Modul, das er nicht mehr
-erreicht. `ua_lds.register()` ruft es im `finally`.
+erreicht. `discovery.lds.register()` ruft es im `finally`.
 
 Wie lange eine Anmeldung ohne Erneuerung genau überlebt, haben wir **nicht**
 gemessen — open62541 räumt alte Einträge nach einem eigenen Timeout ab. Die
@@ -156,7 +156,7 @@ Beides gleichzeitig geht mit **`Server.socket_address`**: Der Endpoint nennt
 die LAN-IPv4, gelauscht wird weiter auf `0.0.0.0`. Genau dafür ist das Attribut
 gedacht („used when the IP address of the network interface is different from
 the endpoint IP offered to the client during discovery"). `server.py` setzt
-beides; die URL baut `ua_lds.advertised_endpoint()`.
+beides; die URL baut `discovery.lds.advertised_endpoint()`.
 
 Verifiziert am 21.09.2026 mit dem echten `server.py` lokal: Log meldet
 `Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/` und
@@ -564,7 +564,7 @@ Nichts davon ist Pflicht, um weiterzulaufen — alles ist Gewinn.
 pip install -r requirements.txt          # bringt jetzt auch `zeroconf` mit
 
 # Zellserver starten (VisionMachine + VisionProgram + mDNS + LDS)
-python3 src/OPCUA/server.py
+python3 -m vision_server.cell_server
 
 # Auf dem Pi laeuft er als Service:
 sudo systemctl restart opcua-server.service

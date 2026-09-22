@@ -357,7 +357,7 @@ die sich nicht schließt, ist wertlos — dann zurück zu Schritt 3.3.
 ### 3.7 Server starten und über OPC UA messen
 
 ```bash
-PYTHONPATH=src .venv/bin/python3 src/OPCUA/server.py
+PYTHONPATH=src .venv/bin/python3 -m vision_server.cell_server
 ```
 
 Im Log muss stehen:

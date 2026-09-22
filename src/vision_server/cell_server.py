@@ -1,8 +1,17 @@
-"""OPC-UA-Server der Roboterzelle: das Vision-System.
+"""Der Server, wie er auf dem Raspberry Pi der Zelle laeuft.
 
-Ein Server, ein Baum. Alles, was er traegt, baut `vision_server` auf:
-`VisionMachine` (OPC 40100) unter `Objects/Machines` und daneben
-`VisionProgram` (OPC UA Teil 10) als Bedienoberflaeche fuer das Frontend.
+Ein Server, ein Baum: `VisionMachine` (OPC 40100) unter `Objects/Machines` und
+daneben `VisionProgram` (OPC UA Teil 10) als Bedienoberflaeche fuer das
+Frontend. Beide bedienen denselben Job.
+
+Dieses Modul ist der **Einbauort**, nicht das Vision-System selbst. Es haelt
+nur, was von diesem Pi abhaengt: seine Identitaet, sein Kamera-Backend, seine
+AprilTag- und Anlagenwerte, dazu mDNS-Ankuendigung und LDS-Anmeldung. Der
+Adressraum entsteht vollstaendig in `runner.install_vision_machine`.
+
+Starten:
+
+    python3 -m vision_server.cell_server
 
 Die CPU-Temperatur-Demo aus der Anfangszeit -- `RaspiDevice`, die leere
 Zweitinstanz `2:VisionSystem`, `CpuTemperatureResult` und der Namensraum
@@ -17,32 +26,23 @@ import logging
 import os
 import signal
 import socket
-import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 from asyncua import Server, ua
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from vision_server.config import VisionServerConfig  # noqa: E402
-from vision_server.profiles import (  # noqa: E402
-    AprilTagProfileConfig,
-    AssetConfig,
-    CameraStreamConfig,
-)
-from vision_server.runner import install_vision_machine  # noqa: E402
-
-import ua_lds  # noqa: E402
-import ua_mdns  # noqa: E402
+from .config import DEFAULT_NODESET_PATH, VisionServerConfig
+from .discovery import lds, mdns
+from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
+from .runner import install_vision_machine
 
 logging.basicConfig(level=logging.INFO)
-_log = logging.getLogger("raspi-opcua")
+_log = logging.getLogger("vision-cell-server")
 
-NODESET_PATH = Path(__file__).parent / "Opc.Ua.MachineVision.NodeSet2.xml"
+NODESET_PATH = DEFAULT_NODESET_PATH
 
 #: Rueckfall-Endpoint. Im Regelfall nennt der Endpoint zur Laufzeit die
-#: LAN-IPv4 (siehe `ua_lds.advertised_endpoint`), weil `register_to_discovery()`
+#: LAN-IPv4 (siehe `lds.advertised_endpoint`), weil `register_to_discovery()`
 #: genau diese Adresse als DiscoveryUrl an den Discovery-Server weitergibt --
 #: mit `0.0.0.0` verbindet der Aggregation-Server ins Leere. Gelauscht wird
 #: unabhaengig davon immer auf allen Schnittstellen (`Server.socket_address`),
@@ -125,6 +125,10 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
     },
 }
 
+#: Wurzel des Repos, von `src/vision_server/cell_server.py` aus drei Ebenen
+#: hoch. Zeigt auf `data/` und `config/` -- beide liegen bewusst neben dem
+#: Quelltext, nicht im Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map
+#: zur Zelle.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -289,7 +293,7 @@ async def main():
     # waere dort wertlos. Gelauscht wird trotzdem auf allen Schnittstellen,
     # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Hello-World-Client
     # auf dem Pi.
-    endpoint = ua_lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
+    endpoint = lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
     server.set_endpoint(endpoint)
     server.socket_address = ("0.0.0.0", MDNS_PORT)
     server.set_server_name(SERVER_NAME)
@@ -324,11 +328,11 @@ async def main():
             # Dienst findet, soll ihn auch erreichen. Beim Verlassen werden
             # beide zurueckgezogen.
             async with (
-                ua_mdns.announce(instance, MDNS_PORT, MDNS_PATH),
+                mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
-                # angemeldet ist. Messung und Begruendung stehen in `ua_lds`.
-                ua_lds.register(server),
+                # angemeldet ist. Messung und Begruendung stehen in `discovery.lds`.
+                lds.register(server),
             ):
                 # Frueher lief hier eine 1-Hz-Schleife, die die Demo-Werte
                 # aktuell hielt. Sie lag im selben Event-Loop wie das

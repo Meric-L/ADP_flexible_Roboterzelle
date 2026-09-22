@@ -301,4 +301,4 @@ die dort noch niemand ausgeführt hat.
 | `doc/apriltag-e2e-test.md` | Testanleitung bis zur Pi-Kamera |
 | `doc/vision-server-interface.md` | OPC-UA-Schnittstelle, Part 1 und Part 2 |
 | `doc/altlasten.md` | was warum noch offen ist |
-| `src/OPCUA/nodesets/README.md` | warum die Nodeset-Versionen gepinnt sind |
+| `src/vision_server/nodesets/README.md` | warum die Nodeset-Versionen gepinnt sind |

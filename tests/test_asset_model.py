@@ -1,9 +1,9 @@
 """Die Anlagensicht nach OPC 40100-2 (AMCM).
 
-Braucht die Nodesets unter src/OPCUA/nodesets/ und importiert sie wirklich --
+Braucht die Nodesets unter src/vision_server/nodesets/ und importiert sie wirklich --
 anders laesst sich nicht pruefen, ob die Abhaengigkeitskette DI -> Machinery ->
 AMCM gegen asyncuas Basis-Adressraum aufgeht. Genau daran ist die neueste
-DI-Version gescheitert, siehe src/OPCUA/nodesets/README.md.
+DI-Version gescheitert, siehe src/vision_server/nodesets/README.md.
 """
 
 import unittest

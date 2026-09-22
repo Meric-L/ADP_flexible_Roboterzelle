@@ -1,6 +1,6 @@
 """Anmeldung des OPC-UA-Servers beim Local Discovery Server der Zelle.
 
-Ergaenzt die mDNS-Ankuendigung aus `ua_mdns`, ersetzt sie nicht.
+Ergaenzt die mDNS-Ankuendigung aus `mdns`, ersetzt sie nicht.
 
 Warum beides noetig ist (am 2026-09-21 im Labor gemessen):
 Der Aggregation-Server (`opc.tcp://10.10.38.27:48400/`) sammelt seine Module
@@ -27,12 +27,12 @@ ist nur die Klammer darum:
    --, uebernimmt der Aggregation-Server die Adresse woertlich und verbindet ins
    Leere. Loesung ist `Server.socket_address`: der Endpoint nennt die LAN-IPv4,
    gelauscht wird trotzdem auf `0.0.0.0`. `advertised_endpoint()` baut die URL,
-   `server.py` setzt beides. Als Netz gegen Rueckfaelle verweigert `register()`
+   `cell_server.py` setzt beides. Als Netz gegen Rueckfaelle verweigert `register()`
    die Anmeldung, wenn im Endpoint doch `0.0.0.0` steht.
 2. **Ein nicht erreichbarer LDS darf den Start nicht verhindern.**
    `register_to_discovery()` wirft dann; hier bleibt es bei einer Warnung im
    Log. Ein Server, den man per URL erreicht, ist mehr wert als gar keiner --
-   dieselbe Linie wie bei `ua_mdns`.
+   dieselbe Linie wie bei `mdns`.
 3. **`Server.stop()` meldet nicht ab.** Es bricht nur die Erneuerungsschleife ab
    und trennt die Verbindung; der Eintrag bliebe bis zum Ablauf im LDS stehen,
    und der Aggregation-Server zeigte ein Modul, das er nicht mehr erreicht.
@@ -51,7 +51,7 @@ from collections.abc import AsyncIterator
 
 from asyncua import Server
 
-import ua_mdns
+from . import mdns
 
 _log = logging.getLogger(__name__)
 
@@ -79,14 +79,14 @@ def advertised_endpoint(port: int, path: str, address: str | None = None) -> str
     Traegt die LAN-IPv4 statt `0.0.0.0`, damit die daraus gebildete
     DiscoveryUrl fuer den Aggregation-Server brauchbar ist. Gelauscht wird
     davon unabhaengig auf allen Schnittstellen -- siehe `Server.socket_address`
-    in `server.py`.
+    in `cell_server.py`.
 
     Returns
     -------
     Die URL, oder `None`, wenn keine LAN-IPv4 zu ermitteln war. Dann bleibt es
     beim bisherigen Endpoint, und `register()` meldet sich nicht an.
     """
-    ip = address or ua_mdns.detect_lan_ipv4()
+    ip = address or mdns.detect_lan_ipv4()
     if ip is None:
         return None
     return f"opc.tcp://{ip}:{port}{path}"
