@@ -45,6 +45,12 @@ WORLD_TAG_POSES = {
 ROBOT_TAG_IDS = (20, 21)
 MODULE_TAG_ID = 7
 
+#: Ein Tag, der in der Zelle haengt, aber NICHT in der Karte steht. Der
+#: haeufigste reale Fall beim Aufbau -- und er muss trotzdem als Modul
+#: herauskommen, sonst fehlt im Frontend die Box.
+UNMAPPED_TAG_ID = 99
+UNMAPPED_POSITION = (1.4, 1.0, 0.70)
+
 #: The robot stands near the corner of world tag 2, the module near tag 1.
 ROBOT_BASE = (2.10, 1.55, 0.00)
 MODULE_POSITION = (2.05, 0.30, 0.90)
@@ -64,6 +70,8 @@ def world_poses() -> dict:
     poses[MODULE_TAG_ID] = pose(
         (MODULE_POSITION[0], MODULE_POSITION[1], MODULE_POSITION[2] + 0.04)
     )
+    # Haengt in der Zelle, steht aber bewusst in keiner Karte.
+    poses[UNMAPPED_TAG_ID] = pose(UNMAPPED_POSITION)
     return poses
 
 
@@ -428,39 +436,175 @@ class ZusammenfuehrenTest(unittest.TestCase):
         self.assertEqual(from_ceiling.reference_tag_id, from_flange.reference_tag_id)
 
 
+ALTE_KARTE = {
+    "schema": "wsc.vision.tagmap/1",
+    "frameId": "world",
+    "anchorTagId": 0,
+    "tagFamily": "tag36h11",
+    "tags": [
+        {
+            "tagId": 0,
+            "role": "world",
+            "sizeM": 0.10,
+            "poseInWorld": {"position": [0, 0, 0], "orientation": [0, 0, 0, 1]},
+        },
+        {
+            "tagId": 12,
+            "role": "robot_table",
+            "sizeM": 0.08,
+            "poseInWorld": {"position": [1.24, 0.31, 0], "orientation": [0, 0, 0, 1]},
+        },
+        {
+            "tagId": 4,
+            "role": "reference",
+            "sizeM": 0.10,
+            "poseInWorld": {"position": [2.4, 0, 0], "orientation": [0, 0, 0, 1]},
+        },
+        {
+            "tagId": 7,
+            "role": "module",
+            "sizeM": 0.05,
+            "moduleId": "MOD-A",
+            "instanceId": "mod-a-1",
+            "poseInWorld": None,
+        },
+    ],
+}
+
+
+def geschrieben(folder, data) -> Path:
+    path = Path(folder) / "tagmap.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class SchemaTest(unittest.TestCase):
-    def test_rejects_the_old_schema_with_a_migration_hint(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "tagmap.json"
-            path.write_text(
-                json.dumps({"schema": "wsc.vision.tagmap/1", "tags": []}), encoding="utf-8"
-            )
+    """Eine alte Karte wird migriert, nicht abgelehnt.
 
-            with self.assertRaises(ValueError) as caught:
+    Abgelehnt klingt sauberer, legt aber in der Praxis die ganze Erkennung
+    stumm: `AprilTagDetectionSource.open` scheitert dann an einer Textdatei.
+    """
+
+    def _migriert(self):
+        with tempfile.TemporaryDirectory() as folder:
+            return tagmap.load_tag_map(geschrieben(folder, ALTE_KARTE))
+
+    def test_loads_a_schema_one_map(self):
+        self.assertEqual(sorted(self._migriert().entries), [0, 4, 7, 12])
+
+    def test_keeps_module_assignment_of_the_old_map(self):
+        """Modulnamen und Zuordnung gehen bei der Migration nicht verloren."""
+        entry = self._migriert()[7]
+
+        self.assertEqual(entry.module_id, "MOD-A")
+        self.assertEqual(entry.instance_id, "mod-a-1")
+
+    def test_turns_the_old_reference_role_into_a_world_tag(self):
+        """`reference` war ein fester Anker mit Weltpose -- also ein Welttag."""
+        entry = self._migriert()[4]
+
+        self.assertEqual(entry.role, tagmap.WORLD_ROLE)
+        self.assertTrue(entry.is_reference)
+
+    def test_turns_the_robot_table_into_a_movable_robot_tag(self):
+        """Der Tisch war der Denkfehler: er ist beweglich, kein Anker."""
+        entry = self._migriert()[12]
+
+        self.assertEqual(entry.role, tagmap.ROBOT_ROLE)
+        self.assertFalse(entry.is_reference)
+
+    def test_drops_the_world_pose_of_the_former_robot_table(self):
+        """Die alte Weltpose darf nicht stillschweigend weiterbenutzt werden."""
+        migriert = self._migriert()
+
+        self.assertIsNone(migriert[12].pose_in_world)
+        self.assertEqual(sorted(migriert.reference_poses()), [0, 4])
+
+    def test_says_out_loud_what_it_migrated(self):
+        """Still umdeuten waere der gefaehrliche Teil -- also gibt es Meldungen."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = geschrieben(folder, ALTE_KARTE)
+            with self.assertLogs("tagloc.tagmap", level="WARNING") as logs:
                 tagmap.load_tag_map(path)
 
-        message = str(caught.exception)
-        self.assertIn("robot_table", message)
-        self.assertIn(tagmap.SCHEMA, message)
+        zusammen = "\n".join(logs.output)
+        self.assertIn("robot_table", zusammen)
+        self.assertIn("IGNORIERT", zusammen)
 
-    def test_rejects_an_unknown_role(self):
+    def test_migrates_a_legacy_role_in_a_current_file_too(self):
+        """Eine halb umgestellte Datei darf auch nicht scheitern."""
+        halb = dict(ALTE_KARTE, schema=tagmap.SCHEMA)
+
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "tagmap.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "schema": tagmap.SCHEMA,
-                        "tags": [{"tagId": 9, "sizeM": 0.05, "role": "robot_table"}],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            loaded = tagmap.load_tag_map(geschrieben(folder, halb))
 
+        self.assertEqual(loaded[12].role, tagmap.ROBOT_ROLE)
+
+    def test_still_rejects_a_typo_in_the_role(self):
+        """Ein Tippfehler bleibt ein Fehler -- sonst ist der Tag stumm nichts."""
+        kaputt = {
+            "schema": tagmap.SCHEMA,
+            "tags": [{"tagId": 9, "sizeM": 0.05, "role": "wrold"}],
+        }
+
+        with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(ValueError) as caught:
-                tagmap.load_tag_map(path)
+                tagmap.load_tag_map(geschrieben(folder, kaputt))
 
-        self.assertIn("robot_table", str(caught.exception))
+        self.assertIn("wrold", str(caught.exception))
+
+    def test_still_rejects_an_unknown_schema(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(ValueError) as caught:
+                tagmap.load_tag_map(geschrieben(folder, {"schema": "falsch/9", "tags": []}))
+
+        self.assertIn("falsch/9", str(caught.exception))
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class PlatzhalterTest(unittest.TestCase):
+    """Ohne Karteneintrag muss ein Tag trotzdem als Modul herauskommen.
+
+    Das Frontend zeichnet je Detektion eine Box. Faellt ein unbekannter Tag
+    unter den Tisch, fehlt die Box -- und der Aufbau sieht aus, als wuerde die
+    Erkennung nicht laufen.
+    """
+
+    def test_an_unmapped_tag_becomes_a_placeholder_module(self):
+        tag_map = cell_map()
+        tag_poses = view(ceiling_view(), [0, 1, 2, 3, UNMAPPED_TAG_ID])
+
+        located = locate_modules(
+            tag_poses,
+            tag_map,
+            localization=localize_camera(tag_poses, tag_map),
+            frame_id="world",
+            source=SOURCE_CEILING,
+        )
+
+        platzhalter = next(item for item in located if item.tag_id == UNMAPPED_TAG_ID)
+        self.assertEqual(platzhalter.module_id, f"TAG-{UNMAPPED_TAG_ID}")
+        self.assertEqual(platzhalter.instance_id, f"tag-{UNMAPPED_TAG_ID}")
+        # Ohne Karteneintrag gibt es keinen CAD-Versatz, die Pose ist die
+        # Tag-Pose -- aber sie ist da, und zwar im Welt-KS.
+        np.testing.assert_allclose(
+            platzhalter.pose[:3, 3], UNMAPPED_POSITION, atol=1e-9
+        )
+
+    def test_without_any_map_every_tag_still_comes_out(self):
+        """Der Fall 'keine Tag-Map': alles wird als Platzhalter gemeldet."""
+        leer = tagmap.empty_tag_map()
+        tag_poses = view(ceiling_view(), [0, 7, 20])
+
+        located = locate_modules(
+            tag_poses, leer, localization=None, frame_id="cam_ceiling"
+        )
+
+        self.assertEqual(
+            sorted(item.module_id for item in located), ["TAG-0", "TAG-20", "TAG-7"]
+        )
+        self.assertEqual({item.frame_id for item in located}, {"cam_ceiling"})
 
 
 if __name__ == "__main__":

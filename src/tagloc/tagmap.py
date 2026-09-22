@@ -19,6 +19,7 @@ No OpenCV: `place_tags` only works with poses, never images.
 """
 
 import json
+import logging
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -38,6 +39,8 @@ from .geometry import (
     rotation_distance_rad,
     translation_distance_m,
 )
+
+_log = logging.getLogger(__name__)
 
 SCHEMA = "wsc.vision.tagmap/2"
 
@@ -62,6 +65,13 @@ REFERENCE_ROLES = frozenset({WORLD_ROLE})
 MOVABLE_ROLES = frozenset({MODULE_ROLE, ROBOT_ROLE})
 
 KNOWN_ROLES = REFERENCE_ROLES | MOVABLE_ROLES
+
+#: Die Rollen aus Schema 1 und worauf sie abgebildet werden.
+#:
+#: `reference` war ein fester Anker mit Weltpose -- genau das, was heute ein
+#: Welttag ist. `robot_table` war der Denkfehler: der Tisch galt als fest.
+#: Er wird zum beweglichen Robotertag, und seine Weltpose faellt dabei weg.
+LEGACY_ROLES = {"reference": WORLD_ROLE, "robot_table": ROBOT_ROLE}
 
 #: Four world tags in the border area of the cell. Not a limit of the code --
 #: `localize_camera` works with a single one -- but the expected build, so a
@@ -244,35 +254,65 @@ def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
     return TagMap(frame_id=frame_id, anchor_tag_id=anchor_tag_id, entries={})
 
 
+def _migrate_role(role: str, tag_id: int, pose_in_world, path: Path):
+    """Map a schema-1 role onto the current ones. Returns `(role, pose)`.
+
+    Nicht still: jede Umdeutung wird einzeln gemeldet. Genau das war der Grund,
+    alte Karten urspruenglich abzulehnen -- eine `robot_table`-Weltpose steht
+    weiter in der Datei und sieht gueltig aus, waehrend sie nicht mehr benutzt
+    wird. Mit einer Meldung je Tag ist das kein stiller Vorgang mehr, und eine
+    veraltete Karte legt nicht mehr das ganze Vision-System lahm.
+    """
+    migrated = LEGACY_ROLES[role]
+    if migrated in MOVABLE_ROLES and pose_in_world is not None:
+        _log.warning(
+            "Tag-Map %s, Tag %d: Rolle '%s' -> '%s'. Die eingetragene Weltpose "
+            "wird IGNORIERT -- seit %s steht nur die Rolle '%s' fest, alles "
+            "andere wird gemessen.",
+            path, tag_id, role, migrated, SCHEMA, WORLD_ROLE,
+        )
+        return migrated, None
+    _log.warning(
+        "Tag-Map %s, Tag %d: Rolle '%s' -> '%s'.", path, tag_id, role, migrated
+    )
+    return migrated, pose_in_world
+
+
 def load_tag_map(path: Path) -> TagMap:
-    """Read a tag map from JSON."""
+    """Read a tag map from JSON.
+
+    Eine Karte im alten Schema wird **migriert, nicht abgelehnt**: sie laut
+    zurueckzuweisen klingt richtig, legt aber in der Praxis die ganze Erkennung
+    still, weil `AprilTagDetectionSource.open` daran scheitert. Modulnamen und
+    CAD-Versaetze aus der alten Karte bleiben damit erhalten; was sich in der
+    Bedeutung aendert, meldet `_migrate_role` einzeln.
+    """
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")
     if schema == LEGACY_SCHEMA:
-        # Not silently migrated: a `robot_table` entry carries a world pose
-        # that still looks perfectly valid. Reinterpreting it as movable would
-        # keep that pose in the file and quietly stop using it -- the kind of
-        # change that only shows up as a wrong result much later.
-        raise ValueError(
-            f"Tag-Map {path} nutzt das alte Schema '{LEGACY_SCHEMA}'. "
-            f"Seit '{SCHEMA}' ist nur die Rolle '{WORLD_ROLE}' fest; "
-            f"'robot_table' und 'reference' entfallen. Der Robotertisch ist "
-            f"beweglich: Tags am Roboter bekommen die Rolle '{ROBOT_ROLE}' und "
-            "'poseInWorld': null. Die vier Welttags werden mit "
-            "'python -m tagloc.cli.build_tagmap' neu eingemessen."
+        _log.warning(
+            "Tag-Map %s nutzt das alte Schema '%s' und wird nach '%s' migriert. "
+            "Dauerhaft umstellen: einmal mit 'python -m tagloc.cli.build_tagmap' "
+            "neu schreiben lassen, dann steht das neue Schema in der Datei.",
+            path, LEGACY_SCHEMA, SCHEMA,
         )
-    if schema != SCHEMA:
+    elif schema != SCHEMA:
         raise ValueError(f"Unbekanntes Tag-Map-Schema '{schema}' in {path} (erwartet {SCHEMA})")
+
     entries: dict[int, TagEntry] = {}
     for raw in data.get("tags", []):
         tag_id = int(raw["tagId"])
         pose_in_world = raw.get("poseInWorld")
         tag_to_module = raw.get("tagToModule")
         role = str(raw.get("role", MODULE_ROLE))
-        if role not in KNOWN_ROLES:
+        if role in LEGACY_ROLES:
+            role, pose_in_world = _migrate_role(role, tag_id, pose_in_world, path)
+        elif role not in KNOWN_ROLES:
+            # Ein Tippfehler bleibt ein Fehler -- sonst waere ein Tag stumm
+            # weder Anker noch Modul.
             raise ValueError(
                 f"Tag {tag_id} in {path} hat die unbekannte Rolle '{role}'. "
                 f"Erlaubt sind: {sorted(KNOWN_ROLES)}"
@@ -495,6 +535,7 @@ def format_residual_report(residual_map: Mapping[tuple[int, int], tuple[float, f
 __all__ = [
     "EXPECTED_WORLD_TAG_COUNT",
     "KNOWN_ROLES",
+    "LEGACY_ROLES",
     "LEGACY_SCHEMA",
     "MODULE_ROLE",
     "MOVABLE_ROLES",

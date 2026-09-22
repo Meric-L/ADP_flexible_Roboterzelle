@@ -22,6 +22,7 @@ The actual computation lives in `tagloc`; this file is the OPC-UA adapter.
 """
 
 import asyncio
+import json
 import logging
 import math
 import time
@@ -181,12 +182,29 @@ class AprilTagDetectionSource(DetectionSource):
         if self._tag_map is None:
             path = self._config.tag_map_path
             if path is not None and path.is_file():
-                self._tag_map = await self.run_blocking(load_tag_map, path)
-                # Reported, not enforced: a cell still being built must be
-                # allowed to measure. Silence here would mean a missing world
-                # tag only ever shows up as quietly worse accuracy.
-                for problem in validate_tag_map(self._tag_map):
-                    _log.warning("Tag-Map %s: %s", path, problem)
+                try:
+                    self._tag_map = await self.run_blocking(load_tag_map, path)
+                except (ValueError, KeyError, UnicodeDecodeError, json.JSONDecodeError) as error:
+                    # Eine unbrauchbare Karte darf die Erkennung nicht
+                    # stilllegen. Ohne Karte laeuft alles weiter -- die Tags
+                    # werden als TAG-<id> im Kamera-KS gemeldet, und das
+                    # Frontend bekommt seine Platzhalter. Umgekehrt waere der
+                    # ganze Vision-Server wegen einer Textdatei tot.
+                    _log.error(
+                        "Tag-Map %s ist unbrauchbar (%s) -- weiter OHNE Karte. "
+                        "Tags werden als 'TAG-<id>' im Kamera-KS gemeldet, ohne "
+                        "Modulnamen und ohne CAD-Versatz. Grund: %s",
+                        path,
+                        type(error).__name__,
+                        error,
+                    )
+                    self._tag_map = empty_tag_map()
+                else:
+                    # Reported, not enforced: a cell still being built must be
+                    # allowed to measure. Silence here would mean a missing
+                    # world tag only ever shows up as quietly worse accuracy.
+                    for problem in validate_tag_map(self._tag_map):
+                        _log.warning("Tag-Map %s: %s", path, problem)
             else:
                 _log.warning(
                     "Keine Tag-Map unter %s -- Posen bleiben im Kamera-KS und "

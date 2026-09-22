@@ -82,9 +82,10 @@ Tag-Map, Schema **`wsc.vision.tagmap/2`** (`config/tagmap.example.json`):
 }
 ```
 
-Schema `/1` wird **abgelehnt** — mit einer Meldung, die die Migration benennt.
-Ein stilles Umdeuten von `robot_table` zu „beweglich" wäre die gefährlichere
-Variante: die Pose stünde weiter in der Datei und sähe gültig aus.
+Schema `/1` wird **migriert** (`reference` → `world`, `robot_table` → `robot`
+ohne Weltpose), jede Umdeutung einzeln protokolliert. Ursprünglich war es eine
+harte Ablehnung; das legte in der Praxis die ganze Erkennung still — siehe
+`apriltag-tagmap-robustheit.md`.
 
 Ergebnis-Payload je Detektion, zusätzliche `attributes` (additiv, bestehende
 Felder unverändert):

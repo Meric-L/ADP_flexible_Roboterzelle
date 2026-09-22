@@ -267,8 +267,20 @@ messen; `AprilTagDetectionSource.open` protokolliert und läuft weiter.
 `nearest_world_tag(tag_map, pose_world) -> tuple[int, float] | None` gibt den
 nächstgelegenen Welttag und seinen Abstand in Metern.
 
-Schema `/1` wird beim Laden mit einem Migrationshinweis abgelehnt, ebenso eine
-unbekannte Rolle.
+Eine Karte im Schema `/1` wird beim Laden **migriert, nicht abgelehnt**:
+`reference` wird zu `world` (war schon immer ein fester Anker mit Weltpose),
+`robot_table` wird zum beweglichen `robot` und **verliert dabei seine
+Weltpose**. Jede Umdeutung wird einzeln protokolliert — still passiert nichts.
+Modulnamen, Instanz-IDs und CAD-Versätze bleiben erhalten. Dauerhaft umstellen:
+einmal mit `build_tagmap` neu schreiben lassen, `save_tag_map` schreibt immer
+`/2`.
+
+Ein *unbekanntes* Schema und ein **Tippfehler in der Rolle** werfen weiterhin
+`ValueError` — sonst wäre ein Tag stumm weder Anker noch Modul.
+
+`AprilTagDetectionSource.open` fängt diese Fehler ab und läuft **ohne Karte**
+weiter: die Tags werden dann als `TAG-<id>` im Kamera-KS gemeldet. Eine
+unbrauchbare Textdatei darf nicht das ganze Vision-System stilllegen.
 
 `config/` ist versioniert — die Tag-Map beschreibt das Zellenlayout und gehört
 ins Repo. Nicht nach `data/`, `concept/` oder `hardware/`: die sind alle

@@ -4,6 +4,7 @@ The source is never `open()`ed; detector, calibration and tag map are set
 directly. So no test needs hardware, OpenCV or a calibration file.
 """
 
+import json
 import tempfile
 import unittest
 from collections import deque
@@ -366,6 +367,56 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "cam_ceiling")
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 2.0), atol=1e-12)
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class OpenMitKaputterTagMapTest(unittest.IsolatedAsyncioTestCase):
+    """Eine unbrauchbare Tag-Map darf die Erkennung nicht stilllegen.
+
+    Vorher warf `load_tag_map` bei einer Karte im alten Schema, `open()` liess
+    die Ausnahme durch, und der ganze Vision-Server blieb Preoperational --
+    wegen einer Textdatei. Jetzt laeuft er ohne Karte weiter und meldet die
+    Tags als `TAG-<id>`, damit das Frontend seine Platzhalter bekommt.
+    """
+
+    async def _open_with(self, text: str):
+        folder = Path(tempfile.mkdtemp())
+        tag_map_path = folder / "tagmap.json"
+        tag_map_path.write_text(text, encoding="utf-8")
+        config = replace(
+            profile_config(folder),
+            tag_map_path=tag_map_path,
+            frame_id="cam_ceiling",
+            resolution=(640, 480),
+            allow_placeholder_calibration=True,
+        )
+        camera = FakeCamera()
+        source = AprilTagDetectionSource(config, camera=camera)
+        source._detector = FakeDetector([])
+        await source.open()
+        return source
+
+    async def test_survives_an_unreadable_tag_map(self):
+        source = await self._open_with("{ kein gueltiges json")
+        try:
+            self.assertEqual(source._tag_map.entries, {})
+        finally:
+            await source.close()
+
+    async def test_survives_an_unknown_schema(self):
+        source = await self._open_with(json.dumps({"schema": "falsch/9", "tags": []}))
+        try:
+            self.assertEqual(source._tag_map.entries, {})
+        finally:
+            await source.close()
+
+    async def test_says_why_it_continues_without_a_map(self):
+        with self.assertLogs("vision_server.detection.apriltag", level="ERROR") as logs:
+            source = await self._open_with("{ kaputt")
+            await source.close()
+
+        zusammen = "\n".join(logs.output)
+        self.assertIn("TAG-", zusammen)
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")

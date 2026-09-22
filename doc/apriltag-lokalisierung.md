@@ -373,10 +373,14 @@ genügen. Vorlage dafür ist
 `validate_tag_map` beanstandet die fehlenden Welttags dann, bricht aber nicht ab
 (siehe [E2E-Testanleitung](apriltag-e2e-test.md), „Kleiner Aufbautest").
 
-Schema `/1` wird beim Laden **abgelehnt**, mit einer Meldung, die die Migration
-benennt. Ein stilles Umdeuten von `robot_table` zu „beweglich" wäre die
-gefährlichere Variante: die Weltpose stünde weiter in der Datei und sähe gültig
-aus, würde aber nicht mehr verwendet.
+Eine Karte im Schema `/1` wird beim Laden **migriert**: `reference` → `world`,
+`robot_table` → `robot` unter Verlust seiner Weltpose. Jede Umdeutung wird
+einzeln protokolliert, damit nichts still passiert — das war der Grund, sie
+zunächst ganz abzulehnen. In der Praxis legte die Ablehnung aber die gesamte
+Erkennung still, weil `AprilTagDetectionSource.open` daran scheiterte. Eine
+unbrauchbare Karte lässt den Server jetzt **ohne Karte** weiterlaufen: die Tags
+werden als `TAG-<id>` im Kamera-KS gemeldet, das Frontend bekommt also seine
+Platzhalter-Boxen.
 
 **Neuer Ordner `config/`**, weil die Tag-Map das Zellenlayout beschreibt und
 versioniert gehören muss — `data/`, `concept/` und `hardware/` sind alle
