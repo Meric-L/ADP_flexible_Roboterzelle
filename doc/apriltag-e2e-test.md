@@ -344,8 +344,10 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
     --tag-map config/tagmap.json --anchor 0 --out config/tagmap.json
 ```
 
-Danach die Datei von Hand nachbearbeiten: Rollen setzen (`world`,
-`robot_table`, `module`), Modulzuordnung (`moduleId`, `instanceId`) und den
+Danach die Datei von Hand nachbearbeiten: Rollen setzen (`world` fuer die vier
+Welttags, `robot` fuer die Tags am Roboter, sonst `module`), bei den
+beweglichen Tags `poseInWorld` auf `null` setzen, Modulzuordnung
+(`moduleId`, `instanceId`) und den
 CAD-Versatz `tagToModule` eintragen. Vorlage:
 [`config/tagmap.example.json`](../config/tagmap.example.json), Feldbeschreibung
 in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 5.

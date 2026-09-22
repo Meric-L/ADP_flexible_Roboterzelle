@@ -1,5 +1,5 @@
 {
-  "schema": "wsc.vision.tagmap/1",
+  "schema": "wsc.vision.tagmap/2",
   "frameId": "world",
   "anchorTagId": 0,
   "tagFamily": "tag36h11",
@@ -14,13 +14,55 @@
       }
     },
     {
-      "tagId": 12,
-      "role": "robot_table",
-      "sizeM": 0.08,
+      "tagId": 1,
+      "role": "world",
+      "sizeM": 0.1,
       "poseInWorld": {
-        "position": [1.24, 0.31, 0.0],
-        "orientation": [0.0, 0.0, 0.70711, 0.70711]
+        "position": [2.4, 0.0, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
       }
+    },
+    {
+      "tagId": 2,
+      "role": "world",
+      "sizeM": 0.1,
+      "poseInWorld": {
+        "position": [2.4, 1.8, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    },
+    {
+      "tagId": 3,
+      "role": "world",
+      "sizeM": 0.1,
+      "poseInWorld": {
+        "position": [0.0, 1.8, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    },
+    {
+      "tagId": 20,
+      "role": "robot",
+      "sizeM": 0.08,
+      "moduleId": "UR5e",
+      "instanceId": "ur5e-1",
+      "tagToModule": {
+        "position": [0.0, 0.0, -0.12],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      },
+      "poseInWorld": null
+    },
+    {
+      "tagId": 21,
+      "role": "robot",
+      "sizeM": 0.08,
+      "moduleId": "UR5e",
+      "instanceId": "ur5e-1",
+      "tagToModule": {
+        "position": [-0.15, 0.0, -0.12],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      },
+      "poseInWorld": null
     },
     {
       "tagId": 7,

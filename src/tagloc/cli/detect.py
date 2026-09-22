@@ -9,8 +9,8 @@
         --calibration data/calibration/cam_ceiling.json --json posen.json
 
 Per tag: ID, pose (position and quaternion xyzw), reprojection error and
-ambiguity. With `--tag-map`, also the module assignment and, once reference
-tags are visible, the world pose.
+ambiguity. With `--tag-map`, also the module assignment and, once a world
+tag is visible, the world pose and the world tag the module sits closest to.
 
 `--overlay` shows a window; without a screen (Pi over SSH) that's reported
 once and the run continues without a display. `--save-overlay FOLDER` saves
@@ -18,12 +18,13 @@ the marked images instead -- the practical way on a headless Pi.
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
 from .. import frames as frame_sources
 from ..detector import build_detector
-from ..localize import camera_pose_from_reference_tags, locate_modules
+from ..localize import locate_modules, localize_camera
 from ..overlay import Window, draw_status_bar, draw_tag_overlay, summarise
 from ..pose import estimate_tag_poses
 from ._common import (
@@ -121,23 +122,40 @@ def main(argv=None) -> int:
                     f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
                 )
 
-            # Without reference tags the chain stays in the camera frame.
-            # That's normal Layer-2 operation, not a special case: modules
-            # are still resolved, just relative to the camera.
-            pose_world_cam = camera_pose_from_reference_tags(tag_poses, tag_map)
-            target_frame = tag_map.frame_id if pose_world_cam is not None else frame_id
-            if pose_world_cam is not None:
-                print(f"  Kamerapose im {target_frame}-KS: {describe_pose(pose_world_cam)}")
+            # Without a world tag the chain stays in the camera frame. That's
+            # normal operation for the eye-in-hand camera between two world
+            # tags, not a special case: modules are still resolved, just
+            # relative to the camera.
+            localization = localize_camera(
+                tag_poses, tag_map, max_reprojection_error_px=args.max_reproj_error_px
+            )
+            target_frame = tag_map.frame_id if localization is not None else frame_id
+            if localization is not None:
+                print(
+                    f"  Kamerapose im {target_frame}-KS: "
+                    f"{describe_pose(localization.pose_world_cam)}"
+                )
+                print(
+                    f"  Welttags {list(localization.world_tag_ids)}, "
+                    f"naechster {localization.primary_tag_id}, "
+                    f"Streuung {localization.spread_m * 1000.0:.2f} mm / "
+                    f"{math.degrees(localization.spread_rad):.3f} deg"
+                )
             for location in locate_modules(
                 tag_poses,
                 tag_map,
-                pose_world_cam=pose_world_cam,
+                localization=localization,
                 frame_id=target_frame,
                 max_reprojection_error_px=args.max_reproj_error_px,
             ):
+                reference = (
+                    f"  @Welttag {location.reference_tag_id}"
+                    if location.reference_tag_id >= 0
+                    else ""
+                )
                 print(
                     f"  Modul {location.module_id:<10} [{location.frame_id}] "
-                    f"{describe_pose(location.pose)}  conf={location.confidence}"
+                    f"{describe_pose(location.pose)}  conf={location.confidence}{reference}"
                 )
 
             if args.overlay or args.save_overlay is not None:

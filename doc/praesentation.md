@@ -43,9 +43,12 @@ liegt, steht in **einer Datei**, nicht im Code.
 
 | Rolle | Hardware | Pose |
 |---|---|---|
-| **Welt-Tag** | ArUco-Board an Boden/Wand | fest, steht in der Karte |
-| **Robotertisch-Tag** | Tag am Tisch | fest, verbindet Welt und Roboterbasis |
+| **Welt-Tag** | vier Tags im Randbereich der Zelle | **fest**, steht in der Karte |
+| **Roboter-Tag** | Tags am Roboter | **beweglich — wird gemessen** |
 | **Modul-Tag** | Tag am Modul | **beweglich — wird gemessen** |
+
+Nur der Welt-Tag steht fest. Der Roboter ist ein Modul wie jedes andere — nur
+dasjenige, das immer verwendet wird.
 
 Referenz- und Mess-Tags durchlaufen denselben Code. Unterschied: steht die
 Weltpose in der Karte oder als `null`?

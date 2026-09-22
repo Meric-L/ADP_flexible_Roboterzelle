@@ -162,7 +162,7 @@ in `.gitignore` und das ist hier richtig. Jeder Pi erzeugt seine eigene.
 @dataclass(frozen=True)
 class TagEntry:
     tag_id: int
-    role: str                       # "world" | "robot_table" | "reference" | "module"
+    role: str                       # "world" (fest) | "robot" | "module" (beweglich)
     size_m: float
     module_id: str = ""
     instance_id: str = ""
@@ -229,17 +229,26 @@ Tag-Größe nicht.
 
 ```jsonc
 {
-  "schema": "wsc.vision.tagmap/1",
+  "schema": "wsc.vision.tagmap/2",
   "frameId": "world",
   "anchorTagId": 0,
   "tagFamily": "tag36h11",
   "tags": [
+    // Vier Welttags im Randbereich — das Einzige, was feststeht.
     { "tagId": 0, "role": "world", "sizeM": 0.100,
       "poseInWorld": { "position": [0, 0, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 1, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [2.400, 0, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 2, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [2.400, 1.800, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 3, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [0, 1.800, 0], "orientation": [0, 0, 0, 1] } },
 
-    { "tagId": 12, "role": "robot_table", "sizeM": 0.080,
-      "poseInWorld": { "position": [1.240, 0.310, 0.000],
-                       "orientation": [0, 0, 0.70711, 0.70711] } },
+    // Der Roboter: beweglich, mehrere Tags auf dieselbe Basis.
+    { "tagId": 20, "role": "robot", "sizeM": 0.080,
+      "moduleId": "UR5e", "instanceId": "ur5e-1",
+      "tagToModule": { "position": [0, 0, -0.120], "orientation": [0, 0, 0, 1] },
+      "poseInWorld": null },
 
     { "tagId": 7, "role": "module", "sizeM": 0.050,
       "moduleId": "MOD-A", "instanceId": "mod-a-1",
@@ -248,6 +257,18 @@ Tag-Größe nicht.
   ]
 }
 ```
+
+`validate_tag_map(tag_map) -> list[str]` liefert die Beanstandungen der Karte
+(genau vier Welttags, jeder eingemessen; kein bewegliches Tag mit Weltpose;
+Anker ist ein Welttag; mindestens ein Robotertag). Leere Liste heißt in
+Ordnung. Bewusst ein Bericht statt einer Ausnahme — eine Zelle im Aufbau darf
+messen; `AprilTagDetectionSource.open` protokolliert und läuft weiter.
+
+`nearest_world_tag(tag_map, pose_world) -> tuple[int, float] | None` gibt den
+nächstgelegenen Welttag und seinen Abstand in Metern.
+
+Schema `/1` wird beim Laden mit einem Migrationshinweis abgelehnt, ebenso eine
+unbekannte Rolle.
 
 `config/` ist versioniert — die Tag-Map beschreibt das Zellenlayout und gehört
 ins Repo. Nicht nach `data/`, `concept/` oder `hardware/`: die sind alle
@@ -326,26 +347,59 @@ class ModuleLocation:
     ambiguous: bool
     confidence: float
 
-def camera_pose_from_reference_tags(tag_poses: Sequence[TagPose],
-                                    tag_map: TagMap) -> Pose | None
+    role: str                       # "module" | "robot", aus der Tag-Map
+    source: str                     # "ceiling" | "flange"
+    reference_tag_id: int           # naechster Welttag, -1 = unbekannt
+    pose_in_reference_tag: Pose | None    # T_worldtag_module
+
+@dataclass(frozen=True)
+class CameraLocalization:
+    pose_world_cam: Pose
+    world_tag_ids: tuple[int, ...]  # alle beitragenden Welttags
+    primary_tag_id: int             # der naechste Welttag
+    spread_m: float                 # Streuung der Einzelschaetzungen
+    spread_rad: float
+
+def localize_camera(tag_poses: Sequence[TagPose], tag_map: TagMap, *,
+                    max_reprojection_error_px: float = 3.0) -> CameraLocalization | None
 def locate_modules(tag_poses: Sequence[TagPose], tag_map: TagMap, *,
-                   pose_world_cam: Pose | None, frame_id: str) -> list[ModuleLocation]
+                   localization: CameraLocalization | None, frame_id: str,
+                   source: str = "") -> list[ModuleLocation]
+def merge_by_module(locations, *, tag_map: TagMap | None = None) -> list[ModuleLocation]
+def merge_locations(*groups) -> list[ModuleLocation]
+def world_tag_for_robot(tag_map: TagMap, locations) -> tuple[int, float] | None
 ```
 
-`camera_pose_from_reference_tags` bestimmt `T_world_cam` aus allen Tags, deren
-Weltpose in der Karte steht (Welt-Board, Robotertisch-Tag). Mehrere Referenztags
-werden über `merge_tag_poses` zusammengeführt; keiner sichtbar → `None`.
+`localize_camera` bestimmt `T_world_cam` aus allen sichtbaren Welttags —
+**nur** die Rolle `world` zählt. Mehrere Welttags werden nach Konfidenz
+gewichtet gemittelt, damit ein weit entfernter, schräg gesehener Tag nicht so
+stark zieht wie einer, der das Bild füllt; keiner sichtbar → `None`.
+`primary_tag_id` ist der kameranächste Welttag — der, an dem sich die
+Handkamera ausrichtet. `spread_m`/`spread_rad` sagen, wie weit die
+Einzelschätzungen auseinanderliegen: widersprechen sich die vier Welttags,
+stimmt die Vermessung nicht, und die Zahl sagt es, statt im Mittelwert zu
+verschwinden.
 
-`locate_modules` rechnet dann für jeden Modul-Tag
+`locate_modules` rechnet dann für jeden Modul- und Roboter-Tag
 
 ```
-pose = pose_world_cam · T_cam_tag · T_tag_module        # wenn pose_world_cam gegeben
-pose =                  T_cam_tag · T_tag_module        # sonst, im Kamera-KS
+pose = T_world_cam · T_cam_tag · T_tag_module        # wenn localization gegeben
+pose =               T_cam_tag · T_tag_module        # sonst, im Kamera-KS
 ```
 
-und setzt `frame_id` entsprechend. **Das ist die einzige Stelle im gesamten Code,
-an der diese Verkettung steht** — Layer 1 und Layer 2 rufen dieselbe Funktion,
-sie unterscheiden sich nur darin, ob `pose_world_cam` gesetzt ist.
+setzt `frame_id` entsprechend und legt zusätzlich den nächstgelegenen Welttag
+samt `T_worldtag_module` bei. **Das ist die einzige Stelle im gesamten Code, an
+der diese Verkettung steht** — Decken- und Handkamera rufen dieselbe Funktion,
+sie unterscheiden sich nur darin, ob `localization` gesetzt ist.
+
+`merge_by_module` mittelt Messungen gleicher `(moduleId, instanceId)` — so
+werden mehrere Tags am Roboter zu einer Roboterpose. `merge_locations` führt
+Decken- und Handergebnis zusammen, die genauere Quelle gewinnt.
+`world_tag_for_robot` beantwortet, welcher Welttag dem Roboter am nächsten
+steht.
+
+`camera_pose_from_reference_tags(tag_poses, tag_map) -> Pose | None` bleibt als
+schlanke Hülle für die CLI-Werkzeuge erhalten, die nur die Matrix brauchen.
 
 `confidence` wird aus Reprojektionsfehler und Mehrdeutigkeit gebildet, nicht
 konstant auf `1.0` gesetzt.

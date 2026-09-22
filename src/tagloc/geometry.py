@@ -220,18 +220,40 @@ def rotation_distance_rad(first: Pose, second: Pose) -> float:
     return float(math.acos(float(np.clip(cos_theta, -1.0, 1.0))))
 
 
-def average_poses(poses: Sequence[Pose]) -> Pose:
+def average_poses(poses: Sequence[Pose], weights: Sequence[float] | None = None) -> Pose:
     """Average several poses of the same object.
 
     Translation arithmetically, rotation via Markley: eigenvector of the
-    largest eigenvalue of `sum(q qT)`. Averaging quaternions componentwise
+    largest eigenvalue of `sum(w q qT)`. Averaging quaternions componentwise
     would be wrong -- the result wouldn't be normalised, and `q` and `-q`
     (the same rotation) would cancel each other out.
+
+    `weights` is optional and defaults to equal weighting, so every existing
+    caller keeps its exact result. It exists for the four world tags: they are
+    seen at very different distances and obliquities, and an unweighted mean
+    lets the worst of them drag the camera pose.
+
+    Negative or non-finite weights are rejected, and weights summing to zero
+    fall back to equal weighting -- a degenerate weight vector must not
+    silently yield a pose that is merely the numerically largest leftover.
     """
     if not poses:
         raise ValueError("average_poses braucht mindestens eine Pose")
+    if weights is not None and len(weights) != len(poses):
+        raise ValueError(f"average_poses: {len(weights)} Gewichte zu {len(poses)} Posen")
     if len(poses) == 1:
         return np.asarray(poses[0], dtype=np.float64).copy()
+
+    if weights is None:
+        weight_vector = np.ones(len(poses), dtype=np.float64)
+    else:
+        weight_vector = np.asarray(weights, dtype=np.float64).reshape(len(poses))
+        if not np.all(np.isfinite(weight_vector)) or np.any(weight_vector < 0.0):
+            raise ValueError("average_poses: Gewichte muessen endlich und >= 0 sein")
+        if weight_vector.sum() <= 0.0:
+            weight_vector = np.ones(len(poses), dtype=np.float64)
+    weight_vector = weight_vector / weight_vector.sum()
+
     translations = np.array([np.asarray(p, dtype=np.float64)[:3, 3] for p in poses])
     quaternions = np.array(
         [quaternion_from_rotation(np.asarray(p, dtype=np.float64)[:3, :3]) for p in poses]
@@ -239,13 +261,13 @@ def average_poses(poses: Sequence[Pose]) -> Pose:
     # No sign alignment needed: `q` and `-q` are the same rotation, and the
     # accumulator is invariant to that since `q qT == (-q)(-q)T` -- unlike a
     # componentwise mean, which is why this must stay eigenvector-based.
-    accumulator = quaternions.T @ quaternions
+    accumulator = (quaternions * weight_vector[:, None]).T @ quaternions
     eigenvalues, eigenvectors = np.linalg.eigh(accumulator)
     mean_quaternion = eigenvectors[:, int(np.argmax(eigenvalues))]
     if mean_quaternion[3] < 0.0:
         mean_quaternion = -mean_quaternion
     return from_rotation_translation(
-        rotation_from_quaternion(mean_quaternion), translations.mean(axis=0)
+        rotation_from_quaternion(mean_quaternion), weight_vector @ translations
     )
 
 

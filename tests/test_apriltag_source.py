@@ -88,21 +88,29 @@ class FakeSolverSource(AprilTagDetectionSource):
 
     `tagloc.pose.estimate_tag_pose` solves the pose via `cv2.solvePnPGeneric`;
     the fake detector already knows it instead. Everything after -- camera
-    pose from reference tags, module chaining, frame selection -- is still
+    pose from the world tags, module chaining, frame selection -- is still
     production code.
     """
 
     def _locate(self, image):
-        from tagloc.localize import camera_pose_from_reference_tags, locate_modules
+        from tagloc.localize import locate_modules, localize_camera
+
+        from vision_server.detection.apriltag import SOURCE_BY_FRAME
 
         tag_poses = self._detector.estimate(self._detector.detect(image))
-        pose_world_cam = camera_pose_from_reference_tags(tag_poses, self._tag_map)
-        frame_id = self._tag_map.frame_id if pose_world_cam is not None else self._config.frame_id
+        localization = localize_camera(
+            tag_poses,
+            self._tag_map,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+        )
+        self._localization = localization
+        frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
         return locate_modules(
             tag_poses,
             self._tag_map,
-            pose_world_cam=pose_world_cam,
+            localization=localization,
             frame_id=frame_id,
+            source=SOURCE_BY_FRAME.get(self._config.frame_id, ""),
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
 

@@ -1,17 +1,22 @@
 """AprilTag detection over the camera shared with the livestream.
 
-One source for both layers. Layer 1 (ceiling camera) and Layer 2 (flange
-camera) use the same class and code; they differ only in the
-`AprilTagProfileConfig` that `vision_server/server.py` sets per Pi, and in where
-`T_world_cam` comes from:
+One source for both cameras. The ceiling camera and the eye-in-hand camera
+use the same class and code; they differ only in the `AprilTagProfileConfig`
+that `vision_server/server.py` sets per Pi, and in what they get to see:
 
-* if reference tags from the map are in the image (world board, robot
-  table), the camera pose is derived from them and the module pose is
-  reported in the world frame
+* if world tags from the map are in the image, the camera pose is derived
+  from them, and every module pose is reported in the world frame together
+  with the world tag it sits closest to
 * otherwise everything stays in the camera frame, and `frameConvention`
-  tells the reader where +Z points. The backend then does the chaining
-  with the robot pose -- the vision server doesn't know the robot and
-  shouldn't guess it.
+  tells the reader where +Z points
+
+**Only the world tags are fixed** -- four of them on the border of the cell.
+The robot is a module like any other: it carries its own tags and gets
+measured, not read from a file. The ceiling camera is the only one that sees
+the robot and the world tags at the same time, so it is the one that answers
+which world tag the robot stands closest to. The eye-in-hand camera then
+localises itself against that tag optically -- no hand-eye calibration
+needed for that step.
 
 The actual computation lives in `tagloc`; this file is the OPC-UA adapter.
 """
@@ -30,6 +35,14 @@ from .base import Detection, DetectionRequest, DetectionSource
 _log = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 0.02
+
+#: Frame id -> which of the two cameras this is. Mirrors the frames that
+#: `vision_server.server.PI_IDENTITIES` assigns per Pi. Deliberately plain
+#: strings and not `tagloc.localize.SOURCE_*`: this module must stay
+#: importable without numpy, so `tagloc` is only imported inside methods.
+#: An unknown frame yields an empty source, which `merge_locations` then
+#: ranks below both known cameras instead of guessing.
+SOURCE_BY_FRAME = {"cam_ceiling": "ceiling", "cam_flange": "flange"}
 
 
 def _finite_or_none(value: float | None) -> float | None:
@@ -71,6 +84,9 @@ class AprilTagDetectionSource(DetectionSource):
         self._detector = detector
         self._calibration = calibration
         self._tag_map = tag_map
+        #: Camera pose of the last evaluated image, set by `_locate`. `None`
+        #: until the first image, and again whenever no world tag was visible.
+        self._localization = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -102,7 +118,7 @@ class AprilTagDetectionSource(DetectionSource):
         """
         from tagloc.calibration import default_calibration, load_calibration
         from tagloc.detector import build_detector
-        from tagloc.tagmap import empty_tag_map, load_tag_map
+        from tagloc.tagmap import empty_tag_map, load_tag_map, validate_tag_map
 
         if self._calibration is None:
             try:
@@ -124,6 +140,11 @@ class AprilTagDetectionSource(DetectionSource):
             path = self._config.tag_map_path
             if path is not None and path.is_file():
                 self._tag_map = await self.run_blocking(load_tag_map, path)
+                # Reported, not enforced: a cell still being built must be
+                # allowed to measure. Silence here would mean a missing world
+                # tag only ever shows up as quietly worse accuracy.
+                for problem in validate_tag_map(self._tag_map):
+                    _log.warning("Tag-Map %s: %s", path, problem)
             else:
                 _log.warning(
                     "Keine Tag-Map unter %s -- Posen bleiben im Kamera-KS und "
@@ -165,7 +186,7 @@ class AprilTagDetectionSource(DetectionSource):
         """Evaluate one image. Runs in the worker thread, never on the loop."""
         from tagloc import frames as frame_tools
         from tagloc.calibration import check_resolution, scale_to_resolution
-        from tagloc.localize import camera_pose_from_reference_tags, locate_modules
+        from tagloc.localize import locate_modules, localize_camera
         from tagloc.pose import estimate_tag_poses
 
         size = frame_tools.image_size(image)
@@ -182,20 +203,29 @@ class AprilTagDetectionSource(DetectionSource):
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
-        pose_world_cam = camera_pose_from_reference_tags(tag_poses, self._tag_map)
-        frame_id = self._tag_map.frame_id if pose_world_cam is not None else self._config.frame_id
+        localization = localize_camera(
+            tag_poses,
+            self._tag_map,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+        )
+        # Kept for `acquire_and_detect`, which reports the world tags and
+        # their spread alongside the poses. Only ever written from the single
+        # worker thread, so no lock is needed.
+        self._localization = localization
+        frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
         return locate_modules(
             tag_poses,
             self._tag_map,
-            pose_world_cam=pose_world_cam,
+            localization=localization,
             frame_id=frame_id,
+            source=SOURCE_BY_FRAME.get(self._config.frame_id, ""),
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
         """Capture several images, average the poses, and report the modules."""
         from tagloc.geometry import to_position_quaternion
-        from tagloc.localize import expected_but_missing, merge_samples
+        from tagloc.localize import expected_but_missing, merge_by_module, merge_samples
 
         samples: list[list] = []
         seen_timestamp: float | None = None
@@ -211,14 +241,21 @@ class AprilTagDetectionSource(DetectionSource):
                 f"Kein AprilTag der Familie '{self._config.tag_family}' gefunden",
             )
 
+        # Before merging by module: `expected_but_missing` compares tag ids,
+        # and merging several robot tags into one result would make the tags
+        # it swallowed look missing.
         missing = expected_but_missing(self._tag_map, located)
         if missing:
             _log.info("Erwartet, aber nicht gefunden: %s", ", ".join(missing))
+
+        # Several tags on the robot measure one and the same base pose.
+        located = merge_by_module(located, tag_map=self._tag_map)
 
         # The frame follows what was actually computed: with reference tags
         # the world frame, without them the camera frame.
         self.frame_id = located[0].frame_id or self._config.frame_id
 
+        localization = self._localization
         detections: list[Detection] = []
         for location in located:
             position, orientation = to_position_quaternion(location.pose)
@@ -229,7 +266,31 @@ class AprilTagDetectionSource(DetectionSource):
                 "sampleCount": location.attributes.get("sampleCount", len(samples)),
                 "frameTimestamp": seen_timestamp,
                 "recipeId": request.recipe_id,
+                "source": location.source,
+                "role": location.role,
             }
+            if location.attributes.get("tagCount"):
+                # Several tags measured this module -- say which, so a wrong
+                # CAD offset on one of them can be tracked down.
+                attributes["tagIds"] = location.attributes["tagIds"]
+                attributes["tagCount"] = location.attributes["tagCount"]
+            if location.reference_tag_id >= 0:
+                attributes["referenceTagId"] = location.reference_tag_id
+            if location.pose_in_reference_tag is not None:
+                reference_position, reference_orientation = to_position_quaternion(
+                    location.pose_in_reference_tag
+                )
+                attributes["referencePosition"] = reference_position
+                attributes["referenceOrientation"] = reference_orientation
+                attributes["referenceDistanceM"] = _finite_or_none(
+                    math.dist(reference_position, (0.0, 0.0, 0.0))
+                )
+            if localization is not None:
+                attributes["worldTagIds"] = list(localization.world_tag_ids)
+                attributes["cameraSpreadM"] = _finite_or_none(localization.spread_m)
+                attributes["cameraSpreadDeg"] = _finite_or_none(
+                    math.degrees(localization.spread_rad)
+                )
             if missing:
                 attributes["missingModules"] = ", ".join(missing)
             detections.append(

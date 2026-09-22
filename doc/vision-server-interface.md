@@ -232,10 +232,16 @@ mitgelesen.
 Tag-Map, zusaetzlich `missingModules`. Ist kein Tag im Bild, liefert der Job
 **kein** leeres Erfolgsergebnis, sondern `Error=5` (`DETECTION_FAILED`).
 
-`frameId` haengt am Bild: sieht die Kamera einen Referenz-Tag aus der Tag-Map
-(Welt-Board, Robotertisch), liefert die Quelle Posen im Welt-KS; sonst im
-Kamera-KS. **Deshalb `frameId` nie annehmen, sondern lesen** — zusammen mit
-`frameConvention`, die sagt, wohin +Z zeigt.
+`frameId` haengt am Bild: sieht die Kamera einen der vier Welttags aus der
+Tag-Map, liefert die Quelle Posen im Welt-KS; sonst im Kamera-KS. **Deshalb
+`frameId` nie annehmen, sondern lesen** — zusammen mit `frameConvention`, die
+sagt, wohin +Z zeigt.
+
+Nur die Welttags stehen fest. Jede Detektion traegt zusaetzlich `source`
+(`ceiling`/`flange`), `role` (`module`/`robot`), den nächstgelegenen Welttag
+`referenceTagId` samt `referencePosition`/`referenceOrientation`
+(`T_worldtag_module`) und `referenceDistanceM`, sowie `worldTagIds`,
+`cameraSpreadM` und `cameraSpreadDeg` als Guete der Kameralokalisierung.
 
 Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
 unterscheiden sich nur in der `AprilTagProfileConfig`, die `server.py` je

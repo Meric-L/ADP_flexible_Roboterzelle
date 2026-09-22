@@ -29,26 +29,51 @@ Daraus folgt die Leitidee der ganzen Umsetzung:
 
 ### 1.1 Drei Rollen von Tags
 
+**Nur der Welt-Tag steht fest.** Alles andere in der Zelle ist beweglich — die
+Module und der Roboter gleichermaßen. Der Roboter ist ein Modul wie jedes
+andere; er ist nur dasjenige, das immer verwendet wird.
+
 | Rolle | Hardware | Wofür | Pose |
 |---|---|---|---|
-| **Welt-Tag** | ArUco-Board an Boden/Wand | definiert das Welt-KS; jede Kamera, die es sieht, kennt darüber ihre eigene Pose | fest, steht in der Tag-Map |
-| **Robotertisch-Tag** | AprilTag am Robotertisch | verbindet Welt-KS und Roboterbasis-KS | fest, steht in der Tag-Map |
-| **Modul-Tag** | AprilTag am Modul | *ist* die Modulpose, versetzt um den konstanten CAD-Offset Tag→Modulursprung | **beweglich — wird gemessen, nicht gelesen** |
+| **Welt-Tag** (`world`) | vier AprilTags im Randbereich der Zelle | spannen das Welt-KS auf; jede Kamera, die einen davon sieht, kennt darüber ihre eigene Pose | **fest**, steht in der Tag-Map |
+| **Roboter-Tag** (`robot`) | AprilTags am Roboter, mehrere erlaubt | *ist* die Roboterpose, versetzt um den CAD-Offset Tag→Roboterbasis | **beweglich — wird gemessen, nicht gelesen** |
+| **Modul-Tag** (`module`) | AprilTag am Modul | *ist* die Modulpose, versetzt um den konstanten CAD-Offset Tag→Modulursprung | **beweglich — wird gemessen, nicht gelesen** |
 
-Referenz-Tags (Welt, Tisch) und Mess-Tags (Module) durchlaufen exakt denselben
+Referenz-Tags (Welt) und Mess-Tags (Module, Roboter) durchlaufen exakt denselben
 Code. Sie unterscheiden sich nur darin, ob ihre Weltpose in der Tag-Map steht
 oder von dort als `null` kommt.
+
+Die vier Welttags sind Erwartung, keine Codegrenze: `localize_camera` arbeitet
+auch mit einem einzigen. `validate_tag_map` beanstandet eine abweichende Anzahl,
+damit ein fehlender Tag auffällt, statt still Genauigkeit zu kosten.
+
+Mehrere Tags am Roboter sind Absicht: von der Decke aus verdeckt der Arm leicht
+einen einzelnen Tag. Jeder trägt seinen eigenen CAD-Offset auf dieselbe
+Roboterbasis, `merge_by_module` mittelt sie zu einer Pose.
+
+Die früheren Rollen `robot_table` und `reference` entfallen ersatzlos. Sie
+erklärten den Robotertisch zu einem **festen** Anker — genau der Denkfehler,
+den dieses Konzept behebt.
 
 ### 1.2 Die Kette
 
 ```
                        T_world_cam                T_cam_tag          T_tag_module
    Welt-KS  <───────────────────────  Kamera-KS ───────────>  Tag-KS ──────────>  Modul-KS
-               aus Referenz-Tags im         gemessen              konstant,
-               selben Bild (Layer 1)                              aus der Tag-Map
-               oder aus der Roboterpose
-               (Layer 2)
+               aus den Welttags im          gemessen              konstant,
+               selben Bild — bei                                  aus der Tag-Map
+               beiden Kameras gleich
 ```
+
+Beide Kameras beziehen `T_world_cam` aus derselben Quelle: den Welttags im
+selben Bild. Die Handkamera braucht dafür **keine** Hand-Auge-Kalibrierung —
+sie liest ihre Pose optisch am Welttag ab.
+
+Zusätzlich bekommt jedes Modul den Welttag, dem es am nächsten steht, und seine
+Pose relativ zu diesem Tag (`T_worldtag_module`). Die Zelle ist um die Welttags
+herum aufgebaut, also ist das die Zahl, gegen die ein Modul eingerichtet und
+geprüft wird. Das gemeinsame Welt-KS bleibt daneben erhalten — die vier
+Welttags spannen **ein** KS auf, einmalig per `build_tagmap` vermessen.
 
 Die gesuchte Modulpose ist schlicht
 
@@ -62,25 +87,42 @@ prüfbar. Das ist die Antwort auf Risiko R11 aus
 [`vision-system-integration.md`](vision-system-integration.md) (mm↔m, xyzw↔wxyz,
 `T_base_cam`↔`T_cam_base` — der klassische stille Fehler).
 
-### 1.3 Warum Layer 1 und Layer 2 dieselbe Funktionalität sind
+### 1.3 Warum beide Kameras dieselbe Funktionalität sind
 
-| | Layer 1 — Deckenkamera (`pi-decke`) | Layer 2 — Flanschkamera (`pi-hand`) |
+| | Deckenkamera (`ADP-Roboter-Lokalisierung`) | Handkamera (`ADP-HandInEye-Kamera-Pi`) |
 |---|---|---|
-| Aufgabe | grobe Modulposition, welches Modul wo | genaue 6-DOF-Pose eines Moduls |
+| Aufgabe | Übersicht: wo steht der Roboter, wo stehen die Module, welcher Welttag ist dem Roboter am nächsten | genaue 6-DOF-Pose eines Moduls |
 | Kamera | fest montiert | bewegt sich mit dem Roboter |
-| Herkunft von `T_world_cam` | aus den Referenz-Tags im selben Bild | aus der Roboterpose (Hand-Auge, **noch offen**) |
+| Sicht | Welttags, Roboter und Module **gleichzeitig** | ein Welttag und das Modul aus der Nähe |
+| Herkunft von `T_world_cam` | aus den Welttags im selben Bild | aus dem Welttag im selben Bild |
 | Tag-Größe | groß (Modul-Tags aus Distanz) | klein (Nahaufnahme) |
-| Ergebnis-`frameId` | `world` | `cam_flange` |
+| `source` im Payload | `ceiling` | `flange` |
+| Ergebnis-`frameId` | `world`, sobald ein Welttag im Bild ist | `world`, sobald ein Welttag im Bild ist |
 
-Die Unterschiede sind **ausschließlich Konfiguration und die Herkunft einer
-einzigen Matrix**. Erkennung, Posenschätzung, Ausreißerfilter, Mittelung,
+Die Unterschiede sind **ausschließlich Konfiguration und was die Kamera zu
+sehen bekommt**. Erkennung, Posenschätzung, Ausreißerfilter, Mittelung,
 Tag-Map-Auswertung und Payload-Aufbau sind identisch. Deshalb: eine Bibliothek,
-eine `DetectionSource`, zwei Konfigurationen — kein Layer-1- und Layer-2-Code.
+eine `DetectionSource`, zwei Konfigurationen — kein kameraspezifischer Code.
 
-Solange die Hand-Auge-Kalibrierung offen ist, liefert Layer 2 seine Posen im
-Kamera-KS mit gesetztem `frameConvention` und überlässt die Verkettung dem
-Backend. Das ist kein Provisorium, sondern die saubere Trennung: der Vision-Server
-kennt die Roboterpose nicht und soll sie nicht raten.
+Sieht die Handkamera gerade keinen Welttag — zwischen zwei Welttags —, bleiben
+ihre Posen im Kamera-KS mit gesetztem `frameConvention`. Das ist kein
+Provisorium, sondern der ehrliche Fall: ohne Anker im Bild wäre eine Weltpose
+geraten.
+
+### 1.4 Der Ablauf in der Zelle
+
+1. **Deckenkamera**: sieht die Welttags, den Roboter und die Module in einem
+   Bild. Sie liefert die Grobübersicht und beantwortet als Einzige die Frage,
+   welcher Welttag dem Roboter am nächsten steht (`world_tag_for_robot`) —
+   denn nur sie sieht beides gleichzeitig.
+2. **Roboter**: richtet seine Hand-in-Eye-Kamera auf genau diesen Welttag.
+3. **Handkamera**: lokalisiert sich am Welttag (`localize_camera`) und misst
+   von dort die Module genau ein — immer auf die Welttags bezogen.
+4. **Zusammenführen**: `merge_locations(decke, hand)` vereint beide Bilder der
+   Zelle. Wo beide dasselbe Modul gemessen haben, gewinnt die Handmessung; was
+   nur die Decke gesehen hat, bleibt erhalten. Bewusst eine reine Funktion und
+   keine zweite Netzverbindung zwischen den Pis: beide Server publizieren
+   weiter eigenständig, der Konsument ruft sie auf.
 
 ---
 
@@ -243,16 +285,30 @@ und zwar plausibel falsch, also unauffällig.
 
 ```jsonc
 {
-  "schema": "wsc.vision.tagmap/1",
+  "schema": "wsc.vision.tagmap/2",
   "frameId": "world",
   "anchorTagId": 0,
   "tagFamily": "tag36h11",
   "tags": [
+    // Die vier Welttags im Randbereich der Zelle — das Einzige, was feststeht.
     { "tagId": 0, "role": "world", "sizeM": 0.100,
       "poseInWorld": { "position": [0, 0, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 1, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [2.400, 0, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 2, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [2.400, 1.800, 0], "orientation": [0, 0, 0, 1] } },
+    { "tagId": 3, "role": "world", "sizeM": 0.100,
+      "poseInWorld": { "position": [0, 1.800, 0], "orientation": [0, 0, 0, 1] } },
 
-    { "tagId": 12, "role": "robot_table", "sizeM": 0.080,
-      "poseInWorld": { "position": [1.240, 0.310, 0.000], "orientation": [0, 0, 0.7071, 0.7071] } },
+    // Der Roboter ist ein Modul: beweglich, mehrere Tags auf dieselbe Basis.
+    { "tagId": 20, "role": "robot", "sizeM": 0.080,
+      "moduleId": "UR5e", "instanceId": "ur5e-1",
+      "tagToModule": { "position": [0, 0, -0.120], "orientation": [0, 0, 0, 1] },
+      "poseInWorld": null },
+    { "tagId": 21, "role": "robot", "sizeM": 0.080,
+      "moduleId": "UR5e", "instanceId": "ur5e-1",
+      "tagToModule": { "position": [-0.150, 0, -0.120], "orientation": [0, 0, 0, 1] },
+      "poseInWorld": null },
 
     { "tagId": 7, "role": "module", "sizeM": 0.050,
       "moduleId": "MOD-A", "instanceId": "mod-a-1",
@@ -263,8 +319,15 @@ und zwar plausibel falsch, also unauffällig.
 ```
 
 `poseInWorld: null` heißt „beweglich, wird gemessen". `role` entscheidet die
-Verwendung: `world`/`robot_table`/`reference` liefern `T_world_cam`,
-`module` wird lokalisiert.
+Verwendung: **nur** `world` liefert `T_world_cam`, `module` und `robot` werden
+lokalisiert. Die Positionen oben sind Platzhalter — die echten Weltposen der
+vier Welttags werden einmalig per `python -m tagloc.cli.build_tagmap`
+eingemessen.
+
+Schema `/1` wird beim Laden **abgelehnt**, mit einer Meldung, die die Migration
+benennt. Ein stilles Umdeuten von `robot_table` zu „beweglich" wäre die
+gefährlichere Variante: die Weltpose stünde weiter in der Datei und sähe gültig
+aus, würde aber nicht mehr verwendet.
 
 **Neuer Ordner `config/`**, weil die Tag-Map das Zellenlayout beschreibt und
 versioniert gehören muss — `data/`, `concept/` und `hardware/` sind alle
@@ -536,8 +599,10 @@ Entscheidungen des Teams. Was dieser Entwurf nahelegt:
 |---|---|
 | Wann wird der Welt-Tag referenziert? | **bei jedem Layer-1-Scan.** Die Deckenkamera sieht das Board ohnehin; `T_world_cam` wird pro Job neu bestimmt und mitgeloggt, damit Drift sichtbar wird statt sich still fortzupflanzen. |
 | Format der Übergabe Layer 1 → Layer 2 | **3D-Pose im Welt-KS**, also `position` + `orientation` des bestehenden Payloads — keine Pixelkoordinate. Damit bleibt das Schema `wsc.vision.detections/1` unverändert. |
-| Wer transformiert Welt-KS → Roboterbasis? | **das Backend**, über den Robotertisch-Tag. `T_world_base` ergibt sich aus dessen Weltpose in `config/tagmap.json` und dem bekannten CAD-Versatz zur Roboterbasis. Der Vision-Server kennt den Roboter nicht. |
-| Rolle des Robotertisch-Tags | genau diese: **Brücke Welt-KS ↔ Roboterbasis**, Rolle `robot_table` in der Tag-Map. Zusätzlich taugt er als Dauerkontrolle — weicht seine gemessene Pose von der hinterlegten ab, stimmt die Kalibrierung nicht mehr. |
+| Wer transformiert Welt-KS → Roboterbasis? | **die Deckenkamera misst sie**. Die Roboter-Tags tragen den CAD-Versatz Tag→Roboterbasis, `T_world_base` fällt damit als Messergebnis an. Fest hinterlegt ist sie nicht mehr: der Roboter ist beweglich. |
+| Rolle des Robotertisch-Tags | **entfällt.** Der Tisch war nie ein fester Anker — das war der Denkfehler. Der Roboter trägt eigene Tags mit der Rolle `robot` und wird gemessen wie jedes Modul. |
+| Welcher Welttag gilt für den Roboter? | der ihm nächstgelegene, aus dem Deckenbild bestimmt (`world_tag_for_robot`). Nur die Deckenkamera sieht Roboter und Welttags gleichzeitig, also kann nur sie diese Frage beantworten. |
+| Wie fallen Decken- und Handmessung zusammen? | `merge_locations(decke, hand)` — reine Funktion in `tagloc`. Die genauere Quelle (`flange`) gewinnt, was nur die Decke sah bleibt erhalten. Keine Verbindung zwischen den beiden Pis nötig. |
 | Hand-Auge-Kalibrierung für Layer 2 | **bleibt offen.** Bis dahin liefert Layer 2 im Kamera-KS mit gesetztem `frameConvention`, und `auto_execute` bleibt `False` — ein automatisches Anfahren erkannter Posen darf nicht scharf geschaltet werden. |
 | Repositionierungsstrategie Layer 2 | **nicht Teil dieser Bibliothek.** `tagloc` meldet „kein Tag gefunden" als `DETECTION_FAILED`; was der Roboter daraufhin tut, gehört in die Ablaufsteuerung. |
 | Soll-Anzahl der Module | aus der Tag-Map ableitbar: jeder Eintrag mit `role: "module"` ist ein erwartetes Modul. Damit ist das Abbruchkriterium „alle Modul-Tags gesehen" ohne zusätzliche Konfiguration formulierbar. |

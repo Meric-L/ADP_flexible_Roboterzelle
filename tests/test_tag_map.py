@@ -214,7 +214,11 @@ class TagMapQueryTest(unittest.TestCase):
                     tag_id=5, role="module", size_m=0.04, module_id="MOD-A",
                     instance_id="mod-a-1",
                 ),
-                7: tagmap.TagEntry(tag_id=7, role="reference", size_m=0.08),
+                7: tagmap.TagEntry(tag_id=7, role="world", size_m=0.08),
+                9: tagmap.TagEntry(
+                    tag_id=9, role="robot", size_m=0.08, module_id="UR5e",
+                    instance_id="ur5e-1",
+                ),
             },
         )
 
@@ -228,14 +232,30 @@ class TagMapQueryTest(unittest.TestCase):
         self.assertAlmostEqual(self._map().size_for(99, 0.05), 0.05)
 
     def test_lists_only_tags_with_a_known_world_pose_as_references(self):
-        # Tag 7 has the role but no world pose -- so it's not an anchor point.
+        # Tag 7 is a world tag but not surveyed yet -- so it's not an anchor.
         self.assertEqual(sorted(self._map().reference_poses()), [0])
 
-    def test_lists_the_module_tags(self):
+    def test_lists_both_world_tags_regardless_of_the_survey(self):
+        self.assertEqual(self._map().world_tag_ids(), [0, 7])
+
+    def test_counts_the_robot_among_the_module_tags(self):
+        """The robot is a module that is always in use -- not a separate case."""
         entries = self._map().module_entries()
 
-        self.assertEqual([entry.tag_id for entry in entries], [5])
-        self.assertEqual(entries[0].module_id, "MOD-A")
+        self.assertEqual(sorted(entry.tag_id for entry in entries), [5, 9])
+
+    def test_lists_the_robot_tags_separately(self):
+        entries = self._map().robot_entries()
+
+        self.assertEqual([entry.tag_id for entry in entries], [9])
+        self.assertEqual(entries[0].module_id, "UR5e")
+
+    def test_a_module_tag_is_never_a_reference(self):
+        tag_map = self._map()
+
+        self.assertFalse(tag_map[5].is_reference)
+        self.assertFalse(tag_map[9].is_reference)
+        self.assertTrue(tag_map[0].is_reference)
 
     def test_supports_containment_and_item_access(self):
         tag_map = self._map()
@@ -259,7 +279,7 @@ class WithWorldPosesTest(unittest.TestCase):
         tag_map = tagmap.TagMap(
             entries={
                 5: tagmap.TagEntry(tag_id=5, role="module", size_m=0.04, module_id="MOD-A"),
-                7: tagmap.TagEntry(tag_id=7, role="reference", size_m=0.08),
+                7: tagmap.TagEntry(tag_id=7, role="world", size_m=0.08),
             }
         )
         placed = {5: pose((1.0, 0.0, 0.0)), 7: pose((0.0, 2.0, 0.0))}
@@ -276,10 +296,10 @@ class WithWorldPosesTest(unittest.TestCase):
             entries={
                 7: tagmap.TagEntry(
                     tag_id=7,
-                    role="robot_table",
+                    role="robot",
                     size_m=0.08,
-                    module_id="TISCH",
-                    instance_id="tisch-1",
+                    module_id="UR5e",
+                    instance_id="ur5e-1",
                     tag_to_module=offset,
                 )
             }
@@ -287,8 +307,8 @@ class WithWorldPosesTest(unittest.TestCase):
 
         updated = tagmap.with_world_poses(tag_map, {7: pose((0.5, 0.0, 0.0))})
 
-        self.assertEqual(updated[7].role, "robot_table")
-        self.assertEqual(updated[7].module_id, "TISCH")
+        self.assertEqual(updated[7].role, "robot")
+        self.assertEqual(updated[7].module_id, "UR5e")
         self.assertAlmostEqual(updated[7].size_m, 0.08)
         np.testing.assert_allclose(updated[7].tag_to_module, offset, atol=1e-15)
 
@@ -310,7 +330,7 @@ class WithWorldPosesTest(unittest.TestCase):
         )
 
         self.assertAlmostEqual(updated[4].size_m, 0.07)
-        self.assertEqual(updated[4].role, "reference")
+        self.assertEqual(updated[4].role, tagmap.WORLD_ROLE)
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
@@ -332,11 +352,19 @@ class TagMapFileTest(unittest.TestCase):
                     instance_id="mod-a-1",
                     tag_to_module=pose((0.0, 0.0, -0.04)),
                 ),
+                4: tagmap.TagEntry(
+                    tag_id=4,
+                    role="world",
+                    size_m=0.10,
+                    pose_in_world=pose((1.0, -0.5, 0.25), rvec=(0.0, 0.0, math.radians(45.0))),
+                ),
                 7: tagmap.TagEntry(
                     tag_id=7,
-                    role="robot_table",
+                    role="robot",
                     size_m=0.08,
-                    pose_in_world=pose((1.0, -0.5, 0.25), rvec=(0.0, 0.0, math.radians(45.0))),
+                    module_id="UR5e",
+                    instance_id="ur5e-1",
+                    tag_to_module=pose((0.0, 0.0, -0.12)),
                 ),
             },
         )
@@ -351,7 +379,7 @@ class TagMapFileTest(unittest.TestCase):
         self.assertEqual(loaded.frame_id, "zelle")
         self.assertEqual(loaded.anchor_tag_id, 3)
         self.assertEqual(loaded.tag_family, "tag25h9")
-        self.assertEqual(sorted(loaded.entries), [3, 5, 7])
+        self.assertEqual(sorted(loaded.entries), [3, 4, 5, 7])
         for tag_id, entry in original.entries.items():
             other = loaded[tag_id]
             self.assertEqual(other.role, entry.role)
@@ -374,8 +402,9 @@ class TagMapFileTest(unittest.TestCase):
 
         by_id = {tag["tagId"]: tag for tag in data["tags"]}
         self.assertEqual(data["schema"], tagmap.SCHEMA)
-        self.assertEqual([tag["tagId"] for tag in data["tags"]], [3, 5, 7])
+        self.assertEqual([tag["tagId"] for tag in data["tags"]], [3, 4, 5, 7])
         self.assertIsNone(by_id[5]["poseInWorld"])
+        self.assertIsNone(by_id[7]["poseInWorld"])  # der Roboter ist beweglich
         self.assertIn("tagToModule", by_id[5])
         self.assertNotIn("tagToModule", by_id[3])  # identity is omitted
         self.assertEqual(by_id[5]["moduleId"], "MOD-A")

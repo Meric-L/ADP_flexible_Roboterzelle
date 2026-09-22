@@ -6,9 +6,14 @@ Core idea of the whole concept (doc/apriltag-lokalisierung.md section 1):
     its origin 40 mm below the tag centre, lives here -- in a file -- not
     in code.
 
-Reference tags (world board, robot table) and measured tags (modules) run
-through the same code; they differ only in whether their world pose is in
-the map or `null` (movable, to be measured).
+**Only the world tags are fixed.** Four of them sit in the border area of the
+cell and span the world frame; everything else -- modules *and the robot* --
+is movable and gets measured. The robot is a module like any other; it is
+simply the one that is always in use.
+
+Reference tags (world) and measured tags (modules, robot) run through the
+same code; they differ only in whether their world pose is in the map or
+`null` (movable, to be measured).
 
 No OpenCV: `place_tags` only works with poses, never images.
 """
@@ -34,11 +39,34 @@ from .geometry import (
     translation_distance_m,
 )
 
-SCHEMA = "wsc.vision.tagmap/1"
+SCHEMA = "wsc.vision.tagmap/2"
+
+#: Schema 1 knew the roles `robot_table` and `reference` as *fixed* anchors.
+#: That was the wrong concept -- see doc/arbeitsplaene/apriltag-welttag-konzept.md.
+LEGACY_SCHEMA = "wsc.vision.tagmap/1"
+
+#: The only fixed thing in the cell: a world tag on the cell border.
+WORLD_ROLE = "world"
+#: A tag on the robot. The robot is a module like any other -- it just happens
+#: to be the one that is always in use.
+ROBOT_ROLE = "robot"
+MODULE_ROLE = "module"
 
 #: Roles with a fixed world pose -- used to determine `T_world_cam`.
-REFERENCE_ROLES = frozenset({"world", "robot_table", "reference"})
-MODULE_ROLE = "module"
+#: **Only** the world tag. Everything else in the cell can be moved, so
+#: nothing else may serve as an anchor.
+REFERENCE_ROLES = frozenset({WORLD_ROLE})
+
+#: Roles whose pose is measured rather than read. The robot is in here on
+#: purpose: it stands somewhere, and where it stands is the question.
+MOVABLE_ROLES = frozenset({MODULE_ROLE, ROBOT_ROLE})
+
+KNOWN_ROLES = REFERENCE_ROLES | MOVABLE_ROLES
+
+#: Four world tags in the border area of the cell. Not a limit of the code --
+#: `localize_camera` works with a single one -- but the expected build, so a
+#: missing tag is noticed instead of silently costing accuracy.
+EXPECTED_WORLD_TAG_COUNT = 4
 
 
 @dataclass(frozen=True)
@@ -56,12 +84,32 @@ class TagEntry:
     tag_to_module: Pose = field(default_factory=identity)
 
     @property
+    def is_world(self) -> bool:
+        """Whether this is one of the cell's fixed world tags."""
+        return self.role == WORLD_ROLE
+
+    @property
     def is_reference(self) -> bool:
-        return self.role in REFERENCE_ROLES and self.pose_in_world is not None
+        """Whether this tag may serve as an anchor for `T_world_cam`.
+
+        A world tag without a world pose is *not* an anchor: it is a world
+        tag that has not been surveyed yet, and guessing would be worse than
+        staying in the camera frame.
+        """
+        return self.is_world and self.pose_in_world is not None
+
+    @property
+    def is_robot(self) -> bool:
+        return self.role == ROBOT_ROLE
 
     @property
     def is_module(self) -> bool:
-        return self.role == MODULE_ROLE
+        """Whether this tag denotes something movable that gets measured.
+
+        The robot counts as a module here -- that is the whole point of the
+        concept, not an oversight.
+        """
+        return self.role in MOVABLE_ROLES
 
 
 @dataclass(frozen=True)
@@ -99,9 +147,96 @@ class TagMap:
             if entry.is_reference and entry.pose_in_world is not None
         }
 
+    def world_tag_ids(self) -> list[int]:
+        """Return the IDs of all tags with role `world`, surveyed or not."""
+        return sorted(tag_id for tag_id, entry in self.entries.items() if entry.is_world)
+
     def module_entries(self) -> list[TagEntry]:
-        """Return all tags that denote a module -- the expected module list."""
+        """Return all movable tags -- the expected module list, robot included."""
         return [entry for entry in self.entries.values() if entry.is_module]
+
+    def robot_entries(self) -> list[TagEntry]:
+        """Return the tags mounted on the robot.
+
+        Several are allowed and expected: seen from the ceiling a single tag
+        is easily hidden by the arm itself, and averaging over more of them
+        is what `localize.merge_by_module` is for.
+        """
+        return [entry for entry in self.entries.values() if entry.is_robot]
+
+
+def validate_tag_map(tag_map: TagMap) -> list[str]:
+    """Return what is wrong with this map, empty list = fine.
+
+    Deliberately a report rather than an exception: a cell under construction
+    must still be allowed to measure. The caller decides whether to log or to
+    abort -- `AprilTagDetectionSource.open` logs and continues.
+    """
+    problems: list[str] = []
+
+    world_ids = tag_map.world_tag_ids()
+    unsurveyed = sorted(
+        tag_id for tag_id in world_ids if tag_map.entries[tag_id].pose_in_world is None
+    )
+    if len(world_ids) != EXPECTED_WORLD_TAG_COUNT:
+        problems.append(
+            f"Erwartet {EXPECTED_WORLD_TAG_COUNT} Welttags im Randbereich der Zelle, "
+            f"gefunden {len(world_ids)}: {world_ids or 'keine'}"
+        )
+    if unsurveyed:
+        problems.append(
+            f"Welttags ohne Weltpose (nicht eingemessen): {unsurveyed}. "
+            "Ohne 'poseInWorld' taugen sie nicht als Anker."
+        )
+
+    fixed_but_movable = sorted(
+        tag_id
+        for tag_id, entry in tag_map.entries.items()
+        if entry.is_module and entry.pose_in_world is not None
+    )
+    if fixed_but_movable:
+        problems.append(
+            f"Bewegliche Tags mit fester Weltpose: {fixed_but_movable}. "
+            "Nur Welttags stehen fest; die Pose wird ignoriert."
+        )
+
+    anchor = tag_map.get(tag_map.anchor_tag_id)
+    if anchor is None:
+        problems.append(
+            f"Anker-Tag {tag_map.anchor_tag_id} steht nicht in der Karte"
+        )
+    elif not anchor.is_world:
+        problems.append(
+            f"Anker-Tag {tag_map.anchor_tag_id} hat die Rolle '{anchor.role}', "
+            f"muss aber '{WORLD_ROLE}' sein -- der Ursprung des Welt-KS ist ein Welttag."
+        )
+
+    if not tag_map.robot_entries():
+        problems.append(
+            f"Kein Tag mit der Rolle '{ROBOT_ROLE}'. Der Roboter ist ein Modul, "
+            "das immer verwendet wird -- ohne Robotertag findet die Deckenkamera ihn nicht."
+        )
+    return problems
+
+
+def nearest_world_tag(tag_map: TagMap, pose_world: Pose) -> tuple[int, float] | None:
+    """Return `(tag_id, distance in m)` of the world tag closest to `pose_world`.
+
+    This is the question the ceiling camera answers for the robot: which of
+    the four world tags should the eye-in-hand camera look at to localise
+    itself. `None` when the map knows no surveyed world tag.
+    """
+    references = tag_map.reference_poses()
+    if not references:
+        return None
+    distances = {
+        tag_id: translation_distance_m(pose, pose_world)
+        for tag_id, pose in references.items()
+    }
+    # Sort by ID as well, so an exact tie resolves deterministically instead
+    # of depending on dict order.
+    best = min(distances, key=lambda tag_id: (distances[tag_id], tag_id))
+    return best, float(distances[best])
 
 
 def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
@@ -116,6 +251,19 @@ def load_tag_map(path: Path) -> TagMap:
         raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")
+    if schema == LEGACY_SCHEMA:
+        # Not silently migrated: a `robot_table` entry carries a world pose
+        # that still looks perfectly valid. Reinterpreting it as movable would
+        # keep that pose in the file and quietly stop using it -- the kind of
+        # change that only shows up as a wrong result much later.
+        raise ValueError(
+            f"Tag-Map {path} nutzt das alte Schema '{LEGACY_SCHEMA}'. "
+            f"Seit '{SCHEMA}' ist nur die Rolle '{WORLD_ROLE}' fest; "
+            f"'robot_table' und 'reference' entfallen. Der Robotertisch ist "
+            f"beweglich: Tags am Roboter bekommen die Rolle '{ROBOT_ROLE}' und "
+            "'poseInWorld': null. Die vier Welttags werden mit "
+            "'python -m tagloc.cli.build_tagmap' neu eingemessen."
+        )
     if schema != SCHEMA:
         raise ValueError(f"Unbekanntes Tag-Map-Schema '{schema}' in {path} (erwartet {SCHEMA})")
     entries: dict[int, TagEntry] = {}
@@ -123,9 +271,15 @@ def load_tag_map(path: Path) -> TagMap:
         tag_id = int(raw["tagId"])
         pose_in_world = raw.get("poseInWorld")
         tag_to_module = raw.get("tagToModule")
+        role = str(raw.get("role", MODULE_ROLE))
+        if role not in KNOWN_ROLES:
+            raise ValueError(
+                f"Tag {tag_id} in {path} hat die unbekannte Rolle '{role}'. "
+                f"Erlaubt sind: {sorted(KNOWN_ROLES)}"
+            )
         entries[tag_id] = TagEntry(
             tag_id=tag_id,
-            role=str(raw.get("role", MODULE_ROLE)),
+            role=role,
             size_m=float(raw["sizeM"]),
             module_id=str(raw.get("moduleId", "")),
             instance_id=str(raw.get("instanceId", "")),
@@ -291,8 +445,12 @@ def with_world_poses(
     """Write placed poses into a map as world poses.
 
     Existing entries keep role, module assignment and CAD offset; only
-    `pose_in_world` is set. Tags with role `module` deliberately get
-    **no** world pose -- they are movable.
+    `pose_in_world` is set. Movable tags (`module`, `robot`) deliberately get
+    **no** world pose -- they stand wherever they stand, and where that is
+    gets measured on every job.
+
+    A tag not yet in the map becomes a world tag: surveying a cell is what
+    `build_tagmap` is for, and its output is exactly the fixed border tags.
     """
     roles = roles or {}
     sizes = sizes or {}
@@ -303,7 +461,7 @@ def with_world_poses(
         if existing is None:
             existing = TagEntry(
                 tag_id=tag_id,
-                role=roles.get(tag_id, "reference"),
+                role=roles.get(tag_id, WORLD_ROLE),
                 size_m=sizes.get(tag_id, default_size_m),
             )
         if existing.is_module:
@@ -335,9 +493,15 @@ def format_residual_report(residual_map: Mapping[tuple[int, int], tuple[float, f
 
 
 __all__ = [
+    "EXPECTED_WORLD_TAG_COUNT",
+    "KNOWN_ROLES",
+    "LEGACY_SCHEMA",
     "MODULE_ROLE",
+    "MOVABLE_ROLES",
     "REFERENCE_ROLES",
+    "ROBOT_ROLE",
     "SCHEMA",
+    "WORLD_ROLE",
     "Observation",
     "TagEntry",
     "TagMap",
@@ -346,11 +510,13 @@ __all__ = [
     "load_tag_map",
     "merge_tag_poses",
     "missing_tags",
+    "nearest_world_tag",
     "observed_tag_ids",
     "place_tags",
     "relative_poses",
     "residuals",
     "save_tag_map",
     "tag_map_identity",
+    "validate_tag_map",
     "with_world_poses",
 ]

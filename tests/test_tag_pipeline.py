@@ -39,7 +39,7 @@ try:
         rotation_distance_rad,
         translation_distance_m,
     )
-    from tagloc.localize import camera_pose_from_reference_tags, locate_modules
+    from tagloc.localize import locate_modules, localize_camera
     from tagloc.pose import estimate_tag_pose, estimate_tag_poses, poses_by_tag
     from tagloc.tagmap import TagEntry, TagMap, missing_tags, place_tags, residuals
     from tools.make_synthetic_scene import (
@@ -74,6 +74,16 @@ ANGLE_TOLERANCE_DEG = 1.0
 CHAIN_TOLERANCE_M = 0.003
 CHAIN_TOLERANCE_DEG = 1.5
 
+#: Spread of the four world-tag estimates of the camera pose. Deliberately
+#: NOT an accuracy figure: it measures how far the single estimates disagree
+#: with each other, and the confidence-weighted merge comes out far better
+#: than the worst of them. Measured over all four views: worst case 4.21 mm
+#: at 0.444 deg (view 0, the most oblique one), against a merged camera-pose
+#: error of 0.77 mm. 8 mm keeps a factor of nearly two and still catches a
+#: map whose world tags genuinely contradict each other -- a mis-surveyed tag
+#: lands centimetres out, not millimetres.
+SPREAD_TOLERANCE_M = 0.008
+
 ANCHOR_TAG_ID = 0
 MODULE_TAG_ID = 7
 VIEW_COUNT = 4
@@ -101,7 +111,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
         ]
 
     def _tag_map(self) -> TagMap:
-        """Return a map with four reference tags and one module tag with a CAD offset."""
+        """Return a map with the four world tags and one module tag with a CAD offset."""
         entries = {}
         for placement in self.placements:
             if placement.tag_id == MODULE_TAG_ID:
@@ -118,7 +128,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
                 continue
             entries[placement.tag_id] = TagEntry(
                 tag_id=placement.tag_id,
-                role="world" if placement.tag_id == ANCHOR_TAG_ID else "reference",
+                role="world",
                 size_m=placement.size_m,
                 pose_in_world=placement.pose_world_tag,
             )
@@ -196,21 +206,29 @@ class SyntheticTagSceneTest(unittest.TestCase):
             self.detector.detect(to_gray(image)), self.calibration, tag_map=tag_map
         )
 
-        pose_world_cam = camera_pose_from_reference_tags(tag_poses, tag_map)
-        self.assertIsNotNone(pose_world_cam)
+        localization = localize_camera(tag_poses, tag_map)
+        self.assertIsNotNone(localization)
+        pose_world_cam = localization.pose_world_cam
         self.assertLess(
             translation_distance_m(pose_world_cam, self.views[0]), CHAIN_TOLERANCE_M
         )
         self.assertLess(_degrees(pose_world_cam, self.views[0]), CHAIN_TOLERANCE_DEG)
+        # All four world tags of the scene are visible and agree.
+        self.assertEqual(list(localization.world_tag_ids), [0, 1, 2, 3])
+        self.assertIn(localization.primary_tag_id, (0, 1, 2, 3))
+        self.assertLess(localization.spread_m, SPREAD_TOLERANCE_M)
 
         located = locate_modules(
-            tag_poses, tag_map, pose_world_cam=pose_world_cam, frame_id=tag_map.frame_id
+            tag_poses, tag_map, localization=localization, frame_id=tag_map.frame_id
         )
         self.assertEqual([item.module_id for item in located], ["MOD-A"])
         module = located[0]
         self.assertEqual(module.instance_id, "mod-a-1")
         self.assertEqual(module.frame_id, "world")
         self.assertFalse(module.ambiguous)
+        # Reported relative to the world tag it sits closest to.
+        self.assertIn(module.reference_tag_id, (0, 1, 2, 3))
+        self.assertIsNotNone(module.pose_in_reference_tag)
 
         expected = compose(
             self.world_poses[MODULE_TAG_ID],
@@ -219,17 +237,20 @@ class SyntheticTagSceneTest(unittest.TestCase):
         self.assertLess(translation_distance_m(module.pose, expected), CHAIN_TOLERANCE_M)
         self.assertLess(_degrees(module.pose, expected), CHAIN_TOLERANCE_DEG)
 
-    def test_without_reference_tags_the_pose_stays_in_the_camera_frame(self) -> None:
-        """The Layer-2 case: no camera pose, result in the camera frame."""
+    def test_without_world_tags_the_pose_stays_in_the_camera_frame(self) -> None:
+        """The eye-in-hand case between two world tags: result in the camera frame."""
         tag_map = self._tag_map()
         image, truth = self.scenes[0]
         tag_poses = estimate_tag_poses(
             self.detector.detect(to_gray(image)), self.calibration, tag_map=tag_map
         )
         located = locate_modules(
-            tag_poses, tag_map, pose_world_cam=None, frame_id="cam_flange"
+            tag_poses, tag_map, localization=None, frame_id="cam_flange"
         )
         self.assertEqual([item.frame_id for item in located], ["cam_flange"])
+        # Without a camera pose there is no world tag to relate anything to.
+        self.assertEqual(located[0].reference_tag_id, -1)
+        self.assertIsNone(located[0].pose_in_reference_tag)
         expected = compose(truth[MODULE_TAG_ID], tag_map[MODULE_TAG_ID].tag_to_module)
         self.assertLess(
             translation_distance_m(located[0].pose, expected), POSITION_TOLERANCE_M
