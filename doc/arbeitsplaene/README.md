@@ -18,6 +18,7 @@ nicht gibt.
 | [`lds-registrierung.md`](lds-registrierung.md) | mdns | fertig | `Agent: LDS-Registrierung für den Aggregation-Server` | 21.09.2026 |
 | [`altlasten-abbau-part10-fassade.md`](altlasten-abbau-part10-fassade.md) | opcua | fertig | `Agent: RaspiDevice/VisionSystem entfernen, Part-10-Fassade` | 22.09.2026 |
 | [`livestream-mjpeg-und-watchdog.md`](livestream-mjpeg-und-watchdog.md) | vision | fertig | John Glanz, `Agent: Übernahme von Branch John` | 22.09.2026 |
+| [`deckenkamera-volle-aufloesung.md`](deckenkamera-volle-aufloesung.md) | vision | in Arbeit | John Glanz, `Agent: volle Auflösung Deckenkamera` | 22.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

@@ -90,7 +90,16 @@ PI_CAMERA_BACKENDS: dict[str, str] = {
 #: since moves are made from its pose.
 PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
-        "resolution": (2028, 1520),
+        # Volle Sensoraufloesung der HQ-Kamera (IMX477, 12,3 MP). Der
+        # Livestream rechnet nicht darauf, sondern auf dem kleinen lores-Strom
+        # (PI_CAMERA_STREAM_PRESETS unten) -- sonst ruckelt das Overlay.
+        "resolution": (4056, 3040),
+        # Uebergang, bis bei 4056x3040 neu kalibriert ist: eine vorhandene
+        # Kalibrierung fuer 2028x1520 stammt aus dem 2x2-Binning desselben
+        # Sensors, also demselben Sichtfeld -- ihre Intrinsik laesst sich exakt
+        # verdoppeln (`scale_to_resolution`). Nach der Neukalibrierung entfernen,
+        # damit eine versehentlich falsche Aufloesung wieder auffaellt.
+        "allow_resolution_mismatch": True,
         "tag_size_m": 0.100,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
@@ -122,6 +131,25 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_board_cols": 7,
         "calibration_board_rows": 9,
         "calibration_board_square_size_m": 0.022,
+    },
+}
+
+#: Kamera-Einstellungen je Rahmen, nur fuer das Backend Picamera2 (die
+#: RealSense am Hand-Pi hat eigene Felder in `CameraStreamConfig`).
+#:
+#: cam_ceiling nimmt mit 12 MP auf. Den Livestream speist der zweite,
+#: vom ISP skalierte lores-Strom -- 960x720 ist die Stream-Breite
+#: (`max_stream_width`) im Seitenverhaeltnis des Sensors (4056x3040 -> 719,5,
+#: gerundet 720; 0,07 % Abweichung, unter der Schranke von
+#: `scale_to_resolution`). 10 fps ist die Obergrenze des IMX477 im
+#: Vollaufloesungsmodus; mehr anzufordern bringt nichts. Zwei Puffer statt der
+#: sechs, die Picamera2 fuer Video anlegt: 6 x 37 MB passt nicht in den
+#: CMA-Speicher des Pi.
+PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
+    "cam_ceiling": {
+        "preview_resolution": (960, 720),
+        "capture_fps": 10.0,
+        "buffer_count": 2,
     },
 }
 
@@ -269,7 +297,11 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     camera_stream = (
         CameraStreamConfig(backend=backend)
         if backend == "realsense"
-        else CameraStreamConfig(backend=backend, resolution=apriltag.resolution)
+        else CameraStreamConfig(
+            backend=backend,
+            resolution=apriltag.resolution,
+            **(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {}),
+        )
     )
     return VisionServerConfig(
         endpoint=endpoint,

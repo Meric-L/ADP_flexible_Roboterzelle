@@ -103,6 +103,16 @@ class CameraStreamConfig:
     #: bandbreitenhungrig und laesst `pipeline.start()` mit
     #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
+    #: Nur Picamera2: zweiter, kleiner Bildstrom ("lores") aus demselben
+    #: Frame, im ISP skaliert -- praktisch ohne CPU-Last. Livestream und
+    #: Overlay rechnen darauf, Jobs und Kalibrierung weiter auf `resolution`.
+    #: `None` = kein zweiter Strom; der Stream verkleinert dann selbst
+    #: (`max_stream_width`), wie bei RealSense und OpenCV.
+    preview_resolution: tuple[int, int] | None = None
+    #: Nur Picamera2: Anzahl Kamerapuffer, `None` = Picamera2-Standard (6 bei
+    #: Video). Bei 12 MP waeren das ~220 MB CMA-Speicher, mehr als der Pi
+    #: standardmaessig reserviert -- `configure()` scheitert dann.
+    buffer_count: int | None = None
     warmup_s: float = 2.0
     #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
     capture_fps: float = 15.0

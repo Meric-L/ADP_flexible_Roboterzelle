@@ -656,6 +656,36 @@ http://<pi>:<port>/snapshot.jpg    das neueste Einzelbild (503, solange keins da
 - **Rückfall**: Ist der Port 0 oder die URL nicht erreichbar (Firewall, altes
   Pi-Build), nutzt das Frontend weiter `LatestCameraFrame`.
 
+### 10.3 Zwei Bildströme an der Deckenkamera
+
+Die Deckenkamera (Pi 1, HQ-Kamera IMX477) nimmt mit der vollen
+Sensorauflösung **4056×3040** auf. Der Livestream rechnet darauf nicht: die
+Pi-Kamera liefert aus demselben Frame einen zweiten, vom ISP skalierten Strom
+(`lores`, 960×720), praktisch ohne CPU-Last.
+
+| Wer | Bild | Auflösung |
+| --- | --- | --- |
+| AprilTag-Job, Kalibrier-Session | `CameraFrame.image` | 4056×3040 |
+| Livestream (MJPEG und Knoten), Overlay „AprilTags markieren“ und „Kalibrierboard markieren“ | `CameraFrame.preview` | 960×720 |
+
+Beide Bilder kommen aus **einem** Request, stammen also immer aus derselben
+Aufnahme. Das Overlay rechnet die Kalibrierung auf 960×720 um
+(`scale_to_resolution`); das Seitenverhältnis weicht um 0,07 % ab, unter der
+Schranke von 0,1 %.
+
+Folge: Das Overlay sucht Tags im kleinen Bild. Ein sehr kleiner, weit
+entfernter Tag kann dort fehlen, den der Job im vollen Bild trotzdem findet —
+nie umgekehrt. Das Jobergebnis ist maßgeblich, das Overlay ist die Vorschau.
+
+Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
+`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720), `capture_fps` 10
+(Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs Puffer à
+37 MB passen nicht in den CMA-Speicher). Ohne `preview_resolution` — Hand-Pi
+mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst.
+
+Hauptstrom im Format `RGB888`: Picamera2 legt es als B,G,R ab, also direkt
+OpenCV-BGR — die frühere Farbumrechnung auf jedem Frame entfällt.
+
 ## 11. OPC 40100-2: Anlagensicht
 
 Part 1 beantwortet, **wie man das System bedient**. Part 2 — *Asset Management

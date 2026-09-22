@@ -324,5 +324,63 @@ class NormaliseModeTest(unittest.TestCase):
         self.assertEqual(normalise_mode("Calibration"), "calibration")
 
 
+
+
+class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
+    """Mit einem kleinen ISP-Bild rechnet der Stream nie auf dem vollen Frame.
+
+    Genau das liess die Deckenkamera ruckeln: das AprilTag-Overlay kopierte
+    und durchsuchte jedes Bild in voller Aufloesung, bevor es verkleinert wurde.
+    """
+
+    async def test_overlay_and_encode_use_the_preview(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
+        node = FakeNode()
+        annotator = FakeAnnotator()
+        publisher = CameraStreamPublisher(
+            camera, node, FAST_CONFIG, encode_frame=fake_encode, annotator=annotator
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
+        self.assertIn(
+            f"encoded:annotated:klein:{DEFAULT_OVERLAY_MODE}:{FAST_CONFIG.jpeg_quality}",
+            node.written,
+        )
+
+    async def test_raw_mode_sends_the_preview_unmarked(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
+        node = FakeNode()
+        annotator = FakeAnnotator()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            FAST_CONFIG,
+            encode_frame=fake_encode,
+            annotator=annotator,
+            mode_node=FakeModeNode("off"),
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual(annotator.calls, [])
+        self.assertIn(f"encoded:klein:{FAST_CONFIG.jpeg_quality}", node.written)
+
+    async def test_without_a_preview_the_full_frame_is_used_as_before(self):
+        camera = FakeCamera()
+        camera.latest_frame = _fresh_frame("voll")
+        node = FakeNode()
+        publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertIn(f"encoded:voll:{FAST_CONFIG.jpeg_quality}", node.written)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -213,9 +213,17 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        image, complete = frame.image, True
+        # Das kleine Bild des Kamera-ISP, falls es eins gibt: Overlay,
+        # Verkleinern und Kodieren rechnen dann auf ~0,7 MP statt auf dem
+        # vollen Frame (12 MP an der Deckenkamera). Jobs lesen weiter
+        # `frame.image`; das Overlay rechnet seine Kalibrierung auf die
+        # kleinere Groesse um (`AprilTagStreamAnnotator._calibration_for`).
+        source = getattr(frame, "preview", None)
+        if source is None:
+            source = frame.image
+        image, complete = source, True
         if mode != "off" and self._annotator is not None:
-            image, complete = await self._annotate(loop, frame.image, mode)
+            image, complete = await self._annotate(loop, source, mode)
         if self._config.max_stream_width is not None:
             # Nach dem Overlay und nur fuers Publizieren -- beide Wege
             # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild.

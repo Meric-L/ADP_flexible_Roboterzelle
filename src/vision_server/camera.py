@@ -42,12 +42,46 @@ from .profiles import CAMERA_BACKENDS, CameraStreamConfig
 _log = logging.getLogger(__name__)
 
 
+#: Hauptstrom der Pi-Kamera. Picamera2 legt `RGB888` im Speicher als B,G,R ab
+#: -- das ist bereits OpenCV-BGR, anders als der Picamera2-Standard `XBGR8888`
+#: (R,G,B,X), der je Frame eine Farbumrechnung brauchte. Bei 12 MP kostete die
+#: allein einen guten Teil eines Kerns.
+PICAMERA2_MAIN_FORMAT = "RGB888"
+#: Der `lores`-Strom kann auf dem Pi 4 nur YUV420 (Pi 5: auch RGB).
+PICAMERA2_PREVIEW_FORMAT = "YUV420"
+
+
 @dataclass(frozen=True)
 class CameraFrame:
-    """Ein aufgenommener Frame (BGR, wie von OpenCV erwartet) mit Zeitstempel."""
+    """Ein aufgenommener Frame (BGR, wie von OpenCV erwartet) mit Zeitstempel.
+
+    `image` ist immer das volle Bild -- Erkennung und Kalibrierung rechnen
+    darauf. `preview` ist dasselbe Bild klein, vom Kamera-ISP skaliert, fuer
+    Livestream und Overlay; `None`, wenn das Backend keinen zweiten Strom hat.
+    """
 
     image: Any
     timestamp: float
+    preview: Any = None
+
+
+def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
+    """Wandelt einen Picamera2-`YUV420`-Puffer (I420) in ein BGR-Bild `size` um.
+
+    Der Puffer hat die Form `(hoehe * 3 / 2, stride)`; `stride` kann wegen der
+    Zeilenausrichtung breiter sein als das Bild. Die Farbebenen liegen dann mit
+    `stride / 2` im selben Raster, die Umrechnung auf voller `stride`-Breite
+    ist also stimmig -- danach wird auf die echte Breite zugeschnitten.
+    """
+    import cv2
+
+    width, height = int(size[0]), int(size[1])
+    bgr = cv2.cvtColor(array, cv2.COLOR_YUV2BGR_I420)
+    if bgr.shape[0] != height:
+        raise ValueError(
+            f"YUV420-Puffer passt nicht zu {width}x{height}: Form {tuple(array.shape)}"
+        )
+    return bgr[:, :width] if bgr.shape[1] > width else bgr
 
 
 def _list_realsense_color_profiles() -> str:
@@ -89,6 +123,29 @@ def _exit_process() -> None:
     os._exit(1)
 
 
+def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
+    """Argumente fuer `Picamera2.create_video_configuration()` aus der Config.
+
+    Hauptstrom in voller `resolution` fuer Jobs und Kalibrierung; mit
+    `preview_resolution` zusaetzlich ein `lores`-Strom fuer den Livestream,
+    den der ISP aus demselben Frame skaliert.
+    """
+    arguments: dict[str, Any] = {
+        "main": {"size": tuple(config.resolution), "format": PICAMERA2_MAIN_FORMAT},
+    }
+    if config.preview_resolution is not None:
+        preview = tuple(config.preview_resolution)
+        if preview[0] > config.resolution[0] or preview[1] > config.resolution[1]:
+            raise ValueError(
+                f"preview_resolution {preview} ist groesser als resolution "
+                f"{tuple(config.resolution)} -- der lores-Strom darf nur kleiner sein"
+            )
+        arguments["lores"] = {"size": preview, "format": PICAMERA2_PREVIEW_FORMAT}
+    if config.buffer_count is not None:
+        arguments["buffer_count"] = int(config.buffer_count)
+    return arguments
+
+
 class SharedCamera:
     """Haelt eine Kamera offen und stellt den jeweils neuesten Frame bereit."""
 
@@ -105,6 +162,9 @@ class SharedCamera:
         self._latest: CameraFrame | None = None
         #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen.
         self._on_give_up = on_give_up
+        #: Groesse des `lores`-Stroms, sobald Picamera2 damit konfiguriert ist;
+        #: sonst `None` und jede Aufnahme liefert nur `image`.
+        self._preview_size: tuple[int, int] | None = None
 
     @property
     def latest_frame(self) -> CameraFrame | None:
@@ -147,9 +207,14 @@ class SharedCamera:
 
         camera = Picamera2()
         camera.configure(
-            camera.create_video_configuration(main={"size": self._config.resolution})
+            camera.create_video_configuration(**picamera2_video_configuration(self._config))
         )
         camera.start()
+        self._preview_size = (
+            tuple(self._config.preview_resolution)
+            if self._config.preview_resolution is not None
+            else None
+        )
         return camera
 
     def _open_realsense(self) -> Any:
@@ -191,13 +256,30 @@ class SharedCamera:
             )
         return camera
 
+    def _read_frames(self) -> tuple[Any, Any]:
+        """Laeuft im Kamera-Worker-Thread: `(volles Bild, kleines Bild | None)`.
+
+        Mit `lores`-Strom holt ein einziger Request beide Bilder -- sie
+        stammen damit garantiert aus derselben Aufnahme, und das Overlay zeigt
+        nie ein anderes Bild als das, das der Job sieht. `make_array` kopiert,
+        der Request geht also sofort an die Kamera zurueck.
+        """
+        if self._preview_size is None:
+            return self._read_frame(), None
+        request = self._camera.capture_request()
+        try:
+            image = request.make_array("main")
+            preview = request.make_array("lores")
+        finally:
+            request.release()
+        return image, yuv420_to_bgr(preview, self._preview_size)
+
     def _read_frame(self) -> Any:
         """Laeuft im Kamera-Worker-Thread: ein Frame in BGR."""
         backend = self._config.backend
         if backend == "picamera2":
-            import cv2
-
-            return cv2.cvtColor(self._camera.capture_array(), cv2.COLOR_RGB2BGR)
+            # Bereits BGR, siehe PICAMERA2_MAIN_FORMAT.
+            return self._camera.capture_array("main")
         if backend == "realsense":
             import numpy as np
 
@@ -217,8 +299,8 @@ class SharedCamera:
             # Die letzte Neu-Oeffnung ist gescheitert; nichts zu lesen.
             return "hung"
         try:
-            image = await asyncio.wait_for(
-                loop.run_in_executor(self._executor, self._read_frame),
+            image, preview = await asyncio.wait_for(
+                loop.run_in_executor(self._executor, self._read_frames),
                 timeout=self._config.frame_timeout_s,
             )
         except TimeoutError:
@@ -230,7 +312,7 @@ class SharedCamera:
         except Exception:
             _log.exception("Kamera-Frame konnte nicht aufgenommen werden")
             return "error"
-        self._latest = CameraFrame(image=image, timestamp=loop.time())
+        self._latest = CameraFrame(image=image, timestamp=loop.time(), preview=preview)
         return "ok"
 
     async def _capture_loop(self) -> None:
