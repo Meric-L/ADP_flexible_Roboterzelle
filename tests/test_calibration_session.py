@@ -10,6 +10,7 @@ zu warten.
 """
 
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 
 try:
@@ -17,7 +18,7 @@ try:
 except Exception:  # numpy broken in this environment
     np = None
 
-from vision_server.calibration_session import CalibrationSession
+from vision_server.calibration_session import RMS_WARNING_PX, CalibrationSession
 from vision_server.errors import VisionErrorCode
 from vision_server.profiles import AprilTagProfileConfig
 
@@ -228,6 +229,108 @@ class AbortTest(unittest.IsolatedAsyncioTestCase):
         await session.abort()
         await session.abort()  # darf nicht werfen
         self.assertFalse(session.running)
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class AutoFinishTest(unittest.IsolatedAsyncioTestCase):
+    """`calibration_coverage_threshold` -- Session schliesst sich selbst ab,
+    sobald Abdeckung UND `calibration_min_samples` erreicht sind."""
+
+    async def test_capture_auto_finishes_once_threshold_and_min_samples_reached(self):
+        # calibration_min_samples=2 (FAST_CONFIG), aber MIN_SAMPLES_FOR_CALIBRATION
+        # (3) ist die tatsaechlich wirksame Untergrenze -- siehe dort.
+        session, camera, _calibrate_calls, save_calls = make_session(
+            compute_coverage=lambda samples, image_size: (0.9, 0.9)
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()  # 1/3
+        await session.capture()  # 2/3
+        self.assertTrue(session.running)
+        self.assertEqual(save_calls, [])
+
+        await session.capture()  # 3/3 -- beides erreicht
+
+        self.assertFalse(session.running)
+        self.assertEqual(len(save_calls), 1)
+        self.assertIsNotNone(session.progress.get("result"))
+        self.assertEqual(session.progress["result"]["error"], int(VisionErrorCode.OK))
+
+    async def test_does_not_auto_finish_below_the_coverage_threshold(self):
+        # fake_compute_coverage liefert (0.42, 0.37) -- unter dem Default 0.7.
+        session, camera, _calibrate_calls, save_calls = make_session()
+        session.start()
+        camera.push()
+
+        for _ in range(5):
+            await session.capture()
+
+        self.assertTrue(session.running)
+        self.assertEqual(save_calls, [])
+        self.assertIsNone(session.progress.get("result"))
+
+    async def test_threshold_none_disables_auto_finish(self):
+        config = replace(FAST_CONFIG, calibration_coverage_threshold=None)
+        session, camera, _calibrate_calls, save_calls = make_session(
+            config, compute_coverage=lambda samples, image_size: (0.99, 0.99)
+        )
+        session.start()
+        camera.push()
+
+        for _ in range(5):
+            await session.capture()
+
+        self.assertTrue(session.running)
+        self.assertEqual(save_calls, [])
+
+    async def test_result_carries_a_warning_above_the_rms_target(self):
+        def fake_calibrate_high_rms(samples, image_size, spec, board, *, frame_id):
+            return SimpleNamespace(
+                rms_reprojection_error=RMS_WARNING_PX + 1.5, sample_count=len(samples)
+            )
+
+        session, camera, _calibrate_calls, _save_calls = make_session(
+            compute_coverage=lambda samples, image_size: (0.9, 0.9),
+            calibrate_from_samples=fake_calibrate_high_rms,
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()
+        await session.capture()
+        await session.capture()
+
+        result = session.progress["result"]
+        self.assertIn("warning", result)
+
+    async def test_result_carries_no_warning_within_the_rms_target(self):
+        session, camera, _calibrate_calls, _save_calls = make_session(
+            compute_coverage=lambda samples, image_size: (0.9, 0.9)
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()
+        await session.capture()
+        await session.capture()  # fake_calibrate_from_samples liefert rms=0.1234
+
+        self.assertNotIn("warning", session.progress["result"])
+
+    async def test_start_clears_a_previous_result(self):
+        session, camera, _calibrate_calls, _save_calls = make_session(
+            compute_coverage=lambda samples, image_size: (0.9, 0.9)
+        )
+        session.start()
+        camera.push()
+        await session.capture()
+        await session.capture()
+        await session.capture()
+        self.assertIsNotNone(session.progress.get("result"))
+
+        session.start()
+
+        self.assertIsNone(session.progress.get("result"))
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")

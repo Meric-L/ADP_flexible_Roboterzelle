@@ -687,7 +687,10 @@ Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
 muss dafür gestoppt sein. Diese vier Methoden plus ein Knoten erlauben
 dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Session
 starten, Board vor die Kamera halten, Aufnahme auslösen, Fortschritt live
-sehen, `FinishCalibration` aufrufen.
+sehen. Ein explizites `FinishCalibration` ist dabei **optional** — sobald die
+Abdeckung reicht, schließt sich die Session von selbst ab (Abschnitt 12.5),
+das Frontend muss also nur `CalibrationProgress` beobachten und das Ergebnis
+anzeigen, sobald es dort auftaucht.
 
 Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
@@ -720,14 +723,19 @@ wann eine Pose gut ist, bevor er auslöst.
 
 ### 12.3 `FinishCalibration`
 
-Beendet die Session, rechnet aus den gesammelten Samples und speichert
-`data/calibration/<frame_id>.json` — derselbe Rechenkern wie im CLI-Tool
-(`tagloc.boards.calibrate_from_samples`).
+Beendet die Session manuell, rechnet aus den gesammelten Samples und
+speichert `data/calibration/<frame_id>.json` — derselbe Rechenkern wie im
+CLI-Tool (`tagloc.boards.calibrate_from_samples`) und wie der automatische
+Abschluss (Abschnitt 12.5). Gedacht für den Fall, dass der Operator **vor**
+Erreichen der Abdeckungs-Schwelle abbrechen und trotzdem das bisherige
+Ergebnis haben will — im Normalfall (Schwelle erreicht) ist die Session zu
+diesem Zeitpunkt schon automatisch beendet, ein weiterer Aufruf liefert dann
+nur noch `INVALID_STATE`.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "...", "samples": N}` |
-| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
+| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`, ggf. mit `warning` (siehe 12.5). Bei Fehlschlag `{"message": "...", "samples": N}` |
+| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
 
 ### 12.4 `AbortCalibration`
 
@@ -753,12 +761,47 @@ Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
 | `samples` | Anzahl bisher erfasster Aufnahmen |
 | `minSamples` | Mindestanzahl für ein erfolgreiches `FinishCalibration` (Config, Standard 15) |
 | `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
+| `result` | **nur vorhanden, sobald die Session beendet ist** (automatisch oder per `FinishCalibration`/`AbortCalibration`, siehe unten) |
 
-Im Ruhezustand (keine Session je gestartet oder nach `Finish`/`Abort`):
-`{"running": false}`. Mitverfolgen lässt sich das auch visuell über den
-Livestream (`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild
-erscheinen dann zusätzlich zur aktuellen Board-Erkennung die kumulierte
-Abdeckung und `Aufnahmen X/minSamples`.
+Im Ruhezustand (keine Session je gestartet, oder nach `Abort` ohne
+automatischen Abschluss): `{"running": false}`, ohne `result`. Mitverfolgen
+lässt sich das auch visuell über den Livestream
+(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
+zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
+`Aufnahmen X/minSamples`.
+
+**Automatischer Abschluss:** Erreichen `coverageX` **und** `coverageY`
+`calibration_coverage_threshold` (Config, Standard `0.7`, entspricht dem
+Abbruchkriterium aus dem Testplan) und liegen genug Aufnahmen vor, rechnet
+und speichert die Session **von selbst** — ausgelöst vom nächsten
+`CaptureCalibrationSample`-Aufruf, der die Schwelle überschreitet. Kein
+Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
+`running` auf `false` springt und `result` erscheint:
+
+```jsonc
+{
+  "running": false, "samples": 18, "minSamples": 15,
+  "coverageX": 0.84, "coverageY": 0.9,
+  "result": {
+    "error": 0, "rms": 2.069, "samples": 18,
+    "coverageX": 0.84, "coverageY": 0.9,
+    "path": "data/calibration/cam_ceiling.json",
+    "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
+  }
+}
+```
+
+`result.error` ist derselbe `Error`-Code wie bei `FinishCalibration`
+(0 = `OK`). **Abdeckung allein sagt nichts über die tatsächliche
+Genauigkeit** — ein Board, das nie gekippt wurde, füllt zwar den
+Bildbereich, lässt die Brennweite aber unbestimmt (Testplan Abschnitt 3.3).
+`result.warning` erscheint deshalb zusätzlich, wenn der RMS-Reprojektionsfehler
+über 0,5 px liegt; sie verhindert das Speichern **nicht** — die Datei ist
+trotzdem geschrieben, nur mit dem Hinweis, dass sie ungenauer als empfohlen
+ist. Das Frontend sollte diese Warnung sichtbar anzeigen, nicht nur loggen.
+`calibration_coverage_threshold: null` in der Config schaltet den
+automatischen Abschluss ganz ab (nur noch manuelles `FinishCalibration`, wie
+es die CLI-Tools weiter unterstützen).
 
 Für Pis mit angeschlossenem Monitor gibt es dafür drei Kommandozeilen-Tools
 unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
@@ -786,7 +829,13 @@ kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt 
 
 Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
 (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).
-Layer 1 (Deckenkamera, `ADP-Roboter-Lokalisierung`, Picamera2) ist auf
-dieselbe Board-Geometrie eingestellt (Annahme: dasselbe gedruckte Blatt),
-aber noch **nicht** real durchgemessen — `PI_APRILTAG_PRESETS["cam_ceiling"]`
-trägt einen entsprechenden Kommentar. Der Code selbst ist pi-unabhängig.
+
+Layer 1 (Deckenkamera, `ADP-Roboter-Lokalisierung`, Picamera2) ist über den
+interaktiven Weg (`CaptureCalibrationSample` + Stream-Viewer) einmal
+durchgespielt worden — Board-Geometrie (7×9, 22 mm) über `diagnose_board.py`
+bestätigt, `data/calibration/cam_ceiling.json` existiert. RMS lag beim ersten
+Versuch bei 2,069 px (Abdeckung 84 %/90 %) — deutlich über dem Zielwert, da
+die Kamera noch nicht fest montiert ist und das Board zu wenig gekippt
+wurde. Sobald die Kamera fest hängt, muss neu kalibriert werden, jetzt mit
+Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
+`warning` in Abschnitt 12.5). Der Code selbst ist pi-unabhängig.

@@ -57,7 +57,12 @@ async def run(args: argparse.Namespace) -> int:
             return 1
 
         print("Session laeuft. Board vor die Kamera halten und langsam bewegen.")
-        print("Strg+C zum Beenden (FinishCalibration; mit --abort ohne zu speichern).\n")
+        print(
+            "Aufnahmen kommen von woanders (z. B. stream_viewer.py per Leertaste). "
+            "Strg+C beendet manuell (FinishCalibration; mit --abort ohne zu speichern) "
+            "-- oder die Session schliesst sich von selbst ab, sobald die "
+            "Abdeckungs-Schwelle erreicht ist.\n"
+        )
 
         # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
         # Coroutine abgefangen -- eine `except KeyboardInterrupt` hier drin
@@ -71,6 +76,7 @@ async def run(args: argparse.Namespace) -> int:
         except NotImplementedError:
             pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
 
+        auto_result = None
         while not stop.is_set():
             progress = json.loads(await progress_node.read_value())
             print(
@@ -78,9 +84,22 @@ async def run(args: argparse.Namespace) -> int:
                 f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
                 f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
             )
+            auto_result = progress.get("result")
+            if auto_result is not None:
+                # Abdeckungs-Schwelle erreicht -- die Session hat sich schon
+                # selbst beendet, FinishCalibration hier wuerde nur noch
+                # INVALID_STATE liefern ("keine Session aktiv").
+                break
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=args.poll_interval)
         print()
+
+        if auto_result is not None:
+            print("Abdeckung erreicht, automatisch abgeschlossen:")
+            print(json.dumps(auto_result, indent=2, ensure_ascii=False))
+            if "warning" in auto_result:
+                print(f"ACHTUNG: {auto_result['warning']}")
+            return 0 if auto_result.get("error", 0) == 0 else 1
 
         if args.abort:
             error = await vision.call_method(abort_node)
