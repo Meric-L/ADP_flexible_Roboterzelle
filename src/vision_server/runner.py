@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +32,12 @@ _log = logging.getLogger(__name__)
 
 LOOP_LAG_INTERVAL_S = 0.25
 LOOP_LAG_WARN_S = 0.75
+
+
+def _int32(value: int) -> ua.Variant:
+    """`Error`-Ausgang bzw. Port als Int32 -- das Nodeset deklariert `Error`
+    so, und ein roher Python-`int` kaeme als Int64 beim Client an."""
+    return ua.Variant(int(value), ua.VariantType.Int32)
 
 
 async def _watch_loop_lag(
@@ -163,9 +169,7 @@ async def _start_mjpeg_server(
             config.http_port,
         )
         return None
-    await space.camera_stream_http_port.write_value(
-        ua.Variant(server.port, ua.VariantType.Int32)
-    )
+    await space.camera_stream_http_port.write_value(_int32(server.port))
     return server
 
 
@@ -387,6 +391,295 @@ class VisionMachine:
                 _log.exception("Schliessen der Quelle '%s' fehlgeschlagen", source.profile_id)
 
 
+def _calibration_running(session: CalibrationSession | None) -> bool:
+    return session is not None and session.running
+
+
+def _start_handler(
+    label: str,
+    start: Callable[..., tuple[str, VisionErrorCode]],
+    calibration_session: CalibrationSession | None,
+):
+    """OPC-UA-Einstiegspunkt fuer 1:StartSingleJob bzw. 1:StartContinuous.
+
+    `start` ist `jobs.start_single_job` oder `jobs.start_continuous`;
+    StartContinuous laeuft als Dauerbetrieb bis Stop oder Abort. Waehrend
+    einer Kalibrier-Session lehnen beide mit `BUSY` ab (Interface §12.7).
+    """
+
+    @uamethod
+    async def handler(parent, meas_id, part_id, recipe_id, product_id, parameters):
+        """Muss `async` sein: synchrone Handler laufen bei asyncua in einem
+        ThreadPoolExecutor ohne laufenden Event-Loop, dort scheitert das
+        Starten des Job-Tasks. `start` bleibt synchron und wird ohne
+        `await`-Punkt aufgerufen — die Zulassung bleibt atomar.
+
+        Gibt JobId und Error als String bzw. Int32 zurueck, obwohl das Nodeset
+        `JobIdDataType` deklariert — asyncua validiert Methodenargumente nicht,
+        und ein Client koennte das ExtensionObject nicht dekodieren. Die
+        Rueckgabe muss ein Tupel sein; eine Liste wuerde asyncua als einen
+        einzigen Variant verpacken.
+        """
+        if _calibration_running(calibration_session):
+            _log.warning("%s waehrend laufender Kalibrierung abgelehnt", label)
+            return (ua.Variant("", ua.VariantType.String), _int32(VisionErrorCode.BUSY))
+        job_id, error = start(meas_id, part_id, recipe_id, product_id, parameters)
+        return (ua.Variant(job_id, ua.VariantType.String), _int32(error))
+
+    return handler
+
+
+def _stop_handler(jobs: JobRunner, *, abort: bool):
+    """OPC-UA-Einstiegspunkt fuer 1:Stop bzw. 1:Abort.
+
+    `Cause`/`CauseDescription` schickt das Frontend fire-and-forget immer
+    als 0/"" und wertet sie nicht aus; wir werten sie ebenfalls nicht aus.
+    Abort unterscheidet sich fuer uns nur im Zustandsuebergang und in der
+    Meldung im Ergebnis: es gibt keinen Zwischenstand, den ein Abbruch
+    verwerfen koennte. Beide melden `CANCELLED`.
+    """
+
+    @uamethod
+    async def handler(parent, cause, cause_description):
+        return (_int32(await jobs.stop(abort=abort)),)
+
+    return handler
+
+
+def _halt_handler(jobs: JobRunner, states: VisionStateMachines):
+    """1:Halt -- laufenden Job beenden, dann keine Jobs mehr annehmen.
+
+    Aus Halted fuehrt nur `Reset` zurueck. Das ist der Sinn: Halt ist die
+    Bremse fuer den Bediener, nicht ein weiterer Betriebszustand.
+    """
+
+    @uamethod
+    async def handler(parent, cause, cause_description):
+        error = await jobs.stop()
+        if error != VisionErrorCode.OK:
+            return (_int32(error),)
+        try:
+            await states.halt()
+        except Exception:
+            _log.exception("Halt fehlgeschlagen")
+            return (_int32(VisionErrorCode.INTERNAL),)
+        return (_int32(VisionErrorCode.OK),)
+
+    return handler
+
+
+def _reset_handler(states: VisionStateMachines):
+    """1:Reset -- zurueck in den betriebsbereiten Zustand.
+
+    Ueber Preoperational, weil das Nodeset keinen Uebergang
+    Halted -> Operational kennt; `enter_operational` faehrt genau diesen
+    konformen Weg.
+    """
+
+    @uamethod
+    async def handler(parent, cause, cause_description):
+        try:
+            await states.enter_operational()
+        except Exception:
+            _log.exception("Reset fehlgeschlagen")
+            return (_int32(VisionErrorCode.INTERNAL),)
+        return (_int32(VisionErrorCode.OK),)
+
+    return handler
+
+
+def _link_40100_methods(
+    space: VisionAddressSpace,
+    jobs: JobRunner,
+    states: VisionStateMachines,
+    calibration_session: CalibrationSession | None,
+) -> None:
+    """Verlinkt die sechs Nodeset-Methoden mit ihren Handlern.
+
+    Unabhaengig davon, ob die Quellen aufgingen: eine unverlinkte Methode
+    beantwortet der Server mit `BadNothingToDo`, eine verlinkte im falschen
+    Zustand mit `INVALID_STATE` -- nur Letzteres sagt dem Client etwas.
+    """
+    server = space.server
+    server.link_method(
+        space.start_single_job,
+        _start_handler("StartSingleJob", jobs.start_single_job, calibration_session),
+    )
+    server.link_method(space.stop, _stop_handler(jobs, abort=False))
+    server.link_method(
+        space.start_continuous,
+        _start_handler("StartContinuous", jobs.start_continuous, calibration_session),
+    )
+    server.link_method(space.abort, _stop_handler(jobs, abort=True))
+    server.link_method(space.halt, _halt_handler(jobs, states))
+    server.link_method(space.reset, _reset_handler(states))
+
+
+async def _add_vision_method(
+    space: VisionAddressSpace, name: str, handler, outputs: list[ua.VariantType]
+) -> Node:
+    """Legt eine eigene Methode ohne Eingaben unter `VisionMachine` an.
+
+    NodeId explizit als `<VisionSystem>.<Name>` statt der laufenden Nummer,
+    die `add_method(own_idx, ...)` vergeben wuerde: die verschiebt sich,
+    sobald jemand davor einen Knoten einfuegt, und das Frontend spricht die
+    Methoden ueber feste Adressen an.
+    """
+    return await space.vision_system.add_method(
+        ua.NodeId(f"{space.config.vision_system_name}.{name}", space.own_idx),
+        ua.QualifiedName(name, space.own_idx),
+        handler,
+        [],
+        outputs,
+    )
+
+
+async def _install_calibration_methods(
+    space: VisionAddressSpace,
+    jobs: JobRunner,
+    states: VisionStateMachines,
+    calibration_session: CalibrationSession,
+    annotator: Any,
+) -> dict[str, Node]:
+    """Die vier Kalibriermethoden (Interface §12); gibt sie nach Namen zurueck,
+    damit `VisionProgram` sie zusaetzlich verlinken kann."""
+
+    def show_session(session: CalibrationSession | None) -> None:
+        if annotator is not None:
+            annotator.set_calibration_session(session)
+
+    @uamethod
+    async def start_calibration(parent):
+        """1:StartCalibration -- setzt eine neue Session auf; Aufnahmen
+        kommen danach ausschliesslich ueber `CaptureCalibrationSample`.
+
+        Kein Kalibrierdurchlauf gegen einen laufenden Job oder eine
+        zweite Session gleichzeitig -- beide teilen sich Kamera und
+        Detektor.
+        """
+        if jobs.busy:
+            _log.warning("StartCalibration waehrend laufendem Job abgelehnt")
+            return (_int32(VisionErrorCode.BUSY),)
+        if calibration_session.running:
+            _log.warning("StartCalibration waehrend laufender Session abgelehnt")
+            return (_int32(VisionErrorCode.BUSY),)
+        if not states.is_ready():
+            return (_int32(VisionErrorCode.INVALID_STATE),)
+        calibration_session.start()
+        show_session(calibration_session)
+        _log.info("Kalibrier-Session gestartet")
+        return (_int32(VisionErrorCode.OK),)
+
+    @uamethod
+    async def capture_calibration_sample(parent):
+        """1:CaptureCalibrationSample -- versucht eine Aufnahme vom
+        aktuellen Kamerabild, manuell ausgeloest (z. B. per Leertaste im
+        Stream-Viewer). `Error=OK` heisst: Board gefunden und
+        uebernommen; `DETECTION_FAILED` heisst nur "dieser Versuch nicht"
+        -- die Session laeuft weiter, ein erneuter Versuch ist ok.
+        """
+        if not calibration_session.running:
+            return (_int32(VisionErrorCode.INVALID_STATE),)
+        found = await calibration_session.capture()
+        return (_int32(VisionErrorCode.OK if found else VisionErrorCode.DETECTION_FAILED),)
+
+    @uamethod
+    async def finish_calibration(parent):
+        """1:FinishCalibration -- rechnet aus den gesammelten Aufnahmen
+        und speichert bei Erfolg `data/calibration/<frame_id>.json`.
+
+        `Summary` ist immer gueltiges JSON, auch im Fehlerfall (dann mit
+        `message` statt `rms`/`samples`/... ), damit das Frontend nicht
+        zwischen Erfolgs- und Fehlerform unterscheiden muss.
+        """
+        if not calibration_session.running:
+            return (
+                ua.Variant('{"message": "keine Session aktiv"}', ua.VariantType.String),
+                _int32(VisionErrorCode.INVALID_STATE),
+            )
+        error, summary = await calibration_session.finish()
+        show_session(None)
+        return (ua.Variant(json.dumps(summary), ua.VariantType.String), _int32(error))
+
+    @uamethod
+    async def abort_calibration(parent):
+        """1:AbortCalibration -- stoppt ohne zu speichern."""
+        if not calibration_session.running:
+            return (_int32(VisionErrorCode.INVALID_STATE),)
+        await calibration_session.abort()
+        show_session(None)
+        _log.info("Kalibrier-Session abgebrochen")
+        return (_int32(VisionErrorCode.OK),)
+
+    methods: dict[str, Node] = {}
+    for name, handler, outputs in (
+        ("StartCalibration", start_calibration, [ua.VariantType.Int32]),
+        ("CaptureCalibrationSample", capture_calibration_sample, [ua.VariantType.Int32]),
+        (
+            "FinishCalibration",
+            finish_calibration,
+            [ua.VariantType.String, ua.VariantType.Int32],
+        ),
+        ("AbortCalibration", abort_calibration, [ua.VariantType.Int32]),
+    ):
+        methods[name] = await _add_vision_method(space, name, handler, outputs)
+    return methods
+
+
+async def _wire_live_calibration(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    sources: Mapping[str, DetectionSource],
+    opened: Mapping[str, bool],
+    calibration_session: CalibrationSession | None,
+    annotator: Any,
+) -> None:
+    """Fuellt `ActiveCalibrationInfo` und haengt die Live-Uebernahme an.
+
+    Nach einer erfolgreichen interaktiven Kalibrierung ziehen Erkennung,
+    Overlay und Info-Knoten sofort nach -- kein Server-Neustart noetig.
+    """
+    apriltag_source = sources.get("apriltag")
+    if config.apriltag is not None and opened.get("apriltag"):
+        # Was `open()` gerade geladen hat (echte Datei oder Platzhalter) --
+        # ohne das waere ActiveCalibrationInfo leer, bis zum ersten
+        # StartCalibration.
+        await _write_calibration_info(
+            space.active_calibration_info,
+            getattr(apriltag_source, "_calibration", None),
+            config.apriltag.calibration_path,
+        )
+    if calibration_session is None:
+        return
+
+    async def _apply_live_calibration(calibration: Any) -> None:
+        """Bringt Erkennung, Overlay und den Info-Knoten sofort auf den
+        neuen Stand -- kein Server-Neustart noetig, siehe
+        `AprilTagDetectionSource.apply_calibration`."""
+        if apriltag_source is not None and hasattr(apriltag_source, "apply_calibration"):
+            apriltag_source.apply_calibration(calibration)
+        if annotator is not None and hasattr(annotator, "apply_calibration"):
+            annotator.apply_calibration(calibration)
+        await _write_calibration_info(
+            space.active_calibration_info, calibration, config.apriltag.calibration_path
+        )
+
+    calibration_session.set_on_calibrated(_apply_live_calibration)
+
+
+def _program_mirror_nodes(space: VisionAddressSpace, results: ResultStore) -> dict[str, Node]:
+    """Ergebnisknoten, die `VisionProgram/ResultSet` zusaetzlich verlinkt --
+    nur die, die es in dieser Konfiguration gibt."""
+    candidates = {
+        "LatestResultJson": results.json_node,
+        "LatestCameraFrame": space.latest_camera_frame,
+        "CameraStreamMode": space.camera_stream_mode,
+        "CalibrationProgress": space.calibration_progress,
+        "ActiveCalibrationInfo": space.active_calibration_info,
+    }
+    return {name: node for name, node in candidates.items() if node is not None}
+
+
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
     """Baut das Vision-System in einen initialisierten Server ein.
 
@@ -406,127 +699,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     results = await ResultStore.create(space)
     sources = build_detection_sources(config)
     jobs = JobRunner(config, states, events, results, sources)
-    #: Erst spaeter auf ihren echten Wert gesetzt (siehe unten, nach dem
-    #: Oeffnen der Quellen) -- die Closures hier greifen erst beim
-    #: tatsaechlichen Methodenaufruf darauf zu, also lange danach. Python loest
-    #: Namen in Closures spaet auf, das ist hier bewusst genutzt.
-    calibration_session: CalibrationSession | None = None
-    annotator: Any = None
-
-    @uamethod
-    async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
-        """OPC-UA-Einstiegspunkt fuer 1:StartSingleJob.
-
-        Muss `async` sein: synchrone Handler laufen bei asyncua in einem
-        ThreadPoolExecutor ohne laufenden Event-Loop, dort scheitert das
-        Starten des Job-Tasks. `jobs.start_single_job` bleibt synchron und
-        wird ohne `await`-Punkt aufgerufen — die Zulassung bleibt atomar.
-
-        Gibt JobId und Error als String bzw. Int32 zurueck, obwohl das Nodeset
-        `JobIdDataType` deklariert — asyncua validiert Methodenargumente nicht,
-        und ein Client koennte das ExtensionObject nicht dekodieren. Die
-        Rueckgabe muss ein Tupel sein; eine Liste wuerde asyncua als einen
-        einzigen Variant verpacken.
-        """
-        if calibration_session is not None and calibration_session.running:
-            _log.warning("StartSingleJob waehrend laufender Kalibrierung abgelehnt")
-            return (
-                ua.Variant("", ua.VariantType.String),
-                ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
-            )
-        job_id, error = jobs.start_single_job(
-            meas_id, part_id, recipe_id, product_id, parameters
-        )
-        return (
-            ua.Variant(job_id, ua.VariantType.String),
-            ua.Variant(int(error), ua.VariantType.Int32),
-        )
-
-    server.link_method(space.start_single_job, start_single_job)
-
-    @uamethod
-    async def stop_job(parent, cause, cause_description):
-        """OPC-UA-Einstiegspunkt fuer 1:Stop.
-
-        `Cause`/`CauseDescription` schickt das Frontend fire-and-forget immer
-        als 0/"" und wertet sie nicht aus; wir werten sie ebenfalls nicht aus.
-        Muss wie `start_single_job` `async` sein.
-        """
-        error = await jobs.stop()
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
-
-    server.link_method(space.stop, stop_job)
-
-    @uamethod
-    async def start_continuous(parent, meas_id, part_id, recipe_id, product_id, parameters):
-        """1:StartContinuous -- Dauerbetrieb bis Stop oder Abort."""
-        if calibration_session is not None and calibration_session.running:
-            _log.warning("StartContinuous waehrend laufender Kalibrierung abgelehnt")
-            return (
-                ua.Variant("", ua.VariantType.String),
-                ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
-            )
-        job_id, error = jobs.start_continuous(
-            meas_id, part_id, recipe_id, product_id, parameters
-        )
-        return (
-            ua.Variant(job_id, ua.VariantType.String),
-            ua.Variant(int(error), ua.VariantType.Int32),
-        )
-
-    server.link_method(space.start_continuous, start_continuous)
-
-    @uamethod
-    async def abort_job(parent, cause, cause_description):
-        """1:Abort -- wie Stop, aber ueber den Abort-Uebergang.
-
-        Fuer uns ist der Unterschied nur der Zustandsuebergang und die Meldung
-        im Ergebnis: es gibt keinen Zwischenstand, den ein Abbruch verwerfen
-        koennte. Beide melden `CANCELLED`.
-        """
-        error = await jobs.stop(abort=True)
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
-
-    server.link_method(space.abort, abort_job)
-
-    @uamethod
-    async def halt_system(parent, cause, cause_description):
-        """1:Halt -- laufenden Job beenden, dann keine Jobs mehr annehmen.
-
-        Aus Halted fuehrt nur `Reset` zurueck. Das ist der Sinn: Halt ist die
-        Bremse fuer den Bediener, nicht ein weiterer Betriebszustand.
-        """
-        error = await jobs.stop()
-        if error != VisionErrorCode.OK:
-            return (ua.Variant(int(error), ua.VariantType.Int32),)
-        try:
-            await states.halt()
-        except Exception:
-            _log.exception("Halt fehlgeschlagen")
-            return (ua.Variant(int(VisionErrorCode.INTERNAL), ua.VariantType.Int32),)
-        return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
-
-    server.link_method(space.halt, halt_system)
-
-    @uamethod
-    async def reset_system(parent, cause, cause_description):
-        """1:Reset -- zurueck in den betriebsbereiten Zustand.
-
-        Ueber Preoperational, weil das Nodeset keinen Uebergang
-        Halted -> Operational kennt; `enter_operational` faehrt genau diesen
-        konformen Weg.
-        """
-        try:
-            await states.enter_operational()
-        except Exception:
-            _log.exception("Reset fehlgeschlagen")
-            return (ua.Variant(int(VisionErrorCode.INTERNAL), ua.VariantType.Int32),)
-        return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
-
-    server.link_method(space.reset, reset_system)
 
     # Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
-    # Die Methode bleibt verlinkt, sonst antwortet der Server BadNothingToDo.
     opened = {profile: await _open_source(source) for profile, source in sources.items()}
     if all(opened.values()):
         await states.enter_operational()
@@ -537,6 +711,11 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         )
 
     calibration_session = _build_calibration_session(sources, opened, config)
+    # Die Methoden werden erst jetzt verlinkt, weil die Start-Handler die
+    # Kalibrier-Session brauchen. Das ist gefahrlos: vor `server.start()`
+    # kann ohnehin kein Client aufrufen.
+    _link_40100_methods(space, jobs, states, calibration_session)
+
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
     camera_health = await _start_camera_health(space, assets, sources, opened)
     camera_http = (
@@ -544,167 +723,28 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         if camera_stream is not None
         else None
     )
-
-    apriltag_source = sources.get("apriltag")
-    if config.apriltag is not None and opened.get("apriltag"):
-        # Was `open()` gerade geladen hat (echte Datei oder Platzhalter) --
-        # ohne das waere ActiveCalibrationInfo leer, bis zum ersten
-        # StartCalibration.
-        await _write_calibration_info(
-            space.active_calibration_info,
-            getattr(apriltag_source, "_calibration", None),
-            config.apriltag.calibration_path,
-        )
-    if calibration_session is not None:
-
-        async def _apply_live_calibration(calibration: Any) -> None:
-            """Bringt Erkennung, Overlay und den Info-Knoten sofort auf den
-            neuen Stand -- kein Server-Neustart noetig, siehe
-            `AprilTagDetectionSource.apply_calibration`."""
-            if apriltag_source is not None and hasattr(apriltag_source, "apply_calibration"):
-                apriltag_source.apply_calibration(calibration)
-            if annotator is not None and hasattr(annotator, "apply_calibration"):
-                annotator.apply_calibration(calibration)
-            await _write_calibration_info(
-                space.active_calibration_info, calibration, config.apriltag.calibration_path
-            )
-
-        calibration_session.set_on_calibrated(_apply_live_calibration)
+    await _wire_live_calibration(
+        space, config, sources, opened, calibration_session, annotator
+    )
 
     #: Kalibriermethoden, die zusaetzlich unter `VisionProgram` aufrufbar
     #: werden -- gefuellt nur, wenn es eine Kalibrier-Session gibt.
     calibration_methods: dict[str, Node] = {}
-
     if calibration_session is not None and space.calibration_progress is not None:
-        #: Praefix der Methoden-NodeIds. Explizit statt der laufenden Nummer,
-        #: die `add_method(own_idx, ...)` vergeben wuerde: die verschiebt sich,
-        #: sobald jemand davor einen Knoten einfuegt, und das Frontend spricht
-        #: die Methoden ueber feste Adressen an.
-        method_prefix = config.vision_system_name
-
-        @uamethod
-        async def start_calibration(parent):
-            """1:StartCalibration -- setzt eine neue Session auf; Aufnahmen
-            kommen danach ausschliesslich ueber `CaptureCalibrationSample`.
-
-            Kein Kalibrierdurchlauf gegen einen laufenden Job oder eine
-            zweite Session gleichzeitig -- beide teilen sich Kamera und
-            Detektor.
-            """
-            if jobs.busy:
-                _log.warning("StartCalibration waehrend laufendem Job abgelehnt")
-                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
-            if calibration_session.running:
-                _log.warning("StartCalibration waehrend laufender Session abgelehnt")
-                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
-            if not states.is_ready():
-                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
-            calibration_session.start()
-            if annotator is not None:
-                annotator.set_calibration_session(calibration_session)
-            _log.info("Kalibrier-Session gestartet")
-            return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
-
-        calibration_methods["StartCalibration"] = await space.vision_system.add_method(
-            ua.NodeId(f"{method_prefix}.StartCalibration", space.own_idx),
-            ua.QualifiedName("StartCalibration", space.own_idx),
-            start_calibration,
-            [],
-            [ua.VariantType.Int32],
-        )
-
-        @uamethod
-        async def capture_calibration_sample(parent):
-            """1:CaptureCalibrationSample -- versucht eine Aufnahme vom
-            aktuellen Kamerabild, manuell ausgeloest (z. B. per Leertaste im
-            Stream-Viewer). `Error=OK` heisst: Board gefunden und
-            uebernommen; `DETECTION_FAILED` heisst nur "dieser Versuch nicht"
-            -- die Session laeuft weiter, ein erneuter Versuch ist ok.
-            """
-            if not calibration_session.running:
-                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
-            found = await calibration_session.capture()
-            error = VisionErrorCode.OK if found else VisionErrorCode.DETECTION_FAILED
-            return (ua.Variant(int(error), ua.VariantType.Int32),)
-
-        calibration_methods["CaptureCalibrationSample"] = (
-            await space.vision_system.add_method(
-                ua.NodeId(f"{method_prefix}.CaptureCalibrationSample", space.own_idx),
-                ua.QualifiedName("CaptureCalibrationSample", space.own_idx),
-                capture_calibration_sample,
-                [],
-                [ua.VariantType.Int32],
-            )
-        )
-
-        @uamethod
-        async def finish_calibration(parent):
-            """1:FinishCalibration -- rechnet aus den gesammelten Aufnahmen
-            und speichert bei Erfolg `data/calibration/<frame_id>.json`.
-
-            `Summary` ist immer gueltiges JSON, auch im Fehlerfall (dann mit
-            `message` statt `rms`/`samples`/... ), damit das Frontend nicht
-            zwischen Erfolgs- und Fehlerform unterscheiden muss.
-            """
-            if not calibration_session.running:
-                return (
-                    ua.Variant('{"message": "keine Session aktiv"}', ua.VariantType.String),
-                    ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),
-                )
-            error, summary = await calibration_session.finish()
-            if annotator is not None:
-                annotator.set_calibration_session(None)
-            return (
-                ua.Variant(json.dumps(summary), ua.VariantType.String),
-                ua.Variant(int(error), ua.VariantType.Int32),
-            )
-
-        calibration_methods["FinishCalibration"] = await space.vision_system.add_method(
-            ua.NodeId(f"{method_prefix}.FinishCalibration", space.own_idx),
-            ua.QualifiedName("FinishCalibration", space.own_idx),
-            finish_calibration,
-            [],
-            [ua.VariantType.String, ua.VariantType.Int32],
-        )
-
-        @uamethod
-        async def abort_calibration(parent):
-            """1:AbortCalibration -- stoppt ohne zu speichern."""
-            if not calibration_session.running:
-                return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
-            await calibration_session.abort()
-            if annotator is not None:
-                annotator.set_calibration_session(None)
-            _log.info("Kalibrier-Session abgebrochen")
-            return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
-
-        calibration_methods["AbortCalibration"] = await space.vision_system.add_method(
-            ua.NodeId(f"{method_prefix}.AbortCalibration", space.own_idx),
-            ua.QualifiedName("AbortCalibration", space.own_idx),
-            abort_calibration,
-            [],
-            [ua.VariantType.Int32],
+        calibration_methods = await _install_calibration_methods(
+            space, jobs, states, calibration_session, annotator
         )
 
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
     # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
     # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
-    mirror_nodes = {"LatestResultJson": results.json_node}
-    if space.latest_camera_frame is not None:
-        mirror_nodes["LatestCameraFrame"] = space.latest_camera_frame
-    if space.camera_stream_mode is not None:
-        mirror_nodes["CameraStreamMode"] = space.camera_stream_mode
-    if space.calibration_progress is not None:
-        mirror_nodes["CalibrationProgress"] = space.calibration_progress
-    if space.active_calibration_info is not None:
-        mirror_nodes["ActiveCalibrationInfo"] = space.active_calibration_info
     program = await install_vision_program(
         server,
         server.nodes.objects,
         space.own_idx,
         jobs,
         known_recipes=config.known_recipe_ids,
-        mirror_nodes=mirror_nodes,
+        mirror_nodes=_program_mirror_nodes(space, results),
         mirror_methods=calibration_methods,
     )
     if not states.is_ready():
