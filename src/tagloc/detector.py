@@ -56,7 +56,7 @@ def predefined_dictionary(name: str):
 
     Bridges the new (`getPredefinedDictionary`) and old (`Dictionary_get`)
     API. Also needed outside the detector by anything that **generates**
-    markers, e.g. `tools/make_synthetic_scene.py`.
+    markers, e.g. `tagloc.synthetic` and `tools/make_tag_sheet.py`.
     """
     import cv2
 

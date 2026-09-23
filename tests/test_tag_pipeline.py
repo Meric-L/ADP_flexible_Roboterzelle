@@ -1,7 +1,7 @@
 """End-to-end test on a synthetically rendered image.
 
 This is the level where the detection chain is checked against a **reference
-value** instead of itself: `tools/make_synthetic_scene.py` places tags at
+value** instead of itself: `tagloc.synthetic` places tags at
 known locations and projects them with exactly the intrinsics later fed into
 pose estimation. What comes out afterward must match the input.
 
@@ -28,7 +28,14 @@ try:
     import numpy as np
 
     _ = (cv2.imread, cv2.aruco, np.ndarray)
+except (ImportError, AttributeError):  # pragma: no cover - ohne OpenCV uebersprungen
+    cv2 = None
 
+# Nur der cv2/numpy-Test oben darf zum Ueberspringen fuehren. Ein Fehler in
+# tagloc selbst soll als Fehler sichtbar werden -- frueher stand alles in
+# einem breiten `except Exception` und die ganze Datei wurde still
+# uebersprungen.
+if cv2 is not None:
     from tagloc.boards import BoardSpec, calibrate_from_samples, detect_board
     from tagloc.detector import build_detector
     from tagloc.frames import to_gray
@@ -41,8 +48,7 @@ try:
     )
     from tagloc.localize import camera_pose_from_reference_tags, locate_modules
     from tagloc.pose import estimate_tag_pose, estimate_tag_poses, poses_by_tag
-    from tagloc.tagmap import TagEntry, TagMap, missing_tags, place_tags, residuals
-    from tools.make_synthetic_scene import (
+    from tagloc.synthetic import (
         chessboard_views,
         default_tag_layout,
         orbit_views,
@@ -50,8 +56,7 @@ try:
         render_tags,
         synthetic_calibration,
     )
-except Exception:  # pragma: no cover - skipped without OpenCV
-    cv2 = None
+    from tagloc.tagmap import TagEntry, TagMap, missing_tags, place_tags, residuals
 
 #: Position: the concept's spec value. Measured worst case on this scene is
 #: 0.29 mm, so this keeps a factor of seven.

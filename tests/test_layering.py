@@ -35,7 +35,14 @@ PURE_MODULES = (
 )
 
 #: Modules that use cv2 -- but only inside functions, never at import time.
-LAZY_CV2_MODULES = ("tagloc.detector", "tagloc.pose", "tagloc.boards", "tagloc.overlay", "tagloc.frames")
+LAZY_CV2_MODULES = (
+    "tagloc.detector",
+    "tagloc.pose",
+    "tagloc.boards",
+    "tagloc.overlay",
+    "tagloc.frames",
+    "tagloc.synthetic",
+)
 
 STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes", "tagloc.jsonio")
 
