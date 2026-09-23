@@ -79,10 +79,8 @@ def build_board(spec: BoardSpec) -> Any:
                 (spec.cols, spec.rows), spec.square_size_m, spec.marker_size_m, dictionary
             )
         except TypeError:  # pragma: no cover - older signature
-            return aruco.CharucoBoard_create(
-                spec.cols, spec.rows, spec.square_size_m, spec.marker_size_m, dictionary
-            )
-    return aruco.CharucoBoard_create(  # pragma: no cover
+            pass
+    return aruco.CharucoBoard_create(  # pragma: no cover - OpenCV < 4.7
         spec.cols, spec.rows, spec.square_size_m, spec.marker_size_m, dictionary
     )
 
@@ -146,10 +144,16 @@ def compute_coverage(samples, image_size: tuple[int, int]) -> tuple[float, float
     return (min(1.0, max(0.0, span_x)), min(1.0, max(0.0, span_y)))
 
 
-def _chessboard_object_points(spec: BoardSpec) -> np.ndarray:
-    grid = np.zeros((spec.cols * spec.rows, 3), dtype=np.float32)
+def chessboard_object_points(spec: BoardSpec, dtype=np.float32) -> np.ndarray:
+    """Innere Ecken des Schachbretts im Board-KS, in Metern, Z = 0.
+
+    Reihenfolge wie `findChessboardCorners` sie liefert (zeilenweise, X
+    laeuft zuerst). `float32` ist, was `calibrateCamera` erwartet; der
+    Szenen-Renderer rechnet mit `float64`.
+    """
+    grid = np.zeros((spec.cols * spec.rows, 3), dtype=dtype)
     grid[:, :2] = np.mgrid[0 : spec.cols, 0 : spec.rows].T.reshape(-1, 2)
-    return grid * spec.square_size_m
+    return grid * np.asarray(spec.square_size_m, dtype=dtype)
 
 
 def calibrate_from_samples(
@@ -182,7 +186,7 @@ def calibrate_from_samples(
             object_points.append(matched_object)
             image_points.append(matched_image)
     else:
-        grid = _chessboard_object_points(spec)
+        grid = chessboard_object_points(spec)
         for sample in samples:
             object_points.append(grid)
             image_points.append(np.asarray(sample.corners, dtype=np.float32))
@@ -211,6 +215,7 @@ __all__ = [
     "BoardSpec",
     "build_board",
     "calibrate_from_samples",
+    "chessboard_object_points",
     "compute_coverage",
     "detect_board",
 ]

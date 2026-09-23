@@ -42,7 +42,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from tagloc.boards import BoardSpec  # noqa: E402
+from tagloc.boards import BoardSpec, chessboard_object_points  # noqa: E402
 from tagloc.calibration import CameraCalibration, save_calibration  # noqa: E402
 from tagloc.geometry import (  # noqa: E402
     Pose,
@@ -278,16 +278,10 @@ def marker_patch(family: str, tag_id: int, marker_px: int, quiet_px: int):
     **outer edge** of the black frame (hence the half pixels) -- that's the
     edge `size_m` refers to and that the detector measures.
     """
-    import cv2
+    from tagloc.detector import aruco_dictionary, generate_marker
 
-    from tagloc.detector import aruco_dictionary
-
-    dictionary = aruco_dictionary(family)
     marker_px = int(marker_px)
-    if hasattr(cv2.aruco, "generateImageMarker"):
-        marker = cv2.aruco.generateImageMarker(dictionary, int(tag_id), marker_px)
-    else:  # OpenCV < 4.7
-        marker = cv2.aruco.drawMarker(dictionary, int(tag_id), marker_px)
+    marker = generate_marker(aruco_dictionary(family), tag_id, marker_px)
     quiet_px = int(quiet_px)
     patch = np.full((marker_px + 2 * quiet_px, marker_px + 2 * quiet_px), 255, dtype=np.uint8)
     patch[quiet_px : quiet_px + marker_px, quiet_px : quiet_px + marker_px] = marker
@@ -387,13 +381,6 @@ def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibrat
 # --------------------------------------------------------------------------
 
 
-def chessboard_object_points(spec: BoardSpec) -> np.ndarray:
-    """Return the inner corners in the board frame, same order as `boards.py`."""
-    grid = np.zeros((spec.cols * spec.rows, 3), dtype=np.float64)
-    grid[:, :2] = np.mgrid[0 : spec.cols, 0 : spec.rows].T.reshape(-1, 2)
-    return grid * float(spec.square_size_m)
-
-
 def _chessboard_patch(spec: BoardSpec, square_px: int, margin_squares: int):
     """Return the board as an image: `(image, board area corners)`.
 
@@ -426,7 +413,7 @@ def _chessboard_outline(spec: BoardSpec, expand_squares: float = 0.0) -> np.ndar
     """Return the four outer corners of the board area, in the board frame.
 
     The origin sits on the first inner corner, one square width from the
-    edge -- as `boards._chessboard_object_points` assumes. `expand_squares`
+    edge -- as `boards.chessboard_object_points` assumes. `expand_squares`
     grows the rectangle to include the white quiet zone, which must be in
     the image or `findChessboardCorners` won't find the board.
     """
@@ -493,7 +480,7 @@ def chessboard_views(
     """
     size = tuple(image_size or calibration.image_size)
     view_calibration = synthetic_from(calibration, size)
-    centre = chessboard_object_points(spec).mean(axis=0)
+    centre = chessboard_object_points(spec, np.float64).mean(axis=0)
     generator = random.Random(int(seed))
 
     poses: list[Pose] = []

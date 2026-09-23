@@ -72,6 +72,21 @@ def predefined_dictionary(name: str):
     return aruco.Dictionary_get(dictionary_id)  # pragma: no cover - OpenCV < 4.7
 
 
+def generate_marker(dictionary, tag_id: int, pixels: int):
+    """Rendert einen Marker als Graustufenbild, `pixels` breit und hoch.
+
+    Wie `predefined_dictionary` eine Bruecke zwischen neuer
+    (`generateImageMarker`) und alter API (`drawMarker`). Fuer alles, was
+    Marker **erzeugt**: Druckbogen und synthetische Szenen.
+    """
+    import cv2
+
+    aruco = cv2.aruco
+    if hasattr(aruco, "generateImageMarker"):
+        return aruco.generateImageMarker(dictionary, int(tag_id), int(pixels))
+    return aruco.drawMarker(dictionary, int(tag_id), int(pixels))  # pragma: no cover - OpenCV < 4.7
+
+
 def aruco_dictionary(family: str = "tag36h11"):
     """Same, but for a family name from the configuration."""
     name = ARUCO_DICTIONARIES.get(family)
@@ -193,5 +208,6 @@ __all__ = [
     "TagObservation",
     "aruco_dictionary",
     "build_detector",
+    "generate_marker",
     "predefined_dictionary",
 ]

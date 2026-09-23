@@ -18,6 +18,10 @@ import base64
 import sys
 from pathlib import Path
 
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
 MARGIN_MM = 12.0
@@ -37,49 +41,39 @@ def _png_data_uri(image) -> str:
 
 
 def _dictionary(name: str):
-    import cv2
+    """`DICT_*`-Name -> cv2-Dictionary; unbekannte Namen beenden mit Hinweis."""
+    from tagloc.detector import predefined_dictionary
 
-    aruco = cv2.aruco
-    if not hasattr(aruco, name):
-        raise SystemExit(f"Diese OpenCV-Version kennt '{name}' nicht")
-    identifier = getattr(aruco, name)
-    if hasattr(aruco, "getPredefinedDictionary"):
-        return aruco.getPredefinedDictionary(identifier)
-    return aruco.Dictionary_get(identifier)
+    try:
+        return predefined_dictionary(name)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
 
 def render_marker(dictionary, tag_id: int, size_mm: float):
     """Render one marker as a bitmap at print resolution."""
-    import cv2
+    from tagloc.detector import generate_marker
 
-    pixels = max(64, int(size_mm * PIXELS_PER_MM))
-    if hasattr(cv2.aruco, "generateImageMarker"):
-        return cv2.aruco.generateImageMarker(dictionary, tag_id, pixels)
-    return cv2.aruco.drawMarker(dictionary, tag_id, pixels)
+    return generate_marker(dictionary, tag_id, max(64, int(size_mm * PIXELS_PER_MM)))
 
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
     """Render a ChArUco board as a bitmap, plus its size in millimeters."""
-    import cv2
+    from tagloc.boards import CHARUCO, BoardSpec, build_board
 
-    dictionary = _dictionary(name)
+    _dictionary(name)  # unbekannter Name -> SystemExit statt Traceback
+    spec = BoardSpec(
+        type=CHARUCO,
+        cols=spec_cols,
+        rows=spec_rows,
+        square_size_m=square_mm / 1000.0,
+        marker_size_m=marker_mm / 1000.0,
+        dictionary=name,
+    )
+    board = build_board(spec)
     width_mm = spec_cols * square_mm
     height_mm = spec_rows * square_mm
     size_px = (int(width_mm * PIXELS_PER_MM), int(height_mm * PIXELS_PER_MM))
-    aruco = cv2.aruco
-    if hasattr(aruco, "CharucoBoard"):
-        try:
-            board = aruco.CharucoBoard(
-                (spec_cols, spec_rows), square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-        except TypeError:
-            board = aruco.CharucoBoard_create(
-                spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-    else:
-        board = aruco.CharucoBoard_create(
-            spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
-        )
     image = board.generateImage(size_px) if hasattr(board, "generateImage") else board.draw(size_px)
     return image, width_mm, height_mm
 
