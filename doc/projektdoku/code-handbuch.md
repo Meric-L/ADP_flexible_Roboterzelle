@@ -139,7 +139,7 @@ Lesereihenfolge für Einsteiger: `geometry.py`, `observations.py`, `calibration.
 | `src/tagloc/reference_edges.py` | Tag-Position über Bezugskanten einmessen: Kantensuche im Bild, RANSAC-Geraden, Korrektur in der Tag-Ebene, Mittelung über Bilder, Kameraplanung | `measure_reference_lines`, `fit_in_plane_correction`, `average_corrections`, `plan_reference_view`, `catalog_rpy_deg`, `ReferenceLine`, `LineMeasurement` |
 | `src/tagloc/reference_overlay.py` | Zeichnet die Zwischenschritte der Kantensuche (Debug-Ansicht). Rechnet nichts. | `draw_reference_debug`, `scale_debug`, `effective_layers`, `LAYER_KEYS` |
 | `src/tagloc/overlay.py` | Zeichnet Ergebnisse ins Bild: schlanker Stream-Modus, ausführliche Variante mit Achsenkreuz für die CLI, Statusleiste, Fenster. Rechnet nichts. | `draw_tag_boxes`, `draw_tag_overlay`, `draw_board_overlay`, `draw_calibration_caption`, `draw_status_bar`, `Window`, `has_display`, `summarise` |
-| `src/tagloc/frames.py` | Bildquellen: Webcam, Pi-Kamera (Picamera2), RealSense, Bildordner, Einzelbild, geteilte Kamera des Servers. Löst `--source` auf. | `open_source`, `iter_frames`, `ImageFolderSource`, `SharedCameraSource`, `to_gray`, `image_size` |
+| `src/tagloc/frames.py` | Bildquellen: Webcam, Pi-Kamera (Picamera2), RealSense, Bildordner, Einzelbild. Löst `--source` auf. Der Server benutzt diesen Weg nicht, er hat `SharedCamera`. | `open_source`, `ImageFolderSource`, `to_gray`, `image_size` |
 
 **Ablauf**
 
