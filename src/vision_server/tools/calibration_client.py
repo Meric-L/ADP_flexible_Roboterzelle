@@ -18,11 +18,13 @@ import sys
 
 from asyncua import Client, ua
 
+from vision_server.aio import stop_event_on_signals
+
 _log = logging.getLogger("calibration-client")
 
 #: Fehlercodes aus doc/vision-server-interface.md ("Fehlercodes (Error)") --
-#: kein Import aus `vision_server`, dieses Skript bleibt ein reiner
-#: OPC-UA-Client, unabhaengig vom Server-Code.
+#: kein Import aus dem Server-Code, dieses Skript bleibt ein reiner
+#: OPC-UA-Client (`vision_server.aio` ist reine Standardbibliothek).
 BUSY = 3
 
 
@@ -65,16 +67,9 @@ async def run(args: argparse.Namespace) -> int:
         )
 
         # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
-        # Coroutine abgefangen -- eine `except KeyboardInterrupt` hier drin
-        # wird nie erreicht, der Prozess stirbt sofort ohne FinishCalibration.
-        # Ein echter Signal-Handler setzt stattdessen nur ein Event, auf das
-        # der Loop reagieren kann.
-        stop = asyncio.Event()
-        loop = asyncio.get_running_loop()
-        try:
-            loop.add_signal_handler(signal.SIGINT, stop.set)
-        except NotImplementedError:
-            pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
+        # Coroutine abgefangen -- ohne Signal-Handler stirbt der Prozess
+        # sofort ohne FinishCalibration (siehe `stop_event_on_signals`).
+        stop = stop_event_on_signals((signal.SIGINT,))
 
         auto_result = None
         while not stop.is_set():

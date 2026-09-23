@@ -1,10 +1,8 @@
 """Zusammenbau des Vision-Systems, als Einbau oder als eigener Prozess."""
 
 import asyncio
-import contextlib
 import json
 import logging
-import signal
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +10,7 @@ from typing import Any
 
 from asyncua import Node, Server, ua, uamethod
 
+from .aio import cancel_and_wait, stop_event_on_signals
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .calibration_session import CalibrationSession
@@ -375,10 +374,7 @@ class VisionMachine:
         # OFF_SPEC statt des letzten echten Zustands.
         if self.camera_health is not None:
             await self.camera_health.stop()
-        if self.lag_watchdog is not None:
-            self.lag_watchdog.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.lag_watchdog
+        await cancel_and_wait(self.lag_watchdog)
         if self.camera_http is not None:
             await self.camera_http.stop()
         if self.camera_stream is not None:
@@ -752,11 +748,7 @@ async def run(config: VisionServerConfig) -> None:
     await configure_server(server, config)
     machine = await install_vision_machine(server, config)
     _log.info("Vision-Server laeuft auf %s", config.endpoint)
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        with contextlib.suppress(NotImplementedError):
-            loop.add_signal_handler(sig, stop.set)
+    stop = stop_event_on_signals()
     try:
         async with server:
             await stop.wait()

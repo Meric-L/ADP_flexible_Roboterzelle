@@ -31,6 +31,7 @@ from typing import Any
 from asyncua import Server, ua
 from asyncua.common.node import Node
 
+from .aio import cancel_and_wait
 from .camera import CameraStatus, SharedCamera
 from .nodeset_ids import DeviceHealth
 from .profiles import CameraStreamConfig
@@ -228,11 +229,8 @@ class CameraHealthPublisher:
         self._task = asyncio.create_task(self._publish_loop())
 
     async def stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        await cancel_and_wait(self._task)
+        self._task = None
 
     async def publish_now(self) -> None:
         """Ein Durchlauf ausserhalb der Kadenz. Wirft nie."""
