@@ -29,7 +29,6 @@ zurueckgelassen, nicht beendet.
 """
 
 import asyncio
-import contextlib
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -37,6 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
+from .aio import cancel_and_wait
 from .profiles import CAMERA_BACKENDS, CameraStreamConfig
 
 _log = logging.getLogger(__name__)
@@ -475,11 +475,8 @@ class SharedCamera:
 
     async def close(self) -> None:
         """Stoppt den Capture-Loop und gibt die Kamera frei. Idempotent."""
-        if self._loop_task is not None:
-            self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._loop_task
-            self._loop_task = None
+        await cancel_and_wait(self._loop_task)
+        self._loop_task = None
         if self._camera is not None:
             camera, self._camera = self._camera, None
             await self._close_in_own_thread(camera)

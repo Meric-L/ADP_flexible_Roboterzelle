@@ -23,6 +23,7 @@ from asyncua.common.node import Node
 
 from tagloc.modes import normalise_mode
 
+from .aio import cancel_and_wait
 from .camera import SharedCamera
 from .profiles import CameraStreamConfig
 
@@ -314,8 +315,5 @@ class CameraStreamPublisher:
             await asyncio.sleep(max(0.0, interval - elapsed))
 
     async def stop(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        await cancel_and_wait(self._task)
+        self._task = None
