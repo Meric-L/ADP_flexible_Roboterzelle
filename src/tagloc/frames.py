@@ -8,7 +8,6 @@ directory, so the same code runs in the lab and in tests.
 """
 
 import logging
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -48,24 +47,25 @@ class ImageFolderSource:
     def __len__(self) -> int:
         return len(self._paths)
 
-    @property
-    def current_path(self) -> Path | None:
-        if self._index == 0:
-            return None
-        return self._paths[(self._index - 1) % len(self._paths)]
-
     def read(self) -> Any | None:
+        """Naechstes lesbares Bild; unlesbare werden mit Warnung uebersprungen.
+
+        Hoechstens ein voller Durchlauf je Aufruf: sind alle Bilder
+        unlesbar, kommt `None` -- auch mit `loop=True`, wo die fruehere
+        rekursive Fassung in einem `RecursionError` endete.
+        """
         import cv2
 
-        if self._index >= len(self._paths) and not self._loop:
-            return None
-        path = self._paths[self._index % len(self._paths)]
-        self._index += 1
-        image = cv2.imread(str(path))
-        if image is None:
+        for _ in range(len(self._paths)):
+            if self._index >= len(self._paths) and not self._loop:
+                return None
+            path = self._paths[self._index % len(self._paths)]
+            self._index += 1
+            image = cv2.imread(str(path))
+            if image is not None:
+                return image
             _log.warning("Bild nicht lesbar, uebersprungen: %s", path)
-            return self.read()
-        return image
+        return None
 
     def close(self) -> None:
         return None
@@ -171,24 +171,6 @@ class RealSenseSource:
         self._pipeline.stop()
 
 
-class SharedCameraSource:
-    """Adapter over `vision_server.camera.SharedCamera`.
-
-    Doesn't know the type, only its `latest_frame` property -- keeps
-    `tagloc` free of a dependency on `vision_server`.
-    """
-
-    def __init__(self, camera: Any) -> None:
-        self._camera = camera
-
-    def read(self) -> Any | None:
-        frame = self._camera.latest_frame
-        return None if frame is None else frame.image
-
-    def close(self) -> None:
-        return None
-
-
 def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: bool = False):
     """Resolve the CLI tools' `--source` argument.
 
@@ -219,17 +201,6 @@ def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: b
     )
 
 
-def iter_frames(source, limit: int | None = None) -> Iterator[Any]:
-    """Yield frames from a source until it's empty or `limit` is reached."""
-    count = 0
-    while limit is None or count < limit:
-        frame = source.read()
-        if frame is None:
-            return
-        count += 1
-        yield frame
-
-
 def to_gray(image) -> Any:
     """Convert BGR to grayscale. An already single-channel image is unchanged."""
     import cv2
@@ -254,11 +225,10 @@ __all__ = [
     "FrameSource",
     "ImageFolderSource",
     "PiCameraSource",
-    "SharedCameraSource",
+    "RealSenseSource",
     "SingleImageSource",
     "VideoCaptureSource",
     "image_size",
-    "iter_frames",
     "open_source",
     "to_gray",
 ]
