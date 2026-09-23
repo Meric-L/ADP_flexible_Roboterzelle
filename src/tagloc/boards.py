@@ -120,15 +120,15 @@ def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None
         # uebernommen wuerde das die Bild-zu-Weltpunkt-Zuordnung in
         # `_chessboard_object_points` lautlos vertauschen -- die Kalibrierung
         # liefe zwar durch, aber mit falschem Ergebnis statt eines Fehlers.
-        # CALIB_CB_ACCURACY (OpenCV >= 4.6, deshalb hasattr-Check -- der Pi
-        # laeuft 4.x): eigener, langsamerer Algorithmus fuer bessere
-        # Eckengenauigkeit -- hier gewollt, Kalibrieren ist nicht
-        # zeitkritisch (interaktiv, ein paar Sekunden pro Aufnahme sind ok).
-        sb_flags = cv2.CALIB_CB_NORMALIZE_IMAGE
-        if hasattr(cv2, "CALIB_CB_ACCURACY"):
-            sb_flags |= cv2.CALIB_CB_ACCURACY
+        # BEWUSST OHNE CALIB_CB_ACCURACY: der Flag ist laut OpenCV-Doku ein
+        # "eigener, langsamerer Algorithmus" -- gemessen bei ~4000 px Breite
+        # (Deckenkamera-Format) 4,45 s gegen 0,87 s ohne (Faktor 5) bzw.
+        # 0,06 s bei der klassischen Methode (Faktor 73). Die Kalibrier-
+        # Aufnahme laeuft immer auf dem VOLLEN Kamera-Frame (12 MP an der
+        # Deckenkamera) -- mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in
+        # den Timeout ("Failed to send request"), live gefunden 2026-09-23.
         found, corners = cv2.findChessboardCornersSB(
-            gray, (spec.cols, spec.rows), flags=sb_flags
+            gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE
         )
         if found:
             return BoardSample(corners=np.asarray(corners)[::-1], ids=None)
