@@ -105,6 +105,10 @@ class CalibrationSession:
         self._capture_dir = config.calibration_capture_dir
         self._saved_captures = 0
         self._save_capture_image = save_capture_image or _save_capture_image
+        #: Laufende Hintergrund-Tasks aus `_schedule_capture_save` -- Referenz
+        #: haelt sie am Leben (sonst kann der Garbage Collector eine
+        #: `asyncio.Task` ohne gehaltene Referenz vorzeitig einsammeln).
+        self._pending_saves: set = set()
         #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
         #: frisch berechneten `CameraCalibration`-Objekt -- `runner.py` setzt
         #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
@@ -169,6 +173,41 @@ class CalibrationSession:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
 
+    def _schedule_capture_save(self, path: Any, image: Any) -> None:
+        """Speichert die Debug-Aufnahme im Hintergrund, ohne `capture()` --
+        und damit die Antwort auf `CaptureCalibrationSample` -- darauf warten
+        zu lassen.
+
+        Live gefunden 2026-09-23 an der Deckenkamera (12 MP): ein
+        synchrones `await self._run_blocking(...)` an dieser Stelle liess
+        `cv2.imwrite` als PNG mehrere Sekunden brauchen, bevor die
+        OPC-UA-Antwort ueberhaupt rausging -- derselbe Timeout
+        ("Failed to send request to OPC UA server"), der zuvor schon durch
+        `CALIB_CB_ACCURACY` verursacht wurde (siehe `boards.py`). Das
+        Speichern ist reines Debug-Artefakt, kein Teil des Ergebnisses --
+        es darf also ruhig noch laufen, waehrend der Operator schon die
+        naechste Aufnahme macht. Der Ein-Worker-Pool (`_pool()`) haelt die
+        Schreibreihenfolge trotzdem ein, dieselbe Warteschlange wie fuer
+        `detect_board`."""
+        task = asyncio.ensure_future(self._run_blocking(self._save_capture_image, path, image))
+        self._pending_saves.add(task)
+        task.add_done_callback(self._on_capture_save_done)
+
+    def _on_capture_save_done(self, task: "asyncio.Task") -> None:
+        self._pending_saves.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            _log.warning("Debug-Aufnahme konnte nicht gespeichert werden: %s", error)
+
+    async def wait_for_pending_saves(self) -> None:
+        """Wartet auf alle im Hintergrund laufenden Debug-Speicherungen --
+        fuer Tests, die das Ergebnis von `_schedule_capture_save` pruefen
+        wollen, bevor sie fortfahren. Im Produktivbetrieb ungenutzt."""
+        if self._pending_saves:
+            await asyncio.gather(*list(self._pending_saves), return_exceptions=True)
+
     def start(self) -> None:
         """Setzt Samples zurueck. Aufnahmen kommen ab jetzt nur noch ueber
         `capture()`."""
@@ -214,7 +253,7 @@ class CalibrationSession:
         if self._capture_dir is not None:
             self._saved_captures += 1
             path = self._capture_dir / f"kalib_{self._saved_captures:03d}.png"
-            await self._run_blocking(self._save_capture_image, path, frame.image)
+            self._schedule_capture_save(path, frame.image)
         await self._maybe_auto_finish()
         return True
 

@@ -1272,6 +1272,17 @@ wird. Aktuell auf beiden Pis aktiv, während die Ursache dafür untersucht wird,
 dass Layer 1 im `calibration`-Stream keine Board-Ecken einzeichnet und dort
 der automatische Abschluss trotz ausreichender Abdeckung nicht ausgelöst hat.
 
+**Speichert im Hintergrund, blockiert `CaptureCalibrationSample` nicht.** Ein
+`await` an dieser Stelle hätte die OPC-UA-Antwort auf das Schreiben warten
+lassen — bei der Deckenkamera (12 MP) kann `cv2.imwrite` als PNG mehrere
+Sekunden brauchen, live gefunden 2026-09-23: derselbe Timeout
+("Failed to send request to OPC UA server"), den zuvor schon
+`CALIB_CB_ACCURACY` verursacht hatte (Abschnitt 4, `apriltag-referenz.md`),
+diesmal durch dieses Debug-Feature selbst. Die Aufnahme läuft jetzt als
+Hintergrund-Task weiter, während `capture()` bereits zurückkehrt; Reihenfolge
+bleibt erhalten (derselbe Ein-Worker-Pool wie `detect_board`), ein
+Fehlschlag beim Speichern landet nur im Log, nie im `Error`-Rückgabewert.
+
 ---
 
 ## 13. Schnittstelle auf einen Blick

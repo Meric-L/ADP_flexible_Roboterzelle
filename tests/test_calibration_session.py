@@ -168,6 +168,7 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
 
         await session.capture()
         await session.capture()
+        await session.wait_for_pending_saves()
 
         self.assertEqual(len(saved_calls), 2)
         self.assertEqual(saved_calls[0][0], Path("captures") / "kalib_001.png")
@@ -224,6 +225,7 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
 
         session.start()
         await session.capture()
+        await session.wait_for_pending_saves()
 
         self.assertEqual(saved_calls[-1], Path("captures") / "kalib_001.png")
 
