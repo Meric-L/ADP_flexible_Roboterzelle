@@ -149,6 +149,20 @@ gesetzte Karte also weiterhin aktiv — der Pi bleibt ohne Backend arbeitsfähig
 
 - Die tatsächlichen Kantenlängen (Welttag vs. Modultag) sind noch nicht
   gemessen. Bis dahin bleiben die bisherigen Werte stehen.
+- **Frontend nutzt `SetTagMap`/`TagMapJson` noch nicht.** Im Repo
+  `webskillcomposition` (`frontend/src/features/opcua-server/`) gibt es bisher
+  keinen Treffer für `TagMap`/`SetTagMap` -- weder Typ/Parser analog
+  `cameraCalibration.ts` (`parseCalibrationProgress`), noch Hook analog
+  `useCameraCalibration.ts`, noch UI-Komponente analog
+  `CameraCalibrationModal.tsx`. Für die Aufnahme eines neuen Moduls über die
+  Oberfläche fehlt also noch:
+  - ein Modell für die Tag-Map (Parsen/Validieren des JSON aus `TagMapJson`,
+    Bauen des JSON für `SetTagMap`),
+  - ein Hook, der `TagMapJson` abonniert und `SetTagMap` aufruft, inkl.
+    Behandlung von `BUSY` / `INVALID_ARGUMENT` / `INTERNAL`,
+  - eine UI-Stelle, an der ein neues Modul (Tag-Id, Rolle, ggf. abweichende
+    `sizeM`) eingetragen und übernommen werden kann, statt die Karte von Hand
+    auf dem Pi zu bearbeiten.
 
 ## Abweichungen vom Plan
 
