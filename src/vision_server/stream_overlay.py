@@ -61,6 +61,7 @@ class AprilTagStreamAnnotator:
         self._last_tag_poses: list = []
         self._last_board = None
         self._scaled: dict[tuple[int, int], Any] = {}
+        self._board_spec_cache: Any = None  # lazy: `_board_spec`
         #: Waehrend `runner.py`s `StartCalibration`/`FinishCalibration`/
         #: `AbortCalibration` gesetzt bzw. wieder auf `None` -- siehe
         #: `set_calibration_session`.
@@ -112,24 +113,21 @@ class AprilTagStreamAnnotator:
     def _board_spec(self):
         """Return the board geometry from config.
 
-        Dieselbe Quelle wie `CalibrationSession._spec()` -- fruher las diese
+        Dieselbe Quelle wie `CalibrationSession._spec()` -- frueher las diese
         Methode `self._calibration.board`, was bei einer Platzhalter-
         Kalibrierung (kein `board`-Feld) auf den `BoardSpec()`-Default
         (9x6/30mm) zurueckfiel und damit eine andere Geometrie annahm als die
         tatsaechlich laufende Session: die Ecken-Erkennung im Stream fand nie
         etwas, obwohl `CaptureCalibrationSample` (mit der Config-Geometrie)
-        das Board korrekt fand.
+        das Board korrekt fand. Seitdem bauen beide ueber
+        `board_spec_from_config`; die Config ist eingefroren, das Ergebnis
+        wird darum nur einmal gebaut statt zweimal pro Tick.
         """
-        from tagloc.boards import BoardSpec
+        if self._board_spec_cache is None:
+            from .calibration_session import board_spec_from_config
 
-        return BoardSpec(
-            type=self._config.calibration_board_type,
-            cols=self._config.calibration_board_cols,
-            rows=self._config.calibration_board_rows,
-            square_size_m=self._config.calibration_board_square_size_m,
-            marker_size_m=self._config.calibration_board_marker_size_m,
-            dictionary=self._config.calibration_board_dictionary,
-        )
+            self._board_spec_cache = board_spec_from_config(self._config)
+        return self._board_spec_cache
 
     def annotate(self, image: Any, mode: str) -> Any:
         """Return an annotated copy. Never lets an exception escape.

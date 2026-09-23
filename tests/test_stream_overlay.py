@@ -58,6 +58,22 @@ class BoardSpecFromConfigTest(unittest.TestCase):
         self.assertEqual(spec.rows, 9)
         self.assertEqual(spec.square_size_m, 0.022)
 
+    def test_matches_the_calibration_session_and_is_built_once(self):
+        from vision_server.calibration_session import CalibrationSession
+
+        annotator = AprilTagStreamAnnotator(
+            CONFIG,
+            detector=None,
+            calibration=_fake_calibration((100, 100)),
+            tag_map=None,
+        )
+        session = CalibrationSession(camera=None, config=CONFIG)
+
+        self.assertEqual(annotator._board_spec(), session._spec())
+        self.assertIs(annotator._board_spec(), annotator._board_spec())
+        self.assertEqual(annotator._board_spec().dictionary, "DICT_5X5_100")
+        self.assertEqual(annotator._board_spec().marker_size_m, 0.011)
+
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class CalibrationModeDownscaleTest(unittest.TestCase):

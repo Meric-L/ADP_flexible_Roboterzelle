@@ -60,6 +60,26 @@ def _lazy(module: str, name: str) -> Callable:
     return call
 
 
+def board_spec_from_config(config: AprilTagProfileConfig):
+    """Baut `tagloc.boards.BoardSpec` aus den `calibration_board_*`-Skalaren.
+
+    Die eine Stelle fuer Session und Stream-Overlay -- zwei Kopien hatten
+    schon einmal verschiedene Geometrien angenommen (siehe
+    `AprilTagStreamAnnotator._board_spec`). Importiert `tagloc` erst hier,
+    damit `profiles.py` frei von der Abhaengigkeit bleibt.
+    """
+    from tagloc.boards import BoardSpec
+
+    return BoardSpec(
+        type=config.calibration_board_type,
+        cols=config.calibration_board_cols,
+        rows=config.calibration_board_rows,
+        square_size_m=config.calibration_board_square_size_m,
+        marker_size_m=config.calibration_board_marker_size_m,
+        dictionary=config.calibration_board_dictionary,
+    )
+
+
 class CalibrationSession:
     """Sammelt Board-Samples aus der geteilten Kamera, bis `finish()` rechnet.
 
@@ -124,19 +144,9 @@ class CalibrationSession:
         self._on_calibrated = callback
 
     def _spec(self):
-        """Baut `BoardSpec` aus den Skalaren der Config. Importiert `tagloc`
-        erst hier, damit `profiles.py` frei von der Abhaengigkeit bleibt."""
+        """`BoardSpec` aus der Config, einmal gebaut (siehe `board_spec_from_config`)."""
         if self._board_spec is None:
-            from tagloc.boards import BoardSpec
-
-            self._board_spec = BoardSpec(
-                type=self._config.calibration_board_type,
-                cols=self._config.calibration_board_cols,
-                rows=self._config.calibration_board_rows,
-                square_size_m=self._config.calibration_board_square_size_m,
-                marker_size_m=self._config.calibration_board_marker_size_m,
-                dictionary=self._config.calibration_board_dictionary,
-            )
+            self._board_spec = board_spec_from_config(self._config)
         return self._board_spec
 
     def _pool(self) -> ThreadPoolExecutor:
@@ -307,4 +317,4 @@ class CalibrationSession:
         await self._stop()
 
 
-__all__ = ["CalibrationSession"]
+__all__ = ["CalibrationSession", "board_spec_from_config"]
