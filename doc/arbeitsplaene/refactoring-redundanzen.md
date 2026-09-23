@@ -166,17 +166,46 @@ Abweichungen und Nebenwirkungen:
   `detector`, `calibration`, `tag_map`); `runner.py` greift nicht mehr auf
   private Attribute zu.
 
-Nicht gemacht (reservierte Dateien des Deckenkamera-Plans oder
-Teamentscheidung): `src/apriltag/` löschen, tote Felder in `profiles.py`,
-`"tag36h11"` in `profiles.py` → `DEFAULT_TAG_FAMILY`, RealSense-Code in
-`camera.py`/`frames.py`/`list_realsense_profiles.py` zusammenlegen,
-`cancel_and_wait` in `camera.py`/`camera_stream.py`, Signal-Handling und
-`logging.basicConfig` beim Import in `server.py`, `REPO_ROOT` in
-`profiles.py`/`server.py`.
+Zunächst nicht gemacht, weil `camera.py`, `camera_stream.py`, `profiles.py`
+und `server.py` durch `deckenkamera-volle-aufloesung.md` reserviert waren —
+nach dessen Abschluss nachgeholt, siehe Nachtrag unten.
 
 Veraltet, aber bewusst nicht umgeschrieben: `apriltag-lokalisierung.md`
 nennt `tools/make_synthetic_scene.py` als Renderer — der Kern liegt jetzt in
 `tagloc/synthetic.py` (siehe `apriltag-referenz.md` §13).
+
+### Nachtrag 23.09.2026: ehemals reservierte Dateien
+
+Der Deckenkamera-Plan ist abgeschlossen (auf Pi 1 getestet, 5–10 fps), die
+Dateien sind frei. 425 → 432 Tests, alle grün. Kamera-Hardwarepfade
+(Picamera2, RealSense) sind nur per Fakes getestet, real lief nur OpenCV.
+
+- `server.main` nutzt `configure_server` und `stop_event_on_signals`;
+  `logging.basicConfig` läuft erst in `main()`, nicht mehr beim Import.
+  `NODESET_PATH` entfernt (gleich dem Config-Default).
+  `VisionServerConfig.application_uri` enthält auf dem Pi jetzt die echte URI.
+- Das echte Kalibrierboard (Schachbrett 7×9, 22 mm) steht einmal als
+  `_REAL_BOARD` in `server.py`.
+- `profiles.py` ist die einzige Quelle für `REPO_ROOT`, `CALIBRATION_DIR`,
+  `calibration_path_for(frame_id)`; `server.py`, `jobs/calibrate.py`,
+  `detection/__init__.py` nutzen sie.
+- Tote Felder `AprilTagProfileConfig.camera_index`, `use_picamera`,
+  `warmup_s` entfernt; `tag_family` nutzt `DEFAULT_TAG_FAMILY`.
+- `camera.py`/`camera_stream.py`: `cancel_and_wait`, `SharedCamera` nutzt
+  `SerialExecutor`. `camera.realsense_color_profiles(device)` gemeinsam für
+  Fehlermeldung und `tools/list_realsense_profiles.py` (braucht jetzt
+  `PYTHONPATH=src`).
+- `tools/measure_framerate.py` nutzt den neuen Kontextmanager
+  `SharedCamera.direct_reader()` statt privater Member; läuft jetzt
+  synchron im Hauptthread.
+- Veraltete Kommentare zum `lores`-Strom (Stream-Modi auf vollem Bild) und
+  zu "10 fps Obergrenze" (gemessen 5–10 fps) nachgezogen.
+
+Weiterhin offen: Defaults 0,05 m / 3,0 px zwischen `profiles.py` und
+`tagloc/cli/_common.py` teilen (kein sauberer gemeinsamer Ort),
+RealSense-Code in `tagloc/frames.py` und `camera.py` zusammenlegen (ohne
+Hardware nicht prüfbar, Verhalten weicht ab), `src/apriltag/` löschen
+(Teamentscheidung).
 
 ## Nach Abschluss
 
