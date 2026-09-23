@@ -110,6 +110,25 @@ def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
     return bgr[:, :width] if bgr.shape[1] > width else bgr
 
 
+def realsense_color_profiles(device: Any) -> set[tuple[int, int, int, str]]:
+    """Farb-Stream-Profile einer RealSense als `(breite, hoehe, fps, format)`.
+
+    `device` ist ein Eintrag aus `rs.context().query_devices()`. Fragt nur die
+    Faehigkeiten ab und oeffnet keine Pipeline. Genutzt von der Fehlermeldung
+    in `_open_realsense` und von `tools/list_realsense_profiles.py`.
+    """
+    import pyrealsense2 as rs
+
+    profiles = set()
+    for sensor in device.query_sensors():
+        for profile in sensor.get_stream_profiles():
+            if profile.stream_type() != rs.stream.color:
+                continue
+            video = profile.as_video_stream_profile()
+            profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+    return profiles
+
+
 def _list_realsense_color_profiles() -> str:
     """Fragt die angeschlossene RealSense nach ihren Farb-Stream-Profilen.
 
@@ -122,13 +141,7 @@ def _list_realsense_color_profiles() -> str:
         devices = rs.context().query_devices()
         if len(devices) == 0:
             return "keine RealSense gefunden (Kabel/USB-Port pruefen)"
-        profiles = set()
-        for sensor in devices[0].query_sensors():
-            for profile in sensor.get_stream_profiles():
-                if profile.stream_type() != rs.stream.color:
-                    continue
-                video = profile.as_video_stream_profile()
-                profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+        profiles = realsense_color_profiles(devices[0])
         if not profiles:
             return "Kamera gefunden, aber keine Farb-Profile gemeldet"
         return ", ".join(

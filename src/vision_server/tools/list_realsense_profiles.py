@@ -8,10 +8,16 @@ verfuegbar sind -- das ist die Liste, aus der ein neuer Wert fuer
 `realsense_resolution`/`realsense_fps` kommen sollte, kein anderes Format.
 
 Braucht keinen exklusiven Kamerazugriff -- fragt nur die Geraete-Faehigkeiten
-ab, oeffnet keine Pipeline (der Server kann parallel weiterlaufen).
+ab, oeffnet keine Pipeline (der Server kann parallel weiterlaufen). Das
+Einsammeln teilt es sich mit `_open_realsense` (`camera.realsense_color_profiles`),
+braucht deshalb `src/` im Pfad:
+
+    PYTHONPATH=src python3 src/vision_server/tools/list_realsense_profiles.py
 """
 
 import sys
+
+from vision_server.camera import realsense_color_profiles
 
 
 def main() -> int:
@@ -25,14 +31,7 @@ def main() -> int:
     device = devices[0]
     print(f"Geraet: {device.get_info(rs.camera_info.name)}")
 
-    profiles: set[tuple[int, int, int, str]] = set()
-    for sensor in device.query_sensors():
-        for profile in sensor.get_stream_profiles():
-            if profile.stream_type() != rs.stream.color:
-                continue
-            video = profile.as_video_stream_profile()
-            profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
-
+    profiles = realsense_color_profiles(device)
     if not profiles:
         print("Kamera gefunden, aber keine Farb-Profile gemeldet.", file=sys.stderr)
         return 1

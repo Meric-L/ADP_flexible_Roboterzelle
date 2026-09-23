@@ -6,7 +6,10 @@ Konvention (siehe camera.py). Verifiziert wird deshalb nur das Dispatching,
 nicht das Ansprechen der eigentlichen Kamera.
 """
 
+import sys
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 try:
     import cv2
@@ -19,6 +22,7 @@ from vision_server.camera import (
     PICAMERA2_PREVIEW_FORMAT,
     SharedCamera,
     picamera2_video_configuration,
+    realsense_color_profiles,
     yuv420_to_bgr,
 )
 from vision_server.profiles import CameraStreamConfig
@@ -64,6 +68,55 @@ class CloseDispatchTest(unittest.TestCase):
         camera._close_camera(capture)
 
         self.assertTrue(capture.released)
+
+
+class FakeStreamProfile:
+    """Ein Stream-Profil, wie `pyrealsense2` es je Sensor meldet."""
+
+    def __init__(self, stream: str, width: int, height: int, fps: int, fmt: str) -> None:
+        self._stream = stream
+        self._video = SimpleNamespace(width=lambda: width, height=lambda: height)
+        self._fps = fps
+        self._format = SimpleNamespace(name=fmt)
+
+    def stream_type(self) -> str:
+        return self._stream
+
+    def as_video_stream_profile(self):
+        return self._video
+
+    def fps(self) -> int:
+        return self._fps
+
+    def format(self):
+        return self._format
+
+
+class RealSenseColorProfilesTest(unittest.TestCase):
+    """Nur das Einsammeln -- `pyrealsense2` ist hier durch eine Attrappe ersetzt."""
+
+    def test_collects_the_colour_profiles_of_all_sensors_once(self):
+        fake_rs = SimpleNamespace(stream=SimpleNamespace(color="color"))
+        sensors = [
+            SimpleNamespace(
+                get_stream_profiles=lambda: [
+                    FakeStreamProfile("depth", 848, 480, 30, "z16"),
+                    FakeStreamProfile("color", 640, 480, 15, "bgr8"),
+                ]
+            ),
+            SimpleNamespace(
+                get_stream_profiles=lambda: [
+                    FakeStreamProfile("color", 640, 480, 15, "bgr8"),
+                    FakeStreamProfile("color", 1280, 720, 30, "rgb8"),
+                ]
+            ),
+        ]
+        device = SimpleNamespace(query_sensors=lambda: sensors)
+
+        with mock.patch.dict(sys.modules, {"pyrealsense2": fake_rs}):
+            profiles = realsense_color_profiles(device)
+
+        self.assertEqual(profiles, {(640, 480, 15, "bgr8"), (1280, 720, 30, "rgb8")})
 
 
 class Picamera2ConfigurationTest(unittest.TestCase):
