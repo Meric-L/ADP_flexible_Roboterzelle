@@ -199,6 +199,30 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("message", summary)
         self.assertEqual(save_calls, [])
 
+    async def test_detection_failed_when_calibration_raises_a_non_value_error(self):
+        """cv2.calibrateCamera scheitert bei numerisch ungeeigneten Aufnahmen
+        mit `cv2.error`, keinem `ValueError` -- muss trotzdem als sauberes
+        DETECTION_FAILED zurueckkommen statt die Session unsichtbar tot
+        haengen zu lassen (Bug, live auf Pi 2 gefunden 2026-09-23)."""
+
+        def fake_calibrate_raises_runtime_error(samples, image_size, spec, board, *, frame_id):
+            raise RuntimeError("cv2.calibrateCamera: Rueckprojektion divergiert")
+
+        session, camera, _calibrate_calls, save_calls = make_session(
+            calibrate_from_samples=fake_calibrate_raises_runtime_error
+        )
+        session.start()
+        camera.push()
+        for _ in range(3):
+            await session.capture()
+
+        error, summary = await session.finish()
+
+        self.assertEqual(error, VisionErrorCode.DETECTION_FAILED)
+        self.assertIn("divergiert", summary["message"])
+        self.assertEqual(save_calls, [])
+        self.assertFalse(session.running)
+
     async def test_finish_without_ever_starting_reports_zero_samples(self):
         session, _camera, _calibrate_calls, save_calls = make_session()
 

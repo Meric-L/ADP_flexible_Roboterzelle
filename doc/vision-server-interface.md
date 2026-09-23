@@ -1024,7 +1024,20 @@ nur noch `INVALID_STATE`.
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
 | `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`, ggf. mit `warning` (siehe 12.5). Bei Fehlschlag `{"message": "...", "samples": N}` |
-| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
+| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples **oder** die Berechnung selbst ist numerisch gescheitert — `message` nennt den Grund) |
+
+`DETECTION_FAILED` mit Berechnungs-Grund kann passieren, obwohl genug Samples
+und gute Bildabdeckung vorlagen: `cv2.calibrateCamera` prüft nicht nur die
+Anzahl, sondern ob sich daraus überhaupt ein Kameramodell lösen lässt — bei
+zu wenig Neigungs-/Distanz-Variation (Abschnitt 12.5, "Abdeckung allein sagt
+nichts über die tatsächliche Genauigkeit") kann das ganz scheitern statt nur
+ungenau zu werden. Bis 2026-09-23 fing der Server dabei nur `ValueError` ab;
+die eigentliche Exception (`cv2.error`) lief unbehandelt durch und ließ die
+Session unsichtbar beendet zurück, ohne Ergebnis oder Fehlermeldung — jede
+weitere `CaptureCalibrationSample` lieferte danach nur noch `DETECTION_FAILED`
+("Board nicht gefunden"), ein späteres `FinishCalibration` nur `INVALID_STATE`.
+Seither wird jede Exception aus der Berechnung abgefangen und als
+`DETECTION_FAILED` mit `message` gemeldet.
 
 ### 12.4 `AbortCalibration`
 

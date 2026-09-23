@@ -262,7 +262,19 @@ class CalibrationSession:
                 board,
                 frame_id=self._config.frame_id,
             )
-        except ValueError as error:
+        except Exception as error:
+            # Nicht nur ValueError: cv2.calibrateCamera scheitert bei
+            # numerisch ungeeigneten Aufnahmen (z. B. zu wenig Neigungs-/
+            # Distanz-Variation trotz guter Bildabdeckung) mit `cv2.error`,
+            # keinem ValueError. Ungefangen wuerde das hier durchschlagen --
+            # `self.running` ist zu diesem Zeitpunkt bereits `False` (siehe
+            # `_stop()` oben), die Session bliebe also unsichtbar tot haengen:
+            # jede weitere `capture()` liefert danach nur noch "Board nicht
+            # gefunden", ein spaeteres manuelles `finish()` nur noch
+            # `INVALID_STATE`, ohne dass je ein Ergebnis oder eine
+            # Fehlermeldung zu sehen war. `asyncio.CancelledError` faengt das
+            # nicht ab (die erbt von `BaseException`, nicht `Exception`).
+            _log.exception("Kalibrierung fehlgeschlagen (%d Aufnahmen)", len(samples))
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
