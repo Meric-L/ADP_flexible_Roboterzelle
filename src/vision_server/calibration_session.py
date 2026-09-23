@@ -22,13 +22,12 @@ verhindert das automatische Speichern nicht, macht die Ungenauigkeit aber
 sichtbar statt sie zu verstecken.
 """
 
-import asyncio
 import importlib
 import inspect
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+from .aio import SerialExecutor
 from .camera import SharedCamera
 from .errors import VisionErrorCode
 from .profiles import AprilTagProfileConfig
@@ -126,7 +125,10 @@ class CalibrationSession:
         self._board_spec: Any = None  # lazy: braucht cv2, siehe `_spec()`
         self._samples: list = []
         self._image_size: tuple[int, int] = (0, 0)
-        self._executor: ThreadPoolExecutor | None = None
+        #: Eigener Worker fuer `detect_board`/`calibrate_from_samples` -- nie
+        #: auf dem Event-Loop, gleiches Muster wie `DetectionSource.run_blocking`.
+        #: Startet erst beim ersten Aufruf und nach `_stop()` wieder frisch.
+        self._executor = SerialExecutor("vision-calibration")
         self.running = False
         #: Ergebnis von `finish()` bzw. des automatischen Abschlusses ueber
         #: `calibration_coverage_threshold`; `None` bis dahin. Wird von
@@ -148,20 +150,6 @@ class CalibrationSession:
         if self._board_spec is None:
             self._board_spec = board_spec_from_config(self._config)
         return self._board_spec
-
-    def _pool(self) -> ThreadPoolExecutor:
-        """Eigener Ein-Worker-Pool fuer `detect_board`/`calibrate_from_samples`
-        -- nie auf dem Event-Loop, gleiches Muster wie
-        `DetectionSource.run_blocking`."""
-        if self._executor is None:
-            self._executor = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="vision-calibration"
-            )
-        return self._executor
-
-    async def _run_blocking(self, func, /, *args, **kwargs):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
 
     def start(self) -> None:
         """Setzt Samples zurueck. Aufnahmen kommen ab jetzt nur noch ueber
@@ -195,7 +183,7 @@ class CalibrationSession:
         spec = self._spec()
         board = self._build_board(spec)  # None fuer chessboard
         self._image_size = frame_tools.image_size(frame.image)
-        sample = await self._run_blocking(
+        sample = await self._executor.run(
             self._detect_board, frame_tools.to_gray(frame.image), spec, board
         )
         if sample is None:
@@ -242,9 +230,7 @@ class CalibrationSession:
 
     async def _stop(self) -> None:
         self.running = False
-        if self._executor is not None:
-            self._executor.shutdown(wait=False, cancel_futures=True)
-            self._executor = None
+        self._executor.shutdown()
 
     async def _compute_and_save(self) -> tuple[VisionErrorCode, dict]:
         """Rechnet und speichert. Immer aufraeumend, auch bei Fehlschlag --
@@ -264,7 +250,7 @@ class CalibrationSession:
         spec = self._spec()
         board = self._build_board(spec)
         try:
-            calibration = await self._run_blocking(
+            calibration = await self._executor.run(
                 self._calibrate_from_samples,
                 samples,
                 image_size,
@@ -276,7 +262,7 @@ class CalibrationSession:
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
-        await self._run_blocking(self._save_calibration, self._out_path, calibration)
+        await self._executor.run(self._save_calibration, self._out_path, calibration)
         if self._on_calibrated is not None:
             outcome = self._on_calibrated(calibration)
             if inspect.isawaitable(outcome):
