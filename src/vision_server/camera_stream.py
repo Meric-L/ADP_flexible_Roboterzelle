@@ -69,6 +69,14 @@ class CameraStreamPublisher:
     `runner.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
     Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
     sehen, keine Diff-Logik.
+
+    **Keine Ueberwachung hier.** Ob die Kamera lebt, beantwortet allein
+    `Health/DeviceHealth` nach OPC 40100-2 (`camera_health.py`), gespeist aus
+    dem Watchdog in `camera.py`. Dieser Publisher hat frueher zusaetzlich das
+    Bildalter geprueft und den Knoten geleert -- zwei Wahrheiten ueber
+    dieselbe Frage, von denen eine am Standard vorbeilief. Bei haengender
+    Kamera steht das Livebild deshalb jetzt still; dass es steht, sagt die
+    Zustandsampel, nicht das fehlende Bild.
     """
 
     def __init__(
@@ -97,6 +105,21 @@ class CameraStreamPublisher:
         self._progress_node = progress_node
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
+        #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
+        self._overlay_run: asyncio.Future | None = None
+        #: Das zuletzt kodierte Bild (Base64) samt laufender Nummer. Knoten und
+        #: MJPEG-Server lesen beide hier -- jeder Frame wird nur einmal
+        #: markiert und kodiert, egal wie viele Abnehmer es gibt.
+        self._latest: str | None = None
+        self._seq = 0
+        #: (Frame-Zeitstempel, Modus) des zuletzt kodierten Bildes; gleicher
+        #: Schluessel = kein neuer Frame, nichts neu zu kodieren.
+        self._encoded_key: tuple | None = None
+        self._frame_ready = asyncio.Condition()
+        #: Laufende MJPEG-Verbindungen; ohne sie tickt der Loop nur mit
+        #: `stream_fps`, um die CPU des Pi zu schonen.
+        self._viewers = 0
+        self._next_node_write = 0.0
 
     @property
     def mode(self) -> str:
@@ -120,44 +143,173 @@ class CameraStreamPublisher:
     def start(self) -> None:
         self._task = asyncio.create_task(self._publish_loop())
 
+    @property
+    def latest(self) -> tuple[int, str] | None:
+        """Laufende Nummer und Base64-JPEG des neuesten Bildes.
+
+        Bewusst ohne Altersgrenze: ob die Kamera lebt, sagt `DeviceHealth`
+        nach OPC 40100-2 (camera_health.py), nicht dieser Publisher. Ein
+        Standbild ist ein Bild, kein Gesundheitssignal -- zwei Wahrheiten
+        darueber waeren eine zu viel.
+        """
+        if self._latest is None:
+            return None
+        return self._seq, self._latest
+
+    @contextlib.asynccontextmanager
+    async def viewer(self):
+        """Meldet einen MJPEG-Zuschauer an; solange er da ist, tickt der Loop schneller."""
+        self._viewers += 1
+        try:
+            yield
+        finally:
+            self._viewers -= 1
+
+    async def next_frame(self, after_seq: int, timeout: float) -> tuple[int, str] | None:
+        """Wartet auf ein Bild mit hoeherer Nummer als `after_seq`.
+
+        `None` nach `timeout` -- etwa, weil die Kamera haengt und der Frame
+        veraltet ist. Wer langsam liest, verpasst Bilder statt einen Rueckstau
+        aufzubauen: es gibt immer nur das neueste.
+        """
+        async with self._frame_ready:
+            try:
+                await asyncio.wait_for(
+                    self._frame_ready.wait_for(
+                        lambda: self.latest is not None and self._seq > after_seq
+                    ),
+                    timeout=timeout,
+                )
+            except TimeoutError:
+                return None
+            return self.latest
+
+    async def _annotate(self, loop: asyncio.AbstractEventLoop, image, mode: str):
+        """Overlay mit Timeout; bei Timeout oder noch laufendem Lauf das Rohbild.
+
+        Gibt `(bild, vollstaendig)` zurueck; `False` heisst, das Rohbild ging
+        ersatzweise raus und darf nicht als fertig markiertes Bild gelten.
+
+        Ein haengender Lauf blockiert einen Thread des Default-Executors, der
+        sich nicht abbrechen laesst. Deshalb startet kein neuer, bevor er
+        fertig ist -- sonst liefe der Executor Tick fuer Tick voll.
+        """
+        if self._overlay_run is not None and not self._overlay_run.done():
+            return image, False
+        # In the worker thread: detection and drawing are blocking and have no
+        # business on the event loop. The annotator works on a copy.
+        run = loop.run_in_executor(None, self._annotator.annotate, image, mode)
+        # Holt die Exception eines abgehaengten Laufs ab, sonst meldet asyncio
+        # "Future exception was never retrieved".
+        run.add_done_callback(lambda done: done.cancelled() or done.exception())
+        self._overlay_run = run
+        try:
+            annotated = await asyncio.wait_for(
+                asyncio.shield(run), timeout=self._config.overlay_timeout_s
+            )
+        except TimeoutError:
+            _log.warning(
+                "Overlay laenger als %.1f s, sende das Rohbild",
+                self._config.overlay_timeout_s,
+            )
+            return image, False
+        return annotated, True
+
+    async def _encoded(self, loop: asyncio.AbstractEventLoop, frame) -> str | None:
+        """Markiert und kodiert einen Frame, aber nur, wenn er neu ist."""
+        mode = await self._read_mode()
+        key = (frame.timestamp, mode)
+        if key == self._encoded_key and self._latest is not None:
+            return self._latest
+        # "apriltag" und "off" zeigen den vollen Frame, nicht die kleine
+        # ISP-Vorschau:
+        # - "apriltag" muss exakt das Bild zeigen, auf dem auch der Job
+        #   erkennt -- sonst laesst sich nicht vertrauenswuerdig sehen, ob der
+        #   Pi ein Tag wirklich findet oder das nur auf dem kleineren
+        #   Vorschaubild klappt/scheitert. Kostet mehr pro Tick (volle
+        #   Aufloesung statt ~0,7 MP an der Deckenkamera); die Framerate sinkt
+        #   dadurch von selbst ueber die Sleep-Anpassung unten -- bewusst in
+        #   Kauf genommen (Absprache 2026-09-22).
+        # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
+        #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
+        #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
+        #   ohne Erkennung/Overlay ist hier nur der groessere Encode neu.
+        # "calibration" bleibt beim kleinen Vorschaubild: dort geht es nicht
+        # um Erkennungstreue, und die Session hat ohnehin ein eigenes, separat
+        # getuntes Downscale vor `detect_board` (`detection_max_width`).
+        if mode in ("apriltag", "off"):
+            source = frame.image
+        else:
+            source = getattr(frame, "preview", None)
+            if source is None:
+                source = frame.image
+        image, complete = source, True
+        if mode != "off" and self._annotator is not None:
+            image, complete = await self._annotate(loop, source, mode)
+        if self._config.max_stream_width is not None:
+            # Nach dem Overlay und nur fuers Publizieren -- beide Wege
+            # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im
+            # "apriltag"-Modus lief die Erkennung vorher bereits in voller
+            # Aufloesung; hier wird nur noch die fertig markierte Kopie fuers
+            # Uebertragen verkleinert, die Treffer selbst bleiben unveraendert.
+            image = await loop.run_in_executor(
+                None, _resize_for_stream, image, self._config.max_stream_width
+            )
+        encoded = await loop.run_in_executor(
+            None, self._encode_frame, image, self._config.jpeg_quality
+        )
+        if encoded is None:
+            return None
+        self._latest = encoded
+        self._seq += 1
+        # Ein Ersatz-Rohbild wird beim naechsten Tick neu versucht.
+        self._encoded_key = key if complete else None
+        async with self._frame_ready:
+            self._frame_ready.notify_all()
+        return encoded
+
+    async def _publish_progress(self) -> None:
+        """Schreibt den Kalibrier-Fortschritt, im Takt des Knotens.
+
+        Unabhaengig vom gewaehlten `mode` -- der Fortschritt soll auch sichtbar
+        sein, wenn der Viewer gerade "off" zeigt.
+        """
+        if self._progress_node is None or self._annotator is None:
+            return
+        try:
+            progress = self._annotator.calibration_progress
+            await self._progress_node.write_value(
+                json.dumps(progress if progress is not None else {"running": False})
+            )
+        except Exception:
+            _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
+
     async def _publish_loop(self) -> None:
+        """Tickt mit `http_fps`, solange MJPEG-Zuschauer da sind, sonst mit `stream_fps`.
+
+        Der Knoten wird unabhaengig davon hoechstens mit `stream_fps`
+        beschrieben -- er ist der Rueckfallweg, kein Videokanal.
+        """
         loop = asyncio.get_running_loop()
-        interval = 1.0 / self._config.stream_fps
+        node_interval = 1.0 / self._config.stream_fps
+        live_interval = 1.0 / max(self._config.http_fps, self._config.stream_fps)
         while True:
             started = loop.time()
+            node_due = started >= self._next_node_write
             frame = self._camera.latest_frame
             if frame is not None:
                 try:
-                    mode = await self._read_mode()
-                    image = frame.image
-                    if mode != "off" and self._annotator is not None:
-                        # In the worker thread: detection and drawing are
-                        # blocking and have no business on the event loop.
-                        # The annotator works on a copy.
-                        image = await loop.run_in_executor(
-                            None, self._annotator.annotate, frame.image, mode
-                        )
-                    if self._config.max_stream_width is not None:
-                        image = await loop.run_in_executor(
-                            None, _resize_for_stream, image, self._config.max_stream_width
-                        )
-                    encoded = await loop.run_in_executor(
-                        None, self._encode_frame, image, self._config.jpeg_quality
-                    )
-                    if encoded is not None:
+                    encoded = await self._encoded(loop, frame)
+                    if encoded is not None and node_due:
                         await self._node.write_value(encoded)
                 except Exception:
                     _log.exception("Kamera-Frame konnte nicht veroeffentlicht werden")
-                if self._progress_node is not None and self._annotator is not None:
-                    # Unabhaengig vom gewaehlten `mode` -- der Fortschritt soll
-                    # auch sichtbar sein, wenn der Viewer gerade "off" zeigt.
-                    try:
-                        progress = self._annotator.calibration_progress
-                        await self._progress_node.write_value(
-                            json.dumps(progress if progress is not None else {"running": False})
-                        )
-                    except Exception:
-                        _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
+            if node_due:
+                # Fester Takt statt "seit dem letzten Schreiben", sonst sinkt
+                # die Rate bei schnellem Tick unter stream_fps.
+                self._next_node_write = max(self._next_node_write + node_interval, started)
+                await self._publish_progress()
+            interval = live_interval if self._viewers else node_interval
             elapsed = loop.time() - started
             await asyncio.sleep(max(0.0, interval - elapsed))
 

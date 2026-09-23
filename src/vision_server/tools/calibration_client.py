@@ -10,13 +10,34 @@ wird; das beendet die Session per `FinishCalibration` (Standard) oder mit
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
+import signal
 import sys
 
 from asyncua import Client, ua
 
 _log = logging.getLogger("calibration-client")
+
+#: Fehlercodes aus doc/vision-server-interface.md ("Fehlercodes (Error)") --
+#: kein Import aus `vision_server`, dieses Skript bleibt ein reiner
+#: OPC-UA-Client, unabhaengig vom Server-Code.
+BUSY = 3
+
+
+async def _start_session(vision, start_node, abort_node) -> int:
+    """Ruft `StartCalibration`; bei `BUSY` einmal `AbortCalibration` +
+    Retry, falls das die hängengebliebene Session eines frueher
+    abgestuerzten Clients ist (die Session lebt im Server-Prozess, nicht im
+    Client -- ein hart beendeter Client raeumt sie nicht auf)."""
+    error = await vision.call_method(start_node)
+    if error == BUSY:
+        print("StartCalibration -> BUSY: vermutlich eine haengengebliebene")
+        print("Session eines frueheren Laufs -- breche sie ab und starte neu.")
+        await vision.call_method(abort_node)
+        error = await vision.call_method(start_node)
+    return error
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -29,27 +50,56 @@ async def run(args: argparse.Namespace) -> int:
         abort_node = await vision.get_child(f"{own_idx}:AbortCalibration")
         progress_node = await vision.get_child(f"{own_idx}:CalibrationProgress")
 
-        # Ein Ausgabewert: `call_method` liefert ihn direkt, keine Liste
-        # (asyncua/common/methods.py, `call_method`).
-        error = await vision.call_method(start_node)
+        error = await _start_session(vision, start_node, abort_node)
         print(f"StartCalibration -> Error={error}")
         if error != 0:
             print(f"FEHLER: Start abgelehnt mit Error={error}", file=sys.stderr)
             return 1
 
         print("Session laeuft. Board vor die Kamera halten und langsam bewegen.")
-        print("Strg+C zum Beenden (FinishCalibration; mit --abort ohne zu speichern).\n")
+        print(
+            "Aufnahmen kommen von woanders (z. B. stream_viewer.py per Leertaste). "
+            "Strg+C beendet manuell (FinishCalibration; mit --abort ohne zu speichern) "
+            "-- oder die Session schliesst sich von selbst ab, sobald die "
+            "Abdeckungs-Schwelle erreicht ist.\n"
+        )
+
+        # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
+        # Coroutine abgefangen -- eine `except KeyboardInterrupt` hier drin
+        # wird nie erreicht, der Prozess stirbt sofort ohne FinishCalibration.
+        # Ein echter Signal-Handler setzt stattdessen nur ein Event, auf das
+        # der Loop reagieren kann.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
         try:
-            while True:
-                await asyncio.sleep(args.poll_interval)
-                progress = json.loads(await progress_node.read_value())
-                print(
-                    f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
-                    f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
-                    f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
-                )
-        except KeyboardInterrupt:
-            print()
+            loop.add_signal_handler(signal.SIGINT, stop.set)
+        except NotImplementedError:
+            pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
+
+        auto_result = None
+        while not stop.is_set():
+            progress = json.loads(await progress_node.read_value())
+            print(
+                f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
+                f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
+                f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
+            )
+            auto_result = progress.get("result")
+            if auto_result is not None:
+                # Abdeckungs-Schwelle erreicht -- die Session hat sich schon
+                # selbst beendet, FinishCalibration hier wuerde nur noch
+                # INVALID_STATE liefern ("keine Session aktiv").
+                break
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=args.poll_interval)
+        print()
+
+        if auto_result is not None:
+            print("Abdeckung erreicht, automatisch abgeschlossen:")
+            print(json.dumps(auto_result, indent=2, ensure_ascii=False))
+            if "warning" in auto_result:
+                print(f"ACHTUNG: {auto_result['warning']}")
+            return 0 if auto_result.get("error", 0) == 0 else 1
 
         if args.abort:
             error = await vision.call_method(abort_node)

@@ -73,6 +73,20 @@ class AprilTagProfileConfig:
     #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
     #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
     calibration_min_samples: int = 15
+    #: Sobald Abdeckung x UND y diesen Wert erreichen (und `calibration_
+    #: min_samples` Aufnahmen vorliegen), rechnet und speichert die Session
+    #: automatisch -- fuers Frontend, das nicht selbst wissen muss, wann
+    #: "genug" ist. `None` schaltet das ab (nur manuelles `FinishCalibration`,
+    #: wie es die CLI-Tools weiter nutzen). Deckt sich mit dem Abbruch-
+    #: kriterium aus dem Testplan ("Abdeckung x und y ueber 70%").
+    calibration_coverage_threshold: float | None = 0.7
+    #: Wenn gesetzt, speichert jede uebernommene Aufnahme zusaetzlich als
+    #: Bild hier ab -- zum Nachpruefen/Neu-Rechnen abseits vom Server,
+    #: dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to`
+    #: (`kalib_001.png`, `kalib_002.png`, ...). `None` (Standard) speichert
+    #: nichts; das sind reine Debug-Artefakte, kein Teil der Kalibrierung
+    #: selbst -- landen wie die Kalibrierdatei unter `data/` (`.gitignore`).
+    calibration_capture_dir: Path | None = None
 
 
 #: Unterstuetzte Werte fuer `CameraStreamConfig.backend`.
@@ -104,7 +118,22 @@ class CameraStreamConfig:
     #: bandbreitenhungrig und laesst `pipeline.start()` mit
     #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
+    #: Nur Picamera2: zweiter, kleiner Bildstrom ("lores") aus demselben
+    #: Frame, im ISP skaliert -- praktisch ohne CPU-Last. Livestream und
+    #: Overlay rechnen darauf, Jobs und Kalibrierung weiter auf `resolution`.
+    #: `None` = kein zweiter Strom; der Stream verkleinert dann selbst
+    #: (`max_stream_width`), wie bei RealSense und OpenCV.
+    preview_resolution: tuple[int, int] | None = None
+    #: Nur Picamera2: Anzahl Kamerapuffer, `None` = Picamera2-Standard (6 bei
+    #: Video). Bei 12 MP waeren das ~220 MB CMA-Speicher, mehr als der Pi
+    #: standardmaessig reserviert -- `configure()` scheitert dann.
+    buffer_count: int | None = None
     warmup_s: float = 2.0
+    #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
+    capture_fps: float = 15.0
+    #: Rate des OPC-UA-Knotens `LatestCameraFrame`. Bewusst niedrig: er ist nur
+    #: noch der Rueckfallweg, Base64 ueber OPC UA und Backend taugt nicht fuer
+    #: Video. Das Live-Bild kommt ueber `http_port`.
     stream_fps: float = 5.0
     #: Konservativ gewaehlt, damit die Pipeline auch ueber die RSUSB-Backend-
     #: Anbindung (noetig, weil der Pi-Kernel keinen brauchbaren UVC-Treiber
@@ -125,6 +154,13 @@ class CameraStreamConfig:
     #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein. `None` schaltet
     #: die Skalierung ab.
     max_stream_width: int | None = 960
+    #: Port des MJPEG-Streams (`http://<pi>:<port>/stream.mjpg`); 0 = aus.
+    #: Das Frontend liest ihn aus `http_port_node_name` und baut die URL aus
+    #: der Adresse, unter der es den OPC-UA-Server erreicht.
+    http_port: int = 8080
+    #: Bildrate des MJPEG-Streams, solange mindestens ein Zuschauer da ist.
+    http_fps: float = 15.0
+    http_port_node_name: str = "CameraStreamHttpPort"
     node_name: str = "LatestCameraFrame"
     #: Writable node through which the frontend selects the overlay mode.
     mode_node_name: str = "CameraStreamMode"
@@ -135,6 +171,32 @@ class CameraStreamConfig:
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
     #: last result is redrawn.
     overlay_interval_s: float = 0.5
+    #: Watchdog: so lange darf ein einzelnes `capture_array()` dauern. Danach
+    #: gilt die Kamera als haengend -- Picamera2 wartet sonst ewig auf einen
+    #: Frame, den libcamera nie liefert (Pi 1, 2026-09-22).
+    frame_timeout_s: float = 3.0
+    #: So viele Aufnahmefehler in Folge, bevor die Kamera neu geoeffnet wird.
+    #: Ein Timeout zaehlt sofort voll: der Worker haengt, jeder weitere Aufruf
+    #: stuende nur hinter ihm an.
+    max_capture_failures: int = 3
+    #: So viele Neu-Oeffnungen ohne einen einzigen Frame dazwischen, bevor der
+    #: Prozess sich beendet und systemd (`Restart=always`) ihn neu startet.
+    max_reopen_attempts: int = 2
+    #: Aufnahmeseitig: ab diesem Alter gilt das letzte Bild als veraltet und
+    #: `DeviceHealth` meldet OFF_SPEC (camera_health.py). Betrifft **nur** die
+    #: Zustandsbewertung -- der Livestream veroeffentlicht unabhaengig davon
+    #: weiter, ob die Kamera lebt, sagt die Anlagensicht und nicht das Bild.
+    stale_frame_s: float = 2.0
+    #: Laenger darf ein Overlay-Lauf nicht dauern, sonst geht das Rohbild raus.
+    overlay_timeout_s: float = 2.0
+    #: Kadenz der Zustandsabfrage fuer `DeviceHealth` (camera_health.py).
+    #: Nicht gegriffen, sondern aus dem schmalsten Zustandsfenster abgeleitet:
+    #: OFF_SPEC gilt, sobald der Frame aelter als `stale_frame_s` ist, und
+    #: endet, wenn der Watchdog nach `frame_timeout_s` eskaliert -- mit den
+    #: Vorgabewerten also 3,0 - 2,0 = 1,0 s. Bei 1 Hz abgetastet wuerde es oft
+    #: verfehlt; halb so lang trifft es mindestens einmal. Kostet nichts: die
+    #: Abfrage liest nur Zaehlerstaende, geschrieben wird erst bei Aenderung.
+    health_interval_s: float = 0.5
 
 
 @dataclass(frozen=True)

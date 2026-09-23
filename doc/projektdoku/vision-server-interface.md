@@ -4,6 +4,10 @@ Diese Datei beschreibt den eigenständigen OPC-UA-Vision-Server (OPC 40100,
 Machine Vision) und **was ein Backend implementieren muss**, um von ihm ein
 Ergebnis zu bekommen. Sie ist ohne Kenntnis dieses Repos benutzbar.
 
+**Nur die Adressen und Signaturen gesucht?** Abschnitt 13 fasst die
+komplette Schnittstelle in Tabellen zusammen — Knoten, Methoden, Events,
+Fehlercodes, Betrieb. Der Rest dieses Dokuments erklärt das Warum.
+
 > **Ergänzend, seit 2026-09-21:** Derselbe Job lässt sich zusätzlich über ein
 > generisches **OPC-UA-Part-10-Programm** starten — dieselbe Bedienform, die
 > Conveyor und CardDispenser in dieser Zelle benutzen. Der Server kündigt sich
@@ -82,15 +86,18 @@ Objects/
         ├── CalibrationProgress              ns=<vision>;s=VisionMachine.CalibrationProgress
         ├── SetTagMap                        ns=<vision>;s=VisionMachine.SetTagMap
         ├── TagMapJson                       ns=<vision>;s=VisionMachine.TagMapJson
+        ├── ActiveCalibrationInfo            ns=<vision>;s=VisionMachine.ActiveCalibrationInfo
         ├── LatestResultJson                 ns=<vision>;s=VisionMachine.LatestResultJson
         │                                    derselbe JSON-String, als einfacher String-Knoten
         ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
         │                                    Base64-JPEG des Kamera-Livestreams, siehe Abschnitt 10
-        └── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
-                                             **beschreibbar**: off | apriltag | calibration
+        ├── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
+        │                                    **beschreibbar**: off | apriltag | calibration
+        └── CameraStreamHttpPort             ns=<vision>;s=VisionMachine.CameraStreamHttpPort
+                                             Int32: Port des MJPEG-Streams, 0 = keiner (Abschnitt 10.2)
 ```
 
-Die vier Kalibriermethoden und die vier Wertknoten sind **zusätzlich** unter
+Die vier Kalibriermethoden und die fünf Wertknoten sind **zusätzlich** unter
 `VisionProgram` erreichbar — als Referenzen, nicht als Kopien. Es bleibt je ein
 Knoten mit einem Wert bzw. einer Implementierung.
 
@@ -111,7 +118,8 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `profiles.py` | `AprilTagProfileConfig` u. a. je-Pi-Profile (Kamera, Hand-Auge-Pfad, Tag-Map) |
 | `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
-| `camera_stream.py` | Schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame`, siehe Abschnitt 10 |
+| `camera_stream.py` | Markiert und kodiert jeden Frame einmal; schreibt ihn als Base64-JPEG in `LatestCameraFrame` und reicht ihn an den MJPEG-Server, siehe Abschnitt 10 |
+| `mjpeg_server.py` | Livestream als MJPEG über HTTP (`/stream.mjpg`, `/snapshot.jpg`), siehe Abschnitt 10.2 |
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA, siehe Abschnitt 12 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
 | `runner.py` | verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server |
@@ -148,6 +156,7 @@ Wichtige NodeIds (sprechende String-Ids, stabil über Neustarts und Änderungen)
 | Zustand innen | `ns=<vision>;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.CurrentState` |
 | Letztes Ergebnis (JSON) | `ns=<vision>;s=VisionMachine.LatestResultJson` |
 | Kamera-Livestream (Base64-JPEG) | `ns=<vision>;s=VisionMachine.LatestCameraFrame` — nur vorhanden, wenn `camera_stream` konfiguriert ist (siehe Abschnitt 10) |
+| Port des MJPEG-Streams | `ns=<vision>;s=VisionMachine.CameraStreamHttpPort` — Int32, 0 = kein HTTP-Stream (siehe Abschnitt 10.2) |
 
 ## 3. Was das Backend können muss
 
@@ -584,7 +593,11 @@ Verhalten:
   öffnet die Hardware nicht erneut. Während eines laufenden Jobs bleibt der
   Stream daher unverändert aktiv, es gibt kein Aussetzen.
 - Auflösung, Bildrate und JPEG-Qualität stehen in `CameraStreamConfig`
-  (`profiles.py`) — Standard 1280×720, 5 fps, Qualität 70.
+  (`profiles.py`) — Standard 1280×720, Aufnahme 15 fps, Knoten 5 fps,
+  HTTP-Stream 15 fps, Qualität 70.
+- Der Knoten ist seit dem MJPEG-Stream (10.2) nur noch der **Rückfallweg**.
+  Base64 über OPC UA, Backend, WebSocket und React-Store taugt für ein
+  Kontrollbild, nicht für Video.
 - **Für den Stream herunterskaliert, falls breiter als `max_stream_width`**
   (Standard 960 px) — Erkennung und Kalibrierung sehen weiterhin den vollen
   Kamera-Frame, nur die veröffentlichte Kopie wird kleiner. Ohne das kostete
@@ -659,6 +672,84 @@ schreibt. Die Beschriftungen stehen serverseitig in
 
 ---
 
+### 10.2 MJPEG über HTTP — das flüssige Live-Bild
+
+Zusätzlich zum Knoten liefert der Pi den Stream direkt per HTTP aus, als
+`multipart/x-mixed-replace` (MJPEG). Ein Browser spielt das ohne Bibliothek in
+einem `<img>` ab; Backend und OPC UA sind nicht beteiligt.
+
+```
+http://<pi>:<port>/stream.mjpg     endloser Stream, ~15 fps
+http://<pi>:<port>/snapshot.jpg    das neueste Einzelbild (503, solange keins da ist)
+```
+
+- **Port**: steht im Knoten `CameraStreamHttpPort` (Standard 8080). Er wird
+  erst gesetzt, wenn der Server wirklich lauscht; bis dahin und bei belegtem
+  Port steht dort 0. Die Adresse `<pi>` nimmt der Client aus seiner
+  OPC-UA-Endpoint-URL — der Pi kennt seine von außen erreichbare Adresse nicht
+  verlässlich.
+- **Dieselben Bilder** wie im Knoten, dasselbe Overlay (`CameraStreamMode`
+  gilt für beide). Jeder Frame wird genau einmal markiert und kodiert.
+- **Rate**: ohne Zuschauer tickt der Publisher nur mit `stream_fps`; ab einer
+  offenen HTTP-Verbindung mit `http_fps`. Höchstens 4 gleichzeitige Zuschauer,
+  weitere bekommen 503.
+- **Kamera hängt** (Watchdog, siehe `vision-system.md`): es kommen keine neuen
+  Bilder, die Verbindung bleibt offen, der Browser zeigt das letzte Bild.
+- **Rückfall**: Ist der Port 0 oder die URL nicht erreichbar (Firewall, altes
+  Pi-Build), nutzt das Frontend weiter `LatestCameraFrame`.
+
+### 10.3 Zwei Bildströme an der Deckenkamera
+
+Die Deckenkamera (Pi 1, HQ-Kamera IMX477) nimmt mit der vollen
+Sensorauflösung **4056×3040** auf. Die Pi-Kamera liefert aus demselben Frame
+zusätzlich einen zweiten, vom ISP skalierten Strom (`lores`, 960×720),
+praktisch ohne CPU-Last — genutzt wird er aber nur noch, wo Erkennungstreue
+keine Rolle spielt:
+
+| Wer | Bild | Auflösung |
+| --- | --- | --- |
+| AprilTag-Job, Kalibrier-Session | `CameraFrame.image` | 4056×3040 |
+| Livestream/Overlay **„AprilTags markieren“** (MJPEG und Knoten) | `CameraFrame.image` | 4056×3040, fürs Publizieren auf `max_stream_width` (960 px) verkleinert |
+| Livestream **„Rohbild“** (`off`) | `CameraFrame.image` | 4056×3040, fürs Publizieren auf `max_stream_width` (960 px) verkleinert |
+| Overlay **„Kalibrierboard markieren“** (`calibration`) | `CameraFrame.preview` | 960×720 |
+
+> **Geändert 2026-09-22:** Die Modi „AprilTags markieren“ und „Rohbild“
+> liefen zuerst auf `CameraFrame.preview` (siehe unten, Ursprungsgrund:
+> Framerate). Bei „AprilTags markieren“ hieß das, dass Stream und Job
+> unterschiedliche Bilder auswerten — ein Tag, der im Stream nicht markiert
+> erscheint, war damit kein verlässlicher Beleg dafür, dass der Job ihn auch
+> verpasst. Bei „Rohbild“ zeigte das Debugbild nicht, was der Pi tatsächlich
+> sieht (Fokus, Belichtung, Bildausschnitt), sondern schon eine verkleinerte
+> Kopie. Beide Modi nutzen jetzt `CameraFrame.image`; das Overlay im
+> „AprilTags markieren“-Modus wird erst nach der Erkennung für die
+> Übertragung verkleinert — die Treffer selbst sind also identisch mit dem
+> Job. Framerate sinkt dadurch spürbar (volle 12-MP-Verarbeitung/Kodierung
+> pro Tick statt ~0,7 MP), bewusst in Kauf genommen; für „Rohbild“ ohne
+> Erkennung fällt nur der größere Encode ins Gewicht. „Kalibrierboard
+> markieren“ bleibt aus Geschwindigkeitsgründen beim kleinen Vorschaubild
+> (eigenes, separat getuntes Downscale vor `detect_board`).
+
+Beide Bilder kommen aus **einem** Request, stammen also immer aus derselben
+Aufnahme. Rechnet ein Overlay auf `preview` (960×720), rechnet es die
+Kalibrierung entsprechend um (`scale_to_resolution`); das Seitenverhältnis
+weicht dabei um 0,07 % ab, unter der Schranke von 0,1 %.
+
+Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
+`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, nur noch für
+„Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
+10 (Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs
+Puffer à 37 MB passen nicht in den CMA-Speicher), `overlay_timeout_s` **8,0**
+statt des globalen Defaults 2,0 (`profiles.py`) — Erkennung + Zeichnen auf
+4056×3040 überschritt die 2,0 s zuverlässig, das Overlay fiel dann jeden Tick
+auf das unmarkierte Rohbild zurück (Bug: Overlay-Text fehlte komplett auf
+Pi 1, gefunden 2026-09-22). Pi 2 behält den knappen Default — dort hat sich
+an der Erkennungsauflösung nichts geändert. Ohne `preview_resolution` —
+Hand-Pi mit RealSense, OpenCV — verkleinert der Stream wie bisher selbst, dort
+sind Job- und Stream-Auflösung ohnehin identisch (640×480).
+
+Hauptstrom im Format `RGB888`: Picamera2 legt es als B,G,R ab, also direkt
+OpenCV-BGR — die frühere Farbumrechnung auf jedem Frame entfällt.
+
 ## 11. OPC 40100-2: Anlagensicht
 
 Part 1 beantwortet, **wie man das System bedient**. Part 2 — *Asset Management
@@ -715,6 +806,196 @@ Sie nachträglich zu löschen kostete **9 s für 26 Knoten** — das rekursive
 Löschen ist dort pathologisch langsam. `asset_model.py` legt deshalb nur die
 Ordner an, die es füllt: rund 50 Knoten statt 700.
 
+### 11.4 Zustand: `DeviceHealth`
+
+Der Normtitel von Part 2 lautet *Asset Management **and Condition
+Monitoring***. 11.1–11.3 beschreiben die erste Hälfte — woraus das System
+besteht. Dies ist die zweite: **wie es ihm geht.**
+
+Konkret beantwortet sie die Frage, die vorher über OPC UA gar nicht zu stellen
+war: *läuft die Kamera noch, oder ist sie eingefroren?* Ein hängendes
+`capture_array()` blieb bis dahin unsichtbar — der Livestream sendete
+denselben alten Frame weiter, der Zustandsautomat blieb auf `Ready`, und erst
+ein laufender Job scheiterte mit `DETECTION_FAILED`.
+
+```
+ns=<vision>;s=VisionMachine.VisionAsset
+├── <amcm>:Health                                      (HasAddIn)
+│   └── <di>:DeviceHealth   Int32
+│       ns=<vision>;s=VisionMachine.VisionAsset.Health.DeviceHealth
+├── <di>:Identification
+├── <amcm>:ComputingDevices/ComputingDevice
+├── <amcm>:ImageSensors/ImageSensor
+│   └── <amcm>:Health
+│       └── <di>:DeviceHealth   Int32
+│           ns=<vision>;s=VisionMachine.VisionAsset.ImageSensor.Health.DeviceHealth
+└── <amcm>:Lenses/Lens
+```
+
+**Beide Knoten tragen denselben Wert.** Das ist keine Aggregation, sondern
+eine Tatsache: es gibt genau eine Zustandsquelle, die Kamera. Den Knoten an
+der Wurzel gibt es trotzdem, weil `ImageSensor` nur existiert, wenn
+`image_sensor_model` in der `AssetConfig` gesetzt ist — sonst bliebe gar keine
+Meldestelle. Kommt eine zweite Komponente mit eigenem Zustand dazu, braucht
+die Wurzel eine echte Regel; die verlangt eine Rangfolge über die
+NE-107-Zustände, die DI **nicht** definiert, und wird deshalb erst dann
+geschrieben. Für ein Frontend heißt das heute: **die Wurzeladresse abonnieren**
+— sie existiert unabhängig von der Konfiguration.
+
+#### Die Werte
+
+`DeviceHealth` ist DI's `DeviceHealthEnumeration` nach NAMUR NE 107 und geht
+als `Int32` über die Leitung.
+
+| Wert | Name | Wann | Farbe im HMI |
+| --- | --- | --- | --- |
+| 0 | `NORMAL` | Frisches Kamerabild | grün |
+| 1 | `FAILURE` | Kamera nie geöffnet, oder endgültig aufgegeben — der Prozess beendet sich gleich | rot |
+| 2 | `CHECK_FUNCTION` | Warmup, oder die Kamera wird gerade neu geöffnet | gelb |
+| 3 | `OFF_SPEC` | Bild älter als `stale_frame_s` — Hänger erkannt, noch nicht eskaliert | gelb |
+| 4 | `MAINTENANCE_REQUIRED` | **wird nie geschrieben** — es gibt keinen Verschleißzähler | — |
+
+Der typische Ablauf eines Hängers, mit den Vorgabewerten aus
+`CameraStreamConfig`:
+
+```
+NORMAL ──(Bild älter als stale_frame_s = 2 s)──> OFF_SPEC
+       ──(Watchdog schlägt nach frame_timeout_s = 3 s zu, öffnet neu)──> CHECK_FUNCTION
+       ──(Kamera liefert wieder)──> NORMAL
+       ──(2 Neu-Öffnungen ohne Bild)──> FAILURE, dann Prozessabbruch
+```
+
+Das **`OFF_SPEC`-Fenster ist `frame_timeout_s − stale_frame_s` breit**, mit den
+Vorgabewerten also 1,0 s. Deshalb fragt der Publisher alle
+`health_interval_s` = 0,5 s ab und nicht sekündlich: bei 1 Hz würde das
+Fenster regelmäßig verfehlt. Wird `stale_frame_s` über `frame_timeout_s`
+gesetzt, verschwindet `OFF_SPEC` ganz — ein Test in
+`tests/test_camera_health.py` hält das fest.
+
+Warum ein veraltetes Bild `OFF_SPEC` ist und nicht `FAILURE`: Hänger heilen
+sich nachweislich selbst. Mit `OFF_SPEC` kann ein HMI „hakt gerade" von „tot"
+unterscheiden und bekommt rund eine Sekunde Vorwarnung, bevor der Watchdog
+eingreift. Wer das anders will, ändert genau eine Zeile in
+`camera_health.device_health()`.
+
+#### Was ein Client beachten muss
+
+- **Geschrieben wird nur bei Zustandswechsel.** Ein Abo sieht echte Übergänge;
+  im Normalbetrieb bleibt der Knoten nach dem ersten Bild still. Wer pollt,
+  bekommt jederzeit den gültigen Wert — der Knoten ist immer beschrieben.
+- **Der Startwert ist `CHECK_FUNCTION`**, nicht `NORMAL`. Beim Aufbau des
+  Adressraums ist die Kamera noch nicht geöffnet; `NORMAL` wäre eine
+  Behauptung, die bis zum ersten Bild unwidersprochen stünde.
+- **`FAILURE` kann das letzte Lebenszeichen sein.** Gibt der Watchdog auf,
+  wird `FAILURE` geschrieben und unmittelbar danach der Prozess beendet, damit
+  systemd ihn neu startet. Die Session bricht also gleich darauf ab. Ein
+  Client sollte den Verbindungsabriss nach `FAILURE` erwarten und neu
+  verbinden.
+- **Namespace-Indizes zur Laufzeit auflösen** (11.2). Der BrowseName von
+  `DeviceHealth` liegt im **DI**-Namensraum, der von `Health` im **AMCM**-
+  Namensraum, die NodeIds im Vision-Namensraum — drei verschiedene Indizes an
+  einem Pfad.
+
+#### Alarme — der zweite Teil der Norm
+
+DIs `IDeviceHealthType` hat **genau zwei** Mitglieder: die Variable oben und
+einen Ordner mit echten OPC-UA-Alarmen. Beide sind bedient.
+
+```
+VisionAsset/Health
+├── <di>:DeviceHealth                Int32
+└── <di>:DeviceHealthAlarms
+    ├── <di>:FailureAlarm            FailureAlarmType
+    ├── <di>:CheckFunctionAlarm      CheckFunctionAlarmType
+    └── <di>:OffSpecAlarm            OffSpecAlarmType
+```
+
+| Alarm | Severity | Wann |
+| --- | --- | --- |
+| `FailureAlarm` | 900 | `DeviceHealth` wird `FAILURE` |
+| `OffSpecAlarm` | 500 | `DeviceHealth` wird `OFF_SPEC` |
+| `CheckFunctionAlarm` | 300 | `DeviceHealth` wird `CHECK_FUNCTION` |
+
+Regeln, auf die sich ein Client verlassen kann:
+
+- Es ist **höchstens einer aktiv** — der Zustand ist einer von fünf. Beim
+  Wechsel wird der bisherige Alarm mit `ActiveState = Inactive` und
+  `Retain = false` gelöscht, bevor der neue mit `Active`/`true` feuert.
+- **`NORMAL` feuert keinen Alarm**, es löscht nur den vorherigen. Ein
+  Betrieb ohne Störung ist still.
+- **Emittiert wird von `VisionMachine`**, nicht vom Health-Knoten. Grund:
+  genau diesen Knoten abonniert ein Client ohnehin (Abschnitt 7.2), und ein
+  zweiter Abo-Punkt wäre eine neue Anforderung an jeden Client. `SourceNode`
+  nennt trotzdem die betroffene Komponente — den Bildsensor, falls sein
+  Modell bekannt ist, sonst die Anlagenwurzel.
+- `Message` trägt den Klartext samt Auslöser, z. B.
+  *„Kamera liefert kein Bild (hung)"*.
+
+Die Alarmobjekte liegen **nur an der Wurzel**, nicht zusätzlich am
+Bildsensor: beide Zustandsknoten tragen denselben Wert, und jede Instanz
+kostet 36 Knoten. Die Wurzel existiert außerdem immer — auch ohne
+konfiguriertes Kameramodell.
+
+> **Grenze, die man kennen muss:** `ConditionRefresh` ist **nicht** bedient.
+> Ein Client, der sich *nach* einem Alarm verbindet, bekommt ihn nicht
+> nachgeliefert. Deshalb bleibt `DeviceHealth` die verlässliche Quelle für
+> „wie ist der Zustand jetzt"; die Alarme sind der Ereignisweg für „was hat
+> sich geändert".
+
+#### Was nicht angelegt ist
+
+`MaintenanceRequiredAlarmType` wird bewusst **nicht** instanziiert: ohne
+Verschleißzähler könnte er nie feuern, und ein Alarm, der nie kommt, ist eine
+Zusage, die wir nicht halten. Ebenso fehlen `State` (SEMI E10), `Temperature`
+und `RemainingLifeTime` — alle optional und ohne Quelle. `State` wäre der
+nächste sinnvolle Schritt; er braucht die strukturierten DataTypes, an denen
+`load_data_type_definitions()` bei 40100 noch scheitert (asyncua #1693).
+`Maintenance` (`VisionMaintenanceInfoType`) bliebe ohne Wartungsintervalle
+und Kalibrierhistorie leer.
+
+#### Der Livestream sagt nichts über die Kamera
+
+Früher leerte der Server den `LatestCameraFrame`-Knoten, sobald ein Bild
+älter als `stale_frame_s` war — das Frontend zeigte dann „Warte auf Bild".
+Das war eine **zweite Wahrheit** über „lebt die Kamera", neben `DeviceHealth`
+und an der Companion Spec vorbei. Sie ist entfallen.
+
+Konsequenz: bei hängender Kamera **steht das Livebild still**, statt zu
+verschwinden. MJPEG liefert weiter das letzte Bild, `/snapshot.jpg` antwortet
+nicht mehr mit `503`. Ob die Kamera arbeitet, beantwortet ausschließlich
+`DeviceHealth` — im Frontend als Ampel neben dem Bild.
+
+#### Kosten
+
+Gemessen (Desktop, asyncua 2.0.1, zwei Läufe je Variante):
+
+| | Knoten der Anlagensicht | Aufbau |
+| --- | --- | --- |
+| ohne Zustandsblock | 19 | 0,151 s |
+| nur `DeviceHealth` | 23 | 0,179 s |
+| mit Alarmen | 132 | 0,327 s |
+
+Die Alarme kosten also den Löwenanteil: **je Instanz 36 Knoten**, weil
+`AlarmConditionType` den vollen Condition-Baum mitbringt (`ActiveState`,
+`AckedState`, `Retain`, `Severity`, `Message`, `EventId` …). Drei Instanzen
+plus Ordner sind rund **110 Knoten und 0,15 s**. Genau deshalb liegen sie
+einmal an der Wurzel und nicht zusätzlich je Komponente — das wären 216
+Knoten für dieselbe Information.
+
+Die RSS-Differenz lag unter der Messauflösung (0,1 MB). Keine zusätzlichen
+Nodesets — DI und AMCM sind mit `assets` ohnehin geladen. Nachmessen:
+`PYTHONPATH=src python3 tools/measure_nodeset_import.py`.
+
+#### Verhältnis zu Altlast A3
+
+Mit `RaspiDevice/Counter` ist das letzte Lebenszeichen aus dem Adressraum
+verschwunden (`doc/altlasten.md`, A3); als Ersatz blieb der Loop-Lag-Watchdog,
+der aber nur ins Log schreibt. `DeviceHealth` schließt diese Lücke — und ist
+ausdrücklich **kein** wiederauferstandener Zähler: A3 war ein Wert *ohne
+Quelle*, der nur bewies, dass irgendeine Schleife lief. Hier gibt es eine
+Quelle, der Wert steht in der Norm, und im Ruhezustand wird gar nichts
+geschrieben.
+
 ---
 
 ## 12. Interaktive Kalibrierung (frontend-gesteuert)
@@ -724,11 +1005,22 @@ Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
 muss dafür gestoppt sein. Diese vier Methoden plus ein Knoten erlauben
 dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Session
 starten, Board vor die Kamera halten, Aufnahme auslösen, Fortschritt live
-sehen, `FinishCalibration` aufrufen.
+sehen. Ein explizites `FinishCalibration` ist dabei **optional** — sobald die
+Abdeckung reicht, schließt sich die Session von selbst ab (Abschnitt 12.5),
+das Frontend muss also nur `CalibrationProgress` beobachten und das Ergebnis
+anzeigen, sobald es dort auftaucht.
 
 Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
 kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
+
+**Eine frisch gespeicherte Kalibrierung wirkt sofort, ohne Server-Neustart.**
+Direkt nach dem Speichern übernehmen die laufende Erkennung (`apriltag`-Job)
+und das Stream-Overlay die neuen Werte — der nächste Job nach einer
+erfolgreichen Kalibrierung rechnet bereits damit. (Bis 2026-09-22 stimmte
+das nicht: die Datei lag zwar auf der Platte, die laufende Erkennung merkte
+das aber erst nach einem manuellen `systemctl restart`. Falls ihr das noch
+irgendwo dokumentiert oder umgangen habt, ist das jetzt nicht mehr nötig.)
 
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
 in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
@@ -757,14 +1049,32 @@ wann eine Pose gut ist, bevor er auslöst.
 
 ### 12.3 `FinishCalibration`
 
-Beendet die Session, rechnet aus den gesammelten Samples und speichert
-`data/calibration/<frame_id>.json` — derselbe Rechenkern wie im CLI-Tool
-(`tagloc.boards.calibrate_from_samples`).
+Beendet die Session manuell, rechnet aus den gesammelten Samples und
+speichert `data/calibration/<frame_id>.json` — derselbe Rechenkern wie im
+CLI-Tool (`tagloc.boards.calibrate_from_samples`) und wie der automatische
+Abschluss (Abschnitt 12.5). Gedacht für den Fall, dass der Operator **vor**
+Erreichen der Abdeckungs-Schwelle abbrechen und trotzdem das bisherige
+Ergebnis haben will — im Normalfall (Schwelle erreicht) ist die Session zu
+diesem Zeitpunkt schon automatisch beendet, ein weiterer Aufruf liefert dann
+nur noch `INVALID_STATE`.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`. Bei Fehlschlag `{"message": "..."}`; nur beim Fall „weniger als 3 Aufnahmen" zusätzlich `"samples": N` (`calibration_session.py`, weniger-als-3-Fall vs. Fehler aus `calibrate_from_samples` selbst) — Konsumenten dürfen `"samples"` im Fehlerfall nicht voraussetzen |
-| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Samples) |
+| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`, ggf. mit `warning` (siehe 12.5). Bei Fehlschlag `{"message": "...", "samples": N}` |
+| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples **oder** die Berechnung selbst ist numerisch gescheitert — `message` nennt den Grund) |
+
+`DETECTION_FAILED` mit Berechnungs-Grund kann passieren, obwohl genug Samples
+und gute Bildabdeckung vorlagen: `cv2.calibrateCamera` prüft nicht nur die
+Anzahl, sondern ob sich daraus überhaupt ein Kameramodell lösen lässt — bei
+zu wenig Neigungs-/Distanz-Variation (Abschnitt 12.5, "Abdeckung allein sagt
+nichts über die tatsächliche Genauigkeit") kann das ganz scheitern statt nur
+ungenau zu werden. Bis 2026-09-23 fing der Server dabei nur `ValueError` ab;
+die eigentliche Exception (`cv2.error`) lief unbehandelt durch und ließ die
+Session unsichtbar beendet zurück, ohne Ergebnis oder Fehlermeldung — jede
+weitere `CaptureCalibrationSample` lieferte danach nur noch `DETECTION_FAILED`
+("Board nicht gefunden"), ein späteres `FinishCalibration` nur `INVALID_STATE`.
+Seither wird jede Exception aus der Berechnung abgefangen und als
+`DETECTION_FAILED` mit `message` gemeldet.
 
 ### 12.4 `AbortCalibration`
 
@@ -832,21 +1142,96 @@ Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
 | `samples` | Anzahl bisher erfasster Aufnahmen |
 | `minSamples` | Mindestanzahl für ein erfolgreiches `FinishCalibration` (Config, Standard 15) |
 | `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
+| `result` | **nur vorhanden, sobald die Session beendet ist** (automatisch oder per `FinishCalibration`/`AbortCalibration`, siehe unten) |
 
-Im Ruhezustand (keine Session je gestartet oder nach `Finish`/`Abort`):
-`{"running": false}`. Mitverfolgen lässt sich das auch visuell über den
-Livestream (`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild
-erscheinen dann zusätzlich zur aktuellen Board-Erkennung die kumulierte
-Abdeckung und `Aufnahmen X/minSamples`.
+Im Ruhezustand (keine Session je gestartet, oder nach `Abort` ohne
+automatischen Abschluss): `{"running": false}`, ohne `result`. Mitverfolgen
+lässt sich das auch visuell über den Livestream
+(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
+zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
+`Aufnahmen X/minSamples`.
 
-Für Pis mit angeschlossenem Monitor gibt es dafür zwei Kommandozeilen-Tools
+**Automatischer Abschluss:** Erreichen `coverageX` **und** `coverageY`
+`calibration_coverage_threshold` (Config, Standard `0.7`, entspricht dem
+Abbruchkriterium aus dem Testplan) und liegen genug Aufnahmen vor, rechnet
+und speichert die Session **von selbst** — ausgelöst vom nächsten
+`CaptureCalibrationSample`-Aufruf, der die Schwelle überschreitet. Kein
+Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
+`running` auf `false` springt und `result` erscheint:
+
+```jsonc
+{
+  "running": false, "samples": 18, "minSamples": 15,
+  "coverageX": 0.84, "coverageY": 0.9,
+  "result": {
+    "error": 0, "rms": 2.069, "samples": 18,
+    "coverageX": 0.84, "coverageY": 0.9,
+    "path": "data/calibration/cam_ceiling.json",
+    "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
+  }
+}
+```
+
+`result.error` ist derselbe `Error`-Code wie bei `FinishCalibration`
+(0 = `OK`). **Abdeckung allein sagt nichts über die tatsächliche
+Genauigkeit** — ein Board, das nie gekippt wurde, füllt zwar den
+Bildbereich, lässt die Brennweite aber unbestimmt (Testplan Abschnitt 3.3).
+`result.warning` erscheint deshalb zusätzlich, wenn der RMS-Reprojektionsfehler
+über 0,5 px liegt; sie verhindert das Speichern **nicht** — die Datei ist
+trotzdem geschrieben, nur mit dem Hinweis, dass sie ungenauer als empfohlen
+ist. Das Frontend sollte diese Warnung sichtbar anzeigen, nicht nur loggen.
+`calibration_coverage_threshold: null` in der Config schaltet den
+automatischen Abschluss ganz ab (nur noch manuelles `FinishCalibration`, wie
+es die CLI-Tools weiter unterstützen).
+
+Für Pis mit angeschlossenem Monitor gibt es dafür drei Kommandozeilen-Tools
 unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
 Teil des Frontends): `calibration_client.py` startet/beendet eine Session und
 loggt `CalibrationProgress`; `stream_viewer.py` zeigt den Livestream in einem
 lokalen Fenster und löst mit der Leertaste `CaptureCalibrationSample` aus —
-zusammen der Handshake, den ein Frontend nachbilden muss.
+zusammen der Handshake, den ein Frontend nachbilden muss. `diagnose_board.py`
+ist reine Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und
+probiert mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board`
+durch, falls das Board im Stream zwar sichtbar, aber nicht erkannt wird —
+z. B. weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
+tatsächlich aufgehängten Board passt.
 
-### 12.6 Sperren
+### 12.6 `ActiveCalibrationInfo` (nur lesen)
+
+```
+ns=<vision>;s=VisionMachine.ActiveCalibrationInfo     Datentyp String (JSON)
+```
+
+Anders als `CalibrationProgress` (Fortschritt *einer laufenden Session*,
+verschwindet mit dem nächsten `StartCalibration`) beschreibt dieser Knoten,
+**was gerade tatsächlich für Posen benutzt wird** — er bleibt stehen, egal
+was mit einer Session passiert, und ist die richtige Quelle für eine
+dauerhafte "Zuletzt kalibriert am ..."-Anzeige im Frontend. Geschrieben beim
+Start (was `open()` geladen hat) und nach jeder erfolgreichen interaktiven
+Kalibrierung (derselbe Moment, in dem sie auch live übernommen wird, siehe
+oben).
+
+```jsonc
+{
+  "placeholder": false,
+  "frameId": "cam_flange",
+  "calibrationId": "cam_flange@2026-09-22T10:00:00+00:00",
+  "createdAt": "2026-09-22T10:00:00+00:00",
+  "rms": 0.2945,
+  "samples": 21,
+  "board": {"type": "chessboard", "cols": 7, "rows": 9, "squareSizeM": 0.022, ...},
+  "path": "data/calibration/cam_flange.json"
+}
+```
+
+| Feld | Bedeutung |
+| --- | --- |
+| `placeholder` | `true`, wenn noch nie echt kalibriert wurde (`allow_placeholder_calibration`, Abschnitt 9) — dann sind `rms`/`createdAt` `null`, Posen sind nicht maßhaltig |
+| `calibrationId`, `createdAt` | aus der Kalibrierdatei, stabil über Neustarts |
+| `rms`, `samples`, `board` | wie im `result`-Objekt aus `CalibrationProgress`/`FinishCalibration` |
+| `path` | Pfad der Datei auf dem Pi (Diagnose, keine Backend-Bedeutung) |
+
+### 12.7 Sperren
 
 `StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft. Umgekehrt lehnen
 `StartSingleJob`/`StartContinuous` ab (`BUSY`), solange eine Kalibrier-Session
@@ -856,11 +1241,183 @@ kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt 
 `Ready`, die Sperre läuft rein über die beiden Busy-Flags — dieselbe
 `BUSY`-Semantik wie zwischen zwei Jobs (Abschnitt 5, Fehlercodes).
 
-### 12.7 Stand
+### 12.8 Stand
 
 Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
 (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).
-Layer 1 (Deckenkamera, `ADP-Roboter-Lokalisierung`, Picamera2) ist auf
-dieselbe Board-Geometrie eingestellt (Annahme: dasselbe gedruckte Blatt),
-aber noch **nicht** real durchgemessen — `PI_APRILTAG_PRESETS["cam_ceiling"]`
-trägt einen entsprechenden Kommentar. Der Code selbst ist pi-unabhängig.
+
+Layer 1 (Deckenkamera, `ADP-Roboter-Lokalisierung`, Picamera2) ist über den
+interaktiven Weg (`CaptureCalibrationSample` + Stream-Viewer) einmal
+durchgespielt worden — Board-Geometrie (7×9, 22 mm) über `diagnose_board.py`
+bestätigt, `data/calibration/cam_ceiling.json` existiert. RMS lag beim ersten
+Versuch bei 2,069 px (Abdeckung 84 %/90 %) — deutlich über dem Zielwert, da
+die Kamera noch nicht fest montiert ist und das Board zu wenig gekippt
+wurde. Sobald die Kamera fest hängt, muss neu kalibriert werden, jetzt mit
+Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
+`warning` in Abschnitt 12.5). Der Code selbst ist pi-unabhängig.
+
+### 12.9 Debug: Aufnahmen als Bilder speichern
+
+Reines Diagnose-Werkzeug, kein Teil der Schnittstelle selbst — für die
+Untersuchung von Kalibrierproblemen live auf einem Pi, ohne dass Backend-Logs
+zur Verfügung stehen. `AprilTagProfileConfig.calibration_capture_dir`
+(Standard `None`, also aus) schreibt jede von `CaptureCalibrationSample`
+übernommene Aufnahme zusätzlich als PNG unter `data/calibration/<frame_id>_captures/
+kalib_001.png`, `kalib_002.png`, … ab — dieselbe Namenskonvention wie
+`tagloc.cli.calibrate --capture-to`. Der Zähler setzt bei jedem
+`StartCalibration` neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden)
+werden nicht mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
+Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz auf dem Pi knapp
+wird. Aktuell auf beiden Pis aktiv, während die Ursache dafür untersucht wird,
+dass Layer 1 im `calibration`-Stream keine Board-Ecken einzeichnet und dort
+der automatische Abschluss trotz ausreichender Abdeckung nicht ausgelöst hat.
+
+---
+
+## 13. Schnittstelle auf einen Blick
+
+Diese Tabellen sind der **vollständige Vertrag**. Alles, was ein anderes
+Teilsystem vom Vision-Server braucht, steht hier; die Abschnitte davor
+erklären das Warum und die Stolpersteine. Wer gegen diese Liste entwickelt,
+braucht weder den Code noch dieses Repo.
+
+Der Vision-Server ist damit **abgeschlossen**: was danach kommt, baut *auf*
+ihm auf und ändert ihn nicht. Eine Ergänzung dieser Tabellen ist eine
+Schnittstellenänderung und geht den Weg über `doc/arbeitsplaene/` (siehe
+`CLAUDE.md`).
+
+### 13.1 Adressen
+
+Alle NodeIds sind feste String-Ids. `<vision>` ist der Index von
+`http://launch-rm.de/vision`, `<mv>` der von
+`http://opcfoundation.org/UA/MachineVision`, `<amcm>` und `<di>` die der
+Part-2-Namensräume. **Indizes zur Laufzeit über die URI auflösen, nie
+hartcodieren** (Abschnitt 11.2) — sie haben sich in diesem Projekt schon
+dreimal verschoben.
+
+| Zweck | NodeId | Zugriff |
+| --- | --- | --- |
+| Vision-System (Wurzel, Event-Quelle) | `ns=<vision>;s=VisionMachine` | Abo von Events |
+| Job starten | `…s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob` | Aufruf |
+| Job abbrechen | `…AutomaticModeStateMachine.Stop` | Aufruf |
+| Dauerbetrieb starten | `…AutomaticModeStateMachine.StartContinuous` | Aufruf |
+| Dauerbetrieb abbrechen | `…AutomaticModeStateMachine.Abort` | Aufruf |
+| Anhalten / entstören | `…VisionStateMachine.Halt` bzw. `.Reset` | Aufruf |
+| Letztes Ergebnis (JSON) | `ns=<vision>;s=VisionMachine.LatestResultJson` | Lesen / Abo |
+| Letztes Ergebnis (40100-Weg) | `…ResultManagement/Results/LatestResult` → `ResultContent[0]` | Lesen |
+| Livestream-Bild | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | Abo |
+| Overlay-Modus | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **Schreiben** |
+| Kalibrier-Fortschritt | `ns=<vision>;s=VisionMachine.CalibrationProgress` | Abo |
+| Kalibrierung steuern | `…VisionMachine.{StartCalibration,CaptureCalibrationSample,FinishCalibration,AbortCalibration}` | Aufruf |
+| **Zustand der Anlage** | `ns=<vision>;s=VisionMachine.VisionAsset.Health.DeviceHealth` | Lesen / Abo |
+| Zustandsalarme | `…VisionAsset.Health.DeviceHealthAlarms.{FailureAlarm,CheckFunctionAlarm,OffSpecAlarm}` | Event-Abo auf `VisionMachine` |
+| **Zustand der Kamera** | `ns=<vision>;s=VisionMachine.VisionAsset.ImageSensor.Health.DeviceHealth` | Lesen / Abo |
+| Part-10-Programm | `ns=<vision>;s=VisionProgram` | siehe 13.5 |
+
+Knoten mit Vorbehalt: `LatestCameraFrame` und `CameraStreamMode` nur bei
+konfiguriertem `camera_stream`; `CalibrationProgress` und die
+Kalibriermethoden nur bei konfiguriertem `apriltag`; die `VisionAsset`-Knoten
+nur bei konfigurierten `assets`. Ein Abo auf einen fehlenden Knoten liefert
+schlicht keinen Wert.
+
+### 13.2 `StartSingleJob`
+
+Eingang `(MeasId, PartId, RecipeId, ProductId, Parameters)` — alle String,
+`Parameters` ein String-Array mit höchstens 16 Einträgen. Ausgang
+`(JobId: String, Error: Int32)`. Der Aufruf ist **nicht blockierend**: er
+quittiert nur die Annahme, das Ergebnis kommt per Event.
+
+`RecipeId` wählt den Job: `""` und `hello-world` (Platzhalter ohne
+Bildverarbeitung), `calibration` (Bereitschaftsprüfung), `apriltag` (echte
+Erkennung). Details in Abschnitt 5.
+
+| `Error` | Name | Bedeutung |
+| --- | --- | --- |
+| 0 | `OK` | angenommen |
+| 1 | `INVALID_STATE` | Automat nicht `Ready` |
+| 2 | `INVALID_ARGUMENT` | z. B. überlange `MeasId` oder zu viele `Parameters` |
+| 3 | `BUSY` | es läuft bereits ein Job oder eine Kalibrier-Session |
+| 4 | `UNKNOWN_RECIPE` | `RecipeId` nicht zugelassen |
+| 5 | `DETECTION_FAILED` | Erkennung fehlgeschlagen (auch: kein Kamerabild) |
+| 6 | `INTERNAL` | unerwarteter Fehler |
+| 7 | `CANCELLED` | Job abgebrochen |
+
+### 13.3 Events
+
+Alle vom Knoten `VisionMachine` emittiert, Typen im **MachineVision**-Namensraum.
+Ohne explizite Event-Typ-Liste im Abo kommt **kein** Payload an (Abschnitt 7.1),
+und das Abo muss auf `VisionMachine` sitzen, nicht auf dem Server-Objekt (7.2).
+
+| Event | Wann |
+| --- | --- |
+| `JobStartedEvent` | Job angenommen |
+| `StateChangedEvent` | jeder Zustandswechsel beider Automaten |
+| `AcquisitionDoneEvent` | Bildaufnahme fertig |
+| `ResultReadyEvent` | Ergebnis da — **trägt das JSON in `ResultContent[0]`** |
+| `ReadyEvent` | wieder aufnahmebereit |
+
+Dazu die **Zustandsalarme** nach OPC 40100-2, Typen im **DI**-Namensraum und
+ebenfalls von `VisionMachine` emittiert:
+
+| Event | Severity | Wann |
+| --- | --- | --- |
+| `FailureAlarmType` | 900 | Kamera liefert kein Bild |
+| `OffSpecAlarmType` | 500 | Kamerabild ist veraltet |
+| `CheckFunctionAlarmType` | 300 | Kamera wird geöffnet oder neu gestartet |
+
+Höchstens einer ist aktiv; `NORMAL` löscht den vorherigen, ohne einen neuen
+zu feuern. `SourceNode` nennt die betroffene Komponente. Vollständig in 11.4.
+
+Korrelation über `jobId`. Kein Polling nötig: das Ergebnis reist im Event mit.
+
+### 13.4 Nutzlast
+
+`ResultReadyEvent` und `LatestResultJson` tragen dasselbe JSON nach Schema
+`wsc.vision.detections/1`. Feldbedeutung in Abschnitt 6 — das Format ist seit
+Einführung **unverändert** und bleibt es.
+
+### 13.5 Part-10-Programm
+
+Derselbe Job über die generische Bedienform der Zelle
+(`ProgramStateMachineType`), wie sie Conveyor und CardDispenser benutzen:
+
+| Knoten | Richtung | Inhalt |
+| --- | --- | --- |
+| `VisionProgram/ParameterSet/RecipeId` | schreiben | wie oben |
+| `VisionProgram/ParameterSet/Continuous` | schreiben | `Boolean` — Dauerbetrieb |
+| `VisionProgram/ResultSet/JobId` | lesen | laufende bzw. letzte Job-Id |
+| `VisionProgram/ResultSet/ErrorCode` | lesen | Fehlercode aus 13.2 |
+| `VisionProgram/ResultSet/ExecutionMode` | lesen | Ausführungsart |
+
+Dazu spiegelt `ResultSet` `LatestResultJson`, `LatestCameraFrame`,
+`CameraStreamMode` und `CalibrationProgress`, damit ein generischer Client
+alles an einer Stelle findet. Vollständig in
+[`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+
+### 13.6 Betrieb
+
+| | |
+| --- | --- |
+| Endpoint | `opc.tcp://<LAN-IPv4>:4840/raspi/server/`, Security `NoSecurity` |
+| systemd | `opcua-server.service`, `Restart=always`, `RestartSec=5` |
+| Auffindbar über | mDNS (`_opcua-tcp._tcp.local.`) **und** LDS-Anmeldung beim Aggregation-Server; für den Zellbetrieb zählt die LDS-Anmeldung |
+| Zwei Instanzen | Decken-Pi (`cam_ceiling`, Picamera2) und Hand-Pi (`cam_flange`, RealSense) — **gleiche Schnittstelle**, unterschiedliche `visionSystemId` und `frameId` |
+
+### 13.7 Was ein Client mindestens können muss
+
+1. Verbinden, Namensraumindizes über die URIs auflösen.
+2. Auf `VisionMachine` abonnieren, **mit** Event-Typ-Liste.
+3. `StartSingleJob` aufrufen, `Error` auswerten, `JobId` merken.
+4. `ResultReadyEvent` entgegennehmen, `ResultContent[0]` als JSON lesen und
+   über `jobId` zuordnen.
+5. Verbindungsabriss überstehen und neu verbinden — der Server kann sich bei
+   hängender Kamera absichtlich beenden (11.4) und wird von systemd neu
+   gestartet.
+6. **Den Kamerazustand aus `DeviceHealth` lesen, nicht aus dem Bild.** Bei
+   hängender Kamera steht das Livebild still, statt zu verschwinden (11.4).
+   Wer eine Ampel zeigen will, abonniert den Zustandsknoten; wer auf
+   Übergänge reagieren will, zusätzlich die Alarme.
+
+Punkt 5 ist der einzige, der in der bisherigen Backend-Umsetzung noch fehlt
+(`vision-system-integration.md`, Risiko R9). Punkt 6 ist im Frontend
+umgesetzt (Ampel im Kamera-Panel).

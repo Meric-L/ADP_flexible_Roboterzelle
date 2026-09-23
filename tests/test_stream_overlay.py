@@ -106,5 +106,32 @@ class CalibrationModeDownscaleTest(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class ApplyCalibrationTest(unittest.TestCase):
+    """`apply_calibration` -- Gegenstueck zu `AprilTagDetectionSource.
+    apply_calibration`, damit Job und Livestream nach einer frischen
+    interaktiven Kalibrierung wieder dieselbe Quelle zeigen."""
+
+    def test_replaces_the_calibration_object(self):
+        annotator = AprilTagStreamAnnotator(
+            CONFIG, detector=None, calibration=_fake_calibration((100, 100)), tag_map=None
+        )
+        new_calibration = _fake_calibration((100, 100))
+
+        annotator.apply_calibration(new_calibration)
+
+        self.assertIs(annotator._calibration, new_calibration)
+
+    def test_clears_the_scaled_cache(self):
+        annotator = AprilTagStreamAnnotator(
+            CONFIG, detector=None, calibration=_fake_calibration((100, 100)), tag_map=None
+        )
+        annotator._scaled[(50, 50)] = "veraltet, gehoert zur alten Kalibrierung"
+
+        annotator.apply_calibration(_fake_calibration((100, 100)))
+
+        self.assertEqual(annotator._scaled, {})
+
+
 if __name__ == "__main__":
     unittest.main()
