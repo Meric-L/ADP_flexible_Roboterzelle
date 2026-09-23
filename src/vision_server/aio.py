@@ -6,8 +6,11 @@ importieren von hier, ohne dabei Server-Code mitzuziehen.
 
 import asyncio
 import contextlib
+import functools
 import signal
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 
 async def cancel_and_wait(task: asyncio.Task | None) -> None:
@@ -44,3 +47,37 @@ def stop_event_on_signals(
         with contextlib.suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
     return stop
+
+
+class SerialExecutor:
+    """Ein einzelner, bei Bedarf gestarteter Worker-Thread fuer blockierende Arbeit.
+
+    Eigener Ein-Worker-Pool statt `asyncio.to_thread`, weil letzterer den
+    Default-Executor teilt und nichts serialisiert -- Kamera- und
+    OpenCV-Zugriffe desselben Besitzers laufen hier strikt nacheinander. Ein
+    haengender Aufruf blockiert diesen Besitzer dauerhaft; wer das nicht
+    hinnehmen kann, braucht zusaetzlich eigene Timeouts.
+
+    Nach `shutdown()` wieder verwendbar: der naechste `run` startet einen
+    frischen Thread.
+    """
+
+    def __init__(self, thread_name_prefix: str) -> None:
+        self._thread_name_prefix = thread_name_prefix
+        self._pool: ThreadPoolExecutor | None = None
+
+    async def run(self, func: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+        """Fuehrt `func(*args, **kwargs)` im Worker aus und wartet darauf."""
+        if self._pool is None:
+            self._pool = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix=self._thread_name_prefix
+            )
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._pool, functools.partial(func, *args, **kwargs))
+
+    def shutdown(self) -> None:
+        """Gibt den Thread frei, ohne auf einen laufenden Aufruf zu warten;
+        noch wartende Aufrufe werden verworfen. Idempotent."""
+        pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)

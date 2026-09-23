@@ -3,9 +3,10 @@
 import asyncio
 import os
 import signal
+import threading
 import unittest
 
-from vision_server.aio import cancel_and_wait, stop_event_on_signals
+from vision_server.aio import SerialExecutor, cancel_and_wait, stop_event_on_signals
 
 
 class CancelAndWaitTest(unittest.IsolatedAsyncioTestCase):
@@ -23,6 +24,25 @@ class CancelAndWaitTest(unittest.IsolatedAsyncioTestCase):
         await task
         await cancel_and_wait(task)
         self.assertEqual(task.result(), 42)
+
+
+class SerialExecutorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_ein_benannter_thread_fuer_alle_aufrufe(self):
+        executor = SerialExecutor("vision-test")
+        names = await asyncio.gather(
+            *(executor.run(lambda: threading.current_thread().name) for _ in range(3))
+        )
+        self.assertEqual(len(set(names)), 1)
+        self.assertTrue(names[0].startswith("vision-test"))
+        executor.shutdown()
+
+    async def test_nach_shutdown_wieder_verwendbar(self):
+        executor = SerialExecutor("vision-test")
+        self.assertEqual(await executor.run(divmod, 7, 2), (3, 1))
+        executor.shutdown()
+        executor.shutdown()  # idempotent
+        self.assertEqual(await executor.run(int, "12", base=8), 10)
+        executor.shutdown()
 
 
 @unittest.skipUnless(hasattr(signal, "SIGUSR1"), "kein SIGUSR1 auf dieser Plattform")
