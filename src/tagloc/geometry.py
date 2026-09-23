@@ -63,38 +63,20 @@ def rotation_from_rvec(rvec) -> np.ndarray:
 def rvec_from_rotation(rotation) -> np.ndarray:
     """Invert `rotation_from_rvec`.
 
-    Theta near pi is handled separately: the skew-symmetric part vanishes
-    there and the usual formula loses the axis.
+    Ueber die Quaternion statt ueber `acos` der Spur: Shepperds Verfahren
+    (`quaternion_from_rotation`) bleibt auch bei theta nahe pi stabil, wo
+    der schiefsymmetrische Anteil verschwindet und die uebliche Formel die
+    Achse verliert -- ein eigener Zweig dafuer entfaellt. Mit `w >= 0`
+    liegt theta = 2 atan2(|v|, w) in [0, pi].
     """
-    rotation = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
-    cos_theta = (np.trace(rotation) - 1.0) / 2.0
-    cos_theta = float(np.clip(cos_theta, -1.0, 1.0))
-    theta = math.acos(cos_theta)
-    if theta < 1e-8:
-        return np.zeros(3, dtype=np.float64)
-    if math.pi - theta < 1e-6:
-        # Axis from the diagonal of R + I; the sign is free at pi anyway.
-        diagonal = np.clip((np.diag(rotation) + 1.0) / 2.0, 0.0, None)
-        axis = np.sqrt(diagonal)
-        largest = int(np.argmax(axis))
-        if axis[largest] < 1e-9:
-            return np.zeros(3, dtype=np.float64)
-        signs = np.ones(3, dtype=np.float64)
-        for index in range(3):
-            if index != largest and rotation[largest, index] < 0.0:
-                signs[index] = -1.0
-        axis = axis * signs
-        axis = axis / float(np.linalg.norm(axis))
-        return axis * theta
-    factor = theta / (2.0 * math.sin(theta))
-    return factor * np.array(
-        [
-            rotation[2, 1] - rotation[1, 2],
-            rotation[0, 2] - rotation[2, 0],
-            rotation[1, 0] - rotation[0, 1],
-        ],
-        dtype=np.float64,
-    )
+    quaternion = quaternion_from_rotation(rotation)
+    vector = quaternion[:3]
+    sine_half = float(np.linalg.norm(vector))
+    if sine_half < _ANGLE_EPS:
+        # Kleinwinkelnaeherung, exakt null fuer die Identitaet.
+        return 2.0 * vector
+    theta = 2.0 * math.atan2(sine_half, float(quaternion[3]))
+    return vector * (theta / sine_half)
 
 
 def from_rvec_tvec(rvec, tvec) -> Pose:
