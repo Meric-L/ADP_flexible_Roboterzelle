@@ -859,15 +859,74 @@ eingreift. Wer das anders will, ändert genau eine Zeile in
   Namensraum, die NodeIds im Vision-Namensraum — drei verschiedene Indizes an
   einem Pfad.
 
+#### Alarme — der zweite Teil der Norm
+
+DIs `IDeviceHealthType` hat **genau zwei** Mitglieder: die Variable oben und
+einen Ordner mit echten OPC-UA-Alarmen. Beide sind bedient.
+
+```
+VisionAsset/Health
+├── <di>:DeviceHealth                Int32
+└── <di>:DeviceHealthAlarms
+    ├── <di>:FailureAlarm            FailureAlarmType
+    ├── <di>:CheckFunctionAlarm      CheckFunctionAlarmType
+    └── <di>:OffSpecAlarm            OffSpecAlarmType
+```
+
+| Alarm | Severity | Wann |
+| --- | --- | --- |
+| `FailureAlarm` | 900 | `DeviceHealth` wird `FAILURE` |
+| `OffSpecAlarm` | 500 | `DeviceHealth` wird `OFF_SPEC` |
+| `CheckFunctionAlarm` | 300 | `DeviceHealth` wird `CHECK_FUNCTION` |
+
+Regeln, auf die sich ein Client verlassen kann:
+
+- Es ist **höchstens einer aktiv** — der Zustand ist einer von fünf. Beim
+  Wechsel wird der bisherige Alarm mit `ActiveState = Inactive` und
+  `Retain = false` gelöscht, bevor der neue mit `Active`/`true` feuert.
+- **`NORMAL` feuert keinen Alarm**, es löscht nur den vorherigen. Ein
+  Betrieb ohne Störung ist still.
+- **Emittiert wird von `VisionMachine`**, nicht vom Health-Knoten. Grund:
+  genau diesen Knoten abonniert ein Client ohnehin (Abschnitt 7.2), und ein
+  zweiter Abo-Punkt wäre eine neue Anforderung an jeden Client. `SourceNode`
+  nennt trotzdem die betroffene Komponente — den Bildsensor, falls sein
+  Modell bekannt ist, sonst die Anlagenwurzel.
+- `Message` trägt den Klartext samt Auslöser, z. B.
+  *„Kamera liefert kein Bild (hung)"*.
+
+Die Alarmobjekte liegen **nur an der Wurzel**, nicht zusätzlich am
+Bildsensor: beide Zustandsknoten tragen denselben Wert, und jede Instanz
+kostet 36 Knoten. Die Wurzel existiert außerdem immer — auch ohne
+konfiguriertes Kameramodell.
+
+> **Grenze, die man kennen muss:** `ConditionRefresh` ist **nicht** bedient.
+> Ein Client, der sich *nach* einem Alarm verbindet, bekommt ihn nicht
+> nachgeliefert. Deshalb bleibt `DeviceHealth` die verlässliche Quelle für
+> „wie ist der Zustand jetzt"; die Alarme sind der Ereignisweg für „was hat
+> sich geändert".
+
 #### Was nicht angelegt ist
 
-`VisionHealthInfoType` bringt außerdem `DeviceHealthAlarms` (echte
-OPC-UA-Conditions), `State` (SEMI E10), `Temperature` und `RemainingLifeTime`
-mit; alle vier sind optional und haben hier keine Quelle. Ebenso fehlt
-`Maintenance` (`VisionMaintenanceInfoType`) — ohne Wartungsintervalle und
-Kalibrierhistorie gäbe es nichts hineinzuschreiben. `DeviceHealthAlarms` wäre
-der nächste sinnvolle Schritt: es würde das Pollen endgültig überflüssig
-machen.
+`MaintenanceRequiredAlarmType` wird bewusst **nicht** instanziiert: ohne
+Verschleißzähler könnte er nie feuern, und ein Alarm, der nie kommt, ist eine
+Zusage, die wir nicht halten. Ebenso fehlen `State` (SEMI E10), `Temperature`
+und `RemainingLifeTime` — alle optional und ohne Quelle. `State` wäre der
+nächste sinnvolle Schritt; er braucht die strukturierten DataTypes, an denen
+`load_data_type_definitions()` bei 40100 noch scheitert (asyncua #1693).
+`Maintenance` (`VisionMaintenanceInfoType`) bliebe ohne Wartungsintervalle
+und Kalibrierhistorie leer.
+
+#### Der Livestream sagt nichts über die Kamera
+
+Früher leerte der Server den `LatestCameraFrame`-Knoten, sobald ein Bild
+älter als `stale_frame_s` war — das Frontend zeigte dann „Warte auf Bild".
+Das war eine **zweite Wahrheit** über „lebt die Kamera", neben `DeviceHealth`
+und an der Companion Spec vorbei. Sie ist entfallen.
+
+Konsequenz: bei hängender Kamera **steht das Livebild still**, statt zu
+verschwinden. MJPEG liefert weiter das letzte Bild, `/snapshot.jpg` antwortet
+nicht mehr mit `503`. Ob die Kamera arbeitet, beantwortet ausschließlich
+`DeviceHealth` — im Frontend als Ampel neben dem Bild.
 
 #### Kosten
 
@@ -875,14 +934,20 @@ Gemessen (Desktop, asyncua 2.0.1, zwei Läufe je Variante):
 
 | | Knoten der Anlagensicht | Aufbau |
 | --- | --- | --- |
-| ohne Zustandsblock | 19 | 0,150 s / 0,169 s |
-| mit Zustandsblock | 23 | 0,179 s / 0,186 s |
+| ohne Zustandsblock | 19 | 0,151 s |
+| nur `DeviceHealth` | 23 | 0,179 s |
+| mit Alarmen | 132 | 0,327 s |
 
-Vier Knoten und rund **20 ms**; die RSS-Differenz lag unter der Messauflösung
-(0,1 MB). Keine zusätzlichen Nodesets — DI und AMCM sind mit `assets` ohnehin
-geladen. Nachmessen: `PYTHONPATH=src python3 tools/measure_nodeset_import.py`
-(dessen Pfade zeigten bis hierher noch auf das verschobene
-`src/OPCUA/nodesets` und sind mitkorrigiert).
+Die Alarme kosten also den Löwenanteil: **je Instanz 36 Knoten**, weil
+`AlarmConditionType` den vollen Condition-Baum mitbringt (`ActiveState`,
+`AckedState`, `Retain`, `Severity`, `Message`, `EventId` …). Drei Instanzen
+plus Ordner sind rund **110 Knoten und 0,15 s**. Genau deshalb liegen sie
+einmal an der Wurzel und nicht zusätzlich je Komponente — das wären 216
+Knoten für dieselbe Information.
+
+Die RSS-Differenz lag unter der Messauflösung (0,1 MB). Keine zusätzlichen
+Nodesets — DI und AMCM sind mit `assets` ohnehin geladen. Nachmessen:
+`PYTHONPATH=src python3 tools/measure_nodeset_import.py`.
 
 #### Verhältnis zu Altlast A3
 
@@ -1137,6 +1202,7 @@ dreimal verschoben.
 | Kalibrier-Fortschritt | `ns=<vision>;s=VisionMachine.CalibrationProgress` | Abo |
 | Kalibrierung steuern | `…VisionMachine.{StartCalibration,CaptureCalibrationSample,FinishCalibration,AbortCalibration}` | Aufruf |
 | **Zustand der Anlage** | `ns=<vision>;s=VisionMachine.VisionAsset.Health.DeviceHealth` | Lesen / Abo |
+| Zustandsalarme | `…VisionAsset.Health.DeviceHealthAlarms.{FailureAlarm,CheckFunctionAlarm,OffSpecAlarm}` | Event-Abo auf `VisionMachine` |
 | **Zustand der Kamera** | `ns=<vision>;s=VisionMachine.VisionAsset.ImageSensor.Health.DeviceHealth` | Lesen / Abo |
 | Part-10-Programm | `ns=<vision>;s=VisionProgram` | siehe 13.5 |
 
@@ -1181,6 +1247,18 @@ und das Abo muss auf `VisionMachine` sitzen, nicht auf dem Server-Objekt (7.2).
 | `AcquisitionDoneEvent` | Bildaufnahme fertig |
 | `ResultReadyEvent` | Ergebnis da — **trägt das JSON in `ResultContent[0]`** |
 | `ReadyEvent` | wieder aufnahmebereit |
+
+Dazu die **Zustandsalarme** nach OPC 40100-2, Typen im **DI**-Namensraum und
+ebenfalls von `VisionMachine` emittiert:
+
+| Event | Severity | Wann |
+| --- | --- | --- |
+| `FailureAlarmType` | 900 | Kamera liefert kein Bild |
+| `OffSpecAlarmType` | 500 | Kamerabild ist veraltet |
+| `CheckFunctionAlarmType` | 300 | Kamera wird geöffnet oder neu gestartet |
+
+Höchstens einer ist aktiv; `NORMAL` löscht den vorherigen, ohne einen neuen
+zu feuern. `SourceNode` nennt die betroffene Komponente. Vollständig in 11.4.
 
 Korrelation über `jobId`. Kein Polling nötig: das Ergebnis reist im Event mit.
 
@@ -1227,6 +1305,11 @@ alles an einer Stelle findet. Vollständig in
 5. Verbindungsabriss überstehen und neu verbinden — der Server kann sich bei
    hängender Kamera absichtlich beenden (11.4) und wird von systemd neu
    gestartet.
+6. **Den Kamerazustand aus `DeviceHealth` lesen, nicht aus dem Bild.** Bei
+   hängender Kamera steht das Livebild still, statt zu verschwinden (11.4).
+   Wer eine Ampel zeigen will, abonniert den Zustandsknoten; wer auf
+   Übergänge reagieren will, zusätzlich die Alarme.
 
 Punkt 5 ist der einzige, der in der bisherigen Backend-Umsetzung noch fehlt
-(`vision-system-integration.md`, Risiko R9).
+(`vision-system-integration.md`, Risiko R9). Punkt 6 ist im Frontend
+umgesetzt (Ampel im Kamera-Panel).

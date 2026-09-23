@@ -249,6 +249,37 @@ Prozess dann einfach weg. Das ist gewollt, aber man muss es wissen.
   hängender Kamera will man am Fortschritt gerade sehen, dass die Session
   nicht weiterkommt.
 
+### Nachtrag 23.09.2026 — der Meldeweg war nur zur Haelfte gebaut
+
+Die erste Fassung bediente von DIs `IDeviceHealthType` nur die
+Zustandsvariable. Die Norm sieht zwei Mitglieder vor; der zweite,
+`DeviceHealthAlarms`, fehlte. Parallel bewertete der Livestream das Bildalter
+ein zweites Mal und leerte seinen Knoten — eine zweite Wahrheit ueber "lebt
+die Kamera", an der Companion Spec vorbei.
+
+Nachgezogen:
+
+- `DeviceHealthAlarms` mit `FailureAlarm`, `CheckFunctionAlarm` und
+  `OffSpecAlarm`, gefeuert bei jedem Zustandswechsel, hoechstens einer aktiv.
+  Emittiert von `VisionMachine` (dort abonnieren Clients ohnehin),
+  `SourceNode` nennt die Komponente. Severity 900/500/300.
+- `MaintenanceRequiredAlarmType` bleibt weg — ohne Verschleisszaehler koennte
+  er nie feuern.
+- Die Alarme liegen nur an der Wurzel: je Instanz 36 Knoten (gemessen), und
+  Wurzel wie Bildsensor tragen denselben Wert.
+- Livestream-Staleness (`_mark_stale`) ersatzlos entfernt. `stale_frame_s` ist
+  damit eindeutig die OFF_SPEC-Schwelle der Aufnahme.
+- Frontend (WSC-Repo): Ampel im Kamera-Panel aus `DeviceHealth`, weil das
+  stehende Bild die Aussage nicht mehr traegt.
+
+Gemessen: Anlagensicht 19 -> 23 (nur Variable) -> 132 Knoten (mit Alarmen),
+Aufbau 0,151 -> 0,179 -> 0,327 s. Ende-zu-Ende gegen einen echten Client:
+sieben Alarm-Events ueber ein echtes Abo.
+
+**Bekannte Grenze:** `ConditionRefresh` ist nicht bedient — wer sich nach
+einem Alarm verbindet, bekommt ihn nicht nachgeliefert und muss
+`DeviceHealth` lesen. Steht so in 11.4.
+
 ### Gemessen
 
 Desktop, asyncua 2.0.1, zwei Läufe je Variante:

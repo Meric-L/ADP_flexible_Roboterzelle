@@ -180,9 +180,19 @@ Livestream zeigte ein eingefrorenes Bild, Jobs scheiterten mit „Kein Kamerabil
 innerhalb von 5.0 s“). Jede Aufnahme hat deshalb `frame_timeout_s` (3 s); bei
 einem Haenger wird die Kamera neu geoeffnet, nach `max_reopen_attempts` (2)
 erfolglosen Neu-Oeffnungen beendet sich der Prozess hart und systemd startet
-ihn neu. Der Livestream leert seinen Knoten, sobald der Frame älter als
-`stale_frame_s` (2 s) ist. Im Journal danach suchen mit
-`journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|pausiert|beende den Prozess"`.
+ihn neu.
+
+**Der Watchdog überwacht ausschließlich die Aufnahme, nicht den Livestream.**
+Nach außen meldet er sich über OPC 40100-2: `DeviceHealth` sagt, wie es der
+Kamera geht, und jeder Zustandswechsel feuert zusätzlich den passenden
+DI-Alarm (`camera_health.py`). Der Livestream ist reiner Publisher — er
+veröffentlicht auch ein veraltetes Bild weiter. Bei hängender Kamera steht
+das Livebild deshalb still; **dass** es steht, sagt die Ampel im Frontend und
+nicht das fehlende Bild. Vollständig in
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 11.4.
+
+Im Journal danach suchen mit
+`journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|Kamerazustand|beende den Prozess"`.
 Häufen sich die Meldungen, ist die Ursache meist Hardware (Flachbandkabel).
 
 ## Verifizierter Stand
