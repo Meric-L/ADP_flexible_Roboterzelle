@@ -138,12 +138,18 @@ def scale_to_resolution(calibration: CameraCalibration,
 Für `chessboard` (aktuell beide Pis) probiert `detect_board` zuerst
 `cv2.findChessboardCornersSB` — der neuere "Sector-Based"-Detektor,
 robuster bei schlechtem Licht/Unschärfe/starker Neigung als die klassische
-Methode, mit `CALIB_CB_ACCURACY` (eigener, langsamerer Algorithmus für
-bessere Eckengenauigkeit — hier gewollt, Kalibrieren ist nicht zeitkritisch)
-und bereits subpixelgenau, kein zusätzliches `cornerSubPix()` nötig.
+Methode und bereits subpixelgenau, kein zusätzliches `cornerSubPix()` nötig.
 Rückfall auf die klassische `cv2.findChessboardCorners` + `cornerSubPix`
 (11×11-Fenster), falls diese OpenCV-Version kein SB kennt (Pi: OpenCV 4.x)
 oder SB das Board in diesem Frame nicht findet.
+
+**Bewusst ohne `CALIB_CB_ACCURACY`:** der Flag verspricht bessere
+Eckengenauigkeit, ist laut OpenCV-Doku aber ein "eigener, langsamerer
+Algorithmus" — gemessen bei ~4000 px Breite (Deckenkamera-Format, 12 MP)
+4,45 s gegen 0,87 s ohne (Faktor 5) bzw. 0,06 s bei der klassischen Methode
+(Faktor 73). Die Kalibrier-Aufnahme läuft immer auf dem **vollen**
+Kamera-Frame; mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in den
+Timeout (live gefunden 2026-09-23, gleicher Tag wie die Einführung).
 
 **Nicht offensichtlich:** SB liefert die Eckpunkte in **exakt umgekehrter
 Reihenfolge** gegenüber der klassischen Methode (empirisch mit einem
