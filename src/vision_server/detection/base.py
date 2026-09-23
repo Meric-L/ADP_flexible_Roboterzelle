@@ -37,7 +37,6 @@ class DetectionRequest:
     meas_id: str | None = None
     part_id: str | None = None
     product_id: str | None = None
-    deadline: float | None = None
 
 
 class DetectionSource(ABC):

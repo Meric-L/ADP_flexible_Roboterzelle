@@ -9,7 +9,7 @@ from asyncua.common.instantiate_util import instantiate
 from asyncua.common.node import Node
 
 from .address_space import VisionAddressSpace
-from .nodeset_ids import RESULT_TYPE, mv
+from .nodeset_ids import RESULT_TYPE, node_id
 from .ua_nodes import add_named_variable
 
 _log = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class ResultStore:
         result_node = (
             await instantiate(
                 space.results_folder,
-                space.server.get_node(mv(RESULT_TYPE, space.mv_idx)),
+                space.server.get_node(node_id(RESULT_TYPE, space.mv_idx)),
                 bname=f"{space.own_idx}:{RESULT_BROWSE_NAME}",
             )
         )[0]

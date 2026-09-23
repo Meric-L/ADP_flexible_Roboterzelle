@@ -41,7 +41,6 @@ class VisionServerConfig:
     namespace_uri: str = "http://launch-rm.de/vision"
     vision_system_name: str = "VisionMachine"
     vision_system_id: str = "vision-hello-01"
-    configuration_id: str = "hello-world-config"
     detection_latency: float = 0.25
     nodeset_path: Path = DEFAULT_NODESET_PATH
     recipe_profiles: tuple[tuple[str, str], ...] = DEFAULT_RECIPE_PROFILES

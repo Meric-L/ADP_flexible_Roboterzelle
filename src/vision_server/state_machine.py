@@ -14,7 +14,7 @@ from .nodeset_ids import (
     STATE_READY,
     STATE_CONTINUOUS_EXECUTION,
     STATE_SINGLE_EXECUTION,
-    mv,
+    node_id,
 )
 
 _log = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ async def _bind(server: Server, node: Node, name: str, emitting_node: Node, mv_i
     fsm = FiniteStateMachine(server, parent=node, name=name)
     fsm._state_machine_node = node
     await fsm.init(node)
-    fsm._evgen = await server.get_event_generator(mv(EVENT_STATE_CHANGED, mv_idx), emitting_node)
+    fsm._evgen = await server.get_event_generator(node_id(EVENT_STATE_CHANGED, mv_idx), emitting_node)
     return fsm
 
 
@@ -91,7 +91,7 @@ class VisionStateMachines:
             for name in OUTER_STATE_NAMES
         }
         inner = {
-            name: await _load_state(space.server.get_node(mv(identifier, space.mv_idx)))
+            name: await _load_state(space.server.get_node(node_id(identifier, space.mv_idx)))
             for name, identifier in (
                 ("Initialized", STATE_INITIALIZED),
                 ("Ready", STATE_READY),
@@ -164,15 +164,12 @@ class VisionStateMachines:
         """Operational -> Error (OperationalToErrorAuto)."""
         await self._set_outer("Error", f"OperationalToErrorAuto: Operational -> Error ({reason})")
 
-    async def recover(self, *, halt: bool = False) -> None:
-        """Error -> Operational, oder mit `halt` Error -> Halted.
+    async def recover(self) -> None:
+        """Error -> Operational (ErrorToOperationalAuto).
 
-        Halted braucht anschliessend einen Operator-`Reset`; der Server bleibt
-        dann bewusst nicht mehr betriebsbereit.
+        Ein fehlgeschlagener Job haelt den Server bewusst nicht an -- der
+        naechste Job darf sofort kommen (siehe `job.JobRunner._fail`).
         """
-        if halt:
-            await self._set_outer("Halted", "ErrorToHaltedAuto: Error -> Halted")
-            return
         await self._set_outer("Operational", "ErrorToOperationalAuto: Error -> Operational")
 
     def is_ready(self) -> bool:

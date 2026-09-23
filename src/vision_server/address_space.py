@@ -15,7 +15,6 @@ from .nodeset_ids import (
     MACHINES_FOLDER,
     MACHINE_VISION_NAMESPACE_URI,
     VISION_SYSTEM_TYPE,
-    mv,
     node_id,
 )
 from .ua_nodes import add_named_variable
@@ -179,7 +178,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     vision_system = await parent.add_object(
         ua.NodeId(name, own_idx),
         ua.QualifiedName(name, own_idx),
-        objecttype=mv(VISION_SYSTEM_TYPE, mv_idx),
+        objecttype=node_id(VISION_SYSTEM_TYPE, mv_idx),
     )
     await server.nodes.server.add_reference(
         vision_system, ua.ObjectIds.HasNotifier, forward=True

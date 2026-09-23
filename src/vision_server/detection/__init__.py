@@ -55,11 +55,6 @@ def _factory(profile_id: str) -> SourceFactory:
         ) from None
 
 
-def build_detection_source(config: VisionServerConfig, profile_id: str) -> DetectionSource:
-    """Erzeugt die Quelle eines Profils."""
-    return _factory(profile_id)(config)
-
-
 def build_detection_sources(config: VisionServerConfig) -> dict[str, DetectionSource]:
     """Eine Instanz je referenziertem Profil, damit Rezepte sich eine Kamera teilen.
 
@@ -74,6 +69,5 @@ __all__ = [
     "DetectionRequest",
     "DetectionSource",
     "DETECTION_SOURCES",
-    "build_detection_source",
     "build_detection_sources",
 ]
