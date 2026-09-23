@@ -50,8 +50,9 @@ def _resize_for_stream(image, max_width: int):
 
     Erkennung und Kalibrierung sehen weiter den vollen Kamera-Frame -- diese
     Funktion laeuft erst nach dem Overlay, auf einer Kopie fuers Encoding.
-    Ohne das kostet z. B. cam_ceiling (2028x1520) pro Tick ein JPEG-Encode
-    eines ~3-MP-Bildes, was die Stream-Framerate spuerbar drueckt.
+    Ohne das kostete schon cam_ceiling bei 2028x1520 pro Tick ein JPEG-Encode
+    eines ~3-MP-Bildes, was die Stream-Framerate spuerbar drueckte; heute
+    (4056x3040) waeren es 12 MP.
     """
     import cv2
 

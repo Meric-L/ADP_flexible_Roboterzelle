@@ -122,8 +122,10 @@ class CameraStreamConfig:
     #: "Couldn't resolve requests" scheitern.
     resolution: tuple[int, int] = (1280, 720)
     #: Nur Picamera2: zweiter, kleiner Bildstrom ("lores") aus demselben
-    #: Frame, im ISP skaliert -- praktisch ohne CPU-Last. Livestream und
-    #: Overlay rechnen darauf, Jobs und Kalibrierung weiter auf `resolution`.
+    #: Frame, im ISP skaliert -- praktisch ohne CPU-Last. Darauf rechnet nur
+    #: noch das Overlay "Kalibrierboard markieren"; "AprilTags markieren",
+    #: "Rohbild", Jobs und Kalibrierung nehmen `resolution` (seit 2026-09-22,
+    #: `camera_stream.CameraStreamPublisher._encoded`).
     #: `None` = kein zweiter Strom; der Stream verkleinert dann selbst
     #: (`max_stream_width`), wie bei RealSense und OpenCV.
     preview_resolution: tuple[int, int] | None = None
@@ -153,9 +155,9 @@ class CameraStreamConfig:
     #: Maximale Bildbreite im Stream; breitere Frames werden vor dem
     #: JPEG-Encode herunterskaliert (nur fuer den Stream -- Erkennung und
     #: Kalibrierung arbeiten weiter auf dem vollen Kamera-Frame). Ohne das
-    #: kostet z. B. cam_ceiling (2028x1520) auf dem Pi pro Tick ein Encode
-    #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein. `None` schaltet
-    #: die Skalierung ab.
+    #: kostete schon cam_ceiling bei 2028x1520 auf dem Pi pro Tick ein Encode
+    #: eines ~3-MP-Bildes; die Framerate brach spuerbar ein -- bei heute
+    #: 4056x3040 waeren es 12 MP. `None` schaltet die Skalierung ab.
     max_stream_width: int | None = 960
     #: Port des MJPEG-Streams (`http://<pi>:<port>/stream.mjpg`); 0 = aus.
     #: Das Frontend liest ihn aus `http_port_node_name` und baut die URL aus

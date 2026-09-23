@@ -56,8 +56,10 @@ class CameraFrame:
     """Ein aufgenommener Frame (BGR, wie von OpenCV erwartet) mit Zeitstempel.
 
     `image` ist immer das volle Bild -- Erkennung und Kalibrierung rechnen
-    darauf. `preview` ist dasselbe Bild klein, vom Kamera-ISP skaliert, fuer
-    Livestream und Overlay; `None`, wenn das Backend keinen zweiten Strom hat.
+    darauf, ebenso die Stream-Modi "AprilTags markieren" und "Rohbild".
+    `preview` ist dasselbe Bild klein, vom Kamera-ISP skaliert, fuer das
+    Overlay "Kalibrierboard markieren"; `None`, wenn das Backend keinen
+    zweiten Strom hat.
     """
 
     image: Any
@@ -166,8 +168,8 @@ def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
     """Argumente fuer `Picamera2.create_video_configuration()` aus der Config.
 
     Hauptstrom in voller `resolution` fuer Jobs und Kalibrierung; mit
-    `preview_resolution` zusaetzlich ein `lores`-Strom fuer den Livestream,
-    den der ISP aus demselben Frame skaliert.
+    `preview_resolution` zusaetzlich ein `lores`-Strom fuer das Kalibrier-
+    Overlay im Livestream, den der ISP aus demselben Frame skaliert.
     """
     arguments: dict[str, Any] = {
         "main": {"size": tuple(config.resolution), "format": PICAMERA2_MAIN_FORMAT},
