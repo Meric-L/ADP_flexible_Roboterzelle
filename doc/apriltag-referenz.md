@@ -627,3 +627,31 @@ Fixture-Dateien aus. Gemockt wird mit handgeschriebenen Fakes (`FakeCamera`,
 | Schließfehler in `residuals` groß | Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht; die Karte ist erst brauchbar, wenn sie sich schließt |
 | Server bleibt in Preoperational | `open()` der Quelle ist gescheitert — meist fehlende Kalibrier- oder Tag-Map-Datei; Logmeldung nennt den Pfad |
 | Livestream weg, obwohl konfiguriert | keine geöffnete Quelle hält eine `SharedCamera` |
+
+---
+
+## 13. Gemeinsame Helfer (seit dem Refactoring, 23.09.2026)
+
+Aus dem Refactoring ([`arbeitsplaene/refactoring-redundanzen.md`](arbeitsplaene/refactoring-redundanzen.md))
+sind Helfer entstanden, die vorher an mehreren Stellen einzeln nachgebaut
+waren. Wer eine dieser Aufgaben braucht, nimmt den Helfer — nicht eine
+eigene Kopie.
+
+| Aufgabe | Helfer | Hinweis |
+|---|---|---|
+| JSON-Datei schreiben | `tagloc.jsonio.write_json(path, payload, *, indent=2)` | atomar (Nachbardatei + `os.replace`), legt Verzeichnisse an; nur Standardbibliothek |
+| JSON-Datei mit Schema lesen | `tagloc.jsonio.read_schema_json(path, schema, what, *, schema_name=None)` | `FileNotFoundError` / `ValueError`, beide mit Pfad |
+| Kalibrierung an die Bildgröße anpassen | `tagloc.calibration.fit_to_resolution(cal, image_size, *, allow_scaling)` | `ValueError`, wenn Größen abweichen und nicht skaliert werden darf |
+| Kamerapose + KS-Wahl + Module | `tagloc.localize.locate_in_frame(tag_poses, tag_map, *, camera_frame_id, max_reprojection_error_px=3.0)` | cv2-frei; liefert `(pose_world_cam \| None, [ModuleLocation])` |
+| Tag-Eintrag / Tag-Größe bei optionaler Karte | `tagloc.tagmap.entry_for(tag_map, tag_id)`, `size_for(tag_map, tag_id, default_m)` | `tag_map` darf `None` sein |
+| Schachbrett-Objektpunkte | `tagloc.boards.chessboard_object_points(spec, dtype=np.float32)` | |
+| Marker-Bild erzeugen | `tagloc.detector.generate_marker(dictionary, tag_id, pixels)` | kapselt `generateImageMarker`/`drawMarker` |
+| Standard-Tag-Familie | `tagloc.modes.DEFAULT_TAG_FAMILY` | `"tag36h11"` |
+| Synthetische Szenen | `tagloc.synthetic` | früher der Kern von `tools/make_synthetic_scene.py`; das Tool ist jetzt nur noch die Kommandozeile davor |
+| Board-Geometrie aus der Server-Config | `vision_server.calibration_session.board_spec_from_config(config)` | von Kalibrier-Session und Overlay gemeinsam genutzt |
+| Blockierende Arbeit in einem Worker-Thread | `vision_server.aio.SerialExecutor(thread_name_prefix)` | `await run(func, *args)`, `shutdown()` |
+| Task abbrechen und abwarten | `vision_server.aio.cancel_and_wait(task)` | |
+| Stop bei SIGTERM/SIGINT | `vision_server.aio.stop_event_on_signals()` | |
+| Knoten mit String-NodeId | `vision_server.ua_nodes.add_named_variable(...)`, `add_named_object(...)`, `named_node_id(...)` | NodeId `"<prefix>.<name>"` wie bisher |
+| OPC-UA-Kommandozeilen-Clients | `vision_server.tools._client` | `--url`/`--namespace`/`--vision-system`, `vision_node`, `decode_frame`, `format_progress` |
+| Test-Hilfen | `tests/_support.py` | `RecordingNode`, `run_briefly`, `wait_until`, `make_tag_pose`, `AddressSpaceCache`; unittest lädt keine `conftest.py`, darum ein normales Modul |
