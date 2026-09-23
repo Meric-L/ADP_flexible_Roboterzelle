@@ -33,11 +33,10 @@ import contextlib
 import logging
 import os
 from collections.abc import Awaitable, Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
-from .aio import cancel_and_wait
+from .aio import SerialExecutor, cancel_and_wait
 from .profiles import CAMERA_BACKENDS, CameraStreamConfig
 
 _log = logging.getLogger(__name__)
@@ -197,7 +196,10 @@ class SharedCamera:
     ) -> None:
         self._config = config
         self._camera: Any = None
-        self._executor: ThreadPoolExecutor | None = None
+        #: Alle Hardware-Zugriffe nacheinander in einem Thread. Nach einem
+        #: Haenger wird er aufgegeben (`shutdown`), der naechste Aufruf startet
+        #: einen frischen.
+        self._worker = SerialExecutor("vision-camera")
         self._loop_task: asyncio.Task | None = None
         self._latest: CameraFrame | None = None
         #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen, und
@@ -256,9 +258,7 @@ class SharedCamera:
 
     async def open(self) -> None:
         """Oeffnet die Kamera und startet den Capture-Loop. Nicht idempotent."""
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera")
-        loop = asyncio.get_running_loop()
-        self._camera = await loop.run_in_executor(self._executor, self._open_camera)
+        self._camera = await self._worker.run(self._open_camera)
         self._loop_task = asyncio.create_task(self._capture_loop())
 
     @contextlib.contextmanager
@@ -396,7 +396,7 @@ class SharedCamera:
             return "hung"
         try:
             image, preview = await asyncio.wait_for(
-                loop.run_in_executor(self._executor, self._read_frames),
+                self._worker.run(self._read_frames),
                 timeout=self._config.frame_timeout_s,
             )
         except TimeoutError:
@@ -469,16 +469,12 @@ class SharedCamera:
             self._config.max_reopen_attempts,
         )
         camera, self._camera = self._camera, None
-        executor, self._executor = self._executor, None
-        if executor is not None:
-            executor.shutdown(wait=False, cancel_futures=True)
+        self._worker.shutdown()
         if camera is not None:
             await self._close_in_own_thread(camera)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera")
-        loop = asyncio.get_running_loop()
         try:
             self._camera = await asyncio.wait_for(
-                loop.run_in_executor(self._executor, self._open_camera),
+                self._worker.run(self._open_camera),
                 timeout=self._config.frame_timeout_s + self._config.warmup_s,
             )
         except Exception:
@@ -493,16 +489,16 @@ class SharedCamera:
         `close` stuende dann ewig hinter ihm an. Haengt auch das Schliessen,
         bleibt dieser Thread eben zurueck.
         """
-        closer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera-close")
+        closer = SerialExecutor("vision-camera-close")
         try:
             await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(closer, self._close_camera, camera),
+                closer.run(self._close_camera, camera),
                 timeout=self._config.frame_timeout_s,
             )
         except Exception:
             _log.exception("Kamera liess sich nicht sauber schliessen")
         finally:
-            closer.shutdown(wait=False, cancel_futures=True)
+            closer.shutdown()
 
     async def close(self) -> None:
         """Stoppt den Capture-Loop und gibt die Kamera frei. Idempotent."""
@@ -511,9 +507,7 @@ class SharedCamera:
         if self._camera is not None:
             camera, self._camera = self._camera, None
             await self._close_in_own_thread(camera)
-        if self._executor is not None:
-            self._executor.shutdown(wait=False, cancel_futures=True)
-            self._executor = None
+        self._worker.shutdown()
 
     def _close_camera(self, camera: Any) -> None:
         backend = self._config.backend
