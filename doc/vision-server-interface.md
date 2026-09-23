@@ -700,7 +700,8 @@ weicht dabei um 0,07 % ab, unter der Schranke von 0,1 %.
 Einstellungen (`CameraStreamConfig`, Preset in `server.py`,
 `PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, nur noch für
 „Kalibrierboard markieren“ und den Vorschau-Fallback), `capture_fps`
-10 (Obergrenze des IMX477 bei voller Auflösung), `buffer_count` 2 (sechs
+10 (Obergrenze des IMX477 bei voller Auflösung; auf Pi 1 gemessen
+**5–10 fps**, getestet 23.09.2026), `buffer_count` 2 (sechs
 Puffer à 37 MB passen nicht in den CMA-Speicher), `overlay_timeout_s` **8,0**
 statt des globalen Defaults 2,0 (`profiles.py`) — Erkennung + Zeichnen auf
 4056×3040 überschritt die 2,0 s zuverlässig, das Overlay fiel dann jeden Tick

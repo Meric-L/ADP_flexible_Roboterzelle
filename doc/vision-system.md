@@ -236,9 +236,13 @@ Festgehalten in `tests/test_part10_fassade.py`.
   deshalb nicht; er holt sein Ergebnis über die Wertänderung von
   `VisionProgram/ResultSet/LatestResultJson`. Am 21.09.2026 gegen asyncua 2.0.1
   nachgemessen — auch eine `HasEventSource`-Referenz ändert daran nichts.
-- Die Deckenkamera (Pi 1) nimmt mit voller Sensorauflösung 4056×3040 auf;
-  Livestream und Overlay laufen auf einem zweiten, vom ISP skalierten Strom
-  (960×720), siehe [`vision-server-interface.md`](vision-server-interface.md)
-  Abschnitt 10.3. Eine Kalibrierung für 2028×1520 wird bis zur Neukalibrierung
-  hochgerechnet (`allow_resolution_mismatch` im Preset `cam_ceiling`) — nach
-  der Neukalibrierung bei 4056×3040 den Schalter wieder entfernen.
+- Die Deckenkamera (Pi 1) nimmt mit voller Sensorauflösung 4056×3040 auf,
+  angefordert mit 10 fps, auf Pi 1 gemessen **5–10 fps**. Job, Kalibrierung
+  und die Stream-Modi „AprilTags markieren“ und „Rohbild“ arbeiten auf dem
+  vollen Bild; nur „Kalibrierboard markieren“ nutzt den zweiten, vom ISP
+  skalierten Strom (960×720), siehe
+  [`vision-server-interface.md`](vision-server-interface.md) Abschnitt 10.3.
+  Eine Kalibrierung für 2028×1520 wird hochgerechnet
+  (`allow_resolution_mismatch` im Preset `cam_ceiling`); liegt eine
+  Kalibrierung bei 4056×3040 vor, ist der Schalter wirkungslos und kann
+  entfallen.

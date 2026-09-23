@@ -1,6 +1,6 @@
 # Deckenkamera (Pi 1) mit voller Sensorauflösung, flüssiger Livestream
 
-**Status:** in Arbeit — 22.09.2026
+**Status:** fertig — 23.09.2026
 **Verantwortlich:** John Glanz, `Agent: volle Auflösung Deckenkamera`
 **Thema:** vision
 **Branch:** feature/vision-server
@@ -28,6 +28,10 @@ viermal so teuer.
 - `doc/apriltag-e2e-test.md` (Abschnitt 3.3, Kalibrierung)
 
 ## Lösung
+
+> **Stand nach Abschluss:** Die Tabelle unten ist der ursprüngliche Plan.
+> Seit 22.09.2026 laufen „AprilTags markieren“ und „Rohbild“ auf dem vollen
+> Bild, nicht mehr auf `lores` — siehe „Abweichungen vom Plan“.
 
 Die Pi-Kamera liefert neben dem Hauptbild (`main`) einen zweiten, kleinen
 Bildstrom (`lores`) aus demselben Frame. Den skaliert der ISP in Hardware —
@@ -147,14 +151,39 @@ Keine an den Schnittstellen. Umgesetzt wie oben, zusätzlich:
   Zeilenausrichtung, ein Request für beide Bilder), `tests/test_camera_stream.py`
   (`PreviewSourceTest`), neu `tests/test_server_config.py`.
 
-**Stand:** Code fertig, 298 Tests grün (Windows, ohne Kamera). **Offen, auf
-Pi 1:**
+Nachträglich geändert (NobbisCode, 22.09.2026, `9e9febd`, `4b7f473`,
+`9214d94`) — Abweichung vom Ziel „beide Overlay-Modi auf `lores`“:
 
-1. `measure_framerate.py` bei 4056×3040 — liefert der Pi die 10 fps?
-2. Livestream in beiden Modi flüssig? Farben richtig (Rot bleibt Rot)?
-3. Server-Log: keine Fehler beim Anlegen der Kamerapuffer
-4. Neu kalibrieren bei 4056×3040, danach `allow_resolution_mismatch` aus dem
-   Preset `cam_ceiling` entfernen
+- „AprilTags markieren“ erkennt auf dem **vollen** 12-MP-Frame und
+  verkleinert erst danach fürs Publizieren. Grund: Stream und Job sollen
+  dieselben Treffer zeigen; auf `lores` war ein im Stream fehlender Tag kein
+  Beleg dafür, dass der Job ihn verpasst.
+- „Rohbild“ zeigt ebenfalls den vollen Frame (verkleinert), damit Fokus,
+  Belichtung und Ausschnitt dem entsprechen, was der Pi wirklich sieht.
+- Nur „Kalibrierboard markieren“ bleibt auf `preview` (960×720).
+- `overlay_timeout_s` für `cam_ceiling` auf 8,0 s (Default 2,0 s reichte auf
+  4056×3040 nicht, das Overlay fiel sonst jeden Tick aufs Rohbild zurück).
+- Die geringere Stream-Framerate wird dafür bewusst in Kauf genommen. Die
+  offene Frage „genügt 960×720 fürs Overlay?“ ist damit gegenstandslos.
+
+Maßgeblich ist [`../vision-server-interface.md`](../vision-server-interface.md)
+Abschnitt 10.3.
+
+**Ergebnis auf Pi 1 (getestet, 23.09.2026):** Die Kamera läuft mit
+4056×3040; gemessen **5–10 fps** statt stabiler 10 fps. Der Plan ist damit
+abgeschlossen.
+
+Ursprünglich offene Prüfpunkte auf Pi 1:
+
+1. `measure_framerate.py` bei 4056×3040 — **5–10 fps** gemessen, die
+   angeforderten 10 fps werden nicht ganz erreicht.
+2. Livestream und Farben — getestet.
+3. Kamerapuffer — getestet, `open()` läuft mit `buffer_count` 2.
+4. `allow_resolution_mismatch` bleibt im Preset `cam_ceiling` stehen: Bei
+   einer Kalibrierung für 4056×3040 ist der Schalter wirkungslos, bei einer
+   alten für 2028×1520 rechnet er sie hoch. Entfernen, sobald sicher nur noch
+   eine 4056×3040-Kalibrierung auf Pi 1 liegt — dann fällt eine falsche
+   Auflösung wieder als Fehler auf.
 
 ## Nach Abschluss
 
