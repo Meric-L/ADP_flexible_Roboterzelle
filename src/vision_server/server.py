@@ -24,7 +24,6 @@ import asyncio
 import logging
 import os
 import socket
-from pathlib import Path
 from urllib.parse import urlparse
 
 from asyncua import Server
@@ -33,7 +32,12 @@ from .address_space import configure_server
 from .aio import stop_event_on_signals
 from .config import VisionServerConfig
 from .discovery import lds, mdns
-from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
+from .profiles import (
+    AprilTagProfileConfig,
+    AssetConfig,
+    CameraStreamConfig,
+    calibration_path_for,
+)
 from .runner import install_vision_machine
 
 _log = logging.getLogger("vision-cell-server")
@@ -166,19 +170,14 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
     },
 }
 
-#: Wurzel des Repos, von `src/vision_server/server.py` aus drei Ebenen
-#: hoch. Zeigt auf `data/` und `config/` -- beide liegen bewusst neben dem
-#: Quelltext, nicht im Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map
-#: zur Zelle.
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
 
 def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     """Return this Pi's AprilTag profile.
 
     Calibration belongs to the physical camera, hence named after the frame
-    and stored under `data/` (not versioned). The tag map describes the
-    cell, is the same for both Pis, and lives under `config/`.
+    and stored under `data/` (not versioned, `profiles.calibration_path_for`).
+    The tag map describes the cell, is the same for both Pis, and lives
+    under `config/` (`profiles.DEFAULT_TAG_MAP_PATH`, the default).
 
     `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` is a deliberate, temporary
     bypass (`AprilTagProfileConfig.allow_placeholder_calibration`) for
@@ -189,8 +188,7 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     """
     preset = PI_APRILTAG_PRESETS.get(frame_id, {})
     return AprilTagProfileConfig(
-        calibration_path=REPO_ROOT / "data" / "calibration" / f"{frame_id}.json",
-        tag_map_path=REPO_ROOT / "config" / "tagmap.json",
+        calibration_path=calibration_path_for(frame_id),
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
         **preset,

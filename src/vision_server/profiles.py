@@ -12,12 +12,26 @@ was sie aus `calibration_path` laedt.
 from dataclasses import dataclass
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+#: Wurzel des Repos, von `src/vision_server/profiles.py` aus drei Ebenen
+#: hoch -- einzige Stelle, die sie aus einem Dateipfad ableitet. Zeigt auf
+#: `data/` und `config/`; beide liegen bewusst neben dem Quelltext, nicht im
+#: Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map zur Zelle.
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 #: Machine-specific, hence under `data/` (excluded by .gitignore).
-DEFAULT_CALIBRATION_PATH = _REPO_ROOT / "data" / "calibration" / "camera.json"
+CALIBRATION_DIR = REPO_ROOT / "data" / "calibration"
+DEFAULT_CALIBRATION_PATH = CALIBRATION_DIR / "camera.json"
 #: Cell layout, hence versioned under `config/`.
-DEFAULT_TAG_MAP_PATH = _REPO_ROOT / "config" / "tagmap.json"
+DEFAULT_TAG_MAP_PATH = REPO_ROOT / "config" / "tagmap.json"
+
+
+def calibration_path_for(frame_id: str) -> Path:
+    """Kalibrierdatei der Kamera mit Rahmen `frame_id`.
+
+    Die Kalibrierung gehoert zur physischen Kamera, darum nach ihrem Rahmen
+    benannt: `data/calibration/<frame_id>.json`.
+    """
+    return CALIBRATION_DIR / f"{frame_id}.json"
 
 
 @dataclass(frozen=True)

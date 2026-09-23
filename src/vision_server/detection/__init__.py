@@ -1,15 +1,15 @@
 """Registry der Erkennungsprofile."""
 
 from collections.abc import Callable
-from pathlib import Path
 
 from ..config import VisionServerConfig
+from ..profiles import REPO_ROOT
 from .base import Detection, DetectionRequest, DetectionSource
 
-#: `src/` -- Wurzel aller Importpfade. Einzige Stelle dieses Pakets, die sie
-#: aus dem eigenen Dateipfad ableitet; die Job-Scripts bekommen sie als
-#: `PYTHONPATH` (`ScriptDetectionSource.subprocess_env`).
-SRC_DIR = Path(__file__).resolve().parents[2]
+#: `src/` -- Wurzel aller Importpfade, aus `profiles.REPO_ROOT`; die
+#: Job-Scripts bekommen sie als `PYTHONPATH`
+#: (`ScriptDetectionSource.subprocess_env`).
+SRC_DIR = REPO_ROOT / "src"
 
 #: Gesammelter Ablageort aller vom Backend aufgerufenen Job-Scripts, nicht
 #: unter vision_server, damit auch Jobs anderer Backend-Teile hierher passen.

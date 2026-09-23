@@ -9,6 +9,7 @@ import os
 import unittest
 from unittest import mock
 
+from vision_server.profiles import DEFAULT_TAG_MAP_PATH, REPO_ROOT
 from vision_server.server import vision_config
 
 
@@ -71,6 +72,24 @@ class FlangeCameraTest(unittest.TestCase):
         urspruenglichen, knappen Wert behalten."""
         config = config_for("cam_flange", "realsense")
         self.assertEqual(config.camera_stream.overlay_timeout_s, 2.0)
+
+
+class PathsTest(unittest.TestCase):
+    """Kalibrierung je Rahmen unter `data/`, eine Tag-Map fuer die Zelle."""
+
+    def test_calibration_is_named_after_the_frame(self):
+        config = config_for("cam_ceiling", "picamera2")
+        self.assertEqual(
+            config.apriltag.calibration_path,
+            REPO_ROOT / "data" / "calibration" / "cam_ceiling.json",
+        )
+
+    def test_both_pis_share_the_tag_map_under_config(self):
+        for frame_id, backend in (("cam_ceiling", "picamera2"), ("cam_flange", "realsense")):
+            with self.subTest(frame_id=frame_id):
+                config = config_for(frame_id, backend)
+                self.assertEqual(config.apriltag.tag_map_path, DEFAULT_TAG_MAP_PATH)
+                self.assertEqual(DEFAULT_TAG_MAP_PATH, REPO_ROOT / "config" / "tagmap.json")
 
 
 if __name__ == "__main__":

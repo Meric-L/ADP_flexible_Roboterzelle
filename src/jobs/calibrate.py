@@ -22,13 +22,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
 # Nur fuer den Aufruf von Hand: unter dem Server steht `src/` schon im
 # PYTHONPATH.
-_SRC = str(REPO_ROOT / "src")
+_SRC = str(Path(__file__).resolve().parent.parent)
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
+
+# Nur Standardbibliothek, braucht weder asyncua noch numpy.
+from vision_server.profiles import DEFAULT_TAG_MAP_PATH, calibration_path_for  # noqa: E402
 
 
 def _frame_id() -> str:
@@ -48,13 +49,9 @@ def _paths(frame_id: str) -> tuple[Path, Path | None]:
     "keine Tag-Map konfiguriert"."""
     calibration = os.getenv("VISION_CALIBRATION_PATH")
     tag_map = os.getenv("VISION_TAG_MAP_PATH")
-    calibration_path = (
-        Path(calibration)
-        if calibration
-        else REPO_ROOT / "data" / "calibration" / f"{frame_id}.json"
-    )
+    calibration_path = Path(calibration) if calibration else calibration_path_for(frame_id)
     if tag_map is None:
-        return calibration_path, REPO_ROOT / "config" / "tagmap.json"
+        return calibration_path, DEFAULT_TAG_MAP_PATH
     return calibration_path, Path(tag_map) if tag_map else None
 
 
