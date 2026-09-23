@@ -33,7 +33,7 @@ import argparse
 import math
 import random
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -133,11 +133,11 @@ def _scaled_calibration(calibration: CameraCalibration, factor: int) -> CameraCa
     matrix[0, 2] = matrix[0, 2] * factor + (factor - 1) / 2.0
     matrix[1, 2] = matrix[1, 2] * factor + (factor - 1) / 2.0
     width, height = calibration.image_size
-    return CameraCalibration(
+    return replace(
+        calibration,
         camera_matrix=matrix,
         distortion=np.zeros(5, dtype=np.float64),
         image_size=(width * factor, height * factor),
-        frame_id=calibration.frame_id,
     )
 
 
@@ -301,6 +301,31 @@ def _inside(points, image_size: tuple[int, int], margin: float = 2.0) -> bool:
     )
 
 
+def _render_canvas(calibration: CameraCalibration, image_size, supersample: int, background: int):
+    """Prolog beider Renderer: `(Leinwand, Render-Intrinsik, Faktor, Zielgroesse)`.
+
+    Die Leinwand ist um `supersample` feiner als das Zielbild, die
+    Intrinsik passend dazu (siehe `_scaled_calibration`).
+    """
+    width, height = tuple(image_size or calibration.image_size)
+    factor = max(1, int(supersample))
+    render_calibration = _scaled_calibration(
+        synthetic_from(calibration, (width, height)), factor
+    )
+    canvas = np.full((height * factor, width * factor), int(background), dtype=np.uint8)
+    return canvas, render_calibration, factor, (width, height)
+
+
+def _downsample(canvas, size: tuple[int, int], factor: int):
+    """Epilog beider Renderer: auf die Zielgroesse mitteln, als BGR zurueck."""
+    import cv2
+
+    image = canvas
+    if factor > 1:
+        image = cv2.resize(canvas, size, interpolation=cv2.INTER_AREA)
+    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+
 def render_tags(
     placements,
     pose_world_cam: Pose,
@@ -324,14 +349,9 @@ def render_tags(
     camera's optics provide; without it, marker edges alias and corners get
     less accurate than the task requires.
     """
-    import cv2
-
-    width, height = tuple(image_size or calibration.image_size)
-    factor = max(1, int(supersample))
-    render_calibration = _scaled_calibration(
-        synthetic_from(calibration, (width, height)), factor
+    canvas, render_calibration, factor, size = _render_canvas(
+        calibration, image_size, supersample, background
     )
-    canvas = np.full((height * factor, width * factor), int(background), dtype=np.uint8)
     pose_cam_world = invert(pose_world_cam)
 
     prepared = [_as_placement(item) for item in placements]
@@ -351,10 +371,7 @@ def render_tags(
         _paste(canvas, patch, quad, corners)
         truth[placement.tag_id] = pose_cam_tag
 
-    image = canvas
-    if factor > 1:
-        image = cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA)
-    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), truth
+    return _downsample(canvas, size, factor), truth
 
 
 def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibration:
@@ -367,12 +384,11 @@ def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibrat
     size = (int(image_size[0]), int(image_size[1]))
     if tuple(calibration.image_size) == size:
         return calibration
-    return CameraCalibration(
+    return replace(
+        calibration,
         camera_matrix=np.asarray(calibration.camera_matrix, dtype=np.float64).copy(),
         distortion=np.asarray(calibration.distortion, dtype=np.float64).copy(),
         image_size=size,
-        frame_id=calibration.frame_id,
-        calibration_id=calibration.calibration_id,
     )
 
 
@@ -445,21 +461,13 @@ def render_chessboard(
     The pose is the ground truth; returning it saves a test from having to
     thread the input through again.
     """
-    import cv2
-
-    width, height = tuple(image_size or calibration.image_size)
-    factor = max(1, int(supersample))
-    render_calibration = _scaled_calibration(
-        synthetic_from(calibration, (width, height)), factor
+    canvas, render_calibration, factor, size = _render_canvas(
+        calibration, image_size, supersample, background
     )
-    canvas = np.full((height * factor, width * factor), int(background), dtype=np.uint8)
     corners = _project(_chessboard_outline(spec), pose_cam_board, render_calibration)
     patch, quad = _chessboard_patch(spec, square_px, margin_squares)
     _paste(canvas, patch, quad, corners)
-    image = canvas
-    if factor > 1:
-        image = cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA)
-    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), np.asarray(pose_cam_board, dtype=np.float64)
+    return _downsample(canvas, size, factor), np.asarray(pose_cam_board, dtype=np.float64)
 
 
 def chessboard_views(
