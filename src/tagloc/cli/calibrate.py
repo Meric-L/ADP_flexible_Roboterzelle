@@ -27,7 +27,7 @@ from ..boards import (
 )
 from ..calibration import save_calibration
 from ..overlay import draw_board_overlay, draw_status_bar
-from ._common import add_source_arguments, is_camera_source, setup_logging
+from ._common import add_source_arguments, is_camera_source, open_source, setup_logging
 
 MIN_SAMPLES = 15
 
@@ -90,9 +90,7 @@ def main(argv=None) -> int:
     setup_logging(args.verbose)
     spec = _spec(args)
     board = build_board(spec)
-    source = frame_sources.open_source(
-        args.source, resolution=tuple(args.resolution) if args.resolution else None
-    )
+    source = open_source(args)
     headless = args.no_gui or not is_camera_source(args.source)
 
     samples: list = []

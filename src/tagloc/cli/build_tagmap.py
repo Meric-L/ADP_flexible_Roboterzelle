@@ -18,7 +18,6 @@ from ..pose import estimate_tag_poses, poses_by_tag
 from ..tagmap import (
     empty_tag_map,
     format_residual_report,
-    load_tag_map,
     missing_tags,
     place_tags,
     residuals,
@@ -30,6 +29,9 @@ from ._common import (
     add_source_arguments,
     describe_pose,
     fit_calibration,
+    load_calibration_or_exit,
+    load_tag_map_or_exit,
+    open_source,
     setup_logging,
 )
 
@@ -53,16 +55,16 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
 
-    from ..calibration import load_calibration
-
-    calibration = load_calibration(args.calibration)
+    calibration = load_calibration_or_exit(args.calibration)
     # An existing map supplies roles, sizes and CAD offsets; only the world
     # poses are recomputed.
-    existing = load_tag_map(args.tag_map) if args.tag_map else empty_tag_map(args.frame_id, args.anchor)
-    detector = build_detector(args.family, args.backend)
-    source = frame_sources.open_source(
-        args.source, resolution=tuple(args.resolution) if args.resolution else None
+    existing = (
+        load_tag_map_or_exit(args.tag_map)
+        if args.tag_map
+        else empty_tag_map(args.frame_id, args.anchor)
     )
+    detector = build_detector(args.family, args.backend)
+    source = open_source(args)
 
     observations: list[dict] = []
     frame_count = 0

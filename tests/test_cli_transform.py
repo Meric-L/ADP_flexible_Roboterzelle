@@ -58,6 +58,16 @@ class TransformOutputTest(unittest.TestCase):
         self.assertEqual([tag_id for tag_id, _ in pairs], [4])
         np.testing.assert_allclose(pairs[0][1], identity(), atol=1e-12)
 
+    def test_explains_a_missing_tag_map_instead_of_a_traceback(self):
+        with tempfile.TemporaryDirectory() as folder:
+            missing = Path(folder) / "fehlt.json"
+
+            with self.assertRaises(SystemExit) as caught:
+                _run(["--position", "0", "0", "0", "--from-reference", "--tag-map", str(missing)])
+
+        self.assertIn("Tag-Map nicht verwendbar", str(caught.exception))
+        self.assertIn("tagloc.cli.build_tagmap", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

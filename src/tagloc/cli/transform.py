@@ -28,8 +28,14 @@ from pathlib import Path
 from ..geometry import compose, identity, invert, pose_from_dict
 from ..localize import camera_pose_from_reference_tags
 from ..observations import TagPose
-from ..tagmap import load_tag_map
-from ._common import describe_pose, poses_from_json, poses_to_json, setup_logging, write_json
+from ._common import (
+    describe_pose,
+    load_tag_map_or_exit,
+    poses_from_json,
+    poses_to_json,
+    setup_logging,
+    write_json,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,7 +69,7 @@ def _load_transform(args, poses) -> tuple:
     if args.from_reference:
         if args.tag_map is None:
             raise SystemExit("--from-reference braucht --tag-map")
-        tag_map = load_tag_map(args.tag_map)
+        tag_map = load_tag_map_or_exit(args.tag_map)
         tag_poses = [TagPose(tag_id, pose) for tag_id, pose in poses]
         transform = camera_pose_from_reference_tags(tag_poses, tag_map)
         if transform is None:
