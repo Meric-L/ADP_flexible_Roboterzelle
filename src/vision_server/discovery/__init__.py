@@ -3,7 +3,8 @@
 Zwei Wege nebeneinander, weil sie verschiedene Leser bedienen:
 
 * `mdns` kuendigt den Dienst im Subnetz an. Clients wie das WSC-Frontend
-  finden uns darueber ohne Umweg.
+  finden uns darueber ohne Umweg. Seit 23.09.2026 standardmaessig aus;
+  `OPCUA_MDNS=1` schaltet sie ein.
 * `lds` meldet den Server beim Local Discovery Server der Zelle an. **Nur**
   darueber nimmt der Aggregation-Server das Modul auf -- eine mDNS-Ankuendigung
   allein genuegt ihm nicht. Am 21.09.2026 im Labor gemessen, Begruendung im

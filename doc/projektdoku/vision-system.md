@@ -138,7 +138,8 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 - Beim Start zwei Bekanntmachungen nebeneinander, beide werden beim geordneten
   Beenden zurückgezogen:
   - **mDNS** (`src/vision_server/discovery/mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
-    Vision-Identität. Für Clients im Subnetz.
+    Vision-Identität. Für Clients im Subnetz. **Seit 23.09.2026
+    standardmäßig aus**; einschalten mit `OPCUA_MDNS=1`.
   - **LDS-Anmeldung** (`src/vision_server/discovery/lds.py` über `Server.register_to_discovery()`):
     **seit 23.09.2026 standardmäßig aus** — der Server erscheint dann nicht im
     Aggregation-Server. Einschalten mit

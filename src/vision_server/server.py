@@ -336,6 +336,7 @@ async def main():
             # Erst der Server, dann Ankuendigung und Registrierung -- wer den
             # Dienst findet, soll ihn auch erreichen. Beim Verlassen werden
             # beide zurueckgezogen.
+            # Beide sind standardmaessig aus (`OPCUA_MDNS`, `OPCUA_LDS_URL`).
             async with (
                 mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der

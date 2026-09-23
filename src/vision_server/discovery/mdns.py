@@ -16,6 +16,9 @@ Zwei bewusste Abweichungen von der Anleitung:
 2. `zeroconf` ist optional. Fehlt das Paket oder scheitert die Anmeldung,
    laeuft der Server weiter und es steht eine Warnung im Log -- ein Server,
    den man per URL erreicht, ist mehr wert als gar keiner.
+
+**Standardmaessig abgeschaltet** (seit 23.09.2026): ohne `OPCUA_MDNS=1` kuendigt
+sich der Server nicht an. Er laeuft trotzdem und ist per URL erreichbar.
 """
 
 import contextlib
@@ -34,6 +37,14 @@ SERVICE_TYPE = "_opcua-tcp._tcp.local."
 _ROUTE_PROBE = ("192.0.2.1", 9)
 
 _NAME_ALLOWED = re.compile(r"[^A-Za-z0-9-]+")
+
+
+def enabled() -> bool:
+    """Ob angekuendigt werden soll; standardmaessig nicht.
+
+    `OPCUA_MDNS=1` (oder `true`/`yes`/`on`) schaltet die Ankuendigung ein.
+    """
+    return os.getenv("OPCUA_MDNS", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def sanitize_instance_name(name: str) -> str:
@@ -104,6 +115,11 @@ async def announce(
     ------
     Die angekuendigte Adresse, oder `None`, wenn nicht angekuendigt wurde.
     """
+    if not enabled():
+        _log.info("mDNS abgeschaltet (OPCUA_MDNS nicht gesetzt); keine Ankuendigung")
+        yield None
+        return
+
     ip = address or detect_lan_ipv4()
     if ip is None:
         yield None
