@@ -498,8 +498,9 @@ def _link_40100_methods(
     """Verlinkt die sechs Nodeset-Methoden mit ihren Handlern.
 
     Unabhaengig davon, ob die Quellen aufgingen: eine unverlinkte Methode
-    beantwortet der Server mit `BadNothingToDo`, eine verlinkte im falschen
-    Zustand mit `INVALID_STATE` -- nur Letzteres sagt dem Client etwas.
+    beantwortet der Server mit `BadNothingToDo`, eine verlinkte mit einem
+    `Error`-Code (etwa `INVALID_STATE`) -- nur der sagt dem Client, woran es
+    liegt.
     """
     server = space.server
     server.link_method(
