@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -12,7 +12,7 @@ from asyncua import ua
 
 from .config import VisionServerConfig
 from .detection import DetectionSource
-from .detection.base import DetectionRequest
+from .detection.base import Detection, DetectionRequest
 from .errors import VisionErrorCode, VisionJobError
 from .events import VisionEvents, fire_result_ready
 from .payload import build_error_payload, build_result_payload
@@ -233,24 +233,9 @@ class JobRunner:
         waere kein Schutz, weil ein zweiter Aufruf an jedem `await` dazwischen
         durchkommen koennte.
         """
-        if self._busy:
-            return "", VisionErrorCode.BUSY
-        if not self._states.is_ready():
-            outer, inner = self._states.state_names()
-            _log.warning("StartSingleJob im Zustand %s/%s abgelehnt", outer, inner)
-            return "", VisionErrorCode.INVALID_STATE
-        try:
-            request = build_job_request(
-                self._config, meas_id, part_id, recipe_id, product_id, parameters
-            )
-        except VisionJobError as error:
-            _log.warning("StartSingleJob abgelehnt: %s", error.message)
-            return "", error.code
-        self._busy = True
-        self._job_counter += 1
-        job_id = f"job-{self._job_counter:06d}"
-        self._task = asyncio.create_task(self._run(job_id, request))
-        return job_id, VisionErrorCode.OK
+        return self._admit(
+            "StartSingleJob", self._run, meas_id, part_id, recipe_id, product_id, parameters
+        )
 
     def start_continuous(
         self, meas_id, part_id, recipe_id, product_id, parameters
@@ -260,23 +245,48 @@ class JobRunner:
         Dieselbe atomare Zulassung: synchron, kein `await` zwischen Pruefung
         und Setzen von `_busy`.
         """
+        return self._admit(
+            "StartContinuous",
+            self._run_continuous,
+            meas_id,
+            part_id,
+            recipe_id,
+            product_id,
+            parameters,
+        )
+
+    def _admit(
+        self,
+        label: str,
+        runner: Callable[[str, JobRequest], Coroutine[Any, Any, None]],
+        meas_id,
+        part_id,
+        recipe_id,
+        product_id,
+        parameters,
+    ) -> tuple[str, VisionErrorCode]:
+        """Gemeinsame Zulassung beider Startmethoden; muss synchron bleiben.
+
+        `label` steht nur im Log, `runner` ist der Task-Koerper (`_run` oder
+        `_run_continuous`).
+        """
         if self._busy:
             return "", VisionErrorCode.BUSY
         if not self._states.is_ready():
             outer, inner = self._states.state_names()
-            _log.warning("StartContinuous im Zustand %s/%s abgelehnt", outer, inner)
+            _log.warning("%s im Zustand %s/%s abgelehnt", label, outer, inner)
             return "", VisionErrorCode.INVALID_STATE
         try:
             request = build_job_request(
                 self._config, meas_id, part_id, recipe_id, product_id, parameters
             )
         except VisionJobError as error:
-            _log.warning("StartContinuous abgelehnt: %s", error.message)
+            _log.warning("%s abgelehnt: %s", label, error.message)
             return "", error.code
         self._busy = True
         self._job_counter += 1
         job_id = f"job-{self._job_counter:06d}"
-        self._task = asyncio.create_task(self._run_continuous(job_id, request))
+        self._task = asyncio.create_task(runner(job_id, request))
         return job_id, VisionErrorCode.OK
 
     async def _run_continuous(self, job_id: str, request: JobRequest) -> None:
@@ -289,12 +299,12 @@ class JobRunner:
         dieselbe Stoerung im Sekundentakt dieselbe Fehlermeldung erzeugen.
         """
         source = self._sources[request.profile_id]
-        cycle = 0
-        outcome = VisionErrorCode.OK
-        try:
+
+        async def body() -> None:
             async with self._lock:
                 await self._states.to_continuous_execution()
                 await self._events.job_started.trigger(message=job_id)
+                cycle = 0
                 while True:
                     cycle += 1
                     cycle_id = f"{job_id}-{cycle:04d}"
@@ -303,57 +313,18 @@ class JobRunner:
                         self._config.job_timeout,
                     )
                     await self._events.acquisition_done.trigger(message=cycle_id)
-                    now = datetime.now(timezone.utc)
-                    result_id = f"res-{cycle_id}"
-                    payload = build_result_payload(
-                        vision_system_id=self._config.vision_system_id,
-                        result_id=result_id,
-                        job_id=cycle_id,
-                        creation_time=now,
-                        detections=detections,
-                        frame_id=source.frame_id or self._config.frame_id,
-                        frame_convention=source.frame_convention,
-                        configuration_id=source.configuration_id,
-                    )
-                    await self._publish(
-                        source, request, result_id, cycle_id, now,
-                        int(VisionErrorCode.OK), payload,
+                    await self._publish_outcome(
+                        source, request, cycle_id, detections=detections
                     )
                     await asyncio.sleep(self._config.continuous_interval_s)
-        except asyncio.CancelledError:
-            outcome = VisionErrorCode.CANCELLED
-            await self._cancel(source, request, job_id, continuous=True)
-            raise
-        except TimeoutError:
-            outcome = VisionErrorCode.DETECTION_FAILED
-            await self._fail(
-                source, request, job_id,
-                VisionJobError(
-                    VisionErrorCode.DETECTION_FAILED,
-                    f"Erkennung ueberschritt {self._config.job_timeout:g} s",
-                ),
-                continuous=True,
-            )
-        except VisionJobError as error:
-            outcome = error.code
-            await self._fail(source, request, job_id, error, continuous=True)
-        except Exception as error:
-            outcome = VisionErrorCode.INTERNAL
-            _log.exception("Dauerbetrieb %s unerwartet fehlgeschlagen", job_id)
-            await self._fail(
-                source, request, job_id,
-                VisionJobError(VisionErrorCode.INTERNAL, str(error)),
-                continuous=True,
-            )
-        finally:
-            self._busy = False
-            self._notify_finished(job_id, outcome)
+
+        await self._guarded(source, request, job_id, body, continuous=True)
 
     async def _run(self, job_id: str, request: JobRequest) -> None:
         """Durchlaeuft einen Einzeljob inklusive Events und Ergebnisablage."""
         source = self._sources[request.profile_id]
-        outcome = VisionErrorCode.OK
-        try:
+
+        async def body() -> None:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
@@ -366,32 +337,36 @@ class JobRunner:
                     self._config.job_timeout,
                 )
                 await self._events.acquisition_done.trigger(message=job_id)
-
-                now = datetime.now(timezone.utc)
-                result_id = f"res-{job_id}"
-                payload = build_result_payload(
-                    vision_system_id=self._config.vision_system_id,
-                    result_id=result_id,
-                    job_id=job_id,
-                    creation_time=now,
-                    detections=detections,
-                    frame_id=source.frame_id or self._config.frame_id,
-                    frame_convention=source.frame_convention,
-                    configuration_id=source.configuration_id,
-                )
-                await self._publish(
-                    source, request, result_id, job_id, now, int(VisionErrorCode.OK), payload
-                )
+                await self._publish_outcome(source, request, job_id, detections=detections)
                 await self._states.to_ready()
                 await self._events.ready.trigger(message=job_id)
                 _log.info("Job %s abgeschlossen", job_id)
+
+        await self._guarded(source, request, job_id, body, continuous=False)
+
+    async def _guarded(
+        self,
+        source: DetectionSource,
+        request: JobRequest,
+        job_id: str,
+        body: Callable[[], Awaitable[None]],
+        *,
+        continuous: bool,
+    ) -> None:
+        """Fuehrt den Job-Koerper aus und bildet jeden Ausgang auf Ergebnis,
+        Automat und Abschluss-Beobachter ab -- gemeinsam fuer Einzel- und
+        Dauerbetrieb.
+        """
+        outcome = VisionErrorCode.OK
+        try:
+            await body()
         except asyncio.CancelledError:
             # `stop()` bricht diesen Task ab (`Stop`-Methode). Aufraeumen und
             # den Automaten zurueckfahren, bevor die Cancellation weiter nach
             # oben durchgereicht wird -- sonst bliebe der Automat fuer immer
             # in SingleExecution haengen und jeder weitere Job schluege fehl.
             outcome = VisionErrorCode.CANCELLED
-            await self._cancel(source, request, job_id)
+            await self._cancel(source, request, job_id, continuous=continuous)
             raise
         except TimeoutError:
             outcome = VisionErrorCode.DETECTION_FAILED
@@ -403,31 +378,66 @@ class JobRunner:
                     VisionErrorCode.DETECTION_FAILED,
                     f"Erkennung ueberschritt {self._config.job_timeout:g} s",
                 ),
+                continuous=continuous,
             )
         except VisionJobError as error:
             outcome = error.code
-            await self._fail(source, request, job_id, error)
+            await self._fail(source, request, job_id, error, continuous=continuous)
         except Exception as error:
             outcome = VisionErrorCode.INTERNAL
-            _log.exception("Job %s unerwartet fehlgeschlagen", job_id)
+            _log.exception(
+                "%s %s unerwartet fehlgeschlagen",
+                "Dauerbetrieb" if continuous else "Job",
+                job_id,
+            )
             await self._fail(
-                source, request, job_id, VisionJobError(VisionErrorCode.INTERNAL, str(error))
+                source,
+                request,
+                job_id,
+                VisionJobError(VisionErrorCode.INTERNAL, str(error)),
+                continuous=continuous,
             )
         finally:
             self._busy = False
             self._notify_finished(job_id, outcome)
 
-    async def _publish(
+    def _payload_context(self, source: DetectionSource) -> dict[str, str]:
+        """Die Kopffelder, die jedes Payload dieser Quelle gleich traegt."""
+        return {
+            "vision_system_id": self._config.vision_system_id,
+            "frame_id": source.frame_id or self._config.frame_id,
+            "frame_convention": source.frame_convention,
+            "configuration_id": source.configuration_id,
+        }
+
+    async def _publish_outcome(
         self,
         source: DetectionSource,
         request: JobRequest,
-        result_id: str,
         job_id: str,
-        now: datetime,
-        result_state: int,
-        payload: str,
+        *,
+        detections: Sequence[Detection] = (),
+        error: VisionJobError | None = None,
     ) -> None:
-        """Schreibt die Ergebnisknoten und feuert das ResultReadyEvent."""
+        """Baut das Payload, schreibt die Ergebnisknoten und feuert ResultReady.
+
+        Ohne `error` ein Erfolgsergebnis mit `detections`, sonst ein
+        Fehlerergebnis mit Code und Text aus `error`.
+        """
+        now = datetime.now(timezone.utc)
+        result_id = f"res-{job_id}"
+        context = {
+            "result_id": result_id,
+            "job_id": job_id,
+            "creation_time": now,
+            **self._payload_context(source),
+        }
+        if error is None:
+            result_state = int(VisionErrorCode.OK)
+            payload = build_result_payload(detections=detections, **context)
+        else:
+            result_state = int(error.code)
+            payload = build_error_payload(code=error.code, message=error.message, **context)
         await self._results.publish(
             PublishedResult(
                 result_id=result_id,
@@ -464,22 +474,7 @@ class JobRunner:
         """
         _log.error("Job %s fehlgeschlagen: %s (%s)", job_id, error.message, error.code.name)
         try:
-            now = datetime.now(timezone.utc)
-            result_id = f"res-{job_id}"
-            payload = build_error_payload(
-                vision_system_id=self._config.vision_system_id,
-                result_id=result_id,
-                job_id=job_id,
-                creation_time=now,
-                code=error.code,
-                message=error.message,
-                frame_id=source.frame_id or self._config.frame_id,
-                frame_convention=source.frame_convention,
-                configuration_id=source.configuration_id,
-            )
-            await self._publish(
-                source, request, result_id, job_id, now, int(error.code), payload
-            )
+            await self._publish_outcome(source, request, job_id, error=error)
             if continuous:
                 await self._states.continuous_to_ready(stopped=False)
             else:
@@ -503,31 +498,16 @@ class JobRunner:
         gewolltes Kommando, kein Fehlerzustand. Laeuft, waehrend `_busy` noch
         gesetzt ist (siehe `_run`), also ohne Konkurrenz zu einem neuen Job.
         """
-        _log.info(
-            "Job %s durch %s abgebrochen", job_id, "Abort" if self._aborting else "Stop"
-        )
+        command = "Abort" if self._aborting else "Stop"
+        _log.info("Job %s durch %s abgebrochen", job_id, command)
         try:
-            now = datetime.now(timezone.utc)
-            result_id = f"res-{job_id}"
-            payload = build_error_payload(
-                vision_system_id=self._config.vision_system_id,
-                result_id=result_id,
-                job_id=job_id,
-                creation_time=now,
-                code=VisionErrorCode.CANCELLED,
-                message=f"Job durch {'Abort' if self._aborting else 'Stop'} abgebrochen",
-                frame_id=source.frame_id or self._config.frame_id,
-                frame_convention=source.frame_convention,
-                configuration_id=source.configuration_id,
-            )
-            await self._publish(
+            await self._publish_outcome(
                 source,
                 request,
-                result_id,
                 job_id,
-                now,
-                int(VisionErrorCode.CANCELLED),
-                payload,
+                error=VisionJobError(
+                    VisionErrorCode.CANCELLED, f"Job durch {command} abgebrochen"
+                ),
             )
             if continuous:
                 await self._states.continuous_to_ready(stopped=not self._aborting)
