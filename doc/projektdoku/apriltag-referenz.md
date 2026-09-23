@@ -420,6 +420,10 @@ Zwei Punkte, die der Prototyp heute falsch macht und die hier behoben sind:
 `estimate_tag_poses` nimmt die Tag-Größe **je Tag aus der Tag-Map**, nicht aus
 einer globalen Konstante. Welt-Board und Modul-Tags haben unterschiedliche Größen;
 eine falsche Größe skaliert die Distanz linear mit und fällt sonst nicht auf.
+Für mehrere Tags in einem Bild werden die vier Ecken gemeinsam entzerrt und
+Kameramatrix, Null-Verzeichnung sowie Objektpunkte gleicher Tag-Größe einmal
+vorbereitet. `estimate_tag_pose` für einen einzelnen Tag liefert denselben
+Rechenweg; nicht lösbare Tags werden weiterhin einzeln übersprungen.
 
 ---
 
@@ -641,11 +645,11 @@ Das Modul zeichnet nur, es rechnet nichts: Posen kommen fertig herein. Deshalb
 kann derselbe Code im Livestream, im CLI-Fenster und in einem Standbild laufen.
 
 Strichstärke, Schriftgröße und Abstände sind **proportional zur Bildbreite**
-(`_scale_for`, Referenz 640 px, nie kleiner skaliert) statt fester
-Pixelwerte — nötig geworden, seit „apriltag"/„off" im Livestream auf dem
-vollen Kamera-Frame zeichnen (bis 4056 px an der Deckenkamera, siehe
-`vision-server-interface.md` Abschnitt 10.3): ein für 640 px abgestimmter
-2-px-Strich war dort beim Reinzoomen praktisch unlesbar.
+(`_scale_for`, Referenz 640 px, nie kleiner skaliert) statt fester Pixelwerte.
+Der Livestream erkennt AprilTags weiterhin auf dem vollen Kamera-Frame (bis
+4056 px an der Deckenkamera), skaliert für die Übertragung aber zuerst das
+Bild und die Eckenkoordinaten und zeichnet dann auf dieser Ausgabeauflösung.
+So entfallen Kopieren und Beschriften des großen Vollbilds bei jedem Tick.
 
 `normalise_mode` liegt in `tagloc.modes` und kommt ohne numpy aus, weil der
 Livestream-Publisher sie braucht, auch wenn gar keine Erkennung konfiguriert ist.

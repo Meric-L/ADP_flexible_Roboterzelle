@@ -24,6 +24,7 @@ nicht gibt.
 | [`livestream-mjpeg-und-watchdog.md`](livestream-mjpeg-und-watchdog.md) | vision | fertig | John Glanz, `Agent: Übernahme von Branch John` | 22.09.2026 |
 | [`deckenkamera-volle-aufloesung.md`](deckenkamera-volle-aufloesung.md) | vision | in Arbeit | John Glanz, `Agent: volle Auflösung Deckenkamera` | 22.09.2026 |
 | [`opcua-kamera-condition-monitoring.md`](opcua-kamera-condition-monitoring.md) | opcua | fertig | `Agent: Kamerazustand als DeviceHealth (OPC 40100-2)` | 22.09.2026 |
+| [`apriltag-posenschaetzung-optimierung.md`](apriltag-posenschaetzung-optimierung.md) | apriltag | fertig | `Agent: AprilTag-Optimierung` | 23.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

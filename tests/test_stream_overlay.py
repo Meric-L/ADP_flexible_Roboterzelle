@@ -8,6 +8,7 @@ tagloc-Funktionen zu faken.
 
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     import cv2
@@ -131,6 +132,37 @@ class ApplyCalibrationTest(unittest.TestCase):
         annotator.apply_calibration(_fake_calibration((100, 100)))
 
         self.assertEqual(annotator._scaled, {})
+
+
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class AprilTagOutputScaleTest(unittest.TestCase):
+    def test_detects_full_resolution_and_draws_scaled_coordinates(self):
+        from tagloc.calibration import default_calibration
+        from tagloc.geometry import identity
+        from tagloc.observations import TagObservation, TagPose
+
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        observation = TagObservation(7, ((100, 60), (140, 60), (140, 100), (100, 100)))
+        detector = SimpleNamespace(detect=lambda gray: [observation])
+        annotator = AprilTagStreamAnnotator(
+            CONFIG,
+            detector=detector,
+            calibration=default_calibration((400, 300)),
+            tag_map=None,
+            detection_max_width=200,
+        )
+        tag_pose = TagPose(tag_id=7, pose_cam_tag=identity(), observation=observation)
+        with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose]) as estimate:
+            with patch("tagloc.overlay.draw_tag_overlay") as draw:
+                result = annotator.annotate(image, "apriltag")
+
+        self.assertEqual(result.shape[:2], (150, 200))
+        self.assertEqual(estimate.call_args.args[0], [observation])
+        self.assertEqual(estimate.call_args.args[1].image_size, (400, 300))
+        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
+        self.assertEqual(draw.call_args.args[2].image_size, (200, 150))
+        self.assertEqual(annotator._last_tag_poses[0].observation.corners[0], (100, 60))
+        self.assertFalse(np.any(image))
 
 
 if __name__ == "__main__":

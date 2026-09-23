@@ -171,6 +171,24 @@ class SyntheticTagSceneTest(unittest.TestCase):
                     self.assertFalse(tag_pose.is_ambiguous)
                     self.assertLess(tag_pose.reprojection_error_px, 1.0)
 
+    def test_batch_pose_estimation_matches_individual_tags(self) -> None:
+        """Gemeinsames Entzerren darf weder Pose noch Qualitätswerte ändern."""
+        image, _ = self.scenes[0]
+        observations = self.detector.detect(to_gray(image))
+        tag_map = self._tag_map()
+        batch = estimate_tag_poses(observations, self.calibration, tag_map=tag_map)
+        self.assertEqual([pose.tag_id for pose in batch], [obs.tag_id for obs in observations])
+        for observation, batched in zip(observations, batch):
+            single = estimate_tag_pose(
+                observation, tag_map.size_for(observation.tag_id, 0.05), self.calibration
+            )
+            with self.subTest(tag=observation.tag_id):
+                np.testing.assert_allclose(batched.pose_cam_tag, single.pose_cam_tag, atol=1e-10)
+                self.assertAlmostEqual(
+                    batched.reprojection_error_px, single.reprojection_error_px, places=9
+                )
+                self.assertAlmostEqual(batched.ambiguity_ratio, single.ambiguity_ratio, places=9)
+
     def test_place_tags_positions_every_tag_relative_to_the_anchor(self) -> None:
         tag_map = self._tag_map()
         observations = []

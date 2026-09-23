@@ -18,6 +18,7 @@ directly on the event loop.
 
 import logging
 import time
+from dataclasses import replace
 from typing import Any
 
 from .profiles import AprilTagProfileConfig
@@ -147,13 +148,12 @@ class AprilTagStreamAnnotator:
                 summarise,
             )
 
-            canvas = image.copy()
-            size = frame_tools.image_size(canvas)
-            calibration = self._calibration_for(size)
+            size = frame_tools.image_size(image)
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
 
             if mode == "calibration":
+                canvas = image.copy()
                 if self._detection_max_width is not None:
                     from .camera_stream import _resize_for_stream
 
@@ -198,16 +198,43 @@ class AprilTagStreamAnnotator:
                 from tagloc.pose import estimate_tag_poses
 
                 self._last_tag_poses = estimate_tag_poses(
-                    self._detector.detect(frame_tools.to_gray(canvas)),
-                    calibration,
+                    self._detector.detect(frame_tools.to_gray(image)),
+                    self._calibration_for(size),
                     tag_map=self._tag_map,
                     default_size_m=self._config.tag_size_m,
                     max_reprojection_error_px=self._config.max_reproj_error_px,
                 )
                 self._last_run = now
+            # Detektion bleibt auf dem vollen Frame. Nur die Markierungen
+            # werden auf dem kleineren Uebertragungsbild gezeichnet.
+            if self._detection_max_width is not None:
+                from .camera_stream import _resize_for_stream
+
+                canvas = _resize_for_stream(image, self._detection_max_width)
+            else:
+                canvas = image.copy()
+            output_size = frame_tools.image_size(canvas)
+            calibration = self._calibration_for(output_size)
+            tag_poses = self._last_tag_poses
+            if output_size != size:
+                sx = output_size[0] / size[0]
+                sy = output_size[1] / size[1]
+                tag_poses = [
+                    replace(
+                        pose,
+                        observation=replace(
+                            pose.observation,
+                            corners=tuple(
+                                (x * sx, y * sy) for x, y in pose.observation.corners
+                            ),
+                        ),
+                    )
+                    if pose.observation is not None else pose
+                    for pose in tag_poses
+                ]
             draw_tag_overlay(
                 canvas,
-                self._last_tag_poses,
+                tag_poses,
                 calibration,
                 tag_map=self._tag_map,
                 default_size_m=self._config.tag_size_m,
@@ -216,7 +243,7 @@ class AprilTagStreamAnnotator:
                 canvas,
                 [
                     f"Modus: AprilTag   Familie {self._config.tag_family}",
-                    summarise(self._last_tag_poses, self._tag_map),
+                    summarise(tag_poses, self._tag_map),
                 ],
             )
             return canvas
