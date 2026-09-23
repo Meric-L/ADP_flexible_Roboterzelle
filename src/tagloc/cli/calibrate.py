@@ -85,6 +85,63 @@ def _finish(samples, size, spec, board, args) -> int:
     return 0
 
 
+def _board_frames(source, spec, board):
+    """Liefert je Bild `(image, size, sample)`, bis die Quelle leer ist."""
+    while True:
+        image = source.read()
+        if image is None:
+            return
+        sample = detect_board(frame_sources.to_gray(image), spec, board)
+        yield image, frame_sources.image_size(image), sample
+
+
+def _collect_headless(source, spec, board) -> tuple[list, tuple[int, int]]:
+    """Jedes Bild mit gefundenem Board wird eine Aufnahme -- Bildordner, --no-gui."""
+    samples: list = []
+    size: tuple[int, int] = (0, 0)
+    for _, size, sample in _board_frames(source, spec, board):
+        if sample is not None:
+            samples.append(sample)
+            print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
+        else:
+            print("Board nicht erkannt, Bild uebersprungen")
+    return samples, size
+
+
+def _collect_interactive(source, spec, board, args) -> tuple[list, tuple[int, int]]:
+    """Live-Vorschau; SPACE nimmt auf, C rechnet, Q beendet."""
+    import cv2
+
+    samples: list = []
+    size: tuple[int, int] = (0, 0)
+    saved = 0
+    for image, size, sample in _board_frames(source, spec, board):
+        preview = image.copy()
+        draw_board_overlay(preview, sample, coverage=compute_coverage(samples, size))
+        draw_status_bar(
+            preview,
+            [
+                f"Aufnahmen {len(samples)}/{args.min_samples}",
+                "SPACE = aufnehmen   C = rechnen+speichern   Q = Ende",
+            ],
+        )
+        cv2.imshow("tagloc calibrate", preview)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
+            break
+        if key == ord(" ") and sample is not None:
+            samples.append(sample)
+            print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
+            if args.capture_to is not None:
+                saved += 1
+                cv2.imwrite(str(Path(args.capture_to) / f"kalib_{saved:03d}.png"), image)
+        elif key == ord(" "):
+            print("Board nicht erkannt -- nicht aufgenommen")
+        if key == ord("c") and len(samples) >= 3:
+            break
+    return samples, size
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
@@ -92,54 +149,14 @@ def main(argv=None) -> int:
     board = build_board(spec)
     source = open_source(args)
     headless = args.no_gui or not is_camera_source(args.source)
-
-    samples: list = []
-    size: tuple[int, int] = (0, 0)
-    saved = 0
     if args.capture_to is not None:
         Path(args.capture_to).mkdir(parents=True, exist_ok=True)
 
     try:
-        while True:
-            image = source.read()
-            if image is None:
-                break
-            size = frame_sources.image_size(image)
-            sample = detect_board(frame_sources.to_gray(image), spec, board)
-
-            if headless:
-                if sample is not None:
-                    samples.append(sample)
-                    print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
-                else:
-                    print("Board nicht erkannt, Bild uebersprungen")
-                continue
-
-            import cv2
-
-            preview = image.copy()
-            draw_board_overlay(preview, sample, coverage=compute_coverage(samples, size))
-            draw_status_bar(
-                preview,
-                [
-                    f"Aufnahmen {len(samples)}/{args.min_samples}",
-                    "SPACE = aufnehmen   C = rechnen+speichern   Q = Ende",
-                ],
-            )
-            cv2.imshow("tagloc calibrate", preview)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
-            if key == ord(" ") and sample is not None:
-                samples.append(sample)
-                print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
-                if args.capture_to is not None:
-                    saved += 1
-                    cv2.imwrite(str(Path(args.capture_to) / f"kalib_{saved:03d}.png"), image)
-            elif key == ord(" "):
-                print("Board nicht erkannt -- nicht aufgenommen")
-            if key == ord("c") and len(samples) >= 3:
-                break
+        if headless:
+            samples, size = _collect_headless(source, spec, board)
+        else:
+            samples, size = _collect_interactive(source, spec, board, args)
     finally:
         source.close()
         if not headless:

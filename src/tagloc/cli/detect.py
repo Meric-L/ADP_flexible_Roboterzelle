@@ -69,6 +69,40 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_frame(
+    processed: int,
+    tag_poses,
+    tag_map,
+    *,
+    camera_frame_id: str,
+    max_reprojection_error_px: float,
+) -> None:
+    """Gibt ein ausgewertetes Bild aus: Tags, Kamerapose, Module."""
+    print(f"--- Frame {processed}: {summarise(tag_poses, tag_map)}")
+    for tag_pose in tag_poses:
+        marker = " MEHRDEUTIG" if tag_pose.is_ambiguous else ""
+        print(
+            f"  Tag {tag_pose.tag_id:>3}  {describe_pose(tag_pose.pose_cam_tag)}"
+            f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
+        )
+
+    # Ohne Referenz-Tags bleibt die Kette im Kamera-KS (siehe
+    # `locate_in_frame`).
+    pose_world_cam, located = locate_in_frame(
+        tag_poses,
+        tag_map,
+        camera_frame_id=camera_frame_id,
+        max_reprojection_error_px=max_reprojection_error_px,
+    )
+    if pose_world_cam is not None:
+        print(f"  Kamerapose im {tag_map.frame_id}-KS: {describe_pose(pose_world_cam)}")
+    for location in located:
+        print(
+            f"  Modul {location.module_id:<10} [{location.frame_id}] "
+            f"{describe_pose(location.pose)}  conf={location.confidence}"
+        )
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
@@ -113,29 +147,13 @@ def main(argv=None) -> int:
             )
             last_poses = tag_poses
 
-            print(f"--- Frame {processed}: {summarise(tag_poses, tag_map)}")
-            for tag_pose in tag_poses:
-                marker = " MEHRDEUTIG" if tag_pose.is_ambiguous else ""
-                print(
-                    f"  Tag {tag_pose.tag_id:>3}  {describe_pose(tag_pose.pose_cam_tag)}"
-                    f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
-                )
-
-            # Ohne Referenz-Tags bleibt die Kette im Kamera-KS (siehe
-            # `locate_in_frame`).
-            pose_world_cam, located = locate_in_frame(
+            _print_frame(
+                processed,
                 tag_poses,
                 tag_map,
                 camera_frame_id=frame_id,
                 max_reprojection_error_px=args.max_reproj_error_px,
             )
-            if pose_world_cam is not None:
-                print(f"  Kamerapose im {tag_map.frame_id}-KS: {describe_pose(pose_world_cam)}")
-            for location in located:
-                print(
-                    f"  Modul {location.module_id:<10} [{location.frame_id}] "
-                    f"{describe_pose(location.pose)}  conf={location.confidence}"
-                )
 
             if args.overlay or args.save_overlay is not None:
                 draw_tag_overlay(
