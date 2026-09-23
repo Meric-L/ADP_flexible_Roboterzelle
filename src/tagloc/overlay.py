@@ -33,18 +33,37 @@ COLOR_BOARD = (255, 190, 60)
 
 _log = logging.getLogger(__name__)
 
+#: Auf ~640 px Bildbreite abgestimmt (Hand-Pi, bzw. frueher ueberall der
+#: verkleinerte Stream). "apriltag"/"off" zeichnen seit 2026-09-22 auf dem
+#: vollen Frame (bis 4056 px an der Deckenkamera, siehe camera_stream.py) --
+#: ohne Skalierung wurde ein 2-px-Strich dort beim Reinzoomen unlesbar statt
+#: deutlicher. `_scale_for` haelt Strichstaerke/Schriftgroesse/Abstaende
+#: proportional zur tatsaechlichen Bildbreite, nie kleiner als die
+#: Referenzwerte -- die sind schon das Minimum fuer Lesbarkeit.
+_REFERENCE_WIDTH = 640
 _FONT_SCALE = 0.5
 _THICKNESS = 2
+
+
+def _scale_for(image) -> float:
+    """Faktor Bildbreite / `_REFERENCE_WIDTH`, nach unten auf 1 begrenzt."""
+    width = np.asarray(image).shape[1]
+    return max(1.0, width / _REFERENCE_WIDTH)
 
 
 def _put_text(image, text: str, origin: tuple[int, int], color=COLOR_TEXT) -> None:
     """Draw text with a dark outline -- otherwise unreadable on a light background."""
     import cv2
 
+    scale = _scale_for(image)
+    font_scale = _FONT_SCALE * scale
+    thickness = max(1, round(_THICKNESS * scale))
     cv2.putText(
-        image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, COLOR_SHADOW, _THICKNESS + 2
+        image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_SHADOW, thickness + 2
     )
-    cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _THICKNESS - 1)
+    cv2.putText(
+        image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, max(1, thickness - 1)
+    )
 
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
@@ -53,11 +72,13 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
 
     if tag_pose.observation is None:
         return
+    scale = _scale_for(image)
+    thickness = max(1, round(_THICKNESS * scale))
     corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
-    cv2.polylines(image, [corners], isClosed=True, color=color, thickness=_THICKNESS)
+    cv2.polylines(image, [corners], isClosed=True, color=color, thickness=thickness)
     # Bold first corner: makes a rotated detection visible at a glance.
     first = tuple(int(value) for value in tag_pose.observation.corners[0])
-    cv2.circle(image, first, 5, color, -1)
+    cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
 
 
 def draw_tag_axes(
@@ -66,6 +87,7 @@ def draw_tag_axes(
     """Draw the coordinate cross into the tag: X red, Y green, Z blue."""
     import cv2
 
+    thickness = max(1, round(_THICKNESS * _scale_for(image)))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
     cv2.drawFrameAxes(
         image,
@@ -74,7 +96,7 @@ def draw_tag_axes(
         rvec,
         tvec,
         axis_length_m,
-        _THICKNESS,
+        thickness,
     )
 
 
@@ -93,6 +115,7 @@ def draw_tag_overlay(
     reprojection error. Ambiguous poses are drawn orange instead of green --
     exactly the information you look for while debugging.
     """
+    scale = _scale_for(image)
     for tag_pose in tag_poses:
         color = COLOR_AMBIGUOUS if tag_pose.is_ambiguous else COLOR_OK
         draw_tag_outline(image, tag_pose, color)
@@ -119,9 +142,9 @@ def draw_tag_overlay(
 
         if tag_pose.observation is not None:
             center = tag_pose.observation.center()
-            origin = (int(center[0]) - 40, int(center[1]) - 12)
+            origin = (int(center[0] - 40 * scale), int(center[1] - 12 * scale))
         else:  # pragma: no cover - a pose without an observation doesn't occur in practice
-            origin = (10, 30)
+            origin = (round(10 * scale), round(30 * scale))
         _put_text(image, label, origin, color)
     return image
 
@@ -135,18 +158,21 @@ def draw_board_overlay(image, board_sample: Any, *, coverage=None) -> Any:
     """
     import cv2
 
+    scale = _scale_for(image)
+    margin = round(12 * scale)
     if board_sample is not None:
+        radius = max(2, round(4 * scale))
         for point in np.asarray(board_sample.corners, dtype=np.float64).reshape(-1, 2):
-            cv2.circle(image, (int(point[0]), int(point[1])), 4, COLOR_BOARD, -1)
+            cv2.circle(image, (int(point[0]), int(point[1])), radius, COLOR_BOARD, -1)
         count = len(np.asarray(board_sample.corners).reshape(-1, 2))
-        _put_text(image, f"Board: {count} Ecken", (12, 28), COLOR_BOARD)
+        _put_text(image, f"Board: {count} Ecken", (margin, round(28 * scale)), COLOR_BOARD)
     else:
-        _put_text(image, "Board: nicht erkannt", (12, 28), COLOR_AMBIGUOUS)
+        _put_text(image, "Board: nicht erkannt", (margin, round(28 * scale)), COLOR_AMBIGUOUS)
     if coverage is not None:
         _put_text(
             image,
             f"Abdeckung x {coverage[0] * 100:.0f} %  y {coverage[1] * 100:.0f} %",
-            (12, 52),
+            (margin, round(52 * scale)),
             COLOR_BOARD,
         )
     return image
@@ -154,9 +180,13 @@ def draw_board_overlay(image, board_sample: Any, *, coverage=None) -> Any:
 
 def draw_status_bar(image, lines: Sequence[str]) -> Any:
     """Write status lines at the bottom left -- mode, calibration, frame count."""
-    height = np.asarray(image).shape[0]
+    shape = np.asarray(image).shape
+    height = shape[0]
+    scale = max(1.0, shape[1] / _REFERENCE_WIDTH)
+    margin = round(12 * scale)
+    line_height = round(22 * scale)
     for index, line in enumerate(reversed(list(lines))):
-        _put_text(image, line, (12, height - 12 - index * 22))
+        _put_text(image, line, (margin, height - margin - index * line_height))
     return image
 
 

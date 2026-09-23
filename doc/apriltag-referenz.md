@@ -380,6 +380,13 @@ das ist die Information, nach der man beim Debuggen sucht.
 Das Modul zeichnet nur, es rechnet nichts: Posen kommen fertig herein. Deshalb
 kann derselbe Code im Livestream, im CLI-Fenster und in einem Standbild laufen.
 
+Strichstärke, Schriftgröße und Abstände sind **proportional zur Bildbreite**
+(`_scale_for`, Referenz 640 px, nie kleiner skaliert) statt fester
+Pixelwerte — nötig geworden, seit „apriltag"/„off" im Livestream auf dem
+vollen Kamera-Frame zeichnen (bis 4056 px an der Deckenkamera, siehe
+`vision-server-interface.md` Abschnitt 10.3): ein für 640 px abgestimmter
+2-px-Strich war dort beim Reinzoomen praktisch unlesbar.
+
 `normalise_mode` liegt in `tagloc.modes` und kommt ohne numpy aus, weil der
 Livestream-Publisher sie braucht, auch wenn gar keine Erkennung konfiguriert ist.
 Ein unbekannter, leerer oder falsch getippter Modus fällt auf `apriltag` zurück
