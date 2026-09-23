@@ -26,6 +26,7 @@ from .job import JobRunner
 from .nodeset_ids import DeviceHealth
 from .result_management import ResultStore
 from .state_machine import VisionStateMachines
+from .ua_nodes import named_node_id
 from .vision_program import VisionProgram, install_vision_program
 
 _log = logging.getLogger(__name__)
@@ -520,13 +521,11 @@ async def _add_vision_method(
 ) -> Node:
     """Legt eine eigene Methode ohne Eingaben unter `VisionMachine` an.
 
-    NodeId explizit als `<VisionSystem>.<Name>` statt der laufenden Nummer,
-    die `add_method(own_idx, ...)` vergeben wuerde: die verschiebt sich,
-    sobald jemand davor einen Knoten einfuegt, und das Frontend spricht die
-    Methoden ueber feste Adressen an.
+    NodeId fest als `<VisionSystem>.<Name>`, wie alle additiven Knoten
+    (siehe `ua_nodes`) -- das Frontend spricht die Methoden so an.
     """
     return await space.vision_system.add_method(
-        ua.NodeId(f"{space.config.vision_system_name}.{name}", space.own_idx),
+        named_node_id(space.config.vision_system_name, name, space.own_idx),
         ua.QualifiedName(name, space.own_idx),
         handler,
         [],

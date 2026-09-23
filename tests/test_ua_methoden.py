@@ -455,6 +455,13 @@ class VisionProgramTest(MachineTestCase):
                      "ResultSet.JobId", "ResultSet.ErrorCode", "ResultSet.ExecutionMode"):
             node = self.server.get_node(self.nid(f"VisionProgram.{name}"))
             self.assertEqual(await node.read_node_class(), ua.NodeClass.Variable, name)
+        recipe = self.server.get_node(self.nid("VisionProgram.ParameterSet.RecipeId"))
+        self.assertEqual(
+            (await recipe.read_description()).Text,
+            "Erkennungsrezept; leer = Standard. Bekannt: hello-world",
+        )
+        access = (await recipe.read_attribute(ua.AttributeIds.AccessLevel)).Value.Value
+        self.assertTrue(access & (1 << ua.AccessLevel.CurrentWrite))
         program = self.server.get_node(self.nid("VisionProgram"))
         self.assertEqual(
             await program.read_type_definition(),

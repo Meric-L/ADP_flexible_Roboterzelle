@@ -18,6 +18,7 @@ from .nodeset_ids import (
     mv,
     node_id,
 )
+from .ua_nodes import add_named_variable
 
 _log = logging.getLogger(__name__)
 
@@ -203,38 +204,30 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     camera_stream_http_port: Node | None = None
     if config.camera_stream is not None:
         # Additive Knoten, nicht Teil des 40100-Nodesets: OPC 40100 kennt
-        # keinen Livestream. Nur der Server schreibt hierhin, daher kein
-        # `set_writable()`.
-        # Explicit string NodeId instead of the auto-assigned numeric one:
-        # `add_variable(own_idx, ...)` would produce `ns=X;i=<running number>`,
-        # which shifts whenever someone adds a node before it. The backend
-        # subscribes to these nodes by fixed address -- they must be stable
-        # and match the form documented in doc/vision-server-interface.md.
-        latest_camera_frame = await vision_system.add_variable(
-            ua.NodeId(f"{name}.{config.camera_stream.node_name}", own_idx),
-            ua.QualifiedName(config.camera_stream.node_name, own_idx),
-            "",
-            ua.VariantType.String,
+        # keinen Livestream. Nur der Server schreibt hierhin, daher nicht
+        # beschreibbar. Feste String-NodeIds, siehe `ua_nodes`.
+        stream = config.camera_stream
+        latest_camera_frame = await add_named_variable(
+            vision_system, name, stream.node_name, own_idx, "", ua.VariantType.String
         )
         # This one is the exception: the frontend selects the stream's
         # overlay mode through it, so it **must** be writable. An invalid
         # value can't stop the stream -- the publisher normalises it
         # (see `tagloc.overlay.normalise_mode`).
-        camera_stream_mode = await vision_system.add_variable(
-            ua.NodeId(f"{name}.{config.camera_stream.mode_node_name}", own_idx),
-            ua.QualifiedName(config.camera_stream.mode_node_name, own_idx),
-            config.camera_stream.overlay_mode,
+        camera_stream_mode = await add_named_variable(
+            vision_system,
+            name,
+            stream.mode_node_name,
+            own_idx,
+            stream.overlay_mode,
             ua.VariantType.String,
+            writable=True,
         )
-        await camera_stream_mode.set_writable()
         # Starts at 0: the runner writes the real port only once the MJPEG
         # server is actually listening, so a failed bind never advertises a
         # dead URL.
-        camera_stream_http_port = await vision_system.add_variable(
-            ua.NodeId(f"{name}.{config.camera_stream.http_port_node_name}", own_idx),
-            ua.QualifiedName(config.camera_stream.http_port_node_name, own_idx),
-            0,
-            ua.VariantType.Int32,
+        camera_stream_http_port = await add_named_variable(
+            vision_system, name, stream.http_port_node_name, own_idx, 0, ua.VariantType.Int32
         )
 
     calibration_progress: Node | None = None
@@ -244,20 +237,19 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
         # eine Kalibrier-Session ist auch ohne Livestream denkbar (z. B. lokale
         # Entwicklung), auch wenn sie in der Praxis immer zusammen laufen.
-        calibration_progress = await vision_system.add_variable(
-            ua.NodeId(f"{name}.CalibrationProgress", own_idx),
-            ua.QualifiedName("CalibrationProgress", own_idx),
+        calibration_progress = await add_named_variable(
+            vision_system,
+            name,
+            "CalibrationProgress",
+            own_idx,
             '{"running": false}',
             ua.VariantType.String,
         )
         # Leer, bis `runner.py` nach dem Oeffnen der Erkennungsquelle den
         # ersten Wert schreibt (echte Datei oder Platzhalter) -- kein
         # sinnvoller Default vorher, ohne die Kalibrierdatei gelesen zu haben.
-        active_calibration_info = await vision_system.add_variable(
-            ua.NodeId(f"{name}.ActiveCalibrationInfo", own_idx),
-            ua.QualifiedName("ActiveCalibrationInfo", own_idx),
-            "",
-            ua.VariantType.String,
+        active_calibration_info = await add_named_variable(
+            vision_system, name, "ActiveCalibrationInfo", own_idx, "", ua.VariantType.String
         )
 
     _log.info(

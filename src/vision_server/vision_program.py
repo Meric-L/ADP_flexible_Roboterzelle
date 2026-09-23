@@ -35,6 +35,7 @@ from ua_program import Program, ProgramException
 
 from .errors import VisionErrorCode
 from .job import JobRunner
+from .ua_nodes import add_named_object, add_named_variable
 
 _log = logging.getLogger(__name__)
 
@@ -242,14 +243,8 @@ async def install_vision_program(
     )
     program_node = program.node
 
-    parameter_set = await program_node.add_object(
-        ua.NodeId(f"{PROGRAM_NAME}.{PARAMETER_SET}", own_idx),
-        ua.QualifiedName(PARAMETER_SET, own_idx),
-    )
-    result_set = await program_node.add_object(
-        ua.NodeId(f"{PROGRAM_NAME}.{RESULT_SET}", own_idx),
-        ua.QualifiedName(RESULT_SET, own_idx),
-    )
+    parameter_set = await add_named_object(program_node, PROGRAM_NAME, PARAMETER_SET, own_idx)
+    result_set = await add_named_object(program_node, PROGRAM_NAME, RESULT_SET, own_idx)
 
     recipes = ", ".join(sorted(r for r in (known_recipes or frozenset()) if r))
     parameters: dict[str, Node] = {}
@@ -267,19 +262,17 @@ async def install_vision_program(
             "False = Einzeljob, True = Dauerbetrieb bis Halt.",
         ),
     ):
-        node = await parameter_set.add_variable(
-            ua.NodeId(f"{PROGRAM_NAME}.{PARAMETER_SET}.{name}", own_idx),
-            ua.QualifiedName(name, own_idx),
+        # Beschreibbar, sonst koennte niemand einen Parameter setzen.
+        parameters[name] = await add_named_variable(
+            parameter_set,
+            f"{PROGRAM_NAME}.{PARAMETER_SET}",
+            name,
+            own_idx,
             initial,
             variant,
+            writable=True,
+            description=description,
         )
-        # Beschreibbar, sonst koennte niemand einen Parameter setzen.
-        await node.set_writable()
-        await node.write_attribute(
-            ua.AttributeIds.Description,
-            ua.DataValue(ua.Variant(ua.LocalizedText(description))),
-        )
-        parameters[name] = node
 
     results: dict[str, Node] = {}
     for name, initial, variant in (
@@ -287,11 +280,8 @@ async def install_vision_program(
         ("ErrorCode", 0, ua.VariantType.Int32),
         ("ExecutionMode", MODE_IDLE, ua.VariantType.String),
     ):
-        results[name] = await result_set.add_variable(
-            ua.NodeId(f"{PROGRAM_NAME}.{RESULT_SET}.{name}", own_idx),
-            ua.QualifiedName(name, own_idx),
-            initial,
-            variant,
+        results[name] = await add_named_variable(
+            result_set, f"{PROGRAM_NAME}.{RESULT_SET}", name, own_idx, initial, variant
         )
     program.attach_nodes(parameters, results)
 
