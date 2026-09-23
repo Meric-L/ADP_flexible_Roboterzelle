@@ -28,7 +28,7 @@ wurde. Fachlich hatte nichts davon mit der Zelle zu tun. Alles weg.
 |---|---|---|
 | ~~A1~~ | ~~`2:VisionSystem` — zweite, leere `VisionSystemType`-Instanz~~ | Der Adressraum enthält jetzt genau **eine** Instanz; festgehalten in `tests/test_part10_fassade.py` |
 | ~~A2~~ | ~~`CpuTemperatureResult`~~ | Mit A1 entfallen |
-| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz ist der Loop-Lag-Watchdog in `runner.py` |
+| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz im Log ist der Loop-Lag-Watchdog in `runner.py`; das **nach außen sichtbare** Lebenszeichen ist seit 22.09.2026 `VisionAsset/Health/DeviceHealth` (OPC 40100-2, siehe `vision-server-interface.md` 11.4) — kein Zähler ohne Quelle, sondern ein genormter Zustand, der nur bei Änderung geschrieben wird |
 | ~~A4~~ | ~~`RaspiDevice/Setpoint`~~ | Mit B2 entfallen |
 | ~~A5~~ | ~~1-Hz-Endlosschleife im Server~~ | `main()` wartet jetzt nur noch auf das Stopp-Signal |
 | ~~A6~~ | ~~`print_setpoint.py`~~ | Gelöscht |

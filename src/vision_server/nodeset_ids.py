@@ -7,6 +7,8 @@ bringt DI und Machinery als Abhaengigkeiten mit, siehe
 `src/vision_server/nodesets/README.md` fuer die gepinnten Versionen und warum.
 """
 
+from enum import IntEnum
+
 from asyncua import ua
 
 MACHINE_VISION_NAMESPACE_URI = "http://opcfoundation.org/UA/MachineVision"
@@ -33,6 +35,49 @@ VISION_ITEM_FOLDER_TYPE = 1005
 VISION_COMPUTING_DEVICE_TYPE = 1010
 VISION_IMAGE_SENSOR_TYPE = 1020
 VISION_LENS_TYPE = 1022
+
+#: Part 2: Zustandsblock je Komponente. Im Nodeset an jedem Item-Typ und an
+#: der Wurzel als `Optional` deklariert und per `HasAddIn` referenziert --
+#: mit `instantiate_optional=False` entsteht er also nie von selbst.
+#: Alle seine Kinder sind ebenfalls optional, der Block kommt deshalb leer
+#: heraus und `DeviceHealth` wird einzeln nachgelegt (asset_model._add_health).
+VISION_HEALTH_INFO_TYPE = 1004
+
+#: DI: DataType `DeviceHealthEnumeration` (OPC 10000-100) und das Interface
+#: `IDeviceHealthType`, das sie an den Zustandsblock bringt.
+DI_DEVICE_HEALTH_ENUMERATION = 6244
+DI_DEVICE_HEALTH_INTERFACE = 15051
+
+#: DI: der zweite Teil von `IDeviceHealthType`. Neben der Zustandsvariablen
+#: sieht die Norm einen Ordner mit echten OPC-UA-Alarmen je Zustand vor --
+#: `DeviceHealthDiagnosticAlarmType` und seine vier konkreten Untertypen,
+#: alle abgeleitet von `AlarmConditionType`. Erst damit bekommt ein Client
+#: ein Ereignis mit Zeitstempel, Quelle und Schweregrad statt einer Zahl,
+#: die er abfragen muss.
+DI_DEVICE_HEALTH_ALARMS = 15053
+DI_FAILURE_ALARM_TYPE = 15292
+DI_CHECK_FUNCTION_ALARM_TYPE = 15441
+DI_OFF_SPEC_ALARM_TYPE = 15590
+#: `MaintenanceRequiredAlarmType` (15739) wird bewusst nicht benutzt: ohne
+#: Verschleisszaehler koennte er nie feuern, und ein Alarm, der nie kommt,
+#: ist eine Zusage, die wir nicht halten.
+
+
+class DeviceHealth(IntEnum):
+    """DI's `DeviceHealthEnumeration` nach NAMUR NE 107.
+
+    Von Hand statt aus dem Nodeset gelesen: `load_data_type_definitions()`
+    scheitert bei 40100 an abstrakten Struktur-Basistypen (asyncua-Issue
+    #1693). Geschrieben wird deshalb als
+    `ua.Variant(int(wert), ua.VariantType.Int32)` -- so uebertraegt OPC UA
+    eine Enumeration ohnehin.
+    """
+
+    NORMAL = 0
+    FAILURE = 1
+    CHECK_FUNCTION = 2
+    OFF_SPEC = 3
+    MAINTENANCE_REQUIRED = 4
 
 EVENT_JOB_STARTED = 1013
 EVENT_STATE_CHANGED = 1018

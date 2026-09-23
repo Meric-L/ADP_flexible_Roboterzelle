@@ -71,6 +71,14 @@ async def run(args: argparse.Namespace) -> int:
                         )
                     else:
                         print(f"Kein Board gefunden (Error={error}) -- nochmal versuchen.")
+                    result = progress.get("result")
+                    if result is not None:
+                        # Abdeckungs-Schwelle erreicht -- Session hat sich
+                        # selbst beendet (siehe CalibrationSession.capture()).
+                        print(f"\nAbdeckung erreicht, automatisch abgeschlossen: {result}")
+                        if "warning" in result:
+                            print(f"ACHTUNG: {result['warning']}")
+                        break
                 elapsed = loop.time() - started
                 await asyncio.sleep(max(0.0, interval - elapsed))
         except KeyboardInterrupt:

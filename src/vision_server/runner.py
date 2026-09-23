@@ -7,6 +7,7 @@ import logging
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from asyncua import Node, Server, ua, uamethod
@@ -14,12 +15,16 @@ from asyncua import Node, Server, ua, uamethod
 from .address_space import VisionAddressSpace, attach_vision_system, configure_server
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .calibration_session import CalibrationSession
+from .camera import exit_process
+from .camera_health import CameraHealthPublisher, HealthAlarms, write_device_health
 from .camera_stream import CameraStreamPublisher
+from .mjpeg_server import MjpegServer
 from .config import VisionServerConfig
 from .detection import DetectionSource, build_detection_sources
 from .errors import VisionErrorCode
 from .events import VisionEvents, create_event_generators
 from .job import JobRunner
+from .nodeset_ids import DeviceHealth
 from .result_management import ResultStore
 from .state_machine import VisionStateMachines
 from .vision_program import VisionProgram, install_vision_program
@@ -143,6 +148,111 @@ def _write_tag_map_file(path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+async def _start_mjpeg_server(
+    space: VisionAddressSpace, stream: CameraStreamPublisher
+) -> MjpegServer | None:
+    """Startet den MJPEG-Stream und nennt seinen Port im Adressraum.
+
+    Scheitert das Binden (Port belegt), laeuft der Server ohne weiter: der
+    Knoten bleibt auf 0 und das Frontend faellt auf `LatestCameraFrame`
+    zurueck. Der Livestream ist ein Debugwerkzeug, kein Grund fuer einen
+    Startabbruch.
+    """
+    config = space.config.camera_stream
+    if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:
+        return None
+    server = MjpegServer(stream, config.http_port)
+    try:
+        await server.start()
+    except OSError:
+        _log.exception(
+            "MJPEG-Livestream auf Port %d nicht startbar -- nur der OPC-UA-Rueckfallweg",
+            config.http_port,
+        )
+        return None
+    await space.camera_stream_http_port.write_value(
+        ua.Variant(server.port, ua.VariantType.Int32)
+    )
+    return server
+
+
+def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
+    """Die Konfiguration der Kamera, die wirklich laeuft.
+
+    `space.config.camera_stream` kann `None` sein, waehrend die Quelle sehr
+    wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
+    haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
+    """
+    from .profiles import CameraStreamConfig
+
+    return (
+        getattr(source, "_camera_config", None)
+        or space.config.camera_stream
+        or CameraStreamConfig()
+    )
+
+
+async def _start_camera_health(
+    space: VisionAddressSpace,
+    assets: VisionAssetNodes | None,
+    sources: Mapping[str, DetectionSource],
+    opened: Mapping[str, bool],
+) -> CameraHealthPublisher | None:
+    """Verbindet den Kamera-Watchdog mit `DeviceHealth` der Anlagensicht.
+
+    Der Watchdog in `camera.py` erkennt haengende Kameras, meldet das aber nur
+    ins Log. Hier wird daraus ein Wert, den ein generischer OPC-UA-Client
+    sieht -- ohne Kenntnis dieses Repos.
+
+    Bewusst nicht an `_start_camera_stream` gehaengt: der Livestream ist eine
+    Debughilfe und kann fehlen, waehrend die Job-Quelle eine Kamera haelt.
+    Ohne Part 2 oder ohne Zustandsknoten passiert nichts.
+    """
+    if assets is None or not assets.device_health:
+        return None
+    source = _camera_owner(sources, opened)
+    if source is None:
+        # Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort, und sie
+        # bleibt stehen -- es gibt nichts, was sie spaeter widerlegen koennte.
+        _log.warning(
+            "Zustandsknoten der Anlagensicht vorhanden, aber keine geoeffnete "
+            "Kamera -- DeviceHealth bleibt auf FAILURE"
+        )
+        await write_device_health(assets.device_health, DeviceHealth.FAILURE)
+        return None
+    # Der normkonforme Ereignisweg von Part 2. Emittiert wird von
+    # `VisionMachine`, weil Clients ohnehin genau diesen Knoten abonnieren;
+    # `SourceNode` nennt die Komponente, um die es geht -- den Bildsensor,
+    # falls sein Modell bekannt ist, sonst die Anlagenwurzel.
+    alarms = (
+        HealthAlarms(
+            space.server,
+            space.vision_system,
+            assets.health_alarms,
+            source=assets.image_sensor or assets.root,
+        )
+        if assets.health_alarms
+        else None
+    )
+    publisher = CameraHealthPublisher(
+        source.camera,
+        assets.device_health,
+        _camera_config_of(space, source),
+        alarms=alarms,
+    )
+    # Der Watchdog reisst den Prozess, wenn er aufgibt; vorher soll noch ein
+    # letztes FAILURE rausgehen.
+    source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
+    publisher.start()
+    _log.info(
+        "Kamerazustand (OPC 40100-2) aus Profil '%s' auf %d Knoten, %d Alarme",
+        source.profile_id,
+        len(assets.device_health),
+        len(assets.health_alarms),
+    )
+    return publisher
+
+
 def _build_calibration_session(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
@@ -161,6 +271,59 @@ def _build_calibration_session(
     if source is None or not opened.get("apriltag") or getattr(source, "camera", None) is None:
         return None
     return CalibrationSession(source.camera, config.apriltag)
+
+
+def _calibration_info_payload(calibration: Any, path: Any) -> dict:
+    """JSON-faehige Kurzfassung der gerade *aktiven* Kalibrierung.
+
+    Anders als `CalibrationSession.progress`/`last_result` (Fortschritt
+    *einer Session*) beschreibt das hier, was `AprilTagDetectionSource`
+    tatsaechlich fuer Posen benutzt -- direkt nach dem Laden beim Start und
+    nach jeder interaktiven Neu-Kalibrierung.
+
+    `calibrationId`/`createdAt` liest diese Funktion aus der Datei nach,
+    statt sie hier ein zweites Mal zu erzeugen: `CameraCalibration` selbst
+    kennt `createdAt` gar nicht, und `calibration_id` ist bei einem frisch
+    berechneten Objekt noch leer -- das Format entsteht erst beim Schreiben
+    in `tagloc.calibration.save_calibration`. Einzige Ausnahme: die
+    Platzhalter-Kalibrierung, zu der keine Datei existiert.
+    """
+    from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+
+    is_placeholder = calibration.calibration_id == PLACEHOLDER_CALIBRATION_ID
+    info = {
+        "placeholder": is_placeholder,
+        "frameId": calibration.frame_id,
+        "rms": None if is_placeholder else round(calibration.rms_reprojection_error, 4),
+        "samples": calibration.sample_count,
+        "board": dict(calibration.board),
+        "calibrationId": calibration.calibration_id or None,
+        "createdAt": None,
+        "path": str(path),
+    }
+    if not is_placeholder:
+        try:
+            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+            info["calibrationId"] = raw.get("calibrationId")
+            info["createdAt"] = raw.get("createdAt")
+        except OSError:
+            pass
+    return info
+
+
+async def _write_calibration_info(node: Node | None, calibration: Any, path: Any) -> None:
+    """Schreibt `_calibration_info_payload` in `ActiveCalibrationInfo`.
+
+    Fehler landen nur im Log -- ein nicht schreibbarer Info-Knoten darf
+    weder den Start noch eine gerade erfolgreich gespeicherte Kalibrierung
+    zu Fall bringen.
+    """
+    if node is None or calibration is None:
+        return
+    try:
+        await node.write_value(json.dumps(_calibration_info_payload(calibration, path)))
+    except Exception:
+        _log.exception("ActiveCalibrationInfo konnte nicht geschrieben werden")
 
 
 async def _open_source(source: DetectionSource) -> bool:
@@ -191,8 +354,13 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
+    #: MJPEG livestream over HTTP; `None` when disabled or the port was taken.
+    camera_http: MjpegServer | None = None
     #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
     assets: VisionAssetNodes | None = None
+    #: Schreibt `DeviceHealth` der Anlagensicht; `None` ohne Part 2, ohne
+    #: Zustandsknoten oder ohne geoeffnete Kamera.
+    camera_health: CameraHealthPublisher | None = None
     #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
     program: VisionProgram | None = None
     #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
@@ -208,10 +376,17 @@ class VisionMachine:
         """
         if self.calibration_session is not None and self.calibration_session.running:
             await self.calibration_session.abort()
+        # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
+        # sonst als Haenger durch, und der letzte Wert im Adressraum waere
+        # OFF_SPEC statt des letzten echten Zustands.
+        if self.camera_health is not None:
+            await self.camera_health.stop()
         if self.lag_watchdog is not None:
             self.lag_watchdog.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.lag_watchdog
+        if self.camera_http is not None:
+            await self.camera_http.stop()
         if self.camera_stream is not None:
             await self.camera_stream.stop()
         await self.jobs.cancel_running()
@@ -373,6 +548,38 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     calibration_session = _build_calibration_session(sources, opened, config)
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
+    camera_health = await _start_camera_health(space, assets, sources, opened)
+    camera_http = (
+        await _start_mjpeg_server(space, camera_stream)
+        if camera_stream is not None
+        else None
+    )
+
+    apriltag_source = sources.get("apriltag")
+    if config.apriltag is not None and opened.get("apriltag"):
+        # Was `open()` gerade geladen hat (echte Datei oder Platzhalter) --
+        # ohne das waere ActiveCalibrationInfo leer, bis zum ersten
+        # StartCalibration.
+        await _write_calibration_info(
+            space.active_calibration_info,
+            getattr(apriltag_source, "_calibration", None),
+            config.apriltag.calibration_path,
+        )
+    if calibration_session is not None:
+
+        async def _apply_live_calibration(calibration: Any) -> None:
+            """Bringt Erkennung, Overlay und den Info-Knoten sofort auf den
+            neuen Stand -- kein Server-Neustart noetig, siehe
+            `AprilTagDetectionSource.apply_calibration`."""
+            if apriltag_source is not None and hasattr(apriltag_source, "apply_calibration"):
+                apriltag_source.apply_calibration(calibration)
+            if annotator is not None and hasattr(annotator, "apply_calibration"):
+                annotator.apply_calibration(calibration)
+            await _write_calibration_info(
+                space.active_calibration_info, calibration, config.apriltag.calibration_path
+            )
+
+        calibration_session.set_on_calibrated(_apply_live_calibration)
 
     #: Kalibriermethoden, die zusaetzlich unter `VisionProgram` aufrufbar
     #: werden -- gefuellt nur, wenn es eine Kalibrier-Session gibt.
@@ -572,6 +779,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["CalibrationProgress"] = space.calibration_progress
     if space.tag_map_json is not None:
         mirror_nodes["TagMapJson"] = space.tag_map_json
+    if space.active_calibration_info is not None:
+        mirror_nodes["ActiveCalibrationInfo"] = space.active_calibration_info
     program = await install_vision_program(
         server,
         server.nodes.objects,
@@ -607,6 +816,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         jobs=jobs,
         lag_watchdog=lag_watchdog,
         camera_stream=camera_stream,
+        camera_health=camera_health,
+        camera_http=camera_http,
         assets=assets,
         program=program,
         calibration_session=calibration_session,

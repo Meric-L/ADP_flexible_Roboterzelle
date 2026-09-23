@@ -10,10 +10,21 @@ Aufnahmen werden manuell ausgeloest (`capture()`, z. B. per Leertaste im
 Stream-Viewer oder ein Frontend-Button) statt automatisch nach Zeitintervall
 -- der Operator sieht das Live-Bild und entscheidet selbst, wann eine Pose
 gut ist, statt dass die Kamera im Sekundentakt mitschreibt.
+
+Erreicht die Abdeckung `calibration_coverage_threshold`, rechnet und speichert
+die Session von selbst (kein Aufruf von `FinishCalibration` noetig) -- das
+Ergebnis landet in `progress["result"]`, das Frontend muss also nur den
+Fortschritts-Knoten beobachten. Abdeckung allein sagt aber nichts ueber die
+tatsaechliche Genauigkeit: ein Board, das nie gekippt wurde, kann trotz guter
+Abdeckung einen hohen Reprojektionsfehler ergeben (RMS). Das Ergebnis traegt
+deshalb bei einem RMS ueber `RMS_WARNING_PX` zusaetzlich eine `warning` --
+verhindert das automatische Speichern nicht, macht die Ungenauigkeit aber
+sichtbar statt sie zu verstecken.
 """
 
 import asyncio
 import importlib
+import inspect
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
@@ -24,6 +35,20 @@ from .profiles import AprilTagProfileConfig
 
 _log = logging.getLogger(__name__)
 
+#: Deckt sich mit dem Abbruchkriterium aus dem Testplan ("RMS unter 0,5 px").
+#: Nur eine Anzeige-Warnung, kein Fehlschlag -- eine ungenaue, aber
+#: gespeicherte Kalibrierung ist beim ersten Funktionstest eher gewollt als
+#: ein automatischer Abbruch ohne jedes Ergebnis.
+RMS_WARNING_PX = 0.5
+
+#: Rechnerische Untergrenze fuer `calibrate_from_samples` (siehe
+#: `_compute_and_save`) -- unabhaengig davon, wie niedrig
+#: `calibration_min_samples` konfiguriert ist (die ist ein *empfohlener*
+#: Schwellwert, kein mathematisches Minimum). Der automatische Abschluss darf
+#: nie unterhalb dieser Zahl ausloesen, sonst wuerde eine Session mit
+#: DETECTION_FAILED enden, ohne dass der Operator das wollte.
+MIN_SAMPLES_FOR_CALIBRATION = 3
+
 
 def _lazy(module: str, name: str) -> Callable:
     """Loest eine `tagloc`-Funktion erst beim Aufruf auf -- diese Datei
@@ -33,6 +58,15 @@ def _lazy(module: str, name: str) -> Callable:
         return getattr(importlib.import_module(module), name)(*args, **kwargs)
 
     return call
+
+
+def _save_capture_image(path: Any, image: Any) -> None:
+    """Schreibt eine Aufnahme als PNG -- Debug-Artefakt, kein Teil der
+    Kalibrierung selbst. Kein `tagloc`-Bezug, deshalb kein `_lazy(...)`."""
+    import cv2
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), image)
 
 
 class CalibrationSession:
@@ -59,10 +93,23 @@ class CalibrationSession:
         calibrate_from_samples: Callable | None = None,
         compute_coverage: Callable | None = None,
         save_calibration: Callable | None = None,
+        on_calibrated: Callable[[Any], Any] | None = None,
+        save_capture_image: Callable | None = None,
     ) -> None:
         self._camera = camera
         self._config = config
         self._out_path = config.calibration_path
+        #: `None` (Standard) speichert keine Bilder. Gesetzt, schreibt jede
+        #: uebernommene Aufnahme zusaetzlich als PNG hier ab -- zum
+        #: Nachpruefen/Neu-Rechnen abseits vom Server.
+        self._capture_dir = config.calibration_capture_dir
+        self._saved_captures = 0
+        self._save_capture_image = save_capture_image or _save_capture_image
+        #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
+        #: frisch berechneten `CameraCalibration`-Objekt -- `runner.py` setzt
+        #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
+        #: Server-Neustart auf den neuen Stand zu bringen.
+        self._on_calibrated = on_calibrated
         self._detect_board = detect_board or _lazy("tagloc.boards", "detect_board")
         self._build_board = build_board or _lazy("tagloc.boards", "build_board")
         self._calibrate_from_samples = calibrate_from_samples or _lazy(
@@ -77,6 +124,20 @@ class CalibrationSession:
         self._image_size: tuple[int, int] = (0, 0)
         self._executor: ThreadPoolExecutor | None = None
         self.running = False
+        #: Ergebnis von `finish()` bzw. des automatischen Abschlusses ueber
+        #: `calibration_coverage_threshold`; `None` bis dahin. Wird von
+        #: `progress` mit ausgeliefert, damit ein Beobachter des reinen
+        #: Fortschritts-Knotens auch das Endergebnis sieht.
+        self.last_result: dict | None = None
+
+    def set_on_calibrated(self, callback: Callable[[Any], Any] | None) -> None:
+        """Setzt/entfernt den `on_calibrated`-Callback nachtraeglich.
+
+        `runner.py` braucht dafuer sowohl die Erkennungsquelle als auch den
+        Stream-Annotator, die beide erst nach der Session gebaut werden --
+        ein Setter macht das moeglich, ohne die Bau-Reihenfolge umzustellen.
+        """
+        self._on_calibrated = callback
 
     def _spec(self):
         """Baut `BoardSpec` aus den Skalaren der Config. Importiert `tagloc`
@@ -113,6 +174,8 @@ class CalibrationSession:
         `capture()`."""
         self._samples = []
         self._image_size = (0, 0)
+        self._saved_captures = 0
+        self.last_result = None
         self.running = True
 
     async def capture(self) -> bool:
@@ -122,6 +185,11 @@ class CalibrationSession:
         ob das Board gefunden und die Aufnahme uebernommen wurde -- bei
         `False` liegt es meist an Unschaerfe, falschem Bildausschnitt oder
         einer falschen Board-Geometrie in der Konfiguration.
+
+        Reicht die Abdeckung danach fuer `calibration_coverage_threshold`,
+        schliesst diese Aufnahme die Session gleich mit ab (siehe
+        `_maybe_auto_finish`) -- der Rueckgabewert bleibt trotzdem nur "Board
+        gefunden?", das Ergebnis steht in `progress["result"]`.
         """
         if not self.running:
             return False
@@ -143,7 +211,26 @@ class CalibrationSession:
         _log.info(
             "Kalibrierung: Aufnahme %d (%d Ecken)", len(self._samples), sample.count()
         )
+        if self._capture_dir is not None:
+            self._saved_captures += 1
+            path = self._capture_dir / f"kalib_{self._saved_captures:03d}.png"
+            await self._run_blocking(self._save_capture_image, path, frame.image)
+        await self._maybe_auto_finish()
         return True
+
+    def _coverage_threshold_reached(self) -> bool:
+        threshold = self._config.calibration_coverage_threshold
+        min_samples = max(MIN_SAMPLES_FOR_CALIBRATION, self._config.calibration_min_samples)
+        if threshold is None or len(self._samples) < min_samples:
+            return False
+        coverage = self._compute_coverage(self._samples, self._image_size)
+        return coverage[0] >= threshold and coverage[1] >= threshold
+
+    async def _maybe_auto_finish(self) -> None:
+        if self._coverage_threshold_reached():
+            _log.info("Kalibrierung: Abdeckungs-Schwelle erreicht, schliesse automatisch ab")
+            error, summary = await self._compute_and_save()
+            self.last_result = {"error": int(error), **summary}
 
     @property
     def progress(self) -> dict:
@@ -153,13 +240,16 @@ class CalibrationSession:
             if self._samples
             else (0.0, 0.0)
         )
-        return {
+        data = {
             "running": self.running,
             "samples": len(self._samples),
             "minSamples": self._config.calibration_min_samples,
             "coverageX": round(coverage[0], 3),
             "coverageY": round(coverage[1], 3),
         }
+        if self.last_result is not None:
+            data["result"] = self.last_result
+        return data
 
     async def _stop(self) -> None:
         self.running = False
@@ -167,14 +257,16 @@ class CalibrationSession:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
 
-    async def finish(self) -> tuple[VisionErrorCode, dict]:
+    async def _compute_and_save(self) -> tuple[VisionErrorCode, dict]:
         """Rechnet und speichert. Immer aufraeumend, auch bei Fehlschlag --
-        eine Session bleibt nie unbeendet haengen."""
+        eine Session bleibt nie unbeendet haengen. Gemeinsamer Kern von
+        `finish()` und dem automatischen Abschluss ueber die Abdeckungs-
+        Schwelle in `capture()`."""
         samples = list(self._samples)
         image_size = self._image_size
         await self._stop()
 
-        if len(samples) < 3:
+        if len(samples) < MIN_SAMPLES_FOR_CALIBRATION:
             return VisionErrorCode.DETECTION_FAILED, {
                 "message": f"Zu wenige Aufnahmen: {len(samples)}",
                 "samples": len(samples),
@@ -191,18 +283,43 @@ class CalibrationSession:
                 board,
                 frame_id=self._config.frame_id,
             )
-        except ValueError as error:
+        except Exception as error:
+            # Nicht nur ValueError: cv2.calibrateCamera scheitert bei
+            # numerisch ungeeigneten Aufnahmen (z. B. zu wenig Neigungs-/
+            # Distanz-Variation trotz guter Bildabdeckung) mit `cv2.error`,
+            # keinem ValueError. Ungefangen wuerde das hier durchschlagen --
+            # `self.running` ist zu diesem Zeitpunkt bereits `False` (siehe
+            # `_stop()` oben), die Session bliebe also unsichtbar tot haengen:
+            # jede weitere `capture()` liefert danach nur noch "Board nicht
+            # gefunden", ein spaeteres manuelles `finish()` nur noch
+            # `INVALID_STATE`, ohne dass je ein Ergebnis oder eine
+            # Fehlermeldung zu sehen war. `asyncio.CancelledError` faengt das
+            # nicht ab (die erbt von `BaseException`, nicht `Exception`).
+            _log.exception("Kalibrierung fehlgeschlagen (%d Aufnahmen)", len(samples))
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
         await self._run_blocking(self._save_calibration, self._out_path, calibration)
+        if self._on_calibrated is not None:
+            outcome = self._on_calibrated(calibration)
+            if inspect.isawaitable(outcome):
+                await outcome
+        rms = round(calibration.rms_reprojection_error, 4)
         summary = {
-            "rms": round(calibration.rms_reprojection_error, 4),
+            "rms": rms,
             "samples": calibration.sample_count,
             "coverageX": round(coverage[0], 3),
             "coverageY": round(coverage[1], 3),
             "path": str(self._out_path),
         }
+        if rms > RMS_WARNING_PX:
+            summary["warning"] = (
+                f"RMS {rms} px ueber dem Zielwert {RMS_WARNING_PX} px -- "
+                "vermutlich zu wenig Neigung/Distanz-Variation beim Aufnehmen "
+                "(eine Abdeckung, die nur die Position im Bild misst, sagt "
+                "nichts ueber die Vielfalt der Posen). Kalibrierung ist "
+                "trotzdem gespeichert."
+            )
         _log.info(
             "Kalibrierung gespeichert: RMS %.4f px, %d Aufnahmen, Abdeckung x %.0f%% y %.0f%%",
             summary["rms"],
@@ -211,6 +328,12 @@ class CalibrationSession:
             coverage[1] * 100,
         )
         return VisionErrorCode.OK, summary
+
+    async def finish(self) -> tuple[VisionErrorCode, dict]:
+        """Beendet die Session manuell -- siehe `_compute_and_save`."""
+        error, summary = await self._compute_and_save()
+        self.last_result = {"error": int(error), **summary}
+        return error, summary
 
     async def abort(self) -> None:
         """Stoppt ohne zu speichern."""

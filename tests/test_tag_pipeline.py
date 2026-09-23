@@ -277,6 +277,31 @@ class SyntheticCalibrationTest(unittest.TestCase):
                 self.assertIsNotNone(sample)
                 self.assertEqual(sample.count(), self.spec.cols * self.spec.rows)
 
+    def test_corner_order_matches_the_classic_convention(self) -> None:
+        """`findChessboardCornersSB` liefert die Ecken in umgekehrter
+        Reihenfolge gegenueber `findChessboardCorners` (empirisch geprueft,
+        2026-09-23) -- `detect_board` muss das ausgleichen, sonst passt die
+        Bild-zu-Weltpunkt-Zuordnung in `calibrate_from_samples` nicht mehr,
+        lautlos, ohne dass `detect_board` das melden wuerde."""
+        gray = to_gray(self.images[0])
+        sample = detect_board(gray, self.spec)
+        self.assertIsNotNone(sample)
+
+        found, reference = cv2.findChessboardCorners(
+            gray,
+            (self.spec.cols, self.spec.rows),
+            flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE,
+        )
+        self.assertTrue(found)
+
+        detected = np.asarray(sample.corners).reshape(-1, 2)
+        expected = reference.reshape(-1, 2)
+        # Grosszuegig (Subpixel-Unterschiede zwischen den Detektoren): das
+        # hier prueft die Reihenfolge, nicht die letzte Nachkommastelle. Eine
+        # vertauschte Reihenfolge weicht um Bildbreite/-hoehe ab, nicht um
+        # Subpixel -- die Schranke unterscheidet das klar.
+        self.assertLess(np.abs(detected - expected).max(), 2.0)
+
     def test_calibrate_from_samples_recovers_the_intrinsics(self) -> None:
         samples = []
         for image in self.images:

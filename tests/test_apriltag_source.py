@@ -182,6 +182,32 @@ class ConfigurationIdTest(unittest.TestCase):
         self.assertTrue(source.configuration_id.endswith("+tagmap#keine"))
 
 
+class ApplyCalibrationTest(unittest.TestCase):
+    """`apply_calibration` -- der Hot-Reload-Pfad nach einer interaktiven
+    Kalibrierung (siehe `CalibrationSession`/`runner.py`), ohne Server-Neustart."""
+
+    def test_replaces_the_calibration_object(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)
+            (path / "camera.json").write_text("{}", encoding="utf-8")
+            source = AprilTagDetectionSource(profile_config(path), camera=FakeCamera())
+            new_calibration = object()
+
+            source.apply_calibration(new_calibration)
+
+        self.assertIs(source._calibration, new_calibration)
+
+    def test_rebuilds_the_configuration_id_from_the_current_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)
+            (path / "camera.json").write_text("{}", encoding="utf-8")
+            source = AprilTagDetectionSource(profile_config(path), camera=FakeCamera())
+
+            source.apply_calibration(object())
+
+        self.assertIn("camera#", source.configuration_id)
+
+
 class ProfileSettingsTest(unittest.TestCase):
     def test_takes_frame_id_and_convention_from_the_profile_config(self):
         with tempfile.TemporaryDirectory() as folder:

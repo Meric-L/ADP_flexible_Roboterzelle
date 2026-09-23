@@ -55,7 +55,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `config.py` | `VisionServerConfig` (frozen dataclass), Rezept-Profile |
 | `nodeset_ids.py` | NodeId-Konstanten der Nodesets |
 | `address_space.py` | Nodeset-Import (MachineVision, DI, Machinery, AMCM), `VisionMachine`-Instanz, `HasNotifier` |
-| `asset_model.py` | Part-2-Anlagensicht (AMCM), `VisionAsset` |
+| `asset_model.py` | Part-2-Anlagensicht (AMCM), `VisionAsset` samt Zustandsblock (`DeviceHealth`, siehe `camera_health.py`) |
 | `state_machine.py` | Bindung beider 40100-Zustandsautomaten |
 | `events.py` | Event-Generatoren, `ResultReadyEvent` mit Payload |
 | `result_management.py` | Ergebnisknoten + JSON-Spiegelknoten |
@@ -67,6 +67,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `vision_program.py` | Part-10-Programmfassade `VisionProgram`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame` |
+| `camera_health.py` | Kamerazustand als `DeviceHealth` (OPC 40100-2) |
 | `stream_overlay.py` | markiert erkannte Tags im Livestream-Bild |
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA |
 | `discovery/mdns.py` | mDNS-Ankündigung |
@@ -206,6 +207,27 @@ Vordergrundstart, das kollidiert mit dem Service (Port 4840 belegt) —
 stattdessen `systemctl restart opcua-server.service` und mit einem separaten
 Client dagegen testen.
 
+**Kamera-Watchdog** (`camera.py`): `capture_array()` kann ohne Fehlermeldung
+ewig haengen, wenn libcamera keinen Frame mehr liefert (Pi 1, 2026-09-22: der
+Livestream zeigte ein eingefrorenes Bild, Jobs scheiterten mit „Kein Kamerabild
+innerhalb von 5.0 s“). Jede Aufnahme hat deshalb `frame_timeout_s` (3 s); bei
+einem Haenger wird die Kamera neu geoeffnet, nach `max_reopen_attempts` (2)
+erfolglosen Neu-Oeffnungen beendet sich der Prozess hart und systemd startet
+ihn neu.
+
+**Der Watchdog überwacht ausschließlich die Aufnahme, nicht den Livestream.**
+Nach außen meldet er sich über OPC 40100-2: `DeviceHealth` sagt, wie es der
+Kamera geht, und jeder Zustandswechsel feuert zusätzlich den passenden
+DI-Alarm (`camera_health.py`). Der Livestream ist reiner Publisher — er
+veröffentlicht auch ein veraltetes Bild weiter. Bei hängender Kamera steht
+das Livebild deshalb still; **dass** es steht, sagt die Ampel im Frontend und
+nicht das fehlende Bild. Vollständig in
+[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 11.4.
+
+Im Journal danach suchen mit
+`journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|Kamerazustand|beende den Prozess"`.
+Häufen sich die Meldungen, ist die Ursache meist Hardware (Flachbandkabel).
+
 ## Verifizierter Stand
 
 Lokal gegen asyncua 2.0.1 Ende-zu-Ende durchgelaufen, im
@@ -249,3 +271,9 @@ Festgehalten in `tests/test_part10_fassade.py`.
   deshalb nicht; er holt sein Ergebnis über die Wertänderung von
   `VisionProgram/ResultSet/LatestResultJson`. Am 21.09.2026 gegen asyncua 2.0.1
   nachgemessen — auch eine `HasEventSource`-Referenz ändert daran nichts.
+- Die Deckenkamera (Pi 1) nimmt mit voller Sensorauflösung 4056×3040 auf;
+  Livestream und Overlay laufen auf einem zweiten, vom ISP skalierten Strom
+  (960×720), siehe [`vision-server-interface.md`](vision-server-interface.md)
+  Abschnitt 10.3. Eine Kalibrierung für 2028×1520 wird bis zur Neukalibrierung
+  hochgerechnet (`allow_resolution_mismatch` im Preset `cam_ceiling`) — nach
+  der Neukalibrierung bei 4056×3040 den Schalter wieder entfernen.

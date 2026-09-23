@@ -7,9 +7,14 @@ selection goes by the presence of an opened camera.
 """
 
 import unittest
+from types import SimpleNamespace
 
+from vision_server.asset_model import VisionAssetNodes
+from vision_server.camera import SharedCamera
 from vision_server.detection.base import Detection, DetectionRequest, DetectionSource
-from vision_server.runner import _build_annotator, _camera_owner
+from vision_server.nodeset_ids import DeviceHealth
+from vision_server.profiles import CameraStreamConfig
+from vision_server.runner import _build_annotator, _camera_owner, _start_camera_health
 
 
 class FakeCamera:
@@ -67,6 +72,64 @@ class BuildAnnotatorTest(unittest.TestCase):
         source = CameraSource()
         source._detector = object()
         self.assertIsNone(_build_annotator(source))
+
+
+class FakeHealthNode:
+    def __init__(self) -> None:
+        self.written: list[int] = []
+        self.nodeid = type("NodeId", (), {"to_string": lambda self_: "ns=6;s=Health"})()
+
+    async def write_value(self, value) -> None:
+        self.written.append(value.Value)
+
+
+class FakeSpace:
+    """Nur das, was `_start_camera_health` von `VisionAddressSpace` liest."""
+
+    def __init__(self, camera_stream=None) -> None:
+        self.latest_camera_frame = None
+        self.config = SimpleNamespace(camera_stream=camera_stream)
+
+
+class StartCameraHealthTest(unittest.IsolatedAsyncioTestCase):
+    """Der Zustandsknoten haengt an der Kamera, nicht am Livestream."""
+
+    async def test_is_not_tied_to_the_livestream(self):
+        """Ohne konfigurierten Livestream (`latest_camera_frame is None`)
+        steigt `_start_camera_stream` aus -- der Zustand muss trotzdem
+        veroeffentlicht werden."""
+        source = CameraSource(camera=SharedCamera(CameraStreamConfig()))
+        assets = VisionAssetNodes(root=None, device_health=(FakeHealthNode(),))
+
+        publisher = await _start_camera_health(
+            FakeSpace(), assets, {"x": source}, {"x": True}
+        )
+
+        self.assertIsNotNone(publisher)
+        await publisher.stop()
+
+    async def test_does_nothing_without_part_two(self):
+        self.assertIsNone(
+            await _start_camera_health(FakeSpace(), None, {}, {})
+        )
+
+    async def test_does_nothing_without_health_nodes(self):
+        assets = VisionAssetNodes(root=None)
+        self.assertIsNone(
+            await _start_camera_health(FakeSpace(), assets, {}, {})
+        )
+
+    async def test_reports_failure_when_no_camera_is_open(self):
+        """Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort."""
+        node = FakeHealthNode()
+        assets = VisionAssetNodes(root=None, device_health=(node,))
+
+        publisher = await _start_camera_health(
+            FakeSpace(), assets, {"a": CameralessSource()}, {"a": True}
+        )
+
+        self.assertIsNone(publisher)
+        self.assertEqual([int(DeviceHealth.FAILURE)], node.written)
 
 
 if __name__ == "__main__":
