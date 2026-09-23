@@ -39,6 +39,7 @@ from .geometry import (
     to_rvec_tvec,
 )
 from .jsonio import write_json
+from .modes import DEFAULT_TAG_FAMILY
 from .pose import tag_object_points
 
 SCHEMA = "wsc.vision.synthetic/1"
@@ -317,7 +318,7 @@ def render_tags(
     calibration: CameraCalibration,
     *,
     image_size: tuple[int, int] | None = None,
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     marker_px: int = 320,
     quiet_px: int = 48,
     background: int = 235,
@@ -523,7 +524,7 @@ def write_tag_scene(
     calibration: CameraCalibration,
     *,
     placements=None,
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     supersample: int = 2,
     min_tags: int = 2,
 ) -> dict:

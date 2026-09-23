@@ -31,6 +31,7 @@ if str(_SRC) not in sys.path:
 
 from tagloc.boards import BoardSpec  # noqa: E402
 from tagloc.calibration import save_calibration  # noqa: E402
+from tagloc.modes import DEFAULT_TAG_FAMILY  # noqa: E402
 from tagloc.synthetic import (  # noqa: E402,F401 - Weiterexport fuer bestehende Aufrufer
     IMAGE_PATTERN,
     SCHEMA,
@@ -78,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--focal-px", type=float, default=None, help="Brennweite in Pixeln (Standard: Bildbreite)"
     )
     parser.add_argument("--frame-id", default="cam_synth", help="Bezugsrahmen der Kalibrierung")
-    parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
     parser.add_argument(
         "--supersample", type=int, default=2, help="Ueberabtastung beim Rendern (1 = aus)"
     )

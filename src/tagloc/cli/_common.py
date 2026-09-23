@@ -13,6 +13,7 @@ from pathlib import Path
 from .. import jsonio
 from ..calibration import CameraCalibration, load_calibration
 from ..geometry import Pose, pose_from_dict, pose_to_dict
+from ..modes import DEFAULT_TAG_FAMILY
 from ..tagmap import TagMap, empty_tag_map, entry_for, load_tag_map
 
 #: Exchange format between `detect` and `transform`.
@@ -68,7 +69,7 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
         "--calibration", type=Path, required=True, help="Kalibrierdatei (JSON)"
     )
     parser.add_argument("--tag-map", type=Path, default=None, help="Tag-Map (JSON)")
-    parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
     parser.add_argument(
         "--backend", default="aruco", choices=("aruco", "pupil", "auto"), help="Detektor"
     )

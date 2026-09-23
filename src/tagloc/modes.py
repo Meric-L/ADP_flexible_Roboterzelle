@@ -1,9 +1,17 @@
-"""Overlay modes of the livestream. Stdlib only.
+"""Overlay modes of the livestream, plus the default tag family. Stdlib only.
 
 Split out because `vision_server.camera_stream` needs it without pulling in
 numpy or OpenCV: the livestream must keep running even without detection
 configured. `tagloc.overlay` re-exports both so drawing code finds them there.
+
+Dazu die Standard-Tag-Familie: aus demselben Grund stdlib-only, damit auch
+Konfigurationscode ohne numpy sie nutzen kann.
 """
+
+#: Standard-Tag-Familie ueberall, wo keine angegeben ist (Detektor, Tag-Map,
+#: CLI, synthetische Szenen). `vision_server.profiles` fuehrt den Wert noch
+#: als eigenes Literal.
+DEFAULT_TAG_FAMILY = "tag36h11"
 
 #: Order = order of selection in the frontend.
 OVERLAY_MODES = ("off", "apriltag", "calibration")

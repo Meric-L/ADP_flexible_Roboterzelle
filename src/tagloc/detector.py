@@ -16,6 +16,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
+from .modes import DEFAULT_TAG_FAMILY
 from .observations import TagObservation
 
 _log = logging.getLogger(__name__)
@@ -87,7 +88,7 @@ def generate_marker(dictionary, tag_id: int, pixels: int):
     return aruco.drawMarker(dictionary, int(tag_id), int(pixels))  # pragma: no cover - OpenCV < 4.7
 
 
-def aruco_dictionary(family: str = "tag36h11"):
+def aruco_dictionary(family: str = DEFAULT_TAG_FAMILY):
     """Same, but for a family name from the configuration."""
     name = ARUCO_DICTIONARIES.get(family)
     if name is None:
@@ -106,7 +107,7 @@ class ArucoTagDetector:
     code would only work on one of the two.
     """
 
-    def __init__(self, family: str = "tag36h11", *, parameters: Any = None) -> None:
+    def __init__(self, family: str = DEFAULT_TAG_FAMILY, *, parameters: Any = None) -> None:
         import cv2
 
         self.family = family
@@ -159,7 +160,7 @@ class PupilAprilTagDetector:
     `pose.py` computes identically for both backends.
     """
 
-    def __init__(self, family: str = "tag36h11", *, nthreads: int = 1) -> None:
+    def __init__(self, family: str = DEFAULT_TAG_FAMILY, *, nthreads: int = 1) -> None:
         from pupil_apriltags import Detector
 
         self.family = family
@@ -180,7 +181,7 @@ class PupilAprilTagDetector:
         return sorted(found, key=lambda observation: observation.tag_id)
 
 
-def build_detector(family: str = "tag36h11", backend: str = "aruco") -> TagDetector:
+def build_detector(family: str = DEFAULT_TAG_FAMILY, backend: str = "aruco") -> TagDetector:
     """Build the detector for the requested family.
 
     `backend="auto"` tries `cv2.aruco` first and falls back to

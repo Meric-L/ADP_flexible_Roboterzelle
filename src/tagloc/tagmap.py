@@ -22,6 +22,7 @@ import numpy as np
 
 from .identity import tag_map_identity
 from .jsonio import read_schema_json, write_json
+from .modes import DEFAULT_TAG_FAMILY
 from .geometry import (
     Pose,
     average_poses,
@@ -70,7 +71,7 @@ class TagMap:
 
     frame_id: str = "world"
     anchor_tag_id: int = 0
-    tag_family: str = "tag36h11"
+    tag_family: str = DEFAULT_TAG_FAMILY
     entries: Mapping[int, TagEntry] = field(default_factory=dict)
 
     def __contains__(self, tag_id: int) -> bool:
@@ -143,7 +144,7 @@ def load_tag_map(path: Path) -> TagMap:
     return TagMap(
         frame_id=str(data.get("frameId", "world")),
         anchor_tag_id=int(data.get("anchorTagId", 0)),
-        tag_family=str(data.get("tagFamily", "tag36h11")),
+        tag_family=str(data.get("tagFamily", DEFAULT_TAG_FAMILY)),
         entries=entries,
     )
 
