@@ -3,7 +3,9 @@
 import asyncio
 import contextlib
 import logging
+import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from ..errors import VisionErrorCode, VisionJobError
@@ -29,9 +31,26 @@ class ScriptDetectionSource(DetectionSource):
     is_simulated = True
     frame_id = "world"
 
-    def __init__(self, profile_id: str, script_path: Path) -> None:
+    def __init__(
+        self, profile_id: str, script_path: Path, env: Mapping[str, str] | None = None
+    ) -> None:
         self.profile_id = profile_id
         self._script_path = script_path
+        #: Zusaetzliche Umgebung fuer das Script, z. B. `VISION_FRAME_ID` --
+        #: der Server weiss, welcher Pi er ist; das Script soll es nicht raten.
+        self._env = dict(env or {})
+
+    def subprocess_env(self) -> dict[str, str]:
+        """Umgebung des Subprozesses: die des Servers plus `env`, dazu `src/`
+        vorn im `PYTHONPATH`, damit das Script `tagloc` & Co. ohne eigenen
+        `sys.path`-Eingriff importiert."""
+        from . import SRC_DIR
+
+        env = {**os.environ, **self._env}
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (str(SRC_DIR), os.environ.get("PYTHONPATH", "")) if part
+        )
+        return env
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
         """Startet das Script und liefert dessen stdout als Detektions-Nachricht.
@@ -47,6 +66,7 @@ class ScriptDetectionSource(DetectionSource):
             *(str(parameter) for parameter in request.parameters),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=self.subprocess_env(),
         )
         try:
             stdout, stderr = await process.communicate()
