@@ -107,6 +107,36 @@ def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None
             return None
         return BoardSample(corners=np.asarray(corners), ids=np.asarray(ids))
 
+    if hasattr(cv2, "findChessboardCornersSB"):
+        # Der neuere "Sector-Based"-Detektor: robuster bei schlechtem Licht,
+        # Unschaerfe und starker Neigung als die klassische Methode, und
+        # liefert die Ecken bereits subpixelgenau -- ein zusaetzliches
+        # cornerSubPix() ist hier nicht mehr noetig.
+        #
+        # Achtung, nicht offensichtlich: SB liefert die Ecken in **exakt
+        # umgekehrter Reihenfolge** gegenueber `findChessboardCorners`
+        # (empirisch mit einem synthetischen Testbild geprueft, 2026-09-23:
+        # nach Umkehren stimmen die Positionen auf < 0.1 px). Ungefiltert
+        # uebernommen wuerde das die Bild-zu-Weltpunkt-Zuordnung in
+        # `_chessboard_object_points` lautlos vertauschen -- die Kalibrierung
+        # liefe zwar durch, aber mit falschem Ergebnis statt eines Fehlers.
+        # CALIB_CB_ACCURACY (OpenCV >= 4.6, deshalb hasattr-Check -- der Pi
+        # laeuft 4.x): eigener, langsamerer Algorithmus fuer bessere
+        # Eckengenauigkeit -- hier gewollt, Kalibrieren ist nicht
+        # zeitkritisch (interaktiv, ein paar Sekunden pro Aufnahme sind ok).
+        sb_flags = cv2.CALIB_CB_NORMALIZE_IMAGE
+        if hasattr(cv2, "CALIB_CB_ACCURACY"):
+            sb_flags |= cv2.CALIB_CB_ACCURACY
+        found, corners = cv2.findChessboardCornersSB(
+            gray, (spec.cols, spec.rows), flags=sb_flags
+        )
+        if found:
+            return BoardSample(corners=np.asarray(corners)[::-1], ids=None)
+
+    # Rueckfall: aeltere OpenCV-Version ohne SB, oder SB hat das Board in
+    # diesem Frame nicht gefunden -- die klassische Methode findet manchmal
+    # Boards, die SB verpasst (und umgekehrt), ein zweiter Versuch kostet nur
+    # bei einem Fehlschlag von SB etwas.
     found, corners = cv2.findChessboardCorners(
         gray,
         (spec.cols, spec.rows),

@@ -133,6 +133,29 @@ def scale_to_resolution(calibration: CameraCalibration,
   Auflösung gearbeitet wird: `fx, fy, cx, cy` werden skaliert, die
   Verzeichnungskoeffizienten bleiben.
 
+### Board-Erkennung (`tagloc.boards.detect_board`)
+
+Für `chessboard` (aktuell beide Pis) probiert `detect_board` zuerst
+`cv2.findChessboardCornersSB` — der neuere "Sector-Based"-Detektor,
+robuster bei schlechtem Licht/Unschärfe/starker Neigung als die klassische
+Methode, mit `CALIB_CB_ACCURACY` (eigener, langsamerer Algorithmus für
+bessere Eckengenauigkeit — hier gewollt, Kalibrieren ist nicht zeitkritisch)
+und bereits subpixelgenau, kein zusätzliches `cornerSubPix()` nötig.
+Rückfall auf die klassische `cv2.findChessboardCorners` + `cornerSubPix`
+(11×11-Fenster), falls diese OpenCV-Version kein SB kennt (Pi: OpenCV 4.x)
+oder SB das Board in diesem Frame nicht findet.
+
+**Nicht offensichtlich:** SB liefert die Eckpunkte in **exakt umgekehrter
+Reihenfolge** gegenüber der klassischen Methode (empirisch mit einem
+synthetischen Testbild geprüft, 2026-09-23 — nach Umkehren stimmen die
+Positionen auf < 0,1 px). `detect_board` gleicht das aus (`corners[::-1]`),
+bevor es die Ecken zurückgibt — ungefiltert übernommen hätte das die
+Bild-zu-Weltpunkt-Zuordnung in `_chessboard_object_points` lautlos
+vertauscht: `calibrate_from_samples` wäre durchgelaufen, aber mit falschem
+statt nur ungenauem Ergebnis, ohne dass ein Fehler aufgefallen wäre.
+Regressionsschutz dafür: `tests/test_tag_pipeline.py`,
+`SyntheticCalibrationTest.test_corner_order_matches_the_classic_convention`.
+
 ### Dateiformat `data/calibration/<frame_id>.json`
 
 ```jsonc
