@@ -104,6 +104,20 @@ class TagMap:
         return [entry for entry in self.entries.values() if entry.is_module]
 
 
+def entry_for(tag_map: TagMap | None, tag_id: int) -> TagEntry | None:
+    """`tag_map.get(tag_id)`, auch ohne Karte (`None`) -- dann `None`.
+
+    Zeichen- und Posencode nimmt die Karte optional entgegen; ohne diesen
+    Helfer stand die `None`-Pruefung an jeder Aufrufstelle.
+    """
+    return tag_map.get(tag_id) if tag_map is not None else None
+
+
+def size_for(tag_map: TagMap | None, tag_id: int, default_m: float) -> float:
+    """`tag_map.size_for(...)`, ohne Karte die Rueckfallgroesse `default_m`."""
+    return tag_map.size_for(tag_id, default_m) if tag_map is not None else default_m
+
+
 def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
     """Return an empty map -- operation without a map stays a normal case."""
     return TagMap(frame_id=frame_id, anchor_tag_id=anchor_tag_id, entries={})
@@ -334,6 +348,7 @@ __all__ = [
     "TagEntry",
     "TagMap",
     "empty_tag_map",
+    "entry_for",
     "format_residual_report",
     "load_tag_map",
     "merge_tag_poses",
@@ -343,6 +358,7 @@ __all__ = [
     "relative_poses",
     "residuals",
     "save_tag_map",
+    "size_for",
     "tag_map_identity",
     "with_world_poses",
 ]

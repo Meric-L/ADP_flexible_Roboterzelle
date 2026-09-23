@@ -13,7 +13,7 @@ from pathlib import Path
 from .. import jsonio
 from ..calibration import CameraCalibration, load_calibration
 from ..geometry import Pose, pose_from_dict, pose_to_dict
-from ..tagmap import TagMap, empty_tag_map, load_tag_map
+from ..tagmap import TagMap, empty_tag_map, entry_for, load_tag_map
 
 #: Exchange format between `detect` and `transform`.
 CLI_SCHEMA = "wsc.vision.detections.cli/1"
@@ -188,7 +188,7 @@ def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -
     """Return the detection result as a JSON-ready dict."""
     entries = []
     for tag_pose in tag_poses:
-        entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
+        entry = entry_for(tag_map, tag_pose.tag_id)
         entries.append(
             _pose_entry(
                 tag_pose.tag_id,

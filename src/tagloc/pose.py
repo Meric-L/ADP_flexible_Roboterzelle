@@ -20,6 +20,7 @@ import numpy as np
 from .calibration import CameraCalibration
 from .geometry import Pose, from_rvec_tvec
 from .observations import TagObservation, TagPose
+from .tagmap import size_for
 
 _log = logging.getLogger(__name__)
 
@@ -144,11 +145,7 @@ def estimate_tag_poses(
     expected_errors = _solver_exceptions()
     poses: list[TagPose] = []
     for observation in observations:
-        size_m = (
-            tag_map.size_for(observation.tag_id, default_size_m)
-            if tag_map is not None
-            else default_size_m
-        )
+        size_m = size_for(tag_map, observation.tag_id, default_size_m)
         try:
             tag_pose = estimate_tag_pose(observation, size_m, calibration)
         except expected_errors:

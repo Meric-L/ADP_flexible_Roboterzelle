@@ -252,6 +252,14 @@ class TagMapQueryTest(unittest.TestCase):
         self.assertEqual(empty.reference_poses(), {})
         self.assertAlmostEqual(empty.size_for(3, 0.05), 0.05)
 
+    def test_helpers_accept_a_missing_map(self):
+        tag_map = self._map()
+
+        self.assertEqual(tagmap.entry_for(tag_map, 5).module_id, "MOD-A")
+        self.assertIsNone(tagmap.entry_for(None, 5))
+        self.assertAlmostEqual(tagmap.size_for(tag_map, 5, 0.05), 0.04)
+        self.assertAlmostEqual(tagmap.size_for(None, 5, 0.05), 0.05)
+
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class WithWorldPosesTest(unittest.TestCase):

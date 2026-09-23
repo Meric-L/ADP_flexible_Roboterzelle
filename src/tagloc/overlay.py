@@ -23,6 +23,7 @@ from .calibration import CameraCalibration
 from .geometry import to_rvec_tvec
 from .modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODE_LABELS, OVERLAY_MODES, normalise_mode
 from .observations import TagPose
+from .tagmap import entry_for, size_for
 
 # BGR, because OpenCV.
 COLOR_OK = (80, 220, 80)
@@ -51,13 +52,18 @@ def _scale_for(image) -> float:
     return max(1.0, width / _REFERENCE_WIDTH)
 
 
+def _thickness(scale: float) -> int:
+    """Strichstaerke zum Faktor aus `_scale_for`, mindestens 1 px."""
+    return max(1, round(_THICKNESS * scale))
+
+
 def _put_text(image, text: str, origin: tuple[int, int], color=COLOR_TEXT) -> None:
     """Draw text with a dark outline -- otherwise unreadable on a light background."""
     import cv2
 
     scale = _scale_for(image)
     font_scale = _FONT_SCALE * scale
-    thickness = max(1, round(_THICKNESS * scale))
+    thickness = _thickness(scale)
     cv2.putText(
         image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_SHADOW, thickness + 2
     )
@@ -73,7 +79,7 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     if tag_pose.observation is None:
         return
     scale = _scale_for(image)
-    thickness = max(1, round(_THICKNESS * scale))
+    thickness = _thickness(scale)
     corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
     cv2.polylines(image, [corners], isClosed=True, color=color, thickness=thickness)
     # Bold first corner: makes a rotated detection visible at a glance.
@@ -87,7 +93,7 @@ def draw_tag_axes(
     """Draw the coordinate cross into the tag: X red, Y green, Z blue."""
     import cv2
 
-    thickness = max(1, round(_THICKNESS * _scale_for(image)))
+    thickness = _thickness(_scale_for(image))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
     cv2.drawFrameAxes(
         image,
@@ -119,15 +125,11 @@ def draw_tag_overlay(
     for tag_pose in tag_poses:
         color = COLOR_AMBIGUOUS if tag_pose.is_ambiguous else COLOR_OK
         draw_tag_outline(image, tag_pose, color)
-        size_m = (
-            tag_map.size_for(tag_pose.tag_id, default_size_m)
-            if tag_map is not None
-            else default_size_m
-        )
+        size_m = size_for(tag_map, tag_pose.tag_id, default_size_m)
         draw_tag_axes(image, tag_pose, calibration, size_m * 0.5)
 
         label = f"#{tag_pose.tag_id}"
-        entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
+        entry = entry_for(tag_map, tag_pose.tag_id)
         if entry is not None and entry.module_id:
             label += f" {entry.module_id}"
         elif entry is not None:
@@ -180,9 +182,8 @@ def draw_board_overlay(image, board_sample: Any, *, coverage=None) -> Any:
 
 def draw_status_bar(image, lines: Sequence[str]) -> Any:
     """Write status lines at the bottom left -- mode, calibration, frame count."""
-    shape = np.asarray(image).shape
-    height = shape[0]
-    scale = max(1.0, shape[1] / _REFERENCE_WIDTH)
+    height = np.asarray(image).shape[0]
+    scale = _scale_for(image)
     margin = round(12 * scale)
     line_height = round(22 * scale)
     for index, line in enumerate(reversed(list(lines))):
@@ -264,7 +265,7 @@ def summarise(tag_poses: Sequence[TagPose], tag_map: Any = None) -> str:
         return "keine Tags erkannt"
     parts = []
     for tag_pose in sorted(tag_poses, key=lambda item: item.tag_id):
-        entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
+        entry = entry_for(tag_map, tag_pose.tag_id)
         name = entry.module_id if entry is not None and entry.module_id else str(tag_pose.tag_id)
         parts.append(f"{name}{'!' if tag_pose.is_ambiguous else ''}")
     return f"{len(tag_poses)} Tags: " + ", ".join(parts)
