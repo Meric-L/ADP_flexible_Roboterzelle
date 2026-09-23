@@ -13,6 +13,8 @@ from vision_server.camera_stream import CameraStreamPublisher
 from vision_server.mjpeg_server import MjpegServer
 from vision_server.profiles import CameraStreamConfig
 
+from tests._support import RecordingNode
+
 #: `max_stream_width=None`: die Fake-Bilder sind Strings, keine Arrays --
 #: wie in test_camera_stream.py, sonst scheitert schon das Verkleinern.
 CONFIG = CameraStreamConfig(
@@ -30,14 +32,6 @@ class FakeCamera:
         self.latest_frame = CameraFrame(
             image=f"jpeg-{self.counter}", timestamp=asyncio.get_running_loop().time()
         )
-
-
-class FakeNode:
-    def __init__(self) -> None:
-        self.written: list[str] = []
-
-    async def write_value(self, value) -> None:
-        self.written.append(value)
 
 
 def fake_encode(image, quality: int) -> str:
@@ -67,7 +61,7 @@ async def _read_part(reader: asyncio.StreamReader) -> bytes:
 class MjpegServerTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.camera = FakeCamera()
-        self.node = FakeNode()
+        self.node = RecordingNode()
         self.publisher = CameraStreamPublisher(
             self.camera, self.node, CONFIG, encode_frame=fake_encode
         )
@@ -150,7 +144,7 @@ class MjpegServerTest(unittest.IsolatedAsyncioTestCase):
 class PublisherFanOutTest(unittest.IsolatedAsyncioTestCase):
     async def test_node_stays_at_stream_fps_while_viewers_run_faster(self):
         camera = FakeCamera()
-        node = FakeNode()
+        node = RecordingNode()
         config = CameraStreamConfig(
             stream_fps=10.0, http_fps=100.0, overlay_mode="off", max_stream_width=None
         )
@@ -190,7 +184,7 @@ class PublisherFanOutTest(unittest.IsolatedAsyncioTestCase):
         camera.latest_frame = CameraFrame(
             image="alt", timestamp=asyncio.get_running_loop().time() - 10.0
         )
-        publisher = CameraStreamPublisher(camera, FakeNode(), CONFIG, encode_frame=fake_encode)
+        publisher = CameraStreamPublisher(camera, RecordingNode(), CONFIG, encode_frame=fake_encode)
         publisher.start()
 
         latest = await publisher.next_frame(-1, 0.1)

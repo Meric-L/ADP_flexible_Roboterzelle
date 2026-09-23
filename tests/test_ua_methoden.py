@@ -33,6 +33,8 @@ from vision_server.detection.base import DetectionSource
 from vision_server.errors import VisionErrorCode
 from vision_server.profiles import AprilTagProfileConfig
 
+from tests._support import wait_until
+
 #: Ohne `apriltag`: dessen Quelle braucht eine Kamera und bliebe zu, der
 #: Automat dann in Preoperational.
 RECIPES = (("", "hello_world"), ("hello-world", "hello_world"))
@@ -158,15 +160,8 @@ class MachineTestCase(unittest.IsolatedAsyncioTestCase):
         error = result.OutputArguments[-1]
         self.assertEqual((error.Value, error.VariantType), (int(code), ua.VariantType.Int32))
 
-    async def wait_until(self, predicate, timeout: float = 5.0):
-        deadline = asyncio.get_running_loop().time() + timeout
-        while not predicate():
-            if asyncio.get_running_loop().time() > deadline:
-                self.fail("Bedingung nicht rechtzeitig erreicht")
-            await asyncio.sleep(0.02)
-
     async def wait_idle(self):
-        await self.wait_until(lambda: not self.machine.jobs.busy)
+        await wait_until(lambda: not self.machine.jobs.busy, timeout=5.0)
 
 
 # ====================================================================== 40100
@@ -486,7 +481,7 @@ class VisionProgramTest(MachineTestCase):
         # Abgelehnter Start (unbekanntes Rezept): Status Good, Zustand bleibt.
         await self.write_parameter("RecipeId", "gibt-es-nicht", ua.VariantType.String)
         self.assertTrue((await self.program_call("Start")).StatusCode.is_good())
-        await self.wait_until(lambda: not self.machine.program._lock.locked())
+        await wait_until(lambda: not self.machine.program._lock.locked(), timeout=5.0)
         self.assertEqual(await self.program_state(), "Ready")
         self.assertEqual(await self.result("ErrorCode"), int(VisionErrorCode.UNKNOWN_RECIPE))
         self.assertEqual(await self.result("ExecutionMode"), "idle")

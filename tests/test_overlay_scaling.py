@@ -10,12 +10,12 @@ auf echten Arrays (kein Mock der Zeichenfunktionen), gleiches Muster wie
 
 import unittest
 
+from tests._support import make_tag_pose
+
 try:
     import cv2
     import numpy as np
 
-    from tagloc import geometry
-    from tagloc.observations import TagObservation, TagPose
     from tagloc.overlay import (
         _REFERENCE_WIDTH,
         _scale_for,
@@ -30,15 +30,8 @@ except Exception:  # OpenCV/numpy nicht verfuegbar
     np = None
 
 
-def _tag_pose(tag_id: int = 1):
-    corners = ((100.0, 100.0), (140.0, 100.0), (140.0, 140.0), (100.0, 140.0))
-    return TagPose(
-        tag_id=tag_id,
-        pose_cam_tag=geometry.from_rvec_tvec((0.0, 0.0, 0.0), (0.0, 0.0, 0.3)),
-        reprojection_error_px=0.5,
-        ambiguity_ratio=0.0,
-        observation=TagObservation(tag_id=tag_id, corners=corners),
-    )
+#: Ein 40-px-Tag mitten im Bild.
+CORNERS = ((100.0, 100.0), (140.0, 100.0), (140.0, 140.0), (100.0, 140.0))
 
 
 class FakeCalibration:
@@ -71,7 +64,7 @@ class DrawingSmokeTest(unittest.TestCase):
     def test_draw_tag_overlay_on_a_large_frame(self):
         image = np.zeros((3040, 4056, 3), dtype=np.uint8)
 
-        result = draw_tag_overlay(image, [_tag_pose()], FakeCalibration())
+        result = draw_tag_overlay(image, [make_tag_pose(1, (0.0, 0.0, 0.3), corners=CORNERS)], FakeCalibration())
 
         self.assertTrue((result != 0).any())
 

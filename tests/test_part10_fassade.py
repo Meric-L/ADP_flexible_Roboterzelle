@@ -16,32 +16,15 @@ import unittest
 
 from asyncua import ua
 
-from vision_server.config import DEFAULT_AMCM_NODESET_PATHS, VisionServerConfig
+from vision_server.config import VisionServerConfig
 from vision_server.profiles import AssetConfig
 
-HAS_NODESETS = all(path.is_file() for path in DEFAULT_AMCM_NODESET_PATHS)
+from tests._support import HAS_NODESETS, AddressSpaceCache
 
 ASSETS = AssetConfig(serial_number="vision-test-01", image_sensor_model="Test Cam")
 
-#: Wie in test_asset_model.py: der Aufbau importiert vier Nodesets und kostet
-#: mehrere Sekunden. Einmal je Variante statt einmal je Testmethode.
-_BUILT: dict[str, tuple] = {}
-
-
-async def build(assets, key: str, port: int):
-    from asyncua import Server
-
-    from vision_server.address_space import attach_vision_system, configure_server
-
-    if key in _BUILT:
-        return _BUILT[key]
-    config = VisionServerConfig(
-        endpoint=f"opc.tcp://127.0.0.1:{port}/test/", assets=assets
-    )
-    server = Server()
-    await configure_server(server, config)
-    _BUILT[key] = (server, await attach_vision_system(server, config))
-    return _BUILT[key]
+#: Einmal je Variante statt einmal je Testmethode, siehe `AddressSpaceCache`.
+build = AddressSpaceCache().build
 
 
 async def browse_names(node) -> set[str]:

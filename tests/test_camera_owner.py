@@ -16,6 +16,8 @@ from vision_server.nodeset_ids import DeviceHealth
 from vision_server.profiles import CameraStreamConfig
 from vision_server.runner import _build_annotator, _camera_owner, _start_camera_health
 
+from tests._support import RecordingNode
+
 
 class FakeCamera:
     """Stands in for a source holding a camera."""
@@ -74,15 +76,6 @@ class BuildAnnotatorTest(unittest.TestCase):
         self.assertIsNone(_build_annotator(source))
 
 
-class FakeHealthNode:
-    def __init__(self) -> None:
-        self.written: list[int] = []
-        self.nodeid = type("NodeId", (), {"to_string": lambda self_: "ns=6;s=Health"})()
-
-    async def write_value(self, value) -> None:
-        self.written.append(value.Value)
-
-
 class FakeSpace:
     """Nur das, was `_start_camera_health` von `VisionAddressSpace` liest."""
 
@@ -99,7 +92,7 @@ class StartCameraHealthTest(unittest.IsolatedAsyncioTestCase):
         steigt `_start_camera_stream` aus -- der Zustand muss trotzdem
         veroeffentlicht werden."""
         source = CameraSource(camera=SharedCamera(CameraStreamConfig()))
-        assets = VisionAssetNodes(root=None, device_health=(FakeHealthNode(),))
+        assets = VisionAssetNodes(root=None, device_health=(RecordingNode("ns=6;s=Health"),))
 
         publisher = await _start_camera_health(
             FakeSpace(), assets, {"x": source}, {"x": True}
@@ -121,7 +114,7 @@ class StartCameraHealthTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reports_failure_when_no_camera_is_open(self):
         """Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort."""
-        node = FakeHealthNode()
+        node = RecordingNode("ns=6;s=Health")
         assets = VisionAssetNodes(root=None, device_health=(node,))
 
         publisher = await _start_camera_health(

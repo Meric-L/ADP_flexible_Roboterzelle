@@ -19,6 +19,8 @@ from vision_server.camera_health import (
 from vision_server.nodeset_ids import DeviceHealth
 from vision_server.profiles import CameraStreamConfig
 
+from tests._support import RecordingNode, run_briefly
+
 STALE_S = 2.0
 
 FAST_CONFIG = CameraStreamConfig(stale_frame_s=STALE_S, health_interval_s=0.01)
@@ -109,18 +111,6 @@ class DefaultsAreConsistentTest(unittest.TestCase):
         self.assertLessEqual(self.defaults.health_interval_s, window / 2)
 
 
-class FakeNode:
-    def __init__(self, nodeid: str = "ns=6;s=Test", *, fail: bool = False) -> None:
-        self.written: list[int] = []
-        self.fail = fail
-        self.nodeid = type("NodeId", (), {"to_string": lambda self_: nodeid})()
-
-    async def write_value(self, value) -> None:
-        if self.fail:
-            raise RuntimeError("Knoten nicht beschreibbar")
-        self.written.append(value.Value)
-
-
 class FakeCamera:
     """Liefert einen vorgegebenen Zustand, unabhaengig von der Uhr."""
 
@@ -133,18 +123,12 @@ class FakeCamera:
         return self.value
 
 
-async def _run_briefly(publisher: CameraHealthPublisher, seconds: float) -> None:
-    publisher.start()
-    await asyncio.sleep(seconds)
-    await publisher.stop()
-
-
 class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_writes_the_first_state_once(self):
         camera = FakeCamera(status())
-        node = FakeNode()
+        node = RecordingNode()
 
-        await _run_briefly(CameraHealthPublisher(camera, [node], FAST_CONFIG), 0.05)
+        await run_briefly(CameraHealthPublisher(camera, [node], FAST_CONFIG), 0.05)
 
         self.assertEqual([int(DeviceHealth.NORMAL)], node.written)
 
@@ -152,16 +136,16 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         """Der Unterschied zum 1-Hz-Zaehler aus Altlast A3: im Ruhezustand
         wird gar nicht geschrieben, egal wie viele Ticks vergehen."""
         camera = FakeCamera(status())
-        node = FakeNode()
+        node = RecordingNode()
 
-        await _run_briefly(CameraHealthPublisher(camera, [node], FAST_CONFIG), 0.1)
+        await run_briefly(CameraHealthPublisher(camera, [node], FAST_CONFIG), 0.1)
 
         self.assertGreater(camera.reads, 3, "der Loop hat kaum getickt")
         self.assertEqual(1, len(node.written))
 
     async def test_writes_again_when_the_state_changes(self):
         camera = FakeCamera(status())
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraHealthPublisher(camera, [node], FAST_CONFIG)
 
         publisher.start()
@@ -178,40 +162,40 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_writes_to_every_configured_node(self):
         """Wurzel und Bildsensor tragen denselben Wert."""
         camera = FakeCamera(status())
-        nodes = [FakeNode("ns=6;s=Wurzel"), FakeNode("ns=6;s=Sensor")]
+        nodes = [RecordingNode("ns=6;s=Wurzel"), RecordingNode("ns=6;s=Sensor")]
 
-        await _run_briefly(CameraHealthPublisher(camera, nodes, FAST_CONFIG), 0.05)
+        await run_briefly(CameraHealthPublisher(camera, nodes, FAST_CONFIG), 0.05)
 
         for node in nodes:
             self.assertEqual([int(DeviceHealth.NORMAL)], node.written)
 
     async def test_an_unwritable_node_does_not_kill_the_loop(self):
-        broken = FakeNode("ns=6;s=Kaputt", fail=True)
-        healthy = FakeNode("ns=6;s=Heil")
+        broken = RecordingNode("ns=6;s=Kaputt", fail=True)
+        healthy = RecordingNode("ns=6;s=Heil")
         camera = FakeCamera(status())
 
-        await _run_briefly(
+        await run_briefly(
             CameraHealthPublisher(camera, [broken, healthy], FAST_CONFIG), 0.05
         )
 
         self.assertEqual([int(DeviceHealth.NORMAL)], healthy.written)
 
     async def test_stop_is_idempotent(self):
-        publisher = CameraHealthPublisher(FakeCamera(status()), [FakeNode()], FAST_CONFIG)
+        publisher = CameraHealthPublisher(FakeCamera(status()), [RecordingNode()], FAST_CONFIG)
         publisher.start()
 
         await publisher.stop()
         await publisher.stop()
 
     async def test_stop_without_start_does_nothing(self):
-        publisher = CameraHealthPublisher(FakeCamera(status()), [FakeNode()], FAST_CONFIG)
+        publisher = CameraHealthPublisher(FakeCamera(status()), [RecordingNode()], FAST_CONFIG)
 
         await publisher.stop()
 
 
 class GiveUpHandlerTest(unittest.IsolatedAsyncioTestCase):
     async def test_writes_failure_before_it_exits(self):
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraHealthPublisher(FakeCamera(status()), [node], FAST_CONFIG)
         exited = []
 
@@ -224,7 +208,7 @@ class GiveUpHandlerTest(unittest.IsolatedAsyncioTestCase):
         """Der Prozess muss fallen, damit systemd neu startet -- ein
         haengender Schreibvorgang darf das nicht verhindern."""
 
-        class HangingNode(FakeNode):
+        class HangingNode(RecordingNode):
             async def write_value(self, value) -> None:
                 await asyncio.sleep(30)
 
@@ -403,7 +387,7 @@ class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
     async def test_publishes_variable_and_alarm_together(self):
         server = FakeServer()
         alarms = _alarms(server)
-        node = FakeNode()
+        node = RecordingNode()
         camera = FakeCamera(status(frame_age_s=STALE_S + 1.0))
         publisher = CameraHealthPublisher(
             camera, [node], FAST_CONFIG, alarms=alarms
@@ -416,7 +400,7 @@ class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_give_up_handler_fires_the_failure_alarm(self):
         server = FakeServer()
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraHealthPublisher(
             FakeCamera(status()), [node], FAST_CONFIG, alarms=_alarms(server)
         )
@@ -430,7 +414,7 @@ class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_works_without_alarms(self):
         """Ohne angelegte Alarme bleibt die Variable der Meldeweg."""
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraHealthPublisher(FakeCamera(status()), [node], FAST_CONFIG)
 
         await publisher.publish_now()
@@ -446,18 +430,18 @@ class WriteDeviceHealthTest(unittest.IsolatedAsyncioTestCase):
 
         captured = []
 
-        class RecordingNode(FakeNode):
+        class CapturingNode(RecordingNode):
             async def write_value(self, value) -> None:
                 captured.append(value)
 
-        await write_device_health([RecordingNode()], DeviceHealth.OFF_SPEC)
+        await write_device_health([CapturingNode()], DeviceHealth.OFF_SPEC)
 
         self.assertEqual(1, len(captured))
         self.assertEqual(ua.VariantType.Int32, captured[0].VariantType)
         self.assertEqual(int(DeviceHealth.OFF_SPEC), captured[0].Value)
 
     async def test_never_raises(self):
-        await write_device_health([FakeNode(fail=True)], DeviceHealth.NORMAL)
+        await write_device_health([RecordingNode(fail=True)], DeviceHealth.NORMAL)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ import unittest
 from vision_server.camera import SharedCamera
 from vision_server.profiles import CameraStreamConfig
 
+from tests._support import wait_until
+
 FAST_CONFIG = CameraStreamConfig(
     capture_fps=100.0,
     warmup_s=0.0,
@@ -56,14 +58,6 @@ class ScriptedCamera(SharedCamera):
         self.closed.append(camera[0])
 
 
-async def _wait_until(condition, timeout: float = 2.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout
-    while not condition():
-        if asyncio.get_running_loop().time() > deadline:
-            raise AssertionError("Bedingung nicht rechtzeitig erfuellt")
-        await asyncio.sleep(0.01)
-
-
 class WatchdogTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         for camera in getattr(self, "_cameras", []):
@@ -79,7 +73,7 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         camera = self._camera(["ok"])
         await camera.open()
 
-        await _wait_until(lambda: camera.latest_frame is not None)
+        await wait_until(lambda: camera.latest_frame is not None)
 
         self.assertEqual(camera.latest_frame.image, "bild-0")
         self.assertEqual(camera.opened, [0])
@@ -88,7 +82,7 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         camera = self._camera(["hang", "ok"])
         await camera.open()
 
-        await _wait_until(
+        await wait_until(
             lambda: camera.latest_frame is not None and camera.latest_frame.image == "bild-1"
         )
 
@@ -100,7 +94,7 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         camera = self._camera(["error", "ok"])
         await camera.open()
 
-        await _wait_until(lambda: camera.latest_frame is not None)
+        await wait_until(lambda: camera.latest_frame is not None)
 
         self.assertEqual(camera.latest_frame.image, "bild-1")
         self.assertEqual(camera.opened, [0, 1])
@@ -109,7 +103,7 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         camera = self._camera(["hang", "hang", "fail_open"])
         await camera.open()
 
-        await _wait_until(lambda: camera.gave_up == 1)
+        await wait_until(lambda: camera.gave_up == 1)
 
         # Die erste Oeffnung plus max_reopen_attempts Neu-Oeffnungen.
         self.assertEqual(len(camera.opened), 1 + FAST_CONFIG.max_reopen_attempts)
@@ -119,14 +113,14 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
         """Haengt die Kamera alle paar Minuten einmal, heilt sie sich jedes Mal selbst."""
         camera = self._camera(["hang", "ok"])
         await camera.open()
-        await _wait_until(lambda: camera.latest_frame is not None)
+        await wait_until(lambda: camera.latest_frame is not None)
 
         for _ in range(FAST_CONFIG.max_reopen_attempts + 1):
             camera._behaviours = ["hang"] * len(camera.opened) + ["ok"]
             camera._camera = (camera._camera[0], "hang")
             opened_before = len(camera.opened)
-            await _wait_until(lambda: len(camera.opened) > opened_before)
-            await _wait_until(lambda: camera.latest_frame.image == f"bild-{opened_before}")
+            await wait_until(lambda: len(camera.opened) > opened_before)
+            await wait_until(lambda: camera.latest_frame.image == f"bild-{opened_before}")
 
         self.assertEqual(camera.gave_up, 0)
 
@@ -174,7 +168,7 @@ class StatusTest(_ScriptedCameraTest):
     async def test_reports_ok_while_frames_arrive(self):
         camera = self._camera(["ok"])
         await camera.open()
-        await _wait_until(lambda: camera.latest_frame is not None)
+        await wait_until(lambda: camera.latest_frame is not None)
 
         status = camera.status(now=asyncio.get_running_loop().time())
 
@@ -190,7 +184,7 @@ class StatusTest(_ScriptedCameraTest):
         laufenden Loop testbar."""
         camera = self._camera(["ok"])
         await camera.open()
-        await _wait_until(lambda: camera.latest_frame is not None)
+        await wait_until(lambda: camera.latest_frame is not None)
         captured_at = camera.latest_frame.timestamp
 
         status = camera.status(now=captured_at + 7.5)
@@ -201,7 +195,7 @@ class StatusTest(_ScriptedCameraTest):
         camera = self._camera(["hang", "hang", "fail_open"])
         await camera.open()
 
-        await _wait_until(lambda: camera.gave_up == 1)
+        await wait_until(lambda: camera.gave_up == 1)
         status = camera.status(now=asyncio.get_running_loop().time())
 
         self.assertTrue(status.gave_up)

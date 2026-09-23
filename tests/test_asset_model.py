@@ -10,7 +10,6 @@ import unittest
 
 from asyncua import ua
 
-from vision_server.config import DEFAULT_AMCM_NODESET_PATHS, VisionServerConfig
 from vision_server.nodeset_ids import (
     DI_DEVICE_HEALTH_ENUMERATION,
     DeviceHealth,
@@ -18,7 +17,7 @@ from vision_server.nodeset_ids import (
 )
 from vision_server.profiles import AssetConfig
 
-HAS_NODESETS = all(path.is_file() for path in DEFAULT_AMCM_NODESET_PATHS)
+from tests._support import HAS_NODESETS, AddressSpaceCache
 
 ASSETS = AssetConfig(
     serial_number="vision-test-01",
@@ -27,38 +26,21 @@ ASSETS = AssetConfig(
 )
 
 
-#: Der Aufbau kostet mehrere Sekunden -- vier Nodeset-Importe und rund 700
-#: instanziierte Knoten. Einmal je Variante, nicht einmal je Testmethode:
-#: unmemoisiert dauerte diese Datei allein zwei Minuten.
-_BUILT: dict[str, tuple] = {}
-
-
-async def build(assets: AssetConfig | None, key: str, port: int):
-    from asyncua import Server
-
-    from vision_server.address_space import attach_vision_system, configure_server
-
-    if key in _BUILT:
-        return _BUILT[key]
-    config = VisionServerConfig(
-        endpoint=f"opc.tcp://127.0.0.1:{port}/test/", assets=assets
-    )
-    server = Server()
-    await configure_server(server, config)
-    _BUILT[key] = (server, await attach_vision_system(server, config))
-    return _BUILT[key]
+#: Einmal je Variante statt einmal je Testmethode, siehe `AddressSpaceCache`.
+build = AddressSpaceCache().build
+_WITH_ASSETS: dict[str, tuple] = {}
 
 
 async def build_with_assets(assets: AssetConfig, key: str, port: int):
     """Adressraum samt aufgebauter Anlagensicht, ebenfalls memoisiert."""
     from vision_server.asset_model import attach_asset_model
 
-    cached = _BUILT.get(f"{key}:assets")
+    cached = _WITH_ASSETS.get(key)
     if cached is not None:
         return cached
     server, space = await build(assets, key, port)
-    _BUILT[f"{key}:assets"] = (server, space, await attach_asset_model(space, assets))
-    return _BUILT[f"{key}:assets"]
+    _WITH_ASSETS[key] = (server, space, await attach_asset_model(space, assets))
+    return _WITH_ASSETS[key]
 
 
 class WithoutPartTwoTest(unittest.IsolatedAsyncioTestCase):

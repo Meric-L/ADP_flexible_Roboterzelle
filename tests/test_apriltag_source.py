@@ -16,19 +16,16 @@ from vision_server.detection.base import DetectionRequest
 from vision_server.errors import VisionErrorCode, VisionJobError
 from vision_server.profiles import AprilTagProfileConfig
 
+from tests._support import make_tag_pose
+
 try:
     import numpy as np
 
     from tagloc import geometry, tagmap
-    from tagloc.observations import TagObservation, TagPose
 except Exception:  # numpy broken in this environment
     np = None
     geometry = None
     tagmap = None
-    TagObservation = None
-    TagPose = None
-
-SQUARE = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
 
 
 class FakeCamera:
@@ -104,16 +101,6 @@ def profile_config(folder: Path, **overrides) -> AprilTagProfileConfig:
         samples_per_job=3,
     )
     return replace(config, **overrides) if overrides else config
-
-
-def tag_pose(tag_id: int, translation, *, error_px: float = 0.5, ambiguity: float = 0.0):
-    return TagPose(
-        tag_id=tag_id,
-        pose_cam_tag=geometry.from_rvec_tvec((0.0, 0.0, 0.0), translation),
-        reprojection_error_px=error_px,
-        ambiguity_ratio=ambiguity,
-        observation=TagObservation(tag_id=tag_id, corners=SQUARE),
-    )
 
 
 def make_source(folder: Path, *, tag_poses=(), tag_map=None, **overrides):
@@ -253,7 +240,7 @@ class AcquireAndDetectTest(unittest.IsolatedAsyncioTestCase):
     async def test_fails_with_detection_failed_when_the_camera_stalls(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
-                Path(folder), tag_poses=[tag_pose(5, (0.1, 0.2, 1.0))]
+                Path(folder), tag_poses=[make_tag_pose(5, (0.1, 0.2, 1.0))]
             )
             camera.push_frame("bild-0")  # too few images for samples_per_job=3
 
@@ -266,7 +253,7 @@ class AcquireAndDetectTest(unittest.IsolatedAsyncioTestCase):
     async def test_consumes_one_frame_per_sample(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, detector = make_source(
-                Path(folder), tag_poses=[tag_pose(5, (0.1, 0.2, 1.0))], samples_per_job=2
+                Path(folder), tag_poses=[make_tag_pose(5, (0.1, 0.2, 1.0))], samples_per_job=2
             )
             for index in range(4):
                 camera.push_frame(f"bild-{index}")
@@ -281,7 +268,7 @@ class AcquireAndDetectTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
                 Path(folder),
-                tag_poses=[tag_pose(5, (0.1, 0.2, 1.0), error_px=0.75, ambiguity=0.9)],
+                tag_poses=[make_tag_pose(5, (0.1, 0.2, 1.0), error_px=0.75, ambiguity=0.9)],
             )
             for index in range(3):
                 camera.push_frame(f"bild-{index}")
@@ -301,7 +288,7 @@ class AcquireAndDetectTest(unittest.IsolatedAsyncioTestCase):
     async def test_counts_the_samples_the_pose_rests_on(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
-                Path(folder), tag_poses=[tag_pose(5, (0.1, 0.2, 1.0))], samples_per_job=4
+                Path(folder), tag_poses=[make_tag_pose(5, (0.1, 0.2, 1.0))], samples_per_job=4
             )
             for index in range(4):
                 camera.push_frame(f"bild-{index}")
@@ -314,7 +301,7 @@ class AcquireAndDetectTest(unittest.IsolatedAsyncioTestCase):
     async def test_reports_the_position_it_measured(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
-                Path(folder), tag_poses=[tag_pose(5, (0.1, -0.2, 1.5))]
+                Path(folder), tag_poses=[make_tag_pose(5, (0.1, -0.2, 1.5))]
             )
             for index in range(3):
                 camera.push_frame(f"bild-{index}")
@@ -343,7 +330,7 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
                 Path(folder),
-                tag_poses=[tag_pose(0, (0.0, 0.0, 2.0)), tag_pose(5, (0.3, 0.0, 2.0))],
+                tag_poses=[make_tag_pose(0, (0.0, 0.0, 2.0)), make_tag_pose(5, (0.3, 0.0, 2.0))],
                 tag_map=self._world_map(),
             )
             for index in range(3):
@@ -361,7 +348,7 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
                 Path(folder),
-                tag_poses=[tag_pose(5, (0.3, 0.0, 2.0))],
+                tag_poses=[make_tag_pose(5, (0.3, 0.0, 2.0))],
                 tag_map=self._world_map(),
                 frame_id="cam_ceiling",
             )
@@ -419,7 +406,7 @@ class CloseTest(unittest.IsolatedAsyncioTestCase):
     async def test_closes_the_camera_and_shuts_the_executor_down(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera, _ = make_source(
-                Path(folder), tag_poses=[tag_pose(5, (0.0, 0.0, 1.0))], samples_per_job=1
+                Path(folder), tag_poses=[make_tag_pose(5, (0.0, 0.0, 1.0))], samples_per_job=1
             )
             camera.push_frame("bild-0")
             await source.acquire_and_detect(DetectionRequest(job_id="job-1"))

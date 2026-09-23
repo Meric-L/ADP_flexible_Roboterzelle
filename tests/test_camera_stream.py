@@ -17,6 +17,8 @@ from vision_server.camera import CameraFrame
 from vision_server.camera_stream import CameraStreamPublisher, _resize_for_stream
 from vision_server.profiles import CameraStreamConfig
 
+from tests._support import RecordingNode, run_briefly
+
 try:
     import cv2
     import numpy as np
@@ -30,14 +32,6 @@ FAST_CONFIG = CameraStreamConfig(stream_fps=50.0, max_stream_width=None)
 class FakeCamera:
     def __init__(self) -> None:
         self.latest_frame: CameraFrame | None = None
-
-
-class FakeNode:
-    def __init__(self) -> None:
-        self.written: list[str] = []
-
-    async def write_value(self, value) -> None:
-        self.written.append(value)
 
 
 class FakeModeNode:
@@ -75,36 +69,30 @@ def _fresh_frame(image: str) -> CameraFrame:
     return CameraFrame(image=image, timestamp=asyncio.get_running_loop().time())
 
 
-async def _run_briefly(publisher: CameraStreamPublisher, seconds: float) -> None:
-    publisher.start()
-    await asyncio.sleep(seconds)
-    await publisher.stop()
-
-
 class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_writes_the_encoded_frame_to_the_node(self):
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("frame-1")
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(len(node.written), 1)
         self.assertEqual(node.written[0], f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}")
 
     async def test_writes_nothing_before_the_first_frame_exists(self):
         camera = FakeCamera()
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
-        await _run_briefly(publisher, 0.06)
+        await run_briefly(publisher, 0.06)
 
         self.assertEqual(node.written, [])
 
     async def test_stop_is_idempotent_and_cancels_the_loop(self):
         camera = FakeCamera()
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
         publisher.start()
         await publisher.stop()
@@ -114,7 +102,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         """Ein einzelner kaputter Frame darf den Stream nicht dauerhaft stoppen."""
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("bad")
-        node = FakeNode()
+        node = RecordingNode()
 
         calls = 0
 
@@ -131,7 +119,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         # Grosszuegiges Fenster: der erste `run_in_executor(None, ...)`-Aufruf
         # zahlt die Thread-Pool-Anlaufzeit, die auf einer ausgelasteten
         # Maschine schon mal die erste Iteration allein aufbraucht.
-        await _run_briefly(publisher, 0.5)
+        await run_briefly(publisher, 0.5)
 
         self.assertGreaterEqual(calls, 2)
         self.assertIn("ok", node.written)
@@ -141,7 +129,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
     def _publisher(self, mode: str, *, annotator, mode_node=None):
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("frame-1")
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(
             camera,
             node,
@@ -156,7 +144,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
         annotator = FakeAnnotator()
         publisher, node = self._publisher("off", annotator=annotator)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertEqual(annotator.calls, [])
         self.assertEqual(node.written[0], f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}")
@@ -165,7 +153,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
         annotator = FakeAnnotator()
         publisher, node = self._publisher("apriltag", annotator=annotator)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(len(annotator.calls), 1)
         self.assertEqual(annotator.calls[0], ("frame-1", "apriltag"))
@@ -179,7 +167,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
             "apriltag", annotator=annotator, mode_node=FakeModeNode("  OFF ")
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertEqual(publisher.mode, "off")
         self.assertEqual(annotator.calls, [])
@@ -193,7 +181,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
             "calibration", annotator=annotator, mode_node=mode_node
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(mode_node.reads, 1)
         self.assertEqual(publisher.mode, "calibration")
@@ -203,7 +191,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
     async def test_an_annotator_failure_does_not_kill_the_loop(self):
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("frame-1")
-        node = FakeNode()
+        node = RecordingNode()
 
         calls = 0
 
@@ -219,7 +207,7 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
             camera, node, FAST_CONFIG, encode_frame=fake_encode, annotator=FlakyAnnotator()
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(calls, 2)
         self.assertIn(f"encoded:markiert:{FAST_CONFIG.jpeg_quality}", node.written)
@@ -257,10 +245,10 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(len(node.written), 1)
         self.assertEqual(node.written[0], f"encoded:alt:{FAST_CONFIG.jpeg_quality}")
@@ -270,10 +258,10 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertNotIn("", node.written)
 
@@ -281,7 +269,7 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
         publisher.start()
@@ -307,7 +295,7 @@ class OverlayTimeoutTest(unittest.IsolatedAsyncioTestCase):
 
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("frame-1")
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(
             camera,
             node,
@@ -317,7 +305,7 @@ class OverlayTimeoutTest(unittest.IsolatedAsyncioTestCase):
         )
 
         try:
-            await _run_briefly(publisher, 0.15)
+            await run_briefly(publisher, 0.15)
         finally:
             release.set()
 
@@ -362,13 +350,13 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
-        node = FakeNode()
+        node = RecordingNode()
         annotator = FakeAnnotator()
         publisher = CameraStreamPublisher(
             camera, node, FAST_CONFIG, encode_frame=fake_encode, annotator=annotator
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertEqual({image for image, _ in annotator.calls}, {"voll"})
         self.assertIn(
@@ -380,7 +368,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
-        node = FakeNode()
+        node = RecordingNode()
         annotator = FakeAnnotator()
         publisher = CameraStreamPublisher(
             camera,
@@ -391,7 +379,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
             mode_node=FakeModeNode("calibration"),
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
 
@@ -401,7 +389,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
-        node = FakeNode()
+        node = RecordingNode()
         annotator = FakeAnnotator()
         publisher = CameraStreamPublisher(
             camera,
@@ -412,7 +400,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
             mode_node=FakeModeNode("off"),
         )
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertEqual(annotator.calls, [])
         self.assertIn(f"encoded:voll:{FAST_CONFIG.jpeg_quality}", node.written)
@@ -420,10 +408,10 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
     async def test_without_a_preview_the_full_frame_is_used_as_before(self):
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("voll")
-        node = FakeNode()
+        node = RecordingNode()
         publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
 
-        await _run_briefly(publisher, 0.1)
+        await run_briefly(publisher, 0.1)
 
         self.assertIn(f"encoded:voll:{FAST_CONFIG.jpeg_quality}", node.written)
 

@@ -6,8 +6,6 @@ Files are created in a tempdir, never in the repo.
 import json
 import math
 import os
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -239,25 +237,8 @@ class FitToResolutionTest(unittest.TestCase):
 
 
 class IdentityTest(unittest.TestCase):
-    """`tagloc.identity` must work without numpy and without cv2."""
-
-    def test_is_importable_without_numpy(self):
-        source_root = Path(__file__).resolve().parent.parent / "src"
-        environment = dict(os.environ, PYTHONPATH=str(source_root))
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys, tagloc.identity; print('numpy' in sys.modules, 'cv2' in sys.modules)",
-            ],
-            capture_output=True,
-            text=True,
-            env=environment,
-            check=True,
-        )
-
-        self.assertEqual(result.stdout.strip(), "False False")
+    """`tagloc.identity` must work without numpy and without cv2 -- that
+    it imports neither is checked by `test_layering.py`."""
 
     def test_combines_the_file_stem_and_its_modification_time(self):
         with tempfile.TemporaryDirectory() as folder:
