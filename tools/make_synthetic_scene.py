@@ -30,7 +30,6 @@ module work without OpenCV.
 """
 
 import argparse
-import json
 import math
 import random
 import sys
@@ -54,6 +53,7 @@ from tagloc.geometry import (  # noqa: E402
     rotation_from_rvec,
     to_rvec_tvec,
 )
+from tagloc.jsonio import write_json  # noqa: E402
 from tagloc.pose import tag_object_points  # noqa: E402
 
 SCHEMA = "wsc.vision.synthetic/1"
@@ -589,9 +589,7 @@ def write_tag_scene(
         ],
         "views": views,
     }
-    (out_dir / TRUTH_FILE).write_text(
-        json.dumps(truth_document, indent=2) + "\n", encoding="utf-8"
-    )
+    write_json(out_dir / TRUTH_FILE, truth_document)
     return truth_document
 
 
@@ -627,9 +625,7 @@ def write_chessboard_scene(
         "board": spec.as_dict(),
         "views": views,
     }
-    (out_dir / TRUTH_FILE).write_text(
-        json.dumps(truth_document, indent=2) + "\n", encoding="utf-8"
-    )
+    write_json(out_dir / TRUTH_FILE, truth_document)
     return truth_document
 
 

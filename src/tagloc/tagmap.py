@@ -13,7 +13,6 @@ the map or `null` (movable, to be measured).
 No OpenCV: `place_tags` only works with poses, never images.
 """
 
-import json
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -22,6 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from .identity import tag_map_identity
+from .jsonio import read_schema_json, write_json
 from .geometry import (
     Pose,
     average_poses,
@@ -111,13 +111,7 @@ def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
 
 def load_tag_map(path: Path) -> TagMap:
     """Read a tag map from JSON."""
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    schema = data.get("schema")
-    if schema != SCHEMA:
-        raise ValueError(f"Unbekanntes Tag-Map-Schema '{schema}' in {path} (erwartet {SCHEMA})")
+    data = read_schema_json(path, SCHEMA, "Tag-Map")
     entries: dict[int, TagEntry] = {}
     for raw in data.get("tags", []):
         tag_id = int(raw["tagId"])
@@ -141,9 +135,7 @@ def load_tag_map(path: Path) -> TagMap:
 
 
 def save_tag_map(path: Path, tag_map: TagMap) -> None:
-    """Write a tag map as JSON, sorted by tag ID."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write a tag map as JSON (atomically), sorted by tag ID."""
     tags = []
     for tag_id in sorted(tag_map.entries):
         entry = tag_map.entries[tag_id]
@@ -165,7 +157,7 @@ def save_tag_map(path: Path, tag_map: TagMap) -> None:
         "tagFamily": tag_map.tag_family,
         "tags": tags,
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_json(path, payload)
 
 
 # --------------------------------------------------------------------------

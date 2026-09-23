@@ -26,6 +26,7 @@ SRC = REPO_ROOT / "src"
 PURE_MODULES = (
     "tagloc.identity",
     "tagloc.modes",
+    "tagloc.jsonio",
     "tagloc.observations",
     "tagloc.geometry",
     "tagloc.calibration",
@@ -36,7 +37,7 @@ PURE_MODULES = (
 #: Modules that use cv2 -- but only inside functions, never at import time.
 LAZY_CV2_MODULES = ("tagloc.detector", "tagloc.pose", "tagloc.boards", "tagloc.overlay", "tagloc.frames")
 
-STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes")
+STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes", "tagloc.jsonio")
 
 
 def imported_modules(target: str, candidates) -> list[str]:

@@ -13,7 +13,6 @@ The file belongs to **one physical camera**, not the repo. Stored under
 `data/`, excluded by `.gitignore` -- each Pi generates its own.
 """
 
-import json
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -23,6 +22,7 @@ from typing import Any
 import numpy as np
 
 from .identity import calibration_identity
+from .jsonio import read_schema_json, write_json
 
 SCHEMA = "wsc.vision.calibration/1"
 
@@ -59,9 +59,8 @@ class CameraCalibration:
 
 
 def save_calibration(path: Path, calibration: CameraCalibration) -> None:
-    """Write the calibration as JSON, creating missing directories."""
+    """Write the calibration as JSON (atomically), creating missing directories."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": SCHEMA,
         "calibrationId": calibration.calibration_id
@@ -77,18 +76,12 @@ def save_calibration(path: Path, calibration: CameraCalibration) -> None:
         "board": dict(calibration.board),
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_json(path, payload)
 
 
 def load_calibration(path: Path) -> CameraCalibration:
     """Read a calibration file. Raises with the path if something is missing."""
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Kalibrierung nicht gefunden: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    schema = data.get("schema")
-    if schema != SCHEMA:
-        raise ValueError(f"Unbekanntes Kalibrierschema '{schema}' in {path} (erwartet {SCHEMA})")
+    data = read_schema_json(path, SCHEMA, "Kalibrierung", schema_name="Kalibrierschema")
     size = data["imageSize"]
     return CameraCalibration(
         camera_matrix=np.asarray(data["cameraMatrix"], dtype=np.float64).reshape(3, 3),

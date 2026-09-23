@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 
+from .. import jsonio
 from ..calibration import CameraCalibration, load_calibration
 from ..geometry import Pose, pose_from_dict, pose_to_dict
 from ..tagmap import TagMap, empty_tag_map, load_tag_map
@@ -240,9 +241,8 @@ def poses_from_json(path: Path) -> tuple[str, list[tuple[int, Pose]]]:
 
 
 def write_json(path, payload: dict) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    """Schreibt eine CLI-Ausgabe; atomar, siehe `tagloc.jsonio.write_json`."""
+    jsonio.write_json(path, payload)
 
 
 def describe_pose(pose: Pose) -> str:
