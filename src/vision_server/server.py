@@ -374,6 +374,8 @@ async def main():
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
                 # angemeldet ist. Messung und Begruendung stehen in `discovery.lds`.
+                # Standardmaessig aus -- ohne `OPCUA_LDS_URL` kehrt das sofort
+                # zurueck, und das Modul erscheint dort nicht.
                 lds.register(server),
             ):
                 # Frueher lief hier eine 1-Hz-Schleife, die die Demo-Werte

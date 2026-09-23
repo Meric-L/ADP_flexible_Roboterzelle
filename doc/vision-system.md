@@ -117,10 +117,11 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
   - **mDNS** (`src/vision_server/discovery/mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
     Vision-Identität. Für Clients im Subnetz.
   - **LDS-Anmeldung** (`src/vision_server/discovery/lds.py` über `Server.register_to_discovery()`):
-    `opc.tcp://10.10.38.27:4840/`, alle 60 s erneuert. **Nur darüber** nimmt
-    der Aggregation-Server der Zelle das Modul auf — mDNS allein genügt ihm
-    nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
-    Abschalten mit `OPCUA_LDS_URL=""`.
+    **seit 23.09.2026 standardmäßig aus** — der Server erscheint dann nicht im
+    Aggregation-Server. Einschalten mit
+    `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/`, dann alle 60 s erneuert.
+    **Nur darüber** nimmt der Aggregation-Server der Zelle das Modul auf —
+    mDNS allein genügt ihm nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
   Scheitert eine der beiden, läuft der Server weiter und loggt eine Warnung.
 - Beim Start des Vision-Systems: `Preoperational → Operational`, innen `Initialized → Ready`.
 - `StartSingleJob` prüft **synchron** Zustand und Eingaben und quittiert mit
