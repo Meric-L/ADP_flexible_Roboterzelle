@@ -32,9 +32,13 @@ class FakeServer:
 
 
 class LdsUrlTest(unittest.TestCase):
-    def test_default_ist_der_lds_der_zelle(self):
+    def test_default_meldet_nicht_an(self):
         with mock.patch.dict("os.environ", {}, clear=True):
-            self.assertEqual(lds.lds_url(), lds.DEFAULT_LDS_URL)
+            self.assertEqual(lds.lds_url(), "")
+
+    def test_env_schaltet_den_lds_der_zelle_ein(self):
+        with mock.patch.dict("os.environ", {"OPCUA_LDS_URL": lds.CELL_LDS_URL}):
+            self.assertEqual(lds.lds_url(), "opc.tcp://10.10.38.27:4840/")
 
     def test_env_ueberschreibt(self):
         with mock.patch.dict("os.environ", {"OPCUA_LDS_URL": "opc.tcp://host:4840/"}):

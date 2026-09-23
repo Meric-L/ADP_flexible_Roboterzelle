@@ -75,7 +75,7 @@ Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
 | ~~C4~~ | ~~`configuration_id` wird von keiner Quelle gesetzt~~ | — | — | **Erledigt**: `AprilTagDetectionSource` füllt ihn mit Tag-Familie, Kalibrier- und Tag-Map-Identität (`tagloc.identity`, ohne numpy und ohne cv2) |
 | ~~C5~~ | ~~Nodeset-XML unter `src/OPCUA/`~~ | — | — | **Erledigt** 22.09.2026: alle vier Nodesets liegen unter `src/vision_server/nodesets/`, `config.py` zeigt per `_NODESET_DIR` dorthin. `src/OPCUA/` gibt es nicht mehr |
 | ~~C6~~ | ~~`caputure.py` — QR-Scanner im AprilTag-Ordner~~ | — | — | **Erledigt**: gelöscht. Die Pi-Kamera spricht jetzt `SharedCamera` an, für CLI-Aufrufe `tagloc.frames.PiCameraSource` |
-| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. `OPCUA_LDS_URL` biegt sie bereits ohne Codeänderung um, `OPCUA_LDS_URL=""` schaltet ab — für einen Umzug der Zelle reicht das |
+| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. Seit 23.09.2026 ist die Anmeldung standardmäßig aus; `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/` schaltet sie ein bzw. biegt sie ohne Codeänderung um |
 
 ---
 

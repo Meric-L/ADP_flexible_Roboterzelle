@@ -38,6 +38,10 @@ ist nur die Klammer darum:
    und der Aggregation-Server zeigte ein Modul, das er nicht mehr erreicht.
    Deshalb `unregister_from_discovery()` im `finally`.
 
+**Standardmaessig abgeschaltet** (seit 23.09.2026): ohne `OPCUA_LDS_URL` meldet
+sich der Server nicht an und erscheint nicht im Aggregation-Server. Einschalten
+mit `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/` (`CELL_LDS_URL`).
+
 Ohne `MdnsDiscoveryConfiguration`, also per schlichtem `RegisterServer` -- so
 wie Conveyor, CardDispenser und die Roboter es tun. `caps=DA` steht ohnehin in
 der eigenen mDNS-Ankuendigung. (`register_to_discovery()` schickt die
@@ -55,9 +59,15 @@ from . import mdns
 
 _log = logging.getLogger(__name__)
 
-#: Discovery-Server der Zelle. `OPCUA_LDS_URL=""` schaltet die Anmeldung ab.
+#: Discovery-Server der Zelle. Nur ein Hinweis fuer `OPCUA_LDS_URL`, kein
+#: Default mehr.
+CELL_LDS_URL = "opc.tcp://10.10.38.27:4840/"
+
+#: Die Anmeldung ist standardmaessig **aus** (seit 23.09.2026): die Server
+#: laufen weiter und kuendigen sich per mDNS an, melden sich aber nicht mehr
+#: beim Aggregation-Server an. Wieder einschalten mit
+#: `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/` (siehe `CELL_LDS_URL`).
 DEFAULT_LDS_URL = ""
-#DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 
 #: Erneuerung ist noetig, nicht optional -- gemessen am 2026-09-21: der LDS
 #: startete um 15:56 neu, und Conveyor (seit 08.09. durchgehend) wie

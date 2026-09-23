@@ -7,7 +7,7 @@ Zwei Wege nebeneinander, weil sie verschiedene Leser bedienen:
 * `lds` meldet den Server beim Local Discovery Server der Zelle an. **Nur**
   darueber nimmt der Aggregation-Server das Modul auf -- eine mDNS-Ankuendigung
   allein genuegt ihm nicht. Am 21.09.2026 im Labor gemessen, Begruendung im
-  Modul.
+  Modul. Seit 23.09.2026 standardmaessig aus; `OPCUA_LDS_URL` schaltet sie ein.
 
 Beide sind bewusst fehlertolerant: scheitert eine der beiden, laeuft der Server
 weiter und loggt eine Warnung. Ein Server, den man per URL erreicht, ist mehr
