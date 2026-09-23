@@ -715,10 +715,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         # Ein generischer Client soll nicht `Ready` sehen, wenn kein Job
         # angenommen wuerde. Teil 10 hat keinen Fehlerzustand -- `Halted` ist
         # die einzige ehrliche Entsprechung.
-        sm = program.state_machine
-        await sm.change_state(
-            sm.halted, sm.ready_to_halted, "Vision-System nicht betriebsbereit"
-        )
+        await program.ready_to_halted("Vision-System nicht betriebsbereit")
 
     lag_watchdog = asyncio.create_task(_watch_loop_lag())
 

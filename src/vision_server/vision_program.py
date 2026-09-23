@@ -144,7 +144,7 @@ class VisionProgram(Program):
         if self._expect_stop:
             self._expect_stop = False
             return
-        if self.state_machine._current_state.number != 13:  # 13 = Running
+        if not self.is_running():
             return
         asyncio.create_task(self._finish(job_id, code))
 
@@ -240,7 +240,7 @@ async def install_vision_program(
         jobs,
         nodeid=ua.NodeId(PROGRAM_NAME, own_idx),
     )
-    program_node = program.state_machine._state_machine_node
+    program_node = program.node
 
     parameter_set = await program_node.add_object(
         ua.NodeId(f"{PROGRAM_NAME}.{PARAMETER_SET}", own_idx),

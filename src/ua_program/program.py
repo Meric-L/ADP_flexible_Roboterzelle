@@ -18,6 +18,13 @@ Framework ueberhaupt bzw. sauber einbauen laesst:
    Verhalten der Vorlage.
 4. Die fuenf gleichfoermigen Bloecke zum Ersetzen der Methoden sind zu einer
    Schleife zusammengezogen. Verhalten unveraendert.
+5. Die fuenf Methoden-Handler laufen ueber eine gemeinsame Tabelle
+   (`_dispatch`: erlaubter Ausgangszustand -> Uebergang), die internen
+   Uebergaenge ueber `_internal_transition`. Statt der Zahlen 11-14 stehen
+   die `State`-Objekte des Automaten im Code. Neu dazu: `node`,
+   `is_running()` und `ready_to_halted()`, damit Aufrufer nicht in
+   `state_machine._current_state`/`_state_machine_node` greifen muessen.
+   StatusCodes, Zustaende, Uebergaenge und Eventtexte unveraendert.
 """
 
 from abc import ABC, abstractmethod
@@ -162,41 +169,52 @@ class Program(ABC):
     def get_current_state(self) -> State:
         return self.state_machine._current_state
 
-    async def running_to_halted(self, message=None):
-        """Haelt das laufende Programm an (z. B. im Fehlerfall)."""
-        if not self.state_machine._current_state.number == 13:
-            raise ProgramException("Program not in running state")
+    @property
+    def node(self) -> Node:
+        """Der Instanzknoten des Programms im Adressraum."""
+        return self.state_machine._state_machine_node
+
+    def is_running(self) -> bool:
+        """Steht das Programm gerade in `Running`?"""
+        return self._in_state(self.state_machine.running)
+
+    def _in_state(self, state: State) -> bool:
+        return self.state_machine._current_state.number == state.number
+
+    async def _internal_transition(
+        self, from_state: State, new_state: State, transition: Transition, message=None
+    ):
+        """Interner Zustandswechsel ohne Methodenaufruf, z. B. auf ein Job-Ende.
+
+        Wirft `ProgramException`, wenn das Programm nicht in `from_state` steht.
+        """
+        if not self._in_state(from_state):
+            raise ProgramException(f"Program not in {from_state.name.lower()} state")
         if message is None:
             message = "internal change"
         await self.state_machine.change_state(
-            self.state_machine.halted,
-            self.state_machine.running_to_halted,
-            f"{self.state_machine.running_to_halted.name} ; {message}",
+            new_state, transition, f"{transition.name} ; {message}"
         )
+
+    async def running_to_halted(self, message=None):
+        """Haelt das laufende Programm an (z. B. im Fehlerfall)."""
+        sm = self.state_machine
+        await self._internal_transition(sm.running, sm.halted, sm.running_to_halted, message)
 
     async def running_to_ready(self, message=None):
         """Setzt das laufende Programm zurueck auf `Ready`."""
-        if not self.state_machine._current_state.number == 13:
-            raise ProgramException("Program not in running state")
-        if message is None:
-            message = "internal change"
-        await self.state_machine.change_state(
-            self.state_machine.ready,
-            self.state_machine.running_to_ready,
-            f"{self.state_machine.running_to_ready.name} ; {message}",
-        )
+        sm = self.state_machine
+        await self._internal_transition(sm.running, sm.ready, sm.running_to_ready, message)
 
     async def suspended_to_ready(self, message=None):
         """Setzt das pausierte Programm zurueck auf `Ready`."""
-        if not self.state_machine._current_state.number == 14:
-            raise ProgramException("Program not in suspended state")
-        if message is None:
-            message = "internal change"
-        await self.state_machine.change_state(
-            self.state_machine.ready,
-            self.state_machine.suspended_to_ready,
-            f"{self.state_machine.suspended_to_ready.name} ; {message}",
-        )
+        sm = self.state_machine
+        await self._internal_transition(sm.suspended, sm.ready, sm.suspended_to_ready, message)
+
+    async def ready_to_halted(self, message=None):
+        """Haelt das bereite Programm an, z. B. wenn die Hardware fehlt."""
+        sm = self.state_machine
+        await self._internal_transition(sm.ready, sm.halted, sm.ready_to_halted, message)
 
     async def _transition(self, func, new_state, transition, *args):
         """Laeuft im Hintergrund je Methodenaufruf.
@@ -233,75 +251,66 @@ class Program(ABC):
         finally:
             self._lock.release()
 
-    async def _start_method(self, _parent_nodeid: ua.NodeId, *args):
+    async def _dispatch(self, func, new_state: State, transitions, *args):
+        """Gemeinsamer Rumpf der fuenf Methoden-Handler.
+
+        `transitions` ordnet jedem erlaubten Ausgangszustand seinen Uebergang
+        zu. Steht das Programm in keinem davon: `BadInvalidState`, das Lock
+        wird sofort wieder frei. Sonst laeuft `func` samt Zustandswechsel als
+        Hintergrund-Task (`_transition`), der das Lock freigibt.
+        """
         await self._lock.acquire()
+        for from_state, transition in transitions:
+            if self._in_state(from_state):
+                self._control_task = asyncio.create_task(
+                    self._transition(func, new_state, transition, *args)
+                )
+                return None
+        self._lock.release()
+        return ua.StatusCode(ua.StatusCodes.BadInvalidState)
+
+    async def _start_method(self, _parent_nodeid: ua.NodeId, *args):
         sm = self.state_machine
-        if sm._current_state.number != 12:  # 12 = Ready
-            self._lock.release()
+        status = await self._dispatch(
+            self.start, sm.running, ((sm.ready, sm.ready_to_running),), *args
+        )
+        if status is not None:
             logger.error(
                 "Start abgelehnt: Programm nicht im Ready-Zustand (aktuell: %s)",
                 sm._current_state.name,
             )
-            return ua.StatusCode(ua.StatusCodes.BadInvalidState)
-        self._control_task = asyncio.create_task(
-            self._transition(self.start, sm.running, sm.ready_to_running, *args)
-        )
+        return status
 
     async def _suspend_method(self, _parent_nodeid: ua.NodeId, *args):
-        await self._lock.acquire()
         sm = self.state_machine
-        match sm._current_state.number:
-            case 13:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.suspend, sm.suspended, sm.running_to_suspended, *args)
-                )
-            case _:
-                self._lock.release()
-                return ua.StatusCode(ua.StatusCodes.BadInvalidState)
+        return await self._dispatch(
+            self.suspend, sm.suspended, ((sm.running, sm.running_to_suspended),), *args
+        )
 
     async def _resume_method(self, _parent_nodeid: ua.NodeId, *args):
-        await self._lock.acquire()
         sm = self.state_machine
-        match sm._current_state.number:
-            case 14:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.resume, sm.running, sm.suspended_to_running, *args)
-                )
-            case _:
-                self._lock.release()
-                return ua.StatusCode(ua.StatusCodes.BadInvalidState)
+        return await self._dispatch(
+            self.resume, sm.running, ((sm.suspended, sm.suspended_to_running),), *args
+        )
 
     async def _halt_method(self, _parent_nodeid: ua.NodeId, *args):
-        await self._lock.acquire()
         sm = self.state_machine
-        match sm._current_state.number:
-            case 12:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.halt, sm.halted, sm.ready_to_halted, *args)
-                )
-            case 13:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.halt, sm.halted, sm.running_to_halted, *args)
-                )
-            case 14:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.halt, sm.halted, sm.suspended_to_halted, *args)
-                )
-            case _:
-                self._lock.release()
-                return ua.StatusCode(ua.StatusCodes.BadInvalidState)
+        return await self._dispatch(
+            self.halt,
+            sm.halted,
+            (
+                (sm.ready, sm.ready_to_halted),
+                (sm.running, sm.running_to_halted),
+                (sm.suspended, sm.suspended_to_halted),
+            ),
+            *args,
+        )
 
     async def _reset_method(self, _parent_nodeid: ua.NodeId, *args):
-        await self._lock.acquire()
         sm = self.state_machine
-        match sm._current_state.number:
-            case 11:
-                self._control_task = asyncio.create_task(
-                    self._transition(self.reset, sm.ready, sm.halted_to_ready, *args)
-                )
-            case _:
-                self._lock.release()
-                return ua.StatusCode(ua.StatusCodes.BadInvalidState)
+        return await self._dispatch(
+            self.reset, sm.ready, ((sm.halted, sm.halted_to_ready),), *args
+        )
 
 
 class ProgramStateMachine(FiniteStateMachine):
@@ -436,10 +445,18 @@ class ProgramStateMachine(FiniteStateMachine):
     async def check_method_executability(self):
         """Markiert nur die Methoden als ausfuehrbar, die es sein duerfen."""
         executable = {
-            11: {"reset": True, "halt": False, "suspend": False, "resume": False, "start": False},
-            12: {"reset": False, "halt": True, "suspend": False, "resume": False, "start": True},
-            13: {"reset": False, "halt": True, "suspend": True, "resume": False, "start": False},
-            14: {"reset": False, "halt": True, "suspend": False, "resume": True, "start": False},
+            self.halted.number: {
+                "reset": True, "halt": False, "suspend": False, "resume": False, "start": False
+            },
+            self.ready.number: {
+                "reset": False, "halt": True, "suspend": False, "resume": False, "start": True
+            },
+            self.running.number: {
+                "reset": False, "halt": True, "suspend": True, "resume": False, "start": False
+            },
+            self.suspended.number: {
+                "reset": False, "halt": True, "suspend": False, "resume": True, "start": False
+            },
         }.get(self._current_state.number)
         if executable is None:
             return
