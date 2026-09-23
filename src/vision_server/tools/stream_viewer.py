@@ -19,13 +19,18 @@ Braucht ein Display (angeschlossener Monitor + Desktopumgebung, oder `ssh -X`).
 
 import argparse
 import asyncio
-import base64
 import json
 import sys
 
 import cv2
-import numpy as np
-from asyncua import Client, ua
+from asyncua import Client
+
+from vision_server.tools._client import (
+    add_connection_arguments,
+    decode_frame,
+    format_progress,
+    vision_node,
+)
 
 SPACE = 32
 
@@ -33,8 +38,7 @@ SPACE = 32
 async def run(args: argparse.Namespace) -> int:
     """Zeigt den Stream an, bis das Fenster geschlossen oder 'q' gedrueckt wird."""
     async with Client(url=args.url) as client:
-        own_idx = await client.get_namespace_index(args.namespace)
-        vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
+        vision, own_idx = await vision_node(client, args.namespace, args.vision_system)
         frame_node = await vision.get_child(f"{own_idx}:LatestCameraFrame")
         capture_node = await vision.get_child(f"{own_idx}:CaptureCalibrationSample")
         progress_node = await vision.get_child(f"{own_idx}:CalibrationProgress")
@@ -52,8 +56,7 @@ async def run(args: argparse.Namespace) -> int:
                 started = loop.time()
                 encoded = await frame_node.read_value()
                 if encoded:
-                    jpeg = base64.b64decode(encoded)
-                    image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    image = decode_frame(encoded)
                     if image is not None:
                         cv2.imshow("Vision-Stream", image)
                 key = cv2.waitKey(1) & 0xFF
@@ -63,12 +66,7 @@ async def run(args: argparse.Namespace) -> int:
                     error = await vision.call_method(capture_node)
                     progress = json.loads(await progress_node.read_value())
                     if error == 0:
-                        print(
-                            f"Aufnahme uebernommen -- {progress.get('samples', 0)}/"
-                            f"{progress.get('minSamples', '?')}, Abdeckung x "
-                            f"{progress.get('coverageX', 0.0) * 100:.0f}% y "
-                            f"{progress.get('coverageY', 0.0) * 100:.0f}%"
-                        )
+                        print(f"Aufnahme uebernommen -- {format_progress(progress)}")
                     else:
                         print(f"Kein Board gefunden (Error={error}) -- nochmal versuchen.")
                     result = progress.get("result")
@@ -91,9 +89,7 @@ async def run(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Liest die Kommandozeile und zeigt den Stream an."""
     parser = argparse.ArgumentParser(description="Lokaler Live-Viewer des Kamera-Streams")
-    parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
-    parser.add_argument("--namespace", default="http://launch-rm.de/vision")
-    parser.add_argument("--vision-system", default="VisionMachine")
+    add_connection_arguments(parser)
     parser.add_argument(
         "--mode",
         default="calibration",

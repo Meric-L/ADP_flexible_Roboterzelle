@@ -12,15 +12,18 @@ import argparse
 import asyncio
 import contextlib
 import json
-import logging
 import signal
 import sys
 
-from asyncua import Client, ua
+from asyncua import Client
 
 from vision_server.aio import stop_event_on_signals
-
-_log = logging.getLogger("calibration-client")
+from vision_server.tools._client import (
+    add_connection_arguments,
+    configure_logging,
+    format_progress,
+    vision_node,
+)
 
 #: Fehlercodes aus doc/vision-server-interface.md ("Fehlercodes (Error)") --
 #: kein Import aus dem Server-Code, dieses Skript bleibt ein reiner
@@ -45,8 +48,7 @@ async def _start_session(vision, start_node, abort_node) -> int:
 async def run(args: argparse.Namespace) -> int:
     """Startet eine Session, loggt den Fortschritt, beendet sie bei Strg+C."""
     async with Client(url=args.url) as client:
-        own_idx = await client.get_namespace_index(args.namespace)
-        vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
+        vision, own_idx = await vision_node(client, args.namespace, args.vision_system)
         start_node = await vision.get_child(f"{own_idx}:StartCalibration")
         finish_node = await vision.get_child(f"{own_idx}:FinishCalibration")
         abort_node = await vision.get_child(f"{own_idx}:AbortCalibration")
@@ -74,11 +76,7 @@ async def run(args: argparse.Namespace) -> int:
         auto_result = None
         while not stop.is_set():
             progress = json.loads(await progress_node.read_value())
-            print(
-                f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
-                f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
-                f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
-            )
+            print(f"Aufnahmen {format_progress(progress, separator='   ')}")
             auto_result = progress.get("result")
             if auto_result is not None:
                 # Abdeckungs-Schwelle erreicht -- die Session hat sich schon
@@ -110,16 +108,14 @@ async def run(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Liest die Kommandozeile und fuehrt die Kalibrier-Session aus."""
     parser = argparse.ArgumentParser(description="Interaktive Kalibrierung gegen den Vision-Server")
-    parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
-    parser.add_argument("--namespace", default="http://launch-rm.de/vision")
-    parser.add_argument("--vision-system", default="VisionMachine")
+    add_connection_arguments(parser)
     parser.add_argument("--poll-interval", type=float, default=1.0)
     parser.add_argument(
         "--abort", action="store_true", help="Session bei Strg+C ohne zu speichern beenden"
     )
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.WARNING))
+    configure_logging(args.log_level)
     return asyncio.run(run(args))
 
 
