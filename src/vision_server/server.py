@@ -80,6 +80,18 @@ PI_CAMERA_BACKENDS: dict[str, str] = {
 }
 
 
+#: Das echte Kalibrierboard, an beiden Pis dasselbe gedruckte Blatt: ein
+#: simples Schachbrett aus dem Internet, 22 mm/Feld, 7x9 innere Ecken -- kein
+#: ChArUco-Board, das braeuchte zusaetzliche ArUco-Marker im Druck. Am Hand-Pi
+#: durchgemessen (RMS 0,2945 px, Abdeckung 96 %/95 %, siehe
+#: data/calibration/cam_flange.json).
+_REAL_BOARD: dict = {
+    "calibration_board_type": "chessboard",
+    "calibration_board_cols": 7,
+    "calibration_board_rows": 9,
+    "calibration_board_square_size_m": 0.022,
+}
+
 #: What distinguishes Layer 1 from Layer 2 -- nothing else. Both run the same
 #: server with the same detection source; only these values differ.
 #: Ceiling camera: large tags at a distance, full resolution, looser error
@@ -87,29 +99,27 @@ PI_CAMERA_BACKENDS: dict[str, str] = {
 #: since moves are made from its pose.
 PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
-        # Volle Sensoraufloesung der HQ-Kamera (IMX477, 12,3 MP). Der
-        # Livestream rechnet nicht darauf, sondern auf dem kleinen lores-Strom
-        # (PI_CAMERA_STREAM_PRESETS unten) -- sonst ruckelt das Overlay.
+        # Volle Sensoraufloesung der HQ-Kamera (IMX477, 12,3 MP). Darauf
+        # rechnen Jobs und Kalibrierung, seit 2026-09-22 auch die Stream-Modi
+        # "AprilTags markieren" und "Rohbild"; nur "Kalibrierboard markieren"
+        # nimmt den kleinen lores-Strom (PI_CAMERA_STREAM_PRESETS unten).
         "resolution": (4056, 3040),
-        # Uebergang, bis bei 4056x3040 neu kalibriert ist: eine vorhandene
-        # Kalibrierung fuer 2028x1520 stammt aus dem 2x2-Binning desselben
-        # Sensors, also demselben Sichtfeld -- ihre Intrinsik laesst sich exakt
-        # verdoppeln (`scale_to_resolution`). Nach der Neukalibrierung entfernen,
-        # damit eine versehentlich falsche Aufloesung wieder auffaellt.
+        # Bei einer Kalibrierung fuer 4056x3040 wirkungslos. Eine alte fuer
+        # 2028x1520 stammt aus dem 2x2-Binning desselben Sensors, also
+        # demselben Sichtfeld -- ihre Intrinsik laesst sich exakt verdoppeln
+        # (`scale_to_resolution`). Entfernen, sobald auf Pi 1 sicher nur noch
+        # eine 4056x3040-Kalibrierung liegt, damit eine versehentlich falsche
+        # Aufloesung wieder auffaellt.
         "allow_resolution_mismatch": True,
         "tag_size_m": 0.100,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
-        # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
-        # nur die Aufloesung/Kameradistanz unterscheidet sich, nicht das
-        # Blatt. Noch nicht real durchgemessen; falls das Board bei der
-        # Kalibrierfahrt nicht gefunden wird, war die Annahme falsch --
-        # dann mit dem Diagnose-Skript aus der Hand-Pi-Kalibrierung mehrere
-        # cols/rows-Kombinationen gegen einen echten Frame testen.
-        "calibration_board_type": "chessboard",
-        "calibration_board_cols": 7,
-        "calibration_board_rows": 9,
-        "calibration_board_square_size_m": 0.022,
+        # Dasselbe Blatt wie am Hand-Pi, nur Aufloesung und Kameradistanz
+        # unterscheiden sich. Hier noch nicht real durchgemessen; falls das
+        # Board bei der Kalibrierfahrt nicht gefunden wird, war die Annahme
+        # falsch -- dann mit dem Diagnose-Skript aus der Hand-Pi-Kalibrierung
+        # mehrere cols/rows-Kombinationen gegen einen echten Frame testen.
+        **_REAL_BOARD,
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -120,28 +130,24 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.050,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Echtes Board, am Hand-Pi durchgemessen (RMS 0,2945 px, Abdeckung
-        # 96 %/95 %, siehe data/calibration/cam_flange.json): ein simples
-        # Schachbrett aus dem Internet, 22 mm/Feld, 7x9 innere Ecken -- kein
-        # ChArUco-Board, das braeuchte zusaetzliche ArUco-Marker im Druck.
-        "calibration_board_type": "chessboard",
-        "calibration_board_cols": 7,
-        "calibration_board_rows": 9,
-        "calibration_board_square_size_m": 0.022,
+        **_REAL_BOARD,
     },
 }
 
 #: Kamera-Einstellungen je Rahmen, nur fuer das Backend Picamera2 (die
 #: RealSense am Hand-Pi hat eigene Felder in `CameraStreamConfig`).
 #:
-#: cam_ceiling nimmt mit 12 MP auf. Den Livestream speist der zweite,
-#: vom ISP skalierte lores-Strom -- 960x720 ist die Stream-Breite
-#: (`max_stream_width`) im Seitenverhaeltnis des Sensors (4056x3040 -> 719,5,
-#: gerundet 720; 0,07 % Abweichung, unter der Schranke von
-#: `scale_to_resolution`). 10 fps ist die Obergrenze des IMX477 im
-#: Vollaufloesungsmodus; mehr anzufordern bringt nichts. Zwei Puffer statt der
-#: sechs, die Picamera2 fuer Video anlegt: 6 x 37 MB passt nicht in den
-#: CMA-Speicher des Pi.
+#: cam_ceiling nimmt mit 12 MP auf. Der zweite, vom ISP skalierte lores-Strom
+#: speist nur noch das Overlay "Kalibrierboard markieren"; "AprilTags
+#: markieren" und "Rohbild" zeigen seit 2026-09-22 den vollen Frame, fuers
+#: Publizieren auf `max_stream_width` verkleinert (vision-server-interface.md
+#: Abschnitt 10.3). 960x720 ist diese Stream-Breite im Seitenverhaeltnis des
+#: Sensors (4056x3040 -> 719,5, gerundet 720; 0,07 % Abweichung, unter der
+#: Schranke von `scale_to_resolution`). `capture_fps` 10 ist die angeforderte
+#: Obergrenze -- mehr liefert der IMX477 bei voller Aufloesung nicht; auf Pi 1
+#: gemessen 5-10 fps (`tools/measure_framerate.py`, 2026-09-23). Zwei Puffer
+#: statt der sechs, die Picamera2 fuer Video anlegt: 6 x 37 MB passt nicht in
+#: den CMA-Speicher des Pi.
 PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
         "preview_resolution": (960, 720),
