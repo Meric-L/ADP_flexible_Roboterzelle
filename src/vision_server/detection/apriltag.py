@@ -75,6 +75,35 @@ class AprilTagDetectionSource(DetectionSource):
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
 
+    # -- Lesezugriff fuer runner.py ------------------------------------------
+    #
+    # Stream-Overlay, Kamerazustand und ActiveCalibrationInfo sollen genau
+    # das benutzen, was diese Quelle geladen hat -- daher nur lesend, getauscht
+    # wird die Kalibrierung ausschliesslich ueber `apply_calibration`.
+
+    @property
+    def config(self) -> AprilTagProfileConfig:
+        return self._config
+
+    @property
+    def camera_config(self) -> CameraStreamConfig:
+        return self._camera_config
+
+    @property
+    def detector(self) -> Any:
+        """`None`, bis `open()` den Detektor gebaut hat."""
+        return self._detector
+
+    @property
+    def calibration(self) -> Any:
+        """`None`, bis `open()` die Kalibrierung geladen hat."""
+        return self._calibration
+
+    @property
+    def tag_map(self) -> Any:
+        """`None`, bis `open()` die Tag-Map geladen hat."""
+        return self._tag_map
+
     # -- Resources -----------------------------------------------------------
 
     def _build_configuration_id(self) -> str:

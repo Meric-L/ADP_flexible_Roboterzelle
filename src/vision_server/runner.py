@@ -87,10 +87,10 @@ def _build_annotator(source: DetectionSource):
     the image shows something different from the job result, it's not
     because of two configurations.
     """
-    detector = getattr(source, "_detector", None)
-    calibration = getattr(source, "_calibration", None)
-    config = getattr(source, "_config", None)
-    camera_config = getattr(source, "_camera_config", None)
+    detector = getattr(source, "detector", None)
+    calibration = getattr(source, "calibration", None)
+    config = getattr(source, "config", None)
+    camera_config = getattr(source, "camera_config", None)
     if detector is None or calibration is None or config is None:
         return None
     from .stream_overlay import AprilTagStreamAnnotator
@@ -99,7 +99,7 @@ def _build_annotator(source: DetectionSource):
         config,
         detector=detector,
         calibration=calibration,
-        tag_map=getattr(source, "_tag_map", None),
+        tag_map=getattr(source, "tag_map", None),
         interval_s=getattr(camera_config, "overlay_interval_s", 0.5),
         detection_max_width=getattr(camera_config, "max_stream_width", None),
     )
@@ -179,12 +179,12 @@ def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
 
     `space.config.camera_stream` kann `None` sein, waehrend die Quelle sehr
     wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
-    haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
+    stellt sie als `camera_config` bereit). Gleiches Muster wie `_build_annotator`.
     """
     from .profiles import CameraStreamConfig
 
     return (
-        getattr(source, "_camera_config", None)
+        getattr(source, "camera_config", None)
         or space.config.camera_stream
         or CameraStreamConfig()
     )
@@ -263,10 +263,13 @@ def _build_calibration_session(
     gesetzt ist (auf den echten Pis der Fall, siehe `vision_server/server.py`; lokale
     Entwicklung/Tests ohne explizite Konfiguration lassen das Feature aus).
     """
+    from .detection.apriltag import AprilTagDetectionSource
+
     if config.apriltag is None:
         return None
-    source = sources.get("apriltag")
-    if source is None or not opened.get("apriltag") or getattr(source, "camera", None) is None:
+    profile = AprilTagDetectionSource.profile_id
+    source = sources.get(profile)
+    if source is None or not opened.get(profile) or getattr(source, "camera", None) is None:
         return None
     return CalibrationSession(source.camera, config.apriltag)
 
@@ -639,14 +642,17 @@ async def _wire_live_calibration(
     Nach einer erfolgreichen interaktiven Kalibrierung ziehen Erkennung,
     Overlay und Info-Knoten sofort nach -- kein Server-Neustart noetig.
     """
-    apriltag_source = sources.get("apriltag")
-    if config.apriltag is not None and opened.get("apriltag"):
+    from .detection.apriltag import AprilTagDetectionSource
+
+    profile = AprilTagDetectionSource.profile_id
+    apriltag_source = sources.get(profile)
+    if config.apriltag is not None and opened.get(profile):
         # Was `open()` gerade geladen hat (echte Datei oder Platzhalter) --
         # ohne das waere ActiveCalibrationInfo leer, bis zum ersten
         # StartCalibration.
         await _write_calibration_info(
             space.active_calibration_info,
-            getattr(apriltag_source, "_calibration", None),
+            getattr(apriltag_source, "calibration", None),
             config.apriltag.calibration_path,
         )
     if calibration_session is None:

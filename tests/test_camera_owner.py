@@ -70,7 +70,7 @@ class BuildAnnotatorTest(unittest.TestCase):
 
     def test_returns_none_instead_of_raising_when_pieces_are_missing(self):
         source = CameraSource()
-        source._detector = object()
+        source.detector = object()
         self.assertIsNone(_build_annotator(source))
 
 
