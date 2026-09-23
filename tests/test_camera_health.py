@@ -12,6 +12,7 @@ import unittest
 from vision_server.camera import CameraStatus
 from vision_server.camera_health import (
     CameraHealthPublisher,
+    HealthAlarms,
     device_health,
     write_device_health,
 )
@@ -239,6 +240,202 @@ class GiveUpHandlerTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual([True], exited)
+
+
+def _text(value) -> str:
+    """`LocalizedText` oder schlichter String -- Tests wollen den Text."""
+    return getattr(value, "Text", None) or str(value)
+
+
+class FakeEvent:
+    def __init__(self) -> None:
+        self.Severity = None
+        self.Retain = None
+        self.ActiveState = None
+        self.Message = None
+        self.SourceNode = None
+
+
+class FakeGenerator:
+    def __init__(self, log: list, etype) -> None:
+        self.event = FakeEvent()
+        self._log = log
+        self._etype = etype
+
+    async def trigger(self) -> None:
+        self._log.append(
+            (
+                self._etype,
+                bool(self.event.Retain),
+                self.event.Severity,
+                _text(self.event.ActiveState),
+                _text(self.event.Message),
+            )
+        )
+
+
+class FakeAlarmNode:
+    def __init__(self, etype: str) -> None:
+        self.etype = etype
+        self.nodeid = etype
+
+    async def read_type_definition(self):
+        return self.etype
+
+
+class FakeServer:
+    """Nur das, was `HealthAlarms` vom Server braucht."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fired: list = []
+        self.fail = fail
+
+    def get_node(self, nodeid):
+        return nodeid
+
+    async def get_event_generator(self, etype, emitter):
+        if self.fail:
+            raise RuntimeError("kein Generator")
+        return FakeGenerator(self.fired, etype)
+
+
+def _alarms(server: FakeServer) -> HealthAlarms:
+    return HealthAlarms(
+        server,
+        emitter="VisionMachine",
+        alarms={
+            DeviceHealth.FAILURE: FakeAlarmNode("Failure"),
+            DeviceHealth.CHECK_FUNCTION: FakeAlarmNode("CheckFunction"),
+            DeviceHealth.OFF_SPEC: FakeAlarmNode("OffSpec"),
+        },
+        source=FakeAlarmNode("ImageSensor"),
+    )
+
+
+class HealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
+    """Der normkonforme Ereignisweg: DIs DeviceHealthAlarms."""
+
+    async def test_fires_the_matching_alarm(self):
+        server = FakeServer()
+        await _alarms(server).set(DeviceHealth.FAILURE, "hung")
+
+        self.assertEqual(1, len(server.fired))
+        etype, retain, severity, active, message = server.fired[0]
+        self.assertEqual("Failure", etype)
+        self.assertTrue(retain)
+        self.assertEqual(900, severity)
+        self.assertEqual("Active", active)
+        self.assertIn("hung", message)
+
+    async def test_normal_fires_nothing_when_nothing_was_active(self):
+        """NORMAL ist die Abwesenheit eines Alarms, kein eigener Alarm."""
+        server = FakeServer()
+        await _alarms(server).set(DeviceHealth.NORMAL, "ok")
+
+        self.assertEqual([], server.fired)
+
+    async def test_normal_clears_the_active_alarm(self):
+        server = FakeServer()
+        alarms = _alarms(server)
+        await alarms.set(DeviceHealth.OFF_SPEC, "ok")
+        server.fired.clear()
+
+        await alarms.set(DeviceHealth.NORMAL, "ok")
+
+        self.assertEqual(1, len(server.fired))
+        etype, retain, _, active, _ = server.fired[0]
+        self.assertEqual("OffSpec", etype)
+        self.assertFalse(retain)
+        self.assertEqual("Inactive", active)
+
+    async def test_only_one_alarm_is_active_at_a_time(self):
+        """Der Zustand ist einer von fuenf -- zwei aktive Alarme waeren ein
+        Widerspruch."""
+        server = FakeServer()
+        alarms = _alarms(server)
+        await alarms.set(DeviceHealth.OFF_SPEC, "ok")
+        server.fired.clear()
+
+        await alarms.set(DeviceHealth.FAILURE, "hung")
+
+        self.assertEqual(
+            [("OffSpec", False), ("Failure", True)],
+            [(etype, retain) for etype, retain, *_ in server.fired],
+        )
+
+    async def test_the_same_state_twice_fires_once(self):
+        server = FakeServer()
+        alarms = _alarms(server)
+        await alarms.set(DeviceHealth.FAILURE, "hung")
+        await alarms.set(DeviceHealth.FAILURE, "hung")
+
+        self.assertEqual(1, len(server.fired))
+
+    async def test_names_the_component_as_source(self):
+        server = FakeServer()
+        captured = []
+
+        class Recording(FakeServer):
+            async def get_event_generator(self, etype, emitter):
+                gen = FakeGenerator(self.fired, etype)
+                captured.append(gen)
+                return gen
+
+        recording = Recording()
+        await _alarms(recording).set(DeviceHealth.FAILURE, "hung")
+
+        self.assertEqual("ImageSensor", captured[0].event.SourceNode)
+
+    async def test_a_broken_generator_does_not_raise(self):
+        """Ein fehlgeschlagener Alarm darf die Zustandsvariable nicht
+        mitreissen."""
+        await _alarms(FakeServer(fail=True)).set(DeviceHealth.FAILURE, "hung")
+
+    async def test_an_unserved_state_is_skipped(self):
+        """MAINTENANCE_REQUIRED hat keinen Alarm -- das darf nicht werfen."""
+        server = FakeServer()
+        await _alarms(server).set(DeviceHealth.MAINTENANCE_REQUIRED, "x")
+
+        self.assertEqual([], server.fired)
+
+
+class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
+    async def test_publishes_variable_and_alarm_together(self):
+        server = FakeServer()
+        alarms = _alarms(server)
+        node = FakeNode()
+        camera = FakeCamera(status(frame_age_s=STALE_S + 1.0))
+        publisher = CameraHealthPublisher(
+            camera, [node], FAST_CONFIG, alarms=alarms
+        )
+
+        await publisher.publish_now()
+
+        self.assertEqual([int(DeviceHealth.OFF_SPEC)], node.written)
+        self.assertEqual("OffSpec", server.fired[0][0])
+
+    async def test_give_up_handler_fires_the_failure_alarm(self):
+        server = FakeServer()
+        node = FakeNode()
+        publisher = CameraHealthPublisher(
+            FakeCamera(status()), [node], FAST_CONFIG, alarms=_alarms(server)
+        )
+        exited = []
+
+        await publisher.give_up_handler(lambda: exited.append(True))()
+
+        self.assertEqual([int(DeviceHealth.FAILURE)], node.written)
+        self.assertEqual("Failure", server.fired[0][0])
+        self.assertEqual([True], exited)
+
+    async def test_works_without_alarms(self):
+        """Ohne angelegte Alarme bleibt die Variable der Meldeweg."""
+        node = FakeNode()
+        publisher = CameraHealthPublisher(FakeCamera(status()), [node], FAST_CONFIG)
+
+        await publisher.publish_now()
+
+        self.assertEqual([int(DeviceHealth.NORMAL)], node.written)
 
 
 class WriteDeviceHealthTest(unittest.IsolatedAsyncioTestCase):

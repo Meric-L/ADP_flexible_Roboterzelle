@@ -167,9 +167,10 @@ class CameraStreamConfig:
     #: So viele Neu-Oeffnungen ohne einen einzigen Frame dazwischen, bevor der
     #: Prozess sich beendet und systemd (`Restart=always`) ihn neu startet.
     max_reopen_attempts: int = 2
-    #: Aelter als das wird ein Frame nicht mehr veroeffentlicht; der Knoten
-    #: wird geleert, damit das Frontend "Warte auf Bild" statt eines
-    #: eingefrorenen Bildes zeigt.
+    #: Aufnahmeseitig: ab diesem Alter gilt das letzte Bild als veraltet und
+    #: `DeviceHealth` meldet OFF_SPEC (camera_health.py). Betrifft **nur** die
+    #: Zustandsbewertung -- der Livestream veroeffentlicht unabhaengig davon
+    #: weiter, ob die Kamera lebt, sagt die Anlagensicht und nicht das Bild.
     stale_frame_s: float = 2.0
     #: Laenger darf ein Overlay-Lauf nicht dauern, sonst geht das Rohbild raus.
     overlay_timeout_s: float = 2.0

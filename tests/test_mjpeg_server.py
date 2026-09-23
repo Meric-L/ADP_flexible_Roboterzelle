@@ -179,7 +179,13 @@ class PublisherFanOutTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(len(node.written), frames)
         self.assertGreaterEqual(len(node.written), 2)
 
-    async def test_next_frame_gives_up_on_a_stale_camera(self):
+    async def test_still_serves_a_stale_frame(self):
+        """MJPEG zeigt weiter das letzte Bild, auch wenn die Kamera haengt.
+
+        Ob sie haengt, sagt `DeviceHealth` nach OPC 40100-2 -- nicht ein
+        fehlendes Bild. Frueher lieferte `latest` hier `None` und
+        `/snapshot.jpg` antwortete mit 503.
+        """
         camera = FakeCamera()
         camera.latest_frame = CameraFrame(
             image="alt", timestamp=asyncio.get_running_loop().time() - 10.0
@@ -190,7 +196,7 @@ class PublisherFanOutTest(unittest.IsolatedAsyncioTestCase):
         latest = await publisher.next_frame(-1, 0.1)
         await publisher.stop()
 
-        self.assertIsNone(latest)
+        self.assertIsNotNone(latest)
 
 
 if __name__ == "__main__":

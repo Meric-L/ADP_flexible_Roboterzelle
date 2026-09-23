@@ -17,7 +17,7 @@ nodes rather than ~700 and runs in well under a second.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from asyncua import Server, ua
 from asyncua.common.instantiate_util import instantiate
@@ -25,9 +25,13 @@ from asyncua.common.node import Node
 
 from .address_space import VisionAddressSpace
 from .nodeset_ids import (
+    DI_CHECK_FUNCTION_ALARM_TYPE,
+    DI_DEVICE_HEALTH_ALARMS,
     DI_DEVICE_HEALTH_ENUMERATION,
     DI_DEVICE_HEALTH_INTERFACE,
+    DI_FAILURE_ALARM_TYPE,
     DI_NAMESPACE_URI,
+    DI_OFF_SPEC_ALARM_TYPE,
     VISION_COMPUTING_DEVICE_TYPE,
     VISION_HEALTH_INFO_TYPE,
     VISION_IMAGE_SENSOR_TYPE,
@@ -68,6 +72,12 @@ class VisionAssetNodes:
     #: es keine Zustandsquelle, und ein Knoten, den niemand schreibt, wird als
     #: "NORMAL fuer immer" gelesen -- schlimmer als gar kein Knoten.
     device_health: tuple[Node, ...] = ()
+    #: Die Alarmobjekte unter `VisionAsset/Health/DeviceHealthAlarms`, je
+    #: Zustand einer. Nur an der Wurzel angelegt, nicht zusaetzlich am
+    #: Bildsensor: beide Zustandsknoten tragen denselben Wert, und jede
+    #: Alarminstanz kostet 36 Knoten (gemessen). Die Ereignisse nennen die
+    #: betroffene Komponente ohnehin in `SourceNode`.
+    health_alarms: dict[DeviceHealth, Node] = field(default_factory=dict)
 
 
 async def _write_identification(
@@ -224,6 +234,60 @@ async def _add_health(
         return None
 
 
+#: Welcher DI-Alarmtyp zu welchem Zustand gehoert. `NORMAL` hat keinen --
+#: es ist die Abwesenheit eines Alarms. `MAINTENANCE_REQUIRED` fehlt
+#: bewusst, siehe `nodeset_ids.py`.
+_ALARM_TYPES: tuple[tuple[DeviceHealth, int, str], ...] = (
+    (DeviceHealth.FAILURE, DI_FAILURE_ALARM_TYPE, "FailureAlarm"),
+    (DeviceHealth.CHECK_FUNCTION, DI_CHECK_FUNCTION_ALARM_TYPE, "CheckFunctionAlarm"),
+    (DeviceHealth.OFF_SPEC, DI_OFF_SPEC_ALARM_TYPE, "OffSpecAlarm"),
+)
+
+
+async def _add_health_alarms(
+    server: Server, health: Node, di_idx: int, own_idx: int
+) -> dict[DeviceHealth, Node]:
+    """Legt `DeviceHealthAlarms` an und darin die Alarme, die wir bedienen.
+
+    Der zweite Teil von DIs `IDeviceHealthType`: neben der Zustandsvariablen
+    sieht die Norm echte OPC-UA-Alarme vor. Erst damit bekommt ein Client ein
+    Ereignis mit Zeitstempel, Quelle und Schweregrad, statt eine Zahl abfragen
+    zu muessen.
+
+    Angelegt wird nur, was auch gefeuert wird -- drei der vier Typen. Jede
+    Instanz kostet 36 Knoten (gemessen), deshalb gibt es sie einmal an der
+    Wurzel und nicht zusaetzlich je Komponente.
+
+    Wirft nie; ohne Alarme bleibt die Zustandsvariable der Meldeweg.
+    """
+    base = health.nodeid.Identifier
+    try:
+        folder = await health.add_object(
+            ua.NodeId(f"{base}.DeviceHealthAlarms", own_idx),
+            ua.QualifiedName("DeviceHealthAlarms", di_idx),
+            objecttype=ua.NodeId(ua.ObjectIds.FolderType),
+        )
+    except Exception:
+        _log.exception("DeviceHealthAlarms unter %s nicht anlegbar", base)
+        return {}
+    alarms: dict[DeviceHealth, Node] = {}
+    for value, type_identifier, name in _ALARM_TYPES:
+        try:
+            nodes = await instantiate(
+                folder,
+                server.get_node(node_id(type_identifier, di_idx)),
+                nodeid=ua.NodeId(f"{base}.DeviceHealthAlarms.{name}", own_idx),
+                bname=ua.QualifiedName(name, di_idx),
+                instantiate_optional=False,
+            )
+        except Exception:
+            _log.exception("Alarm '%s' nicht anlegbar", name)
+            continue
+        alarms[value] = nodes[0]
+    _log.info("Zustandsalarme unter %s: %s", base, ", ".join(a.name for a in alarms))
+    return alarms
+
+
 async def attach_asset_model(
     space: VisionAddressSpace, config: AssetConfig
 ) -> VisionAssetNodes | None:
@@ -296,14 +360,21 @@ async def attach_asset_model(
     health_owners = [root]
     if components["image_sensor"] is not None:
         health_owners.append(components["image_sensor"])
-    device_health = tuple(
-        node
-        for node in [
-            await _add_health(server, owner, amcm_idx, di_idx, own_idx)
-            for owner in health_owners
-        ]
-        if node is not None
-    )
+    device_health: list[Node] = []
+    health_alarms: dict[DeviceHealth, Node] = {}
+    for owner in health_owners:
+        node = await _add_health(server, owner, amcm_idx, di_idx, own_idx)
+        if node is None:
+            continue
+        device_health.append(node)
+        if owner is root:
+            # Nur an der Wurzel: sie existiert immer, auch ohne bekanntes
+            # Kameramodell, und ist damit die stabile Adresse fuer Clients.
+            block = await node.get_parent()
+            if block is not None:
+                health_alarms = await _add_health_alarms(
+                    server, block, di_idx, own_idx
+                )
 
     _log.info(
         "Anlagensicht (OPC 40100-2) unter %s, Komponenten: %s, Zustandsknoten: %d",
@@ -311,7 +382,12 @@ async def attach_asset_model(
         ", ".join(name for name, node in components.items() if node is not None) or "keine",
         len(device_health),
     )
-    return VisionAssetNodes(root=root, device_health=device_health, **components)
+    return VisionAssetNodes(
+        root=root,
+        device_health=tuple(device_health),
+        health_alarms=health_alarms,
+        **components,
+    )
 
 
 __all__ = ["VisionAssetNodes", "attach_asset_model"]

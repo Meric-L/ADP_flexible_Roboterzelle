@@ -244,9 +244,16 @@ class ResizeForStreamTest(unittest.TestCase):
 
 
 class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
-    """Ein haengendes capture darf im Frontend nicht wie ein lebendes Bild aussehen."""
+    """Der Publisher ueberwacht nicht -- er veroeffentlicht.
 
-    async def test_clears_the_node_once_instead_of_republishing_an_old_frame(self):
+    Frueher leerte er den Knoten, sobald der Frame aelter als `stale_frame_s`
+    war. Das war eine zweite Wahrheit ueber "lebt die Kamera", neben
+    `DeviceHealth` nach OPC 40100-2 und an der Companion Spec vorbei. Diese
+    Tests halten die Umkehrung fest, damit sie nicht versehentlich
+    zurueckrutscht.
+    """
+
+    async def test_keeps_publishing_a_stale_frame(self):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
@@ -255,9 +262,22 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
 
         await _run_briefly(publisher, 0.1)
 
-        self.assertEqual(node.written, [""])
+        self.assertGreaterEqual(len(node.written), 1)
+        self.assertEqual(node.written[0], f"encoded:alt:{FAST_CONFIG.jpeg_quality}")
 
-    async def test_resumes_as_soon_as_a_fresh_frame_arrives(self):
+    async def test_never_writes_an_empty_value(self):
+        """Das Leeren des Knotens war das Signal -- es darf nicht wiederkommen."""
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
+        node = FakeNode()
+        publisher = CameraStreamPublisher(camera, node, FAST_CONFIG, encode_frame=fake_encode)
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertNotIn("", node.written)
+
+    async def test_a_fresh_frame_simply_replaces_the_old_one(self):
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
@@ -270,7 +290,6 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.06)
         await publisher.stop()
 
-        self.assertEqual(node.written[0], "")
         self.assertIn(f"encoded:neu:{FAST_CONFIG.jpeg_quality}", node.written)
 
 

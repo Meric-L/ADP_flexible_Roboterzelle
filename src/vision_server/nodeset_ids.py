@@ -48,6 +48,20 @@ VISION_HEALTH_INFO_TYPE = 1004
 DI_DEVICE_HEALTH_ENUMERATION = 6244
 DI_DEVICE_HEALTH_INTERFACE = 15051
 
+#: DI: der zweite Teil von `IDeviceHealthType`. Neben der Zustandsvariablen
+#: sieht die Norm einen Ordner mit echten OPC-UA-Alarmen je Zustand vor --
+#: `DeviceHealthDiagnosticAlarmType` und seine vier konkreten Untertypen,
+#: alle abgeleitet von `AlarmConditionType`. Erst damit bekommt ein Client
+#: ein Ereignis mit Zeitstempel, Quelle und Schweregrad statt einer Zahl,
+#: die er abfragen muss.
+DI_DEVICE_HEALTH_ALARMS = 15053
+DI_FAILURE_ALARM_TYPE = 15292
+DI_CHECK_FUNCTION_ALARM_TYPE = 15441
+DI_OFF_SPEC_ALARM_TYPE = 15590
+#: `MaintenanceRequiredAlarmType` (15739) wird bewusst nicht benutzt: ohne
+#: Verschleisszaehler koennte er nie feuern, und ein Alarm, der nie kommt,
+#: ist eine Zusage, die wir nicht halten.
+
 
 class DeviceHealth(IntEnum):
     """DI's `DeviceHealthEnumeration` nach NAMUR NE 107.

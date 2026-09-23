@@ -219,13 +219,73 @@ class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
                 ua.Variant(int(DeviceHealth.CHECK_FUNCTION), ua.VariantType.Int32)
             )
 
-    async def test_the_health_block_stays_empty_apart_from_device_health(self):
-        """Alle anderen Kinder von `VisionHealthInfoType` sind optional und
-        haetten keine Quelle: DeviceHealthAlarms, State (SEMI E10),
-        Temperature, RemainingLifeTime."""
+    async def test_the_health_block_carries_exactly_the_two_di_members(self):
+        """DIs `IDeviceHealthType` hat genau zwei Mitglieder, beide bedient.
+
+        Die uebrigen Kinder von `VisionHealthInfoType` bleiben weg -- `State`
+        (SEMI E10), `Temperature` und `RemainingLifeTime` haetten keine
+        Quelle.
+        """
         health = await self.assets.root.get_child(f"{self.amcm_idx}:Health")
         names = {(await c.read_browse_name()).Name for c in await health.get_children()}
+        self.assertEqual({"DeviceHealth", "DeviceHealthAlarms"}, names)
+
+
+@unittest.skipUnless(HAS_NODESETS, "AMCM-Nodesets nicht vorhanden")
+class DeviceHealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
+    """Der zweite Teil von `IDeviceHealthType`: echte OPC-UA-Alarme."""
+
+    async def asyncSetUp(self):
+        self.server, self.space, self.assets = await build_with_assets(
+            ASSETS, "voll", 48403
+        )
+        self.di_idx = await self.server.get_namespace_index(
+            "http://opcfoundation.org/UA/DI/"
+        )
+        self.amcm_idx = await self.server.get_namespace_index(
+            "http://opcfoundation.org/UA/MachineVision/AMCM/"
+        )
+
+    async def test_serves_the_three_states_that_can_actually_occur(self):
+        self.assertEqual(
+            {DeviceHealth.FAILURE, DeviceHealth.CHECK_FUNCTION, DeviceHealth.OFF_SPEC},
+            set(self.assets.health_alarms),
+        )
+
+    async def test_leaves_out_maintenance_required(self):
+        """Ohne Verschleisszaehler koennte er nie feuern -- ein Alarm, der nie
+        kommt, ist eine Zusage, die wir nicht halten."""
+        self.assertNotIn(DeviceHealth.MAINTENANCE_REQUIRED, self.assets.health_alarms)
+        folder = await self._folder()
+        names = {(await c.read_browse_name()).Name for c in await folder.get_children()}
+        self.assertEqual({"FailureAlarm", "CheckFunctionAlarm", "OffSpecAlarm"}, names)
+
+    async def test_the_folder_browse_name_lives_in_the_di_namespace(self):
+        browse_name = await (await self._folder()).read_browse_name()
+        self.assertEqual("DeviceHealthAlarms", browse_name.Name)
+        self.assertEqual(self.di_idx, browse_name.NamespaceIndex)
+
+    async def test_the_alarms_are_condition_objects(self):
+        """Sie muessen die Condition-Felder tragen, sonst ist es kein Alarm."""
+        alarm = self.assets.health_alarms[DeviceHealth.FAILURE]
+        names = {(await c.read_browse_name()).Name for c in await alarm.get_children()}
+        for field in ("ActiveState", "AckedState", "Retain", "Severity", "Message"):
+            self.assertIn(field, names)
+
+    async def test_only_the_root_carries_alarms(self):
+        """Wurzel und Bildsensor tragen denselben Wert; jede Alarminstanz
+        kostet 36 Knoten, doppelt waere sie reine Verdopplung."""
+        sensor_health = await self.assets.image_sensor.get_child(
+            f"{self.amcm_idx}:Health"
+        )
+        names = {
+            (await c.read_browse_name()).Name for c in await sensor_health.get_children()
+        }
         self.assertEqual({"DeviceHealth"}, names)
+
+    async def _folder(self):
+        health = await self.assets.root.get_child(f"{self.amcm_idx}:Health")
+        return await health.get_child(f"{self.di_idx}:DeviceHealthAlarms")
 
     async def test_without_an_image_sensor_only_the_root_carries_health(self):
         """Genau deshalb haengt der Zustand auch an der Wurzel: ohne bekanntes

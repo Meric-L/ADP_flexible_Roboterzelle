@@ -70,9 +70,13 @@ class CameraStreamPublisher:
     Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
     sehen, keine Diff-Logik.
 
-    Ausnahme: ein Frame aelter als `stale_frame_s` geht nicht raus, der Knoten
-    wird einmal geleert. Sonst sieht ein haengendes `capture_array()` im
-    Frontend aus wie ein lebendes, nur stehendes Bild.
+    **Keine Ueberwachung hier.** Ob die Kamera lebt, beantwortet allein
+    `Health/DeviceHealth` nach OPC 40100-2 (`camera_health.py`), gespeist aus
+    dem Watchdog in `camera.py`. Dieser Publisher hat frueher zusaetzlich das
+    Bildalter geprueft und den Knoten geleert -- zwei Wahrheiten ueber
+    dieselbe Frage, von denen eine am Standard vorbeilief. Bei haengender
+    Kamera steht das Livebild deshalb jetzt still; dass es steht, sagt die
+    Zustandsampel, nicht das fehlende Bild.
     """
 
     def __init__(
@@ -101,8 +105,6 @@ class CameraStreamPublisher:
         self._progress_node = progress_node
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
-        #: True, solange der Knoten wegen eines veralteten Frames geleert ist.
-        self._stale = False
         #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
         self._overlay_run: asyncio.Future | None = None
         #: Das zuletzt kodierte Bild (Base64) samt laufender Nummer. Knoten und
@@ -143,8 +145,14 @@ class CameraStreamPublisher:
 
     @property
     def latest(self) -> tuple[int, str] | None:
-        """Laufende Nummer und Base64-JPEG des neuesten Bildes; `None` wenn veraltet."""
-        if self._latest is None or self._stale:
+        """Laufende Nummer und Base64-JPEG des neuesten Bildes.
+
+        Bewusst ohne Altersgrenze: ob die Kamera lebt, sagt `DeviceHealth`
+        nach OPC 40100-2 (camera_health.py), nicht dieser Publisher. Ein
+        Standbild ist ein Bild, kein Gesundheitssignal -- zwei Wahrheiten
+        darueber waeren eine zu viel.
+        """
+        if self._latest is None:
             return None
         return self._seq, self._latest
 
@@ -276,19 +284,6 @@ class CameraStreamPublisher:
         except Exception:
             _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
 
-    async def _mark_stale(self, age: float) -> None:
-        """Leert den Knoten einmal, wenn der neueste Frame zu alt ist."""
-        if self._stale:
-            return
-        _log.warning(
-            "Neuester Kamera-Frame ist %.1f s alt -- Livestream pausiert, bis wieder "
-            "Bilder kommen",
-            age,
-        )
-        self._stale = True
-        with contextlib.suppress(Exception):
-            await self._node.write_value("")
-
     async def _publish_loop(self) -> None:
         """Tickt mit `http_fps`, solange MJPEG-Zuschauer da sind, sonst mit `stream_fps`.
 
@@ -302,13 +297,7 @@ class CameraStreamPublisher:
             started = loop.time()
             node_due = started >= self._next_node_write
             frame = self._camera.latest_frame
-            age = None if frame is None else started - frame.timestamp
-            if age is not None and age > self._config.stale_frame_s:
-                await self._mark_stale(age)
-            elif frame is not None:
-                if self._stale:
-                    _log.info("Kamera liefert wieder Bilder, Livestream laeuft weiter")
-                    self._stale = False
+            if frame is not None:
                 try:
                     encoded = await self._encoded(loop, frame)
                     if encoded is not None and node_due:

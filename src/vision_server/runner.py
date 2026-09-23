@@ -16,7 +16,7 @@ from .address_space import VisionAddressSpace, attach_vision_system, configure_s
 from .asset_model import VisionAssetNodes, attach_asset_model
 from .calibration_session import CalibrationSession
 from .camera import exit_process
-from .camera_health import CameraHealthPublisher, write_device_health
+from .camera_health import CameraHealthPublisher, HealthAlarms, write_device_health
 from .camera_stream import CameraStreamPublisher
 from .mjpeg_server import MjpegServer
 from .config import VisionServerConfig
@@ -214,17 +214,35 @@ async def _start_camera_health(
         )
         await write_device_health(assets.device_health, DeviceHealth.FAILURE)
         return None
+    # Der normkonforme Ereignisweg von Part 2. Emittiert wird von
+    # `VisionMachine`, weil Clients ohnehin genau diesen Knoten abonnieren;
+    # `SourceNode` nennt die Komponente, um die es geht -- den Bildsensor,
+    # falls sein Modell bekannt ist, sonst die Anlagenwurzel.
+    alarms = (
+        HealthAlarms(
+            space.server,
+            space.vision_system,
+            assets.health_alarms,
+            source=assets.image_sensor or assets.root,
+        )
+        if assets.health_alarms
+        else None
+    )
     publisher = CameraHealthPublisher(
-        source.camera, assets.device_health, _camera_config_of(space, source)
+        source.camera,
+        assets.device_health,
+        _camera_config_of(space, source),
+        alarms=alarms,
     )
     # Der Watchdog reisst den Prozess, wenn er aufgibt; vorher soll noch ein
     # letztes FAILURE rausgehen.
     source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
     publisher.start()
     _log.info(
-        "Kamerazustand (OPC 40100-2) aus Profil '%s' auf %d Knoten",
+        "Kamerazustand (OPC 40100-2) aus Profil '%s' auf %d Knoten, %d Alarme",
         source.profile_id,
         len(assets.device_health),
+        len(assets.health_alarms),
     )
     return publisher
 

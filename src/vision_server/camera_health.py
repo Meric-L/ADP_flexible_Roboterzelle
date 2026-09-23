@@ -25,9 +25,10 @@ Zustand wirklich aendert.
 import asyncio
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
-from asyncua import ua
+from asyncua import Server, ua
 from asyncua.common.node import Node
 
 from .camera import CameraStatus, SharedCamera
@@ -41,6 +42,23 @@ _log = logging.getLogger(__name__)
 #: verhindern, sonst bleibt genau der Prozess stehen, den systemd neu starten
 #: soll.
 GIVE_UP_WRITE_TIMEOUT_S = 1.0
+
+#: Schweregrad je Zustand (OPC UA: 1-1000). FAILURE ist der Ausfall, OFF_SPEC
+#: die gemeldete Abweichung, CHECK_FUNCTION der angekuendigte Eingriff --
+#: absteigend dringlich, damit ein HMI sie ohne Kenntnis von NE 107 sortieren
+#: kann.
+ALARM_SEVERITY: dict[DeviceHealth, int] = {
+    DeviceHealth.FAILURE: 900,
+    DeviceHealth.OFF_SPEC: 500,
+    DeviceHealth.CHECK_FUNCTION: 300,
+}
+
+#: Klartext je Zustand fuers `Message`-Feld des Alarms.
+ALARM_MESSAGE: dict[DeviceHealth, str] = {
+    DeviceHealth.FAILURE: "Kamera liefert kein Bild",
+    DeviceHealth.OFF_SPEC: "Kamerabild ist veraltet",
+    DeviceHealth.CHECK_FUNCTION: "Kamera wird geoeffnet oder neu gestartet",
+}
 
 
 def device_health(status: CameraStatus, *, stale_frame_s: float) -> DeviceHealth:
@@ -100,6 +118,80 @@ async def write_device_health(nodes: Sequence[Node], value: DeviceHealth) -> Non
             )
 
 
+class HealthAlarms:
+    """Feuert je Zustand den passenden DI-Alarm und loescht den vorherigen.
+
+    Der zweite Teil von DIs `IDeviceHealthType`. Die Zustandsvariable sagt,
+    *was* gerade gilt; der Alarm meldet den Uebergang -- mit Zeitstempel,
+    Quelle, Schweregrad und Meldungstext, ohne dass ein Client abfragen muss.
+
+    Es ist immer hoechstens **einer** aktiv, denn der Zustand ist einer von
+    fuenf. `NORMAL` feuert keinen Alarm, es loescht nur den vorherigen.
+
+    Emittiert wird vom uebergebenen `emitter` -- in der Praxis `VisionMachine`,
+    weil Clients ohnehin genau diesen Knoten abonnieren (siehe
+    `doc/vision-server-interface.md` 7.2). `SourceNode` nennt trotzdem die
+    Komponente, um die es geht.
+
+    Wirft nie: ein fehlgeschlagener Alarm darf weder die Zustandsvariable noch
+    den Job-Pfad mitreissen.
+    """
+
+    def __init__(
+        self,
+        server: Server,
+        emitter: Node,
+        alarms: Mapping[DeviceHealth, Node],
+        source: Node | None = None,
+    ) -> None:
+        self._server = server
+        self._emitter = emitter
+        self._alarms = dict(alarms)
+        self._source = source
+        self._generators: dict[DeviceHealth, Any] = {}
+        self._active: DeviceHealth | None = None
+
+    async def _generator(self, value: DeviceHealth):
+        """Event-Generator je Alarmtyp, beim ersten Gebrauch gebaut."""
+        if value not in self._generators:
+            node = self._alarms[value]
+            etype = await node.read_type_definition()
+            self._generators[value] = await self._server.get_event_generator(
+                self._server.get_node(etype), self._emitter
+            )
+        return self._generators[value]
+
+    async def _fire(self, value: DeviceHealth, *, active: bool, reason: str) -> None:
+        if value not in self._alarms:
+            return
+        generator = await self._generator(value)
+        event = generator.event
+        event.Severity = ALARM_SEVERITY.get(value, 500)
+        event.Retain = active
+        event.ActiveState = ua.LocalizedText("Active" if active else "Inactive")
+        event.Message = ua.LocalizedText(
+            f"{ALARM_MESSAGE.get(value, value.name)} ({reason})"
+            if active
+            else f"{ALARM_MESSAGE.get(value, value.name)} behoben"
+        )
+        if self._source is not None:
+            event.SourceNode = self._source.nodeid
+        await generator.trigger()
+
+    async def set(self, value: DeviceHealth, reason: str) -> None:
+        """Uebernimmt den neuen Zustand: alten Alarm loeschen, neuen feuern."""
+        if value == self._active:
+            return
+        try:
+            if self._active is not None:
+                await self._fire(self._active, active=False, reason=reason)
+            if value is not DeviceHealth.NORMAL:
+                await self._fire(value, active=True, reason=reason)
+            self._active = value
+        except Exception:
+            _log.exception("Zustandsalarm fuer %s nicht ausloesbar", value.name)
+
+
 class CameraHealthPublisher:
     """Spiegelt den Zustand einer `SharedCamera` nach `Health/DeviceHealth`.
 
@@ -112,10 +204,14 @@ class CameraHealthPublisher:
         camera: SharedCamera,
         nodes: Sequence[Node],
         config: CameraStreamConfig,
+        alarms: HealthAlarms | None = None,
     ) -> None:
         self._camera = camera
         self._nodes = tuple(nodes)
         self._config = config
+        #: Der normkonforme Ereignisweg; `None`, wenn keine Alarme angelegt
+        #: werden konnten -- dann bleibt die Variable der einzige Meldeweg.
+        self._alarms = alarms
         #: `None` heisst "noch nichts geschrieben" -- der erste Durchlauf
         #: schreibt deshalb immer, auch wenn er CHECK_FUNCTION ergibt und die
         #: Knoten schon damit angelegt wurden. Ein Abonnent, der spaeter
@@ -152,6 +248,8 @@ class CameraHealthPublisher:
                 status.last_outcome,
             )
             await write_device_health(self._nodes, value)
+            if self._alarms is not None:
+                await self._alarms.set(value, status.last_outcome)
             self._health = value
         except Exception:
             _log.exception("Kamerazustand konnte nicht veroeffentlicht werden")
@@ -180,6 +278,12 @@ class CameraHealthPublisher:
                 self._health = DeviceHealth.FAILURE
             except Exception:
                 _log.exception("Letztes FAILURE konnte nicht geschrieben werden")
+            if self._alarms is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(
+                        self._alarms.set(DeviceHealth.FAILURE, "aufgegeben"),
+                        timeout=GIVE_UP_WRITE_TIMEOUT_S,
+                    )
             then()
 
         return handler
@@ -187,6 +291,7 @@ class CameraHealthPublisher:
 
 __all__ = [
     "CameraHealthPublisher",
+    "HealthAlarms",
     "device_health",
     "write_device_health",
 ]
