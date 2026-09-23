@@ -29,9 +29,10 @@ zurueckgelassen, nicht beendet.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
@@ -259,6 +260,23 @@ class SharedCamera:
         loop = asyncio.get_running_loop()
         self._camera = await loop.run_in_executor(self._executor, self._open_camera)
         self._loop_task = asyncio.create_task(self._capture_loop())
+
+    @contextlib.contextmanager
+    def direct_reader(self) -> Iterator[Callable[[], Any]]:
+        """Oeffnet nur die Hardware, ohne Capture-Loop, und liefert eine Lesefunktion.
+
+        Fuer Diagnose wie `tools/measure_framerate.py`, das die rohe
+        Hardware-Framerate ohne die Drosselung auf `capture_fps` messen will.
+        Dieselben Backend-Wege wie im Server (Oeffnen samt Warmup, ein Frame
+        in BGR, Schliessen), aber blockierend im Thread des Aufrufers und ohne
+        Watchdog. Nicht zusammen mit `open()` verwenden.
+        """
+        self._camera = self._open_camera()
+        try:
+            yield self._read_frame
+        finally:
+            camera, self._camera = self._camera, None
+            self._close_camera(camera)
 
     def _open_camera(self) -> Any:
         """Laeuft im Kamera-Worker-Thread: Hardware oeffnen plus Warmup."""

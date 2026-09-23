@@ -2,14 +2,16 @@
 Durchschnitt.
 
 Wichtig: `SharedCamera._capture_loop` (camera.py) drosselt bewusst auf
-`capture_fps` (Standard 15 Hz) -- das ist die Kadenz, mit der der Server
-selbst neue Frames von der Hardware abholt (unabhaengig davon, wie oft der
-OPC-UA-Knoten oder der MJPEG-Stream daraus schreiben, siehe `stream_fps`/
+`capture_fps` (Standard 15 Hz, an der Deckenkamera 10 Hz laut
+`PI_CAMERA_STREAM_PRESETS` in server.py) -- das ist die Kadenz, mit der der
+Server selbst neue Frames von der Hardware abholt (unabhaengig davon, wie oft
+der OPC-UA-Knoten oder der MJPEG-Stream daraus schreiben, siehe `stream_fps`/
 `http_fps`), nicht zwingend die Kadenz, die die Hardware maximal koennte.
-Dieses Skript umgeht die Drosselung absichtlich: es ruft dieselben Oeffnen-/
-Lese-Methoden wie `SharedCamera` (Picamera2/RealSense/OpenCV) in einer engen
-Schleife auf, ohne zu warten, um die tatsaechliche Kamera-Obergrenze zu
-finden -- z. B. um zu pruefen, ob `capture_fps` noch Luft nach oben hat.
+Dieses Skript umgeht die Drosselung absichtlich: es liest ueber
+`SharedCamera.direct_reader()` -- dieselben Oeffnen-/Lese-Wege wie der Server
+(Picamera2/RealSense/OpenCV) -- in einer engen Schleife, ohne zu warten, um
+die tatsaechliche Kamera-Obergrenze zu finden -- z. B. um zu pruefen, ob
+`capture_fps` noch Luft nach oben hat.
 
 Nutzt automatisch Backend und Aufloesung, die fuer den Pi konfiguriert sind
 (`vision_server.server.vision_config()`), damit das Ergebnis zum echten
@@ -26,25 +28,25 @@ vorher stoppen:
 """
 
 import argparse
-import asyncio
+import contextlib
 import logging
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
 from dataclasses import replace
+from typing import Any
 
 from vision_server.camera import SharedCamera
 from vision_server.server import vision_config
 
 
-async def _measure(shared: SharedCamera, executor: ThreadPoolExecutor, duration_s: float) -> list[float]:
+def _measure(read_frame: Callable[[], Any], duration_s: float) -> list[float]:
     """Liest Frames am Stueck, ohne zwischen Aufnahmen zu warten. Gibt die
     Zeitstempel jedes erfolgreichen Reads zurueck."""
-    loop = asyncio.get_running_loop()
     timestamps: list[float] = []
     deadline = time.monotonic() + duration_s
     while time.monotonic() < deadline:
-        await loop.run_in_executor(executor, shared._read_frame)
+        read_frame()
         timestamps.append(time.monotonic())
     return timestamps
 
@@ -70,7 +72,7 @@ def _summarise(timestamps: list[float], duration_s: float) -> None:
         print(f"Median:                                  {median:.2f} fps")
 
 
-async def run(args: argparse.Namespace) -> int:
+def run(args: argparse.Namespace) -> int:
     config = vision_config().camera_stream
     if args.backend:
         config = replace(config, backend=args.backend)
@@ -82,30 +84,24 @@ async def run(args: argparse.Namespace) -> int:
     resolution = config.realsense_resolution if config.backend == "realsense" else config.resolution
     print(f"Backend: {config.backend}, Aufloesung: {resolution[0]}x{resolution[1]}")
 
-    shared = SharedCamera(config)
-    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="framerate-test")
-    loop = asyncio.get_running_loop()
-    try:
-        shared._camera = await loop.run_in_executor(executor, shared._open_camera)
-    except Exception as error:
-        print(f"FEHLER: Kamera liess sich nicht oeffnen: {error}", file=sys.stderr)
-        print(
-            "Laeuft der Server noch? Kamera-Backends lassen nur einen offenen "
-            "Zugriff zu -- vorher `sudo systemctl stop opcua-server.service`.",
-            file=sys.stderr,
-        )
-        return 1
+    with contextlib.ExitStack() as stack:
+        try:
+            read_frame = stack.enter_context(SharedCamera(config).direct_reader())
+        except Exception as error:
+            print(f"FEHLER: Kamera liess sich nicht oeffnen: {error}", file=sys.stderr)
+            print(
+                "Laeuft der Server noch? Kamera-Backends lassen nur einen offenen "
+                "Zugriff zu -- vorher `sudo systemctl stop opcua-server.service`.",
+                file=sys.stderr,
+            )
+            return 1
 
-    try:
         print(f"Aufwaermen ({args.warmup_s:.0f}s) ...")
-        await _measure(shared, executor, args.warmup_s)
+        _measure(read_frame, args.warmup_s)
 
         print(f"Messe ({args.duration_s:.0f}s) ...")
-        timestamps = await _measure(shared, executor, args.duration_s)
+        timestamps = _measure(read_frame, args.duration_s)
         _summarise(timestamps, args.duration_s)
-    finally:
-        await loop.run_in_executor(executor, shared._close_camera, shared._camera)
-        executor.shutdown(wait=False)
 
     return 0
 
@@ -121,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     # Frueher stellte der Import von `vision_server.server` das nebenbei ein;
     # ohne das fehlten hier die Meldungen von `vision_config` und `SharedCamera`.
     logging.basicConfig(level=logging.INFO)
-    return asyncio.run(run(args))
+    return run(args)
 
 
 if __name__ == "__main__":

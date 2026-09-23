@@ -203,6 +203,37 @@ class StatusTest(_ScriptedCameraTest):
         self.assertFalse(status.has_handle)
 
 
+class DirectReaderTest(unittest.TestCase):
+    """Der Weg fuer `tools/measure_framerate.py`: Hardware ohne Capture-Loop."""
+
+    def test_opens_reads_and_closes_without_a_capture_loop(self):
+        camera = ScriptedCamera(["ok"])
+
+        with camera.direct_reader() as read_frame:
+            frames = [read_frame(), read_frame()]
+            self.assertFalse(camera.is_open)
+
+        self.assertEqual(frames, ["bild-0", "bild-0"])
+        self.assertEqual((camera.opened, camera.closed), ([0], [0]))
+        self.assertFalse(camera.status(now=0.0).has_handle)
+
+    def test_closes_the_camera_when_reading_fails(self):
+        camera = ScriptedCamera(["error"])
+
+        with self.assertRaises(RuntimeError), camera.direct_reader() as read_frame:
+            read_frame()
+
+        self.assertEqual(camera.closed, [0])
+
+    def test_an_open_failure_leaves_nothing_to_close(self):
+        camera = ScriptedCamera(["fail_open"])
+
+        with self.assertRaises(RuntimeError), camera.direct_reader():
+            pass
+
+        self.assertEqual(camera.closed, [])
+
+
 class GiveUpHandlerTest(_ScriptedCameraTest):
     async def test_awaits_an_asynchronous_handler(self):
         """Der Runner schreibt hier ein letztes FAILURE, bevor der Prozess
