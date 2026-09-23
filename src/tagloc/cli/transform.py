@@ -25,11 +25,11 @@ import argparse
 import json
 from pathlib import Path
 
-from ..geometry import compose, identity, invert, pose_from_dict, pose_to_dict
+from ..geometry import compose, identity, invert, pose_from_dict
 from ..localize import camera_pose_from_reference_tags
 from ..observations import TagPose
 from ..tagmap import load_tag_map
-from ._common import describe_pose, poses_from_json, setup_logging, write_json
+from ._common import describe_pose, poses_from_json, poses_to_json, setup_logging, write_json
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -102,21 +102,10 @@ def main(argv=None) -> int:
         transformed = compose(transform, pose)
         label = f"Tag {tag_id}" if tag_id >= 0 else "Pose"
         print(f"{label:<10} {describe_pose(transformed)}")
-        results.append({"tagId": tag_id, "pose": pose_to_dict(transformed)})
+        results.append((tag_id, transformed))
 
     if args.out is not None:
-        write_json(
-            args.out,
-            {
-                "schema": "wsc.vision.detections.cli/1",
-                "frameId": args.to_frame,
-                "poses": [
-                    {"tagId": item["tagId"], "moduleId": "", "pose": item["pose"],
-                     "reprojErrorPx": 0.0, "ambiguous": False}
-                    for item in results
-                ],
-            },
-        )
+        write_json(args.out, poses_to_json(results, args.to_frame))
         print(f"\nGeschrieben: {args.out}")
     return 0
 

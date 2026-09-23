@@ -167,19 +167,37 @@ def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
     return scale_to_resolution(calibration, size)
 
 
+def _pose_entry(
+    tag_id,
+    pose: Pose,
+    *,
+    module_id: str = "",
+    reproj_error_px: float = 0.0,
+    ambiguous: bool = False,
+) -> dict:
+    """Ein Eintrag der `poses`-Liste im CLI-Austauschformat."""
+    return {
+        "tagId": int(tag_id),
+        "moduleId": module_id,
+        "pose": pose_to_dict(pose),
+        "reprojErrorPx": round(float(reproj_error_px), 4),
+        "ambiguous": bool(ambiguous),
+    }
+
+
 def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -> dict:
     """Return the detection result as a JSON-ready dict."""
     entries = []
     for tag_pose in tag_poses:
         entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
         entries.append(
-            {
-                "tagId": tag_pose.tag_id,
-                "moduleId": entry.module_id if entry is not None else "",
-                "pose": pose_to_dict(tag_pose.pose_cam_tag),
-                "reprojErrorPx": round(float(tag_pose.reprojection_error_px), 4),
-                "ambiguous": bool(tag_pose.is_ambiguous),
-            }
+            _pose_entry(
+                tag_pose.tag_id,
+                tag_pose.pose_cam_tag,
+                module_id=entry.module_id if entry is not None else "",
+                reproj_error_px=tag_pose.reprojection_error_px,
+                ambiguous=tag_pose.is_ambiguous,
+            )
         )
     return {"schema": CLI_SCHEMA, "frameId": frame_id, "poses": entries}
 
@@ -189,16 +207,7 @@ def poses_to_json(pairs, frame_id: str) -> dict:
     return {
         "schema": CLI_SCHEMA,
         "frameId": frame_id,
-        "poses": [
-            {
-                "tagId": int(tag_id),
-                "moduleId": "",
-                "pose": pose_to_dict(pose),
-                "reprojErrorPx": 0.0,
-                "ambiguous": False,
-            }
-            for tag_id, pose in pairs
-        ],
+        "poses": [_pose_entry(tag_id, pose) for tag_id, pose in pairs],
     }
 
 
