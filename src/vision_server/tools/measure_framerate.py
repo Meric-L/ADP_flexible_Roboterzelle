@@ -37,6 +37,7 @@ from dataclasses import replace
 from typing import Any
 
 from vision_server.camera import SharedCamera
+from vision_server.profiles import CAMERA_BACKENDS
 from vision_server.server import vision_config
 
 
@@ -108,7 +109,7 @@ def run(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Misst die rohe Framerate der Kamera-Hardware")
-    parser.add_argument("--backend", choices=["picamera2", "realsense", "opencv"])
+    parser.add_argument("--backend", choices=CAMERA_BACKENDS)
     parser.add_argument("--resolution", type=int, nargs=2, metavar=("WIDTH", "HEIGHT"))
     parser.add_argument("--realsense-fps", type=int)
     parser.add_argument("--duration", dest="duration_s", type=float, default=10.0)
