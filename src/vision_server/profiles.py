@@ -6,11 +6,14 @@ Nur Stdlib-Typen: `tag_family` ist ein String und wird erst in der Quelle zu
 einer `cv2.aruco.DICT_*`-Konstante aufgeloest.
 
 Nie eine Matrix hier hinein — `K`/`D` sind numpy, unhashbar und gehoeren dem,
-was sie aus `calibration_path` laedt.
+was sie aus `calibration_path` laedt. Aus `tagloc` nur `tagloc.modes`, das
+selbst reine Standardbibliothek ist (`tests/test_layering.py`).
 """
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from tagloc.modes import DEFAULT_TAG_FAMILY
 
 #: Wurzel des Repos, von `src/vision_server/profiles.py` aus drei Ebenen
 #: hoch -- einzige Stelle, die sie aus einem Dateipfad ableitet. Zeigt auf
@@ -36,16 +39,17 @@ def calibration_path_for(frame_id: str) -> Path:
 
 @dataclass(frozen=True)
 class AprilTagProfileConfig:
-    """Betriebsparameter der AprilTag-Erkennung."""
+    """Betriebsparameter der AprilTag-Erkennung.
 
-    camera_index: int = 0
-    use_picamera: bool = True
+    Welche Kamera und wie sie geoeffnet wird, steht nicht hier, sondern in
+    `CameraStreamConfig` -- die Erkennung liest von der geteilten Kamera.
+    """
+
     resolution: tuple[int, int] = (2028, 1520)
     calibration_path: Path = DEFAULT_CALIBRATION_PATH
     tag_map_path: Path | None = DEFAULT_TAG_MAP_PATH
-    tag_family: str = "tag36h11"
+    tag_family: str = DEFAULT_TAG_FAMILY
     tag_size_m: float = 0.05
-    warmup_s: float = 2.0
     capture_timeout_s: float = 5.0
     samples_per_job: int = 3
     max_reproj_error_px: float = 3.0
@@ -68,8 +72,8 @@ class AprilTagProfileConfig:
     #: Geometrie des Kalibrierboards fuer `CalibrationSession`
     #: (`vision_server/calibration_session.py`). Skalare statt eines
     #: `tagloc.boards.BoardSpec`-Objekts, aus demselben Grund wie `tag_family`:
-    #: diese Datei bleibt frei von einer `tagloc`-Abhaengigkeit, das Objekt
-    #: wird erst dort gebaut, wo es gebraucht wird.
+    #: diese Datei bleibt frei von `tagloc`-Modulen mit numpy/OpenCV, das
+    #: Objekt wird erst dort gebaut, wo es gebraucht wird.
     calibration_board_type: str = "chessboard"
     calibration_board_cols: int = 9
     calibration_board_rows: int = 6

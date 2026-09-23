@@ -91,6 +91,16 @@ class LayeringTest(unittest.TestCase):
             with self.subTest(module=module):
                 self.assertEqual([], imported_modules(module, ["numpy"]))
 
+    def test_server_profiles_stay_stdlib_only(self):
+        """`vision_server.profiles` importiert `tagloc.modes` -- und damit nichts Schweres.
+
+        `config.py` und `jobs/calibrate.py` laden die Profile, bevor feststeht,
+        ob numpy, OpenCV oder asyncua ueberhaupt da sind.
+        """
+        self.assertEqual(
+            [], imported_modules("vision_server.profiles", ["numpy", "cv2", "asyncua"])
+        )
+
     def test_tagloc_never_imports_the_vision_server(self):
         for module in PURE_MODULES + LAZY_CV2_MODULES:
             with self.subTest(module=module):

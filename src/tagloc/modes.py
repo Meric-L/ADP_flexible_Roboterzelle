@@ -9,8 +9,7 @@ Konfigurationscode ohne numpy sie nutzen kann.
 """
 
 #: Standard-Tag-Familie ueberall, wo keine angegeben ist (Detektor, Tag-Map,
-#: CLI, synthetische Szenen). `vision_server.profiles` fuehrt den Wert noch
-#: als eigenes Literal.
+#: CLI, synthetische Szenen, `vision_server.profiles`).
 DEFAULT_TAG_FAMILY = "tag36h11"
 
 #: Order = order of selection in the frontend.
