@@ -48,6 +48,10 @@ class VisionAddressSpace:
     #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
     #: `runner.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
     calibration_progress: Node | None = None
+    #: Die aktuell geladene Tag-Map als JSON. Nur lesen -- geschrieben wird
+    #: ueber die Methode `SetTagMap`, damit eine ungueltige Karte abgelehnt
+    #: werden kann, statt stumm im Knoten zu stehen.
+    tag_map_json: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -218,6 +222,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         await camera_stream_mode.set_writable()
 
     calibration_progress: Node | None = None
+    tag_map_json: Node | None = None
     if config.apriltag is not None:
         # Nur lesen: die laufende `CalibrationSession` in `runner.py` schreibt
         # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
@@ -227,6 +232,15 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.NodeId(f"{name}.CalibrationProgress", own_idx),
             ua.QualifiedName("CalibrationProgress", own_idx),
             '{"running": false}',
+            ua.VariantType.String,
+        )
+        # Bewusst nicht schreibbar: eine Tag-Map muss geprueft werden, bevor
+        # sie gilt. Das geht nur ueber eine Methode mit Rueckgabewert --
+        # ein Schreibzugriff koennte eine unbrauchbare Karte nicht ablehnen.
+        tag_map_json = await vision_system.add_variable(
+            ua.NodeId(f"{name}.TagMapJson", own_idx),
+            ua.QualifiedName("TagMapJson", own_idx),
+            "",
             ua.VariantType.String,
         )
 
@@ -254,5 +268,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         latest_camera_frame=latest_camera_frame,
         camera_stream_mode=camera_stream_mode,
         calibration_progress=calibration_progress,
+        tag_map_json=tag_map_json,
         amcm_idx=amcm_idx,
     )

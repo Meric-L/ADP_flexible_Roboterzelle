@@ -137,6 +137,12 @@ def _start_camera_stream(
     return stream, annotator
 
 
+def _write_tag_map_file(path, text: str) -> None:
+    """Schreibt die Karte, Verzeichnis wird bei Bedarf angelegt."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
 def _build_calibration_session(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
@@ -483,6 +489,77 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             [ua.VariantType.Int32],
         )
 
+    apriltag_source = sources.get("apriltag") if opened.get("apriltag") else None
+    if apriltag_source is not None and space.tag_map_json is not None:
+        from tagloc.tagmap import tag_map_from_json, tag_map_to_json
+
+        method_prefix = config.vision_system_name
+
+        async def _publish_tag_map() -> None:
+            """Spiegelt die geladene Karte in den Leseknoten."""
+            current = getattr(apriltag_source, "_tag_map", None)
+            if current is not None and space.tag_map_json is not None:
+                await space.tag_map_json.write_value(
+                    ua.Variant(tag_map_to_json(current), ua.VariantType.String)
+                )
+
+        await _publish_tag_map()
+
+        @uamethod
+        async def set_tag_map(parent, tag_map_json: str):
+            """1:SetTagMap -- setzt die Tag-Map der Zelle.
+
+            Damit ist das Backend die Pflegestelle: eine neue Tag-Groesse oder
+            ein verschobener Welttag brauchen keinen Dateizugriff auf dem Pi
+            mehr. Die Datei bleibt trotzdem der lokale Zwischenspeicher, damit
+            der Pi ohne Backend messen kann.
+
+            Erst pruefen, dann uebernehmen: eine abgelehnte Karte laesst die
+            laufende unangetastet.
+            """
+            if jobs.busy:
+                _log.warning("SetTagMap waehrend laufendem Job abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if calibration_session is not None and calibration_session.running:
+                _log.warning("SetTagMap waehrend laufender Kalibrierung abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            try:
+                tag_map = tag_map_from_json(tag_map_json or "", source="SetTagMap")
+            except ValueError as error:
+                _log.warning("SetTagMap abgelehnt: %s", error)
+                return (
+                    ua.Variant(int(VisionErrorCode.INVALID_ARGUMENT), ua.VariantType.Int32),
+                )
+
+            for problem in apriltag_source.apply_tag_map(tag_map):
+                # Bericht, kein Fehler -- eine Zelle im Aufbau darf messen.
+                _log.warning("Tag-Map aus SetTagMap: %s", problem)
+            await _publish_tag_map()
+
+            path = config.apriltag.tag_map_path if config.apriltag is not None else None
+            if path is None:
+                return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+            try:
+                await asyncio.to_thread(
+                    _write_tag_map_file, path, tag_map_to_json(tag_map)
+                )
+            except OSError as error:
+                # Messen geht vor Persistenz: die Karte ist bereits aktiv, nur
+                # ein Neustart faellt auf die alte Datei zurueck. Das muss der
+                # Aufrufer wissen, deshalb trotzdem ein Fehlercode.
+                _log.error("Tag-Map konnte nicht nach %s geschrieben werden: %s", path, error)
+                return (ua.Variant(int(VisionErrorCode.INTERNAL), ua.VariantType.Int32),)
+            _log.info("Tag-Map gesetzt und nach %s geschrieben", path)
+            return (ua.Variant(int(VisionErrorCode.OK), ua.VariantType.Int32),)
+
+        calibration_methods["SetTagMap"] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.SetTagMap", space.own_idx),
+            ua.QualifiedName("SetTagMap", space.own_idx),
+            set_tag_map,
+            [ua.VariantType.String],
+            [ua.VariantType.Int32],
+        )
+
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
     # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
     # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
@@ -493,6 +570,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["CameraStreamMode"] = space.camera_stream_mode
     if space.calibration_progress is not None:
         mirror_nodes["CalibrationProgress"] = space.calibration_progress
+    if space.tag_map_json is not None:
+        mirror_nodes["TagMapJson"] = space.tag_map_json
     program = await install_vision_program(
         server,
         server.nodes.objects,
