@@ -151,21 +151,19 @@ def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
     scale factor -- plausibly off, so unnoticed. Hence an abort here, not
     just a warning.
     """
-    from ..calibration import check_resolution, scale_to_resolution
+    from ..calibration import fit_to_resolution
 
-    if tuple(calibration.image_size) == tuple(size):
-        return calibration
-    if not allow_mismatch:
-        try:
-            check_resolution(calibration, size)
-        except ValueError as error:
-            raise SystemExit(
-                f"{error}\n"
-                "  Entweder in der Aufloesung der Kalibrierung aufnehmen "
-                "(--resolution BREITE HOEHE)\n"
-                "  oder das Skalieren mit --allow-resolution-mismatch ausdruecklich erlauben."
-            ) from error
-    return scale_to_resolution(calibration, size)
+    try:
+        return fit_to_resolution(calibration, size, allow_scaling=allow_mismatch)
+    except ValueError as error:
+        if allow_mismatch:
+            raise  # Seitenverhaeltnis passt nicht -- kein Fall fuer den Hinweis unten
+        raise SystemExit(
+            f"{error}\n"
+            "  Entweder in der Aufloesung der Kalibrierung aufnehmen "
+            "(--resolution BREITE HOEHE)\n"
+            "  oder das Skalieren mit --allow-resolution-mismatch ausdruecklich erlauben."
+        ) from error
 
 
 def _pose_entry(

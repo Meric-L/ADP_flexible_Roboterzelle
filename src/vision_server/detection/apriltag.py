@@ -177,16 +177,15 @@ class AprilTagDetectionSource(DetectionSource):
     def _locate(self, image) -> list:
         """Evaluate one image. Runs in the worker thread, never on the loop."""
         from tagloc import frames as frame_tools
-        from tagloc.calibration import check_resolution, scale_to_resolution
+        from tagloc.calibration import fit_to_resolution
         from tagloc.localize import camera_pose_from_reference_tags, locate_modules
         from tagloc.pose import estimate_tag_poses
 
-        size = frame_tools.image_size(image)
-        calibration = self._calibration
-        if tuple(calibration.image_size) != tuple(size):
-            if not self._config.allow_resolution_mismatch:
-                check_resolution(calibration, size)
-            calibration = scale_to_resolution(calibration, size)
+        calibration = fit_to_resolution(
+            self._calibration,
+            frame_tools.image_size(image),
+            allow_scaling=self._config.allow_resolution_mismatch,
+        )
 
         tag_poses = estimate_tag_poses(
             self._detector.detect(frame_tools.to_gray(image)),

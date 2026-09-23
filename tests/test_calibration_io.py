@@ -211,6 +211,33 @@ class ScaleToResolutionTest(unittest.TestCase):
         self.assertIn("Seitenverhaeltnis", str(caught.exception))
 
 
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class FitToResolutionTest(unittest.TestCase):
+    def test_returns_the_calibration_itself_for_the_matching_size(self):
+        original = sample_calibration()
+
+        self.assertIs(calib.fit_to_resolution(original, (640, 480), allow_scaling=False), original)
+
+    def test_rejects_a_different_size_unless_scaling_is_allowed(self):
+        with self.assertRaises(ValueError) as caught:
+            calib.fit_to_resolution(sample_calibration(), (1280, 960), allow_scaling=False)
+
+        self.assertIn("640x480", str(caught.exception))
+        self.assertIn("1280x960", str(caught.exception))
+
+    def test_scales_when_allowed(self):
+        fitted = calib.fit_to_resolution(sample_calibration(), (1280, 960), allow_scaling=True)
+
+        self.assertEqual(fitted.image_size, (1280, 960))
+        self.assertAlmostEqual(fitted.camera_params[0], 1600.0)
+
+    def test_still_rejects_a_changed_aspect_ratio_when_scaling(self):
+        with self.assertRaises(ValueError) as caught:
+            calib.fit_to_resolution(sample_calibration(), (640, 360), allow_scaling=True)
+
+        self.assertIn("Seitenverhaeltnis", str(caught.exception))
+
+
 class IdentityTest(unittest.TestCase):
     """`tagloc.identity` must work without numpy and without cv2."""
 

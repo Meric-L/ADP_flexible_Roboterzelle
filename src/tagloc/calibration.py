@@ -179,6 +179,26 @@ def scale_to_resolution(
     )
 
 
+def fit_to_resolution(
+    calibration: CameraCalibration, image_size: tuple[int, int], *, allow_scaling: bool
+) -> CameraCalibration:
+    """Passt die Kalibrierung an die tatsaechliche Bildgroesse an.
+
+    Gleiche Groesse: die Kalibrierung selbst. Sonst wird nur skaliert, wenn
+    `allow_scaling` es ausdruecklich erlaubt -- ohne das wirft
+    `check_resolution` (siehe dort, warum eine Warnung nicht reicht).
+
+    Raises:
+        ValueError: Groessen weichen ab und `allow_scaling` ist False, oder
+            das Seitenverhaeltnis aendert sich (`scale_to_resolution`).
+    """
+    if tuple(calibration.image_size) == tuple(image_size):
+        return calibration
+    if not allow_scaling:
+        check_resolution(calibration, image_size)
+    return scale_to_resolution(calibration, image_size)
+
+
 #: `calibration_identity` is re-exported here so callers don't need to look
 #: in a second module. It lives in `identity` because that module must work
 #: without numpy.
@@ -189,6 +209,7 @@ __all__ = [
     "calibration_identity",
     "check_resolution",
     "default_calibration",
+    "fit_to_resolution",
     "load_calibration",
     "save_calibration",
     "scale_to_resolution",
