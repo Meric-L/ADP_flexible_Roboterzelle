@@ -27,6 +27,7 @@ vorher stoppen:
 
 import argparse
 import asyncio
+import logging
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -117,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--duration", dest="duration_s", type=float, default=10.0)
     parser.add_argument("--warmup", dest="warmup_s", type=float, default=2.0)
     args = parser.parse_args(argv)
+    # Frueher stellte der Import von `vision_server.server` das nebenbei ein;
+    # ohne das fehlten hier die Meldungen von `vision_config` und `SharedCamera`.
+    logging.basicConfig(level=logging.INFO)
     return asyncio.run(run(args))
 
 

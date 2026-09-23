@@ -21,25 +21,22 @@ alle Namespace-Indizes um eins nach unten; wer sie ueber
 """
 
 import asyncio
-import contextlib
 import logging
 import os
-import signal
 import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
-from asyncua import Server, ua
+from asyncua import Server
 
-from .config import DEFAULT_NODESET_PATH, VisionServerConfig
+from .address_space import configure_server
+from .aio import stop_event_on_signals
+from .config import VisionServerConfig
 from .discovery import lds, mdns
 from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 from .runner import install_vision_machine
 
-logging.basicConfig(level=logging.INFO)
 _log = logging.getLogger("vision-cell-server")
-
-NODESET_PATH = DEFAULT_NODESET_PATH
 
 #: Rueckfall-Endpoint. Im Regelfall nennt der Endpoint zur Laufzeit die
 #: LAN-IPv4 (siehe `lds.advertised_endpoint`), weil `register_to_discovery()`
@@ -315,8 +312,8 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     )
     return VisionServerConfig(
         endpoint=endpoint,
+        application_uri=application_uri(),
         server_name=SERVER_NAME,
-        nodeset_path=NODESET_PATH,
         vision_system_id=vision_system_id,
         frame_id=frame_id,
         camera_stream=camera_stream,
@@ -327,8 +324,9 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
 
 async def main():
     """Baut den Adressraum auf und haelt den Server am Leben."""
-    server = Server()
-    await server.init()
+    # Erst hier, nicht beim Import: `tools/measure_framerate.py` und die Tests
+    # importieren dieses Modul, ohne dass es ihr Logging umstellen soll.
+    logging.basicConfig(level=logging.INFO)
 
     # Der Endpoint nennt die LAN-IPv4, denn `register_to_discovery()` gibt
     # genau ihn als DiscoveryUrl an den Discovery-Server weiter. `0.0.0.0`
@@ -336,31 +334,28 @@ async def main():
     # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Hello-World-Client
     # auf dem Pi.
     endpoint = lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
-    server.set_endpoint(endpoint)
+    config = vision_config(endpoint)
+
+    # Endpoint, ApplicationUri, ServerName und NoSecurity wie jeder
+    # eigenstaendige Vision-Server. Die ApplicationUri muss vor dem Aufbau des
+    # Adressraums stehen: sie landet im Namespace-Array auf ns=1 und ist der
+    # Name, unter dem der Aggregation-Server dieses Modul fuehrt.
+    server = Server()
+    await configure_server(server, config)
     server.socket_address = ("0.0.0.0", MDNS_PORT)
-    server.set_server_name(SERVER_NAME)
-    # Vor dem Aufbau des Adressraums: die ApplicationUri landet im
-    # Namespace-Array auf ns=1 und ist der Name, unter dem der
-    # Aggregation-Server dieses Modul fuehrt.
-    await server.set_application_uri(application_uri())
-    server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
     # Der gesamte Adressraum entsteht in `install_vision_machine`: Nodesets,
     # `VisionMachine` unter `Objects/Machines` und `VisionProgram` daneben.
     # Dieser Server legt selbst keine Knoten mehr an -- die CPU-Temperatur-Demo
     # (`RaspiDevice`, `2:VisionSystem`, `CpuTemperatureResult`) ist entfernt,
     # samt ihrem Namensraum `http://launch-rm.de/raspi`.
-    machine = await install_vision_machine(server, vision_config(endpoint))
+    machine = await install_vision_machine(server, config)
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
 
     # Ohne Signal-Handler laeuft `finally` unter systemd nicht: SIGTERM beendet
     # den Prozess, ohne dass asyncio.run aufraeumt.
-    stop = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        with contextlib.suppress(NotImplementedError):
-            loop.add_signal_handler(sig, stop.set)
+    stop = stop_event_on_signals()
 
     instance = mdns_instance_name()
 
