@@ -84,27 +84,16 @@ class FakeDetector:
 
 
 class FakeSolverSource(AprilTagDetectionSource):
-    """Replace, in `_locate`, only the step that needs OpenCV.
+    """Replace only the step that needs OpenCV: `_tag_poses`.
 
     `tagloc.pose.estimate_tag_pose` solves the pose via `cv2.solvePnPGeneric`;
     the fake detector already knows it instead. Everything after -- camera
     pose from reference tags, module chaining, frame selection -- is still
-    production code.
+    production code (`_locate` -> `tagloc.localize.locate_in_frame`).
     """
 
-    def _locate(self, image):
-        from tagloc.localize import camera_pose_from_reference_tags, locate_modules
-
-        tag_poses = self._detector.estimate(self._detector.detect(image))
-        pose_world_cam = camera_pose_from_reference_tags(tag_poses, self._tag_map)
-        frame_id = self._tag_map.frame_id if pose_world_cam is not None else self._config.frame_id
-        return locate_modules(
-            tag_poses,
-            self._tag_map,
-            pose_world_cam=pose_world_cam,
-            frame_id=frame_id,
-            max_reprojection_error_px=self._config.max_reproj_error_px,
-        )
+    def _tag_poses(self, image):
+        return self._detector.estimate(self._detector.detect(image))
 
 
 def profile_config(folder: Path, **overrides) -> AprilTagProfileConfig:

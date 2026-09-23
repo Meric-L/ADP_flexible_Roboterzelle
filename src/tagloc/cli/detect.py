@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .. import frames as frame_sources
 from ..detector import build_detector
-from ..localize import camera_pose_from_reference_tags, locate_modules
+from ..localize import locate_in_frame
 from ..overlay import Window, draw_status_bar, draw_tag_overlay, summarise
 from ..pose import estimate_tag_poses
 from ._common import (
@@ -121,20 +121,17 @@ def main(argv=None) -> int:
                     f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
                 )
 
-            # Without reference tags the chain stays in the camera frame.
-            # That's normal Layer-2 operation, not a special case: modules
-            # are still resolved, just relative to the camera.
-            pose_world_cam = camera_pose_from_reference_tags(tag_poses, tag_map)
-            target_frame = tag_map.frame_id if pose_world_cam is not None else frame_id
-            if pose_world_cam is not None:
-                print(f"  Kamerapose im {target_frame}-KS: {describe_pose(pose_world_cam)}")
-            for location in locate_modules(
+            # Ohne Referenz-Tags bleibt die Kette im Kamera-KS (siehe
+            # `locate_in_frame`).
+            pose_world_cam, located = locate_in_frame(
                 tag_poses,
                 tag_map,
-                pose_world_cam=pose_world_cam,
-                frame_id=target_frame,
+                camera_frame_id=frame_id,
                 max_reprojection_error_px=args.max_reproj_error_px,
-            ):
+            )
+            if pose_world_cam is not None:
+                print(f"  Kamerapose im {tag_map.frame_id}-KS: {describe_pose(pose_world_cam)}")
+            for location in located:
                 print(
                     f"  Modul {location.module_id:<10} [{location.frame_id}] "
                     f"{describe_pose(location.pose)}  conf={location.confidence}"

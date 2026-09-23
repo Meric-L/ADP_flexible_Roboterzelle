@@ -124,6 +124,35 @@ def locate_modules(
     return located
 
 
+def locate_in_frame(
+    tag_poses: Sequence[TagPose],
+    tag_map: TagMap,
+    *,
+    camera_frame_id: str,
+    max_reprojection_error_px: float = 3.0,
+) -> tuple[Pose | None, list[ModuleLocation]]:
+    """Ein Bild auswerten: Kamerapose aus Referenz-Tags, Bezugsrahmen, Module.
+
+    Sind Referenz-Tags im Bild, landen die Module im KS der Karte
+    (`tag_map.frame_id`), sonst bleiben sie im Kamera-KS `camera_frame_id`.
+    Das ist kein Sonderfall, sondern der normale Layer-2-Betrieb: Module
+    werden trotzdem aufgeloest, nur relativ zur Kamera.
+
+    Gibt `(T_world_cam oder None, verortete Module)` zurueck -- die
+    Kamerapose mit, weil die CLI sie anzeigt.
+    """
+    pose_world_cam = camera_pose_from_reference_tags(tag_poses, tag_map)
+    frame_id = tag_map.frame_id if pose_world_cam is not None else camera_frame_id
+    located = locate_modules(
+        tag_poses,
+        tag_map,
+        pose_world_cam=pose_world_cam,
+        frame_id=frame_id,
+        max_reprojection_error_px=max_reprojection_error_px,
+    )
+    return pose_world_cam, located
+
+
 def merge_samples(samples: Sequence[Sequence[ModuleLocation]]) -> list[ModuleLocation]:
     """Merge several samples of the same job into one result per module.
 
@@ -188,6 +217,7 @@ __all__ = [
     "camera_pose_from_reference_tags",
     "confidence_from",
     "expected_but_missing",
+    "locate_in_frame",
     "locate_modules",
     "merge_samples",
 ]

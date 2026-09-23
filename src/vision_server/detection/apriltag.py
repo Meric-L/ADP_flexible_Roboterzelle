@@ -174,11 +174,10 @@ class AprilTagDetectionSource(DetectionSource):
             f"Kein Kamerabild innerhalb von {self._config.capture_timeout_s:.1f} s",
         )
 
-    def _locate(self, image) -> list:
-        """Evaluate one image. Runs in the worker thread, never on the loop."""
+    def _tag_poses(self, image) -> list:
+        """Tag-Posen im Kamera-KS -- der einzige Schritt, der OpenCV braucht."""
         from tagloc import frames as frame_tools
         from tagloc.calibration import fit_to_resolution
-        from tagloc.localize import camera_pose_from_reference_tags, locate_modules
         from tagloc.pose import estimate_tag_poses
 
         calibration = fit_to_resolution(
@@ -186,23 +185,25 @@ class AprilTagDetectionSource(DetectionSource):
             frame_tools.image_size(image),
             allow_scaling=self._config.allow_resolution_mismatch,
         )
-
-        tag_poses = estimate_tag_poses(
+        return estimate_tag_poses(
             self._detector.detect(frame_tools.to_gray(image)),
             calibration,
             tag_map=self._tag_map,
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
-        pose_world_cam = camera_pose_from_reference_tags(tag_poses, self._tag_map)
-        frame_id = self._tag_map.frame_id if pose_world_cam is not None else self._config.frame_id
-        return locate_modules(
-            tag_poses,
+
+    def _locate(self, image) -> list:
+        """Evaluate one image. Runs in the worker thread, never on the loop."""
+        from tagloc.localize import locate_in_frame
+
+        _, located = locate_in_frame(
+            self._tag_poses(image),
             self._tag_map,
-            pose_world_cam=pose_world_cam,
-            frame_id=frame_id,
+            camera_frame_id=self._config.frame_id,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        return located
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
         """Capture several images, average the poses, and report the modules."""
