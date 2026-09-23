@@ -72,6 +72,13 @@ class AprilTagProfileConfig:
     #: wie es die CLI-Tools weiter nutzen). Deckt sich mit dem Abbruch-
     #: kriterium aus dem Testplan ("Abdeckung x und y ueber 70%").
     calibration_coverage_threshold: float | None = 0.7
+    #: Wenn gesetzt, speichert jede uebernommene Aufnahme zusaetzlich als
+    #: Bild hier ab -- zum Nachpruefen/Neu-Rechnen abseits vom Server,
+    #: dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to`
+    #: (`kalib_001.png`, `kalib_002.png`, ...). `None` (Standard) speichert
+    #: nichts; das sind reine Debug-Artefakte, kein Teil der Kalibrierung
+    #: selbst -- landen wie die Kalibrierdatei unter `data/` (`.gitignore`).
+    calibration_capture_dir: Path | None = None
 
 
 #: Unterstuetzte Werte fuer `CameraStreamConfig.backend`.

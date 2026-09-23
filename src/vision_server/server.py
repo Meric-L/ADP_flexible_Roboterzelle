@@ -190,6 +190,12 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         tag_map_path=REPO_ROOT / "config" / "tagmap.json",
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
+        # Debug-Artefakt: jede uebernommene interaktive Aufnahme landet
+        # zusaetzlich als PNG hier -- zum Nachpruefen/Neu-Rechnen abseits vom
+        # Server (2026-09-23, waehrend Kalibrierprobleme auf Pi 1 untersucht
+        # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
+        # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
+        calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
         **preset,
     )
 

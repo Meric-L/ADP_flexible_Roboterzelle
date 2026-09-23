@@ -1177,6 +1177,22 @@ wurde. Sobald die Kamera fest hängt, muss neu kalibriert werden, jetzt mit
 Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
 `warning` in Abschnitt 12.5). Der Code selbst ist pi-unabhängig.
 
+### 12.9 Debug: Aufnahmen als Bilder speichern
+
+Reines Diagnose-Werkzeug, kein Teil der Schnittstelle selbst — für die
+Untersuchung von Kalibrierproblemen live auf einem Pi, ohne dass Backend-Logs
+zur Verfügung stehen. `AprilTagProfileConfig.calibration_capture_dir`
+(Standard `None`, also aus) schreibt jede von `CaptureCalibrationSample`
+übernommene Aufnahme zusätzlich als PNG unter `data/calibration/<frame_id>_captures/
+kalib_001.png`, `kalib_002.png`, … ab — dieselbe Namenskonvention wie
+`tagloc.cli.calibrate --capture-to`. Der Zähler setzt bei jedem
+`StartCalibration` neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden)
+werden nicht mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
+Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz auf dem Pi knapp
+wird. Aktuell auf beiden Pis aktiv, während die Ursache dafür untersucht wird,
+dass Layer 1 im `calibration`-Stream keine Board-Ecken einzeichnet und dort
+der automatische Abschluss trotz ausreichender Abdeckung nicht ausgelöst hat.
+
 ---
 
 ## 13. Schnittstelle auf einen Blick
