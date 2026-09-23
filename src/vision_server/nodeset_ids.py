@@ -4,7 +4,7 @@ Part 1 (OPC 40100-1) traegt den Job- und Ergebnispfad. Part 2 (OPC 40100-2,
 "AMCM" fuer Asset Management and Condition Monitoring) beschreibt, woraus das
 System besteht und wie es ihm geht -- Kamera, Objektiv, Recheneinheit. Part 2
 bringt DI und Machinery als Abhaengigkeiten mit, siehe
-`src/OPCUA/nodesets/README.md` fuer die gepinnten Versionen und warum.
+`src/vision_server/nodesets/README.md` fuer die gepinnten Versionen und warum.
 """
 
 from enum import IntEnum
@@ -100,7 +100,3 @@ def node_id(identifier: int, namespace_index: int) -> ua.NodeId:
     weiteres Nodeset dazukommt. Genau das ist mit Part 2 passiert.
     """
     return ua.NodeId(identifier, namespace_index)
-
-
-#: Alter Name, bleibt fuer die vorhandenen Aufrufstellen.
-mv = node_id

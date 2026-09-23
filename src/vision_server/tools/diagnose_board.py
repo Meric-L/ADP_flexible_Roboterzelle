@@ -16,14 +16,13 @@ Bildausschnitt und ob das Board wirklich groß/scharf genug im Frame liegt.
 
 import argparse
 import asyncio
-import base64
 import sys
 
 import cv2
-import numpy as np
-from asyncua import Client, ua
+from asyncua import Client
 
 from tagloc.boards import BoardSpec, detect_board
+from vision_server.tools._client import add_connection_arguments, decode_frame, vision_node
 
 #: Dieselben Kombinationen, mit denen sich am Hand-Pi das reale Board
 #: (7x9, 22mm/Feld) gefunden hat -- als erster, naheliegender Satz.
@@ -40,8 +39,7 @@ def _parse_combo(value: str) -> tuple[int, int]:
 
 async def run(args: argparse.Namespace) -> int:
     async with Client(url=args.url) as client:
-        own_idx = await client.get_namespace_index(args.namespace)
-        vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
+        vision, own_idx = await vision_node(client, args.namespace, args.vision_system)
         frame_node = await vision.get_child(f"{own_idx}:LatestCameraFrame")
         mode_node = await vision.get_child(f"{own_idx}:CameraStreamMode")
 
@@ -57,7 +55,7 @@ async def run(args: argparse.Namespace) -> int:
         print("Kein Kamera-Frame verfuegbar -- laeuft der Livestream?", file=sys.stderr)
         return 1
 
-    image = cv2.imdecode(np.frombuffer(base64.b64decode(encoded), dtype=np.uint8), cv2.IMREAD_COLOR)
+    image = decode_frame(encoded)
     if image is None:
         print("Frame liess sich nicht dekodieren.", file=sys.stderr)
         return 1
@@ -88,9 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Probiert Board-Geometrien gegen ein Live-Kamerabild durch"
     )
-    parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
-    parser.add_argument("--namespace", default="http://launch-rm.de/vision")
-    parser.add_argument("--vision-system", default="VisionMachine")
+    add_connection_arguments(parser)
     parser.add_argument("--save-to", default="board_diagnose.jpg")
     parser.add_argument("--settle-s", type=float, default=1.0)
     parser.add_argument(

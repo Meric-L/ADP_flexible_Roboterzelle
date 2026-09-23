@@ -12,6 +12,8 @@ import sys
 
 from asyncua import Client, ua
 
+from vision_server.tools._client import add_connection_arguments, configure_logging, vision_node
+
 MACHINE_VISION_NAMESPACE_URI = "http://opcfoundation.org/UA/MachineVision"
 EVENT_TYPE_IDS = {
     1013: "JobStartedEvent",
@@ -66,8 +68,7 @@ async def run(args: argparse.Namespace) -> int:
     """Fuehrt einen Einzeljob aus und gibt das Ergebnis-Payload aus."""
     async with Client(url=args.url) as client:
         mv_idx = await client.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
-        own_idx = await client.get_namespace_index(args.namespace)
-        vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
+        vision, _ = await vision_node(client, args.namespace, args.vision_system)
         state_machine = await vision.get_child(f"{mv_idx}:VisionStateMachine")
         automatic = await state_machine.get_child(f"{mv_idx}:AutomaticModeStateMachine")
         start_node = await automatic.get_child(f"{mv_idx}:StartSingleJob")
@@ -116,16 +117,14 @@ async def run(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Liest die Kommandozeile und fuehrt den Test aus."""
     parser = argparse.ArgumentParser(description="Hello-World-Test gegen den Vision-Server")
-    parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
-    parser.add_argument("--namespace", default="http://launch-rm.de/vision")
-    parser.add_argument("--vision-system", default="VisionMachine")
+    add_connection_arguments(parser)
     parser.add_argument("--recipe-id", default="hello-world")
     parser.add_argument("--meas-id", default="")
     parser.add_argument("--parameter", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--log-level", default="WARNING")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.WARNING))
+    configure_logging(args.log_level)
     return asyncio.run(run(args))
 
 

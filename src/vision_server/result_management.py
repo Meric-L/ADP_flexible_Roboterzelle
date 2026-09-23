@@ -9,7 +9,8 @@ from asyncua.common.instantiate_util import instantiate
 from asyncua.common.node import Node
 
 from .address_space import VisionAddressSpace
-from .nodeset_ids import RESULT_TYPE, mv
+from .nodeset_ids import RESULT_TYPE, node_id
+from .ua_nodes import add_named_variable
 
 _log = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class ResultStore:
         result_node = (
             await instantiate(
                 space.results_folder,
-                space.server.get_node(mv(RESULT_TYPE, space.mv_idx)),
+                space.server.get_node(node_id(RESULT_TYPE, space.mv_idx)),
                 bname=f"{space.own_idx}:{RESULT_BROWSE_NAME}",
             )
         )[0]
@@ -83,11 +84,13 @@ class ResultStore:
             ua.AttributeIds.DataType,
             ua.DataValue(ua.Variant(ua.NodeId(ua.ObjectIds.String), ua.VariantType.NodeId)),
         )
-        json_node = await space.vision_system.add_variable(
-            ua.NodeId(f"{space.config.vision_system_name}.{RESULT_JSON_BROWSE_NAME}", space.own_idx),
-            ua.QualifiedName(RESULT_JSON_BROWSE_NAME, space.own_idx),
+        json_node = await add_named_variable(
+            space.vision_system,
+            space.config.vision_system_name,
+            RESULT_JSON_BROWSE_NAME,
+            space.own_idx,
             "",
-            varianttype=ua.VariantType.String,
+            ua.VariantType.String,
         )
         return cls(result_node, json_node, children)
 

@@ -12,7 +12,7 @@ from .nodeset_ids import (
     EVENT_JOB_STARTED,
     EVENT_READY,
     EVENT_RESULT_READY,
-    mv,
+    node_id,
 )
 
 _log = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ async def create_event_generators(space: VisionAddressSpace) -> VisionEvents:
     """
     async def generator(identifier: int) -> EventGenerator:
         return await space.server.get_event_generator(
-            mv(identifier, space.mv_idx), space.vision_system
+            node_id(identifier, space.mv_idx), space.vision_system
         )
 
     return VisionEvents(

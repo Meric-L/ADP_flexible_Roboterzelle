@@ -1,12 +1,11 @@
 """Strategie-Schnittstelle der Erkennungsstufe (Teil 4.5 des Plans)."""
 
-import asyncio
-import functools
 import logging
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
+
+from ..aio import SerialExecutor
 
 _log = logging.getLogger(__name__)
 
@@ -38,7 +37,6 @@ class DetectionRequest:
     meas_id: str | None = None
     part_id: str | None = None
     product_id: str | None = None
-    deadline: float | None = None
 
 
 class DetectionSource(ABC):
@@ -62,7 +60,7 @@ class DetectionSource(ABC):
     #: Identitaet der wirksamen Konfiguration, z. B. Kalibrierdatei plus mtime.
     configuration_id: str = ""
 
-    _executor: ThreadPoolExecutor | None = None
+    _executor: SerialExecutor | None = None
 
     @abstractmethod
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
@@ -83,23 +81,17 @@ class DetectionSource(ABC):
         """Blockierende Arbeit im eigenen Thread. **Jede** OpenCV-Operation hierdurch.
 
         Direkt auf dem Loop friert es Automaten, Events und die 1-Hz-Schleife
-        des Zellenservers ein. Eigener Ein-Worker-Pool statt `asyncio.to_thread`,
-        weil letzterer den Default-Executor teilt und Kamerazugriffe nicht
-        serialisiert. Ein haengender Worker blockiert dieses Profil dauerhaft —
-        eine Quelle braucht zusaetzlich eigene Aufnahme-Timeouts.
+        des Zellenservers ein. Ein Worker je Quelle (`SerialExecutor`), damit
+        Kamerazugriffe serialisiert bleiben. Ein haengender Worker blockiert
+        dieses Profil dauerhaft — eine Quelle braucht zusaetzlich eigene
+        Aufnahme-Timeouts.
         """
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool(), functools.partial(func, *args))
-
-    def _pool(self) -> ThreadPoolExecutor:
         if self._executor is None:
-            self._executor = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix=f"vision-{self.profile_id}"
-            )
-        return self._executor
+            self._executor = SerialExecutor(f"vision-{self.profile_id}")
+        return await self._executor.run(func, *args)
 
     async def shutdown_executor(self) -> None:
         """Faehrt den Worker-Thread herunter, falls einer existiert."""
         executor, self._executor = self._executor, None
         if executor is not None:
-            executor.shutdown(wait=False, cancel_futures=True)
+            executor.shutdown()

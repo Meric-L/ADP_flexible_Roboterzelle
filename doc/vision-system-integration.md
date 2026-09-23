@@ -447,7 +447,7 @@ async def _run_job(self, job_id, meas_id, part_id, recipe_id, product_id, parame
         ResultId=make_result_id(), IsPartial=False,
         IsSimulated=self.config.simulation_mode, ResultState=0,
         MeasId=meas_id, PartId=part_id,
-        InternalRecipeId=recipe_id, InternalConfigurationId=self.config.configuration_id,
+        InternalRecipeId=recipe_id, InternalConfigurationId=self.source.configuration_id,
         ProductId=product_id, JobId=job_id,
         CreationTime=datetime.now(timezone.utc),
         ProcessingTimes=ua.ProcessingTimesDataType(
