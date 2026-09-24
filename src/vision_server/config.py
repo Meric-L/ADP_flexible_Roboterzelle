@@ -1,0 +1,91 @@
+"""Konfiguration des Vision-Servers."""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
+
+#: Die Nodesets liegen im Paket, das sie braucht -- frueher lagen sie unter
+#: `src/OPCUA/`, weil das Verzeichnis aelter war als `vision_server/`
+#: (Altlast C5, erledigt).
+_NODESET_DIR = Path(__file__).resolve().parent / "nodesets"
+
+DEFAULT_NODESET_PATH = _NODESET_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
+
+#: Part 2 und seine Abhaengigkeiten, in Importreihenfolge: DI, dann Machinery,
+#: dann AMCM. Versionen sind gepinnt, siehe nodesets/README.md.
+DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
+    _NODESET_DIR / "Opc.Ua.Di.NodeSet2.xml",
+    _NODESET_DIR / "Opc.Ua.Machinery.NodeSet2.xml",
+    _NODESET_DIR / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
+)
+
+#: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
+#: dataclass-Default verboten ist und ein Mapping die frozen dataclass
+#: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
+DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
+    ("", "hello_world"),
+    ("hello-world", "hello_world"),
+    ("calibration", "calibration"),
+    ("apriltag", "apriltag"),
+)
+
+
+@dataclass(frozen=True)
+class VisionServerConfig:
+    """Alle Betriebsparameter einer Vision-Server-Instanz."""
+
+    endpoint: str = "opc.tcp://0.0.0.0:4841/vision/machine/"
+    application_uri: str = "urn:launch-rm:vision:machine"
+    server_name: str = "Vision Machine"
+    namespace_uri: str = "http://launch-rm.de/vision"
+    vision_system_name: str = "VisionMachine"
+    vision_system_id: str = "vision-hello-01"
+    configuration_id: str = "hello-world-config"
+    detection_latency: float = 0.25
+    nodeset_path: Path = DEFAULT_NODESET_PATH
+    recipe_profiles: tuple[tuple[str, str], ...] = DEFAULT_RECIPE_PROFILES
+    max_id_length: int = 128
+    max_parameters: int = 16
+    frame_id: str = "world"
+    #: Must exceed the longest job runtime. The AprilTag job is decisive:
+    #: `samples_per_job` captures, each waiting up to `capture_timeout_s`,
+    #: plus detection and margin. War 20.0 -- live auf pi1 gemessen (A/B-Test
+    #: 2026-09-24, ohne Livestream/Overlay-Konkurrenz, `subpixel_corner_
+    #: refinement=True` auf vollen 12 MP): 1 von 4 Jobs riss trotzdem den
+    #: 20s-Timeout (echter `asyncio.wait_for`-Timeout laut job.py, kein
+    #: "kein Tag im Bild"). 3 Samples je bis zu `capture_timeout_s` Wartezeit
+    #: plus Detektionszeit (py-spy: ~46% des Profils in `_locate -> detect`)
+    #: plus `warmup_s` liessen dem alten Budget zu wenig Puffer. Zusaetzliche
+    #: Sicherheitsmarge, bis `apriltag_quad_decimate` (siehe `profiles.py`)
+    #: die Detektionszeit selbst gesenkt hat -- danach ggf. wieder senken.
+    job_timeout: float = 30.0
+    #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
+    #: Zustandswechsel abgeschlossen sein muss.
+    stop_timeout: float = 5.0
+    #: Pause zwischen zwei Durchlaeufen im Dauerbetrieb. Ohne Pause liefe die
+    #: Erkennung so schnell wie die Kamera Bilder gibt und belegte den Pi
+    #: vollstaendig -- der Dauerbetrieb soll beobachten, nicht verdraengen.
+    continuous_interval_s: float = 1.0
+    apriltag: AprilTagProfileConfig | None = None
+    #: `None` = Part 2 nicht laden. Kostet gemessen ~13 MB RSS und ~1,6 s
+    #: Startzeit; fuer den Job-Pfad ist es nicht noetig.
+    assets: AssetConfig | None = None
+    amcm_nodeset_paths: tuple[Path, ...] = DEFAULT_AMCM_NODESET_PATHS
+    #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
+    #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `vision_server/server.py` sie.
+    camera_stream: CameraStreamConfig | None = None
+
+    @property
+    def known_recipe_ids(self) -> frozenset[str]:
+        """Zugelassene RecipeIds; Property, damit job.py unveraendert bleibt."""
+        return frozenset(recipe for recipe, _ in self.recipe_profiles)
+
+    @property
+    def detection_profiles(self) -> frozenset[str]:
+        """Alle referenzierten Profile."""
+        return frozenset(profile for _, profile in self.recipe_profiles)
+
+    def profile_for(self, recipe_id: str | None) -> str:
+        """Profil zur RecipeId. Nur nach erfolgreicher Zulassung aufrufen."""
+        return dict(self.recipe_profiles)[recipe_id or ""]

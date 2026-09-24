@@ -5,6 +5,7 @@ hardware/
 *.bat
 *.sh
 .venv/
+.venv*/
 __pycache__/
 *.pyc
 *.log
@@ -13,3 +14,9 @@ __pycache__/
 *.jpg
 
 
+
+# Claude-Code-Konfiguration: Regeln, Skill und Hooks gehoeren ins Repo,
+# damit sie jedes Teammitglied nach dem Clonen hat. Persoenliche Overrides
+# und Worktrees bleiben draussen.
+.claude/settings.local.json
+.claude/worktrees/

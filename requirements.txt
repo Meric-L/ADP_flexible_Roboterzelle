@@ -1,4 +1,18 @@
+# Bildverarbeitung und Marker-Erkennung. `contrib`, weil `cv2.aruco` dort liegt.
 opencv-contrib-python>=4.8.0
-pupil-apriltags
 numpy
+# Optionaler zweiter Detektor-Backend (tagloc.detector, backend="pupil").
+# Nur noetig fuer Vergleichsmessungen gegen cv2.aruco.
+pupil-apriltags
 asyncua>=1.1.5
+# mDNS-Ankuendigung des Servers (`src/ua_mdns.py`). Optional zur Laufzeit: ohne
+# das Paket startet der Server, kuendigt sich aber nicht an.
+zeroconf>=0.131
+# picamera2 (Decken-Pi) fehlt hier bewusst: kommt per apt
+# (sudo apt install -y python3-picamera2), nicht zuverlaessig per pip (siehe
+# doc/altlasten.md D3, doc/apriltag-e2e-test.md). Braucht deshalb eine venv
+# mit --system-site-packages. pyrealsense2 (Hand-Pi) ebenso NICHT
+# aufgenommen: Intel liefert auf PyPI i. d. R. keine ARM/aarch64-Wheels fuer
+# den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,
+# librealsense muss von Hand bzw. per vorgebautem Paket installiert werden.
+# Vor dem Rollout auf dem Hand-Pi verifizieren.
