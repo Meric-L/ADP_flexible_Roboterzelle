@@ -126,25 +126,24 @@ class QuadDecimateSwitchTest(unittest.TestCase):
 
 
 class SubpixelRefinementSwitchTest(unittest.TestCase):
-    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- kurzzeitiger Diagnose-Schalter
-    fuer den Reprojektionsfehler-vs-Aufloesung-Verdacht (Log-Zeile
-    "verworfen: Reprojektionsfehler" in tagloc/pose.py live mitlesen).
-    NICHT dauerhaft aus, siehe profiles.py/server.py-Kommentare."""
+    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- Default aus (spart ~46% CPU
+    im Job-Thread, siehe profiles.py). Env-Var bleibt als Schalter fuer
+    Layer 2/Kalibrierung."""
 
-    def test_defaults_to_enabled(self):
-        self.assertTrue(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
+    def test_defaults_to_disabled(self):
+        self.assertFalse(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
 
-    def test_can_be_disabled_via_env_var(self):
+    def test_can_be_enabled_via_env_var(self):
         with mock.patch.dict(
             os.environ,
             {
                 "VISION_FRAME_ID": "cam_ceiling",
                 "VISION_CAMERA_BACKEND": "picamera2",
-                "VISION_SUBPIXEL_CORNER_REFINEMENT": "0",
+                "VISION_SUBPIXEL_CORNER_REFINEMENT": "1",
             },
         ):
             config = vision_config()
-        self.assertFalse(config.apriltag.subpixel_corner_refinement)
+        self.assertTrue(config.apriltag.subpixel_corner_refinement)
 
 
 if __name__ == "__main__":

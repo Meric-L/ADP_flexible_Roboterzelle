@@ -154,28 +154,16 @@ Ursprünglicher Plan — wurde durch Team-Absprache vom 22.09.2026 überholt:
   das Overlay einen Tag nicht an, den der Job trotzdem findet — nie umgekehrt.
 - Welcher Pi steckt in Pi 1 (`/proc/device-tree/model`)? Ein Pi 4 schafft
   12 MP bei 10 fps im ISP; ein Pi 3 nicht sicher.
-- **A/B-Test 2026-09-24 (Stream aus vs. an):** getrennte Detektor-Instanzen
-  (Commit 3d91ee1) und `VISION_DISABLE_STREAM=1` (Commit 85e06ff) bringen
-  Job-Erfolg von 0/10 auf 3/4 -- klare Verbesserung, aber kein vollstaendiger
-  Fix. Ein Job scheiterte auch ganz ohne Stream-Konkurrenz mit echtem
-  20s-Timeout (`asyncio.wait_for` in job.py, nicht "kein Tag im Bild"). py-spy
-  zeigt `_locate -> detect` allein bei 46,4 % des Profils
-  (`subpixel_corner_refinement=True` auf vollen 12 MP). Vermutete Ursache:
-  `samples_per_job=3` × (bis zu `capture_timeout_s=5.0` s Wartezeit +
-  Detektionszeit) + `warmup_s=2.0` s laesst dem 20s-Budget zu wenig Puffer,
-  auch ohne Overlay.
-- **Gegenmassnahmen (2026-09-24), noch nicht auf dem Pi validiert:**
-  - `job_timeout` global von 20.0 auf 30.0 s angehoben (`config.py`) --
-    reine Sicherheitsmarge, senkt die Last nicht.
-  - Neuer Tuning-Parameter `AprilTagProfileConfig.apriltag_quad_decimate`
-    (Default `0.0`, ueber `VISION_APRILTAG_QUAD_DECIMATE` testbar) fuer
-    `cv2.aruco.DetectorParameters.aprilTagQuadDecimate` -- laesst die
-    AprilTag-Verfeinerungssuche auf einer verkleinerten Kopie laufen statt
-    auf dem vollen Frame, wirkt nur zusammen mit `subpixel_corner_refinement`.
-    Standard-AprilTag-Parameter, senkt typischerweise Rechenzeit deutlich,
-    kostet aber Reichweite/Robustheit bei sehr kleinen/entfernten Tags --
-    **noch mit echten Tag-Distanzen und py-spy auf pi1 messen**, bevor ein
-    produktiver Default (Literatur-Richtwert 1,5-2,0) gesetzt wird.
+- **Subpixel-Verfeinerung final aus (2026-09-24):** live auf pi1 bestaetigt,
+  dass Layer 1 Tags auch ohne `subpixel_corner_refinement` zuverlaessig findet
+  (kein Reprojektionsfehler-Ausschluss, siehe Abschnitt unten) -- Default
+  jetzt `False`, spart ~46 % CPU im Job-Thread. `job_timeout=30.0` und
+  `apriltag_quad_decimate` (beide `config.py`/`profiles.py`) bleiben als
+  Sicherheitsmarge bzw. Tuning-Hebel bestehen, werden aktuell aber nicht
+  gebraucht.
+- **Offene Idee, nicht umgesetzt:** `subpixel_corner_refinement` gezielt fuer
+  eine genauere Lokalisierung auf einem zweiten Erkennungs-Layer oder fuer
+  die Kalibrierung nutzen.
 
 ### Subpixel-Nachbearbeitung der Kalibrierbilder (nicht Teil der aktuellen Umsetzung)
 
@@ -217,52 +205,21 @@ AprilTag-Jobs den 20-Sekunden-Timeout reißen (DETECTION_FAILED). Die Job-Erkenn
 (`AprilTagDetectionSource`) und Kalibrierung bleiben unverändert auf voller Auflösung
 und Genauigkeit.
 
-### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit) — zwei Regressionsrunden
+### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit)
 
-Ein neues Konfigurationsfeld `subpixel_corner_refinement` wurde zu `AprilTagProfileConfig`
-hinzugefügt (`src/vision_server/profiles.py`), das `cv2.aruco.CORNER_REFINE_APRILTAG`
-in `src/tagloc/detector.py` (`ArucoTagDetector`) steuert. Die Funktionalität bleibt im
-Code erhalten (nur abschaltbar), wird nicht gelöscht. Zwei Fehlschläge, bevor es passte:
+Neues Feld `AprilTagProfileConfig.subpixel_corner_refinement` (`profiles.py`) steuert
+`cv2.aruco.CORNER_REFINE_APRILTAG` (`ArucoTagDetector`, `detector.py`) — bleibt im Code
+erhalten, nur abschaltbar. `runner._build_annotator` baut fürs Livestream-Overlay einen
+eigenen Detektor mit der Verfeinerung fest aus; Job und Stream teilen sich seitdem keine
+Detektor-Instanz mehr (verhindert gegenseitige CPU-Konkurrenz bei gleichzeitigem
+`detect()`).
 
-**Runde 1 — Default `False` (Begründung: vermutete CPU-Last auf pi1).** Noch am selben
-Tag zurückgenommen: mit `subpixel_corner_refinement=False` fand Layer 1 (Deckenkamera,
-~2 m Distanz, „Module suchen" im Frontend) **live auf pi1 gar keine Tags mehr**. Die
-Verfeinerung entscheidet bei kleinen/entfernten Tags nicht nur über Pose-Genauigkeit,
-sondern teilweise darüber, ob die ID überhaupt dekodierbar ist — das war exakt der
-Fall, für den `CORNER_REFINE_APRILTAG` ursprünglich eingebaut wurde (siehe historischer
-Kommentar in `detector.py`: „exactly the Layer-1 case"). Die tatsächliche CPU-Notlage
-(Job-Timeouts durch Overlay-Läufe > 8 s) kam vom vollen Sensor-Frame im
-Livestream-Overlay (siehe oben), nicht von dieser Verfeinerung → Default zurück auf `True`.
-
-**Runde 2 — Default `True`, aber Job und Stream teilten sich EINE Detektor-Instanz.**
-Job-Erkennungs-Pfad (`AprilTagDetectionSource._locate`, volle Auflösung) und
-Livestream-Overlay (`AprilTagStreamAnnotator.annotate`, verkleinerte Auflösung, siehe
-oben) nutzten bis dahin denselben `ArucoTagDetector` aus `AprilTagDetectionSource.open()`
-(siehe `runner.py`, `_build_annotator`, das den Detektor per `source._detector`
-weiterreichte). Mit `subpixel_corner_refinement=True` liefen dadurch **beide** Pfade mit
-aktivem `CORNER_REFINE_APRILTAG` — und liefen sich gegenseitig die CPU weg: py-spy-Dump
-auf pi1 zeigte den Job-Thread (`vision-apriltag_0`) und den Overlay-Thread gleichzeitig
-in `detector.py:136 detect()`. Job-Timeouts (`DETECTION_FAILED` nach 20 s) traten erneut
-auf. py-spy-Top-Frames (45 s, deckte einen fehlgeschlagenen Job ab): 37,4 %
-`_locate → detect` (Job, volle Auflösung), 21,0 % `_read_frames → make_array`
-(Kamera-Framegrab, unabhängig von dieser Änderung), 18,6 % `annotate → detect`
-(Overlay, verkleinerte Auflösung), 10,6 % `annotate → _resize_for_stream`.
-
-**Fix: getrennte Detektor-Instanzen.** `runner._build_annotator` baut jetzt einen
-eigenen Stream-Detektor (`build_detector(..., subpixel_corner_refinement=False)`),
-unabhängig vom Konfigurationswert für den Job-Pfad. Der Job behält seine eigene
-Instanz mit `subpixel_corner_refinement` aus `AprilTagProfileConfig` (aktuell `True`,
-Layer 1 braucht das). Der Stream braucht die Verfeinerung nicht — kleineres Demo-Bild,
-keine Pose-Genauigkeit produktiv im Einsatz. Job und Stream können sich damit nicht
-mehr gegenseitig CPU wegnehmen, indem beide gleichzeitig die teure Verfeinerung laufen
-lassen.
-
-**Aktueller Stand:** `AprilTagProfileConfig.subpixel_corner_refinement` (Default
-`True`) steuert **nur noch den Job-Pfad**. Der Livestream-Detektor hat die
-Verfeinerung immer aus, fest im Code (`runner._build_annotator`), nicht konfigurierbar
-— dafür bestand kein Bedarf. Die Konstruktor-Defaults von `ArucoTagDetector`/
-`build_detector` selbst bleiben bewusst konservativ `False`, Aufrufer entscheiden
-explizit.
+**Ergebnis nach mehreren Live-Tests auf pi1:** Default jetzt `False` — Layer 1 findet
+Tags auch ohne die Verfeinerung zuverlässig (kein Reprojektionsfehler-Ausschluss in
+`estimate_tag_poses`), spart dabei ~46 % CPU im Job-Thread. Konstruktor-Defaults von
+`ArucoTagDetector`/`build_detector` bleiben unabhängig davon konservativ `False`.
+Offene Idee (nicht umgesetzt): die Verfeinerung gezielt für einen zweiten
+Erkennungs-Layer oder die Kalibrierung nutzen.
 
 ### Ursprüngliche Implementierungsdetails (überholt)
 

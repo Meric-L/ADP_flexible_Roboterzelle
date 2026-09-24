@@ -1,13 +1,12 @@
 """Tests fuer `tagloc.detector`s Subpixel-Eckenverfeinerung als Konfig-Flag.
 
-`cv2.aruco.CORNER_REFINE_APRILTAG` entscheidet bei kleinen/entfernten Tags
-teilweise, OB die ID ueberhaupt dekodierbar ist, nicht nur wie genau die
-Pose ist -- ohne sie fand Layer 1 (Deckenkamera) live auf pi1 keine Tags
-mehr. `AprilTagProfileConfig.subpixel_corner_refinement` (Default `True`)
-steuert das projektweit; `ArucoTagDetector`/`build_detector` selbst bleiben
-auf Konstruktor-Ebene bewusst konservativ (Default `False`), Aufrufer
-entscheiden explizit. Skips instead of failing without OpenCV, gleiches
-Muster wie `test_tag_pipeline.py`.
+`cv2.aruco.CORNER_REFINE_APRILTAG` kostet messbar CPU (py-spy auf pi1: ~46%
+des Profils in `_locate -> detect`), ist fuer Dekodierbarkeit aber nicht
+noetig. `AprilTagProfileConfig.subpixel_corner_refinement` (Default
+`False`) steuert das projektweit; `ArucoTagDetector`/`build_detector`
+selbst bleiben auf Konstruktor-Ebene ebenfalls konservativ (Default
+`False`). Skips instead of failing without OpenCV, gleiches Muster wie
+`test_tag_pipeline.py`.
 """
 
 import unittest
@@ -102,11 +101,9 @@ class AprilTagQuadDecimateTest(unittest.TestCase):
 class AprilTagProfileConfigDefaultTest(unittest.TestCase):
     """Braucht kein `cv2` -- reiner Dataclass-Default-Check."""
 
-    def test_subpixel_corner_refinement_defaults_to_enabled(self):
-        # Regressionstest: mit `False` fand Layer 1 (Deckenkamera, ~2 m
-        # Distanz) live auf pi1 keine Tags mehr, siehe Kommentar in
-        # profiles.py.
-        self.assertTrue(AprilTagProfileConfig().subpixel_corner_refinement)
+    def test_subpixel_corner_refinement_defaults_to_disabled(self):
+        # Spart ~46% CPU im Job-Erkennungs-Thread, siehe profiles.py.
+        self.assertFalse(AprilTagProfileConfig().subpixel_corner_refinement)
 
     def test_apriltag_quad_decimate_defaults_to_unchanged_behaviour(self):
         # Noch nicht validiert -- Default darf das Verhalten nicht aendern,
