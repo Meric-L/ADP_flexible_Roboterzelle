@@ -133,8 +133,9 @@ Ursprünglicher Plan — wurde durch Team-Absprache vom 22.09.2026 überholt:
    (Datei: `src/vision_server/stream_overlay.py`)
 
 2. **Subpixel-Eckenverfeinerung konfigurierbar machen:**
-   - Neues Feld `subpixel_corner_refinement: bool = False` in `AprilTagProfileConfig`
-     (`src/vision_server/profiles.py`)
+   - Neues Feld `subpixel_corner_refinement: bool = True` in `AprilTagProfileConfig`
+     (`src/vision_server/profiles.py`) — siehe „Abweichungen vom Plan" unten: Default
+     war kurzzeitig `False`, brach Layer 1, noch am selben Tag zurueckgenommen.
    - Detektor-Logik in `src/tagloc/detector.py` (`ArucoTagDetector`) anpassen
 
 3. **Tests und lokale Verifizierung:**
@@ -194,15 +195,31 @@ AprilTag-Jobs den 20-Sekunden-Timeout reißen (DETECTION_FAILED). Die Job-Erkenn
 (`AprilTagDetectionSource`) und Kalibrierung bleiben unverändert auf voller Auflösung
 und Genauigkeit.
 
-### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit)
+### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit) — Default nach Regression korrigiert
 
-Ein neues Konfigurationsfeld `subpixel_corner_refinement` wird zu `AprilTagProfileConfig`
-hinzugefügt (`src/vision_server/profiles.py`). Default: `False` (bisher war die
-Subpixel-Verfeinerung `cv2.aruco.CORNER_REFINE_APRILTAG` in
-`src/tagloc/detector.py` (`ArucoTagDetector`) immer aktiviert). Die Verfeinerung
-betrifft **sowohl** den Job-Erkennungs-Pfad als auch das Livestream-Overlay, da beide
-denselben Detektor teilen. **Grund:** CPU-Last auf pi1. Die Funktionalität bleibt im
-Code erhalten (nur abschaltbar), wird nicht gelöscht.
+Ein neues Konfigurationsfeld `subpixel_corner_refinement` wurde zu `AprilTagProfileConfig`
+hinzugefügt (`src/vision_server/profiles.py`), das `cv2.aruco.CORNER_REFINE_APRILTAG`
+in `src/tagloc/detector.py` (`ArucoTagDetector`) steuert. Die Verfeinerung betrifft
+**sowohl** den Job-Erkennungs-Pfad als auch das Livestream-Overlay, da beide
+denselben Detektor teilen. Die Funktionalität bleibt im Code erhalten (nur
+abschaltbar), wird nicht gelöscht.
+
+**Erster Default war `False`** (Begründung: vermutete CPU-Last auf pi1) — das war
+ein Fehlschluss und wurde **noch am selben Tag zurückgenommen**: mit
+`subpixel_corner_refinement=False` fand Layer 1 (Deckenkamera, ~2 m Distanz, „Module
+suchen" im Frontend) **live auf pi1 gar keine Tags mehr**. Die Verfeinerung
+entscheidet bei kleinen/entfernten Tags nicht nur über Pose-Genauigkeit, sondern
+teilweise darüber, ob die ID überhaupt dekodierbar ist — das war exakt der Fall, für
+den `CORNER_REFINE_APRILTAG` ursprünglich eingebaut wurde (siehe historischer
+Kommentar in `detector.py`: „exactly the Layer-1 case"). Die tatsächliche
+CPU-Notlage (Job-Timeouts durch Overlay-Läufe > 8 s) kam vom vollen Sensor-Frame im
+Livestream-Overlay (siehe oben), nicht von dieser Verfeinerung.
+
+**Aktueller Default: `True`.** Der Konstruktor-Default von `ArucoTagDetector`/
+`build_detector` selbst bleibt bewusst konservativ `False` — nur
+`AprilTagProfileConfig` (und damit jedes reale Profil, `cam_ceiling` wie
+`cam_flange`) setzt es projektweit auf `True`. Das Feld bleibt als Schalter
+bestehen, falls sich die Verfeinerung je als zu teuer herausstellt.
 
 ### Ursprüngliche Implementierungsdetails (überholt)
 
@@ -212,10 +229,12 @@ Die folgenden Punkte beschreiben den ursprünglichen Ansatz und wurden nicht umg
 - Preset `cam_ceiling` mit `preview_resolution` (960×720)
 - ISP-seitige Skalierung für den Livestream
 
-**Aktuelle Architektur:** Der `lores`-Stream bleibt technisch im Code vorhanden (siehe
-`src/vision_server/camera.py`), wird aber für `cam_ceiling` nicht mehr aktiviert
-(`preview_resolution` bleibt `None`). Der Stream bleibt dort implementiert für andere
-Anwendungsfälle oder zukünftige Optimierungen.
+**Aktuelle Architektur (korrigiert):** Der `lores`-Stream existiert weiterhin und ist
+für `cam_ceiling` aktiv (`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["preview_resolution"]
+= (960, 720)` in `src/vision_server/server.py`) — genutzt aber nur vom
+`"calibration"`-Modus des Livestreams (`camera_stream.py._encoded` waehlt `frame.preview`
+nur dort). Die Modi `"apriltag"`/`"off"` gehen weiterhin vom vollen `frame.image` aus;
+`"apriltag"` verkleinert seitdem selbst per Software in `annotate()` (siehe oben).
 
 ## Nach Abschluss
 

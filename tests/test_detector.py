@@ -1,10 +1,12 @@
 """Tests fuer `tagloc.detector`s Subpixel-Eckenverfeinerung als Konfig-Flag.
 
-`cv2.aruco.CORNER_REFINE_APRILTAG` verbessert die Pose-Qualitaet auf Distanz,
-kostet aber laut OpenCV-Doku merklich mehr Rechenzeit -- auf pi1 mit
-Full-Res-Overlay mitverantwortlich fuer Job-Timeouts (siehe
-`AprilTagProfileConfig.subpixel_corner_refinement`). Default jetzt aus, per
-Flag wieder einschaltbar. Skips instead of failing without OpenCV, gleiches
+`cv2.aruco.CORNER_REFINE_APRILTAG` entscheidet bei kleinen/entfernten Tags
+teilweise, OB die ID ueberhaupt dekodierbar ist, nicht nur wie genau die
+Pose ist -- ohne sie fand Layer 1 (Deckenkamera) live auf pi1 keine Tags
+mehr. `AprilTagProfileConfig.subpixel_corner_refinement` (Default `True`)
+steuert das projektweit; `ArucoTagDetector`/`build_detector` selbst bleiben
+auf Konstruktor-Ebene bewusst konservativ (Default `False`), Aufrufer
+entscheiden explizit. Skips instead of failing without OpenCV, gleiches
 Muster wie `test_tag_pipeline.py`.
 """
 
@@ -19,6 +21,8 @@ except Exception:  # OpenCV nicht installiert
 
 if cv2 is not None:
     from tagloc.detector import ArucoTagDetector, build_detector
+
+from vision_server.profiles import AprilTagProfileConfig
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
@@ -54,6 +58,16 @@ class SubpixelCornerRefinementTest(unittest.TestCase):
             detector._parameters.cornerRefinementMethod,
             cv2.aruco.CORNER_REFINE_APRILTAG,
         )
+
+
+class AprilTagProfileConfigDefaultTest(unittest.TestCase):
+    """Braucht kein `cv2` -- reiner Dataclass-Default-Check."""
+
+    def test_subpixel_corner_refinement_defaults_to_enabled(self):
+        # Regressionstest: mit `False` fand Layer 1 (Deckenkamera, ~2 m
+        # Distanz) live auf pi1 keine Tags mehr, siehe Kommentar in
+        # profiles.py.
+        self.assertTrue(AprilTagProfileConfig().subpixel_corner_refinement)
 
 
 if __name__ == "__main__":
