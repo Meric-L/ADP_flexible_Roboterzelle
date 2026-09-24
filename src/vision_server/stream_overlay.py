@@ -147,13 +147,11 @@ class AprilTagStreamAnnotator:
                 summarise,
             )
 
-            canvas = image.copy()
-            size = frame_tools.image_size(canvas)
-            calibration = self._calibration_for(size)
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
 
             if mode == "calibration":
+                canvas = image.copy()
                 if self._detection_max_width is not None:
                     from .camera_stream import _resize_for_stream
 
@@ -194,6 +192,26 @@ class AprilTagStreamAnnotator:
                     )
                 return canvas
 
+            # Leinwand zuerst bauen -- Erkennung und Zeichnen teilen sich ab
+            # jetzt dieselbe (kleinere) Aufloesung, genau wie der
+            # Kalibrier-Zweig oben. Frueher lief die Erkennung zusaetzlich
+            # auf dem vollen Sensor-Frame mit anschliessendem manuellen
+            # Ecken-Rescale (sx/sy) -- auf pi1 kostete das laut py-spy ~102%
+            # einer Core und liess AprilTag-Jobs den 20s-Timeout reissen.
+            # Demo-Livestream erkennt deshalb auf der Uebertragungsaufloesung;
+            # Job-Erkennung (AprilTagDetectionSource._locate) und Kalibrierung
+            # bleiben unveraendert auf voller Aufloesung. Im Zweifel zeigt das
+            # Overlay einen Tag nicht an, den der Job trotzdem findet -- nie
+            # umgekehrt.
+            if self._detection_max_width is not None:
+                from .camera_stream import _resize_for_stream
+
+                canvas = _resize_for_stream(image, self._detection_max_width)
+            else:
+                canvas = image.copy()
+            output_size = frame_tools.image_size(canvas)
+            calibration = self._calibration_for(output_size)
+
             if due:
                 from tagloc.pose import estimate_tag_poses
 
@@ -205,6 +223,7 @@ class AprilTagStreamAnnotator:
                     max_reprojection_error_px=self._config.max_reproj_error_px,
                 )
                 self._last_run = now
+
             draw_tag_overlay(
                 canvas,
                 self._last_tag_poses,

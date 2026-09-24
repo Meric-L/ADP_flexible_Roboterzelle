@@ -205,7 +205,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     latest_camera_frame: Node | None = None
     camera_stream_mode: Node | None = None
     camera_stream_http_port: Node | None = None
-    if config.camera_stream is not None:
+    if config.camera_stream is not None and config.camera_stream.stream_enabled:
         # Additive Knoten, nicht Teil des 40100-Nodesets: OPC 40100 kennt
         # keinen Livestream. Nur der Server schreibt hierhin, daher kein
         # `set_writable()`.

@@ -1,11 +1,12 @@
 """Tests fuer `tagloc.overlay`s Skalierung von Strichstaerke/Schriftgroesse.
 
-"apriltag"/"off" im Livestream zeichnen seit 2026-09-22 auf dem vollen Frame
-(bis 4056 px Breite an der Deckenkamera) statt auf einem stets ~640 px
-breiten Vorschaubild. Ohne Skalierung blieb ein 2-px-Strich bei genauer
-Betrachtung/Zoom praktisch unsichtbar. Diese Tests laufen mit echtem `cv2`
-auf echten Arrays (kein Mock der Zeichenfunktionen), gleiches Muster wie
-`test_stream_overlay.py`.
+Das Livestream-Overlay zeichnet nicht mehr auf einer festen Breite: "off"
+zeigt weiterhin den vollen Frame (bis 4056 px an der Deckenkamera), "apriltag"
+erkennt und zeichnet seit der Umstellung auf Software-Downscale (siehe
+`stream_overlay.py.annotate`) auf `detection_max_width` (typischerweise
+~960 px). Ohne Skalierung blieb ein 2-px-Strich bei genauer Betrachtung/Zoom
+praktisch unsichtbar. Diese Tests laufen mit echtem `cv2` auf echten Arrays
+(kein Mock der Zeichenfunktionen), gleiches Muster wie `test_stream_overlay.py`.
 """
 
 import unittest

@@ -102,7 +102,12 @@ class SyntheticTagSceneTest(unittest.TestCase):
         cls.calibration = synthetic_calibration((1600, 1200), focal_px=1600.0)
         cls.placements = default_tag_layout()
         cls.world_poses = {item.tag_id: item.pose_world_tag for item in cls.placements}
-        cls.detector = build_detector("tag36h11", "aruco")
+        # Subpixel-Verfeinerung ausdruecklich an: dieser Test prueft die
+        # erreichbare Genauigkeit der Kette gegen die 2mm/0.5deg-Toleranz
+        # aus apriltag-lokalisierung.md Abschnitt 7 -- das ist unabhaengig
+        # vom Produktions-Default auf pi1 (dort seit dem CPU-Fix aus, siehe
+        # AprilTagProfileConfig.subpixel_corner_refinement).
+        cls.detector = build_detector("tag36h11", "aruco", subpixel_corner_refinement=True)
         cls.views = orbit_views(VIEW_COUNT)
         # Render once, evaluate four times -- rendering is the expensive part.
         cls.scenes = [
@@ -170,6 +175,24 @@ class SyntheticTagSceneTest(unittest.TestCase):
                     # would be a poor choice for this test.
                     self.assertFalse(tag_pose.is_ambiguous)
                     self.assertLess(tag_pose.reprojection_error_px, 1.0)
+
+    def test_batch_pose_estimation_matches_individual_tags(self) -> None:
+        """Gemeinsames Entzerren darf weder Pose noch Qualitätswerte ändern."""
+        image, _ = self.scenes[0]
+        observations = self.detector.detect(to_gray(image))
+        tag_map = self._tag_map()
+        batch = estimate_tag_poses(observations, self.calibration, tag_map=tag_map)
+        self.assertEqual([pose.tag_id for pose in batch], [obs.tag_id for obs in observations])
+        for observation, batched in zip(observations, batch):
+            single = estimate_tag_pose(
+                observation, tag_map.size_for(observation.tag_id, 0.05), self.calibration
+            )
+            with self.subTest(tag=observation.tag_id):
+                np.testing.assert_allclose(batched.pose_cam_tag, single.pose_cam_tag, atol=1e-10)
+                self.assertAlmostEqual(
+                    batched.reprojection_error_px, single.reprojection_error_px, places=9
+                )
+                self.assertAlmostEqual(batched.ambiguity_ratio, single.ambiguity_ratio, places=9)
 
     def test_place_tags_positions_every_tag_relative_to_the_anchor(self) -> None:
         tag_map = self._tag_map()

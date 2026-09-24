@@ -52,11 +52,10 @@ def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
     import cv2
 
     points = np.asarray(corners, dtype=np.float64).reshape(-1, 1, 2)
+    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     undistorted = cv2.undistortPoints(
-        points,
-        np.asarray(calibration.camera_matrix, dtype=np.float64),
-        np.asarray(calibration.distortion, dtype=np.float64),
-        P=np.asarray(calibration.camera_matrix, dtype=np.float64),
+        points, camera_matrix, np.asarray(calibration.distortion, dtype=np.float64),
+        P=camera_matrix,
     )
     return undistorted.reshape(-1, 2)
 
@@ -72,16 +71,15 @@ def _reprojection_error_px(object_points, image_points, rvec, tvec, camera_matri
     return float(np.sqrt(np.mean(np.sum(difference**2, axis=1))))
 
 
-def estimate_tag_pose(
-    observation: TagObservation, size_m: float, calibration: CameraCalibration
+def _solve_tag_pose(
+    observation: TagObservation,
+    object_points: np.ndarray,
+    image_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    no_distortion: np.ndarray,
 ) -> TagPose:
-    """Estimate `T_cam_tag` for a single tag."""
+    """Löst eine Tag-Pose aus bereits vorbereiteten Punkten und Kameradaten."""
     import cv2
-
-    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
-    object_points = tag_object_points(size_m)
-    image_points = undistort_corners(observation.corners, calibration)
-    no_distortion = np.zeros(5, dtype=np.float64)
 
     flags = getattr(cv2, "SOLVEPNP_IPPE_SQUARE", None)
     if flags is not None and hasattr(cv2, "solvePnPGeneric"):
@@ -124,6 +122,19 @@ def estimate_tag_pose(
     )
 
 
+def estimate_tag_pose(
+    observation: TagObservation, size_m: float, calibration: CameraCalibration
+) -> TagPose:
+    """Estimate `T_cam_tag` for a single tag."""
+    return _solve_tag_pose(
+        observation,
+        tag_object_points(size_m),
+        undistort_corners(observation.corners, calibration),
+        np.asarray(calibration.camera_matrix, dtype=np.float64),
+        np.zeros(5, dtype=np.float64),
+    )
+
+
 def estimate_tag_poses(
     observations: Sequence[TagObservation],
     calibration: CameraCalibration,
@@ -141,8 +152,16 @@ def estimate_tag_poses(
     Tags above `max_reprojection_error_px` are dropped and logged, not
     passed through silently.
     """
+    import cv2
+
     expected_errors = _solver_exceptions()
-    poses: list[TagPose] = []
+    if not observations:
+        return []
+    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+    distortion = np.asarray(calibration.distortion, dtype=np.float64)
+    no_distortion = np.zeros(5, dtype=np.float64)
+    object_points_by_size: dict[float, np.ndarray] = {}
+    prepared: list[tuple[TagObservation, np.ndarray, np.ndarray]] = []
     for observation in observations:
         size_m = (
             tag_map.size_for(observation.tag_id, default_size_m)
@@ -150,7 +169,41 @@ def estimate_tag_poses(
             else default_size_m
         )
         try:
-            tag_pose = estimate_tag_pose(observation, size_m, calibration)
+            corners = np.asarray(observation.corners, dtype=np.float64).reshape(4, 1, 2)
+        except expected_errors:
+            _log.info("Pose fuer Tag %d nicht loesbar", observation.tag_id, exc_info=True)
+            continue
+        object_points = object_points_by_size.get(size_m)
+        if object_points is None:
+            object_points = tag_object_points(size_m)
+            object_points_by_size[size_m] = object_points
+        prepared.append((observation, object_points, corners))
+    if not prepared:
+        return []
+
+    # OpenCV kann alle Ecken eines Bildes in einem Aufruf entzerren. Bei einem
+    # defekten Punkt bleibt der bisherige Einzel-Tag-Fehlerpfad erhalten.
+    try:
+        points = np.concatenate([item[2] for item in prepared])
+        undistorted = cv2.undistortPoints(
+            points, camera_matrix, distortion, P=camera_matrix
+        ).reshape(-1, 4, 2)
+    except cv2.error:
+        undistorted = None
+
+    poses: list[TagPose] = []
+    for index, (observation, object_points, corners) in enumerate(prepared):
+        try:
+            image_points = (
+                undistorted[index]
+                if undistorted is not None
+                else cv2.undistortPoints(
+                    corners, camera_matrix, distortion, P=camera_matrix
+                ).reshape(4, 2)
+            )
+            tag_pose = _solve_tag_pose(
+                observation, object_points, image_points, camera_matrix, no_distortion
+            )
         except expected_errors:
             _log.info("Pose fuer Tag %d nicht loesbar", observation.tag_id, exc_info=True)
             continue

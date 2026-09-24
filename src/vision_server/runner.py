@@ -77,21 +77,38 @@ def _camera_owner(
 def _build_annotator(source: DetectionSource):
     """Build the stream overlay for a source, if it can provide one.
 
-    Stream and job then use the same loaded calibration and tag map -- if
-    the image shows something different from the job result, it's not
-    because of two configurations.
+    Stream and job use the same loaded calibration and tag map -- if the
+    image shows something different from the job result, it's not because
+    of two configurations. Der Detektor ist bewusst NICHT derselbe: Job und
+    Stream liefen bis 2026-09-24 auf einer geteilten Instanz, beide mit
+    `subpixel_corner_refinement` aus der Config (aktuell `True` -- Layer 1
+    braucht das, siehe `AprilTagProfileConfig`). Live auf pi1 gemessen
+    (py-spy-Dump): der Job-Thread (`vision-apriltag_0`) und der
+    Overlay-Thread liefen dabei GLEICHZEITIG in `detector.detect()` mit
+    aktivem `CORNER_REFINE_APRILTAG` -- zusammen genug CPU-Konkurrenz, um
+    den 20s-Job-Timeout wieder reissen zu lassen. Der Stream braucht die
+    Verfeinerung nicht (Demo-Bild, kleinere Aufloesung als der Job) --
+    deshalb bekommt er eine EIGENE Detektor-Instanz mit der Verfeinerung
+    fest aus, unabhaengig vom Config-Wert fuer den Job-Pfad.
     """
-    detector = getattr(source, "_detector", None)
+    job_detector = getattr(source, "_detector", None)
     calibration = getattr(source, "_calibration", None)
     config = getattr(source, "_config", None)
     camera_config = getattr(source, "_camera_config", None)
-    if detector is None or calibration is None or config is None:
+    if job_detector is None or calibration is None or config is None:
         return None
+
+    from tagloc.detector import build_detector
+
     from .stream_overlay import AprilTagStreamAnnotator
+
+    stream_detector = build_detector(
+        config.tag_family, config.detector_backend, subpixel_corner_refinement=False
+    )
 
     return AprilTagStreamAnnotator(
         config,
-        detector=detector,
+        detector=stream_detector,
         calibration=calibration,
         tag_map=getattr(source, "_tag_map", None),
         interval_s=getattr(camera_config, "overlay_interval_s", 0.5),

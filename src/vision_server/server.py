@@ -150,15 +150,19 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         "preview_resolution": (960, 720),
         "capture_fps": 10.0,
         "buffer_count": 2,
-        # "apriltag"/"off" im Stream erkennen/kodieren jetzt auf dem vollen
-        # 12-MP-Frame statt auf dem kleinen lores-Strom (Absprache
-        # 2026-09-22, camera_stream.py._encoded) -- der globale Default von
-        # 2,0 s (profiles.py) reichte dafuer nicht: Erkennung + Zeichnen auf
-        # 4056x3040 ueberschritt ihn zuverlaessig, das Overlay fiel jeden
-        # Tick auf das unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte
-        # komplett auf Pi 1). cam_flange braucht das nicht -- dort hat sich
-        # an der Erkennungsaufloesung nichts geaendert (640x480 war schon
-        # immer der volle Frame).
+        # "off" kodiert im Stream weiterhin den vollen 12-MP-Frame statt den
+        # kleinen lores-Strom (Absprache 2026-09-22, camera_stream.py.
+        # _encoded) -- der globale Default von 2,0 s (profiles.py) reichte
+        # dafuer nicht: allein das Kodieren eines 4056x3040-Bildes
+        # ueberschritt ihn zuverlaessig, das Overlay fiel jeden Tick auf das
+        # unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte komplett auf
+        # Pi 1). "apriltag" verkleinert seit der Umstellung auf
+        # Software-Downscale (siehe stream_overlay.py.annotate) VOR Erkennung
+        # und Zeichnen auf `detection_max_width` -- braucht die Reserve nicht
+        # mehr zwingend, der grosszuegige Wert bleibt als Sicherheitsmarge
+        # bestehen. cam_flange braucht das nicht -- dort hat sich an der
+        # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
+        # volle Frame).
         "overlay_timeout_s": 8.0,
     },
 }
@@ -205,6 +209,22 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
         # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
         calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
+        # Diagnose-Schalter (2026-09-24): kurzzeitig auf "0" setzen, um live
+        # zu pruefen, ob Tags ohne Verfeinerung (a) gar nicht erst dekodiert
+        # werden (kein Log-Treffer zu "verworfen: Reprojektionsfehler" in
+        # tagloc/pose.py) oder (b) gefunden, aber wegen zu hohem
+        # Reprojektionsfehler VERWORFEN werden (Log-Treffer dort) --
+        # Reprojektionsfehler skaliert mit der Aufloesung (scale_to_
+        # resolution skaliert die Brennweite), `max_reproj_error_px` ist aber
+        # ein fixer Pixelwert, gleich fuer Job (voll) und Stream (verkleinert).
+        # Default unveraendert True -- siehe AprilTagProfileConfig.
+        # subpixel_corner_refinement. NICHT dauerhaft auf pi1 setzen, das ist
+        # exakt der Fehler, der Layer 1 zuvor blind gemacht hat.
+        subpixel_corner_refinement=os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "1") == "1",
+        # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
+        # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver
+        # Default aendert -- siehe `AprilTagProfileConfig.apriltag_quad_decimate`.
+        apriltag_quad_decimate=float(os.getenv("VISION_APRILTAG_QUAD_DECIMATE", "0.0")),
         **preset,
     )
 
@@ -319,12 +339,20 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # aendert sich" (`tagloc.calibration.scale_to_resolution`). RealSense
     # betroffen nicht: die hat mit `realsense_resolution` ein eigenes Feld,
     # das schon auf cam_flanges Aufloesung (640x480) abgestimmt ist.
+    # Diagnose-Schalter (2026-09-24): `VISION_DISABLE_STREAM=1` fuer den
+    # Job-Timeout-Verdacht per A/B-Test, ob der Stream-Publisher/-Overlay
+    # ueberhaupt noch beteiligt ist. `stream_enabled=False` unterdrueckt nur
+    # die Stream-Knoten/den Publisher/den MJPEG-Server (siehe
+    # `CameraStreamConfig.stream_enabled`) -- `resolution` bleibt gesetzt,
+    # weil dieselbe `CameraStreamConfig` auch die Job-Kamera oeffnet.
+    stream_enabled = os.getenv("VISION_DISABLE_STREAM") != "1"
     camera_stream = (
-        CameraStreamConfig(backend=backend)
+        CameraStreamConfig(backend=backend, stream_enabled=stream_enabled)
         if backend == "realsense"
         else CameraStreamConfig(
             backend=backend,
             resolution=apriltag.resolution,
+            stream_enabled=stream_enabled,
             **(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {}),
         )
     )

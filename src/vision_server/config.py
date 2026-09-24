@@ -50,8 +50,16 @@ class VisionServerConfig:
     frame_id: str = "world"
     #: Must exceed the longest job runtime. The AprilTag job is decisive:
     #: `samples_per_job` captures, each waiting up to `capture_timeout_s`,
-    #: plus detection and margin.
-    job_timeout: float = 20.0
+    #: plus detection and margin. War 20.0 -- live auf pi1 gemessen (A/B-Test
+    #: 2026-09-24, ohne Livestream/Overlay-Konkurrenz, `subpixel_corner_
+    #: refinement=True` auf vollen 12 MP): 1 von 4 Jobs riss trotzdem den
+    #: 20s-Timeout (echter `asyncio.wait_for`-Timeout laut job.py, kein
+    #: "kein Tag im Bild"). 3 Samples je bis zu `capture_timeout_s` Wartezeit
+    #: plus Detektionszeit (py-spy: ~46% des Profils in `_locate -> detect`)
+    #: plus `warmup_s` liessen dem alten Budget zu wenig Puffer. Zusaetzliche
+    #: Sicherheitsmarge, bis `apriltag_quad_decimate` (siehe `profiles.py`)
+    #: die Detektionszeit selbst gesenkt hat -- danach ggf. wieder senken.
+    job_timeout: float = 30.0
     #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
     #: Zustandswechsel abgeschlossen sein muss.
     stop_timeout: float = 5.0

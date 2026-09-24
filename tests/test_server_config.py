@@ -73,5 +73,79 @@ class FlangeCameraTest(unittest.TestCase):
         self.assertEqual(config.camera_stream.overlay_timeout_s, 2.0)
 
 
+class StreamDisableSwitchTest(unittest.TestCase):
+    """`VISION_DISABLE_STREAM=1` -- Diagnose-Schalter fuer den A/B-Test:
+    Job-Timeout auch ganz ohne Livestream/Overlay?
+
+    Regression (live auf pi1 gefunden): eine fruehere Fassung setzte dafuer
+    `config.camera_stream` komplett auf `None` -- das faellt in
+    `detection/__init__.py` (`config.camera_stream or CameraStreamConfig()`)
+    auf den blanken Default zurueck und aendert damit lautlos auch die
+    Job-Kamera-Aufloesung (2028x1520 -> 1280x720, "Seitenverhaeltnis
+    aendert sich"). `camera_stream` bleibt deshalb IMMER voll konfiguriert;
+    nur `stream_enabled` schaltet um."""
+
+    def test_disables_only_the_stream_nodes_not_the_resolution(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_DISABLE_STREAM": "1",
+            },
+        ):
+            config = vision_config()
+        self.assertIsNotNone(config.camera_stream)
+        self.assertFalse(config.camera_stream.stream_enabled)
+        self.assertEqual(config.camera_stream.resolution, (4056, 3040))
+
+    def test_stays_enabled_without_the_switch(self):
+        stream = config_for("cam_ceiling", "picamera2").camera_stream
+        self.assertIsNotNone(stream)
+        self.assertTrue(stream.stream_enabled)
+
+
+class QuadDecimateSwitchTest(unittest.TestCase):
+    """`VISION_APRILTAG_QUAD_DECIMATE` -- Tuning-Hebel, noch nicht auf
+    echten Distanzen validiert, deshalb Default 0.0 (unveraendert)."""
+
+    def test_defaults_to_unchanged_behaviour(self):
+        self.assertEqual(config_for("cam_ceiling", "picamera2").apriltag.apriltag_quad_decimate, 0.0)
+
+    def test_can_be_set_via_env_var(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_APRILTAG_QUAD_DECIMATE": "2.0",
+            },
+        ):
+            config = vision_config()
+        self.assertEqual(config.apriltag.apriltag_quad_decimate, 2.0)
+
+
+class SubpixelRefinementSwitchTest(unittest.TestCase):
+    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- kurzzeitiger Diagnose-Schalter
+    fuer den Reprojektionsfehler-vs-Aufloesung-Verdacht (Log-Zeile
+    "verworfen: Reprojektionsfehler" in tagloc/pose.py live mitlesen).
+    NICHT dauerhaft aus, siehe profiles.py/server.py-Kommentare."""
+
+    def test_defaults_to_enabled(self):
+        self.assertTrue(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
+
+    def test_can_be_disabled_via_env_var(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_SUBPIXEL_CORNER_REFINEMENT": "0",
+            },
+        ):
+            config = vision_config()
+        self.assertFalse(config.apriltag.subpixel_corner_refinement)
+
+
 if __name__ == "__main__":
     unittest.main()

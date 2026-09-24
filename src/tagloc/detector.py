@@ -91,7 +91,14 @@ class ArucoTagDetector:
     code would only work on one of the two.
     """
 
-    def __init__(self, family: str = "tag36h11", *, parameters: Any = None) -> None:
+    def __init__(
+        self,
+        family: str = "tag36h11",
+        *,
+        parameters: Any = None,
+        subpixel_corner_refinement: bool = False,
+        apriltag_quad_decimate: float = 0.0,
+    ) -> None:
         import cv2
 
         self.family = family
@@ -105,14 +112,32 @@ class ArucoTagDetector:
         else:  # OpenCV < 4.7
             self._parameters = aruco.DetectorParameters_create()
 
-        # Subpixel-accurate corners: without it, pose quality at distance
-        # noticeably drops -- exactly the Layer-1 case.
-        refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
-        if refine is not None:
-            try:
-                self._parameters.cornerRefinementMethod = refine
-            except Exception:  # pragma: no cover - read-only depending on build
-                _log.debug("cornerRefinementMethod nicht setzbar")
+        # Subpixel-accurate corners: verbessert nicht nur die Pose-Qualitaet
+        # auf Distanz, sondern entscheidet bei kleinen/entfernten Tags
+        # teilweise, OB die ID ueberhaupt dekodierbar ist -- ohne sie fand
+        # Layer 1 (Deckenkamera, ~2 m Distanz) live auf pi1 keine Tags mehr.
+        # Steuerbar ueber `subpixel_corner_refinement` (Default in
+        # `AprilTagProfileConfig`: an); dieser Konstruktor-Default bleibt
+        # bewusst konservativ (aus), Aufrufer sollen explizit entscheiden.
+        if subpixel_corner_refinement:
+            refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
+            if refine is not None:
+                try:
+                    self._parameters.cornerRefinementMethod = refine
+                except Exception:  # pragma: no cover - read-only depending on build
+                    _log.debug("cornerRefinementMethod nicht setzbar")
+            # `aprilTagQuadDecimate` (Standard-AprilTag-Parameter): laesst die
+            # Verfeinerungssuche auf einer verkleinerten Kopie laufen --
+            # kostet Reichweite/Robustheit bei sehr kleinen/entfernten Tags,
+            # spart aber CPU-Zeit im Job-Erkennungs-Thread (py-spy auf pi1:
+            # ~46% des Profils in detect() mit Verfeinerung auf vollem
+            # 12-MP-Frame). `0.0` = keine Dezimierung, wirkt nur zusammen mit
+            # `cornerRefinementMethod == CORNER_REFINE_APRILTAG`.
+            if apriltag_quad_decimate:
+                try:
+                    self._parameters.aprilTagQuadDecimate = apriltag_quad_decimate
+                except Exception:  # pragma: no cover - read-only depending on build
+                    _log.debug("aprilTagQuadDecimate nicht setzbar")
 
         self._detector = None
         if hasattr(aruco, "ArucoDetector"):
@@ -165,20 +190,37 @@ class PupilAprilTagDetector:
         return sorted(found, key=lambda observation: observation.tag_id)
 
 
-def build_detector(family: str = "tag36h11", backend: str = "aruco") -> TagDetector:
+def build_detector(
+    family: str = "tag36h11",
+    backend: str = "aruco",
+    *,
+    subpixel_corner_refinement: bool = False,
+    apriltag_quad_decimate: float = 0.0,
+) -> TagDetector:
     """Build the detector for the requested family.
 
     `backend="auto"` tries `cv2.aruco` first and falls back to
     `pupil_apriltags` if this OpenCV version doesn't know the family.
+
+    `subpixel_corner_refinement`/`apriltag_quad_decimate` gelten nur fuer
+    `"aruco"`/`"auto"` -- `pupil_apriltags` hat keine aequivalente Einstellung.
     """
     backend = backend.lower()
     if backend == "aruco":
-        return ArucoTagDetector(family)
+        return ArucoTagDetector(
+            family,
+            subpixel_corner_refinement=subpixel_corner_refinement,
+            apriltag_quad_decimate=apriltag_quad_decimate,
+        )
     if backend == "pupil":
         return PupilAprilTagDetector(family)
     if backend == "auto":
         try:
-            return ArucoTagDetector(family)
+            return ArucoTagDetector(
+                family,
+                subpixel_corner_refinement=subpixel_corner_refinement,
+                apriltag_quad_decimate=apriltag_quad_decimate,
+            )
         except Exception as error:
             _log.warning("cv2.aruco nicht nutzbar (%s), weiche auf pupil_apriltags aus", error)
             return PupilAprilTagDetector(family)

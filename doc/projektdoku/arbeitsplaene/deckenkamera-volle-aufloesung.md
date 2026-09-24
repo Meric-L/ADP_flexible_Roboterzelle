@@ -1,9 +1,9 @@
 # Deckenkamera (Pi 1) mit voller Sensorauflösung, flüssiger Livestream
 
 **Status:** in Arbeit — 22.09.2026
-**Verantwortlich:** John Glanz, `Agent: volle Auflösung Deckenkamera`
+**Verantwortlich:** Meric
 **Thema:** vision
-**Branch:** feature/vision-server
+**Branch:** apriltag-optimierung
 
 ## Ziel
 
@@ -115,46 +115,169 @@ Preset `cam_ceiling` (nur Backend `picamera2`):
 
 ## Vorgehen
 
+### Überholt (nicht umgesetzt)
+
+Ursprünglicher Plan — wurde durch Team-Absprache vom 22.09.2026 überholt:
+
 1. `CameraFrame.preview`, Picamera2-Konfiguration mit `lores`, Umrechnung
 2. Stream nimmt `preview`
-3. Preset `cam_ceiling`
+3. Preset `cam_ceiling` mit `preview_resolution` (960×720)
 4. Tests, Doku
 5. Auf Pi 1: Framerate messen (`measure_framerate.py`), Stream prüfen,
    **neu kalibrieren**
 
+### Aktuelle Umsetzung
+
+1. **Livestream-Overlay-Optimierung:** Erkennung in `AprilTagStreamAnnotator.annotate()`
+   auf `max_stream_width`-Auflösung (960) verlegen, statt auf volle 12-MP-Auflösung
+   (Datei: `src/vision_server/stream_overlay.py`)
+
+2. **Subpixel-Eckenverfeinerung konfigurierbar machen:**
+   - Neues Feld `subpixel_corner_refinement: bool = True` in `AprilTagProfileConfig`
+     (`src/vision_server/profiles.py`) — siehe „Abweichungen vom Plan" unten: Default
+     war kurzzeitig `False`, brach Layer 1, noch am selben Tag zurueckgenommen.
+   - Detektor-Logik in `src/tagloc/detector.py` (`ArucoTagDetector`) anpassen
+
+3. **Tests und lokale Verifizierung:**
+   - Unit-Tests für die Overlay-Optimierung
+   - CI-Tests (Windows, ohne Kamera)
+
+4. **Auf Pi 1 verifizieren:**
+   - AprilTag-Jobs: keine CPU-Überlastung mehr, keine 20s-Timeouts (DETECTION_FAILED)
+   - Livestream „AprilTags markieren": flüssig, auch bei 10 fps und 12 MP
+   - Livestream „Rohbild": unverändert
+
 ## Offene Fragen
 
-- Genügt die Stream-Auflösung 960×720 für „AprilTags markieren“? Ein 10-cm-Tag
+- Genügt die Stream-Auflösung 960×720 für „AprilTags markieren”? Ein 10-cm-Tag
   aus Deckenhöhe ist darin deutlich kleiner als im Job-Bild. Im Zweifel zeigt
   das Overlay einen Tag nicht an, den der Job trotzdem findet — nie umgekehrt.
 - Welcher Pi steckt in Pi 1 (`/proc/device-tree/model`)? Ein Pi 4 schafft
   12 MP bei 10 fps im ISP; ein Pi 3 nicht sicher.
+- **A/B-Test 2026-09-24 (Stream aus vs. an):** getrennte Detektor-Instanzen
+  (Commit 3d91ee1) und `VISION_DISABLE_STREAM=1` (Commit 85e06ff) bringen
+  Job-Erfolg von 0/10 auf 3/4 -- klare Verbesserung, aber kein vollstaendiger
+  Fix. Ein Job scheiterte auch ganz ohne Stream-Konkurrenz mit echtem
+  20s-Timeout (`asyncio.wait_for` in job.py, nicht "kein Tag im Bild"). py-spy
+  zeigt `_locate -> detect` allein bei 46,4 % des Profils
+  (`subpixel_corner_refinement=True` auf vollen 12 MP). Vermutete Ursache:
+  `samples_per_job=3` × (bis zu `capture_timeout_s=5.0` s Wartezeit +
+  Detektionszeit) + `warmup_s=2.0` s laesst dem 20s-Budget zu wenig Puffer,
+  auch ohne Overlay.
+- **Gegenmassnahmen (2026-09-24), noch nicht auf dem Pi validiert:**
+  - `job_timeout` global von 20.0 auf 30.0 s angehoben (`config.py`) --
+    reine Sicherheitsmarge, senkt die Last nicht.
+  - Neuer Tuning-Parameter `AprilTagProfileConfig.apriltag_quad_decimate`
+    (Default `0.0`, ueber `VISION_APRILTAG_QUAD_DECIMATE` testbar) fuer
+    `cv2.aruco.DetectorParameters.aprilTagQuadDecimate` -- laesst die
+    AprilTag-Verfeinerungssuche auf einer verkleinerten Kopie laufen statt
+    auf dem vollen Frame, wirkt nur zusammen mit `subpixel_corner_refinement`.
+    Standard-AprilTag-Parameter, senkt typischerweise Rechenzeit deutlich,
+    kostet aber Reichweite/Robustheit bei sehr kleinen/entfernten Tags --
+    **noch mit echten Tag-Distanzen und py-spy auf pi1 messen**, bevor ein
+    produktiver Default (Literatur-Richtwert 1,5-2,0) gesetzt wird.
+
+### Subpixel-Nachbearbeitung der Kalibrierbilder (nicht Teil der aktuellen Umsetzung)
+
+Angedacht ist eine Subpixel-Nachbearbeitung der bereits gespeicherten Kalibrierbilder
+(Feld `calibration_capture_dir` in `AprilTagProfileConfig`). Eine genauere, aber
+langsame Ecken-Verfeinerung soll als **Nachbearbeitungsschritt nach Abschluss aller
+Kalibrieraufnahmen** auf den gespeicherten Bildern laufen — nicht live während der
+Aufnahme, nicht in einem Stream angezeigt. **Offene Design-Fragen dazu:**
+
+1. Soll das über eine neue OPC-UA-Methode ausgelöst sein, oder reicht ein
+   Offline-CLI-Skript?
+2. Ersetzt die Nachbearbeitung die gespeicherte Kalibrierdatei direkt, oder wird
+   erst verglichen (RMS könnte sich auch verschlechtern)?
+3. Ist eine serielle Laufzeit von ca. 4 Sekunden pro Bild (gemessen für die genaue
+   Methode `CALIB_CB_ACCURACY` bei ~4000px Breite, siehe Kommentar in
+   `src/tagloc/boards.py`) über alle Aufnahmen hinweg akzeptabel, oder braucht es
+   Parallelisierung/einen Fortschrittsanzeiger?
+
+Diese Anforderung ist **nicht Teil der aktuellen Umsetzung** und wird als Folgepunkt
+offengehalten.
 
 ## Abweichungen vom Plan
 
-Keine an den Schnittstellen. Umgesetzt wie oben, zusätzlich:
+Der ursprüngliche Ansatz (separater Picamera2-`lores`-Stream 960×720 aus dem ISP)
+wurde **nicht umgesetzt**. Stattdessen folgt die Umsetzung einer späteren
+Team-Absprache vom **22.09.2026** (dokumentiert in Kommentar `stream_overlay.py`
+/ `camera_stream.py`): *„Overlay soll exakt das Bild zeigen, auf dem auch der Job
+erkennt"*.
 
-- `picamera2_video_configuration(config)` in `camera.py` baut die Argumente
-  für `create_video_configuration()` — ohne Kamera testbar, lehnt einen
-  `lores`-Strom größer als den Hauptstrom ab.
-- `SharedCamera._read_frames()` holt `main` und `lores` aus **einem**
-  `capture_request()` und gibt den Request auch im Fehlerfall zurück (bei zwei
-  Puffern stünde die Kamera sonst sofort). `_read_frame()` bleibt für
-  `tools/measure_framerate.py` unverändert nutzbar und liest nur `main`.
-- Preset als `PI_CAMERA_STREAM_PRESETS` in `server.py`, nur für Backend
-  `picamera2`.
-- Tests: `tests/test_camera.py` (Konfiguration, YUV420 mit und ohne
-  Zeilenausrichtung, ein Request für beide Bilder), `tests/test_camera_stream.py`
-  (`PreviewSourceTest`), neu `tests/test_server_config.py`.
+**Neue Lösung:** Die AprilTag-Erkennung für den Livestream-Overlay wird direkt in
+`AprilTagStreamAnnotator.annotate()` (`src/vision_server/stream_overlay.py`) auf
+die bereits vorhandene, per Software herunterskalierte Stream-Auflösung verlegt.
+Das Feld `max_stream_width` in `CameraStreamConfig` (`src/vision_server/profiles.py`,
+aktuell Default 960) bestimmt diese Auflösung. **Kein neuer Kamera-Stream nötig.**
 
-**Stand:** Code fertig, 298 Tests grün (Windows, ohne Kamera). **Offen, auf
-Pi 1:**
+**Grund:** py-spy-Messung auf pi1 zeigte, dass die Erkennung auf dem vollen
+12-MP-Frame im Livestream-Overlay derart viel CPU frisst, dass die eigentlichen
+AprilTag-Jobs den 20-Sekunden-Timeout reißen (DETECTION_FAILED). Die Job-Erkennung
+(`AprilTagDetectionSource`) und Kalibrierung bleiben unverändert auf voller Auflösung
+und Genauigkeit.
 
-1. `measure_framerate.py` bei 4056×3040 — liefert der Pi die 10 fps?
-2. Livestream in beiden Modi flüssig? Farben richtig (Rot bleibt Rot)?
-3. Server-Log: keine Fehler beim Anlegen der Kamerapuffer
-4. Neu kalibrieren bei 4056×3040, danach `allow_resolution_mismatch` aus dem
-   Preset `cam_ceiling` entfernen
+### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit) — zwei Regressionsrunden
+
+Ein neues Konfigurationsfeld `subpixel_corner_refinement` wurde zu `AprilTagProfileConfig`
+hinzugefügt (`src/vision_server/profiles.py`), das `cv2.aruco.CORNER_REFINE_APRILTAG`
+in `src/tagloc/detector.py` (`ArucoTagDetector`) steuert. Die Funktionalität bleibt im
+Code erhalten (nur abschaltbar), wird nicht gelöscht. Zwei Fehlschläge, bevor es passte:
+
+**Runde 1 — Default `False` (Begründung: vermutete CPU-Last auf pi1).** Noch am selben
+Tag zurückgenommen: mit `subpixel_corner_refinement=False` fand Layer 1 (Deckenkamera,
+~2 m Distanz, „Module suchen" im Frontend) **live auf pi1 gar keine Tags mehr**. Die
+Verfeinerung entscheidet bei kleinen/entfernten Tags nicht nur über Pose-Genauigkeit,
+sondern teilweise darüber, ob die ID überhaupt dekodierbar ist — das war exakt der
+Fall, für den `CORNER_REFINE_APRILTAG` ursprünglich eingebaut wurde (siehe historischer
+Kommentar in `detector.py`: „exactly the Layer-1 case"). Die tatsächliche CPU-Notlage
+(Job-Timeouts durch Overlay-Läufe > 8 s) kam vom vollen Sensor-Frame im
+Livestream-Overlay (siehe oben), nicht von dieser Verfeinerung → Default zurück auf `True`.
+
+**Runde 2 — Default `True`, aber Job und Stream teilten sich EINE Detektor-Instanz.**
+Job-Erkennungs-Pfad (`AprilTagDetectionSource._locate`, volle Auflösung) und
+Livestream-Overlay (`AprilTagStreamAnnotator.annotate`, verkleinerte Auflösung, siehe
+oben) nutzten bis dahin denselben `ArucoTagDetector` aus `AprilTagDetectionSource.open()`
+(siehe `runner.py`, `_build_annotator`, das den Detektor per `source._detector`
+weiterreichte). Mit `subpixel_corner_refinement=True` liefen dadurch **beide** Pfade mit
+aktivem `CORNER_REFINE_APRILTAG` — und liefen sich gegenseitig die CPU weg: py-spy-Dump
+auf pi1 zeigte den Job-Thread (`vision-apriltag_0`) und den Overlay-Thread gleichzeitig
+in `detector.py:136 detect()`. Job-Timeouts (`DETECTION_FAILED` nach 20 s) traten erneut
+auf. py-spy-Top-Frames (45 s, deckte einen fehlgeschlagenen Job ab): 37,4 %
+`_locate → detect` (Job, volle Auflösung), 21,0 % `_read_frames → make_array`
+(Kamera-Framegrab, unabhängig von dieser Änderung), 18,6 % `annotate → detect`
+(Overlay, verkleinerte Auflösung), 10,6 % `annotate → _resize_for_stream`.
+
+**Fix: getrennte Detektor-Instanzen.** `runner._build_annotator` baut jetzt einen
+eigenen Stream-Detektor (`build_detector(..., subpixel_corner_refinement=False)`),
+unabhängig vom Konfigurationswert für den Job-Pfad. Der Job behält seine eigene
+Instanz mit `subpixel_corner_refinement` aus `AprilTagProfileConfig` (aktuell `True`,
+Layer 1 braucht das). Der Stream braucht die Verfeinerung nicht — kleineres Demo-Bild,
+keine Pose-Genauigkeit produktiv im Einsatz. Job und Stream können sich damit nicht
+mehr gegenseitig CPU wegnehmen, indem beide gleichzeitig die teure Verfeinerung laufen
+lassen.
+
+**Aktueller Stand:** `AprilTagProfileConfig.subpixel_corner_refinement` (Default
+`True`) steuert **nur noch den Job-Pfad**. Der Livestream-Detektor hat die
+Verfeinerung immer aus, fest im Code (`runner._build_annotator`), nicht konfigurierbar
+— dafür bestand kein Bedarf. Die Konstruktor-Defaults von `ArucoTagDetector`/
+`build_detector` selbst bleiben bewusst konservativ `False`, Aufrufer entscheiden
+explizit.
+
+### Ursprüngliche Implementierungsdetails (überholt)
+
+Die folgenden Punkte beschreiben den ursprünglichen Ansatz und wurden nicht umgesetzt:
+
+- `picamera2_video_configuration(config)` mit `lores`-Strom
+- Preset `cam_ceiling` mit `preview_resolution` (960×720)
+- ISP-seitige Skalierung für den Livestream
+
+**Aktuelle Architektur (korrigiert):** Der `lores`-Stream existiert weiterhin und ist
+für `cam_ceiling` aktiv (`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["preview_resolution"]
+= (960, 720)` in `src/vision_server/server.py`) — genutzt aber nur vom
+`"calibration"`-Modus des Livestreams (`camera_stream.py._encoded` waehlt `frame.preview`
+nur dort). Die Modi `"apriltag"`/`"off"` gehen weiterhin vom vollen `frame.image` aus;
+`"apriltag"` verkleinert seitdem selbst per Software in `annotate()` (siehe oben).
 
 ## Nach Abschluss
 
