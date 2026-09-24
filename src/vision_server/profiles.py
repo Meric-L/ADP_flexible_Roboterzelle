@@ -52,26 +52,26 @@ class AprilTagProfileConfig:
     #: Detektor-Split (Commit 3d91ee1) NUR noch den Job-Pfad -- der
     #: Livestream-Overlay bekommt in `runner._build_annotator` eine eigene
     #: Instanz mit dieser Verfeinerung fest aus, unabhaengig von diesem Feld.
-    #: Default `True`: ohne die Verfeinerung werden entfernte/kleine Tags
-    #: nicht nur ungenauer, sondern teils gar nicht mehr dekodiert -- live
-    #: auf pi1 gefunden, als Layer 1 ("Module suchen") mit
-    #: `subpixel_corner_refinement=False` keine Tags mehr fand (Board stand
-    #: vorher gut erkennbar in ~2 m Distanz). Kostet dafuer messbar CPU-Zeit
-    #: im Job-Erkennungs-Thread selbst (py-spy: ~46% des Profils in
-    #: `_locate -> detect`) -- siehe `apriltag_quad_decimate` als Hebel, das
-    #: abzumildern, ohne die Verfeinerung ganz abzuschalten.
-    subpixel_corner_refinement: bool = True
+    #:
+    #: Default `False`: live auf pi1 bestaetigt, dass Layer 1 ("Module
+    #: suchen") Tags auch ohne die Verfeinerung zuverlaessig findet; spart
+    #: dabei ~46% CPU im Job-Thread (py-spy). Bleibt als Schalter erhalten
+    #: (nicht geloescht): offene Idee, die Verfeinerung gezielt fuer eine
+    #: genauere Lokalisierung auf einem zweiten Erkennungs-Layer oder fuer
+    #: die Kalibrierung zu nutzen (siehe Arbeitsplan
+    #: `deckenkamera-volle-aufloesung.md`, Offene Fragen) -- noch nicht
+    #: entschieden, noch nicht umgesetzt.
+    subpixel_corner_refinement: bool = False
     #: Dezimierungsfaktor fuer `cv2.aruco.DetectorParameters.
     #: aprilTagQuadDecimate` -- wirkt nur, wenn `subpixel_corner_refinement`
-    #: aktiv ist. Standard-AprilTag-Parameter (aus der apriltag-Referenz-
-    #: bibliothek uebernommen): laesst die AprilTag-Verfeinerungssuche auf
-    #: einer verkleinerten Kopie laufen statt auf dem vollen Frame -- deutlich
-    #: schneller, kostet aber etwas Reichweite/Robustheit bei sehr kleinen
-    #: bzw. weit entfernten Tags. `0.0` (Standard) = keine Dezimierung,
-    #: unveraendertes Verhalten. Noch NICHT auf echten Bildern/Distanzen
-    #: validiert -- vor einem produktiven Default-Wert auf dem Pi mit
-    #: py-spy und echten Tag-Distanzen messen (typische Startwerte in der
-    #: apriltag-Literatur: 1.5-2.0).
+    #: aktiv ist (aktuell also inert, siehe dort). Standard-AprilTag-
+    #: Parameter (aus der apriltag-Referenzbibliothek uebernommen): laesst
+    #: die AprilTag-Verfeinerungssuche auf einer verkleinerten Kopie laufen
+    #: statt auf dem vollen Frame -- deutlich schneller, kostet aber etwas
+    #: Reichweite/Robustheit bei sehr kleinen bzw. weit entfernten Tags.
+    #: `0.0` (Standard) = keine Dezimierung. Bleibt fuer den Fall stehen,
+    #: dass `subpixel_corner_refinement` spaeter (Layer 2, Kalibrierung)
+    #: doch wieder gebraucht wird.
     apriltag_quad_decimate: float = 0.0
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one

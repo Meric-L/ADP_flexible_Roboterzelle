@@ -112,13 +112,13 @@ class ArucoTagDetector:
         else:  # OpenCV < 4.7
             self._parameters = aruco.DetectorParameters_create()
 
-        # Subpixel-accurate corners: verbessert nicht nur die Pose-Qualitaet
-        # auf Distanz, sondern entscheidet bei kleinen/entfernten Tags
-        # teilweise, OB die ID ueberhaupt dekodierbar ist -- ohne sie fand
-        # Layer 1 (Deckenkamera, ~2 m Distanz) live auf pi1 keine Tags mehr.
-        # Steuerbar ueber `subpixel_corner_refinement` (Default in
-        # `AprilTagProfileConfig`: an); dieser Konstruktor-Default bleibt
-        # bewusst konservativ (aus), Aufrufer sollen explizit entscheiden.
+        # Subpixel-accurate corners: kann die Pose-Qualitaet auf Distanz
+        # verbessern, kostet aber messbar CPU-Zeit (py-spy auf pi1: ~46% des
+        # Profils in `_locate -> detect` auf vollen 12 MP). Fuer
+        # Dekodierbarkeit nicht noetig (Historie siehe
+        # `AprilTagProfileConfig.subpixel_corner_refinement`, Default aus).
+        # Konstruktor-Default bleibt bewusst konservativ (aus), Aufrufer
+        # sollen explizit entscheiden.
         if subpixel_corner_refinement:
             refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
             if refine is not None:
