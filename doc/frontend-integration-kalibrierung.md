@@ -155,13 +155,22 @@ Server-Neustart.
    Heißt nur "in diesem einen Frame kein Board gefunden" — die Session läuft
    normal weiter, kein Reset nötig. Einfach nochmal auslösen.
 
-5. **Layer 1 (Deckenkamera) ist über cols/rows/Größe auf dieselbe
+5. **`FinishCalibration`/`result` mit `Error=5` ist dagegen ein echter
+   Fehlschlag, auch bei guter Abdeckung und vielen Samples.** Die
+   Berechnung selbst (`cv2.calibrateCamera`) kann numerisch scheitern, wenn
+   das Board zwar über das ganze Bild verteilt, aber nie gekippt/im Abstand
+   variiert wurde — die 2D-Bildabdeckung sagt darüber nichts aus. `message`
+   im Ergebnis nennt den Grund; die Session ist dann beendet, ohne Ergebnis
+   — einfach `StartCalibration` neu aufrufen und diesmal das Board deutlich
+   kippen (±30°) und im Abstand variieren.
+
+6. **Layer 1 (Deckenkamera) ist über cols/rows/Größe auf dieselbe
    Board-Geometrie wie Layer 2 eingestellt, aber (Stand jetzt) noch nicht
    final vermessen/fest montiert** (siehe Abschnitt 12.7 in
    `vision-server-interface.md`). Für einen ersten Integrationstest ist
    Layer 2 (Hand-Pi, `cam_flange`) der verlässlichere Kandidat.
 
-6. **Mutual Exclusion:** Während eine Kalibrier-Session läuft, lehnt der
+7. **Mutual Exclusion:** Während eine Kalibrier-Session läuft, lehnt der
    normale Erkennungs-Job (`StartSingleJob`/`StartContinuous`) mit `BUSY` ab,
    und umgekehrt. Beide teilen sich dieselbe Kamera. Falls dein Frontend
    auch den normalen Job-Button zeigt: während `CalibrationProgress.running

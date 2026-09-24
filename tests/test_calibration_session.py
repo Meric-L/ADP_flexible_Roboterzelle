@@ -11,6 +11,7 @@ zu warten.
 
 import unittest
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 try:
@@ -146,6 +147,88 @@ class CaptureTest(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
+    """`calibration_capture_dir` ist ein reines Debug-Artefakt (siehe
+    `_save_capture_image` in `calibration_session.py`) -- standardmaessig aus
+    (`FAST_CONFIG` setzt es nicht), darum bleiben alle anderen Tests in dieser
+    Datei unberuehrt."""
+
+    async def test_saves_each_capture_with_an_incrementing_filename(self):
+        saved_calls: list = []
+
+        def fake_save_capture_image(path, image):
+            saved_calls.append((path, image))
+
+        config = replace(FAST_CONFIG, calibration_capture_dir=Path("captures"))
+        session, camera, _, _ = make_session(
+            config, save_capture_image=fake_save_capture_image
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()
+        await session.capture()
+
+        self.assertEqual(len(saved_calls), 2)
+        self.assertEqual(saved_calls[0][0], Path("captures") / "kalib_001.png")
+        self.assertEqual(saved_calls[1][0], Path("captures") / "kalib_002.png")
+        self.assertIs(saved_calls[0][1], _FRAME)
+
+    async def test_does_not_save_without_a_configured_dir(self):
+        saved_calls: list = []
+
+        def fake_save_capture_image(path, image):
+            saved_calls.append(path)
+
+        session, camera, _, _ = make_session(save_capture_image=fake_save_capture_image)
+        session.start()
+        camera.push()
+
+        await session.capture()
+
+        self.assertEqual(saved_calls, [])
+
+    async def test_does_not_save_when_the_board_is_not_found(self):
+        saved_calls: list = []
+
+        def fake_save_capture_image(path, image):
+            saved_calls.append(path)
+
+        config = replace(FAST_CONFIG, calibration_capture_dir=Path("captures"))
+        session, camera, _, _ = make_session(
+            config,
+            detect_board=fake_detect_board_never,
+            save_capture_image=fake_save_capture_image,
+        )
+        session.start()
+        camera.push()
+
+        await session.capture()
+
+        self.assertEqual(saved_calls, [])
+
+    async def test_counter_resets_on_a_new_start(self):
+        saved_calls: list = []
+
+        def fake_save_capture_image(path, image):
+            saved_calls.append(path)
+
+        config = replace(FAST_CONFIG, calibration_capture_dir=Path("captures"))
+        session, camera, _, _ = make_session(
+            config, save_capture_image=fake_save_capture_image
+        )
+        session.start()
+        camera.push()
+        await session.capture()
+        await session.abort()
+
+        session.start()
+        await session.capture()
+
+        self.assertEqual(saved_calls[-1], Path("captures") / "kalib_001.png")
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class ProgressTest(unittest.IsolatedAsyncioTestCase):
     async def test_reports_running_min_samples_and_coverage(self):
         session, camera, _, _ = make_session()
@@ -198,6 +281,30 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error, VisionErrorCode.DETECTION_FAILED)
         self.assertIn("message", summary)
         self.assertEqual(save_calls, [])
+
+    async def test_detection_failed_when_calibration_raises_a_non_value_error(self):
+        """cv2.calibrateCamera scheitert bei numerisch ungeeigneten Aufnahmen
+        mit `cv2.error`, keinem `ValueError` -- muss trotzdem als sauberes
+        DETECTION_FAILED zurueckkommen statt die Session unsichtbar tot
+        haengen zu lassen (Bug, live auf Pi 2 gefunden 2026-09-23)."""
+
+        def fake_calibrate_raises_runtime_error(samples, image_size, spec, board, *, frame_id):
+            raise RuntimeError("cv2.calibrateCamera: Rueckprojektion divergiert")
+
+        session, camera, _calibrate_calls, save_calls = make_session(
+            calibrate_from_samples=fake_calibrate_raises_runtime_error
+        )
+        session.start()
+        camera.push()
+        for _ in range(3):
+            await session.capture()
+
+        error, summary = await session.finish()
+
+        self.assertEqual(error, VisionErrorCode.DETECTION_FAILED)
+        self.assertIn("divergiert", summary["message"])
+        self.assertEqual(save_calls, [])
+        self.assertFalse(session.running)
 
     async def test_finish_without_ever_starting_reports_zero_samples(self):
         session, _camera, _calibrate_calls, save_calls = make_session()

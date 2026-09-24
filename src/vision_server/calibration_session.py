@@ -60,6 +60,15 @@ def _lazy(module: str, name: str) -> Callable:
     return call
 
 
+def _save_capture_image(path: Any, image: Any) -> None:
+    """Schreibt eine Aufnahme als PNG -- Debug-Artefakt, kein Teil der
+    Kalibrierung selbst. Kein `tagloc`-Bezug, deshalb kein `_lazy(...)`."""
+    import cv2
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), image)
+
+
 class CalibrationSession:
     """Sammelt Board-Samples aus der geteilten Kamera, bis `finish()` rechnet.
 
@@ -85,10 +94,17 @@ class CalibrationSession:
         compute_coverage: Callable | None = None,
         save_calibration: Callable | None = None,
         on_calibrated: Callable[[Any], Any] | None = None,
+        save_capture_image: Callable | None = None,
     ) -> None:
         self._camera = camera
         self._config = config
         self._out_path = config.calibration_path
+        #: `None` (Standard) speichert keine Bilder. Gesetzt, schreibt jede
+        #: uebernommene Aufnahme zusaetzlich als PNG hier ab -- zum
+        #: Nachpruefen/Neu-Rechnen abseits vom Server.
+        self._capture_dir = config.calibration_capture_dir
+        self._saved_captures = 0
+        self._save_capture_image = save_capture_image or _save_capture_image
         #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
         #: frisch berechneten `CameraCalibration`-Objekt -- `runner.py` setzt
         #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
@@ -158,6 +174,7 @@ class CalibrationSession:
         `capture()`."""
         self._samples = []
         self._image_size = (0, 0)
+        self._saved_captures = 0
         self.last_result = None
         self.running = True
 
@@ -194,6 +211,10 @@ class CalibrationSession:
         _log.info(
             "Kalibrierung: Aufnahme %d (%d Ecken)", len(self._samples), sample.count()
         )
+        if self._capture_dir is not None:
+            self._saved_captures += 1
+            path = self._capture_dir / f"kalib_{self._saved_captures:03d}.png"
+            await self._run_blocking(self._save_capture_image, path, frame.image)
         await self._maybe_auto_finish()
         return True
 
@@ -262,7 +283,19 @@ class CalibrationSession:
                 board,
                 frame_id=self._config.frame_id,
             )
-        except ValueError as error:
+        except Exception as error:
+            # Nicht nur ValueError: cv2.calibrateCamera scheitert bei
+            # numerisch ungeeigneten Aufnahmen (z. B. zu wenig Neigungs-/
+            # Distanz-Variation trotz guter Bildabdeckung) mit `cv2.error`,
+            # keinem ValueError. Ungefangen wuerde das hier durchschlagen --
+            # `self.running` ist zu diesem Zeitpunkt bereits `False` (siehe
+            # `_stop()` oben), die Session bliebe also unsichtbar tot haengen:
+            # jede weitere `capture()` liefert danach nur noch "Board nicht
+            # gefunden", ein spaeteres manuelles `finish()` nur noch
+            # `INVALID_STATE`, ohne dass je ein Ergebnis oder eine
+            # Fehlermeldung zu sehen war. `asyncio.CancelledError` faengt das
+            # nicht ab (die erbt von `BaseException`, nicht `Exception`).
+            _log.exception("Kalibrierung fehlgeschlagen (%d Aufnahmen)", len(samples))
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
