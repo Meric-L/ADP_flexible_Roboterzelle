@@ -209,6 +209,18 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
         # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
         calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
+        # Diagnose-Schalter (2026-09-24): kurzzeitig auf "0" setzen, um live
+        # zu pruefen, ob Tags ohne Verfeinerung (a) gar nicht erst dekodiert
+        # werden (kein Log-Treffer zu "verworfen: Reprojektionsfehler" in
+        # tagloc/pose.py) oder (b) gefunden, aber wegen zu hohem
+        # Reprojektionsfehler VERWORFEN werden (Log-Treffer dort) --
+        # Reprojektionsfehler skaliert mit der Aufloesung (scale_to_
+        # resolution skaliert die Brennweite), `max_reproj_error_px` ist aber
+        # ein fixer Pixelwert, gleich fuer Job (voll) und Stream (verkleinert).
+        # Default unveraendert True -- siehe AprilTagProfileConfig.
+        # subpixel_corner_refinement. NICHT dauerhaft auf pi1 setzen, das ist
+        # exakt der Fehler, der Layer 1 zuvor blind gemacht hat.
+        subpixel_corner_refinement=os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "1") == "1",
         # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
         # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver
         # Default aendert -- siehe `AprilTagProfileConfig.apriltag_quad_decimate`.

@@ -125,5 +125,27 @@ class QuadDecimateSwitchTest(unittest.TestCase):
         self.assertEqual(config.apriltag.apriltag_quad_decimate, 2.0)
 
 
+class SubpixelRefinementSwitchTest(unittest.TestCase):
+    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- kurzzeitiger Diagnose-Schalter
+    fuer den Reprojektionsfehler-vs-Aufloesung-Verdacht (Log-Zeile
+    "verworfen: Reprojektionsfehler" in tagloc/pose.py live mitlesen).
+    NICHT dauerhaft aus, siehe profiles.py/server.py-Kommentare."""
+
+    def test_defaults_to_enabled(self):
+        self.assertTrue(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
+
+    def test_can_be_disabled_via_env_var(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_SUBPIXEL_CORNER_REFINEMENT": "0",
+            },
+        ):
+            config = vision_config()
+        self.assertFalse(config.apriltag.subpixel_corner_refinement)
+
+
 if __name__ == "__main__":
     unittest.main()
