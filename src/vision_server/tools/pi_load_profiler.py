@@ -30,14 +30,26 @@ Deshalb schluesselt dieses Tool zusaetzlich CPU% pro Thread innerhalb des
 `--pid` explizit oder automatisch ueber den ersten Prozess, dessen
 Kommandozeile "vision_server" enthaelt.
 
-Fuer noch mehr Detail (welche Python-Funktion/welcher Call-Stack konkret
-die Zeit frisst, nicht nur welcher Thread) waere `py-spy top --pid <PID>`
-der naechste Schritt -- separat zu installieren, hier bewusst nicht
-eingebaut, um dem Pi kein zusaetzliches Tool aufzudruecken ohne Rueckfrage.
+Die Thread-Aufschluesselung zeigt aber nur TIDs + CPU%, keine sprechenden
+Namen: CPython gibt `threading.Thread(name=...)`/`thread_name_prefix`
+NICHT an den Kernel weiter, `/proc/[pid]/task/[tid]/comm` zeigt fuer jeden
+Thread nur "python3" (mit einem kleinen Testskript verifiziert). Um
+trotzdem zu sehen, welcher *Code* (Kamera-Capture, AprilTag-Detection, ...)
+die Zeit frisst, ruft `--pyspy` stattdessen `py-spy top` auf denselben
+Ziel-Prozess auf -- das liest den echten Python-Call-Stack pro Thread aus
+(ptrace-basiert, ohne vision_server-Code zu aendern). Muss separat
+installiert sein (`pip install py-spy` bzw. auf dem Pi ggf. via `pipx`/im
+venv) und braucht i. d. R. root-Rechte (`sudo py-spy ...`), da
+`ptrace_scope` auf Debian/Raspberry Pi OS Standardmaessig fremde Prozesse
+schuetzt.
 
 Nutzung auf dem Pi, z. B. waehrend der Server unter Last laeuft:
 
     python3 src/vision_server/tools/pi_load_profiler.py --duration 120 --csv load.csv
+
+Fuer den Funktions-Call-Stack statt reiner CPU%-Zahlen (ggf. mit sudo):
+
+    python3 src/vision_server/tools/pi_load_profiler.py --pyspy
 
 Ctrl+C beendet vorzeitig und druckt trotzdem die Zusammenfassung.
 """
@@ -310,6 +322,31 @@ def _print_thread_snapshot(pid: int, samples: list[ThreadSample], top_n: int) ->
         print(f"  {sample.tid:>7}  {sample.cpu_percent:6.1f}  {sample.name}")
 
 
+def _run_pyspy(pid: int) -> int:
+    """Reicht --pid an `py-spy top` durch -- zeigt (anders als unsere eigene
+    Thread-Tabelle) den echten Python-Call-Stack pro Thread, weil py-spy
+    per ptrace direkt den Interpreter-Zustand ausliest statt sich auf
+    OS-Thread-Namen zu verlassen."""
+    print(f"Starte 'py-spy top --pid {pid}' (Ctrl+C zum Beenden) ...")
+    try:
+        result = subprocess.run(["py-spy", "top", "--pid", str(pid)])
+    except FileNotFoundError:
+        print(
+            "FEHLER: 'py-spy' ist nicht installiert bzw. nicht im PATH. "
+            "Installieren z. B. mit 'pip install py-spy' im vision_server-venv.",
+            file=sys.stderr,
+        )
+        return 1
+    except PermissionError:
+        print(
+            "FEHLER: keine Berechtigung, den Prozess zu tracen -- mit 'sudo' erneut versuchen "
+            "(ptrace_scope schuetzt auf Debian/Raspberry Pi OS standardmaessig fremde Prozesse).",
+            file=sys.stderr,
+        )
+        return 1
+    return result.returncode
+
+
 def run(args: argparse.Namespace) -> int:
     stats: dict[int, ProcStats] = {}
     thread_stats: dict[int, ThreadStats] = {}
@@ -321,12 +358,20 @@ def run(args: argparse.Namespace) -> int:
         csv_writer.writerow(["elapsed_s", "scope", "pid_or_tid", "name", "cpu_percent", "rss_kb"])
 
     target_pid = args.pid
-    if target_pid is None and not args.no_threads:
+    if target_pid is None and (not args.no_threads or args.pyspy):
         target_pid = _find_vision_server_pid()
         if target_pid is not None:
             print(f"Thread-Aufschluesselung: automatisch erkannter vision_server-Prozess PID {target_pid}")
         else:
             print("Thread-Aufschluesselung: kein vision_server-Prozess gefunden (--pid setzen falls anders benannt)")
+
+    if args.pyspy:
+        if target_pid is None:
+            print("FEHLER: kein Ziel-Prozess fuer --pyspy gefunden -- --pid explizit setzen.", file=sys.stderr)
+            return 1
+        if csv_file:
+            csv_file.close()
+        return _run_pyspy(target_pid)
 
     stop = False
 
@@ -408,6 +453,10 @@ def main(argv: list[str] | None = None) -> int:
                               "(Standard: automatisch der erste Prozess mit 'vision_server' in der Kommandozeile)")
     parser.add_argument("--no-threads", action="store_true",
                          help="Keine automatische Thread-Aufschluesselung versuchen")
+    parser.add_argument("--pyspy", action="store_true",
+                         help="Statt eigener Messung 'py-spy top' auf den Ziel-Prozess starten -- "
+                              "zeigt den echten Python-Call-Stack pro Thread (muss installiert sein, "
+                              "braucht meist sudo)")
     args = parser.parse_args(argv)
     return run(args)
 
