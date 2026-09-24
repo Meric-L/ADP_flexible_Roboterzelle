@@ -73,6 +73,37 @@ class BuildAnnotatorTest(unittest.TestCase):
         source._detector = object()
         self.assertIsNone(_build_annotator(source))
 
+    def test_the_stream_gets_its_own_detector_without_subpixel_refinement(self):
+        """Regression: Job und Stream teilten sich bis 2026-09-24 EINE
+        Detektor-Instanz. Live auf pi1 gemessen (py-spy-Dump): beide Threads
+        gleichzeitig in `detector.detect()` mit aktivem
+        `CORNER_REFINE_APRILTAG` -- genug CPU-Konkurrenz fuer erneute
+        20s-Job-Timeouts, obwohl `AprilTagProfileConfig.subpixel_corner_refinement`
+        (Job-Pfad) auf `True` steht. Der Stream muss deshalb IMMER eine eigene
+        Instanz mit der Verfeinerung aus bekommen, unabhaengig vom Config-Wert."""
+        from unittest.mock import patch
+
+        from vision_server.profiles import AprilTagProfileConfig
+
+        source = CameraSource()
+        source._detector = object()  # Job-Detektor, bleibt unangetastet
+        source._calibration = object()
+        source._config = AprilTagProfileConfig(subpixel_corner_refinement=True)
+
+        stream_detector = object()
+        with patch(
+            "tagloc.detector.build_detector", return_value=stream_detector
+        ) as build_detector, patch("vision_server.stream_overlay.AprilTagStreamAnnotator") as annotator_cls:
+            _build_annotator(source)
+
+        build_detector.assert_called_once_with(
+            source._config.tag_family,
+            source._config.detector_backend,
+            subpixel_corner_refinement=False,
+        )
+        self.assertIs(annotator_cls.call_args.kwargs["detector"], stream_detector)
+        self.assertIsNot(annotator_cls.call_args.kwargs["detector"], source._detector)
+
 
 class FakeHealthNode:
     def __init__(self) -> None:
