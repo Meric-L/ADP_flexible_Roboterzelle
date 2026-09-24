@@ -720,6 +720,8 @@ and Condition Monitoring*, veröffentlicht 17.05.2024 — beantwortet, **woraus 
 besteht**: Recheneinheit, Bildsensor, Objektiv, jeweils mit Identifikation. Für
 Service und Instandhaltung, nicht für den Betrieb.
 
+Der Typ **kann** drei Komponentenarten tragen:
+
 ```
 ns=<vision>;s=VisionMachine.VisionAsset
 ├── Identification        Manufacturer, Model, SerialNumber, SoftwareRevision
@@ -728,12 +730,47 @@ ns=<vision>;s=VisionMachine.VisionAsset
 └── Lenses/Lens
 ```
 
-Angelegt wird nur, was in der `AssetConfig` des Pis steht (`src/vision_server/server.py`,
-`PI_ASSET_PRESETS`). Ein leeres Modellfeld heißt „nicht bekannt" und erzeugt
-**keinen** Eintrag — ein erfundenes Modell wäre in einer Instandhaltungssicht
-schlimmer als eine Lücke.
+Angelegt wird davon nur, was in der `AssetConfig` des Pis wirklich steht
+(`src/vision_server/server.py`, `PI_ASSET_PRESETS`). Ein leeres Modellfeld heißt
+„nicht bekannt" und erzeugt **keinen** Eintrag — ein erfundenes Modell wäre in
+einer Instandhaltungssicht schlimmer als eine Lücke.
 
-### 11.1 Was das kostet
+### 11.1 Was auf den beiden Pis tatsächlich steht
+
+Stand 22.09.2026. Wer die Anlagensicht browst, findet **genau das** — nicht den
+vollen Baum oben:
+
+| | Decken-Pi (Layer 1) | Hand-Pi (Layer 2) |
+| --- | --- | --- |
+| Hostname | `ADP-Roboter-Lokalisierung` | `ADP-HandInEye-Kamera-Pi` |
+| Vision-Identität | `vision-ceiling-01` | `vision-flange-01` |
+| Bezugsrahmen (`frame_id`) | `cam_ceiling` | `cam_flange` |
+| `SerialNumber` | `vision-ceiling-01` | `vision-flange-01` |
+| `ComputingDevice` | „Raspberry Pi" | „Raspberry Pi" |
+| `ImageSensor` | „Raspberry Pi Camera Module" | „Intel RealSense" |
+| **`Lens`** | **nicht vorhanden** | **nicht vorhanden** |
+
+`Manufacturer` („TU Darmstadt PLCM"), `Model` („Flexible Roboterzelle — Vision")
+und `SoftwareRevision` („0.1.0") sind für beide gleich und stehen als Defaults
+in `AssetConfig` (`profiles.py`).
+
+**Es gibt kein Objektiv-Objekt.** `lens_model` ist in beiden Presets nicht
+gesetzt, also wird der Ordner `Lenses` gar nicht erst angelegt. Das ist kein
+Versehen, sondern die Regel von oben: Niemand hat bisher nachgesehen, welche
+Optik auf den beiden Kameras sitzt. Wer es nachträgt, setzt `lens_model` im
+jeweiligen Preset — der Knoten entsteht dann beim nächsten Start von selbst.
+
+Zwei weitere Werte sind bewusst ungenau:
+
+- **`ImageSensor` am Hand-Pi** sagt nur „Intel RealSense". Ob D415 oder D435
+  ist nicht bestätigt. „Irgendein RealSense" ist hier richtiger als ein
+  geratenes Modell, das es womöglich nicht gibt.
+- **Die Hostnamen** in `PI_IDENTITIES` waren ursprünglich geraten. Stimmt einer
+  nicht, fällt der Pi auf `vision-<hostname>` und den Rahmen `world` zurück und
+  bekommt **keine** Anlagensicht-Presets — die Tabelle oben gilt dann nicht.
+  Erkennbar an der Startzeile im Log: `Vision-Identitaet: …`.
+
+### 11.2 Was das kostet
 
 Part 2 bringt **DI 1.04.0** und **Machinery 1.03.0** mit; der Server lädt also
 vier Nodesets statt einem. Gemessen (Desktop, asyncua 2.0.1):
@@ -748,7 +785,7 @@ Rund **16 MB und knapp zwei Sekunden**. Ohne `assets` in der
 `VisionServerConfig` wird nichts davon geladen. Nachmessen:
 `PYTHONPATH=src python3 tools/measure_nodeset_import.py`.
 
-### 11.2 Zwei Fallen
+### 11.3 Zwei Fallen
 
 **Die Nodeset-Versionen sind gepinnt.** Das neueste DI (1.05.0) lässt sich mit
 asyncua 2.0.1 **nicht** importieren — es fordert UA-Basis 1.05.04 und scheitert
@@ -761,7 +798,7 @@ Gewählt sind genau die Versionen, die AMCM als `RequiredModel` nennt. Details i
 müssen ihn zur Laufzeit über `get_namespace_index` auflösen. Wer einen Index
 hart einträgt, bemerkt es erst, wenn jemand ein Nodeset ergänzt.
 
-### 11.3 Warum asyncua Platzhalter anlegt
+### 11.4 Warum asyncua Platzhalter anlegt
 
 `<VisionItem>` & Co. tragen die Modelling Rule `MandatoryPlaceholder`. asyncua
 instanziiert sie deshalb als echte Knoten, obwohl sie Vorlagen des Typs sind.
