@@ -91,7 +91,13 @@ class ArucoTagDetector:
     code would only work on one of the two.
     """
 
-    def __init__(self, family: str = "tag36h11", *, parameters: Any = None) -> None:
+    def __init__(
+        self,
+        family: str = "tag36h11",
+        *,
+        parameters: Any = None,
+        subpixel_corner_refinement: bool = False,
+    ) -> None:
         import cv2
 
         self.family = family
@@ -105,14 +111,18 @@ class ArucoTagDetector:
         else:  # OpenCV < 4.7
             self._parameters = aruco.DetectorParameters_create()
 
-        # Subpixel-accurate corners: without it, pose quality at distance
-        # noticeably drops -- exactly the Layer-1 case.
-        refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
-        if refine is not None:
-            try:
-                self._parameters.cornerRefinementMethod = refine
-            except Exception:  # pragma: no cover - read-only depending on build
-                _log.debug("cornerRefinementMethod nicht setzbar")
+        # Subpixel-accurate corners: verbessert die Pose-Qualitaet auf
+        # Distanz spuerbar (exakt der Deckenkamera-Fall), kostet laut
+        # OpenCV-Doku aber merklich mehr Rechenzeit -- auf pi1 mit
+        # Full-Res-Overlay mitverantwortlich fuer Job-Timeouts. Deshalb
+        # jetzt opt-in ueber `subpixel_corner_refinement`, Default aus.
+        if subpixel_corner_refinement:
+            refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
+            if refine is not None:
+                try:
+                    self._parameters.cornerRefinementMethod = refine
+                except Exception:  # pragma: no cover - read-only depending on build
+                    _log.debug("cornerRefinementMethod nicht setzbar")
 
         self._detector = None
         if hasattr(aruco, "ArucoDetector"):
@@ -165,20 +175,28 @@ class PupilAprilTagDetector:
         return sorted(found, key=lambda observation: observation.tag_id)
 
 
-def build_detector(family: str = "tag36h11", backend: str = "aruco") -> TagDetector:
+def build_detector(
+    family: str = "tag36h11",
+    backend: str = "aruco",
+    *,
+    subpixel_corner_refinement: bool = False,
+) -> TagDetector:
     """Build the detector for the requested family.
 
     `backend="auto"` tries `cv2.aruco` first and falls back to
     `pupil_apriltags` if this OpenCV version doesn't know the family.
+
+    `subpixel_corner_refinement` gilt nur fuer `"aruco"`/`"auto"` --
+    `pupil_apriltags` hat keine aequivalente Einstellung.
     """
     backend = backend.lower()
     if backend == "aruco":
-        return ArucoTagDetector(family)
+        return ArucoTagDetector(family, subpixel_corner_refinement=subpixel_corner_refinement)
     if backend == "pupil":
         return PupilAprilTagDetector(family)
     if backend == "auto":
         try:
-            return ArucoTagDetector(family)
+            return ArucoTagDetector(family, subpixel_corner_refinement=subpixel_corner_refinement)
         except Exception as error:
             _log.warning("cv2.aruco nicht nutzbar (%s), weiche auf pupil_apriltags aus", error)
             return PupilAprilTagDetector(family)

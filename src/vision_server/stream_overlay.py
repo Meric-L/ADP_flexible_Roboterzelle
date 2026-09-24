@@ -18,7 +18,6 @@ directly on the event loop.
 
 import logging
 import time
-from dataclasses import replace
 from typing import Any
 
 from .profiles import AprilTagProfileConfig
@@ -148,7 +147,6 @@ class AprilTagStreamAnnotator:
                 summarise,
             )
 
-            size = frame_tools.image_size(image)
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
 
@@ -194,19 +192,17 @@ class AprilTagStreamAnnotator:
                     )
                 return canvas
 
-            if due:
-                from tagloc.pose import estimate_tag_poses
-
-                self._last_tag_poses = estimate_tag_poses(
-                    self._detector.detect(frame_tools.to_gray(image)),
-                    self._calibration_for(size),
-                    tag_map=self._tag_map,
-                    default_size_m=self._config.tag_size_m,
-                    max_reprojection_error_px=self._config.max_reproj_error_px,
-                )
-                self._last_run = now
-            # Detektion bleibt auf dem vollen Frame. Nur die Markierungen
-            # werden auf dem kleineren Uebertragungsbild gezeichnet.
+            # Leinwand zuerst bauen -- Erkennung und Zeichnen teilen sich ab
+            # jetzt dieselbe (kleinere) Aufloesung, genau wie der
+            # Kalibrier-Zweig oben. Frueher lief die Erkennung zusaetzlich
+            # auf dem vollen Sensor-Frame mit anschliessendem manuellen
+            # Ecken-Rescale (sx/sy) -- auf pi1 kostete das laut py-spy ~102%
+            # einer Core und liess AprilTag-Jobs den 20s-Timeout reissen.
+            # Demo-Livestream erkennt deshalb auf der Uebertragungsaufloesung;
+            # Job-Erkennung (AprilTagDetectionSource._locate) und Kalibrierung
+            # bleiben unveraendert auf voller Aufloesung. Im Zweifel zeigt das
+            # Overlay einen Tag nicht an, den der Job trotzdem findet -- nie
+            # umgekehrt.
             if self._detection_max_width is not None:
                 from .camera_stream import _resize_for_stream
 
@@ -215,26 +211,22 @@ class AprilTagStreamAnnotator:
                 canvas = image.copy()
             output_size = frame_tools.image_size(canvas)
             calibration = self._calibration_for(output_size)
-            tag_poses = self._last_tag_poses
-            if output_size != size:
-                sx = output_size[0] / size[0]
-                sy = output_size[1] / size[1]
-                tag_poses = [
-                    replace(
-                        pose,
-                        observation=replace(
-                            pose.observation,
-                            corners=tuple(
-                                (x * sx, y * sy) for x, y in pose.observation.corners
-                            ),
-                        ),
-                    )
-                    if pose.observation is not None else pose
-                    for pose in tag_poses
-                ]
+
+            if due:
+                from tagloc.pose import estimate_tag_poses
+
+                self._last_tag_poses = estimate_tag_poses(
+                    self._detector.detect(frame_tools.to_gray(canvas)),
+                    calibration,
+                    tag_map=self._tag_map,
+                    default_size_m=self._config.tag_size_m,
+                    max_reprojection_error_px=self._config.max_reproj_error_px,
+                )
+                self._last_run = now
+
             draw_tag_overlay(
                 canvas,
-                tag_poses,
+                self._last_tag_poses,
                 calibration,
                 tag_map=self._tag_map,
                 default_size_m=self._config.tag_size_m,
@@ -243,7 +235,7 @@ class AprilTagStreamAnnotator:
                 canvas,
                 [
                     f"Modus: AprilTag   Familie {self._config.tag_family}",
-                    summarise(tag_poses, self._tag_map),
+                    summarise(self._last_tag_poses, self._tag_map),
                 ],
             )
             return canvas

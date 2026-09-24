@@ -47,6 +47,14 @@ class AprilTagProfileConfig:
     frame_convention: str = "z_forward_x_right_y_down"
     #: "aruco" (default), "pupil" or "auto" -- see tagloc.detector.
     detector_backend: str = "aruco"
+    #: `True` aktiviert `cv2.aruco.CORNER_REFINE_APRILTAG` (Subpixel-Ecken)
+    #: im geteilten Detektor -- betrifft Job-Pfad UND Livestream-Overlay
+    #: gleichermassen, da beide dieselbe Detektor-Instanz nutzen (siehe
+    #: `AprilTagDetectionSource.open()`). Default `False`: auf pi1
+    #: mitverantwortlich fuer Overlay-Laeufe > 8s und daraus folgende
+    #: Job-Timeouts (DETECTION_FAILED). Bleibt als Schalter erhalten -- bei
+    #: Bedarf (z. B. Pose-Qualitaet auf Distanz) gezielt wieder einschaltbar.
+    subpixel_corner_refinement: bool = False
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.

@@ -221,15 +221,16 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # "apriltag" und "off" zeigen den vollen Frame, nicht die kleine
-        # ISP-Vorschau:
-        # - "apriltag" muss exakt das Bild zeigen, auf dem auch der Job
-        #   erkennt -- sonst laesst sich nicht vertrauenswuerdig sehen, ob der
-        #   Pi ein Tag wirklich findet oder das nur auf dem kleineren
-        #   Vorschaubild klappt/scheitert. Kostet mehr pro Tick (volle
-        #   Aufloesung statt ~0,7 MP an der Deckenkamera); die Framerate sinkt
-        #   dadurch von selbst ueber die Sleep-Anpassung unten -- bewusst in
-        #   Kauf genommen (Absprache 2026-09-22).
+        # "apriltag" und "off" gehen vom vollen Frame aus, nicht von der
+        # kleinen ISP-Vorschau:
+        # - "apriltag" bekommt den vollen Frame als Eingabe, verkleinert ihn
+        #   aber selbst als ERSTEN Schritt in `AprilTagStreamAnnotator.
+        #   annotate()` auf `detection_max_width` -- Erkennung UND Zeichnen
+        #   laufen auf dieser kleineren Leinwand (siehe Kommentar dort:
+        #   Job-Erkennung und Kalibrierung bleiben unveraendert auf voller
+        #   Aufloesung, nur der Demo-Livestream ist guenstiger). Frueher lief
+        #   die Erkennung hier zusaetzlich auf dem vollen Frame -- auf pi1
+        #   laut py-spy ~102% einer Core und Ursache fuer Job-Timeouts.
         # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
         #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
         #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
@@ -249,9 +250,11 @@ class CameraStreamPublisher:
         if self._config.max_stream_width is not None:
             # Nach dem Overlay und nur fuers Publizieren -- beide Wege
             # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im
-            # "apriltag"-Modus lief die Erkennung vorher bereits in voller
-            # Aufloesung; hier wird nur noch die fertig markierte Kopie fuers
-            # Uebertragen verkleinert, die Treffer selbst bleiben unveraendert.
+            # "apriltag"-Modus hat `annotate()` selbst schon auf
+            # `detection_max_width` (== `max_stream_width`) verkleinert --
+            # `_resize_for_stream` ist hier also ein No-Op (Breite passt
+            # bereits), fuer "off" (voller Frame) macht es die eigentliche
+            # Arbeit.
             image = await loop.run_in_executor(
                 None, _resize_for_stream, image, self._config.max_stream_width
             )

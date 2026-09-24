@@ -22,6 +22,7 @@ The actual computation lives in `tagloc`; this file is the OPC-UA adapter.
 """
 
 import asyncio
+import functools
 import json
 import logging
 import math
@@ -236,9 +237,16 @@ class AprilTagDetectionSource(DetectionSource):
                 )
 
         if self._detector is None:
-            self._detector = await self.run_blocking(
-                build_detector, self._config.tag_family, self._config.detector_backend
+            # `run_blocking` reicht nur Positionalargumente durch --
+            # `subpixel_corner_refinement` ist bei `build_detector` bewusst
+            # keyword-only, deshalb hier per `partial` gebunden.
+            build = functools.partial(
+                build_detector,
+                self._config.tag_family,
+                self._config.detector_backend,
+                subpixel_corner_refinement=self._config.subpixel_corner_refinement,
             )
+            self._detector = await self.run_blocking(build)
         self.configuration_id = self._build_configuration_id()
         await self.camera.open()
 

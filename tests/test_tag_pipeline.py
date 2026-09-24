@@ -102,7 +102,12 @@ class SyntheticTagSceneTest(unittest.TestCase):
         cls.calibration = synthetic_calibration((1600, 1200), focal_px=1600.0)
         cls.placements = default_tag_layout()
         cls.world_poses = {item.tag_id: item.pose_world_tag for item in cls.placements}
-        cls.detector = build_detector("tag36h11", "aruco")
+        # Subpixel-Verfeinerung ausdruecklich an: dieser Test prueft die
+        # erreichbare Genauigkeit der Kette gegen die 2mm/0.5deg-Toleranz
+        # aus apriltag-lokalisierung.md Abschnitt 7 -- das ist unabhaengig
+        # vom Produktions-Default auf pi1 (dort seit dem CPU-Fix aus, siehe
+        # AprilTagProfileConfig.subpixel_corner_refinement).
+        cls.detector = build_detector("tag36h11", "aruco", subpixel_corner_refinement=True)
         cls.views = orbit_views(VIEW_COUNT)
         # Render once, evaluate four times -- rendering is the expensive part.
         cls.scenes = [

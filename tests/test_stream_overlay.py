@@ -135,8 +135,11 @@ class ApplyCalibrationTest(unittest.TestCase):
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
-class AprilTagOutputScaleTest(unittest.TestCase):
-    def test_detects_full_resolution_and_draws_scaled_coordinates(self):
+class AprilTagCanvasDetectionTest(unittest.TestCase):
+    def test_detects_and_draws_on_the_same_resized_canvas(self):
+        """Erkennung und Zeichnen teilen sich seit dem CPU-Fix (pi1,
+        Job-Timeouts durch Overlay-Erkennung in voller Aufloesung) dieselbe
+        verkleinerte Leinwand -- kein separater Ecken-Rescale-Schritt mehr."""
         from tagloc.calibration import default_calibration
         from tagloc.geometry import identity
         from tagloc.observations import TagObservation, TagPose
@@ -157,12 +160,37 @@ class AprilTagOutputScaleTest(unittest.TestCase):
                 result = annotator.annotate(image, "apriltag")
 
         self.assertEqual(result.shape[:2], (150, 200))
+        # Erkennung laeuft auf der verkleinerten Leinwand (200x150), nicht
+        # mehr auf dem vollen Frame (400x300) -- die Kalibrierung ist deshalb
+        # bereits auf die Canvas-Groesse skaliert.
         self.assertEqual(estimate.call_args.args[0], [observation])
-        self.assertEqual(estimate.call_args.args[1].image_size, (400, 300))
-        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
+        self.assertEqual(estimate.call_args.args[1].image_size, (200, 150))
+        # Kein separater Rescale mehr: die vom (gefakten) Detektor gelieferten
+        # Koordinaten kommen unveraendert bei draw_tag_overlay an.
+        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (100.0, 60.0))
         self.assertEqual(draw.call_args.args[2].image_size, (200, 150))
         self.assertEqual(annotator._last_tag_poses[0].observation.corners[0], (100, 60))
         self.assertFalse(np.any(image))
+
+    def test_detector_receives_the_resized_canvas_not_the_full_frame(self):
+        """Regression fuer den CPU-Fix: die teure Erkennung darf nicht mehr
+        auf dem vollen (hier 400x300) Frame laufen."""
+        from tagloc.calibration import default_calibration
+
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        detector = SimpleNamespace(detect=lambda gray: [])
+        with patch.object(detector, "detect", wraps=detector.detect) as detect:
+            annotator = AprilTagStreamAnnotator(
+                CONFIG,
+                detector=detector,
+                calibration=default_calibration((400, 300)),
+                tag_map=None,
+                detection_max_width=200,
+            )
+            with patch("tagloc.overlay.draw_tag_overlay"):
+                annotator.annotate(image, "apriltag")
+
+        self.assertEqual(detect.call_args.args[0].shape[:2], (150, 200))
 
 
 if __name__ == "__main__":

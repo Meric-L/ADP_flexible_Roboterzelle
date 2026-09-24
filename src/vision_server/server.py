@@ -150,15 +150,19 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         "preview_resolution": (960, 720),
         "capture_fps": 10.0,
         "buffer_count": 2,
-        # "apriltag"/"off" im Stream erkennen/kodieren jetzt auf dem vollen
-        # 12-MP-Frame statt auf dem kleinen lores-Strom (Absprache
-        # 2026-09-22, camera_stream.py._encoded) -- der globale Default von
-        # 2,0 s (profiles.py) reichte dafuer nicht: Erkennung + Zeichnen auf
-        # 4056x3040 ueberschritt ihn zuverlaessig, das Overlay fiel jeden
-        # Tick auf das unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte
-        # komplett auf Pi 1). cam_flange braucht das nicht -- dort hat sich
-        # an der Erkennungsaufloesung nichts geaendert (640x480 war schon
-        # immer der volle Frame).
+        # "off" kodiert im Stream weiterhin den vollen 12-MP-Frame statt den
+        # kleinen lores-Strom (Absprache 2026-09-22, camera_stream.py.
+        # _encoded) -- der globale Default von 2,0 s (profiles.py) reichte
+        # dafuer nicht: allein das Kodieren eines 4056x3040-Bildes
+        # ueberschritt ihn zuverlaessig, das Overlay fiel jeden Tick auf das
+        # unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte komplett auf
+        # Pi 1). "apriltag" verkleinert seit der Umstellung auf
+        # Software-Downscale (siehe stream_overlay.py.annotate) VOR Erkennung
+        # und Zeichnen auf `detection_max_width` -- braucht die Reserve nicht
+        # mehr zwingend, der grosszuegige Wert bleibt als Sicherheitsmarge
+        # bestehen. cam_flange braucht das nicht -- dort hat sich an der
+        # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
+        # volle Frame).
         "overlay_timeout_s": 8.0,
     },
 }
