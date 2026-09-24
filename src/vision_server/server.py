@@ -323,20 +323,20 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # aendert sich" (`tagloc.calibration.scale_to_resolution`). RealSense
     # betroffen nicht: die hat mit `realsense_resolution` ein eigenes Feld,
     # das schon auf cam_flanges Aufloesung (640x480) abgestimmt ist.
+    # Diagnose-Schalter (2026-09-24): `VISION_DISABLE_STREAM=1` fuer den
+    # Job-Timeout-Verdacht per A/B-Test, ob der Stream-Publisher/-Overlay
+    # ueberhaupt noch beteiligt ist. `stream_enabled=False` unterdrueckt nur
+    # die Stream-Knoten/den Publisher/den MJPEG-Server (siehe
+    # `CameraStreamConfig.stream_enabled`) -- `resolution` bleibt gesetzt,
+    # weil dieselbe `CameraStreamConfig` auch die Job-Kamera oeffnet.
+    stream_enabled = os.getenv("VISION_DISABLE_STREAM") != "1"
     camera_stream = (
-        None
-        if os.getenv("VISION_DISABLE_STREAM") == "1"
-        # Diagnose-Schalter (2026-09-24): komplett ohne Livestream starten,
-        # um bei Job-Timeout-Verdacht per A/B-Test auszuschliessen, dass
-        # der Stream-Publisher/-Overlay ueberhaupt beteiligt ist --
-        # `config.camera_stream=None` legt gar keine Stream-Knoten an
-        # (`address_space.py`), also kein Publisher, kein Overlay, kein
-        # MJPEG-Server. Fuer den Dauerbetrieb NICHT setzen.
-        else CameraStreamConfig(backend=backend)
+        CameraStreamConfig(backend=backend, stream_enabled=stream_enabled)
         if backend == "realsense"
         else CameraStreamConfig(
             backend=backend,
             resolution=apriltag.resolution,
+            stream_enabled=stream_enabled,
             **(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {}),
         )
     )

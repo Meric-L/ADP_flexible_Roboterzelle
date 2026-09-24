@@ -75,9 +75,17 @@ class FlangeCameraTest(unittest.TestCase):
 
 class StreamDisableSwitchTest(unittest.TestCase):
     """`VISION_DISABLE_STREAM=1` -- Diagnose-Schalter fuer den A/B-Test:
-    Job-Timeout auch ganz ohne Livestream/Overlay?"""
+    Job-Timeout auch ganz ohne Livestream/Overlay?
 
-    def test_disables_the_camera_stream_entirely(self):
+    Regression (live auf pi1 gefunden): eine fruehere Fassung setzte dafuer
+    `config.camera_stream` komplett auf `None` -- das faellt in
+    `detection/__init__.py` (`config.camera_stream or CameraStreamConfig()`)
+    auf den blanken Default zurueck und aendert damit lautlos auch die
+    Job-Kamera-Aufloesung (2028x1520 -> 1280x720, "Seitenverhaeltnis
+    aendert sich"). `camera_stream` bleibt deshalb IMMER voll konfiguriert;
+    nur `stream_enabled` schaltet um."""
+
+    def test_disables_only_the_stream_nodes_not_the_resolution(self):
         with mock.patch.dict(
             os.environ,
             {
@@ -87,10 +95,14 @@ class StreamDisableSwitchTest(unittest.TestCase):
             },
         ):
             config = vision_config()
-        self.assertIsNone(config.camera_stream)
+        self.assertIsNotNone(config.camera_stream)
+        self.assertFalse(config.camera_stream.stream_enabled)
+        self.assertEqual(config.camera_stream.resolution, (4056, 3040))
 
     def test_stays_enabled_without_the_switch(self):
-        self.assertIsNotNone(config_for("cam_ceiling", "picamera2").camera_stream)
+        stream = config_for("cam_ceiling", "picamera2").camera_stream
+        self.assertIsNotNone(stream)
+        self.assertTrue(stream.stream_enabled)
 
 
 if __name__ == "__main__":

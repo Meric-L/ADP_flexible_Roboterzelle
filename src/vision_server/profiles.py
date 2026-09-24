@@ -123,6 +123,18 @@ class CameraStreamConfig:
     """
 
     backend: str = "picamera2"
+    #: `False` unterdrueckt nur die Stream-KNOTEN/den Publisher/den
+    #: MJPEG-Server (siehe `address_space.py`, `runner._start_camera_stream`)
+    #: -- die uebrigen Felder hier (v. a. `resolution`) bleiben unveraendert
+    #: in Kraft, weil `detection/apriltag.py` dieselbe `CameraStreamConfig`
+    #: auch fuer die Job-Kamera (`SharedCamera`) nutzt. NICHT stattdessen das
+    #: ganze `CameraStreamConfig`-Objekt auf `None` setzen, um nur den Stream
+    #: abzuschalten -- das faellt in `detection/__init__.py`
+    #: (`config.camera_stream or CameraStreamConfig()`) auf den blanken
+    #: Default zurueck und aendert damit lautlos auch die Job-Kamera-
+    #: Aufloesung (live auf pi1 gefunden: 2028x1520 -> 1280x720,
+    #: "Seitenverhaeltnis aendert sich").
+    stream_enabled: bool = True
     camera_index: int = 0
     #: Nur fuer Picamera2/OpenCV. RealSense hat ein eigenes Feld
     #: (`realsense_resolution`), weil die Sensoren -- besonders ueber die auf
