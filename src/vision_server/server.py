@@ -209,6 +209,10 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
         # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
         calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
+        # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
+        # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver
+        # Default aendert -- siehe `AprilTagProfileConfig.apriltag_quad_decimate`.
+        apriltag_quad_decimate=float(os.getenv("VISION_APRILTAG_QUAD_DECIMATE", "0.0")),
         **preset,
     )
 

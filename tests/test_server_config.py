@@ -105,5 +105,25 @@ class StreamDisableSwitchTest(unittest.TestCase):
         self.assertTrue(stream.stream_enabled)
 
 
+class QuadDecimateSwitchTest(unittest.TestCase):
+    """`VISION_APRILTAG_QUAD_DECIMATE` -- Tuning-Hebel, noch nicht auf
+    echten Distanzen validiert, deshalb Default 0.0 (unveraendert)."""
+
+    def test_defaults_to_unchanged_behaviour(self):
+        self.assertEqual(config_for("cam_ceiling", "picamera2").apriltag.apriltag_quad_decimate, 0.0)
+
+    def test_can_be_set_via_env_var(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_APRILTAG_QUAD_DECIMATE": "2.0",
+            },
+        ):
+            config = vision_config()
+        self.assertEqual(config.apriltag.apriltag_quad_decimate, 2.0)
+
+
 if __name__ == "__main__":
     unittest.main()

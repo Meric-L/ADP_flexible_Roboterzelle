@@ -154,6 +154,28 @@ Ursprünglicher Plan — wurde durch Team-Absprache vom 22.09.2026 überholt:
   das Overlay einen Tag nicht an, den der Job trotzdem findet — nie umgekehrt.
 - Welcher Pi steckt in Pi 1 (`/proc/device-tree/model`)? Ein Pi 4 schafft
   12 MP bei 10 fps im ISP; ein Pi 3 nicht sicher.
+- **A/B-Test 2026-09-24 (Stream aus vs. an):** getrennte Detektor-Instanzen
+  (Commit 3d91ee1) und `VISION_DISABLE_STREAM=1` (Commit 85e06ff) bringen
+  Job-Erfolg von 0/10 auf 3/4 -- klare Verbesserung, aber kein vollstaendiger
+  Fix. Ein Job scheiterte auch ganz ohne Stream-Konkurrenz mit echtem
+  20s-Timeout (`asyncio.wait_for` in job.py, nicht "kein Tag im Bild"). py-spy
+  zeigt `_locate -> detect` allein bei 46,4 % des Profils
+  (`subpixel_corner_refinement=True` auf vollen 12 MP). Vermutete Ursache:
+  `samples_per_job=3` × (bis zu `capture_timeout_s=5.0` s Wartezeit +
+  Detektionszeit) + `warmup_s=2.0` s laesst dem 20s-Budget zu wenig Puffer,
+  auch ohne Overlay.
+- **Gegenmassnahmen (2026-09-24), noch nicht auf dem Pi validiert:**
+  - `job_timeout` global von 20.0 auf 30.0 s angehoben (`config.py`) --
+    reine Sicherheitsmarge, senkt die Last nicht.
+  - Neuer Tuning-Parameter `AprilTagProfileConfig.apriltag_quad_decimate`
+    (Default `0.0`, ueber `VISION_APRILTAG_QUAD_DECIMATE` testbar) fuer
+    `cv2.aruco.DetectorParameters.aprilTagQuadDecimate` -- laesst die
+    AprilTag-Verfeinerungssuche auf einer verkleinerten Kopie laufen statt
+    auf dem vollen Frame, wirkt nur zusammen mit `subpixel_corner_refinement`.
+    Standard-AprilTag-Parameter, senkt typischerweise Rechenzeit deutlich,
+    kostet aber Reichweite/Robustheit bei sehr kleinen/entfernten Tags --
+    **noch mit echten Tag-Distanzen und py-spy auf pi1 messen**, bevor ein
+    produktiver Default (Literatur-Richtwert 1,5-2,0) gesetzt wird.
 
 ### Subpixel-Nachbearbeitung der Kalibrierbilder (nicht Teil der aktuellen Umsetzung)
 

@@ -60,6 +60,45 @@ class SubpixelCornerRefinementTest(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class AprilTagQuadDecimateTest(unittest.TestCase):
+    """`aprilTagQuadDecimate` -- Tuning-Hebel gegen die CPU-Kosten der
+    Subpixel-Verfeinerung (py-spy auf pi1: ~46% des Profils in
+    `_locate -> detect`), noch nicht auf echten Distanzen validiert."""
+
+    def test_default_leaves_quad_decimate_untouched(self):
+        detector = ArucoTagDetector("tag36h11", subpixel_corner_refinement=True)
+
+        self.assertEqual(detector._parameters.aprilTagQuadDecimate, 0.0)
+
+    def test_sets_quad_decimate_when_given(self):
+        detector = ArucoTagDetector(
+            "tag36h11", subpixel_corner_refinement=True, apriltag_quad_decimate=2.0
+        )
+
+        self.assertEqual(detector._parameters.aprilTagQuadDecimate, 2.0)
+
+    def test_has_no_effect_without_subpixel_refinement(self):
+        # `aprilTagQuadDecimate` wirkt nur zusammen mit
+        # `cornerRefinementMethod == CORNER_REFINE_APRILTAG` -- ohne
+        # Verfeinerung wird es bewusst gar nicht erst gesetzt.
+        detector = ArucoTagDetector(
+            "tag36h11", subpixel_corner_refinement=False, apriltag_quad_decimate=2.0
+        )
+
+        self.assertEqual(detector._parameters.aprilTagQuadDecimate, 0.0)
+
+    def test_build_detector_passes_it_through(self):
+        detector = build_detector(
+            "tag36h11",
+            "aruco",
+            subpixel_corner_refinement=True,
+            apriltag_quad_decimate=1.5,
+        )
+
+        self.assertEqual(detector._parameters.aprilTagQuadDecimate, 1.5)
+
+
 class AprilTagProfileConfigDefaultTest(unittest.TestCase):
     """Braucht kein `cv2` -- reiner Dataclass-Default-Check."""
 
@@ -68,6 +107,11 @@ class AprilTagProfileConfigDefaultTest(unittest.TestCase):
         # Distanz) live auf pi1 keine Tags mehr, siehe Kommentar in
         # profiles.py.
         self.assertTrue(AprilTagProfileConfig().subpixel_corner_refinement)
+
+    def test_apriltag_quad_decimate_defaults_to_unchanged_behaviour(self):
+        # Noch nicht validiert -- Default darf das Verhalten nicht aendern,
+        # bis auf dem Pi mit echten Distanzen gemessen wurde.
+        self.assertEqual(AprilTagProfileConfig().apriltag_quad_decimate, 0.0)
 
 
 if __name__ == "__main__":

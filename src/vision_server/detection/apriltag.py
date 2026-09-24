@@ -245,6 +245,7 @@ class AprilTagDetectionSource(DetectionSource):
                 self._config.tag_family,
                 self._config.detector_backend,
                 subpixel_corner_refinement=self._config.subpixel_corner_refinement,
+                apriltag_quad_decimate=self._config.apriltag_quad_decimate,
             )
             self._detector = await self.run_blocking(build)
         self.configuration_id = self._build_configuration_id()
