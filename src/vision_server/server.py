@@ -324,7 +324,15 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # betroffen nicht: die hat mit `realsense_resolution` ein eigenes Feld,
     # das schon auf cam_flanges Aufloesung (640x480) abgestimmt ist.
     camera_stream = (
-        CameraStreamConfig(backend=backend)
+        None
+        if os.getenv("VISION_DISABLE_STREAM") == "1"
+        # Diagnose-Schalter (2026-09-24): komplett ohne Livestream starten,
+        # um bei Job-Timeout-Verdacht per A/B-Test auszuschliessen, dass
+        # der Stream-Publisher/-Overlay ueberhaupt beteiligt ist --
+        # `config.camera_stream=None` legt gar keine Stream-Knoten an
+        # (`address_space.py`), also kein Publisher, kein Overlay, kein
+        # MJPEG-Server. Fuer den Dauerbetrieb NICHT setzen.
+        else CameraStreamConfig(backend=backend)
         if backend == "realsense"
         else CameraStreamConfig(
             backend=backend,

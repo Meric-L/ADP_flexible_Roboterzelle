@@ -73,5 +73,25 @@ class FlangeCameraTest(unittest.TestCase):
         self.assertEqual(config.camera_stream.overlay_timeout_s, 2.0)
 
 
+class StreamDisableSwitchTest(unittest.TestCase):
+    """`VISION_DISABLE_STREAM=1` -- Diagnose-Schalter fuer den A/B-Test:
+    Job-Timeout auch ganz ohne Livestream/Overlay?"""
+
+    def test_disables_the_camera_stream_entirely(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "VISION_FRAME_ID": "cam_ceiling",
+                "VISION_CAMERA_BACKEND": "picamera2",
+                "VISION_DISABLE_STREAM": "1",
+            },
+        ):
+            config = vision_config()
+        self.assertIsNone(config.camera_stream)
+
+    def test_stays_enabled_without_the_switch(self):
+        self.assertIsNotNone(config_for("cam_ceiling", "picamera2").camera_stream)
+
+
 if __name__ == "__main__":
     unittest.main()
