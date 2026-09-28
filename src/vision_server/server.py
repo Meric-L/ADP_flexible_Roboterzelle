@@ -203,12 +203,21 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         hand_eye_path=hand_eye_path,
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
-        # Debug-Artefakt: jede uebernommene interaktive Aufnahme landet
-        # zusaetzlich als PNG hier -- zum Nachpruefen/Neu-Rechnen abseits vom
-        # Server (2026-09-23, waehrend Kalibrierprobleme auf Pi 1 untersucht
-        # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
-        # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
-        calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
+        # Debug-Artefakt, Standard aus (2026-09-23 eingefuehrt, dann zunaechst
+        # unbedingt fuer beide Pis aktiviert -- 2026-09-28 auf Env-Var
+        # umgestellt): jede uebernommene interaktive Aufnahme landet
+        # zusaetzlich als JPEG hier ab, zum Nachpruefen/Neu-Rechnen abseits
+        # vom Server. War live an der Deckenkamera (12 MP) selbst nach dem
+        # Umzug auf einen eigenen Hintergrund-Pool (siehe
+        # `calibration_session.py._schedule_capture_save`) noch spuerbar
+        # zusaetzliche SD-Karten-Last -- deshalb bewusst kein Standard mehr,
+        # sondern nur bei Bedarf einschalten. `data/` ist gitignored, kein
+        # Aufraeum-Mechanismus noetig, nur von Hand leeren.
+        calibration_capture_dir=(
+            REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures"
+            if os.getenv("VISION_SAVE_CALIBRATION_CAPTURES") == "1"
+            else None
+        ),
         # Default aus, siehe AprilTagProfileConfig.subpixel_corner_refinement.
         # Env-Var bleibt als Schalter fuer Layer 2/Kalibrierung.
         subpixel_corner_refinement=os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "0") == "1",

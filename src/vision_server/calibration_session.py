@@ -60,13 +60,25 @@ def _lazy(module: str, name: str) -> Callable:
     return call
 
 
+#: JPEG statt PNG fuers Debug-Artefakt (siehe `_save_capture_image`) -- auf
+#: der Deckenkamera (12 MP) war PNG live 2026-09-28 langsam genug (Pi-SD-Karte
+#: + ARM-Zlib-Kompression), um zusammen mit der Warteschlangen-Verstopfung
+#: aus `_schedule_capture_save` das gesamte Kalibrieren dort zum Haengen zu
+#: bringen. Fuer den Zweck (visuelle Kontrolle, ggf. Neu-Rechnen des RMS)
+#: veraendert die verlustbehaftete Kompression die erkannten Eckenpositionen
+#: nicht spuerbar -- ein Schachbrettmuster hat keine feine Textur, an der
+#: JPEG-Artefakte etwas verschieben koennten.
+_CAPTURE_IMAGE_SUFFIX = ".jpg"
+_CAPTURE_JPEG_QUALITY = 92
+
+
 def _save_capture_image(path: Any, image: Any) -> None:
-    """Schreibt eine Aufnahme als PNG -- Debug-Artefakt, kein Teil der
+    """Schreibt eine Aufnahme als JPEG -- Debug-Artefakt, kein Teil der
     Kalibrierung selbst. Kein `tagloc`-Bezug, deshalb kein `_lazy(...)`."""
     import cv2
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(path), image)
+    cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, _CAPTURE_JPEG_QUALITY])
 
 
 class CalibrationSession:
@@ -127,6 +139,9 @@ class CalibrationSession:
         self._samples: list = []
         self._image_size: tuple[int, int] = (0, 0)
         self._executor: ThreadPoolExecutor | None = None
+        #: Eigener Pool nur fuer `_schedule_capture_save` -- siehe dort, warum
+        #: er sich NICHT `_executor` mit `detect_board` teilen darf.
+        self._save_executor: ThreadPoolExecutor | None = None
         self.running = False
         #: Ergebnis von `finish()` bzw. des automatischen Abschlusses ueber
         #: `calibration_coverage_threshold`; `None` bis dahin. Wird von
@@ -173,6 +188,16 @@ class CalibrationSession:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
 
+    def _save_pool(self) -> ThreadPoolExecutor:
+        """Eigener Ein-Worker-Pool nur fuer Debug-Speicherungen -- getrennt
+        von `_pool()` (siehe `_schedule_capture_save`, warum das wichtig
+        ist)."""
+        if self._save_executor is None:
+            self._save_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="vision-calibration-save"
+            )
+        return self._save_executor
+
     def _schedule_capture_save(self, path: Any, image: Any) -> None:
         """Speichert die Debug-Aufnahme im Hintergrund, ohne `capture()` --
         und damit die Antwort auf `CaptureCalibrationSample` -- darauf warten
@@ -180,18 +205,32 @@ class CalibrationSession:
 
         Live gefunden 2026-09-23 an der Deckenkamera (12 MP): ein
         synchrones `await self._run_blocking(...)` an dieser Stelle liess
-        `cv2.imwrite` als PNG mehrere Sekunden brauchen, bevor die
-        OPC-UA-Antwort ueberhaupt rausging -- derselbe Timeout
-        ("Failed to send request to OPC UA server"), der zuvor schon durch
-        `CALIB_CB_ACCURACY` verursacht wurde (siehe `boards.py`). Das
-        Speichern ist reines Debug-Artefakt, kein Teil des Ergebnisses --
-        es darf also ruhig noch laufen, waehrend der Operator schon die
-        naechste Aufnahme macht. Der Ein-Worker-Pool (`_pool()`) haelt die
-        Schreibreihenfolge trotzdem ein, dieselbe Warteschlange wie fuer
-        `detect_board`."""
-        task = asyncio.ensure_future(self._run_blocking(self._save_capture_image, path, image))
+        `cv2.imwrite` mehrere Sekunden brauchen, bevor die OPC-UA-Antwort
+        ueberhaupt rausging -- derselbe Timeout ("Failed to send request to
+        OPC UA server"), der zuvor schon durch `CALIB_CB_ACCURACY` verursacht
+        wurde (siehe `boards.py`).
+
+        Zweiter Fund, live 2026-09-28, nachdem der erste Fix drin war: das
+        Hintergrund-Speichern lief noch ueber `_run_blocking`, also
+        `_pool()` -- **denselben** Ein-Worker-Pool wie `detect_board`. Auf
+        der Deckenkamera (12 MP) dauert das Schreiben auf der SD-Karte
+        laenger, als der Operator zwischen zwei Aufnahmen braucht -- jede
+        weitere `capture()` musste dann in genau dieser Warteschlange auf
+        die noch laufende Speicherung der VORHERIGEN Aufnahme warten, bevor
+        `detect_board` ueberhaupt startete. Das haeufte sich mit jedem Foto
+        auf ("Pi haengt sich nach jedem Foto auf"), am Hand-Pi (640x480,
+        Speichern nahezu sofort fertig) nie beobachtbar. Deshalb jetzt
+        `_save_pool()`: eine Speicherung, die noch laeuft, blockiert damit
+        nie mehr die naechste Erkennung."""
+        task = asyncio.ensure_future(
+            self._run_on_save_pool(self._save_capture_image, path, image)
+        )
         self._pending_saves.add(task)
         task.add_done_callback(self._on_capture_save_done)
+
+    async def _run_on_save_pool(self, func, /, *args, **kwargs):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._save_pool(), lambda: func(*args, **kwargs))
 
     def _on_capture_save_done(self, task: "asyncio.Task") -> None:
         self._pending_saves.discard(task)
@@ -252,7 +291,7 @@ class CalibrationSession:
         )
         if self._capture_dir is not None:
             self._saved_captures += 1
-            path = self._capture_dir / f"kalib_{self._saved_captures:03d}.png"
+            path = self._capture_dir / f"kalib_{self._saved_captures:03d}{_CAPTURE_IMAGE_SUFFIX}"
             self._schedule_capture_save(path, frame.image)
         await self._maybe_auto_finish()
         return True
@@ -295,6 +334,9 @@ class CalibrationSession:
         if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
             self._executor = None
+        if self._save_executor is not None:
+            self._save_executor.shutdown(wait=False, cancel_futures=True)
+            self._save_executor = None
 
     async def _compute_and_save(self) -> tuple[VisionErrorCode, dict]:
         """Rechnet und speichert. Immer aufraeumend, auch bei Fehlschlag --

@@ -9,6 +9,7 @@ Aufnahmen sind manuell (`capture()`), kein automatisches Zeitintervall mehr
 zu warten.
 """
 
+import asyncio
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -171,8 +172,8 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         await session.wait_for_pending_saves()
 
         self.assertEqual(len(saved_calls), 2)
-        self.assertEqual(saved_calls[0][0], Path("captures") / "kalib_001.png")
-        self.assertEqual(saved_calls[1][0], Path("captures") / "kalib_002.png")
+        self.assertEqual(saved_calls[0][0], Path("captures") / "kalib_001.jpg")
+        self.assertEqual(saved_calls[1][0], Path("captures") / "kalib_002.jpg")
         self.assertIs(saved_calls[0][1], _FRAME)
 
     async def test_does_not_save_without_a_configured_dir(self):
@@ -227,7 +228,48 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         await session.capture()
         await session.wait_for_pending_saves()
 
-        self.assertEqual(saved_calls[-1], Path("captures") / "kalib_001.png")
+        self.assertEqual(saved_calls[-1], Path("captures") / "kalib_001.jpg")
+
+    async def test_a_slow_save_does_not_block_the_next_capture(self):
+        """Regressionstest fuer den Warteschlangen-Bug, live 2026-09-28 an
+        der Deckenkamera gefunden: `_schedule_capture_save` teilte sich
+        anfangs `_pool()` mit `detect_board` -- eine noch laufende
+        Speicherung liess jede weitere `capture()` darauf warten, bevor die
+        Ecken-Erkennung ueberhaupt startete, und haeufte sich mit jedem
+        Foto auf ("Pi haengt sich auf"). Mit `_save_pool()` (eigener Pool)
+        darf eine haengende erste Speicherung eine zweite Aufnahme nicht
+        mehr aufhalten."""
+        import threading
+
+        save_started = threading.Event()
+        release_save = threading.Event()
+
+        def slow_save(path, image):
+            save_started.set()
+            release_save.wait(timeout=2)
+
+        config = replace(FAST_CONFIG, calibration_capture_dir=Path("captures"))
+        session, camera, _, _ = make_session(config, save_capture_image=slow_save)
+        session.start()
+        camera.push()
+
+        await session.capture()
+        # Blockierend auf `save_started` warten wuerde hier den Event-Loop
+        # selbst einfrieren (derselbe Thread) und den Hintergrund-Task nie
+        # zum Laufen kommen lassen -- stattdessen kurz pollen und dem Loop
+        # dabei jedes Mal die Kontrolle zurueckgeben.
+        for _ in range(200):
+            if save_started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        self.assertTrue(save_started.is_set(), "erste Speicherung nie gestartet")
+
+        found = await asyncio.wait_for(session.capture(), timeout=1.0)
+
+        self.assertTrue(found)
+        self.assertEqual(session.progress["samples"], 2)
+        release_save.set()
+        await session.wait_for_pending_saves()
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")

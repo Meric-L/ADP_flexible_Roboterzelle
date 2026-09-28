@@ -1260,28 +1260,50 @@ Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
 
 Reines Diagnose-Werkzeug, kein Teil der Schnittstelle selbst — für die
 Untersuchung von Kalibrierproblemen live auf einem Pi, ohne dass Backend-Logs
-zur Verfügung stehen. `AprilTagProfileConfig.calibration_capture_dir`
-(Standard `None`, also aus) schreibt jede von `CaptureCalibrationSample`
-übernommene Aufnahme zusätzlich als PNG unter `data/calibration/<frame_id>_captures/
-kalib_001.png`, `kalib_002.png`, … ab — dieselbe Namenskonvention wie
-`tagloc.cli.calibrate --capture-to`. Der Zähler setzt bei jedem
-`StartCalibration` neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden)
-werden nicht mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
+zur Verfügung stehen. **Standardmäßig aus** (seit 2026-09-28,
+`VISION_SAVE_CALIBRATION_CAPTURES=1` schaltet es ein) — dazu unten mehr.
+Eingeschaltet schreibt `AprilTagProfileConfig.calibration_capture_dir` jede
+von `CaptureCalibrationSample` übernommene Aufnahme zusätzlich als JPEG unter
+`data/calibration/<frame_id>_captures/kalib_001.jpg`, `kalib_002.jpg`, … ab —
+dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to` (dort PNG,
+hier bewusst JPEG, siehe unten). Der Zähler setzt bei jedem `StartCalibration`
+neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden) werden nicht
+mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
 Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz auf dem Pi knapp
-wird. Aktuell auf beiden Pis aktiv, während die Ursache dafür untersucht wird,
-dass Layer 1 im `calibration`-Stream keine Board-Ecken einzeichnet und dort
-der automatische Abschluss trotz ausreichender Abdeckung nicht ausgelöst hat.
+wird.
 
-**Speichert im Hintergrund, blockiert `CaptureCalibrationSample` nicht.** Ein
-`await` an dieser Stelle hätte die OPC-UA-Antwort auf das Schreiben warten
-lassen — bei der Deckenkamera (12 MP) kann `cv2.imwrite` als PNG mehrere
-Sekunden brauchen, live gefunden 2026-09-23: derselbe Timeout
-("Failed to send request to OPC UA server"), den zuvor schon
-`CALIB_CB_ACCURACY` verursacht hatte (Abschnitt 4, `apriltag-referenz.md`),
-diesmal durch dieses Debug-Feature selbst. Die Aufnahme läuft jetzt als
-Hintergrund-Task weiter, während `capture()` bereits zurückkehrt; Reihenfolge
-bleibt erhalten (derselbe Ein-Worker-Pool wie `detect_board`), ein
-Fehlschlag beim Speichern landet nur im Log, nie im `Error`-Rückgabewert.
+**Zwei Performance-Bugs live an der Deckenkamera (12 MP) gefunden, Hand-Pi
+(640x480) nie betroffen:**
+
+1. **2026-09-23 — blockierte `CaptureCalibrationSample`.** Das Speichern lief
+   zunächst synchron in `capture()`, bevor die OPC-UA-Antwort rausging —
+   `cv2.imwrite` bei 12 MP kann mehrere Sekunden brauchen, derselbe Timeout
+   ("Failed to send request to OPC UA server"), den zuvor schon
+   `CALIB_CB_ACCURACY` verursacht hatte (Abschnitt 4, `apriltag-referenz.md`).
+   Fix: die Speicherung läuft seither als Hintergrund-Task, `capture()` kehrt
+   zurück, sobald die Aufnahme übernommen ist.
+2. **2026-09-28 — Pi hängt sich nach jedem Foto auf.** Der Hintergrund-Task
+   lief weiter über denselben Ein-Worker-Pool wie `detect_board`
+   (`_pool()`). Auf der SD-Karte dauert das Schreiben eines 12-MP-Bilds
+   länger, als ein Operator zwischen zwei Aufnahmen braucht — jede weitere
+   `capture()` musste dann in genau dieser Warteschlange auf die noch
+   laufende Speicherung der *vorherigen* Aufnahme warten, bevor
+   `detect_board` überhaupt startete. Das häufte sich mit jedem Foto auf und
+   drückte vermutlich auch die gleichzeitig laufende `calibration`-Stream-
+   Vorschau (SD-Karten-/CPU-Last insgesamt, nicht das Overlay selbst).
+   Fix: ein eigener Ein-Worker-Pool nur fürs Speichern (`_save_pool()`,
+   `calibration_session.py`), getrennt von `detect_board`. Zusätzlich JPEG
+   statt PNG (schneller zu kodieren, kleiner zu schreiben) — für den Zweck
+   (visuelle Kontrolle, ggf. Neu-Rechnen des RMS) verändert die
+   verlustbehaftete Kompression die erkannten Eckenpositionen eines
+   Schachbrettmusters nicht spürbar.
+
+Nach beiden Funden auf `None` als Standard umgestellt, statt weiter
+unbedingt für beide Pis aktiv zu sein — ein Debug-Werkzeug, das die
+Kalibrierung, die es untersuchen soll, selbst beeinträchtigt, gehört nicht in
+den Standardbetrieb. Bei Bedarf gezielt mit `VISION_SAVE_CALIBRATION_CAPTURES=1`
+einschalten (systemd-Unit oder Shell vor dem Start), wieder ausschalten, wenn
+die Untersuchung abgeschlossen ist.
 
 ---
 
