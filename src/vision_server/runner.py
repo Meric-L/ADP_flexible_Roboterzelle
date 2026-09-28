@@ -33,6 +33,11 @@ _log = logging.getLogger(__name__)
 
 LOOP_LAG_INTERVAL_S = 0.25
 LOOP_LAG_WARN_S = 0.75
+#: Takt, in dem `CalibrationProgress` waehrend der Hintergrund-Auswertung
+#: geschrieben wird, solange der Livestream pausiert ist (siehe
+#: `_pause_stream_during_processing`). Ein neu verbundener Client sieht
+#: `processing: true` damit spaetestens nach dieser Zeit.
+CALIBRATION_PROGRESS_INTERVAL_S = 1.0
 
 
 async def _watch_loop_lag(
@@ -646,16 +651,19 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
         @uamethod
         async def capture_calibration_sample(parent):
-            """1:CaptureCalibrationSample -- versucht eine Aufnahme vom
-            aktuellen Kamerabild, manuell ausgeloest (z. B. per Leertaste im
-            Stream-Viewer). `Error=OK` heisst: Board gefunden und
-            uebernommen; `DETECTION_FAILED` heisst nur "dieser Versuch nicht"
-            -- die Session laeuft weiter, ein erneuter Versuch ist ok.
+            """1:CaptureCalibrationSample -- merkt sich das aktuelle
+            Kamerabild, manuell ausgeloest (z. B. per Leertaste im
+            Stream-Viewer). Keine Board-Erkennung in diesem Aufruf, die
+            passiert erst nach `FinishCalibration` (siehe
+            `CalibrationSession.capture`). `Error=OK` heisst nur "Bild
+            gespeichert"; `INVALID_STATE` heisst keine Session aktiv oder
+            gerade kein Kamera-Frame -- die Session laeuft weiter, ein
+            erneuter Versuch ist ok.
             """
             if not calibration_session.running:
                 return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
-            found = await calibration_session.capture()
-            error = VisionErrorCode.OK if found else VisionErrorCode.DETECTION_FAILED
+            stored = await calibration_session.capture()
+            error = VisionErrorCode.OK if stored else VisionErrorCode.INVALID_STATE
             return (ua.Variant(int(error), ua.VariantType.Int32),)
 
         calibration_methods["CaptureCalibrationSample"] = (
@@ -668,6 +676,23 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             )
         )
 
+        async def _write_calibration_progress() -> None:
+            """Schreibt `CalibrationProgress` direkt aus der Session.
+
+            Sonst schreibt nur die Publish-Schleife des Livestreams diesen
+            Knoten (`CameraStreamPublisher._publish_progress`) -- und genau
+            die ist waehrend der Auswertung pausiert. Ohne diesen eigenen
+            Schreibpfad bliebe der Knoten dann auf dem letzten Stand der
+            Aufnahme-Phase stehen, `processing: true` waere nie sichtbar
+            (gefunden 2026-09-28).
+            """
+            try:
+                await space.calibration_progress.write_value(
+                    json.dumps(calibration_session.progress)
+                )
+            except Exception:
+                _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
+
         async def _pause_stream_during_processing() -> None:
             """Waehrend `CalibrationSession._process()` im Hintergrund
             rechnet, den Livestream pausieren, damit der Pi die volle CPU
@@ -675,10 +700,25 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             Bestaetigung, nachdem die vorherige Deckenkamera-Auswertung
             wiederholt haengen blieb). Laeuft selbst als Hintergrund-Task --
             `finish_calibration` darf darauf nicht warten, siehe dort.
+
+            `CalibrationProgress` wird in dieser Zeit hier geschrieben statt
+            vom (pausierten) Livestream: einmal sofort (`processing: true`),
+            danach im Takt `CALIBRATION_PROGRESS_INTERVAL_S` und ein letztes
+            Mal mit `result`, bevor der Livestream wieder uebernimmt.
             """
             if camera_stream is not None:
                 await camera_stream.stop()
-            await calibration_session.wait_for_processing()
+            await _write_calibration_progress()
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        calibration_session.wait_for_processing(),
+                        timeout=CALIBRATION_PROGRESS_INTERVAL_S,
+                    )
+                    break
+                except TimeoutError:
+                    await _write_calibration_progress()
+            await _write_calibration_progress()
             if camera_stream is not None:
                 camera_stream.start()
 
@@ -704,16 +744,18 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                     ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),
                 )
             error, summary = await calibration_session.finish()
+            # `annotator` bleibt in beiden Faellen bewusst an der Session
+            # haengen (kein `set_calibration_session(None)` hier): der
+            # Livestream veroeffentlicht so weiter `progress` samt `result`,
+            # statt in den session-losen Zustand `{"running": false}`
+            # zurueckzufallen -- das gilt auch fuer die sofortige Ablehnung
+            # mit zu wenigen Aufnahmen, deren `result` sonst nie in
+            # `CalibrationProgress` ankaeme. Geloest wird das erst durch das
+            # naechste `StartCalibration`/`AbortCalibration`.
             if error == VisionErrorCode.OK:
-                # `annotator` bleibt bewusst an der Session haengen (kein
-                # `set_calibration_session(None)` hier): der Livestream
-                # zeigt nach dem Pausieren so das Ergebnis, sobald es da ist,
-                # statt sofort in den session-losen Zustand zurueckzufallen.
-                # Geloest wird das erst durch das naechste
-                # `StartCalibration`/`AbortCalibration`.
                 asyncio.ensure_future(_pause_stream_during_processing())
-            elif annotator is not None:
-                annotator.set_calibration_session(None)
+            else:
+                await _write_calibration_progress()
             return (
                 ua.Variant(json.dumps(summary), ua.VariantType.String),
                 ua.Variant(int(error), ua.VariantType.Int32),

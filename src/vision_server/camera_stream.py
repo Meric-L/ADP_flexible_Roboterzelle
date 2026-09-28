@@ -282,7 +282,11 @@ class CameraStreamPublisher:
         try:
             progress = self._annotator.calibration_progress
             await self._progress_node.write_value(
-                json.dumps(progress if progress is not None else {"running": False})
+                json.dumps(
+                    progress
+                    if progress is not None
+                    else {"running": False, "processing": False}
+                )
             )
         except Exception:
             _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")

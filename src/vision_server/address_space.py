@@ -252,7 +252,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         calibration_progress = await vision_system.add_variable(
             ua.NodeId(f"{name}.CalibrationProgress", own_idx),
             ua.QualifiedName("CalibrationProgress", own_idx),
-            '{"running": false}',
+            '{"running": false, "processing": false}',
             ua.VariantType.String,
         )
         # Bewusst nicht schreibbar: eine Tag-Map muss geprueft werden, bevor
