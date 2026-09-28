@@ -99,19 +99,16 @@ class AprilTagProfileConfig:
     #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
     #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
     calibration_min_samples: int = 15
-    #: Sobald Abdeckung x UND y diesen Wert erreichen (und `calibration_
-    #: min_samples` Aufnahmen vorliegen), rechnet und speichert die Session
-    #: automatisch -- fuers Frontend, das nicht selbst wissen muss, wann
-    #: "genug" ist. `None` schaltet das ab (nur manuelles `FinishCalibration`,
-    #: wie es die CLI-Tools weiter nutzen). Deckt sich mit dem Abbruch-
-    #: kriterium aus dem Testplan ("Abdeckung x und y ueber 70%").
-    calibration_coverage_threshold: float | None = 0.7
-    #: Wenn gesetzt, speichert jede uebernommene Aufnahme zusaetzlich als
-    #: Bild hier ab -- zum Nachpruefen/Neu-Rechnen abseits vom Server,
+    #: Wenn gesetzt, archiviert `CalibrationSession` jede Aufnahme
+    #: zusaetzlich dauerhaft hier -- zum Nachpruefen abseits vom Server,
     #: dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to`
-    #: (`kalib_001.png`, `kalib_002.png`, ...). `None` (Standard) speichert
-    #: nichts; das sind reine Debug-Artefakte, kein Teil der Kalibrierung
-    #: selbst -- landen wie die Kalibrierdatei unter `data/` (`.gitignore`).
+    #: (`kalib_001.jpg`, `kalib_002.jpg`, ...). `None` (Standard) archiviert
+    #: nichts zusaetzlich; die Aufnahmen selbst landen unabhaengig davon
+    #: immer erst in einem session-eigenen Arbeitsordner
+    #: (`CalibrationSession._pending_dir`), der bei jedem `StartCalibration`
+    #: geleert wird -- dieses Feld hier ist nur fuer den Fall gedacht, dass
+    #: sie darueber hinaus dauerhaft erhalten bleiben sollen. Landet wie die
+    #: Kalibrierdatei unter `data/` (`.gitignore`).
     calibration_capture_dir: Path | None = None
 
 

@@ -2,9 +2,9 @@
 
 Schnellstart-Briefing für einen Agenten/Entwickler, der die
 Frontend-Seite von "Kalibrieren im Settings-Menü" (Board bewegen, Live-Bild
-mit Abdeckung sehen, Ergebnis bekommen) umsetzt. Ersetzt keine der
-bestehenden Dokus, sondern destilliert genau das, was für **diese** Aufgabe
-gebraucht wird, und verlinkt für Details.
+sehen, Aufnahmen auslösen, auswerten lassen, Ergebnis bekommen) umsetzt.
+Ersetzt keine der bestehenden Dokus, sondern destilliert genau das, was für
+**diese** Aufgabe gebraucht wird, und verlinkt für Details.
 
 **Kanonische Referenz für alles, was dieses Dokument nicht abdeckt:**
 [`vision-server-interface.md`](vision-server-interface.md) — Verbindungsdaten
@@ -35,45 +35,66 @@ Alle Knoten unten liegen unter diesem Index, mit dem stabilen String-Präfix
 
 ## 3. Kalibrier-Workflow — genau das, was der Button im Settings-Menü braucht
 
+**Seit 2026-09-28 sind Aufnahme und Auswertung entkoppelt** (live an der
+Deckenkamera gefunden: die Ecken-Erkennung auf dem vollen 12-MP-Frame konnte
+auf der Pi-Hardware so lange dauern — bis hin zu einem echten
+Hängenbleiben —, dass sie nicht mehr in den OPC-UA-Antwortpfad einer
+einzelnen Aufnahme passte). `CaptureCalibrationSample` merkt sich jetzt nur
+noch das Bild, ohne zu prüfen, ob das Board sichtbar ist. Die eigentliche
+Auswertung (Ecken-Erkennung je Bild + Kamerakalibrierung) läuft erst nach
+`FinishCalibration`, **im Hintergrund** — `FinishCalibration` ist damit kein
+optionaler Schritt mehr, sondern **immer nötig**, um überhaupt ein Ergebnis
+zu bekommen, und sein `Summary`/`Error`-Rückgabewert ist **nicht** das
+Ergebnis, sondern nur die Bestätigung "Auswertung gestartet". Das Ergebnis
+kommt ausschließlich über `CalibrationProgress`.
+
 ```
 Frontend                                          Vision-Server
    |  1. StartCalibration() -----------------------> Error: Int32
    |     (BUSY=3, wenn Job laeuft ODER schon         (0 = OK, Session laeuft)
-   |      eine Session offen ist)
+   |      eine Session/Auswertung offen ist)
    |
    |  2. LatestCameraFrame + CameraStreamMode="calibration" anzeigen
-   |     (Board-Ecken + Abdeckung sind im Bild schon eingezeichnet)
+   |     (Board-Ecken auf dem kleinen Vorschaubild sind eingezeichnet --
+   |      reine Positionierungshilfe, sagt nichts darueber, welche
+   |      Aufnahmen tatsaechlich uebernommen wurden)
    |
    |  3. CaptureCalibrationSample() -----------------> Error: Int32
-   |     bei Klick auf "Aufnahme" o.ae.               (0 = Board gefunden,
-   |     (kein Auto-Capture -- der Nutzer               5 = nicht gefunden,
-   |      entscheidet, wann er ausloest)                 einfach nochmal)
+   |     bei Klick auf "Aufnahme" o.ae.               (0 = uebernommen,
+   |     (kein Auto-Capture -- der Nutzer               1 = keine Session/
+   |      entscheidet, wann er ausloest;                    kein Kamerabild)
+   |      KEINE Pruefung, ob das Board sichtbar
+   |      ist -- das stellt sich erst in Schritt 5
+   |      heraus)
    |     ... wiederholen, Board dabei bewegen/kippen ...
    |
-   |  4. CalibrationProgress beobachten (subscriben oder pollen)
-   |     -> running, samples, minSamples, coverageX, coverageY
-   |     -> sobald "result" auftaucht: FERTIG, Session hat sich selbst
-   |        beendet (kein Schritt 5 noetig!)
+   |  4. CalibrationProgress.samples zeigt die Anzahl live
    |
    |  5. FinishCalibration() ------------------------> Summary: String(JSON)
-   |     NUR wenn der Nutzer VOR Erreichen der          Error: Int32
-   |     Abdeckungs-Schwelle manuell abbrechen und
-   |     trotzdem das bisherige Ergebnis will.
-   |     (AbortCalibration() statt dessen, wenn gar
-   |      nichts gespeichert werden soll.)
+   |     Beendet die Aufnahme-Phase, stoesst die       Error: Int32
+   |     Auswertung NUR AN (kehrt sofort zurueck --
+   |     Summary ist noch NICHT das Ergebnis!).
+   |     (AbortCalibration() stattdessen, wenn gar
+   |      nichts ausgewertet/gespeichert werden soll.)
+   |
+   |  6. CalibrationProgress weiter beobachten (subscriben oder pollen)
+   |     -> "processing": true, waehrend die Auswertung im Hintergrund
+   |        laeuft (der Livestream pausiert dabei serverseitig kurz)
+   |     -> sobald "result" auftaucht: FERTIG (Erfolg oder Fehlschlag,
+   |        result.error unterscheidet)
 ```
 
 ### Die Knoten/Methoden im Einzelnen
 
 | Name | NodeId | Typ | Bedeutung |
 | --- | --- | --- | --- |
-| `StartCalibration` | `ns=<vision>;s=VisionMachine.StartCalibration` | Methode, kein Input, `Error: Int32` | Setzt Samples zurück, startet Session |
-| `CaptureCalibrationSample` | `ns=<vision>;s=VisionMachine.CaptureCalibrationSample` | Methode, kein Input, `Error: Int32` | Eine Aufnahme vom aktuellen Bild |
-| `FinishCalibration` | `ns=<vision>;s=VisionMachine.FinishCalibration` | Methode, kein Input, `Summary: String, Error: Int32` | Manueller Abschluss (optional, siehe oben) |
-| `AbortCalibration` | `ns=<vision>;s=VisionMachine.AbortCalibration` | Methode, kein Input, `Error: Int32` | Verwirft ohne zu speichern |
-| `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **nur lesen** | Live-Fortschritt *einer Session*, siehe unten |
+| `StartCalibration` | `ns=<vision>;s=VisionMachine.StartCalibration` | Methode, kein Input, `Error: Int32` | Setzt Aufnahmen zurück, startet Session |
+| `CaptureCalibrationSample` | `ns=<vision>;s=VisionMachine.CaptureCalibrationSample` | Methode, kein Input, `Error: Int32` | Merkt sich das aktuelle Bild (keine Erkennung) |
+| `FinishCalibration` | `ns=<vision>;s=VisionMachine.FinishCalibration` | Methode, kein Input, `Summary: String, Error: Int32` | **Pflichtschritt**: beendet die Aufnahme, stößt die Auswertung im Hintergrund an — `Summary` ist nicht das Ergebnis, siehe oben |
+| `AbortCalibration` | `ns=<vision>;s=VisionMachine.AbortCalibration` | Methode, kein Input, `Error: Int32` | Verwirft ohne auszuwerten/zu speichern |
+| `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **nur lesen** | Live-Fortschritt *einer Session*, einzige Quelle für das Ergebnis, siehe unten |
 | `ActiveCalibrationInfo` | `ns=<vision>;s=VisionMachine.ActiveCalibrationInfo` | String (JSON), **nur lesen** | Metadaten der **gerade aktiven** Kalibrierung — bleibt stehen, unabhängig von einer laufenden Session, siehe unten |
-| `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64-JPEG), nur lesen | Bild fürs `<img>`/Canvas |
+| `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64-JPEG), nur lesen | Bild fürs `<img>`/Canvas — liefert während der Auswertung nur noch das letzte Bild vor der Pause |
 | `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **schreibbar** | `"off"` \| `"apriltag"` \| `"calibration"` — vor/bei Kalibrierstart auf `"calibration"` setzen |
 
 **Kein Board-Parameter wird je vom Frontend gesendet.** Board-Typ,
@@ -83,25 +104,40 @@ Frontend startet/löst aus/liest, sonst nichts.
 ### `CalibrationProgress` — das JSON, das du pollst/abonnierst
 
 ```jsonc
-// waehrend die Session laeuft:
-{"running": true, "samples": 12, "minSamples": 15, "coverageX": 0.61, "coverageY": 0.58}
+// waehrend die Aufnahme laeuft:
+{"running": true, "processing": false, "samples": 12, "minSamples": 15}
 
-// automatisch beendet, sobald coverageX UND coverageY die Schwelle (Standard 0.7) erreichen:
+// FinishCalibration wurde aufgerufen, Auswertung laeuft im Hintergrund:
+{"running": false, "processing": true, "samples": 18, "minSamples": 15}
+
+// fertig, Erfolg:
 {
-  "running": false, "samples": 18, "minSamples": 15,
-  "coverageX": 0.84, "coverageY": 0.9,
+  "running": false, "processing": false, "samples": 18, "minSamples": 15,
   "result": {
-    "error": 0, "rms": 0.31, "samples": 18,
+    "error": 0, "rms": 0.31, "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_flange.json"
     // "warning": "..." -- siehe unten, nur wenn RMS zu hoch
   }
 }
+
+// fertig, Fehlschlag (z. B. zu wenige der Aufnahmen zeigten das Board):
+{
+  "running": false, "processing": false, "samples": 18, "minSamples": 15,
+  "result": {"error": 5, "message": "Zu wenige verwertbare Aufnahmen: 2"}
+}
 ```
 
-**UI-Logik ist damit simpel:** `result` fehlt → Fortschrittsbalken/Prozent
-aus `coverageX`/`coverageY` zeigen. `result` erscheint → Ergebnis-Ansicht
-zeigen (RMS, Samples, ggf. Warnung), fertig.
+Zwei Zahlen können auseinanderfallen: `samples` im Wurzelobjekt ist die
+Anzahl **aufgenommener** Bilder, `result.samples` die Anzahl Bilder, auf
+denen das Board bei der Auswertung tatsächlich **gefunden** wurde (kann
+kleiner sein — unscharfe Aufnahmen, Board nicht im Bildausschnitt).
+
+**UI-Logik:** `processing` zeigt "wird ausgewertet, bitte warten" (kann ein
+paar Sekunden bis über eine Minute dauern, je nach Aufnahmenzahl und
+Pi-Hardware). `result` erscheint → Ergebnis-Ansicht zeigen: `result.error`
+prüfen (0 = Erfolg, sonst `result.message`), bei Erfolg RMS/Samples/ggf.
+Warnung anzeigen.
 
 ### `ActiveCalibrationInfo` — für eine dauerhafte "Zuletzt kalibriert am ..."-Anzeige
 
@@ -134,6 +170,10 @@ Server-Neustart.
 1. **`error`-Feld in `result` ist ein Zahlencode, kein Bool.** `0` = Erfolg.
    Fehlercodes: Abschnitt 5 in `vision-server-interface.md` — die relevanten
    hier sind `1` (`INVALID_STATE`), `3` (`BUSY`), `5` (`DETECTION_FAILED`).
+   Der `Error`-Rückgabewert von `FinishCalibration` selbst ist ein anderer,
+   engerer Fall: er sagt nur, ob die Auswertung angestoßen wurde (siehe
+   Fallstrick 4) — das eigentliche Ergebnis inkl. seines eigenen `error`
+   steht in `CalibrationProgress["result"]`.
 
 2. **`result.warning` heißt nicht "Fehler".** Die Datei ist trotzdem
    geschrieben. Abdeckung allein sagt nichts über die tatsächliche
@@ -141,40 +181,58 @@ Server-Neustart.
    einen RMS von >2 px ergeben (selbst erlebt). Die Warnung erscheint, wenn
    RMS > 0,5 px, und sollte im UI sichtbar sein (nicht nur console.log),
    idealerweise mit einem Hinweis "Board stärker kippen und neu versuchen".
+   **Anders als vorher gibt es dafür keine Live-Anzeige mehr während der
+   Aufnahme** — die Abdeckung ist erst nach `FinishCalibration` bekannt, das
+   Frontend kann den Operator also nicht mehr vorab warnen, nur hinterher.
 
 3. **`BUSY` (Error=3) bei `StartCalibration` heißt nicht zwangsläufig
    "ein Job läuft".** Es kann auch eine **hängengebliebene Session** eines
    Clients sein, der z. B. den Tab geschlossen hat, ohne
    `FinishCalibration`/`AbortCalibration` aufzurufen — die Session lebt im
-   Server-Prozess, nicht im Client. Sinnvolles Frontend-Verhalten: bei
-   `BUSY` einmal `AbortCalibration` aufrufen und `StartCalibration` erneut
-   versuchen (siehe `src/vision_server/tools/calibration_client.py`, Funktion
+   Server-Prozess, nicht im Client. Es kann aber auch bedeuten, dass noch
+   eine **Auswertung aus einem vorherigen `FinishCalibration` läuft**
+   (`CalibrationProgress.processing === true`) — dagegen hilft kein
+   `AbortCalibration` (das lehnt dann selbst mit `INVALID_STATE` ab), nur
+   abwarten, bis `processing` wieder `false` wird. Sinnvolles
+   Frontend-Verhalten: erst `CalibrationProgress.processing` prüfen; ist es
+   `false`, bei `BUSY` einmal `AbortCalibration` aufrufen und
+   `StartCalibration` erneut versuchen (siehe
+   `src/vision_server/tools/calibration_client.py`, Funktion
    `_start_session`, für die Referenzimplementierung dieses Patterns).
 
-4. **`CaptureCalibrationSample` mit `Error=5` ist kein Fehlerzustand.**
-   Heißt nur "in diesem einen Frame kein Board gefunden" — die Session läuft
-   normal weiter, kein Reset nötig. Einfach nochmal auslösen.
+4. **`FinishCalibration`s eigener `Error`-Rückgabewert ist NICHT das
+   Kalibrierergebnis.** `0` heißt nur "Auswertung wurde angestoßen", `5`
+   heißt "weniger als 3 Aufnahmen gemacht, gar nichts angestoßen". Ein
+   Frontend, das hier schon "Erfolg" anzeigt, zeigt dem Operator etwas
+   Falsches — das eigentliche Ergebnis (inkl. eines möglichen Fehlschlags
+   *während* der Auswertung, siehe Fallstrick 5) kommt erst über
+   `CalibrationProgress["result"]`.
 
-5. **`FinishCalibration`/`result` mit `Error=5` ist dagegen ein echter
-   Fehlschlag, auch bei guter Abdeckung und vielen Samples.** Die
-   Berechnung selbst (`cv2.calibrateCamera`) kann numerisch scheitern, wenn
-   das Board zwar über das ganze Bild verteilt, aber nie gekippt/im Abstand
-   variiert wurde — die 2D-Bildabdeckung sagt darüber nichts aus. `message`
-   im Ergebnis nennt den Grund; die Session ist dann beendet, ohne Ergebnis
-   — einfach `StartCalibration` neu aufrufen und diesmal das Board deutlich
-   kippen (±30°) und im Abstand variieren.
+5. **`CalibrationProgress["result"]` mit `error=5` kann trotz genug
+   Aufnahmen auftreten — auf zwei verschiedene Arten.** Entweder zeigten zu
+   wenige der aufgenommenen Bilder überhaupt ein Board (`result.samples` <
+   3 — vergleiche mit dem `samples`-Feld im Wurzelobjekt, das die Anzahl
+   *aufgenommener*, nicht *erkannter* Bilder zeigt), oder die Berechnung
+   selbst (`cv2.calibrateCamera`) scheitert numerisch, wenn das Board zwar
+   über das ganze Bild verteilt, aber nie gekippt/im Abstand variiert wurde
+   — die reine Anzahl sagt darüber nichts aus. `result.message` nennt den
+   Grund; einfach `StartCalibration` neu aufrufen und diesmal das Board
+   deutlich kippen (±30°) und im Abstand variieren.
 
 6. **Layer 1 (Deckenkamera) ist über cols/rows/Größe auf dieselbe
    Board-Geometrie wie Layer 2 eingestellt, aber (Stand jetzt) noch nicht
-   final vermessen/fest montiert** (siehe Abschnitt 12.7 in
+   final vermessen/fest montiert** (siehe Abschnitt 12.8 in
    `vision-server-interface.md`). Für einen ersten Integrationstest ist
    Layer 2 (Hand-Pi, `cam_flange`) der verlässlichere Kandidat.
 
-7. **Mutual Exclusion:** Während eine Kalibrier-Session läuft, lehnt der
-   normale Erkennungs-Job (`StartSingleJob`/`StartContinuous`) mit `BUSY` ab,
-   und umgekehrt. Beide teilen sich dieselbe Kamera. Falls dein Frontend
-   auch den normalen Job-Button zeigt: während `CalibrationProgress.running
-   === true` deaktivieren (oder den Fehler einfach anzeigen).
+7. **Mutual Exclusion:** Während eine Kalibrier-Session *oder* eine
+   Hintergrund-Auswertung läuft, lehnt der normale Erkennungs-Job
+   (`StartSingleJob`/`StartContinuous`) mit `BUSY` ab, und umgekehrt (`Start-
+   Calibration` lehnt ab, solange ein Job läuft). Beide teilen sich dieselbe
+   Kamera. Falls dein Frontend auch den normalen Job-Button zeigt: während
+   `CalibrationProgress.running === true` **oder**
+   `CalibrationProgress.processing === true` deaktivieren (oder den Fehler
+   einfach anzeigen).
 
 ## 5. Referenzimplementierungen (lesen, nicht übersetzen — das Protokoll zählt, nicht die Sprache)
 
@@ -182,10 +240,10 @@ Alle unter `src/vision_server/tools/`, laufen direkt gegen einen echten
 Server, Python + `asyncua`, aber der **Aufruf-Ablauf** ist 1:1 das, was das
 Frontend nachbilden muss:
 
-- `calibration_client.py` — Start, Fortschritt pollen, automatischen
-  Abschluss erkennen (`progress["result"]`), Retry bei `BUSY`.
-- `stream_viewer.py` — Bild anzeigen, `CaptureCalibrationSample` auslösen,
-  Ergebnis inkl. `warning` ausgeben.
+- `calibration_client.py` — Start, Fortschritt pollen, `FinishCalibration`
+  aufrufen und danach weiter auf `progress["result"]` warten (Auswertung
+  läuft im Hintergrund), Retry bei `BUSY`.
+- `stream_viewer.py` — Bild anzeigen, `CaptureCalibrationSample` auslösen.
 - `diagnose_board.py` — nicht Teil des normalen Ablaufs, nur zur Fehlersuche.
 
 ## 6. Stand / was noch nicht existiert

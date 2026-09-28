@@ -1004,23 +1004,39 @@ Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
 (`tagloc.cli.calibrate` per SSH) — es öffnet die Kamera exklusiv, der Server
 muss dafür gestoppt sein. Diese vier Methoden plus ein Knoten erlauben
 dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Session
-starten, Board vor die Kamera halten, Aufnahme auslösen, Fortschritt live
-sehen. Ein explizites `FinishCalibration` ist dabei **optional** — sobald die
-Abdeckung reicht, schließt sich die Session von selbst ab (Abschnitt 12.5),
-das Frontend muss also nur `CalibrationProgress` beobachten und das Ergebnis
-anzeigen, sobald es dort auftaucht.
+starten, Board vor die Kamera halten, Aufnahmen auslösen, danach
+`FinishCalibration` — das Ergebnis erscheint kurz darauf in
+`CalibrationProgress` (Abschnitt 12.5).
 
 Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
 kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
 
+**Aufnahme und Auswertung sind entkoppelt (seit 2026-09-28).**
+`CaptureCalibrationSample` merkt sich nur noch den aktuellen Kamera-Frame —
+keine Ecken-Erkennung mehr in diesem Aufruf. Grund: An der Deckenkamera
+(12 MP) konnte die Ecken-Erkennung auf der Pi-Hardware so lange dauern (bis
+hin zu einem echten Hängenbleiben, live gefunden), dass die OPC-UA-Anfrage in
+den Timeout lief oder die Verbindung ganz abbrach — mit spürbaren Folgen für
+jede weitere Aufnahme. `FinishCalibration` (Abschnitt 12.3) stößt die
+eigentliche Auswertung (Ecken-Erkennung je Aufnahme + Kamerakalibrierung) als
+**Hintergrundaufgabe** an und kehrt sofort zurück; das Frontend beobachtet
+`processing`/`result` in `CalibrationProgress`. Der Preis: während der
+Aufnahme gibt es kein Live-Feedback mehr, ob eine bestimmte Aufnahme das
+Board tatsächlich zeigt, und keine laufende Abdeckungsanzeige — beides
+stellt sich erst nach `FinishCalibration` heraus. Der Livestream
+(`CameraStreamMode="calibration"`) zeigt beim Positionieren weiterhin
+Board-Ecken auf dem kleinen Vorschaubild (unverändert, eigener, günstiger
+Erkennungslauf), das hilft beim Ausrichten, sagt aber nichts darüber, welche
+Aufnahmen tatsächlich übernommen wurden. **Während der Auswertung pausiert
+der Server den Livestream** (`LatestCameraFrame`/MJPEG liefern währenddessen
+nur noch das letzte Bild vor der Pause), um dem Pi die volle CPU dafür zu
+geben — danach läuft er automatisch wieder an und zeigt das Ergebnis.
+
 **Eine frisch gespeicherte Kalibrierung wirkt sofort, ohne Server-Neustart.**
 Direkt nach dem Speichern übernehmen die laufende Erkennung (`apriltag`-Job)
 und das Stream-Overlay die neuen Werte — der nächste Job nach einer
-erfolgreichen Kalibrierung rechnet bereits damit. (Bis 2026-09-22 stimmte
-das nicht: die Datei lag zwar auf der Platte, die laufende Erkennung merkte
-das aber erst nach einem manuellen `systemctl restart`. Falls ihr das noch
-irgendwo dokumentiert oder umgangen habt, ist das jetzt nicht mehr nötig.)
+erfolgreichen Kalibrierung rechnet bereits damit.
 
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
 in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
@@ -1028,58 +1044,55 @@ das Frontend sendet und kennt keine Board-Parameter.
 
 ### 12.1 `StartCalibration`
 
-Setzt gesammelte Samples zurück und beginnt eine neue Session. Aufnahmen
+Setzt gesammelte Aufnahmen zurück und beginnt eine neue Session. Aufnahmen
 kommen danach ausschließlich über `CaptureCalibrationSample` (Abschnitt
 12.2) — kein automatisches Erfassen.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job oder eine Session) |
+| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job, eine Session oder noch eine Auswertung aus einem vorherigen `FinishCalibration`) |
 
 ### 12.2 `CaptureCalibrationSample`
 
-Versucht **eine** Aufnahme vom aktuellen Kamerabild. Manuell ausgelöst —
-kein Zeitintervall, kein Bewegungsabgleich: der Operator sieht das Live-Bild
-(Livestream oder `stream_viewer.py`, Abschnitt 12.5) und entscheidet selbst,
-wann eine Pose gut ist, bevor er auslöst.
+Merkt sich **einen** Kamera-Frame für die spätere Auswertung. Manuell
+ausgelöst — kein Zeitintervall, kein Bewegungsabgleich, keine Erkennung in
+diesem Aufruf (siehe oben): der Operator sieht das Live-Bild (Livestream
+oder `stream_viewer.py`) und entscheidet selbst, wann eine Pose gut aussieht,
+bevor er auslöst. Fast immer sofort und schnell — es wird nur ein Bild
+gemerkt, nichts ausgewertet.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Error` | `Int32` | `0` (`OK`, Board gefunden und übernommen), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, Board in diesem Frame nicht gefunden — die Session läuft weiter, einfach erneut auslösen) |
+| `Error` | `Int32` | `0` (`OK`, Aufnahme übernommen), `1` (`INVALID_STATE`, keine Session aktiv oder gerade kein Kamera-Frame verfügbar) |
 
 ### 12.3 `FinishCalibration`
 
-Beendet die Session manuell, rechnet aus den gesammelten Samples und
-speichert `data/calibration/<frame_id>.json` — derselbe Rechenkern wie im
-CLI-Tool (`tagloc.boards.calibrate_from_samples`) und wie der automatische
-Abschluss (Abschnitt 12.5). Gedacht für den Fall, dass der Operator **vor**
-Erreichen der Abdeckungs-Schwelle abbrechen und trotzdem das bisherige
-Ergebnis haben will — im Normalfall (Schwelle erreicht) ist die Session zu
-diesem Zeitpunkt schon automatisch beendet, ein weiterer Aufruf liefert dann
-nur noch `INVALID_STATE`.
+Beendet die Aufnahme-Phase und stößt die Auswertung **im Hintergrund** an —
+kehrt sofort zurück, ohne auf das Ergebnis zu warten. Das Ergebnis erscheint
+danach in `CalibrationProgress` (`processing` → `result`, Abschnitt 12.5).
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`, ggf. mit `warning` (siehe 12.5). Bei Fehlschlag `{"message": "...", "samples": N}` |
-| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples **oder** die Berechnung selbst ist numerisch gescheitert — `message` nennt den Grund) |
+| `Summary` | `String` (JSON) | Bei Annahme `{"message": "Auswertung gestartet", "samples": N}` (das ist noch **nicht** das Ergebnis — das kommt über `CalibrationProgress`). Bei sofortiger Ablehnung (zu wenige Aufnahmen) `{"message": "...", "samples": N}` |
+| `Error` | `Int32` | `0` (`OK`, Auswertung wurde angestoßen), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Aufnahmen gemacht — dann wurde gar nichts angestoßen) |
 
-`DETECTION_FAILED` mit Berechnungs-Grund kann passieren, obwohl genug Samples
-und gute Bildabdeckung vorlagen: `cv2.calibrateCamera` prüft nicht nur die
-Anzahl, sondern ob sich daraus überhaupt ein Kameramodell lösen lässt — bei
-zu wenig Neigungs-/Distanz-Variation (Abschnitt 12.5, "Abdeckung allein sagt
-nichts über die tatsächliche Genauigkeit") kann das ganz scheitern statt nur
-ungenau zu werden. Bis 2026-09-23 fing der Server dabei nur `ValueError` ab;
-die eigentliche Exception (`cv2.error`) lief unbehandelt durch und ließ die
-Session unsichtbar beendet zurück, ohne Ergebnis oder Fehlermeldung — jede
-weitere `CaptureCalibrationSample` lieferte danach nur noch `DETECTION_FAILED`
-("Board nicht gefunden"), ein späteres `FinishCalibration` nur `INVALID_STATE`.
-Seither wird jede Exception aus der Berechnung abgefangen und als
-`DETECTION_FAILED` mit `message` gemeldet.
+`Error=OK` heißt hier also nur "die Auswertung läuft jetzt", nicht "die
+Kalibrierung ist fertig und gut". Das eigentliche Ergebnis (`rms`,
+`coverageX`/`coverageY`, ggf. `warning`) und ein etwaiges Scheitern *während*
+der Auswertung landen ausschließlich in `CalibrationProgress["result"]`
+(Abschnitt 12.5, dort auch mit den möglichen Fehlschlag-Gründen). Ein
+Frontend, das nur den `FinishCalibration`-Rückgabewert anzeigt, zeigt dem
+Operator ein falsches "Erfolg", solange die Auswertung noch läuft oder am
+Ende doch scheitert — `CalibrationProgress` muss beobachtet werden.
 
 ### 12.4 `AbortCalibration`
 
 Beendet die Session, **ohne** zu speichern — für den Fall, dass sich der
-Operator vertan hat oder neu anfangen will.
+Operator vertan hat oder neu anfangen will. Nur während der Aufnahme-Phase
+aufrufbar, nicht während eine Auswertung aus einem vorherigen
+`FinishCalibration` noch läuft (dann bereits `INVALID_STATE`, da `running`
+schon `false` ist — die laufende Auswertung selbst lässt sich nicht
+abbrechen, sie läuft zu Ende).
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
@@ -1134,37 +1147,33 @@ ns=<vision>;s=VisionMachine.CalibrationProgress     Datentyp String (JSON)
 ```
 
 Wird bei jedem Publish-Tick des Livestreams mitgeschrieben (kein eigener
-Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
+Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht,
+und auch während der Livestream selbst pausiert ist (Auswertungsphase, siehe
+oben — der Fortschritts-Knoten ist ein eigener, vom Bild unabhängiger
+Schreibpfad).
 
 | Feld | Bedeutung |
 | --- | --- |
-| `running` | `bool` — Session aktiv? |
-| `samples` | Anzahl bisher erfasster Aufnahmen |
-| `minSamples` | Mindestanzahl für ein erfolgreiches `FinishCalibration` (Config, Standard 15) |
-| `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
-| `result` | **nur vorhanden, sobald die Session beendet ist** (automatisch oder per `FinishCalibration`/`AbortCalibration`, siehe unten) |
+| `running` | `bool` — Aufnahme-Phase aktiv? Wird mit `FinishCalibration` schon `false`, **bevor** das Ergebnis feststeht |
+| `processing` | `bool` — läuft gerade die Hintergrund-Auswertung aus einem `FinishCalibration`? |
+| `samples` | Anzahl bisher aufgenommener Bilder (**nicht** geprüft, ob das Board darauf zu sehen ist — das entscheidet sich erst bei der Auswertung) |
+| `minSamples` | Mindestanzahl, ab der `FinishCalibration` überhaupt eine Auswertung anstößt (Config, Standard 15) |
+| `result` | **nur vorhanden, sobald die Auswertung fertig ist** (siehe unten) |
 
-Im Ruhezustand (keine Session je gestartet, oder nach `Abort` ohne
-automatischen Abschluss): `{"running": false}`, ohne `result`. Mitverfolgen
-lässt sich das auch visuell über den Livestream
-(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
-zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
-`Aufnahmen X/minSamples`.
-
-**Automatischer Abschluss:** Erreichen `coverageX` **und** `coverageY`
-`calibration_coverage_threshold` (Config, Standard `0.7`, entspricht dem
-Abbruchkriterium aus dem Testplan) und liegen genug Aufnahmen vor, rechnet
-und speichert die Session **von selbst** — ausgelöst vom nächsten
-`CaptureCalibrationSample`-Aufruf, der die Schwelle überschreitet. Kein
-Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
-`running` auf `false` springt und `result` erscheint:
+Im Ruhezustand (keine Session je gestartet, oder nach `AbortCalibration`):
+`{"running": false, "processing": false}`, ohne `result`. Ein typischer
+Ablauf:
 
 ```jsonc
+// waehrend der Aufnahme
+{"running": true, "processing": false, "samples": 12, "minSamples": 15}
+// FinishCalibration wurde aufgerufen, Auswertung laeuft
+{"running": false, "processing": true, "samples": 18, "minSamples": 15}
+// fertig
 {
-  "running": false, "samples": 18, "minSamples": 15,
-  "coverageX": 0.84, "coverageY": 0.9,
+  "running": false, "processing": false, "samples": 18, "minSamples": 15,
   "result": {
-    "error": 0, "rms": 2.069, "samples": 18,
+    "error": 0, "rms": 2.069, "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_ceiling.json",
     "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
@@ -1172,28 +1181,38 @@ Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
 }
 ```
 
+Zwei Zahlen können hier auseinanderfallen: `samples` (oben, im Wurzelobjekt)
+ist die Anzahl **aufgenommener** Bilder (18), `result.samples` die Anzahl
+Bilder, auf denen das Board bei der Auswertung tatsächlich **gefunden**
+wurde (16 — zwei waren z. B. unscharf oder das Board war nicht im
+Bildausschnitt). Nur Letzteres fließt in die Kalibrierung ein.
+
 `result.error` ist derselbe `Error`-Code wie bei `FinishCalibration`
-(0 = `OK`). **Abdeckung allein sagt nichts über die tatsächliche
-Genauigkeit** — ein Board, das nie gekippt wurde, füllt zwar den
-Bildbereich, lässt die Brennweite aber unbestimmt (Testplan Abschnitt 3.3).
+(0 = `OK`). Ein Scheitern *während* der Auswertung erscheint genauso in
+`result`, mit `error != 0` und `message` statt `rms`/`samples`/`coverageX`/
+`coverageY` — aus zwei möglichen Gründen: entweder zeigten zu wenige der
+aufgenommenen Bilder tatsächlich das Board (`result.samples` bliebe unter 3),
+oder `cv2.calibrateCamera` selbst scheitert numerisch. Letzteres kann
+passieren, obwohl genug Aufnahmen und gute Bildabdeckung vorlagen: **Abdeckung
+allein sagt nichts über die tatsächliche Genauigkeit** — ein Board, das nie
+gekippt wurde, füllt zwar den Bildbereich, lässt die Brennweite aber
+unbestimmt (Testplan Abschnitt 3.3).
 `result.warning` erscheint deshalb zusätzlich, wenn der RMS-Reprojektionsfehler
 über 0,5 px liegt; sie verhindert das Speichern **nicht** — die Datei ist
 trotzdem geschrieben, nur mit dem Hinweis, dass sie ungenauer als empfohlen
 ist. Das Frontend sollte diese Warnung sichtbar anzeigen, nicht nur loggen.
-`calibration_coverage_threshold: null` in der Config schaltet den
-automatischen Abschluss ganz ab (nur noch manuelles `FinishCalibration`, wie
-es die CLI-Tools weiter unterstützen).
 
 Für Pis mit angeschlossenem Monitor gibt es dafür drei Kommandozeilen-Tools
 unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
-Teil des Frontends): `calibration_client.py` startet/beendet eine Session und
-loggt `CalibrationProgress`; `stream_viewer.py` zeigt den Livestream in einem
-lokalen Fenster und löst mit der Leertaste `CaptureCalibrationSample` aus —
-zusammen der Handshake, den ein Frontend nachbilden muss. `diagnose_board.py`
-ist reine Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und
-probiert mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board`
-durch, falls das Board im Stream zwar sichtbar, aber nicht erkannt wird —
-z. B. weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
+Teil des Frontends): `calibration_client.py` startet/beendet eine Session,
+loggt `CalibrationProgress` und wartet nach `FinishCalibration` auf
+`result`; `stream_viewer.py` zeigt den Livestream in einem lokalen Fenster
+und löst mit der Leertaste `CaptureCalibrationSample` aus — zusammen der
+Handshake, den ein Frontend nachbilden muss. `diagnose_board.py` ist reine
+Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und probiert
+mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board` durch,
+falls das Board im Stream zwar sichtbar, aber nicht erkannt wird — z. B.
+weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
 tatsächlich aufgehängten Board passt.
 
 ### 12.6 `ActiveCalibrationInfo` (nur lesen)
@@ -1233,13 +1252,18 @@ oben).
 
 ### 12.7 Sperren
 
-`StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft. Umgekehrt lehnen
-`StartSingleJob`/`StartContinuous` ab (`BUSY`), solange eine Kalibrier-Session
-läuft — beide teilen sich Kamera und Detektor, gleichzeitig ergibt keinen
-Sinn. Es gibt dafür **keinen eigenen State-Machine-Zustand**: das Nodeset
-kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt in
-`Ready`, die Sperre läuft rein über die beiden Busy-Flags — dieselbe
-`BUSY`-Semantik wie zwischen zwei Jobs (Abschnitt 5, Fehlercodes).
+`StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft **oder** eine
+Kalibrier-Session/-Auswertung läuft (`CalibrationSession.busy` — Aufnahme
+UND die Hintergrund-Auswertung nach `FinishCalibration` zählen, siehe
+Abschnitt 12.3: ein neuer Start während einer noch laufenden Auswertung
+würde deren Arbeitsordner unter den Füßen wegräumen). Umgekehrt lehnen
+`StartSingleJob`/`StartContinuous` ebenfalls ab (`BUSY`), solange eine
+Kalibrier-Session/-Auswertung läuft — beide teilen sich Kamera und Detektor,
+gleichzeitig ergibt keinen Sinn. Es gibt dafür **keinen eigenen
+State-Machine-Zustand**: das Nodeset kennt keinen passenden Zustand für
+„Kalibrierung läuft", der Automat bleibt in `Ready`, die Sperre läuft rein
+über die Busy-Flags — dieselbe `BUSY`-Semantik wie zwischen zwei Jobs
+(Abschnitt 5, Fehlercodes).
 
 ### 12.8 Stand
 
@@ -1262,15 +1286,18 @@ Reines Diagnose-Werkzeug, kein Teil der Schnittstelle selbst — für die
 Untersuchung von Kalibrierproblemen live auf einem Pi, ohne dass Backend-Logs
 zur Verfügung stehen. **Standardmäßig aus** (seit 2026-09-28,
 `VISION_SAVE_CALIBRATION_CAPTURES=1` schaltet es ein) — dazu unten mehr.
-Eingeschaltet schreibt `AprilTagProfileConfig.calibration_capture_dir` jede
-von `CaptureCalibrationSample` übernommene Aufnahme zusätzlich als JPEG unter
-`data/calibration/<frame_id>_captures/kalib_001.jpg`, `kalib_002.jpg`, … ab —
-dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to` (dort PNG,
-hier bewusst JPEG, siehe unten). Der Zähler setzt bei jedem `StartCalibration`
-neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden) werden nicht
-mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
-Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz auf dem Pi knapp
-wird.
+Eingeschaltet archiviert `AprilTagProfileConfig.calibration_capture_dir`
+zusätzlich zum session-eigenen Arbeitsordner (`_pending_dir`, siehe Abschnitt
+12) jede per `CaptureCalibrationSample` gemachte Aufnahme dauerhaft als JPEG
+unter `data/calibration/<frame_id>_captures/kalib_001.jpg`, `kalib_002.jpg`,
+… — dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to` (dort
+PNG, hier bewusst JPEG, siehe unten). Der Zähler setzt bei jedem
+`StartCalibration` neu bei 1 an; da `capture()` seit der Entkopplung von
+Aufnahme und Auswertung nicht mehr prüft, ob das Board sichtbar ist, wird
+jetzt jede Aufnahme mitgezählt und archiviert, nicht nur die später
+tatsächlich verwertbaren. `data/` ist gitignored, es gibt keinen
+automatischen Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz
+auf dem Pi knapp wird.
 
 **Zwei Performance-Bugs live an der Deckenkamera (12 MP) gefunden, Hand-Pi
 (640x480) nie betroffen:**
@@ -1304,6 +1331,19 @@ Kalibrierung, die es untersuchen soll, selbst beeinträchtigt, gehört nicht in
 den Standardbetrieb. Bei Bedarf gezielt mit `VISION_SAVE_CALIBRATION_CAPTURES=1`
 einschalten (systemd-Unit oder Shell vor dem Start), wieder ausschalten, wenn
 die Untersuchung abgeschlossen ist.
+
+**Überholt durch die Entkopplung von Aufnahme und Auswertung (2026-09-28,
+siehe Abschnitt 12):** `capture()` ruft `detect_board` inzwischen gar nicht
+mehr auf, `_pool()` wird also nicht mehr von `CaptureCalibrationSample`
+belegt — Bug 2 könnte in dieser Form nicht mehr auftreten. Der eigentliche
+Auslöser für die Entkopplung war ein dritter, schwererer Fund desselben
+Tages: `detect_board` selbst blieb auf der Deckenkamera bei der
+Ecken-Erkennung auf dem vollen 12-MP-Frame über mehrere Minuten hängen (kein
+Fehler, kein Rückgabewert) — mit nur einem Worker im Pool legte das jede
+folgende Aufnahme lahm, ein Server-Neustart war der einzige Ausweg. Diese
+Datei bleibt als Protokoll stehen, weil sie zeigt, wie sich das Problem
+schrittweise eingegrenzt hat, nicht weil der beschriebene Mechanismus noch
+so läuft.
 
 ---
 

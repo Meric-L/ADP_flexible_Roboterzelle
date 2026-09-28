@@ -455,8 +455,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         Rueckgabe muss ein Tupel sein; eine Liste wuerde asyncua als einen
         einzigen Variant verpacken.
         """
-        if calibration_session is not None and calibration_session.running:
-            _log.warning("StartSingleJob waehrend laufender Kalibrierung abgelehnt")
+        if calibration_session is not None and calibration_session.busy:
+            _log.warning("StartSingleJob waehrend laufender Kalibrierung/Auswertung abgelehnt")
             return (
                 ua.Variant("", ua.VariantType.String),
                 ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
@@ -487,8 +487,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     @uamethod
     async def start_continuous(parent, meas_id, part_id, recipe_id, product_id, parameters):
         """1:StartContinuous -- Dauerbetrieb bis Stop oder Abort."""
-        if calibration_session is not None and calibration_session.running:
-            _log.warning("StartContinuous waehrend laufender Kalibrierung abgelehnt")
+        if calibration_session is not None and calibration_session.busy:
+            _log.warning("StartContinuous waehrend laufender Kalibrierung/Auswertung abgelehnt")
             return (
                 ua.Variant("", ua.VariantType.String),
                 ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),
@@ -621,8 +621,12 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             if jobs.busy:
                 _log.warning("StartCalibration waehrend laufendem Job abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
-            if calibration_session.running:
-                _log.warning("StartCalibration waehrend laufender Session abgelehnt")
+            if calibration_session.busy:
+                # `.busy` statt `.running`: eine Hintergrund-Auswertung aus
+                # einem vorherigen `FinishCalibration` liest noch aus dem
+                # `_pending_dir` der Session -- ein neuer `start()` waehrend-
+                # dessen wuerde den gerade genau darunter wegleeren.
+                _log.warning("StartCalibration waehrend laufender Session/Auswertung abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             if not states.is_ready():
                 return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
@@ -664,13 +668,34 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             )
         )
 
+        async def _pause_stream_during_processing() -> None:
+            """Waehrend `CalibrationSession._process()` im Hintergrund
+            rechnet, den Livestream pausieren, damit der Pi die volle CPU
+            fuer die Ecken-Erkennung hat (2026-09-28, auf Vorschlag/mit
+            Bestaetigung, nachdem die vorherige Deckenkamera-Auswertung
+            wiederholt haengen blieb). Laeuft selbst als Hintergrund-Task --
+            `finish_calibration` darf darauf nicht warten, siehe dort.
+            """
+            if camera_stream is not None:
+                await camera_stream.stop()
+            await calibration_session.wait_for_processing()
+            if camera_stream is not None:
+                camera_stream.start()
+
         @uamethod
         async def finish_calibration(parent):
-            """1:FinishCalibration -- rechnet aus den gesammelten Aufnahmen
-            und speichert bei Erfolg `data/calibration/<frame_id>.json`.
+            """1:FinishCalibration -- beendet die Aufnahme-Phase und stoesst
+            die Auswertung im Hintergrund an; kehrt sofort zurueck, OHNE auf
+            das Ergebnis zu warten (`CalibrationSession.finish()`, siehe
+            dort -- eine synchrone Auswertung mehrerer
+            Vollaufloesungs-Aufnahmen haette auf der Deckenkamera dasselbe
+            Timeout-Risiko wie eine einzelne haengende `detect_board`-
+            Aufnahme, live 2026-09-28 gefunden). Das Frontend beobachtet das
+            Ergebnis ausschliesslich ueber `CalibrationProgress`
+            (`processing` -> `result`).
 
             `Summary` ist immer gueltiges JSON, auch im Fehlerfall (dann mit
-            `message` statt `rms`/`samples`/... ), damit das Frontend nicht
+            `message` statt `samples`/... ), damit das Frontend nicht
             zwischen Erfolgs- und Fehlerform unterscheiden muss.
             """
             if not calibration_session.running:
@@ -679,7 +704,15 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                     ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),
                 )
             error, summary = await calibration_session.finish()
-            if annotator is not None:
+            if error == VisionErrorCode.OK:
+                # `annotator` bleibt bewusst an der Session haengen (kein
+                # `set_calibration_session(None)` hier): der Livestream
+                # zeigt nach dem Pausieren so das Ergebnis, sobald es da ist,
+                # statt sofort in den session-losen Zustand zurueckzufallen.
+                # Geloest wird das erst durch das naechste
+                # `StartCalibration`/`AbortCalibration`.
+                asyncio.ensure_future(_pause_stream_during_processing())
+            elif annotator is not None:
                 annotator.set_calibration_session(None)
             return (
                 ua.Variant(json.dumps(summary), ua.VariantType.String),

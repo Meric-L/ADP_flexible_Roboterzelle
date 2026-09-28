@@ -59,9 +59,8 @@ async def run(args: argparse.Namespace) -> int:
         print("Session laeuft. Board vor die Kamera halten und langsam bewegen.")
         print(
             "Aufnahmen kommen von woanders (z. B. stream_viewer.py per Leertaste). "
-            "Strg+C beendet manuell (FinishCalibration; mit --abort ohne zu speichern) "
-            "-- oder die Session schliesst sich von selbst ab, sobald die "
-            "Abdeckungs-Schwelle erreicht ist.\n"
+            "Strg+C beendet die Aufnahme-Phase und stoesst die Auswertung an "
+            "(FinishCalibration; mit --abort ohne zu speichern/auszuwerten).\n"
         )
 
         # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
@@ -76,30 +75,12 @@ async def run(args: argparse.Namespace) -> int:
         except NotImplementedError:
             pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
 
-        auto_result = None
         while not stop.is_set():
             progress = json.loads(await progress_node.read_value())
-            print(
-                f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}"
-                f"   Abdeckung x {progress.get('coverageX', 0.0) * 100:.0f}%"
-                f" y {progress.get('coverageY', 0.0) * 100:.0f}%"
-            )
-            auto_result = progress.get("result")
-            if auto_result is not None:
-                # Abdeckungs-Schwelle erreicht -- die Session hat sich schon
-                # selbst beendet, FinishCalibration hier wuerde nur noch
-                # INVALID_STATE liefern ("keine Session aktiv").
-                break
+            print(f"Aufnahmen {progress.get('samples', 0)}/{progress.get('minSamples', '?')}")
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=args.poll_interval)
         print()
-
-        if auto_result is not None:
-            print("Abdeckung erreicht, automatisch abgeschlossen:")
-            print(json.dumps(auto_result, indent=2, ensure_ascii=False))
-            if "warning" in auto_result:
-                print(f"ACHTUNG: {auto_result['warning']}")
-            return 0 if auto_result.get("error", 0) == 0 else 1
 
         if args.abort:
             error = await vision.call_method(abort_node)
@@ -109,7 +90,23 @@ async def run(args: argparse.Namespace) -> int:
         summary, error = await vision.call_method(finish_node)
         print(f"FinishCalibration -> Error={error}")
         print(json.dumps(json.loads(summary), indent=2, ensure_ascii=False))
-        return 0 if error == 0 else 1
+        if error != 0:
+            return 1
+
+        # `FinishCalibration` stoesst die Auswertung nur an und kehrt sofort
+        # zurueck (siehe calibration_session.py) -- das eigentliche Ergebnis
+        # kommt ueber `CalibrationProgress`, sobald `processing` wieder
+        # `False` wird.
+        print("Auswertung laeuft im Hintergrund ...")
+        result = None
+        while result is None:
+            await asyncio.sleep(args.poll_interval)
+            progress = json.loads(await progress_node.read_value())
+            result = progress.get("result")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if "warning" in result:
+            print(f"ACHTUNG: {result['warning']}")
+        return 0 if result.get("error", 0) == 0 else 1
 
 
 def main(argv: list[str] | None = None) -> int:

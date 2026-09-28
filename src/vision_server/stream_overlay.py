@@ -166,28 +166,50 @@ class AprilTagStreamAnnotator:
                         frame_tools.to_gray(canvas), self._board_spec()
                     )
                     self._last_run = now
+                # Keine kumulierte Abdeckung mehr hier: seit `capture()` nur
+                # noch den Frame merkt statt sofort zu erkennen (siehe
+                # `calibration_session.py`), ist sie erst nach der
+                # Hintergrund-Auswertung bekannt (`progress["result"]`).
+                # `self._last_board` bleibt trotzdem nuetzlich -- die
+                # Vorschau hier laeuft unabhaengig davon periodisch auf dem
+                # kleinen Bild und hilft beim Positionieren.
+                draw_board_overlay(canvas, self._last_board)
                 progress = self.calibration_progress
-                draw_board_overlay(
-                    canvas,
-                    self._last_board,
-                    coverage=(progress["coverageX"], progress["coverageY"]) if progress else None,
-                )
-                if progress is not None:
-                    draw_status_bar(
-                        canvas,
-                        [
-                            "Modus: Kalibrierung   Session laeuft",
-                            f"Aufnahmen {progress['samples']}/{progress['minSamples']}"
-                            f"   Abdeckung x {progress['coverageX'] * 100:.0f}%"
-                            f" y {progress['coverageY'] * 100:.0f}%",
-                        ],
-                    )
-                else:
+                if progress is None:
                     draw_status_bar(
                         canvas,
                         [
                             f"Modus: Kalibrierung   Board: {self._board_spec().type}",
                             f"Kalibrierung: {self._calibration.calibration_id or 'unbenannt'}",
+                        ],
+                    )
+                elif progress["processing"]:
+                    draw_status_bar(
+                        canvas,
+                        [
+                            "Modus: Kalibrierung   Auswertung laeuft ...",
+                            f"{progress['samples']} Aufnahmen werden ausgewertet",
+                        ],
+                    )
+                elif progress.get("result") is not None:
+                    result = progress["result"]
+                    if result.get("error") == 0:
+                        lines = [
+                            "Modus: Kalibrierung   Fertig",
+                            f"RMS {result.get('rms')} px, {result.get('samples')} Aufnahmen",
+                        ]
+                    else:
+                        lines = [
+                            "Modus: Kalibrierung   Fehlgeschlagen",
+                            result.get("message", ""),
+                        ]
+                    draw_status_bar(canvas, lines)
+                else:
+                    draw_status_bar(
+                        canvas,
+                        [
+                            "Modus: Kalibrierung   Session laeuft",
+                            f"Aufnahmen {progress['samples']}/{progress['minSamples']}",
                         ],
                     )
                 return canvas

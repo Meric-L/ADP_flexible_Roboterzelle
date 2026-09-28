@@ -3,10 +3,13 @@ Monitor, ohne dass dafuer ein Frontend laufen muss.
 
 Liest `LatestCameraFrame` (Base64-JPEG) und zeigt es in einem OpenCV-Fenster
 an. Setzt standardmaessig `CameraStreamMode="calibration"`, damit das Bild
-dieselbe Board-Erkennung und Abdeckungs-Anzeige traegt wie im Frontend
-(`stream_overlay.py`) -- praktisch, um waehrend einer laufenden
+dieselbe (auf dem kleinen Vorschaubild laufende) Board-Erkennung traegt wie im
+Frontend (`stream_overlay.py`) -- praktisch, um waehrend einer laufenden
 `CalibrationSession` (gestartet z. B. per `calibration_client.py`) direkt zu
-sehen, ob das Board erkannt wird oder ob z. B. das Bild unscharf ist. Beide
+sehen, ob das Board sichtbar ist oder ob z. B. das Bild unscharf ist. Das ist
+nur eine Positionierungshilfe: ob eine bestimmte Aufnahme tatsaechlich
+verwertbar war, stellt sich erst nach `FinishCalibration` heraus (Aufnahme
+und Auswertung sind entkoppelt, siehe `calibration_session.py`). Beide Tools
 laufen parallel, weil beide nur aus der bereits offenen `SharedCamera`
 mitlesen -- kein exklusiver Kamerazugriff wie bei `tagloc.cli.calibrate`.
 
@@ -60,25 +63,21 @@ async def run(args: argparse.Namespace) -> int:
                 if key == ord("q"):
                     break
                 if key == SPACE:
+                    # `CaptureCalibrationSample` merkt sich nur noch den Frame
+                    # (kein `detect_board` mehr im RPC-Pfad, siehe
+                    # calibration_session.py) -- Error ist darum praktisch
+                    # immer OK, solange eine Session laeuft. Ob das Board
+                    # tatsaechlich sichtbar war, stellt sich erst nach
+                    # `FinishCalibration` heraus (Strg+C in diesem Tool).
                     error = await vision.call_method(capture_node)
                     progress = json.loads(await progress_node.read_value())
                     if error == 0:
                         print(
                             f"Aufnahme uebernommen -- {progress.get('samples', 0)}/"
-                            f"{progress.get('minSamples', '?')}, Abdeckung x "
-                            f"{progress.get('coverageX', 0.0) * 100:.0f}% y "
-                            f"{progress.get('coverageY', 0.0) * 100:.0f}%"
+                            f"{progress.get('minSamples', '?')}"
                         )
                     else:
-                        print(f"Kein Board gefunden (Error={error}) -- nochmal versuchen.")
-                    result = progress.get("result")
-                    if result is not None:
-                        # Abdeckungs-Schwelle erreicht -- Session hat sich
-                        # selbst beendet (siehe CalibrationSession.capture()).
-                        print(f"\nAbdeckung erreicht, automatisch abgeschlossen: {result}")
-                        if "warning" in result:
-                            print(f"ACHTUNG: {result['warning']}")
-                        break
+                        print(f"Aufnahme abgelehnt (Error={error}) -- laeuft eine Session?")
                 elapsed = loop.time() - started
                 await asyncio.sleep(max(0.0, interval - elapsed))
         except KeyboardInterrupt:

@@ -185,14 +185,25 @@ Regressionsschutz dafür: `tests/test_tag_pipeline.py`,
 hängen bleiben:** live an der Deckenkamera (12 MP) gefunden, 2026-09-28 — ein
 einzelner Aufruf lieferte über fünf Minuten kein Ergebnis (kein Fehler, kein
 Timeout-Log, einfach nie fertig; auf dem Hand-Pi bei 640×480 nie beobachtet).
-`CalibrationSession.capture()` (`calibration_session.py`) begrenzt
-`detect_board` deshalb zusätzlich mit `CAPTURE_DETECT_TIMEOUT_S` (20 s) und
-verwirft danach den betroffenen Ein-Worker-Pool, statt ihn für jede weitere
-Aufnahme blockiert zu lassen — Details und Begründung dort. Die eigentliche
-Ursache des Hängers selbst ist damit noch nicht geklärt, nur eingedämmt;
-nächster naheliegender Schritt wäre, `detect_board` für die interaktive
-Kalibrierung nicht mehr auf dem vollen Sensor-Frame laufen zu lassen, analog
-zum bereits bestehenden Downscale von Livestream/Job.
+Die eigentliche Ursache des Hängers selbst ist damit nicht geklärt, nur
+eingedämmt: `CalibrationSession._process()` (`calibration_session.py`)
+begrenzt jeden `detect_board`-Aufruf mit `CAPTURE_DETECT_TIMEOUT_S` (20 s)
+und verwirft danach den betroffenen Ein-Worker-Pool, statt ihn für jede
+weitere Aufnahme blockiert zu lassen — Details und Begründung dort.
+
+Dieser Fund war zugleich der Auslöser für eine größere Änderung: Aufnahme
+(`capture()`) und Auswertung (`_process()`, `detect_board` je Bild +
+`calibrate_from_samples`) sind seither entkoppelt (`FinishCalibration` stößt
+die Auswertung nur noch im Hintergrund an, siehe
+`vision-server-interface.md` Abschnitt 12) — `detect_board` läuft also nicht
+mehr im OPC-UA-Antwortpfad von `CaptureCalibrationSample`, sondern erst nach
+`FinishCalibration`, wo ein Hängenbleiben "nur" eine einzelne Aufnahme
+kostet (übersprungen, siehe `CAPTURE_DETECT_TIMEOUT_S`) statt die gesamte
+Session zu blockieren. Ob `detect_board` auf dem vollen Sensor-Frame künftig
+auch für die Kalibrierung selbst herunterskaliert werden sollte (analog zum
+bereits bestehenden Downscale von Livestream/Job), bleibt eine offene Frage
+-- inzwischen mit deutlich geringerem Risiko, seit ein Hänger nicht mehr die
+ganze Session lahmlegt.
 
 ### Dateiformat `data/calibration/<frame_id>.json`
 
