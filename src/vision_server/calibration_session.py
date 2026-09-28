@@ -26,6 +26,7 @@ import asyncio
 import importlib
 import inspect
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -280,9 +281,26 @@ class CalibrationSession:
         spec = self._spec()
         board = self._build_board(spec)  # None fuer chessboard
         self._image_size = frame_tools.image_size(frame.image)
+        started = time.monotonic()
         sample = await self._run_blocking(
             self._detect_board, frame_tools.to_gray(frame.image), spec, board
         )
+        elapsed = time.monotonic() - started
+        # Diagnose (2026-09-28): ob und wie sehr `detect_board` auf dem
+        # vollen Kamera-Frame (nie herunterskaliert, siehe Docstring oben)
+        # auf schwaecherer Pi-Hardware selbst zum Flaschenhals wird, war ohne
+        # Zeitmessung nicht von anderen moeglichen Ursachen (Warteschlangen,
+        # Netz, Server-Neustart) zu unterscheiden.
+        if elapsed > 1.0:
+            _log.warning(
+                "Kalibrierung: detect_board dauerte %.2f s (Bildgroesse %s) -- "
+                "laenger als 1 s pro Aufnahme faellt bei einer OPC-UA-Antwort "
+                "spuerbar auf",
+                elapsed,
+                self._image_size,
+            )
+        else:
+            _log.debug("Kalibrierung: detect_board dauerte %.2f s", elapsed)
         if sample is None:
             return False
         self._samples.append(sample)
