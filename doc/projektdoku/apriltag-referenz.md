@@ -181,6 +181,19 @@ statt nur ungenauem Ergebnis, ohne dass ein Fehler aufgefallen wäre.
 Regressionsschutz dafür: `tests/test_tag_pipeline.py`,
 `SyntheticCalibrationTest.test_corner_order_matches_the_classic_convention`.
 
+**Kann auf Pi-Hardware auch nach der `CALIB_CB_ACCURACY`-Entfernung noch
+hängen bleiben:** live an der Deckenkamera (12 MP) gefunden, 2026-09-28 — ein
+einzelner Aufruf lieferte über fünf Minuten kein Ergebnis (kein Fehler, kein
+Timeout-Log, einfach nie fertig; auf dem Hand-Pi bei 640×480 nie beobachtet).
+`CalibrationSession.capture()` (`calibration_session.py`) begrenzt
+`detect_board` deshalb zusätzlich mit `CAPTURE_DETECT_TIMEOUT_S` (20 s) und
+verwirft danach den betroffenen Ein-Worker-Pool, statt ihn für jede weitere
+Aufnahme blockiert zu lassen — Details und Begründung dort. Die eigentliche
+Ursache des Hängers selbst ist damit noch nicht geklärt, nur eingedämmt;
+nächster naheliegender Schritt wäre, `detect_board` für die interaktive
+Kalibrierung nicht mehr auf dem vollen Sensor-Frame laufen zu lassen, analog
+zum bereits bestehenden Downscale von Livestream/Job.
+
 ### Dateiformat `data/calibration/<frame_id>.json`
 
 ```jsonc

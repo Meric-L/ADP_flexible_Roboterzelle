@@ -148,6 +148,68 @@ class CaptureTest(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class DetectBoardHangTest(unittest.IsolatedAsyncioTestCase):
+    """Live an der Deckenkamera (12 MP) gefunden, 2026-09-28:
+    `detect_board` auf dem vollen Kamera-Frame kann auf der Pi-Hardware
+    unbegrenzt haengen (kein Fehler, kein Rueckgabewert). Ohne Zeitlimit
+    blockiert das den einen `_pool()`-Worker fuer immer -- jede weitere
+    `capture()` haengt dann ebenfalls, dauerhaft, nur ein Server-Neustart
+    half. `CAPTURE_DETECT_TIMEOUT_S` wird hier auf einen Testwert gepatcht,
+    der echte Wert (20 s) waere fuer einen Unittest zu lang."""
+
+    async def test_a_hanging_detect_board_returns_false_instead_of_blocking_forever(self):
+        import threading
+        from unittest import mock
+
+        release = threading.Event()
+
+        def hanging_detect_board(gray, spec, board):
+            release.wait(timeout=5)
+            return FakeSample()
+
+        session, camera, _, _ = make_session(detect_board=hanging_detect_board)
+        session.start()
+        camera.push()
+
+        with mock.patch("vision_server.calibration_session.CAPTURE_DETECT_TIMEOUT_S", 0.05):
+            found = await asyncio.wait_for(session.capture(), timeout=2.0)
+
+        self.assertFalse(found)
+        self.assertEqual(session.progress["samples"], 0)
+        release.set()  # den haengenden Fake-Thread sauber beenden
+
+    async def test_the_next_capture_gets_a_fresh_pool_after_a_hang(self):
+        """Der eigentliche Regressionstest: eine haengende erste Aufnahme
+        darf eine funktionierende zweite nicht auf ewig blockieren."""
+        import threading
+        from unittest import mock
+
+        release = threading.Event()
+        calls = 0
+
+        def flaky_detect_board(gray, spec, board):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                release.wait(timeout=5)  # haengt "fuer immer" (Testlimit 5s)
+                return FakeSample()
+            return FakeSample()  # zweiter Aufruf ist normal schnell
+
+        session, camera, _, _ = make_session(detect_board=flaky_detect_board)
+        session.start()
+        camera.push()
+
+        with mock.patch("vision_server.calibration_session.CAPTURE_DETECT_TIMEOUT_S", 0.05):
+            first = await asyncio.wait_for(session.capture(), timeout=2.0)
+            second = await asyncio.wait_for(session.capture(), timeout=2.0)
+
+        self.assertFalse(first)
+        self.assertTrue(second)
+        self.assertEqual(session.progress["samples"], 1)
+        release.set()
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
     """`calibration_capture_dir` ist ein reines Debug-Artefakt (siehe
     `_save_capture_image` in `calibration_session.py`) -- standardmaessig aus

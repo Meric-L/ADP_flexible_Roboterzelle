@@ -50,6 +50,23 @@ RMS_WARNING_PX = 0.5
 #: DETECTION_FAILED enden, ohne dass der Operator das wollte.
 MIN_SAMPLES_FOR_CALIBRATION = 3
 
+#: Zeitlimit fuer einen einzelnen `detect_board`-Aufruf in `capture()`. Live
+#: an der Deckenkamera (12 MP) gefunden, 2026-09-28: ein Aufruf auf dem
+#: vollen Kamera-Frame kann auf der Pi-Hardware haengen bleiben (kein Fehler,
+#: kein Rueckgabewert, ueber 5 Minuten beobachtet, kein einzelnes
+#: Zeit-Log dazu -- also nicht nur sehr langsam, echt haengend). Da
+#: `_pool()` nur einen Worker hat, blockiert das ohne Zeitlimit nicht nur
+#: diese eine Aufnahme, sondern JEDE folgende `capture()` fuer immer -- die
+#: Session blieb dann dauerhaft kaputt, nur ein Server-Neustart half. Der
+#: haengende Thread selbst laesst sich in Python nicht abbrechen (leakt im
+#: Hintergrund weiter), aber `capture()` gibt wenigstens rechtzeitig `False`
+#: zurueck und verwirft den haengenden Pool, damit die naechste Aufnahme
+#: einen frischen Worker bekommt statt fuer immer in der Warteschlange zu
+#: stehen. Tritt das haeufig auf, ist das Signal, `detect_board` nicht mehr
+#: auf dem vollen Sensor-Frame laufen zu lassen, sondern vorher
+#: herunterzuskalieren (wie Livestream/Job das schon fuer ihre Zwecke tun).
+CAPTURE_DETECT_TIMEOUT_S = 20.0
+
 
 def _lazy(module: str, name: str) -> Callable:
     """Loest eine `tagloc`-Funktion erst beim Aufruf auf -- diese Datei
@@ -282,9 +299,28 @@ class CalibrationSession:
         board = self._build_board(spec)  # None fuer chessboard
         self._image_size = frame_tools.image_size(frame.image)
         started = time.monotonic()
-        sample = await self._run_blocking(
-            self._detect_board, frame_tools.to_gray(frame.image), spec, board
-        )
+        try:
+            sample = await asyncio.wait_for(
+                self._run_blocking(
+                    self._detect_board, frame_tools.to_gray(frame.image), spec, board
+                ),
+                timeout=CAPTURE_DETECT_TIMEOUT_S,
+            )
+        except TimeoutError:
+            # Siehe CAPTURE_DETECT_TIMEOUT_S: der haengende Thread laeuft im
+            # Hintergrund weiter (nicht abbrechbar), aber der Pool wird hier
+            # verworfen, damit die naechste `capture()` nicht ebenfalls fuer
+            # immer in seiner Warteschlange steht.
+            _log.error(
+                "Kalibrierung: detect_board haengt seit ueber %.0f s (Bildgroesse %s) "
+                "-- gebe auf, naechste Aufnahme bekommt einen frischen Pool",
+                CAPTURE_DETECT_TIMEOUT_S,
+                self._image_size,
+            )
+            if self._executor is not None:
+                self._executor.shutdown(wait=False, cancel_futures=True)
+                self._executor = None
+            return False
         elapsed = time.monotonic() - started
         # Diagnose (2026-09-28): ob und wie sehr `detect_board` auf dem
         # vollen Kamera-Frame (nie herunterskaliert, siehe Docstring oben)
