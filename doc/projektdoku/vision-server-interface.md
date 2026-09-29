@@ -1542,3 +1542,46 @@ alles an einer Stelle findet. Vollständig in
 Punkt 5 ist der einzige, der in der bisherigen Backend-Umsetzung noch fehlt
 (`vision-system-integration.md`, Risiko R9). Punkt 6 ist im Frontend
 umgesetzt (Ampel im Kamera-Panel).
+
+## 14. Layer-2-Lauf (nur Hand-Pi)
+
+Der Hand-Pi führt die Feinmessung selbst:
+1. Er fährt zuerst an den Welttag und ankert dort (`apriltag-hand-auge-ankern.md`).
+2. Er plant jedes Modul mit der **gemessenen** Basis neu.
+3. Er misst jedes Modul.
+
+Frontend und Backend reichen nur Posen weiter. Planung und Ablauf liegen in `src/vision_server/layer2/`. Der Arbeitsplan mit allen JSON-Formaten ist [`arbeitsplaene/layer2-lauf-hand-pi.md`](arbeitsplaene/layer2-lauf-hand-pi.md).
+
+Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, also auf dem Pi mit `frame_id = cam_flange`. Alle liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt:
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `StartLayer2Run` | `ns=<vision>;s=VisionMachine.StartLayer2Run` | `(RunJson: String) -> (Error: Int32)` |
+| `ReportRobotPose` | `ns=<vision>;s=VisionMachine.ReportRobotPose` | `(ReportJson: String) -> (Error: Int32)` |
+| `Layer2Target` | `ns=<vision>;s=VisionMachine.Layer2Target` | String, JSON `wsc.vision.layer2.target/1`, `""` ohne Ziel |
+| `Layer2Status` | `ns=<vision>;s=VisionMachine.Layer2Status` | String, JSON `wsc.vision.layer2.status/1` |
+
+**Ablauf aus Sicht des Clients:**
+1. `StartLayer2Run` aufrufen. Übergeben werden die Roboterbasis und die Module aus Layer 1, mit den Tag-Lagen aus dem Modulkatalog (`wsc.vision.layer2.run/1`).
+2. `Layer2Target` abonnieren. Steht dort ein Ziel, den Roboter mit dem Flansch auf `flangeInBase` fahren.
+3. `ReportRobotPose` mit der **vom Roboter gemeldeten** Flanschpose aufrufen. Ist die Fahrt gescheitert, mit `reached: false`. Der Pi startet dann einen normalen `apriltag`-Job mit dieser Pose als Parameter. Es kommen dieselben Events und dasselbe `LatestResultJson` wie bei `StartSingleJob`.
+4. Nach dem Job steht das nächste Ziel in `Layer2Target`. `Layer2Status` trägt je Schritt `status`, `detail` und bei Modulen das Ergebnis (`result.frameId`, `result.detections`).
+5. `state` steht am Ende auf `finished` oder `aborted`. `Stop` bricht den Lauf jederzeit ab.
+
+**Eine Rechnung für Welttag und Modul.** Die Kamera steht 0,3 m vor dem Tag und schaut auf ihn. Daraus ergibt sich mit `inv(T_flansch_cam)` der Flansch und mit `inv(T_world_base)` das Fahrziel. Der einzige Unterschied ist die Herkunft der Tag-Pose:
+- Welttag: aus der Tag-Map, und zwar der der Basis nächste.
+- Modul: Modulpose aus Layer 1 mal Tag-Lage. Genommen wird der Tag, der am meisten zur Basis zeigt.
+
+**Wann der Anker gilt:** `locate_modules` überspringt Welttags. Der Anker-Job endet deshalb oft mit `DETECTION_FAILED`. Er gilt trotzdem als geglückt, wenn danach ein **neuer** `RobotAnchor` in der Quelle steht. Ohne Anker bricht der Lauf ab, weil keine Weltposen entstehen würden.
+
+**Fehlercodes:**
+
+| Code | Wann |
+| --- | --- |
+| `INVALID_ARGUMENT` | JSON ungültig |
+| `INVALID_STATE` | keine Hand-Auge-Datei; kein vermessener Welttag; `ReportRobotPose` ohne wartendes Ziel oder mit falschem `stepIndex` |
+| `BUSY` | Job, Kalibrierung oder bereits ein Lauf aktiv |
+
+**Sperren:** Während eines Laufs antworten `StartCalibration` und `SetTagMap` mit `BUSY`, weil eine neue Tag-Map den Anker verwirft. `StartSingleJob` bleibt erlaubt, zum Debuggen.
+
+**Noch offen:** Die Roboter-Server kennen heute keinen kartesischen Fahrbefehl. Solange das so ist, kann ein Client den Lauf nur im Trockenlauf bedienen: Er meldet das Ziel selbst als erreicht. Der Pi ankert dann an einer Pose, die niemand gefahren ist.

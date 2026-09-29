@@ -62,6 +62,11 @@ class VisionAddressSpace:
     #: frontend builds the URL from the host it reaches OPC UA under. `None`
     #: without a livestream.
     camera_stream_http_port: Node | None = None
+    #: Naechstes Fahrziel des Layer-2-Laufs (JSON, `""` ohne Ziel) und sein
+    #: Zustand (JSON), siehe `layer2/run.py`. Nur auf dem Hand-Pi, also mit
+    #: `hand_eye_path` -- sonst `None`.
+    layer2_target: Node | None = None
+    layer2_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -274,6 +279,25 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.VariantType.String,
         )
 
+    layer2_target: Node | None = None
+    layer2_status: Node | None = None
+    if config.apriltag is not None and config.apriltag.hand_eye_path is not None:
+        # Nur lesen: der Lauf schreibt, das Frontend abonniert. Gesteuert wird
+        # ueber StartLayer2Run/ReportRobotPose, damit jede Eingabe geprueft
+        # und mit einem Fehlercode beantwortet werden kann.
+        layer2_target = await vision_system.add_variable(
+            ua.NodeId(f"{name}.Layer2Target", own_idx),
+            ua.QualifiedName("Layer2Target", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        layer2_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.Layer2Status", own_idx),
+            ua.QualifiedName("Layer2Status", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+
     _log.info(
         "VisionSystem '%s' als %s unter %s angelegt",
         name,
@@ -301,5 +325,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         tag_map_json=tag_map_json,
         active_calibration_info=active_calibration_info,
         camera_stream_http_port=camera_stream_http_port,
+        layer2_target=layer2_target,
+        layer2_status=layer2_status,
         amcm_idx=amcm_idx,
     )

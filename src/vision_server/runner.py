@@ -5,7 +5,7 @@ import contextlib
 import json
 import logging
 import signal
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -390,6 +390,8 @@ class VisionMachine:
     #: `StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
     #: `AbortCalibration`.
     calibration_session: CalibrationSession | None = None
+    #: Layer-2-Lauf (`layer2/run.py`); `None` ausser auf dem Hand-Pi.
+    layer2_run: Any = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -399,6 +401,8 @@ class VisionMachine:
         """
         if self.calibration_session is not None and self.calibration_session.running:
             await self.calibration_session.abort()
+        if self.layer2_run is not None:
+            await self.layer2_run.abort("Server faehrt herunter")
         # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
         # sonst als Haenger durch, und der letzte Wert im Adressraum waere
         # OFF_SPEC statt des letzten echten Zustands.
@@ -445,6 +449,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     #: Namen in Closures spaet auf, das ist hier bewusst genutzt.
     calibration_session: CalibrationSession | None = None
     annotator: Any = None
+    layer2_run: Any = None
 
     @uamethod
     async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
@@ -485,6 +490,10 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         als 0/"" und wertet sie nicht aus; wir werten sie ebenfalls nicht aus.
         Muss wie `start_single_job` `async` sein.
         """
+        # Erst den Lauf, dann den Job: sonst wertete der Lauf den
+        # abgebrochenen Job noch aus und veroeffentlichte ein neues Ziel.
+        if layer2_run is not None:
+            await layer2_run.abort("Stop")
         error = await jobs.stop()
         return (ua.Variant(int(error), ua.VariantType.Int32),)
 
@@ -626,6 +635,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             """
             if jobs.busy:
                 _log.warning("StartCalibration waehrend laufendem Job abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if layer2_run is not None and layer2_run.active:
+                _log.warning("StartCalibration waehrend laufendem Layer-2-Lauf abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             if calibration_session.busy:
                 # `.busy` statt `.running`: eine Hintergrund-Auswertung aus
@@ -823,6 +835,10 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             if calibration_session is not None and calibration_session.running:
                 _log.warning("SetTagMap waehrend laufender Kalibrierung abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if layer2_run is not None and layer2_run.active:
+                # Eine neue Karte verwirft den Anker, auf dem der Lauf steht.
+                _log.warning("SetTagMap waehrend laufendem Layer-2-Lauf abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             try:
                 tag_map = tag_map_from_json(tag_map_json or "", source="SetTagMap")
             except ValueError as error:
@@ -860,6 +876,16 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             [ua.VariantType.Int32],
         )
 
+    if (
+        apriltag_source is not None
+        and space.layer2_target is not None
+        and space.layer2_status is not None
+    ):
+        layer2_run = await _install_layer2_run(
+            space, config, jobs, apriltag_source, results, calibration_methods,
+            lambda: calibration_session is not None and calibration_session.busy,
+        )
+
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
     # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
     # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
@@ -874,6 +900,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["TagMapJson"] = space.tag_map_json
     if space.active_calibration_info is not None:
         mirror_nodes["ActiveCalibrationInfo"] = space.active_calibration_info
+    if space.layer2_target is not None and space.layer2_status is not None:
+        mirror_nodes["Layer2Target"] = space.layer2_target
+        mirror_nodes["Layer2Status"] = space.layer2_status
     program = await install_vision_program(
         server,
         server.nodes.objects,
@@ -914,7 +943,82 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         assets=assets,
         program=program,
         calibration_session=calibration_session,
+        layer2_run=layer2_run,
     )
+
+
+async def _install_layer2_run(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    jobs: JobRunner,
+    apriltag_source: Any,
+    results: ResultStore,
+    methods: dict[str, Node],
+    calibration_busy: Callable[[], bool],
+) -> Any:
+    """Legt StartLayer2Run/ReportRobotPose an und verdrahtet den Lauf.
+
+    Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Jeder Schritt
+    startet einen gewoehnlichen AprilTag-Job ueber den JobRunner -- gleiche
+    Events, gleiches `LatestResultJson`, `Stop` wirkt wie gewohnt. Siehe
+    `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
+    """
+    # Erst hier: `layer2` braucht numpy, der Rest des Servers nicht.
+    from .layer2.run import Layer2Ports, Layer2Run
+
+    async def publish(target: str, status: str) -> None:
+        await space.layer2_target.write_value(ua.Variant(target, ua.VariantType.String))
+        await space.layer2_status.write_value(ua.Variant(status, ua.VariantType.String))
+
+    async def read_result() -> str:
+        return await results.json_node.read_value()
+
+    def start_job(parameters: list[str]) -> tuple[str, VisionErrorCode]:
+        return jobs.start_single_job("", "", "apriltag", "", parameters)
+
+    layer2_run = Layer2Run(
+        Layer2Ports(
+            start_job=start_job,
+            busy=lambda: jobs.busy or calibration_busy(),
+            read_anchor=lambda: getattr(apriltag_source, "_anchor", None),
+            read_hand_eye=lambda: getattr(apriltag_source, "_hand_eye", None),
+            read_tag_map=lambda: apriltag_source._tag_map,
+            read_result=read_result,
+            publish=publish,
+        )
+    )
+    jobs.add_finish_listener(layer2_run.on_job_finished)
+    await layer2_run.publish_idle()
+
+    method_prefix = config.vision_system_name
+
+    @uamethod
+    async def start_layer2_run(parent, run_json: str):
+        """1:StartLayer2Run -- Lauf mit den groben Posen aus Layer 1 starten."""
+        error = await layer2_run.start(run_json or "")
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def report_robot_pose(parent, report_json: str):
+        """1:ReportRobotPose -- erreichte Flanschpose melden, Messung starten."""
+        error = await layer2_run.report(report_json or "")
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    methods["StartLayer2Run"] = await space.vision_system.add_method(
+        ua.NodeId(f"{method_prefix}.StartLayer2Run", space.own_idx),
+        ua.QualifiedName("StartLayer2Run", space.own_idx),
+        start_layer2_run,
+        [ua.VariantType.String],
+        [ua.VariantType.Int32],
+    )
+    methods["ReportRobotPose"] = await space.vision_system.add_method(
+        ua.NodeId(f"{method_prefix}.ReportRobotPose", space.own_idx),
+        ua.QualifiedName("ReportRobotPose", space.own_idx),
+        report_robot_pose,
+        [ua.VariantType.String],
+        [ua.VariantType.Int32],
+    )
+    return layer2_run
 
 
 async def run(config: VisionServerConfig) -> None:
