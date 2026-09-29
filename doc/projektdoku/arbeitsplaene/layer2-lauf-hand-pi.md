@@ -1,6 +1,6 @@
 # Layer-2-Lauf auf dem Hand-Pi: ankern, planen, messen
 
-**Status:** in Arbeit — 29.09.2026
+**Status:** fertig — 29.09.2026 (Fahrbefehl am Roboter offen, siehe Offene Fragen)
 **Verantwortlich:** Meric, `Agent: Layer-2-Lauf auf dem Hand-Pi`
 **Thema:** apriltag
 **Branch:** apriltag
@@ -121,7 +121,7 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
 
 ```json
 { "schema": "wsc.vision.layer2.status/1", "runId": "l2-000001",
-  "state": "waitingForRobot", "message": "",
+  "state": "waitingForRobot", "message": "", "stepIndex": 0,
   "anchor": { "worldTagId": 0, "baseInWorld": {..} },
   "steps": [ { "stepIndex": 0, "purpose": "anchor", "moduleId": "", "name": "Welttag 0",
                "tagId": 0, "reachM": 0.62, "reachable": true,
@@ -199,8 +199,15 @@ Hinweis zum Anker-Schritt: `locate_modules` überspringt Welttags. Ein Bild nur 
 
 ## Abweichungen vom Plan
 
+- `Layer2Status` hat zusätzlich `stepIndex` (aktueller Schritt, `-1` ohne) und `anchor.spreadM`.
+- Die Methoden hängen nicht an `jobs.busy` allein: `StartLayer2Run` prüft auch die Kalibrier-Session (`calibration_session.busy`).
+- **Stop über die Part-10-Fassade** (`VisionProgram`) bricht nur den Job ab, nicht den Lauf. Der Lauf wertet den abgebrochenen Job dann als `failed` (`CANCELLED`); beim Anker-Schritt bricht er ab. Den ganzen Lauf beendet `AutomaticModeStateMachine/Stop`.
+- Der OPC-UA-Test (`tests/test_layer2_opcua.py`) fährt `runner._install_layer2_run` gegen einen echten asyncua-Server mit Fake-JobRunner und Fake-Quelle. Über die ganze Maschine mit Kamera ist der Lauf nicht getestet.
+- **Frontend** (`webskillcomposition`, Branch `Ungetestet`): Das Fenster „Autolocate Layer 2“ hat „Tags erkennen (Debug)“ und den Bereich „Feinmessung: Ankern und Module“. Die alte Planung im Browser ist entfernt.
+
 ## Nach Abschluss
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index aktualisiert.
-- Fachwissen in `vision-server-interface.md` übernommen.
+- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
+- [x] Zeile im Index aktualisiert.
+- [x] Fachwissen in `vision-server-interface.md` Abschnitt 14 übernommen.
+- [x] Testlauf: 522 Tests, OK. Neu: `test_layer2_plan.py` (11), `test_layer2_run.py` (8), `test_layer2_opcua.py` (1).
