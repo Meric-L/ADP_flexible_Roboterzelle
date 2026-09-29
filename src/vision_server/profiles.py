@@ -99,6 +99,14 @@ class AprilTagProfileConfig:
     #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
     #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
     calibration_min_samples: int = 15
+    #: Linsenmodell, mit dem `CalibrationSession` NEU kalibriert:
+    #: `"pinhole"` (Brown-Conrady, 5 Koeffizienten) oder `"fisheye"`
+    #: (Kannala-Brandt, 4 Koeffizienten), siehe `tagloc.lens`. String statt
+    #: `tagloc`-Konstante, aus demselben Grund wie `tag_family`. Fuer die
+    #: Posenschaetzung zaehlt allein das Modell in der geladenen
+    #: Kalibrierdatei, nicht dieses Feld -- eine aeltere Pinhole-Datei gilt
+    #: also weiter, bis neu kalibriert ist.
+    calibration_model: str = "pinhole"
     #: Wenn gesetzt, archiviert `CalibrationSession` jede Aufnahme
     #: zusaetzlich dauerhaft hier -- zum Nachpruefen abseits vom Server,
     #: dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to`

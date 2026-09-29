@@ -100,11 +100,12 @@ def make_session(config=FAST_CONFIG, **overrides):
     save_calls: list = []
     stored_images: dict = {}
 
-    def fake_calibrate_from_samples(samples, image_size, spec, board, *, frame_id):
-        calibrate_calls.append((len(samples), frame_id))
+    def fake_calibrate_from_samples(samples, image_size, spec, board, *, frame_id, model):
+        calibrate_calls.append((len(samples), frame_id, model))
         return SimpleNamespace(
             rms_reprojection_error=0.1234,
             sample_count=len(samples),
+            model=model,
         )
 
     def fake_save_calibration(path, calibration):
@@ -407,8 +408,24 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["coverageX"], 0.42)
         self.assertEqual(len(save_calls), 1)
         self.assertEqual(calibrate_calls[0][1], FAST_CONFIG.frame_id)
+        self.assertEqual(calibrate_calls[0][2], "pinhole")
+        self.assertEqual(result["model"], "pinhole")
         self.assertFalse(session.running)
         self.assertFalse(session.progress["processing"])
+
+    async def test_calibrates_with_the_configured_lens_model(self):
+        """Das Linsenmodell kommt aus der Config (Deckenkamera: Fisheye) und
+        steht im Ergebnis, damit das Frontend es anzeigen kann."""
+        config = replace(FAST_CONFIG, calibration_model="fisheye")
+        session, camera, calibrate_calls, _save_calls = make_session(config)
+        session.start()
+        await _capture_n(session, camera, 3)
+
+        await session.finish()
+        await session.wait_for_processing()
+
+        self.assertEqual(calibrate_calls[0][2], "fisheye")
+        self.assertEqual(session.progress["result"]["model"], "fisheye")
 
     async def test_detection_failed_with_too_few_captures(self):
         """Unter `MIN_SAMPLES_FOR_CALIBRATION` gibt `finish()` sofort auf,
@@ -481,7 +498,9 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         DETECTION_FAILED zurueckkommen statt die Session unsichtbar tot
         haengen zu lassen (Bug, live auf Pi 2 gefunden 2026-09-23)."""
 
-        def fake_calibrate_raises_runtime_error(samples, image_size, spec, board, *, frame_id):
+        def fake_calibrate_raises_runtime_error(
+            samples, image_size, spec, board, *, frame_id, model
+        ):
             raise RuntimeError("cv2.calibrateCamera: Rueckprojektion divergiert")
 
         session, camera, _calibrate_calls, save_calls = make_session(
@@ -588,9 +607,11 @@ class OnCalibratedTest(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class RmsWarningTest(unittest.IsolatedAsyncioTestCase):
     async def test_result_carries_a_warning_above_the_rms_target(self):
-        def fake_calibrate_high_rms(samples, image_size, spec, board, *, frame_id):
+        def fake_calibrate_high_rms(samples, image_size, spec, board, *, frame_id, model):
             return SimpleNamespace(
-                rms_reprojection_error=RMS_WARNING_PX + 1.5, sample_count=len(samples)
+                rms_reprojection_error=RMS_WARNING_PX + 1.5,
+                sample_count=len(samples),
+                model=model,
             )
 
         session, camera, _calibrate_calls, _save_calls = make_session(

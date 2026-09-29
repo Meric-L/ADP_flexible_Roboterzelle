@@ -47,17 +47,12 @@ def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
     """Undistort image corners onto the ideal pinhole model.
 
     `P=K` puts the result back into pixels so it can be solved with zero
-    distortion afterwards.
+    distortion afterwards -- regardless of the calibration's lens model
+    (pinhole or fisheye, see `tagloc.lens`).
     """
-    import cv2
+    from . import lens
 
-    points = np.asarray(corners, dtype=np.float64).reshape(-1, 1, 2)
-    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
-    undistorted = cv2.undistortPoints(
-        points, camera_matrix, np.asarray(calibration.distortion, dtype=np.float64),
-        P=camera_matrix,
-    )
-    return undistorted.reshape(-1, 2)
+    return lens.undistort_points(corners, calibration)
 
 
 def _reprojection_error_px(object_points, image_points, rvec, tvec, camera_matrix) -> float:
@@ -154,11 +149,12 @@ def estimate_tag_poses(
     """
     import cv2
 
+    from . import lens
+
     expected_errors = _solver_exceptions()
     if not observations:
         return []
     camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
-    distortion = np.asarray(calibration.distortion, dtype=np.float64)
     no_distortion = np.zeros(5, dtype=np.float64)
     object_points_by_size: dict[float, np.ndarray] = {}
     prepared: list[tuple[TagObservation, np.ndarray, np.ndarray]] = []
@@ -185,9 +181,7 @@ def estimate_tag_poses(
     # defekten Punkt bleibt der bisherige Einzel-Tag-Fehlerpfad erhalten.
     try:
         points = np.concatenate([item[2] for item in prepared])
-        undistorted = cv2.undistortPoints(
-            points, camera_matrix, distortion, P=camera_matrix
-        ).reshape(-1, 4, 2)
+        undistorted = lens.undistort_points(points, calibration).reshape(-1, 4, 2)
     except cv2.error:
         undistorted = None
 
@@ -197,9 +191,7 @@ def estimate_tag_poses(
             image_points = (
                 undistorted[index]
                 if undistorted is not None
-                else cv2.undistortPoints(
-                    corners, camera_matrix, distortion, P=camera_matrix
-                ).reshape(4, 2)
+                else lens.undistort_points(corners, calibration).reshape(4, 2)
             )
             tag_pose = _solve_tag_pose(
                 observation, object_points, image_points, camera_matrix, no_distortion

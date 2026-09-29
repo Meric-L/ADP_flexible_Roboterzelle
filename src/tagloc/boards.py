@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from .calibration import CameraCalibration
+from .calibration import PINHOLE, CameraCalibration
 
 _log = logging.getLogger(__name__)
 
@@ -189,13 +189,17 @@ def calibrate_from_samples(
     board: Any = None,
     *,
     frame_id: str = "",
+    model: str = PINHOLE,
 ) -> CameraCalibration:
     """Compute the calibration from collected board samples.
 
     No image, no GUI, no camera -- just points. The same function runs
     behind both the live UI and the image-folder path.
+
+    `model` picks the lens model (`calibration.PINHOLE` or
+    `calibration.FISHEYE`), see `tagloc.lens.calibrate`.
     """
-    import cv2
+    from . import lens
 
     samples = list(samples)
     if len(samples) < 3:
@@ -220,17 +224,18 @@ def calibrate_from_samples(
     if len(object_points) < 3:
         raise ValueError("Zu wenige verwertbare Aufnahmen nach der Zuordnung")
 
-    rms, camera_matrix, distortion, _, _ = cv2.calibrateCamera(
-        object_points, image_points, (int(image_size[0]), int(image_size[1])), None, None
+    rms, camera_matrix, distortion = lens.calibrate(
+        object_points, image_points, image_size, model
     )
     return CameraCalibration(
-        camera_matrix=np.asarray(camera_matrix, dtype=np.float64),
-        distortion=np.asarray(distortion, dtype=np.float64).reshape(-1),
+        camera_matrix=camera_matrix,
+        distortion=distortion,
         image_size=(int(image_size[0]), int(image_size[1])),
         frame_id=frame_id,
-        rms_reprojection_error=float(rms),
+        rms_reprojection_error=rms,
         sample_count=len(object_points),
         board=spec.as_dict(),
+        model=model,
     )
 
 

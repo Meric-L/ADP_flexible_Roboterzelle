@@ -1172,7 +1172,7 @@ Ablauf:
 {
   "running": false, "processing": false, "samples": 18, "minSamples": 15,
   "result": {
-    "error": 0, "rms": 2.069, "samples": 16,
+    "error": 0, "rms": 2.069, "model": "fisheye", "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_ceiling.json",
     "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
@@ -1238,6 +1238,7 @@ oben).
   "rms": 0.2945,
   "samples": 21,
   "board": {"type": "chessboard", "cols": 7, "rows": 9, "squareSizeM": 0.022, ...},
+  "model": "pinhole",
   "path": "data/calibration/cam_flange.json"
 }
 ```
@@ -1247,6 +1248,7 @@ oben).
 | `placeholder` | `true`, wenn noch nie echt kalibriert wurde (`allow_placeholder_calibration`, Abschnitt 9) — dann sind `rms`/`createdAt` `null`, Posen sind nicht maßhaltig |
 | `calibrationId`, `createdAt` | aus der Kalibrierdatei, stabil über Neustarts |
 | `rms`, `samples`, `board` | wie im `result`-Objekt aus `CalibrationProgress`/`FinishCalibration` |
+| `model` | Linsenmodell der aktiven Kalibrierung, `"pinhole"` oder `"fisheye"` (Abschnitt 12.10) |
 | `path` | Pfad der Datei auf dem Pi (Diagnose, keine Backend-Bedeutung) |
 
 ### 12.7 Sperren
@@ -1343,6 +1345,44 @@ folgende Aufnahme lahm, ein Server-Neustart war der einzige Ausweg. Diese
 Datei bleibt als Protokoll stehen, weil sie zeigt, wie sich das Problem
 schrittweise eingegrenzt hat, nicht weil der beschriebene Mechanismus noch
 so läuft.
+
+### 12.10 Linsenmodell je Kamera (seit 2026-09-29)
+
+Jede Kamera wird mit dem Linsenmodell kalibriert, das in den Bildtests am
+besten abgeschnitten hat (Arbeitsplan
+`arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md`):
+
+| Layer | Kamera | Auflösung | Modell | Koeffizienten |
+| --- | --- | --- | --- | --- |
+| LV1 | `cam_ceiling` (Pi 4, HQ-Kamera) | 4056 × 3040 | `fisheye` — OpenCV-Fisheye, Kannala-Brandt | 4: k1, k2, k3, k4 |
+| LV2 | `cam_flange` (Pi 5) | 640 × 480 | `pinhole` — OpenCV-Standard, Brown-Conrady | 5: k1, k2, p1, p2, k3 |
+
+**Wer entscheidet was:**
+
+- **Neu kalibrieren** (`CalibrationSession`, `tagloc.cli.calibrate`) nutzt
+  das Modell aus der Config: `AprilTagProfileConfig.calibration_model`, per
+  Preset in `server.py` gesetzt, zum Vergleichen per
+  `VISION_CALIBRATION_MODEL=pinhole|fisheye` übersteuerbar. CLI: `--model`.
+- **Posen, Overlay, Skalierung** richten sich allein nach dem Modell **in der
+  geladenen Kalibrierdatei**. Eine ältere Pinhole-Datei der Deckenkamera
+  gilt also weiter, bis dort neu kalibriert wurde.
+
+**Datei:** Schema `wsc.vision.calibration/2` mit dem neuen Feld
+`"distortionModel": "pinhole" | "fisheye"`. Dateien mit Schema `/1` werden
+weiter gelesen und gelten als `pinhole`. Eine Fisheye-Datei mit anderer
+Koeffizientenzahl als 4 oder ein unbekanntes Modell wird beim Laden
+abgelehnt — die Quelle bleibt dann wie bei jeder kaputten Kalibrierung zu.
+
+**OPC UA:** nur zusätzliche Felder — `result.model` in `CalibrationProgress`
+(Abschnitt 12.5) und `model` in `ActiveCalibrationInfo` (Abschnitt 12.6).
+
+**Technik:** alle modellabhängigen OpenCV-Aufrufe liegen in `tagloc/lens.py`
+(`undistort_points`, `project_points`, `calibrate`). Fisheye rechnet mit
+`cv2.fisheye.calibrate` und den Flags `RECOMPUTE_EXTRINSIC | CHECK_COND |
+FIX_SKEW`. Meldet `CHECK_COND` eine schlecht konditionierte Aufnahme, wird
+einmal ohne diese Prüfung nachgerechnet (Warnung im Log). Die Flag-Konstanten
+werden zur Laufzeit nachgeschlagen: OpenCV 4 führt sie unter `cv2.fisheye.*`,
+OpenCV 5 unter `cv2.*` mit **anderen Zahlenwerten**.
 
 ---
 

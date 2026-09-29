@@ -26,6 +26,7 @@ def _fake_calibration(**overrides):
         rms_reprojection_error=0.2945,
         sample_count=21,
         board={"type": "chessboard", "cols": 7, "rows": 9},
+        model="pinhole",
     )
     fields.update(overrides)
     return SimpleNamespace(**fields)
@@ -54,6 +55,14 @@ class CalibrationInfoPayloadTest(unittest.TestCase):
         self.assertEqual(info["rms"], 0.2945)
         self.assertEqual(info["samples"], 21)
         self.assertEqual(info["board"]["cols"], 7)
+        self.assertEqual(info["model"], "pinhole")
+
+    def test_reports_the_fisheye_model(self):
+        missing_path = Path(tempfile.gettempdir()) / "does-not-exist-cam.json"
+
+        info = _calibration_info_payload(_fake_calibration(model="fisheye"), missing_path)
+
+        self.assertEqual(info["model"], "fisheye")
 
     def test_falls_back_gracefully_when_the_file_is_missing(self):
         missing_path = Path(tempfile.gettempdir()) / "does-not-exist-cam.json"

@@ -24,7 +24,18 @@ import numpy as np
 
 from .identity import calibration_identity
 
-SCHEMA = "wsc.vision.calibration/1"
+SCHEMA = "wsc.vision.calibration/2"
+#: Vor dem Linsenmodell-Feld (2026-09-29). Wird weiter gelesen und gilt als
+#: `PINHOLE` -- das war damals das einzige Modell. Geschrieben wird nur noch
+#: `SCHEMA`: ein alter Code-Stand lehnt eine neue Datei damit laut ab, statt
+#: Fisheye-Koeffizienten stumm als Pinhole zu deuten.
+LEGACY_SCHEMA = "wsc.vision.calibration/1"
+
+#: OpenCV-Standardmodell (Brown-Conrady), 5 Koeffizienten k1, k2, p1, p2, k3.
+PINHOLE = "pinhole"
+#: OpenCV-Fisheye-Modell (Kannala-Brandt), 4 Koeffizienten k1..k4.
+FISHEYE = "fisheye"
+DISTORTION_MODELS = (PINHOLE, FISHEYE)
 
 #: Grobe Annahme fuer `default_calibration` -- typischer Wert fuer Pi-Kamera-
 #: und RealSense-Farbsensoren, aber nicht das tatsaechliche Sichtfeld einer
@@ -45,6 +56,11 @@ class CameraCalibration:
     rms_reprojection_error: float = float("nan")
     sample_count: int = 0
     board: dict[str, Any] = field(default_factory=dict)
+    #: Linsenmodell, zu dem `distortion` gehoert (`PINHOLE` oder `FISHEYE`).
+    #: Entscheidet, welche OpenCV-Funktionen entzerren und projizieren --
+    #: siehe `tagloc.lens`. Die Koeffizienten allein verraten es nicht
+    #: eindeutig, deshalb steht es ausdruecklich in der Datei.
+    model: str = PINHOLE
 
     @property
     def camera_params(self) -> tuple[float, float, float, float]:
@@ -67,6 +83,7 @@ def save_calibration(path: Path, calibration: CameraCalibration) -> None:
         "calibrationId": calibration.calibration_id
         or f"{calibration.frame_id or path.stem}@{datetime.now(timezone.utc).isoformat()}",
         "frameId": calibration.frame_id,
+        "distortionModel": _checked_model(calibration.model, path),
         "imageSize": [int(calibration.image_size[0]), int(calibration.image_size[1])],
         "cameraMatrix": np.asarray(calibration.camera_matrix, dtype=np.float64).tolist(),
         "distortionCoefficients": np.asarray(
@@ -87,19 +104,43 @@ def load_calibration(path: Path) -> CameraCalibration:
         raise FileNotFoundError(f"Kalibrierung nicht gefunden: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")
-    if schema != SCHEMA:
+    if schema == LEGACY_SCHEMA:
+        model = PINHOLE
+    elif schema == SCHEMA:
+        model = _checked_model(data.get("distortionModel"), path)
+    else:
         raise ValueError(f"Unbekanntes Kalibrierschema '{schema}' in {path} (erwartet {SCHEMA})")
     size = data["imageSize"]
+    distortion = np.asarray(data["distortionCoefficients"], dtype=np.float64).reshape(-1)
+    if model == FISHEYE and distortion.size != 4:
+        raise ValueError(
+            f"Fisheye-Kalibrierung in {path} hat {distortion.size} statt 4 Koeffizienten"
+        )
     return CameraCalibration(
         camera_matrix=np.asarray(data["cameraMatrix"], dtype=np.float64).reshape(3, 3),
-        distortion=np.asarray(data["distortionCoefficients"], dtype=np.float64).reshape(-1),
+        distortion=distortion,
         image_size=(int(size[0]), int(size[1])),
         frame_id=str(data.get("frameId", "")),
         calibration_id=str(data.get("calibrationId", "")),
         rms_reprojection_error=float(data.get("rmsReprojectionError", float("nan"))),
         sample_count=int(data.get("sampleCount", 0)),
         board=dict(data.get("board", {})),
+        model=model,
     )
+
+
+def _checked_model(model: Any, path: Path) -> str:
+    """Gibt `model` zurueck, wenn es ein bekanntes Linsenmodell ist.
+
+    Ein unbekanntes Modell ist ein Fehler, kein Rueckfall auf Pinhole: mit
+    falschem Modell entzerrt, liegen alle Posen plausibel daneben.
+    """
+    if model not in DISTORTION_MODELS:
+        raise ValueError(
+            f"Unbekanntes Linsenmodell '{model}' in {path} (erwartet eines von "
+            f"{', '.join(DISTORTION_MODELS)})"
+        )
+    return str(model)
 
 
 def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> CameraCalibration:
@@ -160,7 +201,8 @@ def scale_to_resolution(
 
     Only valid for the same framing and aspect ratio (pure downscaling, not
     cropping). Distortion coefficients are relative to normalised
-    coordinates and stay unchanged.
+    coordinates and stay unchanged -- for the pinhole and the fisheye
+    model alike, so `model` is carried over as is.
     """
     source = (int(calibration.image_size[0]), int(calibration.image_size[1]))
     target = (int(image_size[0]), int(image_size[1]))
@@ -183,6 +225,7 @@ def scale_to_resolution(
         rms_reprojection_error=calibration.rms_reprojection_error,
         sample_count=calibration.sample_count,
         board=dict(calibration.board),
+        model=calibration.model,
     )
 
 
@@ -190,6 +233,10 @@ def scale_to_resolution(
 #: in a second module. It lives in `identity` because that module must work
 #: without numpy.
 __all__ = [
+    "DISTORTION_MODELS",
+    "FISHEYE",
+    "LEGACY_SCHEMA",
+    "PINHOLE",
     "SCHEMA",
     "PLACEHOLDER_CALIBRATION_ID",
     "CameraCalibration",

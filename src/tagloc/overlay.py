@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from .calibration import CameraCalibration
+from .calibration import FISHEYE, CameraCalibration
 from .geometry import to_rvec_tvec
 from .modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODE_LABELS, OVERLAY_MODES, normalise_mode
 from .observations import TagPose
@@ -84,11 +84,33 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
 def draw_tag_axes(
     image, tag_pose: TagPose, calibration: CameraCalibration, axis_length_m: float
 ) -> None:
-    """Draw the coordinate cross into the tag: X red, Y green, Z blue."""
+    """Draw the coordinate cross into the tag: X red, Y green, Z blue.
+
+    `cv2.drawFrameAxes` projects with the pinhole model only. For a fisheye
+    calibration the axis ends are projected via `tagloc.lens` and drawn as
+    lines, same colours -- otherwise the cross would sit visibly off the tag
+    towards the image edge.
+    """
     import cv2
 
     thickness = max(1, round(_THICKNESS * _scale_for(image)))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
+    # getattr: Aufrufer (und Test-Fakes) duerfen ein Objekt ohne `model`
+    # uebergeben -- das ist dann, wie vor dem Fisheye-Modell, Pinhole.
+    if getattr(calibration, "model", None) == FISHEYE:
+        from .lens import project_points
+
+        axes = np.array(
+            [[0, 0, 0], [axis_length_m, 0, 0], [0, axis_length_m, 0], [0, 0, axis_length_m]],
+            dtype=np.float64,
+        )
+        points = project_points(axes, rvec, tvec, calibration)
+        if not np.all(np.isfinite(points)):
+            return
+        origin = tuple(int(round(value)) for value in points[0])
+        for end, color in zip(points[1:], ((0, 0, 255), (0, 255, 0), (255, 0, 0))):
+            cv2.line(image, origin, tuple(int(round(value)) for value in end), color, thickness)
+        return
     cv2.drawFrameAxes(
         image,
         np.asarray(calibration.camera_matrix, dtype=np.float64),

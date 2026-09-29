@@ -319,6 +319,7 @@ def _calibration_info_payload(calibration: Any, path: Any) -> dict:
         "rms": None if is_placeholder else round(calibration.rms_reprojection_error, 4),
         "samples": calibration.sample_count,
         "board": dict(calibration.board),
+        "model": calibration.model,
         "calibrationId": calibration.calibration_id or None,
         "createdAt": None,
         "path": str(path),

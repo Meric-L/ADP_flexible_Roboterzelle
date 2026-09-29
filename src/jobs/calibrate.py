@@ -55,6 +55,7 @@ def main() -> str:
     ).days
     parts.append(f"Kalibrierung {calibration_identity(calibration_path)}")
     parts.append(f"{calibration.image_size[0]}x{calibration.image_size[1]}")
+    parts.append(f"Modell {calibration.model}")
     parts.append(f"RMS {calibration.rms_reprojection_error:.3f} px")
     parts.append(f"{calibration.sample_count} Aufnahmen")
     parts.append(f"Alter {age_days} d")

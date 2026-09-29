@@ -113,6 +113,10 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_board_cols": 7,
         "calibration_board_rows": 9,
         "calibration_board_square_size_m": 0.022,
+        # Kannala-Brandt statt Brown-Conrady: in den Bildtests vom 29.09.2026
+        # das beste Modell fuer die HQ-Kamera bei 4056x3040 (Arbeitsplan
+        # kalibrierung-linsenmodell-je-kamera.md).
+        "calibration_model": "fisheye",
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -131,6 +135,10 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_board_cols": 7,
         "calibration_board_rows": 9,
         "calibration_board_square_size_m": 0.022,
+        # Brown-Conrady mit 5 Koeffizienten: in den Bildtests vom 29.09.2026
+        # das beste Modell bei 640x480. Entspricht dem bisherigen Verhalten,
+        # hier nur ausdruecklich festgehalten.
+        "calibration_model": "pinhole",
     },
 }
 
@@ -188,7 +196,12 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     off -- must be set explicitly per Pi, never baked into the committed
     default.
     """
-    preset = PI_APRILTAG_PRESETS.get(frame_id, {})
+    preset = dict(PI_APRILTAG_PRESETS.get(frame_id, {}))
+    # Uebersteuert das Linsenmodell des Presets, z. B. fuer einen
+    # Vergleichslauf mit dem anderen Modell, ohne den Code anzufassen.
+    model_override = os.getenv("VISION_CALIBRATION_MODEL")
+    if model_override:
+        preset["calibration_model"] = model_override
     # Hand-Auge nur dort, wo eine Kamera am Roboter sitzt. Die Deckenkamera
     # ist fest montiert und hat keinen Flansch -- ein Pfad fuer sie waere eine
     # Datei, die nie entsteht und beim Start jedes Mal eine Warnung erzeugt.

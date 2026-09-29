@@ -489,6 +489,7 @@ class CalibrationSession:
                 spec,
                 board,
                 frame_id=self._config.frame_id,
+                model=self._config.calibration_model,
             )
         except Exception as error:
             # Nicht nur ValueError: cv2.calibrateCamera scheitert bei
@@ -508,6 +509,7 @@ class CalibrationSession:
         rms = round(calibration.rms_reprojection_error, 4)
         summary = {
             "rms": rms,
+            "model": calibration.model,
             "samples": calibration.sample_count,
             "coverageX": round(coverage[0], 3),
             "coverageY": round(coverage[1], 3),
@@ -522,7 +524,9 @@ class CalibrationSession:
                 "trotzdem gespeichert."
             )
         _log.info(
-            "Kalibrierung gespeichert: RMS %.4f px, %d Aufnahmen, Abdeckung x %.0f%% y %.0f%%",
+            "Kalibrierung gespeichert (%s): RMS %.4f px, %d Aufnahmen, "
+            "Abdeckung x %.0f%% y %.0f%%",
+            summary["model"],
             summary["rms"],
             summary["samples"],
             coverage[0] * 100,
