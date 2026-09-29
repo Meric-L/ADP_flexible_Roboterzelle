@@ -259,12 +259,19 @@ Frontend nachbilden muss:
 
 Die Deckenkamera (Layer 1) wird jetzt mit dem Fisheye-Modell kalibriert, die
 Handkamera (Layer 2) weiter mit dem Standardmodell. Das Frontend sendet dafür
-**nichts** — das Modell ist serverseitig pro Pi festgelegt. Neu sind nur zwei
-zusätzliche, rein informative Felder:
+**nichts** — das Modell ist serverseitig pro Pi festgelegt. Neu sind nur
+zusätzliche, rein informative Felder, jeweils `"fisheye"` oder `"pinhole"`:
 
-- `CalibrationProgress.result.model` bei Erfolg: `"fisheye"` oder `"pinhole"`
-- `ActiveCalibrationInfo.model`: Modell der gerade aktiven Kalibrierung
+- `CalibrationProgress.model`: Modell der laufenden Session — schon während
+  der Aufnahme, also vor dem Ergebnis bekannt
+- `CalibrationProgress.result.model`: in jedem Ergebnis, auch bei Fehlschlag
+- `ActiveCalibrationInfo.model`: Modell der gerade aktiven Kalibrierung —
+  die Quelle für die Ruheansicht, weil `CalibrationProgress` ohne Session
+  kein `model` trägt
 
-Anzeige-Vorschlag: „Linsenmodell: Fisheye“ bzw. „Standard“ neben RMS. Der
-RMS-Wert bleibt in Pixeln und ist zwischen beiden Modellen vergleichbar.
+Anzeige-Vorschlag: „Linsenmodell: Fisheye (Kannala-Brandt)“ bzw.
+„Standard (Brown-Conrady)“ — in der Aufnahme-Ansicht, neben dem RMS im
+Ergebnis und in der Ruheansicht. Bei Fehlschlag z. B. „Fisheye-Kalibrierung
+fehlgeschlagen: <message>“. Der RMS-Wert bleibt in Pixeln und ist zwischen
+beiden Modellen vergleichbar.
 Details: `vision-server-interface.md` Abschnitt 12.10.

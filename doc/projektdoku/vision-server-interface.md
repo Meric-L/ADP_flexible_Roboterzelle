@@ -1157,6 +1157,7 @@ Schreibpfad).
 | `processing` | `bool` — läuft gerade die Hintergrund-Auswertung aus einem `FinishCalibration`? |
 | `samples` | Anzahl bisher aufgenommener Bilder (**nicht** geprüft, ob das Board darauf zu sehen ist — das entscheidet sich erst bei der Auswertung) |
 | `minSamples` | Mindestanzahl, ab der `FinishCalibration` überhaupt eine Auswertung anstößt (Config, Standard 15) |
+| `model` | Linsenmodell dieser Session, `"pinhole"` oder `"fisheye"` — schon während der Aufnahme gesetzt (Abschnitt 12.10). Fehlt im Ruhezustand ohne Session |
 | `result` | **nur vorhanden, sobald die Auswertung fertig ist** (siehe unten) |
 
 Im Ruhezustand (keine Session je gestartet, oder nach `AbortCalibration`):
@@ -1373,8 +1374,17 @@ weiter gelesen und gelten als `pinhole`. Eine Fisheye-Datei mit anderer
 Koeffizientenzahl als 4 oder ein unbekanntes Modell wird beim Laden
 abgelehnt — die Quelle bleibt dann wie bei jeder kaputten Kalibrierung zu.
 
-**OPC UA:** nur zusätzliche Felder — `result.model` in `CalibrationProgress`
-(Abschnitt 12.5) und `model` in `ActiveCalibrationInfo` (Abschnitt 12.6).
+**OPC UA:** nur zusätzliche Felder, alle `"pinhole"` oder `"fisheye"`:
+
+| Wo | Feld | Wann |
+| --- | --- | --- |
+| `CalibrationProgress` (12.5) | `model` | während einer Session: Aufnahme, Auswertung, Ergebnis |
+| `CalibrationProgress` (12.5) | `result.model` | in jedem `result`, **auch bei Fehlschlag** |
+| `FinishCalibration` (12.3) | `Summary.model` | bei sofortiger Ablehnung (zu wenige Aufnahmen) |
+| `ActiveCalibrationInfo` (12.6) | `model` | immer: Modell der aktiven Kalibrierung |
+
+Im Ruhezustand ohne Session fehlt `model` in `CalibrationProgress`; dann
+`ActiveCalibrationInfo.model` anzeigen.
 
 **Technik:** alle modellabhängigen OpenCV-Aufrufe liegen in `tagloc/lens.py`
 (`undistort_points`, `project_points`, `calibrate`). Fisheye rechnet mit

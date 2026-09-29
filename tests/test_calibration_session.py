@@ -427,6 +427,43 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calibrate_calls[0][2], "fisheye")
         self.assertEqual(session.progress["result"]["model"], "fisheye")
 
+    async def test_progress_names_the_model_already_while_capturing(self):
+        config = replace(FAST_CONFIG, calibration_model="fisheye")
+        session, camera, _calibrate_calls, _save_calls = make_session(config)
+        session.start()
+        await _capture_n(session, camera, 1)
+
+        self.assertEqual(session.progress["model"], "fisheye")
+        await session.abort()
+
+    async def test_early_refusal_names_the_model(self):
+        """Weniger als 3 Aufnahmen: auch das sofortige `result` nennt das
+        Modell, und `FinishCalibration`s Summary ebenso."""
+        config = replace(FAST_CONFIG, calibration_model="fisheye")
+        session, camera, _calibrate_calls, _save_calls = make_session(config)
+        session.start()
+        await _capture_n(session, camera, 1)
+
+        _error, summary = await session.finish()
+
+        self.assertEqual(summary["model"], "fisheye")
+        self.assertEqual(session.progress["result"]["model"], "fisheye")
+
+    async def test_failure_after_processing_names_the_model(self):
+        config = replace(FAST_CONFIG, calibration_model="fisheye")
+        session, camera, _calibrate_calls, _save_calls = make_session(
+            config, detect_board=fake_detect_board_never
+        )
+        session.start()
+        await _capture_n(session, camera, 3)
+
+        await session.finish()
+        await session.wait_for_processing()
+
+        result = session.progress["result"]
+        self.assertEqual(result["error"], int(VisionErrorCode.DETECTION_FAILED))
+        self.assertEqual(result["model"], "fisheye")
+
     async def test_detection_failed_with_too_few_captures(self):
         """Unter `MIN_SAMPLES_FOR_CALIBRATION` gibt `finish()` sofort auf,
         ohne ueberhaupt eine Hintergrund-Auswertung anzustossen."""

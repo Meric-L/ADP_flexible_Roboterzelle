@@ -103,7 +103,11 @@ Für die Posenschätzung zählt allein das Modell **in der Datei**.
 
 ### OPC UA (nur Ergänzungen, keine Änderung bestehender Felder)
 
-- `CalibrationProgress["result"]` bekommt bei Erfolg `"model": "fisheye" | "pinhole"`.
+- `CalibrationProgress` bekommt `"model"` während einer Session (Aufnahme,
+  Auswertung, Ergebnis), `result.model` in jedem Ergebnis, auch bei
+  Fehlschlag (Nachtrag 29.09.2026, damit das Frontend das Modell schon vorab
+  und auch bei Fehlschlag anzeigen kann).
+- `FinishCalibration`s `Summary` trägt `model` bei sofortiger Ablehnung.
 - `ActiveCalibrationInfo` bekommt `"model": "fisheye" | "pinhole"`.
 
 ### CLI

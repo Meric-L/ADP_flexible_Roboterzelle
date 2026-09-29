@@ -359,6 +359,10 @@ class CalibrationSession:
             "processing": self._processing,
             "samples": len(self._captured_paths),
             "minSamples": self._config.calibration_min_samples,
+            #: Modell, mit dem diese Session rechnet (bzw. gerechnet hat) --
+            #: schon waehrend der Aufnahme bekannt, damit das Frontend es
+            #: vorab anzeigen kann.
+            "model": self._config.calibration_model,
         }
         if self.last_result is not None:
             data["result"] = self.last_result
@@ -388,6 +392,7 @@ class CalibrationSession:
             result = {
                 "message": f"Zu wenige Aufnahmen: {count}",
                 "samples": count,
+                "model": self._config.calibration_model,
             }
             self.last_result = {"error": int(VisionErrorCode.DETECTION_FAILED), **result}
             return VisionErrorCode.DETECTION_FAILED, result
@@ -454,12 +459,17 @@ class CalibrationSession:
             self._samples = samples
             self._image_size = image_size
             error, summary = await self._compute_and_save()
+            # Auch im Fehlerfall, damit das Frontend z. B. "Fisheye-
+            # Kalibrierung fehlgeschlagen" anzeigen kann. Bei Erfolg steht
+            # das Modell der tatsaechlich berechneten Kalibrierung schon drin.
+            summary.setdefault("model", self._config.calibration_model)
             self.last_result = {"error": int(error), **summary}
         except Exception:
             _log.exception("Auswertung unerwartet fehlgeschlagen")
             self.last_result = {
                 "error": int(VisionErrorCode.DETECTION_FAILED),
                 "message": "Auswertung unerwartet fehlgeschlagen, siehe Server-Log",
+                "model": self._config.calibration_model,
             }
         finally:
             self._processing = False
