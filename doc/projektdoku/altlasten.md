@@ -105,13 +105,14 @@ Keine Altlasten im engeren Sinn, aber Fallen, die uns bereits Zeit gekostet habe
 Das Folgende sind Platzhalter der Lokalisierung selbst, also die eigentliche Arbeit —
 keine Altlasten:
 
-- `detection/hello_world.py` und das Profil `hello_world`. Es bleibt als kamerafreier
-  Smoke-Test dauerhaft nützlich, damit das Backend-Team ohne Hardware testen kann.
+- ~~`detection/hello_world.py` und das Profil `hello_world`.~~ **Entfernt** am
+  28.09.2026: ein Start ohne gewählten Job ist jetzt ein Fehler (`UNKNOWN_RECIPE`)
+  statt eines stillen Platzhalterjobs.
 - ~~`frameId = "world"`, obwohl noch kein Weltsystem existiert.~~ **Erledigt**: der
   Rahmen folgt jetzt dem Bild — `world`, sobald ein Referenz-Tag aus der Tag-Map
   sichtbar ist, sonst das Kamera-KS der Quelle.
 - ~~Posen fest auf `[0,0,0]` / `[0,0,0,1]`.~~ **Erledigt** für `apriltag`; für
-  `hello_world` und `calibration` bleiben sie Null, und das ist dort richtig.
+  `calibration` bleiben sie Null, und das ist dort richtig.
 - ~~Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.~~
   **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
   Prototyp `src/apriltag/detect_apriltags.py` steht noch, ist aber als abgelöst

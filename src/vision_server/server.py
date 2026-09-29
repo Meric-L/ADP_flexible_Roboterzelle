@@ -376,7 +376,7 @@ async def main():
     # Der Endpoint nennt die LAN-IPv4, denn `register_to_discovery()` gibt
     # genau ihn als DiscoveryUrl an den Discovery-Server weiter. `0.0.0.0`
     # waere dort wertlos. Gelauscht wird trotzdem auf allen Schnittstellen,
-    # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Hello-World-Client
+    # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Handshake-Client
     # auf dem Pi.
     endpoint = lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
     server.set_endpoint(endpoint)

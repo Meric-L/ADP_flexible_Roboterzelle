@@ -6,11 +6,6 @@ import time
 import unittest
 
 from vision_server.detection.base import Detection, DetectionRequest, DetectionSource
-from vision_server.detection.hello_world import (
-    FORCE_ERROR_PARAMETER,
-    HelloWorldDetectionSource,
-)
-from vision_server.errors import VisionErrorCode, VisionJobError
 
 
 class BlockingSource(DetectionSource):
@@ -73,28 +68,6 @@ class RunBlockingTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_works_without_open(self):
         await BlockingSource().close()
-
-
-class HelloWorldTest(unittest.IsolatedAsyncioTestCase):
-    async def test_reports_the_recipe_id(self):
-        source = HelloWorldDetectionSource(latency=0.0)
-        [detection] = await source.acquire_and_detect(
-            DetectionRequest(job_id="job-000001", recipe_id="apriltag")
-        )
-        self.assertEqual(detection.attributes["recipeId"], "apriltag")
-
-    async def test_stays_simulated_and_in_world_frame(self):
-        source = HelloWorldDetectionSource(latency=0.0)
-        self.assertTrue(source.is_simulated)
-        self.assertEqual(source.frame_id, "world")
-
-    async def test_force_error_parameter_still_fails(self):
-        source = HelloWorldDetectionSource(latency=0.0)
-        with self.assertRaises(VisionJobError) as caught:
-            await source.acquire_and_detect(
-                DetectionRequest(job_id="job-1", parameters=(FORCE_ERROR_PARAMETER,))
-            )
-        self.assertEqual(caught.exception.code, VisionErrorCode.DETECTION_FAILED)
 
 
 if __name__ == "__main__":

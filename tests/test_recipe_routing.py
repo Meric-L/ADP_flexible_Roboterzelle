@@ -10,8 +10,6 @@ from vision_server.job import build_job_request
 
 #: Die Namen, die das Frontend senden kann (useVisionJob.ts), mit ihrem Profil.
 FRONTEND_RECIPES = {
-    "": "hello_world",
-    "hello-world": "hello_world",
     "calibration": "calibration",
     "apriltag": "apriltag",
 }
@@ -25,7 +23,21 @@ class AdmissionTest(unittest.TestCase):
     def test_accepts_every_recipe_the_frontend_sends(self):
         for recipe_id in FRONTEND_RECIPES:
             with self.subTest(recipe_id=recipe_id):
-                self.assertEqual(request(recipe_id).recipe_id, recipe_id or None)
+                self.assertEqual(request(recipe_id).recipe_id, recipe_id)
+
+    def test_rejects_empty_recipe(self):
+        """Kein gewaehlter Job ist ein Fehler, kein stiller Standardjob."""
+        for recipe_id in ("", None):
+            with self.subTest(recipe_id=recipe_id):
+                with self.assertRaises(VisionJobError) as caught:
+                    request(recipe_id)
+                self.assertEqual(caught.exception.code, VisionErrorCode.UNKNOWN_RECIPE)
+                self.assertIn("Kein Job gewaehlt", caught.exception.message)
+
+    def test_hello_world_is_gone(self):
+        with self.assertRaises(VisionJobError) as caught:
+            request("hello-world")
+        self.assertEqual(caught.exception.code, VisionErrorCode.UNKNOWN_RECIPE)
 
     def test_rejects_unknown_recipe(self):
         with self.assertRaises(VisionJobError) as caught:
@@ -48,13 +60,13 @@ class RoutingTest(unittest.TestCase):
     def test_routes_to_distinct_profiles(self):
         config = replace(
             VisionServerConfig(),
-            recipe_profiles=(("", "apriltag"), ("hello-world", "hello_world")),
+            recipe_profiles=(("", "apriltag"), ("check", "calibration")),
         )
         self.assertEqual(config.profile_for(""), "apriltag")
-        self.assertEqual(config.profile_for("hello-world"), "hello_world")
+        self.assertEqual(config.profile_for("check"), "calibration")
 
     def test_known_recipe_ids_follows_the_mapping(self):
-        config = replace(VisionServerConfig(), recipe_profiles=(("solo", "hello_world"),))
+        config = replace(VisionServerConfig(), recipe_profiles=(("solo", "calibration"),))
         self.assertEqual(config.known_recipe_ids, frozenset({"solo"}))
 
     def test_config_stays_hashable(self):
@@ -66,14 +78,14 @@ class SourceBuildingTest(unittest.TestCase):
         """Zwei Rezepte auf dasselbe Profil teilen sich eine Instanz."""
         config = replace(
             VisionServerConfig(),
-            recipe_profiles=(("", "hello_world"), ("hello-world", "hello_world")),
+            recipe_profiles=(("calibration", "calibration"), ("check", "calibration")),
         )
         sources = build_detection_sources(config)
-        self.assertEqual(sorted(sources), ["hello_world"])
+        self.assertEqual(sorted(sources), ["calibration"])
 
     def test_builds_the_script_profiles(self):
         sources = build_detection_sources(VisionServerConfig())
-        self.assertEqual(sorted(sources), ["apriltag", "calibration", "hello_world"])
+        self.assertEqual(sorted(sources), ["apriltag", "calibration"])
 
     def test_unknown_profile_fails_at_install_time(self):
         config = replace(VisionServerConfig(), recipe_profiles=(("", "appriltag"),))

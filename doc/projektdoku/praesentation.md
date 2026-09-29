@@ -174,7 +174,7 @@ tun, entscheidet `link_method`.
 
 | Methode | Warum nicht |
 |---|---|
-| `SimulationMode` | das Profil `hello_world` *ist* bereits die simulierte Quelle |
+| `SimulationMode` | es gibt keine simulierte Datenquelle |
 | `SelectModeAutomatic` | es gibt nur eine Betriebsart |
 | Configuration- / RecipeManagement | setzt ein Rezept-Datenmodell voraus, das die Zelle nicht hat |
 

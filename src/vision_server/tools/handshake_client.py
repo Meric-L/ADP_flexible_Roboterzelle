@@ -21,7 +21,7 @@ EVENT_TYPE_IDS = {
     1025: "AcquisitionDoneEvent",
 }
 
-_log = logging.getLogger("hello-world-client")
+_log = logging.getLogger("handshake-client")
 
 
 class EventCollector:
@@ -115,11 +115,13 @@ async def run(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Liest die Kommandozeile und fuehrt den Test aus."""
-    parser = argparse.ArgumentParser(description="Hello-World-Test gegen den Vision-Server")
+    parser = argparse.ArgumentParser(description="Handshake-Test gegen den Vision-Server")
     parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
     parser.add_argument("--namespace", default="http://launch-rm.de/vision")
     parser.add_argument("--vision-system", default="VisionMachine")
-    parser.add_argument("--recipe-id", default="hello-world")
+    parser.add_argument(
+        "--recipe-id", required=True, help="Job, z. B. apriltag oder calibration"
+    )
     parser.add_argument("--meas-id", default="")
     parser.add_argument("--parameter", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=15.0)

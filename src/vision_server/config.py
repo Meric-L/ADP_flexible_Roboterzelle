@@ -23,9 +23,9 @@ DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
 #: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
 #: dataclass-Default verboten ist und ein Mapping die frozen dataclass
 #: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
+#: Bewusst ohne Eintrag fuer `""`: ein Start ohne gewaehlten Job wird mit
+#: UNKNOWN_RECIPE abgelehnt, statt stillschweigend irgendetwas zu fahren.
 DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
-    ("", "hello_world"),
-    ("hello-world", "hello_world"),
     ("calibration", "calibration"),
     ("apriltag", "apriltag"),
 )
@@ -42,7 +42,6 @@ class VisionServerConfig:
     vision_system_name: str = "VisionMachine"
     vision_system_id: str = "vision-hello-01"
     configuration_id: str = "hello-world-config"
-    detection_latency: float = 0.25
     nodeset_path: Path = DEFAULT_NODESET_PATH
     recipe_profiles: tuple[tuple[str, str], ...] = DEFAULT_RECIPE_PROFILES
     max_id_length: int = 128

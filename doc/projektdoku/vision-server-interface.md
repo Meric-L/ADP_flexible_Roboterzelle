@@ -22,7 +22,8 @@ Fehlercodes, Betrieb. Der Rest dieses Dokuments erklärt das Warum.
 > entfallen ist. Genau deshalb gilt ausnahmslos: **Namespace-Indizes immer über
 > die URI auflösen, nie hartcodieren.**
 
-Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung.
+Stand: Das Platzhalterrezept `hello-world` ist entfallen; ein Start ohne
+`RecipeId` wird mit `Error=4` (`UNKNOWN_RECIPE`) abgelehnt.
 `apriltag` ist die echte Erkennung — sie steuert die Pi-Kamera an, lokalisiert
 mit AprilTags bestückte Module und liefert echte Posen; `calibration` prüft die
 Messbereitschaft dieser Zelle. Der komplette Job-Ablauf (Zustandsautomaten,
@@ -116,7 +117,7 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `errors.py` | `VisionJobError`, Fehlercodes (Abschnitt 5) |
 | `nodeset_ids.py` | feste NodeIds/BrowseNames für Nodeset-Importe und Events |
 | `profiles.py` | `AprilTagProfileConfig` u. a. je-Pi-Profile (Kamera, Hand-Auge-Pfad, Tag-Map) |
-| `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
+| `detection/` | Strategie `DetectionSource`; `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Markiert und kodiert jeden Frame einmal; schreibt ihn als Base64-JPEG in `LatestCameraFrame` und reicht ihn an den MJPEG-Server, siehe Abschnitt 10 |
 | `mjpeg_server.py` | Livestream als MJPEG über HTTP (`/stream.mjpg`, `/snapshot.jpg`), siehe Abschnitt 10.2 |
@@ -238,7 +239,6 @@ Abschnitt 4 und 6.
 
 | `RecipeId` | Job | Implementierung | Ergebnis |
 | --- | --- | --- | --- |
-| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | in-process, `detection/hello_world.py` | `attributes.message` = `"Hello World"` |
 | `"calibration"` | Messbereitschaft dieser Zelle pruefen | Subprozess, `src/jobs/calibrate.py` | `attributes.message` = Kalibrier-Id, Aufloesung, RMS, Aufnahmezahl, Alter, Tag-Map |
 | `"apriltag"` | **Module lokalisieren** | in-process, `detection/apriltag.py`, liest von der geteilten Kamera (Abschnitt 10) | eine Detektion je erkanntem Modul-Tag mit echter Pose |
 
@@ -281,13 +281,12 @@ Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
 unterscheiden sich nur in der `AprilTagProfileConfig`, die `server.py` je
 Pi setzt.
 
-Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
-abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
+Eine unbekannte oder leere `RecipeId` wird sofort mit `Error=4`
+(`UNKNOWN_RECIPE`) abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
+Einen Standardjob gibt es nicht -- wer keinen Job waehlt, bekommt einen Fehler.
 
 Die gewaehlte Quelle bestimmt `frameId`, `frameConvention`, `configurationId`
-und `IsSimulated` des Ergebnisses — `hello-world` bleibt damit dauerhaft als
-kamerafreier Smoke-Test brauchbar, auch wenn daneben eine echte Erkennung
-laeuft. Die `RecipeId` steht nach dem Job in `InternalRecipeId` am
+und `IsSimulated` des Ergebnisses. Die `RecipeId` steht nach dem Job in `InternalRecipeId` am
 Ergebnisknoten und in `attributes.recipeId`.
 
 **Bewusste Abweichung:** Das Nodeset deklariert die Ids als Strukturen. Ein
@@ -498,7 +497,7 @@ verlinkte Methode antwortet `BadNothingToDo` auf OPC-UA-Statusebene — **nicht*
 
 | Methode | Warum nicht |
 | --- | --- |
-| `SimulationMode` | bräuchte je Profil eine simulierte Datenquelle. Das Profil `hello_world` ist bereits genau das und ohne Kamera aufrufbar |
+| `SimulationMode` | bräuchte je Profil eine simulierte Datenquelle, die es nicht gibt |
 | `SelectModeAutomatic` | es gibt nur eine Betriebsart. Eine Methode, die immer `OK` zurückgibt und nichts umschaltet, wäre irreführender als eine erkennbar nicht implementierte |
 | `ConfirmAll`, `Sync` der StepModels | gehören zum Schrittketten-Modell, das wir nicht benutzen |
 | **`ConfigurationManagement`** vollständig | bräuchte ein Konfigurations-Datenmodell, das die Zelle nicht hat. `configurationId` im Ergebnis benennt die wirksame Kalibrierung |
@@ -514,8 +513,8 @@ Diese Lücken sind Entscheidungen, keine Versäumnisse.
 sudo systemctl restart opcua-server.service
 
 # Referenzimplementierung des Handshakes (von beliebigem Rechner):
-PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://<pi>:4840/raspi/server/
+PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py \
+    --url opc.tcp://<pi>:4840/raspi/server/ --recipe-id calibration
 ```
 
 Der Client gibt `StartSingleJob -> JobId=... Error=0`, das Payload und die
@@ -1400,9 +1399,8 @@ Eingang `(MeasId, PartId, RecipeId, ProductId, Parameters)` — alle String,
 `(JobId: String, Error: Int32)`. Der Aufruf ist **nicht blockierend**: er
 quittiert nur die Annahme, das Ergebnis kommt per Event.
 
-`RecipeId` wählt den Job: `""` und `hello-world` (Platzhalter ohne
-Bildverarbeitung), `calibration` (Bereitschaftsprüfung), `apriltag` (echte
-Erkennung). Details in Abschnitt 5.
+`RecipeId` wählt den Job: `calibration` (Bereitschaftsprüfung) oder
+`apriltag` (echte Erkennung). Leer oder unbekannt -> `Error=4`. Details in Abschnitt 5.
 
 | `Error` | Name | Bedeutung |
 | --- | --- | --- |

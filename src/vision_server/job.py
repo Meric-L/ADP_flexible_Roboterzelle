@@ -113,8 +113,13 @@ def build_job_request(
         product_id=coerce_id(product_id, "ProductId", config.max_id_length),
         parameters=_coerce_parameters(parameters, config),
     )
+    known = ", ".join(sorted(x for x in config.known_recipe_ids if x))
+    if not request.recipe_id and "" not in config.known_recipe_ids:
+        raise VisionJobError(
+            VisionErrorCode.UNKNOWN_RECIPE,
+            f"Kein Job gewaehlt: RecipeId ist leer (bekannt: {known})",
+        )
     if (request.recipe_id or "") not in config.known_recipe_ids:
-        known = ", ".join(sorted(x for x in config.known_recipe_ids if x))
         raise VisionJobError(
             VisionErrorCode.UNKNOWN_RECIPE,
             f"Unbekannte RecipeId '{request.recipe_id}' (bekannt: {known})",

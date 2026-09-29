@@ -21,12 +21,12 @@ Der Endpoint-Pfad heißt weiterhin `/raspi/server/`, obwohl das namensgebende
 jeder Client-Konfiguration.
 
 Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans.
-Neben dem `hello-world`-Platzhalterrezept (nur zu Testzwecken, `moduleId`
-immer `HELLO-WORLD`) gibt es inzwischen eine echte Erkennung: das Rezept
+Das frühere Platzhalterrezept `hello-world` ist entfallen; ein Start ohne
+`RecipeId` ist ein Fehler (`UNKNOWN_RECIPE`). Die Erkennung: das Rezept
 `apriltag` liefert reale AprilTag-Posen samt Welttag-Referenz und
 Hand-Auge-Ankerung (siehe [`apriltag-referenz.md`](apriltag-referenz.md)),
 und `calibration` ist eine echte Bereitschaftsprüfung der Kamerakalibrierung.
-Details zu allen drei Rezepten und zur Part-2-Anlagensicht (AMCM) stehen in
+Details zu beiden Rezepten und zur Part-2-Anlagensicht (AMCM) stehen in
 [`vision-server-interface.md`](vision-server-interface.md).
 
 Das Vision-Paket ist als **Einbau** gebaut (`install_vision_machine(server, config)`)
@@ -41,7 +41,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | Datei | Inhalt |
 | --- | --- |
 | [`src/vision_server/`](../../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
-| [`src/vision_server/tools/hello_world_client.py`](../../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
+| [`src/vision_server/tools/handshake_client.py`](../../src/vision_server/tools/handshake_client.py) | Testclient: Referenzimplementierung des Handshakes |
 | [`src/vision_server/server.py`](../../src/vision_server/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
 | [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../../requirements.txt) | u. a. `asyncua` |
@@ -72,7 +72,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA |
 | `discovery/mdns.py` | mDNS-Ankündigung |
 | `discovery/lds.py` | LDS-Registrierung beim Aggregation-Server |
-| `detection/` | Strategie `DetectionSource`: `hello_world.py` (Platzhalter), `apriltag.py` (echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
+| `detection/` | Strategie `DetectionSource`: `apriltag.py` (echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung. Details zu
@@ -169,8 +169,8 @@ pip install -r requirements.txt
 PYTHONPATH=src python3 -m vision_server.server
 
 # Handshake einmal durchspielen
-PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://127.0.0.1:4840/raspi/server/
+PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py \
+    --url opc.tcp://127.0.0.1:4840/raspi/server/ --recipe-id calibration
 
 # Nur das Vision-System, isoliert (Entwicklung)
 PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
@@ -244,9 +244,8 @@ Festgehalten in `tests/test_part10_fassade.py`.
 
 ## Bekannte Einschränkungen
 
-- Nur das Rezept `hello-world` ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`,
-  die Pose immer Null. Das Rezept `apriltag` liefert echte Posen, `calibration`
-  eine echte Bereitschaftsprüfung.
+- Es gibt keinen Standardjob: eine leere `RecipeId` wird abgelehnt. Das Rezept
+  `apriltag` liefert echte Posen, `calibration` eine echte Bereitschaftsprüfung.
 - `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
   Tag-Map sichtbar ist, sonst das Kamera-KS. Die Hand-Auge-Kalibrierung für
   Layer 2 ist implementiert (`AprilTagProfileConfig.hand_eye_path`, verkettet

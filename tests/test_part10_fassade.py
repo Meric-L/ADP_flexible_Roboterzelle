@@ -113,7 +113,7 @@ class VisionMachineUnterMachinesTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ProgrammIstDerEinstiegTest(unittest.IsolatedAsyncioTestCase):
-    """Faehrt die ganze Maschine hoch -- kamerafrei ueber `hello_world`.
+    """Faehrt die ganze Maschine hoch -- ohne Kamera.
 
     Bis hierher hat kein Test `install_vision_machine` je ausgefuehrt; die
     Verdrahtung von Adressraum, Automaten und Part-10-Aufsatz war nur im
