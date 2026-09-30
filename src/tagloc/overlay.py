@@ -51,13 +51,22 @@ def _scale_for(image) -> float:
     return max(1.0, width / _REFERENCE_WIDTH)
 
 
-def _put_text(image, text: str, origin: tuple[int, int], color=COLOR_TEXT) -> None:
-    """Draw text with a dark outline -- otherwise unreadable on a light background."""
+def _put_text(
+    image, text: str, origin: tuple[int, int], color=COLOR_TEXT, *, outline: bool = True
+) -> None:
+    """Draw text, by default with a dark outline -- otherwise unreadable on a light background.
+
+    `outline=False` draws plain text only (status bar: the outline read as a
+    doubled, shadowed font there).
+    """
     import cv2
 
     scale = _scale_for(image)
     font_scale = _FONT_SCALE * scale
     thickness = max(1, round(_THICKNESS * scale))
+    if not outline:
+        cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+        return
     cv2.putText(
         image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_SHADOW, thickness + 2
     )
@@ -208,7 +217,7 @@ def draw_status_bar(image, lines: Sequence[str]) -> Any:
     margin = round(12 * scale)
     line_height = round(22 * scale)
     for index, line in enumerate(reversed(list(lines))):
-        _put_text(image, line, (margin, height - margin - index * line_height))
+        _put_text(image, line, (margin, height - margin - index * line_height), outline=False)
     return image
 
 
