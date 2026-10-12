@@ -1,15 +1,42 @@
 {
   "schema": "wsc.vision.tagmap/2",
   "frameId": "world",
-  "anchorTagId": 0,
+  "anchorTagId": 583,
   "tagFamily": "tag36h11",
   "tags": [
     {
-      "tagId": 0,
+      "tagId": 583,
       "role": "world",
-      "sizeM": 0.1,
+      "sizeM": 0.198,
       "poseInWorld": {
         "position": [0.0, 0.0, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    },
+    {
+      "tagId": 584,
+      "role": "world",
+      "sizeM": 0.198,
+      "poseInWorld": {
+        "position": [1.593, -0.052, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    },
+    {
+      "tagId": 585,
+      "role": "world",
+      "sizeM": 0.198,
+      "poseInWorld": {
+        "position": [1.593, 1.618, 0.0],
+        "orientation": [0.0, 0.0, 0.0, 1.0]
+      }
+    },
+    {
+      "tagId": 586,
+      "role": "world",
+      "sizeM": 0.198,
+      "poseInWorld": {
+        "position": [0.0, 1.618, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
       }
     }
