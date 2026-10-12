@@ -16,6 +16,12 @@ Der Anker-Schritt gilt als geglueckt, wenn der Job einen **neuen**
 deshalb in `DETECTION_FAILED`, obwohl geankert wurde. Danach werden die
 restlichen Schritte mit der gemessenen Basis neu geplant.
 
+Annaeherung: vor jedem Anker- und Mess-Schritt faehrt der Roboter erst aus
+groesserem Abstand vor. Dessen Bild misst die Tag-Pose, und der folgende nahe
+Schritt wird daraus neu geplant. Geankert und gemessen wird erst im nahen
+Bild. Beim Welttag ist die Messung ein vorlaeufiger Anker aus dem weiten Bild
+-- er dient nur dem Zielen, der Lauf uebernimmt ihn nicht.
+
 Hier steckt kein asyncua: alles, was den Server betrifft, kommt als Funktion
 herein (`Layer2Ports`). So laesst sich der Ablauf gegen Fakes testen.
 """
@@ -26,8 +32,10 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
+
+import numpy as np
 
 from ..errors import VisionErrorCode
 from . import plan as layer2_plan
@@ -166,7 +174,14 @@ class Layer2Run:
 
         if not report.reached:
             reason = report.reason or "Roboter hat das Ziel nicht erreicht"
-            await self._finish_step(FAILED, reason)
+            if step.planned.spec.purpose == layer2_plan.APPROACH:
+                # Die Annaeherung ist eine Hilfe, keine Bedingung: ohne sie
+                # bleibt das nahe Ziel eben das aus der groben Pose.
+                await self._finish_step(
+                    SKIPPED, f"nicht angefahren ({reason}) -- nahes Ziel aus grober Pose"
+                )
+            else:
+                await self._finish_step(FAILED, reason)
             return VisionErrorCode.OK
 
         s.anchor_before = self._ports.read_anchor()
@@ -224,19 +239,91 @@ class Layer2Run:
             return
         s.pending_job_id = None
         step = s.steps[s.index]
-        if step.planned.spec.purpose == layer2_plan.ANCHOR:
+        purpose = step.planned.spec.purpose
+        if purpose == layer2_plan.APPROACH:
+            await self._evaluate_approach(step, code)
+        elif purpose == layer2_plan.ANCHOR:
             await self._evaluate_anchor(code)
         else:
             await self._evaluate_measure(step, code)
 
+    def _new_anchor(self, code: VisionErrorCode) -> tuple[Any, str]:
+        """Der Anker, den der letzte Job hinterlassen hat, oder `(None, Grund)`."""
+        anchor = self._ports.read_anchor()
+        if anchor is not None and anchor is not self._s.anchor_before:
+            return anchor, ""
+        if code in (VisionErrorCode.OK, VisionErrorCode.DETECTION_FAILED):
+            return None, "Welttag nicht gesehen -- nicht geankert"
+        return None, f"Job-Fehler {code.name} -- nicht geankert"
+
+    async def _evaluate_approach(self, step: _Step, code: VisionErrorCode) -> None:
+        """Tag im weiten Bild gemessen -> den nahen Schritt danach neu planen."""
+        s = self._s
+        assert s.request is not None
+        near = s.steps[s.index + 1]
+        if near.planned.spec.purpose == layer2_plan.ANCHOR:
+            # Ein Welttag erscheint nicht als Detection, sondern als Anker. Mit
+            # dessen Basis zielt der nahe Schritt; die Welttag-Pose bleibt die
+            # exakte aus der Tag-Map.
+            anchor, reason = self._new_anchor(code)
+            if anchor is None:
+                await self._finish_step(FAILED, f"Annaeherungsbild: {reason}")
+                return
+            pose_world_base = anchor.pose_world_base
+            spec = near.planned.spec
+            seen = f"Welttag {near.planned.tag_id} gesehen"
+        else:
+            tag_id = near.planned.tag_id
+            tag_in_world, reason = await self._seen_tag(tag_id, code)
+            if tag_in_world is None:
+                near.status = SKIPPED
+                near.detail = f"Annaeherungsbild: {reason}"
+                await self._finish_step(
+                    FAILED if reason.startswith("Job-Fehler") else SKIPPED, reason
+                )
+                return
+            pose_world_base = s.anchor.pose_world_base
+            spec = replace(near.planned.spec, seen_tag=(tag_id, tag_in_world))
+            seen = f"Tag {tag_id} gesehen"
+        planned = layer2_plan.plan_step(
+            spec, pose_world_base, s.pose_flange_cam, s.request.standoff_m, s.request.reach_m
+        )
+        correction_m = float(
+            np.linalg.norm(
+                planned.target.flange_in_base[:3, 3] - near.planned.target.flange_in_base[:3, 3]
+            )
+        )
+        near.planned = planned
+        await self._finish_step(
+            DONE, f"{seen}, nahes Ziel um {correction_m * 1000:.0f} mm korrigiert"
+        )
+
+    async def _seen_tag(self, tag_id: int, code: VisionErrorCode):
+        """Weltpose des Tags aus dem letzten Job, oder `(None, Grund)`."""
+        if code == VisionErrorCode.DETECTION_FAILED:
+            return None, f"Tag {tag_id} nicht gesehen"
+        if code != VisionErrorCode.OK:
+            return None, f"Job-Fehler {code.name}"
+        try:
+            payload = json.loads(await self._ports.read_result())
+        except (json.JSONDecodeError, TypeError):
+            return None, "Ergebnis des Jobs ist kein JSON"
+        frame_id = payload.get("frameId")
+        tag_map = self._ports.read_tag_map()
+        if frame_id != tag_map.frame_id:
+            return None, f"Pose nicht im Welt-KS („{frame_id}“) -- kein Anker?"
+        detection = layer2_plan.find_detection(payload.get("detections") or [], tag_id)
+        if detection is None:
+            return None, f"Tag {tag_id} nicht gesehen"
+        try:
+            return layer2_plan.tag_in_world_from_detection(detection, tag_id, tag_map), ""
+        except ValueError as error:
+            return None, str(error)
+
     async def _evaluate_anchor(self, code: VisionErrorCode) -> None:
         s = self._s
-        anchor = self._ports.read_anchor()
-        if anchor is None or anchor is s.anchor_before:
-            if code in (VisionErrorCode.OK, VisionErrorCode.DETECTION_FAILED):
-                reason = "Welttag nicht gesehen -- nicht geankert"
-            else:
-                reason = f"Job-Fehler {code.name} -- nicht geankert"
+        anchor, reason = self._new_anchor(code)
+        if anchor is None:
             await self._finish_step(FAILED, reason)
             return
         s.anchor = anchor
@@ -258,10 +345,7 @@ class Layer2Run:
         frame_id = payload.get("frameId")
         detections = payload.get("detections") or []
         world = self._ports.read_tag_map().frame_id
-        seen = any(
-            (detection.get("attributes") or {}).get("tagId") == step.planned.tag_id
-            for detection in detections
-        )
+        seen = layer2_plan.find_detection(detections, step.planned.tag_id) is not None
         if frame_id != world:
             await self._finish_step(
                 SKIPPED, f"Pose nicht im Welt-KS („{frame_id}“) -- kein Anker?"
@@ -277,21 +361,42 @@ class Layer2Run:
         step = s.steps[s.index]
         step.status = status
         step.detail = detail
-        if status == FAILED and step.planned.spec.purpose == layer2_plan.ANCHOR:
+        if status == FAILED and self._leads_to_anchor(s.index):
             # Ohne Anker entsteht keine Weltpose -- jede weitere Fahrt waere umsonst.
             await self.abort(f"Anker fehlgeschlagen: {detail}")
             return
         await self._enter(s.index + 1)
+
+    def _leads_to_anchor(self, index: int) -> bool:
+        """Anker-Schritt oder die Annaeherung davor -- ohne sie kein Lauf."""
+        steps = self._s.steps
+        purpose = steps[index].planned.spec.purpose
+        if purpose == layer2_plan.APPROACH and index + 1 < len(steps):
+            purpose = steps[index + 1].planned.spec.purpose
+        return purpose == layer2_plan.ANCHOR
 
     async def _enter(self, index: int) -> None:
         """Geht zu Schritt `index`; Ziele ausser Reichweite ohne Fahrt uebersprungen."""
         s = self._s
         while index < len(s.steps):
             step = s.steps[index]
-            if step.planned.reachable or step.planned.spec.purpose == layer2_plan.ANCHOR:
+            if step.status == SKIPPED:
+                # Schon von der Annaeherung davor abgesagt.
+                index += 1
+                continue
+            purpose = step.planned.spec.purpose
+            near = s.steps[index + 1].planned if purpose == layer2_plan.APPROACH else None
+            if near is not None and not near.reachable and near.spec.purpose != layer2_plan.ANCHOR:
+                # Wozu vorfahren, wenn das nahe Ziel ohnehin nicht geht.
+                step.status = SKIPPED
+                step.detail = "nahes Ziel ausser Reichweite"
+            elif step.planned.reachable or purpose == layer2_plan.ANCHOR:
                 break
-            step.status = SKIPPED
-            step.detail = f"ausser Reichweite ({step.planned.target.reach_m:.2f} m)"
+            else:
+                step.status = SKIPPED
+                step.detail = f"ausser Reichweite ({step.planned.target.reach_m:.2f} m)"
+                if purpose == layer2_plan.APPROACH:
+                    step.detail += " -- nahes Ziel aus grober Pose"
             index += 1
         if index >= len(s.steps):
             s.state = FINISHED
@@ -313,7 +418,7 @@ class Layer2Run:
                 step.planned.spec,
                 pose_world_base,
                 s.pose_flange_cam,
-                s.request.standoff_m,
+                s.request.standoff_for(step.planned.spec.purpose),
                 s.request.reach_m,
             )
 

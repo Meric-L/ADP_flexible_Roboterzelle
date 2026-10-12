@@ -109,8 +109,8 @@ class TagChoiceTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class PlanRunTest(unittest.TestCase):
-    def request(self, *modules, reach_m=0.85):
-        return plan.RunRequest(base_pose(), tuple(modules), 0.3, reach_m)
+    def request(self, *modules, reach_m=0.85, approach_m=0.0):
+        return plan.RunRequest(base_pose(), tuple(modules), 0.3, reach_m, approach_m)
 
     def test_the_world_tag_comes_first_then_the_nearest_module(self):
         far = module("FAR", (1.9, 0.8, 0.0), (9, pose((0, 0, 0.3))))
@@ -121,6 +121,7 @@ class PlanRunTest(unittest.TestCase):
             flange_cam(),
         )
         self.assertEqual([step.spec.purpose for step in steps], ["anchor", "measure", "measure"])
+        # Ohne Annaeherung (approach_m=0) genau der Plan von vorher.
         # Welttag 0 liegt naeher an der Basis als Welttag 1.
         self.assertEqual(steps[0].tag_id, 0)
         self.assertEqual([step.spec.module_id for step in steps[1:]], ["NEAR", "FAR"])
@@ -134,6 +135,35 @@ class PlanRunTest(unittest.TestCase):
     def test_without_a_surveyed_world_tag_there_is_no_anchor(self):
         with self.assertRaises(ValueError):
             plan.plan_run(self.request(), TagMap(), flange_cam())
+
+    def test_an_approach_precedes_every_step_on_the_same_line_of_sight(self):
+        near = module("NEAR", (1.4, 0.9, 0.0), (8, pose((0, 0, 0.3))))
+        steps = plan.plan_run(
+            self.request(near, reach_m=5.0, approach_m=0.6),
+            tag_map((0, geometry.identity())),
+            flange_cam(),
+        )
+        self.assertEqual(
+            [step.spec.purpose for step in steps], ["approach", "anchor", "approach", "measure"]
+        )
+        for approach, close in zip(steps[::2], steps[1::2]):
+            self.assertEqual(approach.tag_id, close.tag_id)
+            self.assertEqual(approach.spec.name, close.spec.name)
+            # Dieselbe Blickachse, nur doppelt so weit vom Tag.
+            tag = close.tag_in_world[:3, 3]
+            far = approach.target.camera_in_world[:3, 3] - tag
+            near_offset = close.target.camera_in_world[:3, 3] - tag
+            np.testing.assert_allclose(far, 2 * near_offset, atol=1e-9)
+
+    def test_a_seen_tag_replaces_the_coarse_one(self):
+        spec = plan.StepSpec(
+            purpose=plan.MEASURE,
+            name="A",
+            module=module("A", (1.4, 0.9, 0.0), (8, pose((0, 0, 0.3)))),
+            seen_tag=(8, pose((1.45, 0.9, 0.3))),
+        )
+        step = plan.plan_step(spec, base_pose(), flange_cam(), 0.3, 5.0)
+        np.testing.assert_allclose(step.tag_in_world[:3, 3], [1.45, 0.9, 0.3])
 
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
@@ -163,7 +193,26 @@ class JsonTest(unittest.TestCase):
         self.assertEqual(request.modules[0].tags[0].tag_id, 7)
         self.assertEqual(request.standoff_m, 0.25)
         self.assertEqual(request.reach_m, plan.DEFAULT_REACH_M)
+        self.assertEqual(request.approach_standoff_m, plan.DEFAULT_APPROACH_STANDOFF_M)
         np.testing.assert_allclose(request.robot_base[:3, 3], [1, 2, 0])
+
+    def test_the_approach_option(self):
+        def parse(options):
+            return plan.parse_run_request(
+                json.dumps(
+                    {
+                        "schema": plan.RUN_SCHEMA,
+                        "robotBase": {"position": [0, 0, 0], "orientation": [0, 0, 0, 1]},
+                        "options": options,
+                    }
+                )
+            )
+
+        self.assertEqual(parse({"approachStandoffM": 0}).approach_standoff_m, 0.0)
+        self.assertEqual(parse({"approachStandoffM": 0.8}).approach_standoff_m, 0.8)
+        for options in ({"approachStandoffM": 0.3}, {"approachStandoffM": -1}, {"approachStandoffM": "x"}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                parse(options)
 
     def test_broken_requests_are_refused_with_a_reason(self):
         for text in (

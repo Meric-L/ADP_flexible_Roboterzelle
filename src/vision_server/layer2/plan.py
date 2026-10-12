@@ -17,6 +17,12 @@ Die Kette je Ziel::
 `T_world_base` ist vor dem Ankern die grobe Basis aus Layer 1, danach die
 gemessene aus `RobotAnchor` -- daher wird nach dem Ankern neu geplant.
 
+Vor jedem Anker- und Mess-Schritt steht ein Annaeherungsschritt (`approach`):
+dieselbe Rechnung mit `approach_standoff_m`, also aus groesserem Abstand. Sein
+Bild liefert die gemessene Tag-Pose, aus der der folgende nahe Schritt neu
+geplant wird -- die grobe Pose aus Layer 1 reicht so nur noch fuer den weiten
+Blick, nicht mehr fuer das nahe Bild.
+
 Tag-Frame wie in `tagloc.pose`: +x rechts, +y zur Oberkante des Drucks, +z aus
 dem Tag heraus. Kamera-Frame OpenCV: +z nach vorn, +x rechts, +y unten.
 """
@@ -25,7 +31,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -50,9 +56,16 @@ DEFAULT_STANDOFF_M = 0.3
 #: Reichweite des Flanschs um die Basis -- UR5e 0,85 m, FR3 0,855 m. Nur ein
 #: Hinweis: ein Ziel ausserhalb wird gezeigt und uebersprungen, nicht versteckt.
 DEFAULT_REACH_M = 0.85
+#: Abstand des Annaeherungsbilds. Doppelt so weit wie das nahe Bild: die grobe
+#: Pose aus Layer 1 darf um einige Zentimeter danebenliegen, und der Tag soll
+#: trotzdem im Bild sein. `0` schaltet die Annaeherung ab.
+DEFAULT_APPROACH_STANDOFF_M = 0.6
 
 ANCHOR = "anchor"
 MEASURE = "measure"
+#: Vorfahrt aus `approach_standoff_m`; steht immer direkt vor dem Anker- oder
+#: Mess-Schritt, fuer den sie die Tag-Pose misst.
+APPROACH = "approach"
 
 #: Kamera schaut auf den Tag: 180 Grad um x dreht +z des Tags gegen die
 #: Blickrichtung der Kamera.
@@ -82,6 +95,11 @@ class RunRequest:
     modules: tuple[ModuleRequest, ...]
     standoff_m: float = DEFAULT_STANDOFF_M
     reach_m: float = DEFAULT_REACH_M
+    #: `0` = ohne Annaeherung.
+    approach_standoff_m: float = DEFAULT_APPROACH_STANDOFF_M
+
+    def standoff_for(self, purpose: str) -> float:
+        return self.approach_standoff_m if purpose == APPROACH else self.standoff_m
 
 
 @dataclass(frozen=True)
@@ -103,9 +121,14 @@ class StepSpec:
     #: Welttag: seine eine Pose. Modul: `None`, die Tags kommen aus `module`.
     world_tag: tuple[int, Pose] | None = None
     module: ModuleRequest | None = None
+    #: Der Tag samt Weltpose, wie ihn das Annaeherungsbild gemessen hat. Ersetzt
+    #: die grobe Pose aus Layer 1; `None`, solange nicht gemessen.
+    seen_tag: tuple[int, Pose] | None = None
 
     def tag_candidates(self) -> list[tuple[int, Pose]]:
         """Alle Tags dieses Schritts mit ihrer Pose im Welt-KS."""
+        if self.seen_tag is not None:
+            return [self.seen_tag]
         if self.world_tag is not None:
             return [self.world_tag]
         assert self.module is not None
@@ -194,6 +217,9 @@ def plan_run(
 ) -> list[PlannedStep]:
     """Schritt 0 am Welttag, danach die Module, das naechste zuerst.
 
+    Mit Annaeherung steht vor jedem dieser Schritte einer mit `purpose`
+    `approach`: Annaeherung Welttag, Anker, Annaeherung Modul A, Modul A, ...
+
     Geplant mit der groben Basis aus Layer 1; nach dem Ankern plant der Lauf
     die restlichen Schritte mit `plan_step` neu.
 
@@ -226,7 +252,52 @@ def plan_run(
     # Vom Nahen ins Weite: der Roboter arbeitet sich nach aussen, statt
     # kreuz und quer durch die Zelle zu fahren.
     modules.sort(key=lambda step: step.target.reach_m)
-    return plan + modules
+    steps = plan + modules
+    if request.approach_standoff_m <= 0:
+        return steps
+    with_approach: list[PlannedStep] = []
+    for step in steps:
+        with_approach.append(
+            plan_step(
+                replace(step.spec, purpose=APPROACH),
+                request.robot_base,
+                pose_flange_cam,
+                request.approach_standoff_m,
+                request.reach_m,
+            )
+        )
+        with_approach.append(step)
+    return with_approach
+
+
+def find_detection(detections, tag_id: int) -> dict | None:
+    """Die Detection, die diesen Tag enthaelt -- allein oder mit anderen
+    Tags desselben Moduls zusammengefasst (`tagIds`)."""
+    for detection in detections:
+        attributes = detection.get("attributes") or {}
+        if attributes.get("tagId") == tag_id or tag_id in (attributes.get("tagIds") or []):
+            return detection
+    return None
+
+
+def tag_in_world_from_detection(detection: dict, tag_id: int, tag_map: TagMap) -> Pose:
+    """Weltpose des Tags `tag_id` aus einer Detection im Welt-KS.
+
+    Kennt die Tag-Map den Tag, ist die gemeldete Pose die des **Moduls**
+    (`T_world_tag · tag_to_module`); der CAD-Versatz wird zurueckgerechnet.
+    Unbekannte Tags kommen ohne Versatz, als `TAG-<id>`.
+
+    Raises:
+        ValueError: Pose fehlt oder ist kaputt.
+    """
+    pose = _pose(
+        {"position": detection.get("position"), "orientation": detection.get("orientation")},
+        f"Detection Tag {tag_id}",
+    )
+    entry = tag_map.get(tag_id)
+    if entry is not None:
+        pose = compose(pose, invert(entry.tag_to_module))
+    return pose
 
 
 # --- JSON ------------------------------------------------------------------
@@ -299,7 +370,14 @@ def parse_run_request(text: str) -> RunRequest:
     options = data.get("options") or {}
     standoff_m = _positive(options.get("standoffM", DEFAULT_STANDOFF_M), "options.standoffM")
     reach_m = _positive(options.get("reachM", DEFAULT_REACH_M), "options.reachM")
-    return RunRequest(robot_base, tuple(modules), standoff_m, reach_m)
+    approach_m = options.get("approachStandoffM", DEFAULT_APPROACH_STANDOFF_M)
+    if approach_m != 0:
+        approach_m = _positive(approach_m, "options.approachStandoffM")
+        if approach_m <= standoff_m:
+            raise ValueError(
+                "options.approachStandoffM muss groesser als standoffM sein (0 = aus)."
+            )
+    return RunRequest(robot_base, tuple(modules), standoff_m, reach_m, float(approach_m))
 
 
 def _positive(value, where: str) -> float:

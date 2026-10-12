@@ -102,6 +102,9 @@ class Layer2OpcUaTest(unittest.IsolatedAsyncioTestCase):
                     "tags": [{"tagId": 7, "poseInModule": pose_dict((0, 0, 0.2))}],
                 }
             ],
+            # Die Annaeherung hat eigene Tests (`test_layer2_run.py`); hier geht
+            # es um die Knoten.
+            "options": {"approachStandoffM": 0},
         }
         self.assertEqual(await self.call("StartLayer2Run", json.dumps(request)), 0)
         target = json.loads(await self.value("layer2_target"))

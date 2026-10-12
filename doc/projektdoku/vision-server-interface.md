@@ -1572,6 +1572,10 @@ Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, 
 - Welttag: aus der Tag-Map, und zwar der der Basis nächste.
 - Modul: Modulpose aus Layer 1 mal Tag-Lage. Genommen wird der Tag, der am meisten zur Basis zeigt.
 
+**Annäherung** ([`arbeitsplaene/layer2-annaeherung.md`](arbeitsplaene/layer2-annaeherung.md)): Vor jedem Anker- und Mess-Schritt kommt ein Schritt mit `purpose: "approach"`. In diesem Schritt steht die Kamera 0,6 m vor dem Tag (`options.approachStandoffM`, `0` = aus). Das Bild dieses Schritts misst den Tag, und der Pi plant daraus das nahe Ziel neu. Geankert und gemessen wird erst im nahen Bild. Der Client fährt die Annäherung wie jeden anderen Schritt.
+
+**Flansch-Frame:** `flangeInBase` ist die Pose des mechanischen Werkzeugflanschs ohne Greifer, und auf genau diesen Link wird `T_flansch_cam` kalibriert. Die Links sind: EVA/Demo1 `model_6`, UR5e `flange`, FR3 `eef_attach_point`.
+
 **Wann der Anker gilt:** `locate_modules` überspringt Welttags. Der Anker-Job endet deshalb oft mit `DETECTION_FAILED`. Er gilt trotzdem als geglückt, wenn danach ein **neuer** `RobotAnchor` in der Quelle steht. Ohne Anker bricht der Lauf ab, weil keine Weltposen entstehen würden.
 
 **Fehlercodes:**
