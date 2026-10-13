@@ -286,7 +286,12 @@ class Layer2Run:
             spec = replace(near.planned.spec, seen_tag=(tag_id, tag_in_world))
             seen = f"Tag {tag_id} gesehen"
         planned = layer2_plan.plan_step(
-            spec, pose_world_base, s.pose_flange_cam, s.request.standoff_m, s.request.reach_m
+            spec,
+            pose_world_base,
+            s.pose_flange_cam,
+            s.request.standoff_m,
+            s.request.reach_m,
+            s.request.max_tilt_deg,
         )
         correction_m = float(
             np.linalg.norm(
@@ -420,6 +425,7 @@ class Layer2Run:
                 s.pose_flange_cam,
                 s.request.standoff_for(step.planned.spec.purpose),
                 s.request.reach_m,
+                s.request.max_tilt_deg,
             )
 
     def _summary(self) -> str:
@@ -454,6 +460,7 @@ class Layer2Run:
                 "tagInWorld": layer2_plan.pose_to_dict(step.tag_in_world),
                 "reachM": step.target.reach_m,
                 "reachable": step.reachable,
+                "tiltDeg": step.target.tilt_deg,
             },
             allow_nan=False,
         )

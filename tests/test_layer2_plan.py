@@ -257,5 +257,55 @@ class JsonTest(unittest.TestCase):
         )
 
 
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class TiltedViewTest(unittest.TestCase):
+    """Welttag am Boden, Roboterbasis 1 m hoeher auf dem Wagen, 0,9 m daneben."""
+
+    def wagon_base(self):
+        return geometry.from_rotation_translation(np.eye(3), (0.9, 0.0, 1.0))
+
+    def anchor(self):
+        return plan.StepSpec(purpose=plan.ANCHOR, name="Welttag 583", world_tag=(583, pose((0, 0, 0))))
+
+    def test_a_tilted_camera_still_looks_at_the_tag_centre_from_the_standoff(self):
+        tag = pose((0, 0, 0))
+        target = plan.view_target(tag, self.wagon_base(), geometry.identity(), 0.6, 45.0)
+        camera = target.camera_in_world
+        self.assertAlmostEqual(float(np.linalg.norm(camera[:3, 3])), 0.6, places=9)
+        line_of_sight = camera[:3, 2]
+        towards_tag = -camera[:3, 3] / np.linalg.norm(camera[:3, 3])
+        np.testing.assert_allclose(line_of_sight, towards_tag, atol=1e-9)
+        # Gekippt zur Basis hin (+x) und 45 Grad aus der Senkrechten.
+        self.assertGreater(camera[0, 3], 0.0)
+        self.assertAlmostEqual(math.degrees(math.acos(camera[2, 3] / 0.6)), 45.0, places=6)
+        self.assertEqual(target.tilt_deg, 45.0)
+
+    def test_frontal_is_out_of_reach_on_the_wagon_tilted_is_not(self):
+        frontal = plan.plan_step(self.anchor(), self.wagon_base(), geometry.identity(), 0.6, 0.85)
+        self.assertFalse(frontal.reachable)
+        tilted = plan.plan_step(self.anchor(), self.wagon_base(), geometry.identity(), 0.6, 0.85, 60.0)
+        self.assertTrue(tilted.reachable)
+        self.assertGreater(tilted.target.tilt_deg, 0.0)
+        self.assertLessEqual(tilted.target.reach_m, 0.85)
+
+    def test_a_reachable_frontal_view_stays_frontal(self):
+        near_base = geometry.from_rotation_translation(np.eye(3), (0.3, 0.0, 0.2))
+        step = plan.plan_step(self.anchor(), near_base, geometry.identity(), 0.3, 0.85, 60.0)
+        self.assertEqual(step.target.tilt_deg, 0.0)
+
+    def test_max_tilt_comes_from_the_options(self):
+        text = json.dumps(
+            {
+                "schema": plan.RUN_SCHEMA,
+                "robotBase": {"position": [0, 0, 0], "orientation": [0, 0, 0, 1]},
+                "modules": [],
+                "options": {"maxTiltDeg": 30},
+            }
+        )
+        self.assertEqual(plan.parse_run_request(text).max_tilt_deg, 30.0)
+        with self.assertRaises(ValueError):
+            plan.parse_run_request(text.replace('"maxTiltDeg": 30', '"maxTiltDeg": 90'))
+
 if __name__ == "__main__":
     unittest.main()

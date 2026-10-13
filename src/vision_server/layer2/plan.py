@@ -23,6 +23,11 @@ Bild liefert die gemessene Tag-Pose, aus der der folgende nahe Schritt neu
 geplant wird -- die grobe Pose aus Layer 1 reicht so nur noch fuer den weiten
 Blick, nicht mehr fuer das nahe Bild.
 
+Schraeg statt frontal (Arbeitsplan `layer2-schraege-ansicht.md`): liegt der
+frontale Blick ausser Reichweite -- ein Welttag am Boden, die Basis einen Meter
+hoeher auf dem Wagen --, kippt die Kamera um die Tag-Mitte zur Basis hin, in
+Stufen bis `max_tilt_deg`. Genommen wird der frontalste Blick in Reichweite.
+
 Tag-Frame wie in `tagloc.pose`: +x rechts, +y zur Oberkante des Drucks, +z aus
 dem Tag heraus. Kamera-Frame OpenCV: +z nach vorn, +x rechts, +y unten.
 """
@@ -42,6 +47,7 @@ from tagloc.geometry import (
     invert,
     pose_from_dict,
     pose_to_dict,
+    rotation_from_rvec,
 )
 from tagloc.tagmap import TagMap, nearest_world_tag
 
@@ -60,6 +66,16 @@ DEFAULT_REACH_M = 0.85
 #: Pose aus Layer 1 darf um einige Zentimeter danebenliegen, und der Tag soll
 #: trotzdem im Bild sein. `0` schaltet die Annaeherung ab.
 DEFAULT_APPROACH_STANDOFF_M = 0.6
+
+#: Bis zu dieser Neigung (Grad aus der Senkrechten auf den Tag) darf die Kamera
+#: schraeg auf einen Tag schauen. Ab etwa 60 Grad wird ein Tag im Bild so
+#: schmal, dass seine Pose unsicher wird.
+DEFAULT_MAX_TILT_DEG = 60.0
+#: Die Stufen, in denen der Planer die Neigung probiert.
+_TILT_STEPS_DEG = (0.0, 15.0, 30.0, 45.0, 60.0, 75.0)
+#: Bevorzugt wird ein Ziel mit etwas Luft zur Reichweite -- am Rand findet die
+#: IK oft keine Stellung mit der verlangten Orientierung.
+_COMFORTABLE_REACH = 0.9
 
 ANCHOR = "anchor"
 MEASURE = "measure"
@@ -97,6 +113,8 @@ class RunRequest:
     reach_m: float = DEFAULT_REACH_M
     #: `0` = ohne Annaeherung.
     approach_standoff_m: float = DEFAULT_APPROACH_STANDOFF_M
+    #: `0` = immer frontal, wie vor dem 13.10.2026.
+    max_tilt_deg: float = DEFAULT_MAX_TILT_DEG
 
     def standoff_for(self, purpose: str) -> float:
         return self.approach_standoff_m if purpose == APPROACH else self.standoff_m
@@ -145,6 +163,8 @@ class ViewTarget:
     flange_in_base: Pose
     #: Abstand des Flanschs von der Basis, Meter.
     reach_m: float
+    #: Wie schraeg die Kamera auf den Tag schaut, Grad; 0 = frontal.
+    tilt_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -157,10 +177,29 @@ class PlannedStep:
 
 
 def view_target(
-    pose_world_tag: Pose, pose_world_base: Pose, pose_flange_cam: Pose, standoff_m: float
+    pose_world_tag: Pose,
+    pose_world_base: Pose,
+    pose_flange_cam: Pose,
+    standoff_m: float,
+    tilt_deg: float = 0.0,
 ) -> ViewTarget:
-    """Wo Kamera und Flansch stehen muessen, um den Tag frontal zu sehen."""
+    """Wo Kamera und Flansch stehen muessen, um den Tag zu sehen.
+
+    `tilt_deg` kippt die Kamera um die Tag-Mitte zur Roboterbasis hin: sie
+    bleibt `standoff_m` vom Tag und schaut weiter genau auf seine Mitte, nur
+    schraeg statt senkrecht. 0 = frontal.
+    """
     pose_tag_cam = from_rotation_translation(_FACING, [0.0, 0.0, standoff_m])
+    if tilt_deg:
+        # Basis im Tag-Frame, in die Tag-Ebene gelegt: dorthin kippt +z.
+        towards_base = (invert(pose_world_tag) @ np.append(pose_world_base[:3, 3], 1.0))[:3]
+        towards_base[2] = 0.0
+        length = float(np.linalg.norm(towards_base))
+        if length > 1e-9:
+            axis = np.cross([0.0, 0.0, 1.0], towards_base / length)
+            tilt = np.eye(4)
+            tilt[:3, :3] = rotation_from_rvec(axis * math.radians(tilt_deg))
+            pose_tag_cam = tilt @ pose_tag_cam
     camera_in_world = compose(pose_world_tag, pose_tag_cam)
     flange_in_world = compose(camera_in_world, invert(pose_flange_cam))
     flange_in_base = compose(invert(pose_world_base), flange_in_world)
@@ -169,6 +208,7 @@ def view_target(
         flange_in_world=flange_in_world,
         flange_in_base=flange_in_base,
         reach_m=float(np.linalg.norm(flange_in_base[:3, 3])),
+        tilt_deg=float(tilt_deg),
     )
 
 
@@ -199,10 +239,24 @@ def plan_step(
     pose_flange_cam: Pose,
     standoff_m: float,
     reach_m: float,
+    max_tilt_deg: float = 0.0,
 ) -> PlannedStep:
-    """Ein Schritt, gleich ob Welttag oder Modul."""
+    """Ein Schritt, gleich ob Welttag oder Modul.
+
+    Der frontalste Blick mit Luft zur Reichweite; gibt es keinen, der
+    frontalste in Reichweite; sonst der naechste an der Basis (dann
+    `reachable = False`, der Schritt wird uebersprungen).
+    """
     tag_id, tag_in_world = tag_facing_base(spec.tag_candidates(), pose_world_base[:3, 3])
-    target = view_target(tag_in_world, pose_world_base, pose_flange_cam, standoff_m)
+    tilts = [tilt for tilt in _TILT_STEPS_DEG if tilt <= max_tilt_deg] or [0.0]
+    targets = [
+        view_target(tag_in_world, pose_world_base, pose_flange_cam, standoff_m, tilt)
+        for tilt in tilts
+    ]
+    target = next(
+        (t for t in targets if t.reach_m <= reach_m * _COMFORTABLE_REACH),
+        next((t for t in targets if t.reach_m <= reach_m), None),
+    ) or min(targets, key=lambda t: t.reach_m)
     return PlannedStep(
         spec=spec,
         tag_id=tag_id,
@@ -236,7 +290,14 @@ def plan_run(
         world_tag=(world_tag_id, tag_map.reference_poses()[world_tag_id]),
     )
     plan = [
-        plan_step(anchor, request.robot_base, pose_flange_cam, request.standoff_m, request.reach_m)
+        plan_step(
+            anchor,
+            request.robot_base,
+            pose_flange_cam,
+            request.standoff_m,
+            request.reach_m,
+            request.max_tilt_deg,
+        )
     ]
     modules = [
         plan_step(
@@ -245,6 +306,7 @@ def plan_run(
             pose_flange_cam,
             request.standoff_m,
             request.reach_m,
+            request.max_tilt_deg,
         )
         for module in request.modules
         if module.tags
@@ -264,6 +326,7 @@ def plan_run(
                 pose_flange_cam,
                 request.approach_standoff_m,
                 request.reach_m,
+                request.max_tilt_deg,
             )
         )
         with_approach.append(step)
@@ -377,7 +440,12 @@ def parse_run_request(text: str) -> RunRequest:
             raise ValueError(
                 "options.approachStandoffM muss groesser als standoffM sein (0 = aus)."
             )
-    return RunRequest(robot_base, tuple(modules), standoff_m, reach_m, float(approach_m))
+    max_tilt = options.get("maxTiltDeg", DEFAULT_MAX_TILT_DEG)
+    if isinstance(max_tilt, bool) or not isinstance(max_tilt, (int, float)) or not 0 <= max_tilt <= 80:
+        raise ValueError("options.maxTiltDeg muss zwischen 0 und 80 liegen.")
+    return RunRequest(
+        robot_base, tuple(modules), standoff_m, reach_m, float(approach_m), float(max_tilt)
+    )
 
 
 def _positive(value, where: str) -> float:

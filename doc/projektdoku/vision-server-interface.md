@@ -1596,6 +1596,10 @@ Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, 
 
 **Noch offen:** Die Roboter-Server kennen heute keinen kartesischen Fahrbefehl. Solange das so ist, kann ein Client den Lauf nur im Trockenlauf bedienen: Er meldet das Ziel selbst als erreicht. Der Pi ankert dann an einer Pose, die niemand gefahren ist.
 
+### 14.1 Schräger Blick
+
+Liegt der frontale Blick auf einen Tag außer Reichweite, kippt der Planer die Kamera um die Tag-Mitte zur Roboterbasis hin, in Stufen bis `options.maxTiltDeg` (Standard 60°, `0` = immer frontal). Abstand und Blick auf die Tag-Mitte bleiben gleich. `Layer2Target.tiltDeg` sagt, wie schräg die Kamera schaut. Details stehen in [`arbeitsplaene/layer2-schraege-ansicht.md`](arbeitsplaene/layer2-schraege-ansicht.md).
+
 ## 15. Hand-Auge-Kalibrierung über OPC UA (nur Hand-Pi)
 
 Damit lässt sich `T_flansch_cam` aus dem Frontend bestimmen, ohne CLI. Der Ablauf folgt dem Muster der Kamera-Kalibrierung (Abschnitt 12). Alle JSON-Formate stehen im Arbeitsplan [`arbeitsplaene/handeye-ueber-opcua.md`](arbeitsplaene/handeye-ueber-opcua.md). Die Knoten gibt es nur mit `hand_eye_path`, also auf dem Pi mit `frame_id = cam_flange`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
