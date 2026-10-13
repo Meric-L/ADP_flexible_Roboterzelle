@@ -6,7 +6,7 @@ configured. `tagloc.overlay` re-exports both so drawing code finds them there.
 """
 
 #: Order = order of selection in the frontend.
-OVERLAY_MODES = ("off", "apriltag", "calibration")
+OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted")
 DEFAULT_OVERLAY_MODE = "apriltag"
 
 #: Labels shown to the operator.
@@ -14,7 +14,11 @@ OVERLAY_MODE_LABELS = {
     "off": "Rohbild",
     "apriltag": "AprilTags markieren",
     "calibration": "Kalibrierboard markieren",
+    "undistorted": "Entzerrt",
 }
+
+#: Shown in the image when "undistorted" has no real calibration to work with.
+NO_CALIBRATION_HINT = "Keine Kalibrierung -- Rohbild"
 
 
 def normalise_mode(mode) -> str:

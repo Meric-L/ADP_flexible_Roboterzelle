@@ -7,7 +7,7 @@ WebSocket- oder Backend-Details.
 
 The stream can be annotated: an `annotator` draws detected AprilTags or
 board corners onto the image, and a second, **writable** node selects the
-mode ("off", "apriltag", "calibration"). The publisher itself knows neither
+mode ("off", "apriltag", "calibration", "undistorted"). The publisher itself knows neither
 OpenCV nor detection -- it only passes mode and image along.
 """
 
@@ -42,6 +42,19 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
     if not ok:
         return None
     return base64.b64encode(buffer).decode("ascii")
+
+
+def _no_calibration_hint(image):
+    """Rohbild mit Hinweis, fuer "undistorted" ohne Annotator.
+
+    Ohne Annotator gibt es keine geladene Kalibrierung -- die AprilTag-Quelle
+    ist nicht aufgegangen oder gar nicht konfiguriert. Kein Fehler, kein
+    Abbruch: das Bild geht raus, nur eben sichtbar unentzerrt.
+    """
+    from tagloc.modes import NO_CALIBRATION_HINT
+    from tagloc.overlay import draw_status_bar
+
+    return draw_status_bar(image.copy(), [NO_CALIBRATION_HINT])
 
 
 def _resize_for_stream(image, max_width: int):
@@ -238,7 +251,9 @@ class CameraStreamPublisher:
         # "calibration" bleibt beim kleinen Vorschaubild: dort geht es nicht
         # um Erkennungstreue, und die Session hat ohnehin ein eigenes, separat
         # getuntes Downscale vor `detect_board` (`detection_max_width`).
-        if mode in ("apriltag", "off"):
+        # "undistorted" ebenfalls vom vollen Frame: die Kalibrierung gehoert
+        # zum Sensorbild, nicht zur ISP-Vorschau mit eigenem Ausschnitt.
+        if mode in ("apriltag", "off", "undistorted"):
             source = frame.image
         else:
             source = getattr(frame, "preview", None)
@@ -247,6 +262,8 @@ class CameraStreamPublisher:
         image, complete = source, True
         if mode != "off" and self._annotator is not None:
             image, complete = await self._annotate(loop, source, mode)
+        elif mode == "undistorted":
+            image = await loop.run_in_executor(None, _no_calibration_hint, source)
         if self._config.max_stream_width is not None:
             # Nach dem Overlay und nur fuers Publizieren -- beide Wege
             # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im

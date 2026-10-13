@@ -94,6 +94,43 @@ class UndistortProjectTest(unittest.TestCase):
 
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
+class UndistortionMapsTest(unittest.TestCase):
+    """Ganzes Bild entzerren, fuer den Livestream-Modus "undistorted"."""
+
+    def _assert_straightens(self, model):
+        """Ein verzeichnet projizierter Punkt landet nach `remap` dort, wo das
+        ideale Pinhole-Bild mit der neuen Kameramatrix ihn hat -- geprueft
+        ueber die Maps selbst: `map(u, v)` zeigt auf die Quelle im Rohbild."""
+        calibration = _calibration(model)
+        map1, map2 = lens.undistortion_maps(calibration, alpha=1.0)
+        width, height = IMAGE_SIZE
+        self.assertEqual(map1.shape[:2], (height, width))
+
+        # Ein weisser Punkt im Rohbild muss nach `remap` als weisser Fleck
+        # erhalten bleiben (alpha=1 schneidet nichts ab).
+        raw = np.zeros((height, width), dtype=np.uint8)
+        point = lens.project_points(np.array([[0.4, 0.3, 1.0]]), np.zeros(3), np.zeros(3), calibration)[0]
+        cv2.circle(raw, (round(point[0]), round(point[1])), 4, 255, -1)
+        straight = cv2.remap(raw, map1, map2, cv2.INTER_LINEAR)
+        self.assertGreater(int(straight.max()), 0)
+
+    def test_fisheye(self):
+        self._assert_straightens(calib.FISHEYE)
+
+    def test_pinhole(self):
+        self._assert_straightens(calib.PINHOLE)
+
+    def test_without_distortion_the_image_stays_put(self):
+        calibration = replace(_calibration(calib.PINHOLE), distortion=np.zeros(5))
+        map1, map2 = lens.undistortion_maps(calibration, alpha=1.0)
+        xs, ys = cv2.convertMaps(map1, map2, cv2.CV_32FC1)
+        grid_x, grid_y = np.meshgrid(np.arange(IMAGE_SIZE[0]), np.arange(IMAGE_SIZE[1]))
+        # Jeder Zielpixel holt sich (fast) denselben Quellpixel.
+        self.assertLess(float(np.max(np.abs(xs - grid_x))), 1.0)
+        self.assertLess(float(np.max(np.abs(ys - grid_y))), 1.0)
+
+
+@unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
 class FisheyePoseTest(unittest.TestCase):
     """Eine Tag-Pose aus einem Fisheye-Bild: nur mit dem richtigen Modell
     stimmt die Entfernung."""

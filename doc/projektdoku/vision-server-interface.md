@@ -639,6 +639,7 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
 | `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
 | `apriltag` (Standard) | „AprilTags markieren" | Umriss jedes erkannten Tags, **Achsenkreuz im Tag** (X rot, Y grün, Z blau), ID, Modulname aus der Tag-Map, Distanz, Reprojektionsfehler; mehrdeutige Posen orange statt grün |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
+| `undistorted` | „Entzerrt" | nichts — das Bild **entzerrt** mit der aktiven Kalibrierung (Linsenmodell der Kamera, `alpha`/`balance` = 1: ganzes Bild mit gebogenen schwarzen Rändern). Ohne echte Kalibrierung (Platzhalter oder keine Datei) das Rohbild mit dem Hinweis „Keine Kalibrierung -- Rohbild“ |
 
 Verhalten:
 
@@ -660,6 +661,7 @@ Verhalten:
   `max_stream_width` herunterskalierten Kopie, nicht auf dem vollen
   Kamera-Frame — bei `cam_ceiling` (2028×1520) kostete die volle Auflösung
   auf dem Pi spürbar Zeit und drückte die Framerate.
+- Im `undistorted`-Modus wird erst auf `max_stream_width` verkleinert und dann entzerrt (`cv2.remap`). Die Maps rechnet der Pi einmal je Auflösung und hält sie im Cache (`tagloc.lens.undistortion_maps`). Eine neue Kalibrierung (`FinishCalibration`) leert den Cache. Das ist nur eine Anzeige: Jobs, Layer 2 und Hand-Auge rechnen weiter mit dem Rohbild und entzerren nur die Eckpunkte.
 - Gezeichnet wird auf einer Kopie; der geteilte Frame bleibt unverändert.
 - Ein Fehler im Overlay beendet den Stream nicht — dann kommt das unmarkierte
   Bild, und der Fehler steht im Log.

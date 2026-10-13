@@ -1,4 +1,4 @@
-"""Tests fuer `AprilTagStreamAnnotator`s Kalibrier-Modus.
+"""Tests fuer `AprilTagStreamAnnotator`s Kalibrier- und Entzerr-Modus.
 
 `annotate()` importiert `tagloc`/`cv2` nur deferred und nicht injizierbar --
 diese Tests laufen deshalb mit echten kleinen Arrays und echtem `cv2`
@@ -191,6 +191,74 @@ class AprilTagCanvasDetectionTest(unittest.TestCase):
                 annotator.annotate(image, "apriltag")
 
         self.assertEqual(detect.call_args.args[0].shape[:2], (150, 200))
+
+
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class UndistortedModeTest(unittest.TestCase):
+    """Modus "undistorted": nur entzerrt, ohne Markierungen."""
+
+    def _calibration(self, calibration_id="echt"):
+        from tagloc.calibration import PINHOLE, CameraCalibration
+
+        return CameraCalibration(
+            camera_matrix=np.array([[80.0, 0, 50], [0, 80.0, 40], [0, 0, 1]]),
+            distortion=np.array([-0.3, 0.08, 0, 0, 0]),
+            image_size=(100, 80),
+            model=PINHOLE,
+            calibration_id=calibration_id,
+        )
+
+    def _image(self, width=100, height=80):
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        image[::10, :] = 255  # Gitterlinien: entzerrt sehen sie anders aus
+        image[:, ::10] = 255
+        return image
+
+    def test_the_image_is_remapped_and_the_maps_are_cached(self):
+        annotator = AprilTagStreamAnnotator(
+            CONFIG, detector=None, calibration=self._calibration(), tag_map=None
+        )
+        image = self._image()
+        original = image.copy()
+
+        out = annotator.annotate(image, "undistorted")
+
+        self.assertEqual(out.shape, image.shape)
+        self.assertFalse(np.array_equal(out, image))
+        np.testing.assert_array_equal(image, original)  # geteilter Frame unberuehrt
+        self.assertIn((100, 80), annotator._undistort_maps)
+
+        annotator.apply_calibration(self._calibration())
+        self.assertEqual(annotator._undistort_maps, {})
+
+    def test_a_stream_smaller_than_the_calibration_is_undistorted_at_its_size(self):
+        annotator = AprilTagStreamAnnotator(
+            CONFIG,
+            detector=None,
+            calibration=self._calibration(),
+            tag_map=None,
+            detection_max_width=50,
+        )
+        out = annotator.annotate(self._image(), "undistorted")
+        self.assertEqual(out.shape[:2], (40, 50))
+        self.assertIn((50, 40), annotator._undistort_maps)
+
+    def test_a_placeholder_calibration_sends_the_raw_image_with_a_hint(self):
+        from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+
+        annotator = AprilTagStreamAnnotator(
+            CONFIG,
+            detector=None,
+            calibration=self._calibration(PLACEHOLDER_CALIBRATION_ID),
+            tag_map=None,
+        )
+        image = np.zeros((80, 100, 3), dtype=np.uint8)
+        with patch("tagloc.overlay.draw_status_bar", side_effect=lambda img, lines: img) as bar:
+            out = annotator.annotate(image, "undistorted")
+        bar.assert_called_once()
+        self.assertEqual(bar.call_args[0][1], ["Keine Kalibrierung -- Rohbild"])
+        self.assertIsNot(out, image)
+        self.assertEqual(annotator._undistort_maps, {})
 
 
 if __name__ == "__main__":

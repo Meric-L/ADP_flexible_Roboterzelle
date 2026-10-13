@@ -95,7 +95,7 @@ Frontend                                          Vision-Server
 | `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **nur lesen** | Live-Fortschritt *einer Session*, einzige Quelle für das Ergebnis, siehe unten |
 | `ActiveCalibrationInfo` | `ns=<vision>;s=VisionMachine.ActiveCalibrationInfo` | String (JSON), **nur lesen** | Metadaten der **gerade aktiven** Kalibrierung — bleibt stehen, unabhängig von einer laufenden Session, siehe unten |
 | `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64-JPEG), nur lesen | Bild fürs `<img>`/Canvas — liefert während der Auswertung nur noch das letzte Bild vor der Pause |
-| `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **schreibbar** | `"off"` \| `"apriltag"` \| `"calibration"` — vor/bei Kalibrierstart auf `"calibration"` setzen |
+| `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **schreibbar** | `"off"` \| `"apriltag"` \| `"calibration"` \| `"undistorted"` — vor/bei Kalibrierstart auf `"calibration"` setzen |
 
 **Kein Board-Parameter wird je vom Frontend gesendet.** Board-Typ,
 Maße, cols/rows stehen serverseitig fest (pro Pi konfiguriert). Das

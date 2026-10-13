@@ -65,6 +65,9 @@ class AprilTagStreamAnnotator:
         #: `AbortCalibration` gesetzt bzw. wieder auf `None` -- siehe
         #: `set_calibration_session`.
         self._calibration_session: Any = None
+        #: Entzerr-Maps je Stream-Aufloesung fuer den Modus "undistorted" --
+        #: `initUndistortRectifyMap` ist teuer, `remap` mit fertigen Maps nicht.
+        self._undistort_maps: dict[tuple[int, int], Any] = {}
 
     def apply_calibration(self, calibration: Any) -> None:
         """Ersetzt die Kalibrierung, die das Overlay fuers Achsenkreuz nutzt
@@ -75,6 +78,7 @@ class AprilTagStreamAnnotator:
         Ergebnis von `scale_to_resolution` weiter."""
         self._calibration = calibration
         self._scaled = {}
+        self._undistort_maps = {}
 
     def set_calibration_session(self, session: Any) -> None:
         """Haengt eine laufende `CalibrationSession` ein oder aus (`None`).
@@ -146,6 +150,9 @@ class AprilTagStreamAnnotator:
                 draw_tag_overlay,
                 summarise,
             )
+
+            if mode == "undistorted":
+                return self._undistorted(image)
 
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
@@ -264,6 +271,39 @@ class AprilTagStreamAnnotator:
         except Exception:
             _log.exception("Overlay fehlgeschlagen, sende unmarkiertes Bild")
             return image
+
+    def _undistorted(self, image: Any) -> Any:
+        """Das Bild entzerrt mit der aktiven Kalibrierung, ohne Markierungen.
+
+        Erst auf Stream-Breite verkleinern, dann entzerren: `remap` auf dem
+        kleinen Bild kostet einen Bruchteil, und die Maps passen zur
+        skalierten Kalibrierung. Ohne echte Kalibrierung (Platzhalter) gibt
+        es nichts zu entzerren -- dann das Rohbild mit Hinweis, damit niemand
+        ein unverzerrtes Bild fuer ein entzerrtes haelt.
+        """
+        import cv2
+
+        from tagloc import frames as frame_tools
+        from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+        from tagloc.lens import undistortion_maps
+        from tagloc.modes import NO_CALIBRATION_HINT
+        from tagloc.overlay import draw_status_bar
+
+        if self._detection_max_width is not None:
+            from .camera_stream import _resize_for_stream
+
+            canvas = _resize_for_stream(image, self._detection_max_width)
+        else:
+            canvas = image
+        if self._calibration.calibration_id == PLACEHOLDER_CALIBRATION_ID:
+            return draw_status_bar(canvas.copy(), [NO_CALIBRATION_HINT])
+        size = frame_tools.image_size(canvas)
+        maps = self._undistort_maps.get(size)
+        if maps is None:
+            maps = undistortion_maps(self._calibration_for(size), alpha=1.0)
+            self._undistort_maps[size] = maps
+        # `remap` schreibt in ein neues Bild -- der geteilte Frame bleibt unberuehrt.
+        return cv2.remap(canvas, maps[0], maps[1], cv2.INTER_LINEAR)
 
 
 __all__ = ["AprilTagStreamAnnotator"]

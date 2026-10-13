@@ -11,6 +11,7 @@ import asyncio
 import threading
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 from tagloc.modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODES, normalise_mode
 from vision_server.camera import CameraFrame
@@ -426,6 +427,51 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         await _run_briefly(publisher, 0.1)
 
         self.assertIn(f"encoded:voll:{FAST_CONFIG.jpeg_quality}", node.written)
+
+
+class UndistortedStreamTest(unittest.IsolatedAsyncioTestCase):
+    """Modus "undistorted": voller Frame zum Annotator, der entzerrt."""
+
+    async def test_the_full_frame_goes_to_the_annotator(self):
+        camera = FakeCamera()
+        loop = asyncio.get_running_loop()
+        camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
+        node = FakeNode()
+        annotator = FakeAnnotator()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            FAST_CONFIG,
+            encode_frame=fake_encode,
+            annotator=annotator,
+            mode_node=FakeModeNode("undistorted"),
+        )
+
+        await _run_briefly(publisher, 0.1)
+
+        self.assertEqual({call for call in annotator.calls}, {("voll", "undistorted")})
+        self.assertIn(
+            f"encoded:annotated:voll:undistorted:{FAST_CONFIG.jpeg_quality}", node.written
+        )
+
+    async def test_without_an_annotator_the_raw_frame_gets_a_hint(self):
+        camera = FakeCamera()
+        camera.latest_frame = _fresh_frame("voll")
+        node = FakeNode()
+        publisher = CameraStreamPublisher(
+            camera,
+            node,
+            FAST_CONFIG,
+            encode_frame=fake_encode,
+            mode_node=FakeModeNode("undistorted"),
+        )
+
+        with patch(
+            "vision_server.camera_stream._no_calibration_hint", lambda image: f"hinweis:{image}"
+        ):
+            await _run_briefly(publisher, 0.1)
+
+        self.assertIn(f"encoded:hinweis:voll:{FAST_CONFIG.jpeg_quality}", node.written)
 
 
 if __name__ == "__main__":

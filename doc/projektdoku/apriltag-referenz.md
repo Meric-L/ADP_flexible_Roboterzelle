@@ -627,7 +627,7 @@ konstant auf `1.0` gesetzt.
 ## 8. `tagloc.overlay` — Erkennungsergebnisse im Bild markieren
 
 ```python
-OVERLAY_MODES = ("off", "apriltag", "calibration")     # aus tagloc.modes
+OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted")     # aus tagloc.modes
 def normalise_mode(mode) -> str
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None

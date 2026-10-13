@@ -121,6 +121,44 @@ def project_points(object_points, rvec, tvec, calibration: CameraCalibration) ->
     return np.asarray(projected).reshape(-1, 2)
 
 
+def undistortion_maps(calibration: CameraCalibration, alpha: float = 1.0):
+    """Vorberechnete Maps fuer `cv2.remap`, die ein ganzes Bild entzerren.
+
+    Fuer die Anzeige (Livestream-Modus "undistorted"), nicht fuer die Messung
+    -- die entzerrt nur Eckpunkte (`undistort_points`). Einmal je Aufloesung
+    und Kalibrierung rechnen: `initUndistortRectifyMap` ist teuer, `remap`
+    mit fertigen Maps nicht.
+
+    `alpha` waehlt den Ausschnitt: 1 = alle Bildpunkte bleiben sichtbar, mit
+    den gebogenen schwarzen Raendern, an denen man die Wirkung der
+    Entzerrung sieht; 0 = beschnitten auf gueltige Pixel. Beim Fisheye
+    entspricht das `balance`.
+
+    Bildgroesse = `calibration.image_size`; fuer eine andere Aufloesung
+    vorher `scale_to_resolution`. Rueckgabe `(map1, map2)`.
+    """
+    import cv2
+
+    _check_model(calibration.model)
+    size = (int(calibration.image_size[0]), int(calibration.image_size[1]))
+    camera_matrix = _camera_matrix(calibration)
+    if calibration.model == FISHEYE:
+        coefficients = _fisheye_coefficients(calibration)
+        new_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
+            camera_matrix, coefficients, size, np.eye(3), balance=float(alpha)
+        )
+        return cv2.fisheye.initUndistortRectifyMap(
+            camera_matrix, coefficients, np.eye(3), new_matrix, size, cv2.CV_16SC2
+        )
+    distortion = np.asarray(calibration.distortion, dtype=np.float64)
+    new_matrix, _ = cv2.getOptimalNewCameraMatrix(
+        camera_matrix, distortion, size, float(alpha), size
+    )
+    return cv2.initUndistortRectifyMap(
+        camera_matrix, distortion, None, new_matrix, size, cv2.CV_16SC2
+    )
+
+
 def calibrate(
     object_points, image_points, image_size: tuple[int, int], model: str = PINHOLE
 ) -> tuple[float, np.ndarray, np.ndarray]:
@@ -203,4 +241,5 @@ __all__ = [
     "calibrate",
     "project_points",
     "undistort_points",
+    "undistortion_maps",
 ]
