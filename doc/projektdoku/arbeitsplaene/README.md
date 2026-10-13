@@ -31,6 +31,7 @@ nicht gibt.
 | [`handeye-ueber-opcua.md`](handeye-ueber-opcua.md) | apriltag | fertig | `Agent: Hand-Auge-Kalibrierung per OPC UA` | 13.10.2026 |
 | [`handeye-schachbrett-automatik.md`](handeye-schachbrett-automatik.md) | apriltag | fertig | John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett` | 13.10.2026 |
 | [`layer2-schraege-ansicht.md`](layer2-schraege-ansicht.md) | apriltag | fertig | John Glanz, `Agent: Layer 2 schräge Ansicht` | 13.10.2026 |
+| [`zellen-ueberwachung.md`](zellen-ueberwachung.md) | apriltag | fertig | `Agent: Zellen-Überwachung (Layer 1)` | 13.10.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`

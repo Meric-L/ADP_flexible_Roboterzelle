@@ -394,6 +394,8 @@ class VisionMachine:
     layer2_run: Any = None
     #: Hand-Auge-Kalibrierung (`handeye_session.py`); `None` ausser auf dem Hand-Pi.
     hand_eye_session: Any = None
+    #: Zellen-Ueberwachung (`cellwatch.py`); `None` ausser auf der Deckenkamera.
+    cell_watch: Any = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -407,6 +409,8 @@ class VisionMachine:
             await self.layer2_run.abort("Server faehrt herunter")
         if self.hand_eye_session is not None and self.hand_eye_session.active:
             await self.hand_eye_session.abort()
+        if self.cell_watch is not None:
+            await self.cell_watch.aclose()
         # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
         # sonst als Haenger durch, und der letzte Wert im Adressraum waere
         # OFF_SPEC statt des letzten echten Zustands.
@@ -906,6 +910,17 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             or (layer2_run is not None and layer2_run.active),
         )
 
+    cell_watch = None
+    if apriltag_source is not None and space.cell_watch_status is not None:
+        cell_watch = await _install_cell_watch(
+            space, config, apriltag_source, results, calibration_methods, states,
+            lambda: "Job laeuft" if jobs.busy else (
+                "Kamera-Kalibrierung laeuft"
+                if calibration_session is not None and calibration_session.busy
+                else ""
+            ),
+        )
+
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
     # stehen: das Programm spiegelt den Zustand des Vision-Systems und waere
     # sonst `Ready`, bevor feststeht, ob die Quelle ueberhaupt aufgeht.
@@ -925,6 +940,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["Layer2Status"] = space.layer2_status
     if space.hand_eye_status is not None:
         mirror_nodes["HandEyeStatus"] = space.hand_eye_status
+    if space.cell_watch_status is not None:
+        mirror_nodes["CellWatchStatus"] = space.cell_watch_status
     program = await install_vision_program(
         server,
         server.nodes.objects,
@@ -967,6 +984,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         calibration_session=calibration_session,
         layer2_run=layer2_run,
         hand_eye_session=hand_eye_session,
+        cell_watch=cell_watch,
     )
 
 
@@ -1115,6 +1133,96 @@ async def _install_hand_eye_session(
             [ua.VariantType.Int32],
         )
     return session
+
+
+async def _install_cell_watch(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    apriltag_source: Any,
+    results: ResultStore,
+    methods: dict[str, Node],
+    states: VisionStateMachines,
+    busy_reason: Callable[[], str],
+) -> Any:
+    """Legt StartCellWatch/StopCellWatch an und verdrahtet die Ueberwachung.
+
+    Nur auf der Deckenkamera (Knoten nur ohne `hand_eye_path`). Liest die
+    Frames der geteilten Kamera -- dieselben wie Livestream und Jobs, keine
+    eigene Aufnahme -- und rechnet mit eigenem Detektor in einem eigenen
+    Thread. Waehrend eines Jobs oder einer Kalibrierung pausiert sie, damit
+    ein Layer-1-Job jederzeit volle CPU hat. Siehe
+    `doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
+    """
+    # Erst hier: die Ueberwachung braucht numpy/OpenCV, der Rest des Servers nicht.
+    from tagloc.detector import build_detector
+
+    from .cellwatch import CellWatch, CellWatchPorts, sightings_from_locations
+
+    apriltag = config.apriltag
+    detector = build_detector(
+        apriltag.tag_family,
+        apriltag.detector_backend,
+        subpixel_corner_refinement=apriltag.subpixel_corner_refinement,
+        apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
+    )
+    seen = {"timestamp": None}
+
+    async def observe(options):
+        frame = apriltag_source.camera.latest_frame
+        if frame is None:
+            return None, "kein Kamerabild"
+        if frame.timestamp == seen["timestamp"]:
+            return None, ""  # kein neues Bild, keine Aussage
+        seen["timestamp"] = frame.timestamp
+        locations, localization = await asyncio.to_thread(
+            apriltag_source.observe_cell, frame.image, detector
+        )
+        return sightings_from_locations(locations, localization, options)
+
+    async def publish(status: str) -> None:
+        await space.cell_watch_status.write_value(ua.Variant(status, ua.VariantType.String))
+
+    cell_watch = CellWatch(
+        CellWatchPorts(
+            observe=observe,
+            busy_reason=busy_reason,
+            result_for_job=results.result_for_job,
+            world_frame=lambda: apriltag_source._tag_map.frame_id,
+            publish=publish,
+        )
+    )
+    await cell_watch.publish_idle()
+
+    method_prefix = config.vision_system_name
+
+    @uamethod
+    async def start_cell_watch(parent, options_json: str):
+        """1:StartCellWatch -- scharf schalten bzw. neue Referenz setzen."""
+        # Operational reicht: waehrend eines Jobs darf neu scharf geschaltet
+        # werden, die Ueberwachung pausiert dann ohnehin.
+        if states.state_names()[0] != "Operational":
+            return (ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),)
+        error = await cell_watch.start(options_json or "")
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def stop_cell_watch(parent):
+        """1:StopCellWatch -- Ueberwachung aus."""
+        error = await cell_watch.stop()
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    for name, handler, inputs in (
+        ("StartCellWatch", start_cell_watch, [ua.VariantType.String]),
+        ("StopCellWatch", stop_cell_watch, []),
+    ):
+        methods[name] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.{name}", space.own_idx),
+            ua.QualifiedName(name, space.own_idx),
+            handler,
+            inputs,
+            [ua.VariantType.Int32],
+        )
+    return cell_watch
 
 
 async def run(config: VisionServerConfig) -> None:

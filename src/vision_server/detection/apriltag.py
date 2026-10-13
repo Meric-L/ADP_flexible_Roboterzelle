@@ -482,6 +482,49 @@ class AprilTagDetectionSource(DetectionSource):
             )
         return pose, ""
 
+    def observe_cell(self, image, detector: Any):
+        """Ein Bild fuer die Zellen-Ueberwachung: `(Modul-Orte je Tag, Lokalisierung)`.
+
+        Dieselbe Rechnung wie ein Job -- Tag-Posen, gemeinsames PnP ueber die
+        Welttags, `locate_modules` --, aber **ohne Seiteneffekte**: kein Anker,
+        keine Drift, kein `_localization`, kein `world_tags`. Und nicht
+        zusammengefasst, damit jeder Tag fuer sich verglichen werden kann.
+
+        `detector` ist eine eigene Instanz der Ueberwachung: sie laeuft in
+        einem eigenen Thread, und ein Detektor ist nicht fuer zwei Threads
+        zugleich gebaut. Laeuft blockierend -- im Worker-Thread aufrufen.
+        """
+        from tagloc import frames as frame_tools
+        from tagloc.localize import locate_modules, localize_camera
+        from tagloc.pose import estimate_tag_poses
+
+        calibration = self._calibration_for(image)
+        tag_poses = estimate_tag_poses(
+            detector.detect(frame_tools.to_gray(image)),
+            calibration,
+            tag_map=self._tag_map,
+            default_size_m=self._config.tag_size_m,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+        )
+        localization = localize_camera(
+            tag_poses,
+            self._tag_map,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+            calibration=calibration,
+        )
+        if localization is None:
+            return [], None
+        return (
+            locate_modules(
+                tag_poses,
+                self._tag_map,
+                localization=localization,
+                frame_id=self._tag_map.frame_id,
+                max_reprojection_error_px=self._config.max_reproj_error_px,
+            ),
+            localization,
+        )
+
     def _calibration_for(self, image):
         """Die Kalibrierung, passend zur Aufloesung dieses Bilds."""
         from tagloc import frames as frame_tools

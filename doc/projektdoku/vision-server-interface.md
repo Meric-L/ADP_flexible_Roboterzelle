@@ -1640,3 +1640,18 @@ Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. D
 `HandEyeStatus` hat das Feld `current`. Darin steht die Kalibrierung aus `data/handeye/cam_flange.json`: `{poseFlangeCam, calibrationId, rmsPositionM, rmsRotationDeg, sampleCount}`, ohne Datei `null`.
 
 Anders als `result` gibt es `current` auch nach einem Neustart des Servers und ohne laufende Sitzung. Das Frontend zeigt damit die Handkamera am Flansch des Roboter-Zwillings.
+
+## 16. Zellen-Überwachung (nur Deckenkamera)
+
+Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde, und meldet nur **bestätigte** Änderungen. Formate, Regeln und Defaults stehen im Arbeitsplan [`arbeitsplaene/zellen-ueberwachung.md`](arbeitsplaene/zellen-ueberwachung.md). Die Knoten gibt es nur mit AprilTag und ohne `hand_eye_path`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `StartCellWatch` | `(OptionsJson: String) -> (Error: Int32)`, `wsc.vision.cellwatch.start/1` |
+| `StopCellWatch` | `() -> (Error: Int32)` |
+| `CellWatchStatus` | String, JSON `wsc.vision.cellwatch.status/1` |
+
+- **Referenz:** das Ergebnis eines Layer-1-Jobs (`referenceJobId`, eines der letzten 20) oder, mit `null`, die aktuelle stabile Beobachtung („Ignorieren“).
+- **Gültige Bilder:** Nur Bilder mit gemeinsam gelöster Kamerapose (`joint`, mindestens zwei Welttags) zählen. Andere sind „keine Aussage“, nicht „Tag fehlt“.
+- **Auswertung:** Gerechnet wird je Tag mit dem Median über ein Zeitfenster, mit Bestätigungszeit und Hysterese.
+- **Ressourcen:** Die Überwachung nutzt die Frames der geteilten Kamera und einen eigenen Detektor. Während eines Jobs oder einer Kalibrierung steht sie auf `paused`.

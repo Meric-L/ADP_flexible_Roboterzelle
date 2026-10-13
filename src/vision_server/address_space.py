@@ -70,6 +70,9 @@ class VisionAddressSpace:
     #: Zustand der Hand-Auge-Kalibrierung (JSON), siehe `handeye_session.py`.
     #: Nur auf dem Hand-Pi, wie `layer2_*`.
     hand_eye_status: Node | None = None
+    #: Zustand der Zellen-Ueberwachung (JSON), siehe `cellwatch.py`. Nur auf
+    #: der Deckenkamera, also mit AprilTag und ohne `hand_eye_path`.
+    cell_watch_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -285,6 +288,14 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     layer2_target: Node | None = None
     layer2_status: Node | None = None
     hand_eye_status: Node | None = None
+    cell_watch_status: Node | None = None
+    if config.apriltag is not None and config.apriltag.hand_eye_path is None:
+        cell_watch_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.CellWatchStatus", own_idx),
+            ua.QualifiedName("CellWatchStatus", own_idx),
+            "",
+            ua.VariantType.String,
+        )
     if config.apriltag is not None and config.apriltag.hand_eye_path is not None:
         # Nur lesen: der Lauf schreibt, das Frontend abonniert. Gesteuert wird
         # ueber StartLayer2Run/ReportRobotPose, damit jede Eingabe geprueft
@@ -338,5 +349,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         layer2_target=layer2_target,
         layer2_status=layer2_status,
         hand_eye_status=hand_eye_status,
+        cell_watch_status=cell_watch_status,
         amcm_idx=amcm_idx,
     )

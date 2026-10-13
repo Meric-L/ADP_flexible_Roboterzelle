@@ -1,6 +1,7 @@
 """Ergebnisablage im Adressraum."""
 
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -35,10 +36,20 @@ class PublishedResult:
 class ResultStore:
     """Haelt eine wiederverwendete ResultType-Instanz und einen JSON-Spiegel."""
 
+    #: So viele Ergebnisse haelt `result_for_job` im Speicher.
+    HISTORY = 20
+
     def __init__(self, result_node: Node, json_node: Node, children: dict[str, Node]) -> None:
         self._result_node = result_node
         self._json_node = json_node
         self._children = children
+        #: Die letzten Payloads je JobId -- die Zellen-Ueberwachung nimmt das
+        #: Ergebnis, das das Frontend im Viewport hat, als Referenz.
+        self._history: OrderedDict[str, str] = OrderedDict()
+
+    def result_for_job(self, job_id: str) -> str | None:
+        """Payload eines der letzten `HISTORY` Ergebnisse, sonst `None`."""
+        return self._history.get(job_id)
 
     @property
     def json_node(self) -> Node:
@@ -113,3 +124,7 @@ class ResultStore:
             ua.Variant([result.payload_json], ua.VariantType.String)
         )
         await self._json_node.write_value(result.payload_json, ua.VariantType.String)
+        self._history[result.job_id] = result.payload_json
+        self._history.move_to_end(result.job_id)
+        while len(self._history) > self.HISTORY:
+            self._history.popitem(last=False)
