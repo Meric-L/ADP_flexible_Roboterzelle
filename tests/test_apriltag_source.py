@@ -397,8 +397,9 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "cam_ceiling")
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 2.0), atol=1e-12)
-        # Ohne Welt-KS keine Welttags im Payload.
+        # Ohne Welt-KS keine Welttags und keine Kamerapose im Payload.
         self.assertEqual(source.world_tags, ())
+        self.assertIsNone(source.camera_localization)
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
@@ -452,6 +453,44 @@ class WorldTagsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(error, VisionJobError)
         self.assertEqual(error.code, VisionErrorCode.DETECTION_FAILED)
         self.assertEqual([tag["tagId"] for tag in source.world_tags], [0, 1])
+        # Auch ohne Detektion: wie die Kamerapose zustande kam.
+        summary = source.camera_localization
+        self.assertEqual(summary["worldTagIds"], [0, 1])
+        self.assertEqual(summary["solver"], "average")  # Fake ohne Kalibrierung
+        json.dumps(summary, allow_nan=False)
+
+    def test_an_anchored_pose_is_reported_as_anchor_without_an_error(self):
+        from tagloc.localize import ORIGIN_ROBOT_POSE, CameraLocalization
+
+        from vision_server.detection.apriltag import _localization_summary
+
+        self.assertIsNone(_localization_summary(None))
+        summary = _localization_summary(
+            CameraLocalization(
+                pose_world_cam=geometry.identity(),
+                world_tag_ids=(),
+                primary_tag_id=583,
+                spread_m=0.002,
+                origin=ORIGIN_ROBOT_POSE,
+            )
+        )
+        self.assertEqual(summary["solver"], "anchor")
+        self.assertIsNone(summary["reprojectionErrorPx"])
+        self.assertEqual(summary["spreadM"], 0.002)
+        self.assertEqual(summary["worldTagIds"], [])
+
+    def test_the_joint_corner_error_is_averaged_per_tag(self):
+        from vision_server.detection.apriltag import _merge_world_tags
+
+        pose = geometry.identity()
+        merged = _merge_world_tags(
+            [[(583, pose, 0.4, False, 0.6)], [(583, pose, 0.6, False, 1.0)], [(584, pose, 0.5, False, None)]]
+        )
+        by_id = {tag["tagId"]: tag for tag in merged}
+        self.assertAlmostEqual(by_id[583]["jointReprojectionErrorPx"], 0.8)
+        self.assertAlmostEqual(by_id[583]["reprojectionErrorPx"], 0.5)
+        # Ohne gemeinsame Pose (ein Welttag allein) fehlt das Feld.
+        self.assertNotIn("jointReprojectionErrorPx", by_id[584])
 
     async def test_a_new_job_does_not_report_the_old_world_tags(self):
         with tempfile.TemporaryDirectory() as folder:

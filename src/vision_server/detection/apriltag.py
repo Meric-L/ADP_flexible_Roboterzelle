@@ -116,9 +116,36 @@ def _observed_world_tags(tag_poses, tag_map, localization) -> list:
                 compose(localization.pose_world_cam, tag_pose.pose_cam_tag),
                 tag_pose.reprojection_error_px,
                 tag_pose.is_ambiguous,
+                # Fehler der Ecken dieses Tags unter der gemeinsamen Pose --
+                # zeigt, welcher Welttag nicht zur Karte passt.
+                getattr(localization, "tag_errors_px", {}).get(tag_pose.tag_id),
             )
         )
     return observed
+
+
+def _localization_summary(localization) -> dict | None:
+    """`cameraLocalization` im Payload: wie die Kamerapose zustande kam.
+
+    Aus dem letzten Bild des Jobs, wie die `camera*`-Attribute der
+    Detektionen -- hier aber auch ohne Detektion, fuer ein Bild nur mit
+    Welttags. Eine aus dem Anker fortgeschriebene Pose heisst `anchor` und
+    hat keinen Reprojektionsfehler: sie ist nicht gemessen.
+    """
+    if localization is None:
+        return None
+    from tagloc.localize import ORIGIN_ROBOT_POSE
+
+    anchored = localization.origin == ORIGIN_ROBOT_POSE
+    return {
+        "solver": "anchor" if anchored else localization.solver,
+        "reprojectionErrorPx": None
+        if anchored
+        else _finite_or_none(localization.reprojection_error_px),
+        "spreadM": _finite_or_none(localization.spread_m),
+        "spreadDeg": _finite_or_none(math.degrees(localization.spread_rad)),
+        "worldTagIds": [int(tag_id) for tag_id in localization.world_tag_ids],
+    }
 
 
 def _merge_world_tags(samples) -> tuple:
@@ -137,8 +164,8 @@ def _merge_world_tags(samples) -> tuple:
             merge_tag_poses([observation[1] for observation in observations])
         )
         errors = [o[2] for o in observations if o[2] is not None and math.isfinite(o[2])]
-        merged.append(
-            {
+        joint_errors = [o[4] for o in observations if o[4] is not None and math.isfinite(o[4])]
+        entry = {
                 "tagId": int(tag_id),
                 "position": list(position),
                 "orientation": list(orientation),
@@ -148,7 +175,11 @@ def _merge_world_tags(samples) -> tuple:
                 "ambiguous": any(observation[3] for observation in observations),
                 "sampleCount": len(observations),
             }
-        )
+        if joint_errors:
+            entry["jointReprojectionErrorPx"] = _finite_or_none(
+                sum(joint_errors) / len(joint_errors)
+            )
+        merged.append(entry)
     return tuple(merged)
 
 
@@ -457,17 +488,21 @@ class AprilTagDetectionSource(DetectionSource):
         )
         from tagloc.pose import estimate_tag_poses
 
+        calibration = self._calibration_for(image)
         tag_poses = estimate_tag_poses(
             self._detector.detect(frame_tools.to_gray(image)),
-            self._calibration_for(image),
+            calibration,
             tag_map=self._tag_map,
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        # Mit Kalibrierung: bei zwei und mehr Welttags ein gemeinsames PnP
+        # ueber alle ihre Ecken statt des Mittels der Einzel-Tags.
         localization = localize_camera(
             tag_poses,
             self._tag_map,
             max_reprojection_error_px=self._config.max_reproj_error_px,
+            calibration=calibration,
         )
 
         # Der optische Wert gewinnt immer, wenn ein Welttag im Bild liegt --
@@ -512,6 +547,7 @@ class AprilTagDetectionSource(DetectionSource):
         # Vor dem ersten Bild leeren: ein Job, der an der Kamera scheitert,
         # darf nicht die Welttags des vorigen melden.
         self.world_tags = ()
+        self.camera_localization = None
 
         samples: list[list] = []
         world_samples: list[list] = []
@@ -528,6 +564,7 @@ class AprilTagDetectionSource(DetectionSource):
         # Vor der Pruefung auf Module: ein Bild nur mit Welttags endet gleich
         # in DETECTION_FAILED, soll die Welttags aber trotzdem melden.
         self.world_tags = _merge_world_tags(world_samples)
+        self.camera_localization = _localization_summary(self._localization)
         located = merge_samples(samples)
         if not located:
             raise VisionJobError(
@@ -607,6 +644,11 @@ class AprilTagDetectionSource(DetectionSource):
                 # Ob die Kamerapose gemessen oder fortgeschrieben wurde, ist
                 # kein Detail: die beiden haben nicht dieselbe Genauigkeit.
                 attributes["cameraPoseOrigin"] = localization.origin
+                if localization.solver:
+                    attributes["cameraPoseSolver"] = localization.solver
+                    attributes["cameraReprojectionErrorPx"] = _finite_or_none(
+                        localization.reprojection_error_px
+                    )
             if self._anchor is not None:
                 attributes["anchorWorldTagId"] = self._anchor.world_tag_id
             if self._drift is not None:

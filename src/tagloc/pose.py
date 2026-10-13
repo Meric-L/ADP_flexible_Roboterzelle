@@ -13,6 +13,7 @@ The prototype (`src/apriltag/detect_apriltags.py`) does two things worse:
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -226,16 +227,132 @@ def _solver_exceptions() -> tuple[type[BaseException], ...]:
         return (ValueError,)
 
 
+@dataclass(frozen=True)
+class JointCameraPose:
+    """`T_cam_world` aus einem PnP ueber alle Ecken mehrerer Welttags."""
+
+    pose_cam_world: Pose
+    #: RMS ueber alle Ecken aller beteiligten Tags, Pixel.
+    reprojection_error_px: float
+    #: Je Tag der RMS seiner vier Ecken unter der gemeinsamen Pose.
+    tag_errors_px: dict[int, float]
+    tag_ids: tuple[int, ...]
+
+
+def solve_camera_from_world_tags(
+    tag_poses: Sequence[TagPose],
+    world_poses: dict[int, Pose],
+    sizes_m: dict[int, float],
+    calibration: CameraCalibration,
+    initial_pose_cam_world: Pose | None = None,
+) -> JointCameraPose | None:
+    """Kamerapose aus **allen** Ecken aller Welttags in einem PnP.
+
+    Je Tag ein eigenes PnP aus vier Ecken auf 20 cm Basis ist aus 2-3 m
+    Abstand in der Neigung schlecht bestimmt -- 1 Grad Kippfehler sind am
+    Boden 5 cm. Das Mittel solcher Einzelschaetzungen erbt das. Ein PnP ueber
+    die Ecken aller Welttags hat dagegen die ganze Zelle als Basis.
+
+    Die Ecken werden wie beim Einzel-Tag entzerrt (Linsenmodell aus
+    `tagloc.lens`) und dann mit idealem Pinhole geloest. Startwerte: die
+    uebergebene Schaetzung (typisch das Mittel der Einzel-Tags) und
+    `SOLVEPNP_SQPNP` bzw. `IPPE`; jede wird mit Levenberg-Marquardt
+    verfeinert, die mit dem kleineren Fehler gewinnt.
+
+    Mehrdeutige Tags zaehlen **mit**: die Mehrdeutigkeit gehoert zur
+    Einzel-Tag-Loesung aus vier Ecken (zwei Kippstellungen erklaeren sie
+    gleich gut), nicht zu den Ecken selbst. Gerade ein frontal von oben
+    gesehener Tag ist oft "mehrdeutig" -- im gemeinsamen PnP ueber alle Ecken
+    verschwindet das. Tags ohne Weltpose bleiben aussen vor. Unter zwei Tags
+    `None` -- dann gibt es nichts zu verbinden.
+    """
+    import cv2
+
+    from .geometry import compose, rvec_from_rotation
+
+    used = [
+        tag_pose
+        for tag_pose in sorted(tag_poses, key=lambda item: item.tag_id)
+        if tag_pose.tag_id in world_poses and tag_pose.observation is not None
+    ]
+    if len(used) < 2:
+        return None
+
+    object_points = []
+    image_points = []
+    for tag_pose in used:
+        corners_tag = tag_object_points(sizes_m[tag_pose.tag_id])
+        corners_world = [
+            compose(world_poses[tag_pose.tag_id], _translation(corner))[:3, 3]
+            for corner in corners_tag
+        ]
+        object_points.append(np.asarray(corners_world, dtype=np.float64))
+        image_points.append(undistort_corners(tag_pose.observation.corners, calibration))
+    objects = np.concatenate(object_points).reshape(-1, 1, 3)
+    images = np.concatenate(image_points).reshape(-1, 1, 2)
+    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+    no_distortion = np.zeros(5, dtype=np.float64)
+
+    starts = []
+    if initial_pose_cam_world is not None:
+        start = np.asarray(initial_pose_cam_world, dtype=np.float64)
+        starts.append((rvec_from_rotation(start[:3, :3]).reshape(3, 1), start[:3, 3].reshape(3, 1)))
+    for name in ("SOLVEPNP_SQPNP", "SOLVEPNP_IPPE"):
+        flag = getattr(cv2, name, None)
+        if flag is None:
+            continue
+        try:
+            found, rvec, tvec = cv2.solvePnP(objects, images, camera_matrix, no_distortion, flags=flag)
+        except cv2.error:
+            continue
+        if found:
+            starts.append((rvec, tvec))
+            break
+    if not starts:
+        return None
+
+    best = None
+    for rvec, tvec in starts:
+        rvec, tvec = cv2.solvePnPRefineLM(
+            objects, images, camera_matrix, no_distortion, rvec.copy(), tvec.copy()
+        )
+        error = _reprojection_error_px(objects, images, rvec, tvec, camera_matrix)
+        if best is None or error < best[0]:
+            best = (error, rvec, tvec)
+    error, rvec, tvec = best
+
+    tag_errors = {}
+    for index, tag_pose in enumerate(used):
+        tag_errors[int(tag_pose.tag_id)] = _reprojection_error_px(
+            object_points[index], image_points[index], rvec, tvec, camera_matrix
+        )
+    _log.debug("Kamerapose gemeinsam aus %d Welttags, RMS %.2f px", len(used), error)
+    return JointCameraPose(
+        pose_cam_world=from_rvec_tvec(rvec, tvec),
+        reprojection_error_px=error,
+        tag_errors_px=tag_errors,
+        tag_ids=tuple(int(tag_pose.tag_id) for tag_pose in used),
+    )
+
+
+def _translation(point) -> Pose:
+    pose = np.eye(4, dtype=np.float64)
+    pose[:3, 3] = point
+    return pose
+
+
 def poses_by_tag(tag_poses: Sequence[TagPose]) -> dict[int, Pose]:
     """Return `{tag_id: T_cam_tag}`, the input format of `tagmap.place_tags`."""
     return {tag_pose.tag_id: tag_pose.pose_cam_tag for tag_pose in tag_poses}
 
 
 __all__ = [
+    "JointCameraPose",
     "TagPose",
     "estimate_tag_pose",
     "estimate_tag_poses",
     "poses_by_tag",
+    "solve_camera_from_world_tags",
     "tag_object_points",
     "undistort_corners",
 ]

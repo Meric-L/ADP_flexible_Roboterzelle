@@ -63,6 +63,15 @@ SOURCE_PRECEDENCE = (SOURCE_CEILING, SOURCE_FLANGE)
 ORIGIN_WORLD_TAGS = "world_tags"
 ORIGIN_ROBOT_POSE = "robot_pose"
 
+#: Wie `T_world_cam` aus den Welttags gerechnet wurde. `joint`: ein PnP ueber
+#: alle Ecken aller Welttags -- der genaue Weg, sobald zwei eindeutige
+#: Welttags im Bild sind. `single`: ein einzelner Welttag. `average`: Mittel
+#: der Einzel-Tag-Posen, nur noch als Rueckfall (ohne Kalibrierung, oder
+#: wenn das gemeinsame PnP scheitert).
+SOLVER_JOINT = "joint"
+SOLVER_SINGLE = "single"
+SOLVER_AVERAGE = "average"
+
 
 @dataclass(frozen=True)
 class CameraLocalization:
@@ -82,6 +91,15 @@ class CameraLocalization:
     #: obtained. A consumer must be able to tell a directly measured pose from
     #: one carried over by the kinematics; they do not have the same accuracy.
     origin: str = ORIGIN_WORLD_TAGS
+    #: `SOLVER_JOINT`, `SOLVER_SINGLE` or `SOLVER_AVERAGE`; `""` when carried
+    #: over from the anchor.
+    solver: str = ""
+    #: Reprojection RMS of the camera pose, in pixels: over all corners of all
+    #: world tags for `joint`, the tag's own for `single`. NaN otherwise.
+    reprojection_error_px: float = float("nan")
+    #: Per world tag, the RMS of its corners under the joint pose -- which tag
+    #: disagrees with the map. Empty unless `joint`.
+    tag_errors_px: dict[int, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -132,13 +150,24 @@ def localize_camera(
     tag_map: TagMap,
     *,
     max_reprojection_error_px: float = 3.0,
+    calibration: Any = None,
 ) -> CameraLocalization | None:
     """Determine `T_world_cam` from the world tags visible in this image.
 
-    For each world tag, `T_world_cam = T_world_tag @ T_cam_tag^-1`. Several
-    world tags give several estimates, merged weighted by confidence -- a tag
-    seen far away and at a shallow angle must not pull as hard as one filling
-    the frame.
+    For each world tag, `T_world_cam = T_world_tag @ T_cam_tag^-1`. With a
+    `calibration` and at least two world tags, the camera pose is
+    then solved **jointly** from all their corners in one PnP
+    (`tagloc.pose.solve_camera_from_world_tags`): four corners on 20 cm
+    leave the tilt of a single-tag estimate poorly determined from 2-3 m, the
+    corners of all world tags span the whole cell. `spread_m` then says how
+    far the single-tag estimates stray from the joint pose -- a diagnosis, not
+    the pose.
+
+    Without a calibration (or if the joint solve fails) the single-tag
+    estimates are merged weighted by confidence, as before -- a tag seen far
+    away and at a shallow angle must not pull as hard as one filling the
+    frame. The joint solve is the only place this module touches OpenCV, and
+    only when a calibration is passed.
 
     `primary_tag_id` is the world tag closest to the camera. That is the one
     the eye-in-hand camera aligns itself to; with a single world tag in the
@@ -172,7 +201,23 @@ def localize_camera(
     candidates.sort(key=lambda item: item[0])
     estimates = [item[1] for item in candidates]
     merged = average_poses(estimates, [item[2] for item in candidates])
-    if len(candidates) > 1:
+    solver = SOLVER_SINGLE if len(candidates) == 1 else SOLVER_AVERAGE
+    error_px = float("nan")
+    tag_errors: dict[int, float] = {}
+    if len(candidates) == 1:
+        error_px = next(
+            tag_pose.reprojection_error_px
+            for tag_pose in tag_poses
+            if tag_pose.tag_id == candidates[0][0]
+        )
+    elif calibration is not None:
+        joint = _solve_joint(tag_poses, tag_map, calibration, merged)
+        if joint is not None:
+            merged = invert(joint.pose_cam_world)
+            solver = SOLVER_JOINT
+            error_px = joint.reprojection_error_px
+            tag_errors = dict(joint.tag_errors_px)
+    if solver == SOLVER_AVERAGE:
         _log.debug("Kamerapose aus %d Welttags gemittelt", len(candidates))
 
     # Tie broken by tag id, so the choice is reproducible between images.
@@ -183,7 +228,32 @@ def localize_camera(
         primary_tag_id=primary,
         spread_m=max(translation_distance_m(merged, pose) for pose in estimates),
         spread_rad=max(rotation_distance_rad(merged, pose) for pose in estimates),
+        solver=solver,
+        reprojection_error_px=error_px,
+        tag_errors_px=tag_errors,
     )
+
+
+def _solve_joint(tag_poses, tag_map: TagMap, calibration, initial_world_cam: Pose):
+    """`solve_camera_from_world_tags` -- `None` statt einer Ausnahme.
+
+    Scheitert das gemeinsame PnP, bleibt das Mittel der Einzel-Tags: eine
+    schlechtere Pose ist besser als gar keine Welt.
+    """
+    try:
+        from .pose import solve_camera_from_world_tags
+
+        references = tag_map.reference_poses()
+        return solve_camera_from_world_tags(
+            tag_poses,
+            references,
+            {tag_id: tag_map.size_for(tag_id, 0.0) for tag_id in references},
+            calibration,
+            initial_pose_cam_world=invert(initial_world_cam),
+        )
+    except Exception:
+        _log.warning("Gemeinsames PnP ueber die Welttags gescheitert -- nehme das Mittel", exc_info=True)
+        return None
 
 
 def camera_pose_from_reference_tags(

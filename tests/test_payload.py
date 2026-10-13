@@ -132,6 +132,24 @@ class FrameIdTest(unittest.TestCase):
         self.assertEqual(error["worldTags"], [tag])
         self.assertEqual(error["detections"], [])
 
+    def test_camera_localization_only_with_a_camera_pose(self):
+        self.assertNotIn("cameraLocalization", result())
+        summary = {"solver": "joint", "reprojectionErrorPx": 0.6, "spreadM": 0.012,
+                   "spreadDeg": 0.3, "worldTagIds": [583, 584, 585, 586]}
+        self.assertEqual(result(camera_localization=summary)["cameraLocalization"], summary)
+        error = json.loads(
+            build_error_payload(
+                vision_system_id="vision-test",
+                result_id="res-job-000001",
+                job_id="job-000001",
+                creation_time=NOW,
+                code=VisionErrorCode.DETECTION_FAILED,
+                message="nur Welttags",
+                camera_localization=summary,
+            )
+        )
+        self.assertEqual(error["cameraLocalization"], summary)
+
 
 class JsonSafetyTest(unittest.TestCase):
     def test_numpy_like_scalars_in_attributes(self):

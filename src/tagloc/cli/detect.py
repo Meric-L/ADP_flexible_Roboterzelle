@@ -127,7 +127,10 @@ def main(argv=None) -> int:
             # tags, not a special case: modules are still resolved, just
             # relative to the camera.
             localization = localize_camera(
-                tag_poses, tag_map, max_reprojection_error_px=args.max_reproj_error_px
+                tag_poses,
+                tag_map,
+                max_reprojection_error_px=args.max_reproj_error_px,
+                calibration=active,
             )
             target_frame = tag_map.frame_id if localization is not None else frame_id
             if localization is not None:

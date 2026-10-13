@@ -102,11 +102,12 @@ def build_result_payload(
     frame_convention: str = "",
     configuration_id: str = "",
     world_tags: Sequence[dict] = (),
+    camera_localization: dict | None = None,
 ) -> str:
     """Serialisiert ein erfolgreiches Ergebnis.
 
-    `worldTags` nur, wenn Welttags beobachtet wurden -- additiv, das Schema
-    bleibt `wsc.vision.detections/1`.
+    `worldTags` nur, wenn Welttags beobachtet wurden, `cameraLocalization`
+    nur mit Kamerapose -- additiv, das Schema bleibt `wsc.vision.detections/1`.
     """
     payload = _envelope(
         vision_system_id=vision_system_id,
@@ -121,6 +122,8 @@ def build_result_payload(
     payload["detections"] = [_detection_dict(detection) for detection in detections]
     if world_tags:
         payload["worldTags"] = list(world_tags)
+    if camera_localization:
+        payload["cameraLocalization"] = dict(camera_localization)
     return _dumps(payload)
 
 
@@ -136,6 +139,7 @@ def build_error_payload(
     frame_convention: str = "",
     configuration_id: str = "",
     world_tags: Sequence[dict] = (),
+    camera_localization: dict | None = None,
 ) -> str:
     """Serialisiert ein fehlgeschlagenes Ergebnis mit demselben Schema."""
     payload = _envelope(
@@ -153,4 +157,6 @@ def build_error_payload(
     payload["detections"] = []
     if world_tags:
         payload["worldTags"] = list(world_tags)
+    if camera_localization:
+        payload["cameraLocalization"] = dict(camera_localization)
     return _dumps(payload)

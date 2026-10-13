@@ -938,6 +938,7 @@ Strings, OPC UA kennt hier keine gemischten Typen):
 | `referenceTagId` | ein Welttag als Bezug bekannt | nächster Welttag |
 | `referencePosition`, `referenceOrientation`, `referenceDistanceM` | s. o. | Pose relativ zu diesem Welttag |
 | `worldTagIds`, `cameraSpreadM`, `cameraSpreadDeg`, `cameraPoseOrigin` | Kamera lokalisiert (`localize_camera`/Anker) | beitragende Welttags, Streuung, `"world_tags"` (optisch gemessen) oder `"robot_pose"` (aus dem Anker fortgeschrieben) |
+| `cameraPoseSolver`, `cameraReprojectionErrorPx` | Kamera optisch lokalisiert | `"joint"` (gemeinsames PnP über alle Welttag-Ecken, ab zwei Welttags), `"single"` (ein Welttag) oder `"average"` (Rückfall: Mittel der Einzel-Tags); RMS der Lösung in px |
 | `anchorWorldTagId` | Hand-Auge-Anker gesetzt | Welttag, an dem geankert wurde |
 | `anchorDriftM`, `anchorDriftDeg` | s. o., mit aktueller Sichtung vergleichbar | Abweichung Anker vs. jetzige Messung |
 | `missingModules` | Module aus der Tag-Map nicht gefunden | kommagetrennte Liste |

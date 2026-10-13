@@ -68,6 +68,11 @@ class DetectionSource(ABC):
     #: `DETECTION_FAILED`, ist aber genau das Bild zum Nachpruefen der Karte.
     world_tags: tuple = ()
 
+    #: Wie die Kamerapose des letzten Jobs bestimmt wurde, JSON-fertig
+    #: (`cameraLocalization` im Payload); `None` ohne Kamerapose. Wie
+    #: `world_tags` auch fuer einen fehlgeschlagenen Job.
+    camera_localization: dict | None = None
+
     _executor: ThreadPoolExecutor | None = None
 
     @abstractmethod
