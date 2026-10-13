@@ -332,6 +332,22 @@ class HandEyeSession:
         except Exception:
             _log.exception("HandEyeStatus konnte nicht geschrieben werden")
 
+    def _current(self) -> dict | None:
+        """Die Kalibrierung, die gerade in der Datei steht -- auch nach einem
+        Neustart, wenn keine Sitzung ein `result` hat. Damit kann das Frontend
+        die Kamera am Flansch zeigen. `None` ohne (lesbare) Datei."""
+        try:
+            hand_eye = load_hand_eye(self._ports.path)
+        except Exception:
+            return None
+        return {
+            "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
+            "calibrationId": hand_eye.calibration_id,
+            "rmsPositionM": hand_eye.rms_position_m if math.isfinite(hand_eye.rms_position_m) else None,
+            "rmsRotationDeg": hand_eye.rms_rotation_deg if math.isfinite(hand_eye.rms_rotation_deg) else None,
+            "sampleCount": hand_eye.sample_count,
+        }
+
     def status_json(self) -> str:
         s = self._s
         flanges = [sample.flange_in_base for sample in s.samples if sample.accepted]
@@ -369,6 +385,7 @@ class HandEyeSession:
                     for index, sample in enumerate(s.samples)
                 ],
                 "result": s.result,
+                "current": self._current(),
             },
             allow_nan=False,
             default=float,

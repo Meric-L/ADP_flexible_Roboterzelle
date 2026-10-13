@@ -134,6 +134,16 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertLess(result["knownTagCheckM"], 1e-6)
             self.assertLess(result["knownTagCheckDeg"], 1e-4)
             self.assertIsNone(result["backupPath"])
+            # Die gespeicherte Kalibrierung steht im Status -- auch fuer eine
+            # frische Sitzung, wie nach einem Neustart des Servers.
+            fresh = HandEyeSession(pi.ports())
+            await fresh.publish_idle()
+            current = pi.status["current"]
+            self.assertIsNone(pi.status["result"])
+            self.assertEqual(current["sampleCount"], 6)
+            np.testing.assert_allclose(
+                geometry.pose_from_dict(current["poseFlangeCam"]), FLANGE_CAM, atol=1e-6
+            )
 
             saved = load_hand_eye(pi.path)
             np.testing.assert_allclose(saved.pose_flange_cam, FLANGE_CAM, atol=1e-6)

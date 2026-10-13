@@ -1634,3 +1634,9 @@ Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. D
 - Der Board-Frame ist in jedem Bild derselbe: Ursprung in der ersten Innenecke, deren Feld schwarz ist, +z ins Brett (`tagloc.boards.canonical_chessboard_corners`).
 - Jede Aufnahme braucht das **ganze** Brett im Bild. Sonst wird sie verworfen (`DETECTION_FAILED`), und die Sitzung läuft weiter.
 - Der Status hat dann `tagId = -1` und `target = {"type": "chessboard", ...}`. `samples[].camToTag` ist `T_cam_board`.
+
+### 15.2 Gespeicherte Kalibrierung im Status
+
+`HandEyeStatus` hat das Feld `current`. Darin steht die Kalibrierung aus `data/handeye/cam_flange.json`: `{poseFlangeCam, calibrationId, rmsPositionM, rmsRotationDeg, sampleCount}`, ohne Datei `null`.
+
+Anders als `result` gibt es `current` auch nach einem Neustart des Servers und ohne laufende Sitzung. Das Frontend zeigt damit die Handkamera am Flansch des Roboter-Zwillings.
