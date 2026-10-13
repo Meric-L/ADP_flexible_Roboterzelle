@@ -29,7 +29,7 @@ nicht gibt.
 | [`layer2-lauf-hand-pi.md`](layer2-lauf-hand-pi.md) | apriltag | fertig | Meric, `Agent: Layer-2-Lauf auf dem Hand-Pi` | 29.09.2026 |
 | [`layer2-annaeherung.md`](layer2-annaeherung.md) | apriltag | fertig | `Agent: Layer-2-Annäherung auf dem Hand-Pi` | 12.10.2026 |
 | [`handeye-ueber-opcua.md`](handeye-ueber-opcua.md) | apriltag | fertig | `Agent: Hand-Auge-Kalibrierung per OPC UA` | 13.10.2026 |
-| [`handeye-schachbrett-automatik.md`](handeye-schachbrett-automatik.md) | apriltag | in Arbeit | John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett` | 13.10.2026 |
+| [`handeye-schachbrett-automatik.md`](handeye-schachbrett-automatik.md) | apriltag | fertig | John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett` | 13.10.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`

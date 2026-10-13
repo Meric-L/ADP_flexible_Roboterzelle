@@ -1,6 +1,6 @@
 # Hand-Auge-Kalibrierung mit Schachbrett, Posen fährt der Roboter selbst
 
-**Status:** in Arbeit — 13.10.2026
+**Status:** fertig — 13.10.2026 (an echter Hardware nicht getestet)
 **Verantwortlich:** John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett`
 **Thema:** apriltag
 **Branch:** apriltag
@@ -97,11 +97,13 @@ HandEyePorts.measure_board: Callable[[BoardSpec], Awaitable[tuple[Pose | None, s
 
 ## Abweichungen vom Plan
 
-—
+- `estimate_board_pose` nimmt beide IPPE-Lösungen und verfeinert sie mit Levenberg–Marquardt (`solvePnPRefineLM`). Am gerenderten Brett lag frontal sonst die erste Lösung 2,5° bzw. 2 mm daneben, jetzt unter 0,2 mm und 0,2°.
+- `HandEyePorts.measure_board` ist optional (`None`), der Runner liest es mit `getattr`. Ein Server ohne die Funktion verwirft Board-Aufnahmen mit Grund, statt abzustürzen.
+- Frontend (`webskillcomposition`, Branch `Ungetestet`): Fenster „Hand-Kamera kalibrieren“, Modus „Schachbrett, automatisch“ (`HandEyeAutoPanel.tsx`, `handEyeAutoPoses.ts`). Es gibt 11 Blickposen: senkrecht ±30° um die Blickachse gedreht sowie Ringe mit 20° und 30° Neigung.
 
 ## Nach Abschluss
 
-- [ ] Status `fertig`, Schnittstellen eingetragen.
-- [ ] Indexzeile in `README.md`.
-- [ ] `vision-server-interface.md` Abschnitt 15 ergänzt.
-- [ ] Testlauf.
+- [x] Status `fertig`, Schnittstellen eingetragen.
+- [x] Indexzeile in `README.md`.
+- [x] `vision-server-interface.md` Abschnitt 15.1.
+- [x] Testlauf: 567 Tests. Einzelne zeitabhängige Livestream-Tests (`test_camera_stream`, `test_mjpeg_server`) schlagen im Gesamtlauf sporadisch fehl, einzeln laufen sie durch, unabhängig von dieser Änderung. Neu: `test_boards_pose.py` (4), `HandEyeBoardTest` (4).
