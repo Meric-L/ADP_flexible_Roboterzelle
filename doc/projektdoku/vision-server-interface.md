@@ -1589,3 +1589,24 @@ Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, 
 **Sperren:** Während eines Laufs antworten `StartCalibration` und `SetTagMap` mit `BUSY`, weil eine neue Tag-Map den Anker verwirft. `StartSingleJob` bleibt erlaubt, zum Debuggen.
 
 **Noch offen:** Die Roboter-Server kennen heute keinen kartesischen Fahrbefehl. Solange das so ist, kann ein Client den Lauf nur im Trockenlauf bedienen: Er meldet das Ziel selbst als erreicht. Der Pi ankert dann an einer Pose, die niemand gefahren ist.
+
+## 15. Hand-Auge-Kalibrierung über OPC UA (nur Hand-Pi)
+
+Damit lässt sich `T_flansch_cam` aus dem Frontend bestimmen, ohne CLI. Der Ablauf folgt dem Muster der Kamera-Kalibrierung (Abschnitt 12). Alle JSON-Formate stehen im Arbeitsplan [`arbeitsplaene/handeye-ueber-opcua.md`](arbeitsplaene/handeye-ueber-opcua.md). Die Knoten gibt es nur mit `hand_eye_path`, also auf dem Pi mit `frame_id = cam_flange`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `StartHandEyeCalibration` | `(OptionsJson: String) -> (Error: Int32)`, `wsc.vision.handeye.start/1` |
+| `CaptureHandEyeSample` | `(SampleJson: String) -> (Error: Int32)`, `wsc.vision.handeye.sample/1` |
+| `FinishHandEyeCalibration` | `() -> (Error: Int32)` |
+| `AbortHandEyeCalibration` | `() -> (Error: Int32)` |
+| `HandEyeStatus` | String, JSON `wsc.vision.handeye.status/1` |
+
+**Ablauf:**
+1. Den Tag wählen, der liegen bleibt.
+2. Den Roboter in verschiedene Posen fahren. Zu jeder Pose `CaptureHandEyeSample` mit der **gemeldeten** Flanschpose aufrufen (Flansch-Links wie in Abschnitt 14).
+3. `FinishHandEyeCalibration` aufrufen. Der Pi rechnet nach Park–Martin, die Lage des Tags muss dafür nicht bekannt sein. Er schreibt das Ergebnis nach `data/handeye/cam_flange.json` und kopiert die alte Datei vorher daneben. Die neue Kalibrierung gilt sofort, ohne Neustart. Ein vorhandener Anker wird dabei verworfen.
+
+Ist `tagInBase` aus dem Katalog bekannt, prüft der Pi sie nur gegen (`knownTagCheckM`/`Deg`). In die Rechnung geht sie nicht ein.
+
+**Sperren:** Während einer Sitzung antworten `StartLayer2Run`, `StartCalibration` und `SetTagMap` mit `BUSY`.

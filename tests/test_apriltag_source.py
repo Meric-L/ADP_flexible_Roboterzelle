@@ -510,5 +510,65 @@ class CloseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(camera.closed, 2)
 
 
+class FakeMeasureSource(AprilTagDetectionSource):
+    """Wie `FakeSolverSource`, nur fuer `measure_tag`: die Pose kennt der
+    Fake-Detektor, alles andere ist Produktionscode."""
+
+    def _measure_tag(self, image, tag_id):
+        tag_poses = self._detector.estimate(self._detector.detect(image))
+        return next((pose for pose in tag_poses if pose.tag_id == tag_id), None)
+
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class MeasureTagTest(unittest.IsolatedAsyncioTestCase):
+    """`measure_tag` fuer die Hand-Auge-Kalibrierung: Kamera-KS, ohne Karte."""
+
+    def source(self, folder, tag_poses):
+        camera = FakeCamera()
+        source = FakeMeasureSource(profile_config(Path(folder)), camera=camera)
+        source._detector = FakeDetector(tag_poses)
+        source._tag_map = tagmap.empty_tag_map()
+        for _ in range(3):
+            camera.push_frame(object())
+        return source, camera
+
+    async def test_the_tag_pose_is_averaged_over_the_job_samples(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, camera = self.source(folder, [tag_pose(12, (0.1, 0.0, 0.5)), tag_pose(3, (0, 0, 1))])
+            pose, reason = await source.measure_tag(12)
+        self.assertEqual(reason, "")
+        np.testing.assert_allclose(pose[:3, 3], [0.1, 0.0, 0.5])
+        self.assertEqual(len(camera.consumed), 3)
+
+    async def test_missing_and_ambiguous_tags_give_a_reason(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = self.source(folder, [tag_pose(3, (0, 0, 1))])
+            pose, reason = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("nicht gesehen", reason)
+
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = self.source(folder, [tag_pose(12, (0, 0, 1), ambiguity=0.95)])
+            pose, reason = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("mehrdeutig", reason)
+
+    async def test_no_camera_frame_is_a_reason_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = FakeMeasureSource(profile_config(Path(folder)), camera=FakeCamera())
+            source._detector = FakeDetector()
+            pose, reason = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("Kamerabild", reason)
+
+    def test_a_new_hand_eye_drops_the_anchor(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _, _ = make_source(Path(folder))
+        source._anchor = object()
+        source.apply_hand_eye("neu")
+        self.assertEqual(source._hand_eye, "neu")
+        self.assertIsNone(source._anchor)
+
+
 if __name__ == "__main__":
     unittest.main()

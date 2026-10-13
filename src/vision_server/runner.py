@@ -392,6 +392,8 @@ class VisionMachine:
     calibration_session: CalibrationSession | None = None
     #: Layer-2-Lauf (`layer2/run.py`); `None` ausser auf dem Hand-Pi.
     layer2_run: Any = None
+    #: Hand-Auge-Kalibrierung (`handeye_session.py`); `None` ausser auf dem Hand-Pi.
+    hand_eye_session: Any = None
 
     async def aclose(self) -> None:
         """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
@@ -403,6 +405,8 @@ class VisionMachine:
             await self.calibration_session.abort()
         if self.layer2_run is not None:
             await self.layer2_run.abort("Server faehrt herunter")
+        if self.hand_eye_session is not None and self.hand_eye_session.active:
+            await self.hand_eye_session.abort()
         # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
         # sonst als Haenger durch, und der letzte Wert im Adressraum waere
         # OFF_SPEC statt des letzten echten Zustands.
@@ -450,6 +454,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     calibration_session: CalibrationSession | None = None
     annotator: Any = None
     layer2_run: Any = None
+    hand_eye_session: Any = None
 
     @uamethod
     async def start_single_job(parent, meas_id, part_id, recipe_id, product_id, parameters):
@@ -638,6 +643,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             if layer2_run is not None and layer2_run.active:
                 _log.warning("StartCalibration waehrend laufendem Layer-2-Lauf abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if hand_eye_session is not None and hand_eye_session.active:
+                _log.warning("StartCalibration waehrend Hand-Auge-Kalibrierung abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             if calibration_session.busy:
                 # `.busy` statt `.running`: eine Hintergrund-Auswertung aus
@@ -839,6 +847,10 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                 # Eine neue Karte verwirft den Anker, auf dem der Lauf steht.
                 _log.warning("SetTagMap waehrend laufendem Layer-2-Lauf abgelehnt")
                 return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
+            if hand_eye_session is not None and hand_eye_session.active:
+                # Die Tag-Groesse aus der Karte skaliert jede Aufnahme.
+                _log.warning("SetTagMap waehrend Hand-Auge-Kalibrierung abgelehnt")
+                return (ua.Variant(int(VisionErrorCode.BUSY), ua.VariantType.Int32),)
             try:
                 tag_map = tag_map_from_json(tag_map_json or "", source="SetTagMap")
             except ValueError as error:
@@ -883,7 +895,15 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     ):
         layer2_run = await _install_layer2_run(
             space, config, jobs, apriltag_source, results, calibration_methods,
-            lambda: calibration_session is not None and calibration_session.busy,
+            lambda: (calibration_session is not None and calibration_session.busy)
+            or (hand_eye_session is not None and hand_eye_session.active),
+        )
+    if apriltag_source is not None and space.hand_eye_status is not None:
+        hand_eye_session = await _install_hand_eye_session(
+            space, config, apriltag_source, calibration_methods,
+            lambda: jobs.busy
+            or (calibration_session is not None and calibration_session.busy)
+            or (layer2_run is not None and layer2_run.active),
         )
 
     # Part-10-Aufsatz auf denselben JobRunner. Muss nach den Zustaenden
@@ -903,6 +923,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     if space.layer2_target is not None and space.layer2_status is not None:
         mirror_nodes["Layer2Target"] = space.layer2_target
         mirror_nodes["Layer2Status"] = space.layer2_status
+    if space.hand_eye_status is not None:
+        mirror_nodes["HandEyeStatus"] = space.hand_eye_status
     program = await install_vision_program(
         server,
         server.nodes.objects,
@@ -944,6 +966,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         program=program,
         calibration_session=calibration_session,
         layer2_run=layer2_run,
+        hand_eye_session=hand_eye_session,
     )
 
 
@@ -1019,6 +1042,78 @@ async def _install_layer2_run(
         [ua.VariantType.Int32],
     )
     return layer2_run
+
+
+async def _install_hand_eye_session(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    apriltag_source: Any,
+    methods: dict[str, Node],
+    busy: Callable[[], bool],
+) -> Any:
+    """Legt die Hand-Auge-Methoden an und verdrahtet die Session.
+
+    Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Siehe
+    `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+    """
+    # Erst hier: die Session braucht numpy, der Rest des Servers nicht.
+    from .handeye_session import HandEyePorts, HandEyeSession
+
+    async def publish(status: str) -> None:
+        await space.hand_eye_status.write_value(ua.Variant(status, ua.VariantType.String))
+
+    session = HandEyeSession(
+        HandEyePorts(
+            measure_tag=apriltag_source.measure_tag,
+            busy=busy,
+            path=config.apriltag.hand_eye_path,
+            apply=apriltag_source.apply_hand_eye,
+            publish=publish,
+            frame_id=config.apriltag.frame_id,
+        )
+    )
+    await session.publish_idle()
+
+    method_prefix = config.vision_system_name
+
+    @uamethod
+    async def start_hand_eye(parent, options_json: str):
+        """1:StartHandEyeCalibration -- Tag waehlen, Sitzung oeffnen."""
+        error = await session.start(options_json or "")
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def capture_hand_eye(parent, sample_json: str):
+        """1:CaptureHandEyeSample -- gemeldete Flanschpose, Tag messen."""
+        error = await session.capture(sample_json or "")
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def finish_hand_eye(parent):
+        """1:FinishHandEyeCalibration -- rechnen, speichern, aktivieren."""
+        error = await session.finish()
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def abort_hand_eye(parent):
+        """1:AbortHandEyeCalibration -- verwerfen, nichts speichern."""
+        error = await session.abort()
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    for name, handler, inputs in (
+        ("StartHandEyeCalibration", start_hand_eye, [ua.VariantType.String]),
+        ("CaptureHandEyeSample", capture_hand_eye, [ua.VariantType.String]),
+        ("FinishHandEyeCalibration", finish_hand_eye, []),
+        ("AbortHandEyeCalibration", abort_hand_eye, []),
+    ):
+        methods[name] = await space.vision_system.add_method(
+            ua.NodeId(f"{method_prefix}.{name}", space.own_idx),
+            ua.QualifiedName(name, space.own_idx),
+            handler,
+            inputs,
+            [ua.VariantType.Int32],
+        )
+    return session
 
 
 async def run(config: VisionServerConfig) -> None:

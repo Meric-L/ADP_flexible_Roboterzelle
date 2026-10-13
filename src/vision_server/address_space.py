@@ -67,6 +67,9 @@ class VisionAddressSpace:
     #: `hand_eye_path` -- sonst `None`.
     layer2_target: Node | None = None
     layer2_status: Node | None = None
+    #: Zustand der Hand-Auge-Kalibrierung (JSON), siehe `handeye_session.py`.
+    #: Nur auf dem Hand-Pi, wie `layer2_*`.
+    hand_eye_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -281,6 +284,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
 
     layer2_target: Node | None = None
     layer2_status: Node | None = None
+    hand_eye_status: Node | None = None
     if config.apriltag is not None and config.apriltag.hand_eye_path is not None:
         # Nur lesen: der Lauf schreibt, das Frontend abonniert. Gesteuert wird
         # ueber StartLayer2Run/ReportRobotPose, damit jede Eingabe geprueft
@@ -294,6 +298,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         layer2_status = await vision_system.add_variable(
             ua.NodeId(f"{name}.Layer2Status", own_idx),
             ua.QualifiedName("Layer2Status", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        hand_eye_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.HandEyeStatus", own_idx),
+            ua.QualifiedName("HandEyeStatus", own_idx),
             "",
             ua.VariantType.String,
         )
@@ -327,5 +337,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         camera_stream_http_port=camera_stream_http_port,
         layer2_target=layer2_target,
         layer2_status=layer2_status,
+        hand_eye_status=hand_eye_status,
         amcm_idx=amcm_idx,
     )

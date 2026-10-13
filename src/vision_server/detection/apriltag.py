@@ -290,6 +290,81 @@ class AprilTagDetectionSource(DetectionSource):
         self._calibration = calibration
         self.configuration_id = self._build_configuration_id()
 
+    def apply_hand_eye(self, hand_eye: Any) -> None:
+        """Uebernimmt eine neue Hand-Auge-Kalibrierung ohne Neustart.
+
+        Der Anker wird verworfen: er wurde mit dem alten `T_flansch_cam`
+        gerechnet, und jede daraus fortgeschriebene Kamerapose waere um genau
+        den Unterschied versetzt.
+        """
+        self._hand_eye = hand_eye
+        self._anchor = None
+        self._drift = None
+
+    async def measure_tag(self, tag_id: int) -> tuple[Any | None, str]:
+        """`T_cam_tag` eines Tags aus `samples_per_job` frischen Bildern.
+
+        Fuer die Hand-Auge-Kalibrierung: rein im Kamera-KS, ohne Tag-Map-
+        Versatz und ohne Welt-KS -- genau die Groesse, die `solve_hand_eye`
+        braucht. Liefert `(Pose, "")` oder `(None, Grund)`.
+        """
+        from tagloc.tagmap import merge_tag_poses
+
+        poses = []
+        ambiguous = 0
+        seen_timestamp: float | None = None
+        samples = max(1, self._config.samples_per_job)
+        for _ in range(samples):
+            try:
+                frame = await self._next_frame(seen_timestamp)
+            except VisionJobError as error:
+                return None, error.message
+            seen_timestamp = frame.timestamp
+            tag_pose = await self.run_blocking(self._measure_tag, frame.image, tag_id)
+            if tag_pose is None:
+                continue
+            if tag_pose.is_ambiguous:
+                # Zwei gleich gute Loesungen: welche stimmt, weiss niemand --
+                # eine falsch gekippte Messung verdirbt die ganze Kalibrierung.
+                ambiguous += 1
+                continue
+            poses.append(tag_pose.pose_cam_tag)
+        if poses:
+            return merge_tag_poses(poses), ""
+        if ambiguous:
+            return None, (
+                f"Tag {tag_id} mehrdeutig ({ambiguous} von {samples} Bildern) -- "
+                "schraeger auf den Tag schauen"
+            )
+        return None, f"Tag {tag_id} nicht gesehen"
+
+    def _calibration_for(self, image):
+        """Die Kalibrierung, passend zur Aufloesung dieses Bilds."""
+        from tagloc import frames as frame_tools
+        from tagloc.calibration import check_resolution, scale_to_resolution
+
+        size = frame_tools.image_size(image)
+        calibration = self._calibration
+        if tuple(calibration.image_size) != tuple(size):
+            if not self._config.allow_resolution_mismatch:
+                check_resolution(calibration, size)
+            calibration = scale_to_resolution(calibration, size)
+        return calibration
+
+    def _measure_tag(self, image, tag_id: int):
+        """Ein Bild, ein Tag. Laeuft im Worker-Thread."""
+        from tagloc import frames as frame_tools
+        from tagloc.pose import estimate_tag_poses
+
+        tag_poses = estimate_tag_poses(
+            self._detector.detect(frame_tools.to_gray(image)),
+            self._calibration_for(image),
+            tag_map=self._tag_map,
+            default_size_m=self._config.tag_size_m,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+        )
+        return next((pose for pose in tag_poses if pose.tag_id == tag_id), None)
+
     # -- Capture ---------------------------------------------------------------
 
     async def _next_frame(self, seen_timestamp: float | None):
@@ -312,7 +387,6 @@ class AprilTagDetectionSource(DetectionSource):
     def _locate(self, image, pose_base_flange=None) -> list:
         """Evaluate one image. Runs in the worker thread, never on the loop."""
         from tagloc import frames as frame_tools
-        from tagloc.calibration import check_resolution, scale_to_resolution
         from tagloc.localize import (
             anchor_drift,
             anchor_from_localization,
@@ -322,16 +396,9 @@ class AprilTagDetectionSource(DetectionSource):
         )
         from tagloc.pose import estimate_tag_poses
 
-        size = frame_tools.image_size(image)
-        calibration = self._calibration
-        if tuple(calibration.image_size) != tuple(size):
-            if not self._config.allow_resolution_mismatch:
-                check_resolution(calibration, size)
-            calibration = scale_to_resolution(calibration, size)
-
         tag_poses = estimate_tag_poses(
             self._detector.detect(frame_tools.to_gray(image)),
-            calibration,
+            self._calibration_for(image),
             tag_map=self._tag_map,
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
