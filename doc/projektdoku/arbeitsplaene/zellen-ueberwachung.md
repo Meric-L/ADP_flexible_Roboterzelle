@@ -51,7 +51,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
 
 ```json
 { "referenceJobId": "job-000123" | null, "movedThresholdM": 0.05, "rotatedThresholdDeg": 10,
-  "persistS": 5, "missingPersistS": 20, "intervalS": 2, "maxCameraErrorPx": 3 }
+  "persistS": 5, "missingPersistS": 20, "intervalS": 2, "maxCameraErrorPx": 6 }
 ```
 
 - `referenceJobId`: die JobId des Ergebnisses, das im Viewport steht. Referenz ist **je Tag** die Pose der Detektion, zu der dieser Tag gehört. Bei zusammengefassten Detektionen (`attributes.tagIds`) bekommt jeder Tag dieselbe Pose.
@@ -77,7 +77,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
 
 ### Regeln (`CellWatchTracker`)
 
-- **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welttags) mit RMS ≤ `maxCameraErrorPx`. Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend.
+- **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welttags) mit RMS ≤ `maxCameraErrorPx`. Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend. Der Default ist 6 px: Auf Pi 1 lag das gemeinsame PnP bei einer Kalibrierung mit 0,43 px stabil bei 3,3 px, der Rest ist rund 1 cm Ungenauigkeit der Tag-Map. Bei einer Pause wegen zu großem Fehler nennt `message` den Welttag mit dem größten `jointReprojectionErrorPx`, also den Kandidaten zum Nachmessen.
 - **moved:** Der Median der Position (bzw. Drehung um die Hochachse) der letzten `persistS` Sekunden weicht länger als `persistS` um mehr als den Schwellwert ab. Bei mehrdeutigen Tags zählt nur die Position.
 - **appeared:** Ein Tag außerhalb der Referenz ist seit mindestens `persistS` sichtbar, und zwar in der Mehrzahl der Bilder des Fensters.
 - **disappeared:** Ein Referenz-Tag fehlt länger als `missingPersistS`, und zwar in mindestens 3 gültigen Bildern.

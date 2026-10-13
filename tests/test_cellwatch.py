@@ -200,6 +200,21 @@ class JsonTest(unittest.TestCase):
             self.assertIsNone(sightings)
             self.assertTrue(reason)
 
+    def test_a_slightly_inaccurate_map_still_counts_and_a_bad_tag_is_named(self):
+        location = types.SimpleNamespace(
+            tag_id=7, pose=geometry.identity(), ambiguous=False, module_id="MOD-A"
+        )
+        self.assertEqual(CellWatchOptions().max_camera_error_px, 6.0)
+        # 3,3 px wie auf Pi 1: ~1 cm Kartenfehler, kein Grund zur Pause.
+        real = types.SimpleNamespace(solver="joint", reprojection_error_px=3.3, tag_errors_px={})
+        self.assertIsNotNone(sightings_from_locations([location], real, CellWatchOptions())[0])
+        bad = types.SimpleNamespace(
+            solver="joint", reprojection_error_px=8.0, tag_errors_px={583: 1.2, 585: 14.5}
+        )
+        sightings, reason = sightings_from_locations([location], bad, CellWatchOptions())
+        self.assertIsNone(sightings)
+        self.assertIn("Welttag 585 (14.5 px)", reason)
+
 
 class FakeClock:
     def __init__(self):

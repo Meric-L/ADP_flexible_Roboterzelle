@@ -76,7 +76,12 @@ class CellWatchOptions:
     #: ist auf dem Pi teuer -- 2 s statt 1 s halbiert die Last.
     interval_s: float = 2.0
     #: Bilder mit groesserem RMS der Kamerapose gelten als "keine Aussage".
-    max_camera_error_px: float = 3.0
+    #: 6 px statt 3: auf Pi 1 liegt das gemeinsame PnP bei einer Kalibrierung
+    #: mit 0,4 px stabil bei 3,3 px -- der Rest ist ~1 cm Ungenauigkeit der
+    #: Tag-Map. Das ist gegen 5 cm Verschiebe-Schwelle kein Grund, gar nichts
+    #: mehr zu sehen; ein grober Fehler (falsche Taggroesse, verschobener
+    #: Welttag) liegt weit darueber.
+    max_camera_error_px: float = 6.0
 
     def to_dict(self) -> dict:
         return {
@@ -376,7 +381,7 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
         return None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau"
     error = localization.reprojection_error_px
     if not math.isfinite(error) or error > options.max_camera_error_px:
-        return None, f"Kamerapose unplausibel (RMS {error:.1f} px)"
+        return None, f"Kamerapose unplausibel (RMS {error:.1f} px){_worst_tag(localization)}"
     sightings = {}
     for location in locations:
         sightings[int(location.tag_id)] = TagSighting(
@@ -386,6 +391,16 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
             module_id=location.module_id,
         )
     return sightings, ""
+
+
+def _worst_tag(localization) -> str:
+    """Der Welttag, der am wenigsten zur gemeinsamen Pose passt -- der
+    Kandidat zum Nachmessen."""
+    errors = getattr(localization, "tag_errors_px", None) or {}
+    if not errors:
+        return ""
+    tag_id = max(errors, key=errors.get)
+    return f" -- am schlechtesten passt Welttag {tag_id} ({errors[tag_id]:.1f} px), nachmessen?"
 
 
 # --- Ablauf -------------------------------------------------------------------
