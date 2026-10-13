@@ -853,7 +853,7 @@ Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/vision_server/
 | `frame_convention` | `z_forward_x_right_y_down` | `z_forward_x_right_y_down` |
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_map_path` | `config/tagmap.json` | `config/tagmap.json` |
-| `tag_size_m` | 0.100 | 0.050 |
+| `tag_size_m` | 0.080 (bis 13.10.2026: 0.100) | 0.080 (bis 13.10.2026: 0.050) |
 | `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |

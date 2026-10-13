@@ -100,7 +100,11 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # verdoppeln (`scale_to_resolution`). Nach der Neukalibrierung entfernen,
         # damit eine versehentlich falsche Aufloesung wieder auffaellt.
         "allow_resolution_mismatch": True,
-        "tag_size_m": 0.100,
+        # Rueckfallgroesse fuer Tags, die nicht in der Tag-Map stehen -- also
+        # fuer alle Modul- und Robotertags. Unsere Modultags sind 8 cm (Kante
+        # des schwarzen Quadrats); eine falsche Groesse skaliert den Abstand
+        # zur Kamera und schiebt den Tag seitlich weg (13.10.2026).
+        "tag_size_m": 0.080,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
         # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
@@ -124,7 +128,8 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
         # ersten Job als ValueError ("Kalibrierung gilt fuer ...") auf.
         "resolution": (640, 480),
-        "tag_size_m": 0.050,
+        # Dieselben 8-cm-Modultags wie an der Decke (siehe cam_ceiling).
+        "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
         # Echtes Board, am Hand-Pi durchgemessen (RMS 0,2945 px, Abdeckung
