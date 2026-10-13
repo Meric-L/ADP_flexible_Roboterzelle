@@ -430,6 +430,58 @@ class AprilTagDetectionSource(DetectionSource):
             )
         return None, f"Tag {tag_id} nicht gesehen"
 
+    async def measure_board(self, spec) -> tuple[Any | None, str]:
+        """`T_cam_board` eines Schachbretts aus `samples_per_job` frischen Bildern.
+
+        Wie `measure_tag`, nur mit einem Kalibrier-Schachbrett als festem
+        Ziel: viele Ecken statt vier, also eine genauere und eindeutige Pose.
+        Liefert `(Pose, "")` oder `(None, Grund)`.
+        """
+        from tagloc.tagmap import merge_tag_poses
+
+        poses = []
+        reasons: list[str] = []
+        seen_timestamp: float | None = None
+        samples = max(1, self._config.samples_per_job)
+        for _ in range(samples):
+            try:
+                frame = await self._next_frame(seen_timestamp)
+            except VisionJobError as error:
+                return None, error.message
+            seen_timestamp = frame.timestamp
+            board_pose, reason = await self.run_blocking(self._measure_board, frame.image, spec)
+            if board_pose is None:
+                reasons.append(reason)
+                continue
+            poses.append(board_pose)
+        if poses:
+            return merge_tag_poses(poses), ""
+        return None, reasons[-1] if reasons else "Board nicht gesehen"
+
+    def _measure_board(self, image, spec):
+        """Ein Bild, ein Schachbrett: `(Pose, "")` oder `(None, Grund)`. Worker-Thread."""
+        from tagloc import frames as frame_tools
+        from tagloc.boards import (
+            canonical_chessboard_corners,
+            detect_board,
+            estimate_board_pose,
+        )
+
+        gray = frame_tools.to_gray(image)
+        sample = detect_board(gray, spec)
+        if sample is None:
+            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein"
+        corners = canonical_chessboard_corners(gray, sample.corners, spec)
+        pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
+        # Ein Board mit Dutzenden Ecken passt viel besser als ein Tag;
+        # ein grosser Fehler heisst falsche Groesse oder falsches Raster.
+        if error_px > self._config.max_reproj_error_px:
+            return None, (
+                f"Board-Pose passt schlecht ({error_px:.1f} px) -- Feldgroesse und "
+                "Eckenzahl pruefen"
+            )
+        return pose, ""
+
     def _calibration_for(self, image):
         """Die Kalibrierung, passend zur Aufloesung dieses Bilds."""
         from tagloc import frames as frame_tools

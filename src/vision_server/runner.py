@@ -1065,6 +1065,7 @@ async def _install_hand_eye_session(
     session = HandEyeSession(
         HandEyePorts(
             measure_tag=apriltag_source.measure_tag,
+            measure_board=getattr(apriltag_source, "measure_board", None),
             busy=busy,
             path=config.apriltag.hand_eye_path,
             apply=apriltag_source.apply_hand_eye,

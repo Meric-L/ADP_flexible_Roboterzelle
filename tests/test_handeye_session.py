@@ -219,6 +219,92 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(pi.path.exists())
 
 
+def board_json(cols=5, rows=6, size=0.023, **extra):
+    data = {"schema": START_SCHEMA, "board": {"type": "chessboard", "cols": cols, "rows": rows, "squareSizeM": size}}
+    data.update(extra)
+    return json.dumps(data)
+
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class HandEyeBoardTest(unittest.IsolatedAsyncioTestCase):
+    """Dasselbe mit einem Schachbrett statt eines Tags als festem Ziel."""
+
+    def board_pi(self, folder):
+        pi = FakePi(folder)
+        measured = []
+
+        async def measure_board(spec):
+            measured.append(spec)
+            if not pi.visible:
+                return None, "Board nicht (vollstaendig) gesehen"
+            return cam_to_tag(pi.flange), ""
+
+        async def no_tag(tag_id):  # pragma: no cover - darf nicht gerufen werden
+            raise AssertionError("mit Board wird kein Tag gemessen")
+
+        ports = pi.ports()
+        ports = HandEyePorts(
+            measure_tag=no_tag,
+            busy=ports.busy,
+            path=ports.path,
+            apply=ports.apply,
+            publish=ports.publish,
+            measure_board=measure_board,
+        )
+        return pi, ports, measured
+
+    async def test_board_capture_solve_and_status(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pi, ports, measured = self.board_pi(folder)
+            session = HandEyeSession(ports)
+            self.assertEqual(await session.start(board_json()), VisionErrorCode.OK)
+            self.assertEqual(
+                pi.status["target"], {"type": "chessboard", "cols": 5, "rows": 6, "squareSizeM": 0.023}
+            )
+            self.assertEqual(pi.status["tagId"], -1)
+            for flange in flange_poses():
+                pi.flange = flange
+                self.assertEqual(await session.capture(sample_json(flange)), VisionErrorCode.OK)
+            self.assertEqual((measured[0].cols, measured[0].rows), (5, 6))
+            self.assertIn("Schachbrett 5x6", pi.status["samples"][0]["detail"])
+
+            self.assertEqual(await session.finish(), VisionErrorCode.OK)
+            np.testing.assert_allclose(load_hand_eye(pi.path).pose_flange_cam, FLANGE_CAM, atol=1e-6)
+
+    async def test_board_not_seen_is_dropped(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pi, ports, _ = self.board_pi(folder)
+            session = HandEyeSession(ports)
+            await session.start(board_json())
+            pi.visible = False
+            pi.flange = flange_poses()[0]
+            self.assertEqual(
+                await session.capture(sample_json(pi.flange)), VisionErrorCode.DETECTION_FAILED
+            )
+            self.assertIn("Board", pi.status["samples"][0]["detail"])
+
+    async def test_board_refusals(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pi, ports, _ = self.board_pi(folder)
+            session = HandEyeSession(ports)
+            # 6x6 Innenecken: um 180 Grad gedreht nicht zu unterscheiden.
+            self.assertEqual(await session.start(board_json(cols=6, rows=6)), VisionErrorCode.INVALID_ARGUMENT)
+            self.assertEqual(await session.start(board_json(size=0)), VisionErrorCode.INVALID_ARGUMENT)
+            self.assertEqual(await session.start(board_json(tagId=3)), VisionErrorCode.INVALID_ARGUMENT)
+            self.assertFalse(session.active)
+
+    async def test_a_server_without_board_support_says_so(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pi = FakePi(folder)
+            session = HandEyeSession(pi.ports())
+            await session.start(board_json())
+            pi.flange = flange_poses()[0]
+            self.assertEqual(
+                await session.capture(sample_json(pi.flange)), VisionErrorCode.DETECTION_FAILED
+            )
+            self.assertIn("kein Schachbrett", pi.status["samples"][0]["detail"])
+
+
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class RotationDiversityTest(unittest.TestCase):
     def test_axes_are_counted(self):

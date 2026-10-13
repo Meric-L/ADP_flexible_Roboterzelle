@@ -3,7 +3,8 @@
 Dasselbe Muster wie die Kamera-Kalibrierung (Start / Aufnahme / Fertig /
 Abbruch), nur mit einem Partner draussen: der Roboter faehrt, das Frontend
 meldet je Aufnahme die **gemeldete** Flanschpose (FK aus den echten
-Gelenkwinkeln), und der Pi misst dazu den Tag im Kamera-KS.
+Gelenkwinkeln), und der Pi misst dazu das Ziel im Kamera-KS: einen Tag oder
+ein Kalibrier-Schachbrett (`handeye-schachbrett-automatik.md`).
 
 Am Ende loest `tagloc.handeye.solve_hand_eye` (Park-Martin) ueber alle Paare.
 Die Lage des Tags muss dafuer nicht bekannt sein, nur fest. Ist sie bekannt
@@ -34,6 +35,7 @@ from typing import Any
 
 import numpy as np
 
+from tagloc.boards import CHESSBOARD, BoardSpec, chessboard_is_unambiguous
 from tagloc.geometry import (
     Pose,
     average_poses,
@@ -83,6 +85,8 @@ class HandEyePorts:
     #: Schreibt `HandEyeStatus`.
     publish: Callable[[str], Awaitable[None]]
     frame_id: str = "cam_flange"
+    #: Misst `T_cam_board` eines Schachbretts; `None`: kann der Server nicht.
+    measure_board: Callable[[BoardSpec], Awaitable[tuple[Any, str]]] | None = None
 
 
 @dataclass
@@ -102,6 +106,8 @@ class _State:
     message: str = ""
     tag_id: int = -1
     tag_in_base: Pose | None = None
+    #: Gesetzt, wenn statt eines Tags ein Schachbrett gemessen wird.
+    board: BoardSpec | None = None
     samples: list[_Sample] = field(default_factory=list)
     result: dict | None = None
 
@@ -168,18 +174,18 @@ class HandEyeSession:
             _log.warning("StartHandEyeCalibration abgelehnt: Job, Kalibrierung oder Lauf aktiv")
             return VisionErrorCode.BUSY
         try:
-            tag_id, tag_in_base = parse_start(options_json)
+            tag_id, tag_in_base, board = parse_start(options_json)
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
-        self._s = _State(state=CAPTURING, tag_id=tag_id, tag_in_base=tag_in_base)
+        self._s = _State(state=CAPTURING, tag_id=tag_id, tag_in_base=tag_in_base, board=board)
         self._s.message = self._hint()
-        _log.info("Hand-Auge-Kalibrierung gestartet, Tag %d", tag_id)
+        _log.info("Hand-Auge-Kalibrierung gestartet, Ziel %s", self._target_label())
         await self._publish()
         return VisionErrorCode.OK
 
     async def capture(self, sample_json: str) -> VisionErrorCode:
-        """Misst den Tag zur gemeldeten Flanschpose. Antwortet erst danach:
+        """Misst das Ziel zur gemeldeten Flanschpose. Antwortet erst danach:
         `OK` = Aufnahme angenommen, `DETECTION_FAILED` = verworfen (Grund
         im Status)."""
         s = self._s
@@ -194,7 +200,7 @@ class HandEyeSession:
             return VisionErrorCode.INVALID_ARGUMENT
         self._measuring = True
         try:
-            cam_to_tag, reason = await self._ports.measure_tag(s.tag_id)
+            cam_to_tag, reason = await self._measure(s)
         except Exception as error:  # Kamera weg -- Bericht, kein Absturz
             _log.exception("Hand-Auge-Aufnahme fehlgeschlagen")
             cam_to_tag, reason = None, f"Messung fehlgeschlagen: {error}"
@@ -202,7 +208,7 @@ class HandEyeSession:
             self._measuring = False
         if self._s is not s or s.state != CAPTURING:
             return VisionErrorCode.CANCELLED  # waehrend der Messung abgebrochen
-        detail = reason if cam_to_tag is None else f"Tag {s.tag_id} gemessen"
+        detail = reason if cam_to_tag is None else f"{self._target_label()} gemessen"
         s.samples.append(_Sample(flange_in_base, cam_to_tag, detail))
         s.message = self._hint() if cam_to_tag is not None else f"Aufnahme verworfen: {reason}"
         await self._publish()
@@ -287,6 +293,19 @@ class HandEyeSession:
     async def publish_idle(self) -> None:
         await self._publish()
 
+    async def _measure(self, s: _State) -> tuple[Any, str]:
+        if s.board is None:
+            return await self._ports.measure_tag(s.tag_id)
+        if self._ports.measure_board is None:
+            return None, "Dieser Server kann kein Schachbrett messen"
+        return await self._ports.measure_board(s.board)
+
+    def _target_label(self) -> str:
+        board = self._s.board
+        if board is None:
+            return f"Tag {self._s.tag_id}"
+        return f"Schachbrett {board.cols}x{board.rows} Ecken"
+
     # --- Status --------------------------------------------------------------
 
     def _hint(self) -> str:
@@ -324,6 +343,16 @@ class HandEyeSession:
                 "message": s.message,
                 "tagId": s.tag_id,
                 "tagInBase": pose_to_dict(s.tag_in_base) if s.tag_in_base is not None else None,
+                "target": (
+                    {
+                        "type": CHESSBOARD,
+                        "cols": s.board.cols,
+                        "rows": s.board.rows,
+                        "squareSizeM": s.board.square_size_m,
+                    }
+                    if s.board is not None
+                    else {"type": "tag", "tagId": s.tag_id}
+                ),
                 "acceptedCount": len(flanges),
                 "rotationSpreadDeg": spread_deg,
                 "rotationAxes": axes,
@@ -349,14 +378,42 @@ class HandEyeSession:
 # --- JSON ---------------------------------------------------------------------
 
 
-def parse_start(text: str) -> tuple[int, Pose | None]:
-    """`wsc.vision.handeye.start/1` lesen; ValueError mit Klartext."""
+def parse_start(text: str) -> tuple[int, Pose | None, BoardSpec | None]:
+    """`wsc.vision.handeye.start/1` lesen: `(tagId, tagInBase, Board)`.
+
+    Genau eins von `tagId` und `board`; mit Board ist `tagId` -1.
+    ValueError mit Klartext.
+    """
     data = _load(text, START_SCHEMA)
+    has_tag = data.get("tagId") is not None
+    has_board = data.get("board") is not None
+    if has_tag == has_board:
+        raise ValueError("Genau eins von tagId und board angeben.")
+    if has_board:
+        return -1, None, _parse_board(data["board"])
     tag_id = data.get("tagId")
     if not isinstance(tag_id, int) or isinstance(tag_id, bool) or tag_id < 0:
         raise ValueError("tagId fehlt oder ist keine nicht-negative Ganzzahl.")
     raw = data.get("tagInBase")
-    return tag_id, (_pose(raw, "tagInBase") if raw is not None else None)
+    return tag_id, (_pose(raw, "tagInBase") if raw is not None else None), None
+
+
+def _parse_board(raw: Any) -> BoardSpec:
+    if not isinstance(raw, dict) or raw.get("type") != CHESSBOARD:
+        raise ValueError('board: nur {"type": "chessboard", ...} wird unterstuetzt.')
+    cols, rows, size = raw.get("cols"), raw.get("rows"), raw.get("squareSizeM")
+    for name, value in (("cols", cols), ("rows", rows)):
+        if not isinstance(value, int) or isinstance(value, bool) or value < 2:
+            raise ValueError(f"board.{name}: Innenecken als Ganzzahl >= 2.")
+    if not isinstance(size, (int, float)) or isinstance(size, bool) or not 0 < size < 1:
+        raise ValueError("board.squareSizeM: Feldkante in Metern, zwischen 0 und 1.")
+    spec = BoardSpec(type=CHESSBOARD, cols=cols, rows=rows, square_size_m=float(size))
+    if not chessboard_is_unambiguous(spec):
+        raise ValueError(
+            f"board: {cols}x{rows} Innenecken -- cols + rows muss ungerade sein (z. B. 5x6), "
+            "sonst ist das Brett um 180 Grad gedreht nicht vom Original zu unterscheiden."
+        )
+    return spec
 
 
 def parse_sample(text: str) -> Pose:

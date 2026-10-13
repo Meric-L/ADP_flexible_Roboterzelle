@@ -182,6 +182,108 @@ def _chessboard_object_points(spec: BoardSpec) -> np.ndarray:
     return grid * spec.square_size_m
 
 
+def chessboard_is_unambiguous(spec: BoardSpec) -> bool:
+    """Ob sich ein Schachbrett um 180 Grad gedreht vom Original unterscheidet.
+
+    Nur dann laesst sich die Eckenreihenfolge an der Farbe des ersten Felds
+    festmachen: um 180 Grad gedreht landet das erste Feld auf dem letzten,
+    und das hat genau dann die andere Farbe, wenn `cols + rows` (Innenecken)
+    ungerade ist -- z. B. 5x6 Innenecken bei einem Brett mit 6x7 Feldern.
+    """
+    return spec.type == CHESSBOARD and spec.cols >= 3 and spec.rows >= 2 and (spec.cols + spec.rows) % 2 == 1
+
+
+def canonical_chessboard_corners(gray, corners, spec: BoardSpec) -> np.ndarray:
+    """Bringt die Schachbrett-Ecken in eine feste Reihenfolge, `(N, 2)`.
+
+    OpenCV liefert die Ecken zeilenweise, faengt aber je nach Blickwinkel an
+    einer anderen Ecke an. Fuer die Kamera-Kalibrierung ist das egal, fuer
+    die Hand-Auge-Kalibrierung nicht: dort muss das Board in **jedem** Bild
+    dasselbe Koordinatensystem haben, sonst springt es um 180 Grad oder
+    gespiegelt, und `T_flansch_cam` wird falsch statt ungenau.
+
+    Zwei Schritte:
+    1. Haendigkeit: +x (entlang der Zeile) und +y (zur naechsten Zeile)
+       muessen im Bild im Uhrzeigersinn liegen (Bild-y zeigt nach unten),
+       das Board-+z zeigt also von der Kamera weg. Sonst jede Zeile umdrehen.
+    2. Farbe: das Feld zwischen den ersten vier Ecken ist schwarz. Sonst die
+       ganze Liste umdrehen (180 Grad, Haendigkeit bleibt). Setzt
+       `chessboard_is_unambiguous(spec)` voraus.
+    """
+    points = np.asarray(corners, dtype=np.float64).reshape(spec.rows, spec.cols, 2)
+    along_row = points[0, 1] - points[0, 0]
+    to_next_row = points[1, 0] - points[0, 0]
+    if along_row[0] * to_next_row[1] - along_row[1] * to_next_row[0] < 0:
+        points = points[:, ::-1]
+
+    def brightness(cell_row: int, cell_col: int) -> float:
+        centre = points[cell_row : cell_row + 2, cell_col : cell_col + 2].reshape(-1, 2).mean(axis=0)
+        x, y = int(round(centre[0])), int(round(centre[1]))
+        height, width = np.asarray(gray).shape[:2]
+        x0, x1 = max(0, x - 2), min(width, x + 3)
+        y0, y1 = max(0, y - 2), min(height, y + 3)
+        return float(np.mean(np.asarray(gray)[y0:y1, x0:x1]))
+
+    # Das Nachbarfeld hat sicher die andere Farbe: Vergleich statt Schwelle,
+    # damit Belichtung und Material (gelasertes Holz) keine Rolle spielen.
+    if brightness(0, 0) > brightness(0, 1):
+        points = points[::-1, ::-1]
+    return points.reshape(-1, 2)
+
+
+def estimate_board_pose(
+    corners, spec: BoardSpec, calibration: CameraCalibration
+) -> tuple[np.ndarray, float]:
+    """`(T_cam_board, Reprojektionsfehler in px)` aus kanonischen Ecken.
+
+    Board-Frame: Ursprung in der ersten Innenecke, +x entlang der Zeile,
+    +y zur naechsten Zeile, +z von der Kamera weg (ins Board). Entzerrt wird
+    vorher fuer beide Linsenmodelle gleich (`tagloc.lens`), geloest dann
+    ohne Verzeichnung -- wie bei den Tags (`tagloc.pose`).
+    """
+    import cv2
+
+    from . import lens
+    from .geometry import from_rvec_tvec
+
+    object_points = _chessboard_object_points(spec).astype(np.float64)
+    image_points = lens.undistort_points(corners, calibration).reshape(-1, 1, 2)
+    camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+    no_distortion = np.zeros(5, dtype=np.float64)
+
+    def reprojection_px(rvec, tvec) -> float:
+        projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, no_distortion)
+        error = projected.reshape(-1, 2) - image_points.reshape(-1, 2)
+        return float(np.sqrt(np.mean(np.sum(error**2, axis=1))))
+
+    # IPPE liefert fuer ein ebenes Ziel beide Kandidaten; frontal betrachtet
+    # liegen sie nah beieinander und der erste ist oft um ein paar Grad
+    # gekippt (am gerenderten Brett: 2,5 Grad, 2 mm). Deshalb den besseren
+    # nehmen und mit Levenberg-Marquardt ueber alle Ecken nachschaerfen.
+    candidates = []
+    if hasattr(cv2, "solvePnPGeneric") and hasattr(cv2, "SOLVEPNP_IPPE"):
+        found, rvecs, tvecs, _ = cv2.solvePnPGeneric(
+            object_points, image_points, camera_matrix, no_distortion, flags=cv2.SOLVEPNP_IPPE
+        )
+        if found:
+            candidates = list(zip(rvecs, tvecs))
+    if not candidates:
+        ok, rvec, tvec = cv2.solvePnP(object_points, image_points, camera_matrix, no_distortion)
+        if not ok:
+            raise ValueError("Keine Board-Pose loesbar")
+        candidates = [(rvec, tvec)]
+    refined = []
+    for rvec, tvec in candidates:
+        rvec, tvec = np.array(rvec, dtype=np.float64), np.array(tvec, dtype=np.float64)
+        if hasattr(cv2, "solvePnPRefineLM"):
+            rvec, tvec = cv2.solvePnPRefineLM(
+                object_points, image_points, camera_matrix, no_distortion, rvec, tvec
+            )
+        refined.append((reprojection_px(rvec, tvec), rvec, tvec))
+    error_px, rvec, tvec = min(refined, key=lambda candidate: candidate[0])
+    return from_rvec_tvec(rvec, tvec), error_px
+
+
 def calibrate_from_samples(
     samples,
     image_size: tuple[int, int],
@@ -246,6 +348,9 @@ __all__ = [
     "BoardSpec",
     "build_board",
     "calibrate_from_samples",
+    "canonical_chessboard_corners",
+    "chessboard_is_unambiguous",
+    "estimate_board_pose",
     "compute_coverage",
     "detect_board",
 ]

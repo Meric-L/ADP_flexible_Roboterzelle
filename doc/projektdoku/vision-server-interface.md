@@ -1616,3 +1616,17 @@ Damit lässt sich `T_flansch_cam` aus dem Frontend bestimmen, ohne CLI. Der Abla
 Ist `tagInBase` aus dem Katalog bekannt, prüft der Pi sie nur gegen (`knownTagCheckM`/`Deg`). In die Rechnung geht sie nicht ein.
 
 **Sperren:** Während einer Sitzung antworten `StartLayer2Run`, `StartCalibration` und `SetTagMap` mit `BUSY`.
+
+### 15.1 Schachbrett statt Tag
+
+Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. Details stehen in [`arbeitsplaene/handeye-schachbrett-automatik.md`](arbeitsplaene/handeye-schachbrett-automatik.md). Genutzt wird das gelaserte Brett mit 6×7 Feldern zu 23 mm.
+
+```json
+{ "schema": "wsc.vision.handeye.start/1",
+  "board": { "type": "chessboard", "cols": 5, "rows": 6, "squareSizeM": 0.023 } }
+```
+
+- `cols`/`rows` sind die **Innenecken**. `cols + rows` muss ungerade sein, sonst kommt `INVALID_ARGUMENT`, denn nur dann ist das Brett um 180° gedreht vom Original zu unterscheiden.
+- Der Board-Frame ist in jedem Bild derselbe: Ursprung in der ersten Innenecke, deren Feld schwarz ist, +z ins Brett (`tagloc.boards.canonical_chessboard_corners`).
+- Jede Aufnahme braucht das **ganze** Brett im Bild. Sonst wird sie verworfen (`DETECTION_FAILED`), und die Sitzung läuft weiter.
+- Der Status hat dann `tagId = -1` und `target = {"type": "chessboard", ...}`. `samples[].camToTag` ist `T_cam_board`.
