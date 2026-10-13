@@ -390,13 +390,14 @@ leer:
 }
 ```
 
-**Zwei additive Schlüssel** (nur bei nicht-leerem Wert, das Schema bleibt
+**Additive Schlüssel** (nur bei nicht-leerem Wert, das Schema bleibt
 `wsc.vision.detections/1`):
 
 | Schlüssel | Bedeutung |
 | --- | --- |
 | `frameConvention` | Achsenkonvention hinter `frameId`, z. B. `"z_forward_x_right_y_down"` = OpenCV-Optikrahmen: +X rechts im Bild, +Y nach unten, +Z entlang der optischen Achse nach vorn. Pose ist `T_cam_tag`, Tiefe positiv. **Nicht** die Robotik-Konvention (REP-103) und **kein** Weltsystem. |
 | `configurationId` | Identität der wirksamen Konfiguration, z. B. Kalibrierdatei plus Änderungszeit — beantwortet bei falschen Posen die Frage, welche Kalibrierung das war. |
+| `worldTags` | Die Welttags, die die Kamera in diesem Job gesehen hat: `[{tagId, position, orientation, reprojectionErrorPx, ambiguous, sampleCount}]`. Die Pose ist die **beobachtete**, `T_world_cam · T_cam_tag`, über die Bilder des Jobs gemittelt und immer im Welt-KS der Tag-Map. Ihre Abweichung von `poseInWorld` der Karte ist das Fehlermaß „eingemessen gegen gesehen“. In `detections` stehen Welttags weiterhin nicht. Das Feld gibt es nur, wenn eine Kamerapose aus Welttags bestimmt wurde. Es kommt **auch im Fehler-Payload** mit: Ein Bild nur mit Welttags endet in `DETECTION_FAILED` und ist trotzdem genau das Bild zum Prüfen der Karte. |
 
 `frameId` kommt jetzt **von der Erkennungsquelle**, nicht mehr fest aus dem
 Modul: eine Instanz kann gleichzeitig eine Platzhalterquelle im Weltrahmen und

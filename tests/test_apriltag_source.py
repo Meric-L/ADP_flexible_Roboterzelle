@@ -5,6 +5,7 @@ directly. So no test needs hardware, OpenCV or a calibration file.
 """
 
 import json
+import math
 import tempfile
 import unittest
 from collections import deque
@@ -105,6 +106,9 @@ class FakeSolverSource(AprilTagDetectionSource):
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
         self._localization = localization
+        from vision_server.detection.apriltag import _observed_world_tags
+
+        self._world_tag_sample = _observed_world_tags(tag_poses, self._tag_map, localization)
         frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
         return locate_modules(
             tag_poses,
@@ -393,6 +397,70 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "cam_ceiling")
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 2.0), atol=1e-12)
+        # Ohne Welt-KS keine Welttags im Payload.
+        self.assertEqual(source.world_tags, ())
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class WorldTagsTest(unittest.IsolatedAsyncioTestCase):
+    """`worldTags`: wo das Bild die Welttags sieht -- gegen die Karte pruefbar."""
+
+    def _map(self):
+        return tagmap.TagMap(
+            frame_id="world",
+            entries={
+                0: tagmap.TagEntry(tag_id=0, role="world", size_m=0.1, pose_in_world=geometry.identity()),
+                1: tagmap.TagEntry(
+                    tag_id=1,
+                    role="world",
+                    size_m=0.1,
+                    pose_in_world=geometry.from_rvec_tvec((0, 0, 0), (1.0, 0.0, 0.0)),
+                ),
+                5: tagmap.TagEntry(tag_id=5, role="module", size_m=0.04, module_id="MOD-A"),
+            },
+        )
+
+    async def run_job(self, folder, tag_poses):
+        source, camera, _ = make_source(Path(folder), tag_poses=tag_poses, tag_map=self._map())
+        for index in range(3):
+            camera.push_frame(f"bild-{index}")
+        try:
+            return source, await source.acquire_and_detect(DetectionRequest(job_id="job-1"))
+        except VisionJobError as error:
+            return source, error
+
+    async def test_the_observed_world_poses_are_reported_beside_the_modules(self):
+        with tempfile.TemporaryDirectory() as folder:
+            # Die Kamera sieht Tag 1 zwei Zentimeter weiter weg als die Karte sagt.
+            source, detections = await self.run_job(
+                folder,
+                [tag_pose(0, (0, 0, 2)), tag_pose(1, (1.02, 0, 2)), tag_pose(5, (0.3, 0, 2))],
+            )
+        self.assertEqual([d.module_id for d in detections], ["MOD-A"])  # unveraendert
+        world = {tag["tagId"]: tag for tag in source.world_tags}
+        self.assertEqual(sorted(world), [0, 1])
+        distance = math.dist(world[0]["position"], world[1]["position"])
+        self.assertAlmostEqual(distance, 1.02, places=9)  # gesehen, nicht eingemessen
+        self.assertEqual(world[0]["sampleCount"], 3)
+        self.assertFalse(world[0]["ambiguous"])
+        self.assertAlmostEqual(world[0]["reprojectionErrorPx"], 0.5)
+        json.dumps(source.world_tags, allow_nan=False)
+
+    async def test_an_image_with_only_world_tags_fails_but_still_reports_them(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, error = await self.run_job(folder, [tag_pose(0, (0, 0, 2)), tag_pose(1, (1, 0, 2))])
+        self.assertIsInstance(error, VisionJobError)
+        self.assertEqual(error.code, VisionErrorCode.DETECTION_FAILED)
+        self.assertEqual([tag["tagId"] for tag in source.world_tags], [0, 1])
+
+    async def test_a_new_job_does_not_report_the_old_world_tags(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = await self.run_job(folder, [tag_pose(0, (0, 0, 2)), tag_pose(5, (0.3, 0, 2))])
+            self.assertEqual(len(source.world_tags), 1)
+            # Kein Bild mehr: der Job scheitert an der Kamera.
+            with self.assertRaises(VisionJobError):
+                await source.acquire_and_detect(DetectionRequest(job_id="job-2"))
+        self.assertEqual(source.world_tags, ())
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")

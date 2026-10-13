@@ -113,6 +113,25 @@ class FrameIdTest(unittest.TestCase):
         self.assertEqual(payload["frameConvention"], "z_forward_x_right_y_down")
         self.assertEqual(payload["configurationId"], "tag36h11@ceiling#1757500000")
 
+    def test_world_tags_only_when_observed(self):
+        self.assertNotIn("worldTags", result())
+        tag = {"tagId": 583, "position": [0.0, 0.0, 0.0], "orientation": [0, 0, 0, 1]}
+        self.assertEqual(result(world_tags=(tag,))["worldTags"], [tag])
+        error = json.loads(
+            build_error_payload(
+                vision_system_id="vision-test",
+                result_id="res-job-000001",
+                job_id="job-000001",
+                creation_time=NOW,
+                code=VisionErrorCode.DETECTION_FAILED,
+                message="nur Welttags",
+                world_tags=(tag,),
+            )
+        )
+        # Ein Bild nur mit Welttags: kein Modul, aber die Welttags kommen mit.
+        self.assertEqual(error["worldTags"], [tag])
+        self.assertEqual(error["detections"], [])
+
 
 class JsonSafetyTest(unittest.TestCase):
     def test_numpy_like_scalars_in_attributes(self):

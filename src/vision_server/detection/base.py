@@ -62,6 +62,12 @@ class DetectionSource(ABC):
     #: Identitaet der wirksamen Konfiguration, z. B. Kalibrierdatei plus mtime.
     configuration_id: str = ""
 
+    #: Im letzten Job beobachtete Welttags, JSON-fertig (`worldTags` im
+    #: Payload). Leer bei Quellen ohne Welt-KS. Gilt auch fuer einen
+    #: fehlgeschlagenen Job: ein Bild nur mit Welttags endet in
+    #: `DETECTION_FAILED`, ist aber genau das Bild zum Nachpruefen der Karte.
+    world_tags: tuple = ()
+
     _executor: ThreadPoolExecutor | None = None
 
     @abstractmethod

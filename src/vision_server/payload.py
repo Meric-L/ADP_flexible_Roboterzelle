@@ -101,8 +101,13 @@ def build_result_payload(
     frame_id: str = DEFAULT_FRAME_ID,
     frame_convention: str = "",
     configuration_id: str = "",
+    world_tags: Sequence[dict] = (),
 ) -> str:
-    """Serialisiert ein erfolgreiches Ergebnis."""
+    """Serialisiert ein erfolgreiches Ergebnis.
+
+    `worldTags` nur, wenn Welttags beobachtet wurden -- additiv, das Schema
+    bleibt `wsc.vision.detections/1`.
+    """
     payload = _envelope(
         vision_system_id=vision_system_id,
         result_id=result_id,
@@ -114,6 +119,8 @@ def build_result_payload(
         configuration_id=configuration_id,
     )
     payload["detections"] = [_detection_dict(detection) for detection in detections]
+    if world_tags:
+        payload["worldTags"] = list(world_tags)
     return _dumps(payload)
 
 
@@ -128,6 +135,7 @@ def build_error_payload(
     frame_id: str = DEFAULT_FRAME_ID,
     frame_convention: str = "",
     configuration_id: str = "",
+    world_tags: Sequence[dict] = (),
 ) -> str:
     """Serialisiert ein fehlgeschlagenes Ergebnis mit demselben Schema."""
     payload = _envelope(
@@ -143,4 +151,6 @@ def build_error_payload(
     payload["errorCode"] = int(code)
     payload["errorText"] = message
     payload["detections"] = []
+    if world_tags:
+        payload["worldTags"] = list(world_tags)
     return _dumps(payload)

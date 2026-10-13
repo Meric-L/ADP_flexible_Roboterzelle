@@ -93,6 +93,65 @@ def _finite_or_none(value: float | None) -> float | None:
     return None if math.isnan(number) or math.isinf(number) else round(number, 4)
 
 
+def _observed_world_tags(tag_poses, tag_map, localization) -> list:
+    """Wo dieses Bild die Welttags sieht: `(tag_id, T_world_tag, Fehler, mehrdeutig)`.
+
+    `T_world_cam · T_cam_tag` mit der zusammengefuehrten Kamerapose. Die
+    Abweichung von der Weltpose in der Tag-Map ist das Fehlermass der Karte
+    -- `locate_modules` laesst Welttags bewusst aus, sie sind keine Module.
+    Nur mit Kamerapose; ohne sie gibt es kein Welt-KS.
+    """
+    from tagloc.geometry import compose
+
+    if localization is None or tag_map is None:
+        return []
+    observed = []
+    for tag_pose in tag_poses:
+        entry = tag_map.get(tag_pose.tag_id)
+        if entry is None or not entry.is_reference:
+            continue
+        observed.append(
+            (
+                tag_pose.tag_id,
+                compose(localization.pose_world_cam, tag_pose.pose_cam_tag),
+                tag_pose.reprojection_error_px,
+                tag_pose.is_ambiguous,
+            )
+        )
+    return observed
+
+
+def _merge_world_tags(samples) -> tuple:
+    """Je Welttag ueber die Bilder eines Jobs gemittelt, JSON-fertig."""
+    from tagloc.geometry import to_position_quaternion
+    from tagloc.tagmap import merge_tag_poses
+
+    by_tag: dict[int, list] = {}
+    for sample in samples:
+        for observation in sample:
+            by_tag.setdefault(observation[0], []).append(observation)
+    merged = []
+    for tag_id in sorted(by_tag):
+        observations = by_tag[tag_id]
+        position, orientation = to_position_quaternion(
+            merge_tag_poses([observation[1] for observation in observations])
+        )
+        errors = [o[2] for o in observations if o[2] is not None and math.isfinite(o[2])]
+        merged.append(
+            {
+                "tagId": int(tag_id),
+                "position": list(position),
+                "orientation": list(orientation),
+                "reprojectionErrorPx": _finite_or_none(sum(errors) / len(errors))
+                if errors
+                else None,
+                "ambiguous": any(observation[3] for observation in observations),
+                "sampleCount": len(observations),
+            }
+        )
+    return tuple(merged)
+
+
 class AprilTagDetectionSource(DetectionSource):
     """Locate modules by their AprilTags."""
 
@@ -131,6 +190,8 @@ class AprilTagDetectionSource(DetectionSource):
         self._anchor = None
         #: Letzte gemessene Drift gegen den Anker, `None` solange ungeprueft.
         self._drift = None
+        #: Welttags des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
+        self._world_tag_sample: list = []
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -430,6 +491,7 @@ class AprilTagDetectionSource(DetectionSource):
         # their spread alongside the poses. Only ever written from the single
         # worker thread, so no lock is needed.
         self._localization = localization
+        self._world_tag_sample = _observed_world_tags(tag_poses, self._tag_map, localization)
         frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
         return locate_modules(
             tag_poses,
@@ -447,16 +509,25 @@ class AprilTagDetectionSource(DetectionSource):
 
         pose_base_flange = robot_pose_from_parameters(request.parameters)
         self._drift = None
+        # Vor dem ersten Bild leeren: ein Job, der an der Kamera scheitert,
+        # darf nicht die Welttags des vorigen melden.
+        self.world_tags = ()
 
         samples: list[list] = []
+        world_samples: list[list] = []
         seen_timestamp: float | None = None
         for _ in range(max(1, self._config.samples_per_job)):
             frame = await self._next_frame(seen_timestamp)
             seen_timestamp = frame.timestamp
+            self._world_tag_sample = []
             samples.append(
                 await self.run_blocking(self._locate, frame.image, pose_base_flange)
             )
+            world_samples.append(self._world_tag_sample)
 
+        # Vor der Pruefung auf Module: ein Bild nur mit Welttags endet gleich
+        # in DETECTION_FAILED, soll die Welttags aber trotzdem melden.
+        self.world_tags = _merge_world_tags(world_samples)
         located = merge_samples(samples)
         if not located:
             raise VisionJobError(

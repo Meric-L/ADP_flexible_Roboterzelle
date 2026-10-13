@@ -319,6 +319,7 @@ class JobRunner:
                         frame_id=source.frame_id or self._config.frame_id,
                         frame_convention=source.frame_convention,
                         configuration_id=source.configuration_id,
+                        world_tags=source.world_tags,
                     )
                     await self._publish(
                         source, request, result_id, cycle_id, now,
@@ -383,6 +384,7 @@ class JobRunner:
                     frame_id=source.frame_id or self._config.frame_id,
                     frame_convention=source.frame_convention,
                     configuration_id=source.configuration_id,
+                    world_tags=source.world_tags,
                 )
                 await self._publish(
                     source, request, result_id, job_id, now, int(VisionErrorCode.OK), payload
@@ -481,6 +483,7 @@ class JobRunner:
                 frame_id=source.frame_id or self._config.frame_id,
                 frame_convention=source.frame_convention,
                 configuration_id=source.configuration_id,
+                world_tags=source.world_tags,
             )
             await self._publish(
                 source, request, result_id, job_id, now, int(error.code), payload
