@@ -1174,10 +1174,11 @@ async def _install_cell_watch(
         if frame.timestamp == seen["timestamp"]:
             return None, ""  # kein neues Bild, keine Aussage
         seen["timestamp"] = frame.timestamp
-        locations, localization = await asyncio.to_thread(
+        locations, localization, visible = await asyncio.to_thread(
             apriltag_source.observe_cell, frame.image, detector
         )
-        return sightings_from_locations(locations, localization, options)
+        sightings, reason = sightings_from_locations(locations, localization, options)
+        return sightings, reason, visible
 
     async def publish(status: str) -> None:
         await space.cell_watch_status.write_value(ua.Variant(status, ua.VariantType.String))

@@ -65,6 +65,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
   "referenceId": "cw-000002" | null, "referenceJobId": "job-000123" | null,
   "referenceSource": "job" | "observation" | null,
   "lastCheckAt": "2026-10-13T12:00:00+00:00" | null, "watchedTagIds": [7, 20, 21],
+  "visibleTagIds": [7, 583, 584] | null,
   "options": { "movedThresholdM": 0.05, ... },
   "changes": [ { "tagId": 7, "moduleId": "MOD-A", "kind": "moved|appeared|disappeared",
                  "referencePosition": [x,y,z] | null, "currentPosition": [x,y,z] | null,

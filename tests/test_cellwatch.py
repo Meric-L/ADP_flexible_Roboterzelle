@@ -300,6 +300,25 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.status["referenceId"])
         self.assertEqual(self.status["watchedTagIds"], [7])
 
+    async def test_visible_tags_are_reported_also_while_paused(self):
+        watch = self.watch()
+        await watch.start("{}", run_loop=False)
+        self.assertIsNone(self.status["visibleTagIds"])  # noch kein Bild geprueft
+        self.frame = (None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau", [3, 583])
+        await self.ticks(watch, 1)
+        self.assertEqual((self.status["state"], self.status["visibleTagIds"]), ("paused", [3, 583]))
+        # Gleicher Grund, aber jetzt ist Tag 3 verdeckt: der Status wird trotzdem neu geschrieben.
+        count = len(self.statuses)
+        self.frame = (None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau", [583])
+        await self.ticks(watch, 1)
+        self.assertEqual(len(self.statuses), count + 1)
+        self.assertEqual(self.status["visibleTagIds"], [583])
+        self.frame = ({7: sighting(1.0, 1.0)}, "", [7, 584, 583])
+        await self.ticks(watch, 1)
+        self.assertEqual((self.status["state"], self.status["visibleTagIds"]), ("watching", [7, 583, 584]))
+        await watch.stop()
+        self.assertIsNone(self.status["visibleTagIds"])
+
     async def test_pause_while_busy_or_without_a_statement(self):
         watch = self.watch()
         await watch.start("{}", run_loop=False)
@@ -374,10 +393,12 @@ class ObserveCellTest(unittest.TestCase):
         detector = types.SimpleNamespace(detect=lambda gray: observations)
         image = np.zeros((scene.IMAGE_SIZE[1], scene.IMAGE_SIZE[0]), dtype=np.uint8)
 
-        locations, localization = source.observe_cell(image, detector)
+        locations, localization, visible = source.observe_cell(image, detector)
 
         self.assertEqual(localization.solver, "joint")
         self.assertEqual([location.tag_id for location in locations], [7])
+        # Erkannt sind alle, Welttags eingeschlossen.
+        self.assertEqual(visible, [7, 583, 584, 585, 586])
         # Ein Modul-Tag ist ein Einzel-Tag-PnP: rund 1 cm Rauschen aus 2,5 m.
         np.testing.assert_allclose(locations[0].pose[:3, 3], [0.8, 0.8, 0.0], atol=0.03)
         self.assertEqual(source._anchor, "unberuehrt")

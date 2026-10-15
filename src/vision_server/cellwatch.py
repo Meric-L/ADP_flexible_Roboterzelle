@@ -412,6 +412,8 @@ class CellWatchPorts:
 
     #: Wertet das neueste Kamerabild aus: `(Sichtungen, "")` fuer ein gueltiges
     #: Bild, `(None, Grund)` fuer "keine Aussage", `(None, "")` = kein neues Bild.
+    #: Optional als drittes Element die IDs aller erkannten Tags (Welt- und
+    #: Modul-Tags) -- auch bei "keine Aussage", fuer `visibleTagIds`.
     observe: Callable[[CellWatchOptions], Awaitable[tuple]]
     #: Grund, warum die Kamera gerade anderweitig gebraucht wird, sonst `""`.
     busy_reason: Callable[[], str]
@@ -439,6 +441,8 @@ class CellWatch:
         self._reference_source = ""
         self._counter = 0
         self._last_check: datetime | None = None
+        #: Alle im zuletzt geprueften Bild erkannten Tags; `None` vor dem ersten.
+        self._visible: list[int] | None = None
         self._task: asyncio.Task | None = None
 
     @property
@@ -468,6 +472,8 @@ class CellWatch:
         previous = self._tracker if self.active else None
         self._options = options
         self._reference_job_id = job_id
+        if not self.active:
+            self._visible = None  # nach einem Stopp nichts Altes zeigen
         if reference is not None:
             self._set_reference(reference, "job", now)
         else:
@@ -541,10 +547,16 @@ class CellWatch:
         if reason:
             await self._pause(reason)
             return
-        sightings, reason = await self._ports.observe(self._options)
+        result = await self._ports.observe(self._options)
+        sightings, reason = result[0], result[1]
+        visible_changed = False
+        if len(result) > 2 and result[2] is not None:
+            visible = sorted(int(tag_id) for tag_id in result[2])
+            visible_changed = visible != self._visible
+            self._visible = visible
         if sightings is None:
             if reason:
-                await self._pause(reason)
+                await self._pause(reason, force=visible_changed)
             return
         now = self._ports.monotonic()
         wall = self._ports.now()
@@ -564,8 +576,11 @@ class CellWatch:
             self._state, self._message = WATCHING, ""
         await self._publish()
 
-    async def _pause(self, reason: str) -> None:
-        if self._state != PAUSED or self._message != reason:
+    async def _pause(self, reason: str, *, force: bool = False) -> None:
+        # Nur bei einem Wechsel schreiben -- oder wenn sich geaendert hat,
+        # welche Tags zu sehen sind: gerade beim Pausieren will der Bediener
+        # sehen, welcher Welttag fehlt.
+        if force or self._state != PAUSED or self._message != reason:
             self._state, self._message = PAUSED, reason
             await self._publish()
 
@@ -584,6 +599,7 @@ class CellWatch:
                 if self._last_check
                 else None,
                 "watchedTagIds": sorted(tracker.reference) if referenced else [],
+                "visibleTagIds": self._visible if self.active else None,
                 "options": self._options.to_dict(),
                 "changes": tracker.changes if referenced and self.active else [],
             },

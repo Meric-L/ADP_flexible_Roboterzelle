@@ -483,7 +483,8 @@ class AprilTagDetectionSource(DetectionSource):
         return pose, ""
 
     def observe_cell(self, image, detector: Any):
-        """Ein Bild fuer die Zellen-Ueberwachung: `(Modul-Orte je Tag, Lokalisierung)`.
+        """Ein Bild fuer die Zellen-Ueberwachung:
+        `(Modul-Orte je Tag, Lokalisierung, alle erkannten Tag-IDs)`.
 
         Dieselbe Rechnung wie ein Job -- Tag-Posen, gemeinsames PnP ueber die
         Welttags, `locate_modules` --, aber **ohne Seiteneffekte**: kein Anker,
@@ -493,14 +494,20 @@ class AprilTagDetectionSource(DetectionSource):
         `detector` ist eine eigene Instanz der Ueberwachung: sie laeuft in
         einem eigenen Thread, und ein Detektor ist nicht fuer zwei Threads
         zugleich gebaut. Laeuft blockierend -- im Worker-Thread aufrufen.
+
+        Die erkannten IDs kommen auch dann zurueck, wenn das Bild keine
+        Aussage erlaubt -- gerade dann will der Bediener sehen, welcher
+        Welttag fehlt.
         """
         from tagloc import frames as frame_tools
         from tagloc.localize import locate_modules, localize_camera
         from tagloc.pose import estimate_tag_poses
 
         calibration = self._calibration_for(image)
+        observations = detector.detect(frame_tools.to_gray(image))
+        visible = sorted({int(observation.tag_id) for observation in observations})
         tag_poses = estimate_tag_poses(
-            detector.detect(frame_tools.to_gray(image)),
+            observations,
             calibration,
             tag_map=self._tag_map,
             default_size_m=self._config.tag_size_m,
@@ -513,7 +520,7 @@ class AprilTagDetectionSource(DetectionSource):
             calibration=calibration,
         )
         if localization is None:
-            return [], None
+            return [], None, visible
         return (
             locate_modules(
                 tag_poses,
@@ -523,6 +530,7 @@ class AprilTagDetectionSource(DetectionSource):
                 max_reprojection_error_px=self._config.max_reproj_error_px,
             ),
             localization,
+            visible,
         )
 
     def _calibration_for(self, image):
