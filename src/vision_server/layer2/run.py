@@ -461,6 +461,18 @@ class Layer2Run:
                 "reachM": step.target.reach_m,
                 "reachable": step.reachable,
                 "tiltDeg": step.target.tilt_deg,
+                # Rangliste fuer die Bahnplanung auf der Roboterseite; der
+                # erste ist `flangeInBase` (Arbeitsplan layer2-blickkandidaten).
+                "candidates": [
+                    {
+                        "flangeInBase": layer2_plan.pose_to_dict(candidate.flange_in_base),
+                        "cameraInWorld": layer2_plan.pose_to_dict(candidate.camera_in_world),
+                        "reachM": candidate.reach_m,
+                        "tiltDeg": candidate.tilt_deg,
+                        "azimuthDeg": candidate.azimuth_deg,
+                    }
+                    for candidate in step.candidates
+                ],
             },
             allow_nan=False,
         )

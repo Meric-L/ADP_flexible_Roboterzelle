@@ -33,6 +33,7 @@ nicht gibt.
 | [`layer2-schraege-ansicht.md`](layer2-schraege-ansicht.md) | apriltag | fertig | John Glanz, `Agent: Layer 2 schräge Ansicht` | 13.10.2026 |
 | [`zellen-ueberwachung.md`](zellen-ueberwachung.md) | apriltag | fertig | `Agent: Zellen-Überwachung (Layer 1)` | 13.10.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
+| [`layer2-blickkandidaten.md`](layer2-blickkandidaten.md) | apriltag | fertig | John Glanz, `Agent: Layer 2 Blickkandidaten` | 15.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

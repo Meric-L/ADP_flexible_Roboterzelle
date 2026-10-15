@@ -76,6 +76,13 @@ _TILT_STEPS_DEG = (0.0, 15.0, 30.0, 45.0, 60.0, 75.0)
 #: Bevorzugt wird ein Ziel mit etwas Luft zur Reichweite -- am Rand findet die
 #: IK oft keine Stellung mit der verlangten Orientierung.
 _COMFORTABLE_REACH = 0.9
+#: Kipprichtungen der Kandidaten, Grad um die Tag-Normale weg von der Richtung
+#: Tag -> Basis. 0 = zur Basis hin wie beim Fahrziel; die seitlichen sind
+#: Ausweichblicke, falls die Bahnplanung auf der Roboterseite den ersten nicht
+#: anfahren kann (Arbeitsplan `layer2-blickkandidaten.md`).
+_AZIMUTH_STEPS_DEG = (0.0, 45.0, -45.0)
+#: So viele Kandidaten je Schritt gehen in `Layer2Target.candidates`.
+DEFAULT_MAX_CANDIDATES = 5
 
 ANCHOR = "anchor"
 MEASURE = "measure"
@@ -165,6 +172,8 @@ class ViewTarget:
     reach_m: float
     #: Wie schraeg die Kamera auf den Tag schaut, Grad; 0 = frontal.
     tilt_deg: float = 0.0
+    #: Wohin sie gekippt ist, Grad um die Tag-Normale; 0 = zur Basis hin.
+    azimuth_deg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -174,6 +183,9 @@ class PlannedStep:
     tag_in_world: Pose
     target: ViewTarget
     reachable: bool
+    #: Erreichbare Blicke auf `tag_id`, der beste zuerst; `candidates[0]` ist
+    #: `target`, wenn `reachable`. Leer, wenn nichts in Reichweite liegt.
+    candidates: tuple[ViewTarget, ...] = ()
 
 
 def view_target(
@@ -182,12 +194,14 @@ def view_target(
     pose_flange_cam: Pose,
     standoff_m: float,
     tilt_deg: float = 0.0,
+    azimuth_deg: float = 0.0,
 ) -> ViewTarget:
     """Wo Kamera und Flansch stehen muessen, um den Tag zu sehen.
 
     `tilt_deg` kippt die Kamera um die Tag-Mitte zur Roboterbasis hin: sie
     bleibt `standoff_m` vom Tag und schaut weiter genau auf seine Mitte, nur
-    schraeg statt senkrecht. 0 = frontal.
+    schraeg statt senkrecht. 0 = frontal. `azimuth_deg` dreht die Kipprichtung
+    um die Tag-Normale seitlich weg von der Basis.
     """
     pose_tag_cam = from_rotation_translation(_FACING, [0.0, 0.0, standoff_m])
     if tilt_deg:
@@ -196,7 +210,10 @@ def view_target(
         towards_base[2] = 0.0
         length = float(np.linalg.norm(towards_base))
         if length > 1e-9:
-            axis = np.cross([0.0, 0.0, 1.0], towards_base / length)
+            direction = towards_base / length
+            if azimuth_deg:
+                direction = rotation_from_rvec([0.0, 0.0, math.radians(azimuth_deg)]) @ direction
+            axis = np.cross([0.0, 0.0, 1.0], direction)
             tilt = np.eye(4)
             tilt[:3, :3] = rotation_from_rvec(axis * math.radians(tilt_deg))
             pose_tag_cam = tilt @ pose_tag_cam
@@ -209,6 +226,7 @@ def view_target(
         flange_in_base=flange_in_base,
         reach_m=float(np.linalg.norm(flange_in_base[:3, 3])),
         tilt_deg=float(tilt_deg),
+        azimuth_deg=float(azimuth_deg) if tilt_deg else 0.0,
     )
 
 
@@ -240,12 +258,17 @@ def plan_step(
     standoff_m: float,
     reach_m: float,
     max_tilt_deg: float = 0.0,
+    max_candidates: int = DEFAULT_MAX_CANDIDATES,
 ) -> PlannedStep:
     """Ein Schritt, gleich ob Welttag oder Modul.
 
     Der frontalste Blick mit Luft zur Reichweite; gibt es keinen, der
     frontalste in Reichweite; sonst der naechste an der Basis (dann
     `reachable = False`, der Schritt wird uebersprungen).
+
+    Dazu die Rangliste `candidates` aller erreichbaren Blicke auf denselben
+    Tag, das Fahrziel zuerst: zur Basis gekippt vor seitlich, mit Luft vor
+    knapp, frontal vor schraeg.
     """
     tag_id, tag_in_world = tag_facing_base(spec.tag_candidates(), pose_world_base[:3, 3])
     tilts = [tilt for tilt in _TILT_STEPS_DEG if tilt <= max_tilt_deg] or [0.0]
@@ -257,12 +280,30 @@ def plan_step(
         (t for t in targets if t.reach_m <= reach_m * _COMFORTABLE_REACH),
         next((t for t in targets if t.reach_m <= reach_m), None),
     ) or min(targets, key=lambda t: t.reach_m)
+    sideways = [
+        view_target(tag_in_world, pose_world_base, pose_flange_cam, standoff_m, tilt, azimuth)
+        for azimuth in _AZIMUTH_STEPS_DEG
+        if azimuth
+        for tilt in tilts
+        if tilt
+    ]
+    candidates = sorted(
+        (t for t in targets + sideways if t.reach_m <= reach_m),
+        key=lambda t: (
+            t.azimuth_deg != 0.0,
+            t.reach_m > reach_m * _COMFORTABLE_REACH,
+            t.tilt_deg,
+            abs(t.azimuth_deg),
+            t.azimuth_deg < 0.0,
+        ),
+    )
     return PlannedStep(
         spec=spec,
         tag_id=tag_id,
         tag_in_world=tag_in_world,
         target=target,
         reachable=target.reach_m <= reach_m,
+        candidates=tuple(candidates[:max_candidates]),
     )
 
 

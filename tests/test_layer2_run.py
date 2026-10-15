@@ -131,6 +131,8 @@ class Layer2RunTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await run.start(request_json(("MOD-A", (1.5, 1.0, 0.0), 7))), VisionErrorCode.OK)
         self.assertEqual(server.target["purpose"], "anchor")
         self.assertEqual(server.target["tagId"], 0)
+        # Die Rangliste beginnt mit dem Fahrziel selbst.
+        self.assertEqual(server.target["candidates"][0]["flangeInBase"], server.target["flangeInBase"])
         coarse = server.status["steps"][1]["reachM"]
 
         self.assertEqual(await run.report(report(0)), VisionErrorCode.OK)

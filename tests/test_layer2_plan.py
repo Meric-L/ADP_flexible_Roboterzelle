@@ -307,5 +307,61 @@ class TiltedViewTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             plan.parse_run_request(text.replace('"maxTiltDeg": 30', '"maxTiltDeg": 90'))
 
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class CandidatesTest(unittest.TestCase):
+    """Rangliste der Blicke je Schritt (Arbeitsplan layer2-blickkandidaten)."""
+
+    def anchor(self):
+        return plan.StepSpec(purpose=plan.ANCHOR, name="Welttag 583", world_tag=(583, pose((0, 0, 0))))
+
+    def step(self, base_position, max_tilt_deg=60.0, reach_m=0.85, standoff_m=0.3):
+        base = geometry.from_rotation_translation(np.eye(3), base_position)
+        return plan.plan_step(
+            self.anchor(), base, geometry.identity(), standoff_m, reach_m, max_tilt_deg
+        )
+
+    def test_the_drive_target_comes_first(self):
+        for base_position, standoff_m in (((0.3, 0.0, 0.2), 0.3), ((0.9, 0.0, 1.0), 0.6)):
+            step = self.step(base_position, standoff_m=standoff_m)
+            self.assertTrue(step.reachable)
+            self.assertIs(step.candidates[0], step.target)
+
+    def test_every_candidate_looks_at_the_tag_centre_from_the_standoff(self):
+        step = self.step((0.3, 0.0, 0.2))
+        self.assertGreater(len(step.candidates), 1)
+        for candidate in step.candidates:
+            camera = candidate.camera_in_world
+            self.assertAlmostEqual(float(np.linalg.norm(camera[:3, 3])), 0.3, places=9)
+            towards_tag = -camera[:3, 3] / np.linalg.norm(camera[:3, 3])
+            np.testing.assert_allclose(camera[:3, 2], towards_tag, atol=1e-9)
+            self.assertLessEqual(candidate.reach_m, 0.85)
+
+    def test_sideways_views_tilt_off_the_line_to_the_base(self):
+        base = geometry.from_rotation_translation(np.eye(3), (0.9, 0.0, 1.0))
+        left = plan.view_target(pose((0, 0, 0)), base, geometry.identity(), 0.6, 45.0, 45.0)
+        right = plan.view_target(pose((0, 0, 0)), base, geometry.identity(), 0.6, 45.0, -45.0)
+        # Basis liegt in +x; seitlich heisst: Kamera bei +y bzw. -y, gleich hoch.
+        self.assertGreater(left.camera_in_world[1, 3], 0.0)
+        self.assertLess(right.camera_in_world[1, 3], 0.0)
+        self.assertAlmostEqual(left.camera_in_world[2, 3], right.camera_in_world[2, 3], places=9)
+        self.assertEqual(left.azimuth_deg, 45.0)
+
+    def test_frontal_only_gives_a_single_candidate(self):
+        step = self.step((0.3, 0.0, 0.2), max_tilt_deg=0.0)
+        self.assertEqual(len(step.candidates), 1)
+        self.assertEqual(step.candidates[0].tilt_deg, 0.0)
+
+    def test_out_of_reach_gives_no_candidates(self):
+        step = self.step((3.0, 0.0, 0.0))
+        self.assertFalse(step.reachable)
+        self.assertEqual(step.candidates, ())
+
+    def test_at_most_the_configured_number(self):
+        base = geometry.from_rotation_translation(np.eye(3), (0.3, 0.0, 0.2))
+        step = plan.plan_step(self.anchor(), base, geometry.identity(), 0.3, 0.85, 60.0, 2)
+        self.assertEqual(len(step.candidates), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

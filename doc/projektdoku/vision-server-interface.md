@@ -1600,6 +1600,22 @@ Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, 
 
 Liegt der frontale Blick auf einen Tag außer Reichweite, kippt der Planer die Kamera um die Tag-Mitte zur Roboterbasis hin, in Stufen bis `options.maxTiltDeg` (Standard 60°, `0` = immer frontal). Abstand und Blick auf die Tag-Mitte bleiben gleich. `Layer2Target.tiltDeg` sagt, wie schräg die Kamera schaut. Details stehen in [`arbeitsplaene/layer2-schraege-ansicht.md`](arbeitsplaene/layer2-schraege-ansicht.md).
 
+### 14.2 Blickkandidaten
+
+`Layer2Target.candidates` ist eine optionale Rangliste mit höchstens 5 Einträgen. Sie enthält erreichbare Blicke auf **denselben** Tag, aus demselben Abstand und genau auf die Tag-Mitte. Der beste steht zuerst und ist das Fahrziel selbst, sein `flangeInBase` gleicht dem oberen. Danach folgen schrägere Blicke und solche, die seitlich gekippt sind (`azimuthDeg` ±45°).
+
+Jeder Eintrag hat diese Felder:
+
+- `flangeInBase`
+- `cameraInWorld`
+- `reachM`
+- `tiltDeg`
+- `azimuthDeg`
+
+Die Bahnplanung auf der Roboterseite fährt den ersten Kandidaten, den sie per IK und kollisionsfrei erreicht. Welcher es war, muss sie nicht melden: `ReportRobotPose` trägt wie bisher die gemeldete Flanschpose.
+
+Ist der Schritt nicht erreichbar, bleibt die Liste leer. Clients ohne Kandidaten fahren wie bisher `flangeInBase`. Details und die Rangregel stehen in [`arbeitsplaene/layer2-blickkandidaten.md`](arbeitsplaene/layer2-blickkandidaten.md).
+
 ## 15. Hand-Auge-Kalibrierung über OPC UA (nur Hand-Pi)
 
 Damit lässt sich `T_flansch_cam` aus dem Frontend bestimmen, ohne CLI. Der Ablauf folgt dem Muster der Kamera-Kalibrierung (Abschnitt 12). Alle JSON-Formate stehen im Arbeitsplan [`arbeitsplaene/handeye-ueber-opcua.md`](arbeitsplaene/handeye-ueber-opcua.md). Die Knoten gibt es nur mit `hand_eye_path`, also auf dem Pi mit `frame_id = cam_flange`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
