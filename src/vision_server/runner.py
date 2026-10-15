@@ -909,6 +909,13 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             or (calibration_session is not None and calibration_session.busy)
             or (layer2_run is not None and layer2_run.active),
         )
+    if apriltag_source is not None and space.last_tag_measurement is not None:
+        await _install_measure_tags(
+            space, config, apriltag_source, calibration_methods, states,
+            lambda: jobs.busy
+            or (calibration_session is not None and calibration_session.busy)
+            or (hand_eye_session is not None and hand_eye_session.active),
+        )
 
     cell_watch = None
     if apriltag_source is not None and space.cell_watch_status is not None:
@@ -940,6 +947,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["Layer2Status"] = space.layer2_status
     if space.hand_eye_status is not None:
         mirror_nodes["HandEyeStatus"] = space.hand_eye_status
+    if space.last_tag_measurement is not None:
+        mirror_nodes["LastTagMeasurement"] = space.last_tag_measurement
     if space.cell_watch_status is not None:
         mirror_nodes["CellWatchStatus"] = space.cell_watch_status
     program = await install_vision_program(
@@ -1133,6 +1142,64 @@ async def _install_hand_eye_session(
             [ua.VariantType.Int32],
         )
     return session
+
+
+async def _install_measure_tags(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    apriltag_source: Any,
+    methods: dict[str, Node],
+    states: VisionStateMachines,
+    busy: Callable[[], bool],
+) -> None:
+    """Legt MeasureTags an: Tags in Kamerakoordinaten fuer die Regelung der
+    Steuerung. Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Antwortet
+    erst nach der Messung, das Ergebnis kommt direkt zurueck; der Knoten
+    `LastTagMeasurement` ist nur zur Anzeige. Siehe
+    `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
+    """
+    from .measuretag import RESULT_SCHEMA, dumps, parse_request
+
+    def refusal(code: VisionErrorCode, message: str):
+        result = {"schema": RESULT_SCHEMA, "tags": [], "error": f"{code.name}: {message}"}
+        return (
+            ua.Variant(dumps(result), ua.VariantType.String),
+            ua.Variant(int(code), ua.VariantType.Int32),
+        )
+
+    @uamethod
+    async def measure_tags(parent, request_json: str):
+        """1:MeasureTags -- Tags messen, nur in Kamerakoordinaten."""
+        try:
+            request = parse_request(request_json or "")
+        except ValueError as error:
+            _log.warning("MeasureTags abgelehnt: %s", error)
+            return refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
+        if states.state_names()[0] != "Operational":
+            return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
+        if busy():
+            return refusal(VisionErrorCode.BUSY, "Job, Kalibrierung oder Hand-Auge-Sitzung laeuft")
+        result = await apriltag_source.measure_tags(request)
+        payload = dumps(result)
+        try:
+            await space.last_tag_measurement.write_value(
+                ua.Variant(payload, ua.VariantType.String)
+            )
+        except Exception:
+            _log.exception("LastTagMeasurement konnte nicht geschrieben werden")
+        code = VisionErrorCode.DETECTION_FAILED if result["error"] else VisionErrorCode.OK
+        return (
+            ua.Variant(payload, ua.VariantType.String),
+            ua.Variant(int(code), ua.VariantType.Int32),
+        )
+
+    methods["MeasureTags"] = await space.vision_system.add_method(
+        ua.NodeId(f"{config.vision_system_name}.MeasureTags", space.own_idx),
+        ua.QualifiedName("MeasureTags", space.own_idx),
+        measure_tags,
+        [ua.VariantType.String],
+        [ua.VariantType.String, ua.VariantType.Int32],
+    )
 
 
 async def _install_cell_watch(

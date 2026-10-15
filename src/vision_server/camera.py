@@ -172,6 +172,53 @@ def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
     return arguments
 
 
+#: `calibration_id` einer aus der RealSense gelesenen Werks-Intrinsik.
+REALSENSE_FACTORY_CALIBRATION_ID = "realsense-werksintrinsik"
+
+
+def _realsense_calibration(pipeline: Any, frame_id: str) -> Any:
+    """Werks-Intrinsik des Farb-Streams einer laufenden Pipeline.
+
+    Brown-Conrady von librealsense entspricht dem OpenCV-Pinhole-Modell. Fuer
+    andere Modelle (die Farbkamera der D4xx meldet "Inverse Brown Conrady",
+    praktisch immer mit Koeffizienten 0) werden die Koeffizienten nur
+    uebernommen, wenn sie alle 0 sind -- sonst bedeuteten sie fuer OpenCV etwas
+    anderes, und eine stumm falsche Verzeichnung waere schlimmer als keine.
+    """
+    import numpy as np
+    import pyrealsense2 as rs
+
+    from tagloc.calibration import PINHOLE, CameraCalibration
+
+    profile = pipeline.get_active_profile().get_stream(rs.stream.color)
+    intrinsics = profile.as_video_stream_profile().get_intrinsics()
+    coefficients = [float(value) for value in intrinsics.coeffs][:5]
+    coefficients += [0.0] * (5 - len(coefficients))
+    if intrinsics.model != rs.distortion.brown_conrady and any(coefficients):
+        _log.warning(
+            "RealSense-Verzeichnungsmodell %s mit Koeffizienten %s ist nicht "
+            "OpenCV-kompatibel -- ohne Verzeichnung weiter",
+            intrinsics.model,
+            coefficients,
+        )
+        coefficients = [0.0] * 5
+    return CameraCalibration(
+        camera_matrix=np.array(
+            [
+                [intrinsics.fx, 0.0, intrinsics.ppx],
+                [0.0, intrinsics.fy, intrinsics.ppy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        distortion=np.array(coefficients, dtype=np.float64),
+        image_size=(int(intrinsics.width), int(intrinsics.height)),
+        model=PINHOLE,
+        frame_id=frame_id,
+        calibration_id=REALSENSE_FACTORY_CALIBRATION_ID,
+    )
+
+
 class SharedCamera:
     """Haelt eine Kamera offen und stellt den jeweils neuesten Frame bereit."""
 
@@ -246,6 +293,26 @@ class SharedCamera:
         loop = asyncio.get_running_loop()
         self._camera = await loop.run_in_executor(self._executor, self._open_camera)
         self._loop_task = asyncio.create_task(self._capture_loop())
+
+    async def factory_calibration(self, frame_id: str = "") -> Any | None:
+        """Die Werks-Intrinsik der Kamera als `CameraCalibration`, sonst `None`.
+
+        Nur die RealSense kennt ihre Intrinsik selbst (aus der Fertigung, im
+        Geraet gespeichert). Das ist kein Ersatz fuer eine eigene Kalibrierung,
+        aber weit besser als der geschaetzte Platzhalter -- Rueckfall, wenn die
+        Kalibrierdatei fehlt. Laeuft im Kamera-Thread, damit es nicht mit dem
+        Capture-Loop um die Pipeline konkurriert.
+        """
+        if self._config.backend != "realsense" or self._camera is None or self._executor is None:
+            return None
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(
+                self._executor, _realsense_calibration, self._camera, frame_id
+            )
+        except Exception:
+            _log.warning("Werks-Intrinsik der RealSense nicht lesbar", exc_info=True)
+            return None
 
     def _open_camera(self) -> Any:
         """Laeuft im Kamera-Worker-Thread: Hardware oeffnen plus Warmup."""

@@ -73,6 +73,9 @@ class VisionAddressSpace:
     #: Zustand der Zellen-Ueberwachung (JSON), siehe `cellwatch.py`. Nur auf
     #: der Deckenkamera, also mit AprilTag und ohne `hand_eye_path`.
     cell_watch_status: Node | None = None
+    #: Ergebnis des letzten `MeasureTags` (JSON), nur zur Anzeige. Nur auf dem
+    #: Hand-Pi, wie `hand_eye_status`.
+    last_tag_measurement: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -288,6 +291,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     layer2_target: Node | None = None
     layer2_status: Node | None = None
     hand_eye_status: Node | None = None
+    last_tag_measurement: Node | None = None
     cell_watch_status: Node | None = None
     if config.apriltag is not None and config.apriltag.hand_eye_path is None:
         cell_watch_status = await vision_system.add_variable(
@@ -315,6 +319,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         hand_eye_status = await vision_system.add_variable(
             ua.NodeId(f"{name}.HandEyeStatus", own_idx),
             ua.QualifiedName("HandEyeStatus", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        last_tag_measurement = await vision_system.add_variable(
+            ua.NodeId(f"{name}.LastTagMeasurement", own_idx),
+            ua.QualifiedName("LastTagMeasurement", own_idx),
             "",
             ua.VariantType.String,
         )
@@ -350,5 +360,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         layer2_status=layer2_status,
         hand_eye_status=hand_eye_status,
         cell_watch_status=cell_watch_status,
+        last_tag_measurement=last_tag_measurement,
         amcm_idx=amcm_idx,
     )

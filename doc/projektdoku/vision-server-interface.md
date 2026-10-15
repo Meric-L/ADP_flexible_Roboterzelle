@@ -1657,3 +1657,16 @@ Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder 
 - **Ressourcen:** Die Überwachung nutzt die Frames der geteilten Kamera und einen eigenen Detektor. Während eines Jobs oder einer Kalibrierung steht sie auf `paused`.
 - **`visibleTagIds`** (additiv, int-Array): alle Tag-IDs, Welt- und Modul-Tags, die im Bild der letzten Prüfung erkannt wurden. Das Feld wird bei jeder Prüfung aktualisiert, **auch bei `paused`**, wenn das Bild keine Aussage erlaubt: Dann sieht der Bediener, welcher Welttag fehlt. `null`, solange noch kein Bild geprüft wurde, und bei `off`. Pausiert die Überwachung wegen eines Jobs oder einer Kalibrierung, wird kein Bild geprüft. Das Feld zeigt dann den letzten Stand.
 - **Timer für `disappeared`:** Er misst die Zeit seit der letzten Sichtung des Tags. Jede einzelne Sichtung setzt ihn zurück. Zeit in `paused` zählt mit, sie zählt aber nicht als „fehlt“: Ausgelöst wird erst, wenn danach zusätzlich mindestens 3 gültige Bilder ohne den Tag vorliegen und er im letzten `persistS`-Fenster nicht gesehen wurde.
+
+## 17. MeasureTags: Tags in Kamerakoordinaten (nur Hand-Pi)
+
+Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, fährt und regelt, der Hand-Pi misst nur. Steht der Roboter, ruft die Steuerung `MeasureTags` auf. Formate und Regeln stehen im Arbeitsplan [`arbeitsplaene/layer2-measuretags.md`](arbeitsplaene/layer2-measuretags.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `MeasureTags` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, `wsc.vision.measuretag.request/1` → `…result/1` |
+| `LastTagMeasurement` | String, das letzte Ergebnis, nur zur Anzeige |
+
+- **Messung:** Der Pi misst `T_cam_tag` (Kamera-KS wie OpenCV), ohne Welt-KS und ohne CAD-Versatz. Er nutzt nur Bilder, die **nach** dem Aufruf eintreffen, und mittelt standardmäßig über 3 davon.
+- **Mehrdeutige Orientierung:** Sie wird geliefert und mit `ambiguous` markiert. Dann auf die Position regeln, nicht auf die Drehung.
+- **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.

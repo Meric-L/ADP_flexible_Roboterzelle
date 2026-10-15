@@ -248,30 +248,41 @@ class AprilTagDetectionSource(DetectionSource):
 
         If calibration is missing, the source doesn't open and the server
         stays in Preoperational -- intentional, since a vision server
-        without calibration would report meaningless numbers. The one
-        exception is `allow_placeholder_calibration`: a deliberate, temporary
-        bypass to run detection before the real calibration run exists.
+        without calibration would report meaningless numbers. Two
+        exceptions, in this order: a camera that knows its own factory
+        intrinsics (RealSense on the Hand-Pi) uses those -- measured, not
+        guessed, just not ours -- and `allow_placeholder_calibration`, a
+        deliberate, temporary bypass to run detection before the real
+        calibration run exists.
         """
         from tagloc.calibration import default_calibration, load_calibration
         from tagloc.detector import build_detector
         from tagloc.tagmap import empty_tag_map, load_tag_map, validate_tag_map
 
+        calibration_missing: FileNotFoundError | None = None
         if self._calibration is None:
             try:
                 self._calibration = await self.run_blocking(
                     load_calibration, self._config.calibration_path
                 )
-            except FileNotFoundError:
-                if not self._config.allow_placeholder_calibration:
+            except FileNotFoundError as error:
+                if getattr(self._camera_config, "backend", "") == "realsense":
+                    # Entschieden wird erst mit offener Kamera: die RealSense
+                    # kennt ihre Werks-Intrinsik, aber nur mit laufender Pipeline.
+                    calibration_missing = error
+                elif not self._config.allow_placeholder_calibration:
+                    # Ohne Werks-Intrinsik: wie bisher abbrechen, ohne die
+                    # Kamera ueberhaupt zu oeffnen.
                     raise
-                _log.warning(
-                    "Keine Kalibrierung unter %s -- verwende Platzhalter-Intrinsik "
-                    "(allow_placeholder_calibration=True). Posen sind NICHT masshaltig.",
-                    self._config.calibration_path,
-                )
-                self._calibration = default_calibration(
-                    self._config.resolution, frame_id=self._config.frame_id
-                )
+                else:
+                    _log.warning(
+                        "Keine Kalibrierung unter %s -- verwende Platzhalter-Intrinsik "
+                        "(allow_placeholder_calibration=True). Posen sind NICHT masshaltig.",
+                        self._config.calibration_path,
+                    )
+                    self._calibration = default_calibration(
+                        self._config.resolution, frame_id=self._config.frame_id
+                    )
         if self._tag_map is None:
             path = self._config.tag_map_path
             if path is not None and path.is_file():
@@ -342,6 +353,107 @@ class AprilTagDetectionSource(DetectionSource):
             self._detector = await self.run_blocking(build)
         self.configuration_id = self._build_configuration_id()
         await self.camera.open()
+        if calibration_missing is not None:
+            await self._fallback_calibration(calibration_missing, default_calibration)
+
+    async def _fallback_calibration(self, missing: FileNotFoundError, default_calibration) -> None:
+        """Ohne Kalibrierdatei: Werks-Intrinsik, sonst Platzhalter, sonst Abbruch."""
+        factory = getattr(self.camera, "factory_calibration", None)
+        calibration = await factory(self._config.frame_id) if factory is not None else None
+        if calibration is not None:
+            _log.warning(
+                "Keine Kalibrierung unter %s -- verwende die Werks-Intrinsik der "
+                "Kamera (%dx%d). Gemessen, aber nicht von uns: eine eigene "
+                "Kalibrierung ist genauer.",
+                self._config.calibration_path,
+                *calibration.image_size,
+            )
+            self._calibration = calibration
+            return
+        if not self._config.allow_placeholder_calibration:
+            await self.camera.close()
+            raise missing
+        _log.warning(
+            "Keine Kalibrierung unter %s -- verwende Platzhalter-Intrinsik "
+            "(allow_placeholder_calibration=True). Posen sind NICHT masshaltig.",
+            self._config.calibration_path,
+        )
+        self._calibration = default_calibration(
+            self._config.resolution, frame_id=self._config.frame_id
+        )
+
+    @property
+    def intrinsics_source(self) -> str:
+        """Woher die Intrinsik stammt: `calibration`, `realsense_factory`, `placeholder`."""
+        from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
+
+        from ..camera import REALSENSE_FACTORY_CALIBRATION_ID
+
+        calibration_id = getattr(self._calibration, "calibration_id", "")
+        if calibration_id == PLACEHOLDER_CALIBRATION_ID:
+            return "placeholder"
+        if calibration_id == REALSENSE_FACTORY_CALIBRATION_ID:
+            return "realsense_factory"
+        return "calibration"
+
+    async def measure_tags(self, request) -> dict:
+        """`MeasureTags`: Tags in Kamerakoordinaten, ueber frische Bilder gemittelt.
+
+        Nur Bilder, die **nach** dem Aufruf eintreffen -- ein Bild aus der
+        Fahrt, das noch im Puffer liegt, waere eine Messung an der falschen
+        Stelle. Ohne Welt-KS, ohne CAD-Versatz, ohne Anker: genau das, was die
+        Regelung der Steuerung braucht. Seiteneffektfrei.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from ..measuretag import NO_FRAME, FrameMeasurement, SizeLookup, build_result
+
+        sizes = SizeLookup(request.sizes_m, self._tag_map, self._config.tag_size_m)
+        loop = asyncio.get_running_loop()
+        latest = self.camera.latest_frame
+        seen_timestamp = latest.timestamp if latest is not None else None
+        frames: list[FrameMeasurement] = []
+        error = None
+        for _ in range(request.frames):
+            try:
+                frame = await self._next_frame(seen_timestamp)
+            except VisionJobError:
+                error = NO_FRAME
+                break
+            seen_timestamp = frame.timestamp
+            tag_poses, image_size = await self.run_blocking(
+                self._detect_in_camera, frame.image, sizes, request.tag_ids
+            )
+            # Zeitpunkt des Bilds, nicht des Aufrufs: `timestamp` ist die
+            # Loop-Zeit beim Eintreffen, umgerechnet auf UTC.
+            age_s = loop.time() - frame.timestamp
+            captured_at = datetime.now(timezone.utc) - timedelta(seconds=age_s)
+            frames.append(FrameMeasurement(captured_at, image_size, tuple(tag_poses)))
+        return build_result(
+            frames,
+            frames_requested=request.frames,
+            frame_id=self._config.frame_id,
+            sizes=sizes,
+            intrinsics_source=self.intrinsics_source,
+            calibration_id=getattr(self._calibration, "calibration_id", ""),
+            error=error if not frames else None,
+        )
+
+    def _detect_in_camera(self, image, sizes, tag_ids):
+        """Ein Bild: `(TagPosen, Bildgroesse)`, auf `tag_ids` gefiltert. Worker-Thread."""
+        from tagloc import frames as frame_tools
+        from tagloc.pose import estimate_tag_poses
+
+        tag_poses = estimate_tag_poses(
+            self._detector.detect(frame_tools.to_gray(image)),
+            self._calibration_for(image),
+            tag_map=sizes,
+            default_size_m=self._config.tag_size_m,
+            max_reprojection_error_px=self._config.max_reproj_error_px,
+        )
+        if tag_ids is not None:
+            tag_poses = [tag_pose for tag_pose in tag_poses if tag_pose.tag_id in tag_ids]
+        return tag_poses, frame_tools.image_size(image)
 
     def apply_tag_map(self, tag_map: Any) -> list[str]:
         """Uebernimmt eine neue Tag-Map in die laufende Quelle.
