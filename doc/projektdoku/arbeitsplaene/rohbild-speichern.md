@@ -26,8 +26,9 @@ verlustbehafteten Livestream.
 - `tests/test_raw_image.py` (neu)
 - `.gitignore`, `data/rohbilder/.gitkeep`
 - `doc/projektdoku/vision-server-interface.md` (neuer Abschnitt)
-- Frontend (anderer Agent, Repo webskillcomposition): Button 📷 in
-  `frontend/src/features/opcua-server/components/CameraPreview.tsx`, Hook
+- Frontend (Repo webskillcomposition): Button „📷 Rohbild speichern“ in
+  `frontend/src/features/opcua-server/components/SaveRawImageButton.tsx`, in
+  der Leiste neben „Ansicht“ (`CameraView.tsx`), Hook
   `model/useSaveRawImage.ts`, Binding `rawImage.saveNodeId` in `config/piServers.ts`.
 
 ## Schnittstellen
@@ -93,6 +94,14 @@ Keine Abweichung von der Schnittstelle. Tatsächlicher Stand: Das Feld
 `_REPO_ROOT` aus `profiles.py`. Die Methode entsteht in `install_vision_machine`
 vor dem Aufbau des VisionProgram, wenn `_camera_owner(...)` eine Quelle liefert
 und `raw_image_dir` nicht `None` ist.
+
+Nachtrag 19.10.2026: Der Button saß zuerst als 📷 oben im Livebild
+(`CameraPreview.tsx`). Auf Wunsch sitzt er jetzt gut sichtbar unten in der
+Leiste neben „Ansicht“. Ruft das Frontend `SaveRawImage` an einem Pi mit älterer
+Server-Version auf, meldet das Relay (`backend/opcua/method_calls.py`,
+`call_raw_method`) jetzt „method not found on the server“ statt eines
+`NoneType`-Fehlers, und das Frontend zeigt dazu den Hinweis, die Pi-Software zu
+aktualisieren.
 
 ## Nach Abschluss
 
