@@ -121,6 +121,13 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # das beste Modell fuer die HQ-Kamera bei 4056x3040 (Arbeitsplan
         # kalibrierung-linsenmodell-je-kamera.md).
         "calibration_model": "fisheye",
+        # Das Deckenbild ist optisch weich (Kanten 4-8 px bei Zellen von
+        # 6-13 px): mit den OpenCV-Standards fehlten Tag 0 und 3. Messung am
+        # Rohbild cam_ceiling_20261019-114704.png (19.10.2026), Begruendung
+        # und Fehlalarmrisiko bei AprilTagProfileConfig.error_correction_rate.
+        "error_correction_rate": 1.0,
+        "perspective_remove_margin_per_cell": 0.3,
+        "perspective_remove_pixel_per_cell": 8,
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten

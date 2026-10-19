@@ -62,6 +62,28 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug-Ausgaben")
 
 
+def add_decoder_arguments(parser: argparse.ArgumentParser) -> None:
+    """Optionale Dekodier-Parameter, `None` = OpenCV-Standard."""
+    parser.add_argument(
+        "--error-correction-rate",
+        type=float,
+        default=None,
+        help="Anteil korrigierbarer Bitfehler (OpenCV-Standard 0.6), fuer weiche Bilder",
+    )
+    parser.add_argument(
+        "--perspective-remove-margin",
+        type=float,
+        default=None,
+        help="Ignorierter Zellrand je Bit (OpenCV-Standard 0.13)",
+    )
+    parser.add_argument(
+        "--perspective-remove-ppc",
+        type=int,
+        default=None,
+        help="Pixel je Zelle nach der Entzerrung (OpenCV-Standard 4)",
+    )
+
+
 def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--calibration", type=Path, required=True, help="Kalibrierdatei (JSON)"
@@ -71,6 +93,7 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--backend", default="aruco", choices=("aruco", "pupil", "auto"), help="Detektor"
     )
+    add_decoder_arguments(parser)
     parser.add_argument(
         "--tag-size-m",
         type=float,
@@ -88,6 +111,15 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Intrinsik auf die Bildgroesse skalieren statt abzubrechen",
     )
+
+
+def detector_options(args) -> dict:
+    """Die optionalen Dekodier-Parameter aus den CLI-Argumenten fuer `build_detector`."""
+    return {
+        "error_correction_rate": args.error_correction_rate,
+        "perspective_remove_margin_per_cell": args.perspective_remove_margin,
+        "perspective_remove_pixel_per_cell": args.perspective_remove_ppc,
+    }
 
 
 def open_source(args, *, loop: bool = False):

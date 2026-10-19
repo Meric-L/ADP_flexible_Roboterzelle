@@ -47,7 +47,7 @@ from pathlib import Path
 from ..detector import build_detector
 from ..geometry import pose_from_dict
 from ..handeye import HandEye, save_hand_eye, solve_hand_eye
-from ._common import describe_pose, setup_logging
+from ._common import add_decoder_arguments, describe_pose, detector_options, setup_logging
 
 SAMPLES_SCHEMA = "wsc.vision.handeye.samples/1"
 
@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True, help="Zieldatei der Hand-Auge-Kalibrierung"
     )
     parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    add_decoder_arguments(parser)
     parser.add_argument("--backend", default="aruco", help="Detektor-Backend")
     parser.add_argument(
         "--frame-id", default="", help="Bezugsrahmen; leer = aus der Kalibrierung"
@@ -119,7 +120,7 @@ def main(argv=None) -> int:
 
     tag_id, tag_size_m, samples = load_samples(args.samples)
     calibration = load_calibration(args.calibration)
-    detector = build_detector(args.family, args.backend)
+    detector = build_detector(args.family, args.backend, **detector_options(args))
 
     poses_base_flange = []
     poses_cam_tag = []

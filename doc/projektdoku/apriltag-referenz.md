@@ -1003,3 +1003,37 @@ Fixture-Dateien aus. Gemockt wird mit handgeschriebenen Fakes (`FakeCamera`,
 | `calibrate_handeye` bricht mit „Keine Aufnahmen" oder ähnlichem ab | Aufnahmeliste leer, falsches Schema, oder alle Aufnahmen über `--max-reproj-error-px` verworfen |
 | `solve_hand_eye`-Ergebnis mit großer Streuung (`target_spread` > `SPREAD_WARNING_M`) | zu wenige oder zu ähnliche Roboterposen (Rotation nicht ausreichend variiert), oder Kamerakalibrierung/Tag-Größe falsch |
 | Job meldet `DETECTION_FAILED`, obwohl ein Tag sichtbar war | `TagPose.is_usable()` hat die Pose verworfen — NaN/Inf-Reprojektionsfehler oder über `max_reprojection_error_px` |
+
+---
+
+## 13. Detektor-Parameter für unscharfe Tags (Deckenkamera)
+
+Das 12-MP-Bild der Deckenkamera ist optisch weich: Kanten 4–8 px breit bei
+Zellen von 6–13 px. Mit den OpenCV-Standards fanden sich auf
+`data/rohbilder/cam_ceiling_20261019-114704.png` nur die Tags [1, 2, 583]; Tag 0
+hatte 4 Bitfehler bei 3 korrigierbaren, Tag 3 (Kontrast nur 60 Graustufen)
+wurde falsch dekodiert. Drei `DetectorParameters` beheben das:
+
+| `AprilTagProfileConfig` / `build_detector` | OpenCV | Standard | `cam_ceiling` |
+|---|---|---|---|
+| `error_correction_rate` | `errorCorrectionRate` | 0.6 | 1.0 |
+| `perspective_remove_margin_per_cell` | `perspectiveRemoveIgnoredMarginPerCell` | 0.13 | 0.3 |
+| `perspective_remove_pixel_per_cell` | `perspectiveRemovePixelPerCell` | 4 | 8 |
+
+Ergebnis: [0, 1, 2, 3, 583] in 0,1 s, keine Mehrkosten. Rand 0.2–0.4 und
+ppc 8–10 liefern dasselbe. `None` lässt den OpenCV-Standard (alle anderen
+Profile, `cam_flange` eingeschlossen). Job, Stream-Overlay und
+Zellüberwachung bekommen dieselben Werte; die CLI-Werkzeuge haben
+`--error-correction-rate`, `--perspective-remove-margin`,
+`--perspective-remove-ppc`. Das `pupil`-Backend ignoriert sie.
+
+**Risiko:** Bei 1.0 werden bis zu 5 statt 3 Bitfehler korrigiert, das
+theoretische Fehlalarmrisiko je Viereck-Kandidat steigt von etwa 0,03 % auf
+etwa 1,5 % (die Randprüfung davor filtert den Großteil; auf den 40
+tag-freien Schachbrettbildern in `data/LV1` null Fehlalarme). Tauchen im
+Betrieb Geister-IDs auf, `error_correction_rate` Richtung 0.8 senken.
+
+`subpixel_corner_refinement` bleibt aus: auf diesem Bild verliert es mit
+Standardparametern Tags (nur [583]) und braucht 2,7 s.
+
+Regressionstest: `tests/test_detector.py` (`CeilingRawImageTest`).
