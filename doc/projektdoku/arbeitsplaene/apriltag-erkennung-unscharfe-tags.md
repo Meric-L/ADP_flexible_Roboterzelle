@@ -1,6 +1,6 @@
 # AprilTag-Erkennung für unscharfe Tags der Deckenkamera
 
-**Status:** in Arbeit — 19.10.2026
+**Status:** fertig — 19.10.2026
 **Verantwortlich:** Meric (`Agent: Erkennung unscharfe Tags`)
 **Thema:** vision
 **Branch:** apriltag
@@ -120,7 +120,16 @@ Kein neuer Fehlerpfad. Unbekannte Attribute in älteren OpenCV-Versionen werden
 
 ## Abweichungen vom Plan
 
-Noch keine.
+- `calibrate_handeye` nutzt `add_detection_arguments` nicht, bekommt die drei
+  Optionen deshalb über den neuen Helfer `_common.add_decoder_arguments`
+  (ebenso von `add_detection_arguments` aufgerufen). `_common.detector_options(args)`
+  liefert die Keywords für `build_detector`.
+- Tests: Zusätzlich zu `tests/test_detector.py` angepasst
+  `tests/test_camera_owner.py` (Stream-Detektor, neuer Test) und
+  `tests/test_cellwatch.py` (Attrappen-Config um die drei Felder ergänzt).
+- Umgesetzt wie geplant: Detektor, Config-Felder, Preset `cam_ceiling`
+  1.0 / 0.3 / 8, Job (`detection/apriltag.py`), Stream-Overlay und
+  Zellüberwachung (`runner.py`) mit denselben Werten.
 
 ## Nach Abschluss
 

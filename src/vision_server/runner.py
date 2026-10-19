@@ -108,8 +108,14 @@ def _build_annotator(source: DetectionSource):
 
     from .stream_overlay import AprilTagStreamAnnotator
 
+    # Dekodier-Parameter wie beim Job, sonst zeigt das Overlay andere Tags.
     stream_detector = build_detector(
-        config.tag_family, config.detector_backend, subpixel_corner_refinement=False
+        config.tag_family,
+        config.detector_backend,
+        subpixel_corner_refinement=False,
+        error_correction_rate=config.error_correction_rate,
+        perspective_remove_margin_per_cell=config.perspective_remove_margin_per_cell,
+        perspective_remove_pixel_per_cell=config.perspective_remove_pixel_per_cell,
     )
 
     return AprilTagStreamAnnotator(
@@ -1295,6 +1301,9 @@ async def _install_cell_watch(
         apriltag.detector_backend,
         subpixel_corner_refinement=apriltag.subpixel_corner_refinement,
         apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
+        error_correction_rate=apriltag.error_correction_rate,
+        perspective_remove_margin_per_cell=apriltag.perspective_remove_margin_per_cell,
+        perspective_remove_pixel_per_cell=apriltag.perspective_remove_pixel_per_cell,
     )
     seen = {"timestamp": None}
 

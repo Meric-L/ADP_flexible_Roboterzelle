@@ -29,6 +29,7 @@ from ..overlay import Window, draw_status_bar, draw_tag_overlay, summarise
 from ..pose import estimate_tag_poses
 from ._common import (
     add_detection_arguments,
+    detector_options,
     add_source_arguments,
     describe_pose,
     fit_calibration,
@@ -78,7 +79,7 @@ def main(argv=None) -> int:
     cv2 = require_cv2()
 
     calibration, tag_map = load_inputs(args)
-    detector = build_detector(args.family, args.backend)
+    detector = build_detector(args.family, args.backend, **detector_options(args))
     source = open_source(args)
 
     live = is_camera_source(args.source)

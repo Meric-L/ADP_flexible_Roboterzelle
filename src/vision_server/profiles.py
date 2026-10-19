@@ -73,6 +73,24 @@ class AprilTagProfileConfig:
     #: dass `subpixel_corner_refinement` spaeter (Layer 2, Kalibrierung)
     #: doch wieder gebraucht wird.
     apriltag_quad_decimate: float = 0.0
+    #: Dekodier-Parameter fuer optisch weiche Bilder, `None` = OpenCV-Standard
+    #: (andere Profile bleiben unveraendert). Gemessen am Rohbild
+    #: `data/rohbilder/cam_ceiling_20261019-114704.png` (19.10.2026): Kanten
+    #: 4-8 px breit bei Zellen von 6-13 px, Tag 0 hatte 4 Bitfehler bei 3
+    #: korrigierbaren, Tag 3 (Kontrast nur 60 Graustufen) wurde falsch
+    #: dekodiert -- Standard fand nur [1, 2, 583], mit 1.0 / 0.3 / 8 alle
+    #: [0, 1, 2, 3, 583] in 0,1 s. `error_correction_rate` ->
+    #: `errorCorrectionRate` (Standard 0.6); 1.0 korrigiert 5 statt 3
+    #: Bitfehler, das Fehlalarmrisiko je Kandidat steigt theoretisch von
+    #: ~0,03 % auf ~1,5 % (auf 40 Bildern ohne Tags in `data/LV1` kein
+    #: Fehlalarm). Wirken nur beim aruco-Backend.
+    error_correction_rate: float | None = None
+    #: -> `perspectiveRemoveIgnoredMarginPerCell` (Standard 0.13): ignorierter
+    #: Zellrand bei der Bitauswertung, bei breiten Kanten hilft mehr Rand.
+    perspective_remove_margin_per_cell: float | None = None
+    #: -> `perspectiveRemovePixelPerCell` (Standard 4): Aufloesung der
+    #: entzerrten Zelle. Rand 0.2-0.4 und 8-10 liefern alle dasselbe Ergebnis.
+    perspective_remove_pixel_per_cell: int | None = None
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.

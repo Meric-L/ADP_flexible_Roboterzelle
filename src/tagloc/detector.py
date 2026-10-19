@@ -98,6 +98,9 @@ class ArucoTagDetector:
         parameters: Any = None,
         subpixel_corner_refinement: bool = False,
         apriltag_quad_decimate: float = 0.0,
+        error_correction_rate: float | None = None,
+        perspective_remove_margin_per_cell: float | None = None,
+        perspective_remove_pixel_per_cell: int | None = None,
     ) -> None:
         import cv2
 
@@ -111,6 +114,25 @@ class ArucoTagDetector:
             self._parameters = aruco.DetectorParameters()
         else:  # OpenCV < 4.7
             self._parameters = aruco.DetectorParameters_create()
+
+        # Dekodier-Parameter fuer optisch weiche Bilder (Deckenkamera, siehe
+        # `AprilTagProfileConfig.error_correction_rate`). `None` = OpenCV-
+        # Standard. Achtung: `error_correction_rate` 1.0 korrigiert bis zu 5
+        # statt 3 Bitfehler -- das Fehlalarmrisiko je Viereck-Kandidat steigt
+        # theoretisch von ~0,03 % auf ~1,5 %, die Randpruefung davor filtert
+        # den Grossteil. Attribute, die eine OpenCV-Version nicht kennt, werden
+        # uebersprungen (Erkennung laeuft dann mit dem Standard).
+        for attribute, value in (
+            ("errorCorrectionRate", error_correction_rate),
+            ("perspectiveRemoveIgnoredMarginPerCell", perspective_remove_margin_per_cell),
+            ("perspectiveRemovePixelPerCell", perspective_remove_pixel_per_cell),
+        ):
+            if value is None:
+                continue
+            try:
+                setattr(self._parameters, attribute, value)
+            except Exception:  # pragma: no cover - fehlt/read-only je nach Build
+                _log.debug("%s nicht setzbar", attribute)
 
         # Subpixel-accurate corners: kann die Pose-Qualitaet auf Distanz
         # verbessern, kostet aber messbar CPU-Zeit (py-spy auf pi1: ~46% des
@@ -196,6 +218,9 @@ def build_detector(
     *,
     subpixel_corner_refinement: bool = False,
     apriltag_quad_decimate: float = 0.0,
+    error_correction_rate: float | None = None,
+    perspective_remove_margin_per_cell: float | None = None,
+    perspective_remove_pixel_per_cell: int | None = None,
 ) -> TagDetector:
     """Build the detector for the requested family.
 
@@ -204,23 +229,24 @@ def build_detector(
 
     `subpixel_corner_refinement`/`apriltag_quad_decimate` gelten nur fuer
     `"aruco"`/`"auto"` -- `pupil_apriltags` hat keine aequivalente Einstellung.
+    Dasselbe gilt fuer `error_correction_rate`, `perspective_remove_margin_per_cell`
+    und `perspective_remove_pixel_per_cell` (`None` = OpenCV-Standard).
     """
     backend = backend.lower()
+    aruco_options = dict(
+        subpixel_corner_refinement=subpixel_corner_refinement,
+        apriltag_quad_decimate=apriltag_quad_decimate,
+        error_correction_rate=error_correction_rate,
+        perspective_remove_margin_per_cell=perspective_remove_margin_per_cell,
+        perspective_remove_pixel_per_cell=perspective_remove_pixel_per_cell,
+    )
     if backend == "aruco":
-        return ArucoTagDetector(
-            family,
-            subpixel_corner_refinement=subpixel_corner_refinement,
-            apriltag_quad_decimate=apriltag_quad_decimate,
-        )
+        return ArucoTagDetector(family, **aruco_options)
     if backend == "pupil":
         return PupilAprilTagDetector(family)
     if backend == "auto":
         try:
-            return ArucoTagDetector(
-                family,
-                subpixel_corner_refinement=subpixel_corner_refinement,
-                apriltag_quad_decimate=apriltag_quad_decimate,
-            )
+            return ArucoTagDetector(family, **aruco_options)
         except Exception as error:
             _log.warning("cv2.aruco nicht nutzbar (%s), weiche auf pupil_apriltags aus", error)
             return PupilAprilTagDetector(family)
