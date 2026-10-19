@@ -1,6 +1,6 @@
 # AprilTag im Modulkatalog per Button um 90° drehen
 
-**Status:** fertig — 19.10.2026
+**Status:** fertig — 19.10.2026, Nachtrag 19.10.2026 (`4b01ab3`)
 **Verantwortlich:** Meric, `Agent: Tag um 90° drehen`
 **Thema:** frontend
 **Branch:** `Ungetestet` (Repo `webskillcomposition`), Commit `862e49a`
@@ -13,7 +13,7 @@ Die Buttons erscheinen an zwei Stellen:
 1. Im Platzier-Panel „Tag auf eine Fläche des Modells setzen" (Schritt 4, neben „Oberkante des Drucks nach oben")
 2. In jeder Tag-Zeile neben „Auf Modell platzieren" (auch für Tags ohne Modell, d. h. Flächen-Voreinstellung oder eigene Drehung)
 
-**Bisheriges Problem:** Die Drehung ging nur über Häkchen + Zahlenfeld „Drehung ab der Kante (°)". Abwählen des Häkchens setzte 0° und ließ den Tag springen. Mit den neuen Buttons bleibt die aktuelle Drehung erhalten und wird inkrementell angepasst.
+**Bisheriges Problem:** Die Drehung ging nur über Häkchen + Zahlenfeld „Drehung ab der Kante (°)". Abwählen des Häkchens setzte 0° und ließ den Tag springen. Mit den neuen Buttons bleibt die aktuelle Drehung erhalten und wird inkrementell angepasst. (Zahlenfeld seit `4b01ab3` entfernt, siehe Nachtrag.)
 
 ## Bereits gelesen
 
@@ -109,7 +109,7 @@ Das Format bleibt wie in `modell-flaechen-tag-platzierung.md` beschrieben. Nach 
 
 **Komponente `TurnButtons` in `components/ModuleCatalogModal.tsx`:**
 - Zwei Buttons ↺ / ↻, Stil `button-ghost`.
-- `title` und `aria-label`: „Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag)" / „Um 90° im Uhrzeigersinn drehen (Blick auf den Tag)".
+- `title` und `aria-label`: „Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag)" / „Um 90° im Uhrzeigersinn drehen (Blick auf den Tag)" (seit `4b01ab3` englisch, siehe Nachtrag).
 
 **Im TagPlacementPanel (Schritt 4):**
 - Buttons vor dem Häkchen „Oberkante des Drucks nach oben".
@@ -119,7 +119,7 @@ Das Format bleibt wie in `modell-flaechen-tag-platzierung.md` beschrieben. Nach 
 - Buttons direkt nach „Auf Modell platzieren".
 - Deaktiviert, während ein Tag gerade platziert wird.
 - **Platzierter Tag** (`placementMatches`): `turnPlacement(placement, ±1)` auf den Platzierungsdatensatz, dann Pose per `tagPoseFromPlacement`.
-- **Sonst** (keine Platzierung): `turnRotationDegAboutTagZ(rotationDeg, ±1)` auf den rpy-Vektor; `placement` wird entfernt. Wenn keine Flächen-Voreinstellung mehr passt, springt die Auswahl „Fläche" auf „Eigene Drehung…" mit r/p/y angezeigt.
+- **Sonst** (keine Platzierung): `turnRotationDegAboutTagZ(rotationDeg, ±1)` auf den rpy-Vektor; `placement` wird entfernt. Wenn keine Flächen-Voreinstellung mehr passt, springt die Auswahl „Fläche" auf „Eigene Drehung…" mit r/p/y angezeigt. (Labels seit `4b01ab3` englisch, siehe Nachtrag.)
 
 ### Fehlerfälle
 
@@ -152,3 +152,44 @@ Keine inhaltlichen Abweichungen; die Implementierung folgt dem Plan genau.
 - [x] Tatsächliche Funktionssignaturen nachtragen.
 - [x] Schnittstellen präzisieren (Achsen, atan2, Normierung, multiplyQuaternions).
 - [x] UI-Platzierung und Verhalten dokumentieren.
+
+## Nachtrag 19.10.2026: Feld „Drehung ab der Kante“ entfernt, Oberfläche englisch
+
+Commit `4b01ab3` (webskillcomposition, Branch `Ungetestet`):
+
+1. **Zahlenfeld entfernt.** Das Feld „Drehung ab der Kante (°)“ im Platzier-Panel gibt es nicht mehr. Die Drehung in der Fläche stellt man nur noch mit ↺ / ↻ ein.
+2. **Häkchen bleibt, Lage bleibt.** Das Häkchen heißt jetzt „Printed top edge up“. Abwählen setzt `inPlaneRotationDeg` auf `inPlaneRotationDegOf(placement)` statt auf 0°; der Tag springt nicht mehr.
+3. **Modulkatalog englisch.** Dialog, Validierungs-, Import- und Sync-Meldungen, Fehlermeldungen aus `tagPlacement.ts`, `TAG_FACE_PRESETS` und die Standard-Modulnamen sind englisch. Datenformat `wsc.cellModules.catalog/1` und Schnittstellen zum Pi sind unverändert. Bereits gespeicherte Kataloge (Backend `/api/module-catalog`, localStorage) behalten ihre deutschen Modulnamen, bis sie neu gespeichert oder zurückgesetzt werden.
+
+Neue exportierte Funktion in `model/tagPlacement.ts`:
+
+```ts
+export function inPlaneRotationDegOf(placement: TagPlacement): number;
+```
+
+Winkel von `edgeA.direction` (in die Fläche projiziert) zu Tag-+X um Tag-+Z, in (−180°, 180°], gerundet auf 1e-6°. `turnPlacement` baut darauf auf; das Verhalten von `turnPlacement` ist unverändert.
+
+**Übersetzungen (DE → EN):**
+
+| Deutsch | Englisch |
+| --- | --- |
+| Modulkatalog | Module catalog |
+| Auf Modell platzieren | Place on model |
+| Wird platziert… | Placing… |
+| Tag entfernen | Remove tag |
+| Fläche | Face |
+| Eigene Drehung… | Custom rotation… |
+| Modellfläche | Model face |
+| Oberkante des Drucks nach oben | Printed top edge up |
+| Tag schaut in die Gegenrichtung | Tag faces the other direction |
+| Abstand zur Fläche (mm) | Distance to face (mm) |
+| Spalten überbrücken bis (mm) | Bridge gaps up to (mm) |
+| Messen ab einer Ecke / zwei Kanten | Measure from a corner / two edges |
+| Andere Fläche | Other face |
+| Abbrechen / Fertig | Cancel / Done |
+| Kantenlänge schwarz (cm) | Black edge length (cm) |
+| Oben (liegend) / Vorne (−Y) / Hinten (+Y) / Rechts (+X) / Links (−X) | Top (lying) / Front (−Y) / Back (+Y) / Right (+X) / Left (−X) |
+| Welt-Tag | World tag |
+| Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag) | Turn 90° counter-clockwise (looking at the tag) |
+| Um 90° im Uhrzeigersinn drehen (Blick auf den Tag) | Turn 90° clockwise (looking at the tag) |
+| Drehung ab der Kante (°) | entfernt, keine Entsprechung |

@@ -353,3 +353,20 @@ Gedreht wird immer aus der aktuellen, **sichtbaren Lage**:
 - Der Tag springt nicht; die Platzierung bleibt sonst unverändert.
 
 **Datenformat unverändert:** Das Feld `placement` bleibt wie beschrieben, nur `inPlaneRotationDeg` ändert sich. Pi, Tag-Map und Layer 2 sind nicht betroffen; dorthin gehen weiter nur `position` und `rotationDeg`. Näheres: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
+
+## Nachtrag 19.10.2026: Oberfläche englisch, Drehfeld entfernt
+
+Die Bedienung oben nennt die deutschen Bezeichnungen. Seit `4b01ab3` ist die Oberfläche des Modulkatalogs englisch. Zuordnung der in diesem Dokument zitierten Texte:
+
+| Im Dokument (DE) | In der Oberfläche (EN) |
+| --- | --- |
+| Modulkatalog (Button, Dialog) | Module catalog |
+| Auf Modell platzieren | Place on model |
+| Messen ab einer Ecke / ab zwei Kanten | Measure from a corner / two edges |
+| Tag schaut in die Gegenrichtung | Tag faces the other direction |
+| Abstand zur Fläche (mm) | Distance to face (mm) |
+| Spalten überbrücken bis (mm) | Bridge gaps up to (mm) |
+| Oberkante des Drucks nach oben | Printed top edge up |
+| Abbrechen | Cancel |
+
+Das Feld „Drehung ab der Kante“ gibt es nicht mehr. `inPlaneRotationDeg` bleibt im Datenformat, wird aber nur noch über ↺ / ↻ bzw. das Häkchen gesetzt. Abwählen des Häkchens behält die Lage. Details: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
