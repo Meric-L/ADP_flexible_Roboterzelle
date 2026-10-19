@@ -9,12 +9,13 @@ import os
 import unittest
 from unittest import mock
 
-from vision_server.server import vision_config
+from vision_server import server
+from vision_server.server import merged_json_object_env, vision_config
 
 
-def config_for(frame_id: str, backend: str):
+def config_for(frame_id: str, backend: str, **extra: str):
     with mock.patch.dict(
-        os.environ, {"VISION_FRAME_ID": frame_id, "VISION_CAMERA_BACKEND": backend}
+        os.environ, {"VISION_FRAME_ID": frame_id, "VISION_CAMERA_BACKEND": backend, **extra}
     ):
         return vision_config()
 
@@ -144,6 +145,152 @@ class SubpixelRefinementSwitchTest(unittest.TestCase):
         ):
             config = vision_config()
         self.assertTrue(config.apriltag.subpixel_corner_refinement)
+
+
+class MergedJsonObjectEnvTest(unittest.TestCase):
+    """Preset plus JSON-Objekt aus der Umgebungsvariable."""
+
+    def merged(self, value, preset=None):
+        env = {} if value is None else {"VISION_TEST_JSON": value}
+        with mock.patch.dict(os.environ, env):
+            if value is None:
+                os.environ.pop("VISION_TEST_JSON", None)
+            return merged_json_object_env("VISION_TEST_JSON", preset)
+
+    def test_without_the_variable_the_preset_is_returned_as_a_copy(self):
+        preset = {"a": 1}
+
+        merged = self.merged(None, preset)
+
+        self.assertEqual(merged, {"a": 1})
+        self.assertIsNot(merged, preset)
+
+    def test_blank_variable_counts_as_unset(self):
+        self.assertEqual(self.merged("  ", {"a": 1}), {"a": 1})
+
+    def test_env_wins_per_key_and_adds_new_keys(self):
+        self.assertEqual(self.merged('{"a": 2, "c": 3}', {"a": 1, "b": 1}), {"a": 2, "b": 1, "c": 3})
+
+    def test_null_removes_a_preset_entry(self):
+        self.assertEqual(self.merged('{"a": null}', {"a": 1, "b": 1}), {"b": 1})
+
+    def test_invalid_json_raises_value_error_naming_the_variable(self):
+        with self.assertRaises(ValueError) as caught:
+            self.merged("{kaputt", {})
+        self.assertIn("VISION_TEST_JSON", str(caught.exception))
+
+    def test_non_object_raises_value_error(self):
+        for raw in ("[1, 2]", "0.8", '"text"', "null"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    self.merged(raw, {})
+
+
+class DetectorParametersEnvTest(unittest.TestCase):
+    """`VISION_APRILTAG_DETECTOR_PARAMS` und das (leere) Preset."""
+
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("VISION_APRILTAG_DETECTOR_PARAMS", None)
+
+    def test_ceiling_preset_uses_finer_sampling_grid(self):
+        self.assertEqual(
+            config_for("cam_ceiling", "picamera2").apriltag.detector_parameters,
+            {"perspectiveRemovePixelPerCell": 8},
+        )
+
+    def test_flange_preset_is_empty(self):
+        self.assertEqual(config_for("cam_flange", "realsense").apriltag.detector_parameters, {})
+
+    def test_env_sets_parameters(self):
+        config = config_for(
+            "cam_ceiling", "picamera2", VISION_APRILTAG_DETECTOR_PARAMS='{"errorCorrectionRate": 0.8}'
+        )
+        # Je Schluessel ueber das Preset gemischt.
+        self.assertEqual(
+            config.apriltag.detector_parameters,
+            {"perspectiveRemovePixelPerCell": 8, "errorCorrectionRate": 0.8},
+        )
+
+    def test_env_overrides_and_removes_preset_entries(self):
+        presets = {
+            "cam_ceiling": {
+                **server.PI_APRILTAG_PRESETS["cam_ceiling"],
+                "detector_parameters": {"errorCorrectionRate": 1.0, "perspectiveRemovePixelPerCell": 8},
+            }
+        }
+        with mock.patch.object(server, "PI_APRILTAG_PRESETS", presets):
+            config = config_for(
+                "cam_ceiling",
+                "picamera2",
+                VISION_APRILTAG_DETECTOR_PARAMS='{"errorCorrectionRate": 0.8, "perspectiveRemovePixelPerCell": null}',
+            )
+        self.assertEqual(config.apriltag.detector_parameters, {"errorCorrectionRate": 0.8})
+        # Das Preset selbst bleibt unberuehrt.
+        self.assertEqual(
+            presets["cam_ceiling"]["detector_parameters"],
+            {"errorCorrectionRate": 1.0, "perspectiveRemovePixelPerCell": 8},
+        )
+
+    def test_invalid_json_fails_at_start(self):
+        with self.assertRaises(ValueError):
+            config_for("cam_ceiling", "picamera2", VISION_APRILTAG_DETECTOR_PARAMS="{nope")
+
+
+class CameraControlsEnvTest(unittest.TestCase):
+    """`VISION_CAMERA_CONTROLS` und das (leere) Preset."""
+
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("VISION_CAMERA_CONTROLS", None)
+
+    def test_ceiling_preset_has_measured_controls(self):
+        config = config_for("cam_ceiling", "picamera2")
+        self.assertEqual(
+            config.camera_stream.camera_controls,
+            {"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"},
+        )
+        # Die uebrigen Stream-Preset-Werte kommen weiter an.
+        self.assertEqual(config.camera_stream.buffer_count, 2)
+
+    def test_env_sets_controls(self):
+        config = config_for(
+            "cam_ceiling",
+            "picamera2",
+            VISION_CAMERA_CONTROLS='{"ExposureValue": -0.5, "NoiseReductionMode": "Fast"}',
+        )
+        # Je Schluessel ueber das Preset gemischt.
+        self.assertEqual(
+            config.camera_stream.camera_controls,
+            {"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"},
+        )
+
+    def test_env_overrides_and_removes_preset_entries(self):
+        presets = {
+            "cam_ceiling": {
+                **server.PI_CAMERA_STREAM_PRESETS["cam_ceiling"],
+                "camera_controls": {"Sharpness": 2.0, "Contrast": 1.2},
+            }
+        }
+        with mock.patch.object(server, "PI_CAMERA_STREAM_PRESETS", presets):
+            config = config_for(
+                "cam_ceiling",
+                "picamera2",
+                VISION_CAMERA_CONTROLS='{"Sharpness": 1.5, "Contrast": null}',
+            )
+        self.assertEqual(config.camera_stream.camera_controls, {"Sharpness": 1.5})
+
+    def test_realsense_keeps_the_controls_for_the_warning(self):
+        config = config_for("cam_flange", "realsense", VISION_CAMERA_CONTROLS='{"Sharpness": 1.5}')
+        self.assertEqual(config.camera_stream.camera_controls, {"Sharpness": 1.5})
+
+    def test_invalid_json_fails_at_start(self):
+        with self.assertRaises(ValueError):
+            config_for("cam_ceiling", "picamera2", VISION_CAMERA_CONTROLS="[1]")
 
 
 if __name__ == "__main__":

@@ -9,8 +9,9 @@ Nie eine Matrix hier hinein — `K`/`D` sind numpy, unhashbar und gehoeren dem,
 was sie aus `calibration_path` laedt.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -73,6 +74,18 @@ class AprilTagProfileConfig:
     #: dass `subpixel_corner_refinement` spaeter (Layer 2, Kalibrierung)
     #: doch wieder gebraucht wird.
     apriltag_quad_decimate: float = 0.0
+    #: Frei waehlbare OpenCV-`DetectorParameters`: Attributname -> Wert, z. B.
+    #: `{"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}`. Leer =
+    #: OpenCV-Standard. Wirkt nur beim aruco-Backend, ein unbekannter Name
+    #: oder ein Wert vom falschen Typ wirft beim Start `ValueError`
+    #: (`tagloc.detector.apply_detector_parameters`). Job, Stream-Overlay und
+    #: Zellueberwachung nutzen dasselbe Mapping, sonst zeigt das Overlay
+    #: andere Tags. Ein ausdrueckliches `cornerRefinementMethod` gewinnt
+    #: gegen `subpixel_corner_refinement`, wird fuer das Overlay aber
+    #: entfernt (siehe `runner._build_annotator`). Preset und Override per
+    #: `VISION_APRILTAG_DETECTOR_PARAMS` siehe `server.apriltag_config`.
+    #: `hash=False`: ein dict ist nicht hashbar, die Config soll es bleiben.
+    detector_parameters: dict[str, Any] = field(default_factory=dict, hash=False)
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.
@@ -171,6 +184,14 @@ class CameraStreamConfig:
     #: Video). Bei 12 MP waeren das ~220 MB CMA-Speicher, mehr als der Pi
     #: standardmaessig reserviert -- `configure()` scheitert dann.
     buffer_count: int | None = None
+    #: Nur Picamera2: libcamera-Controls, die beim Start gesetzt werden, z. B.
+    #: `{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}`.
+    #: Enum-Controls duerfen als Name angegeben werden (`camera.resolve_camera_controls`),
+    #: unbekannte Namen werfen beim Oeffnen `ValueError`. Leer = Picamera2-
+    #: Standard. RealSense/OpenCV ignorieren das Feld (Warnung, wenn gesetzt).
+    #: Preset und Override per `VISION_CAMERA_CONTROLS` siehe `server.py`.
+    #: `hash=False`: ein dict ist nicht hashbar, die Config soll es bleiben.
+    camera_controls: dict[str, Any] = field(default_factory=dict, hash=False)
     warmup_s: float = 2.0
     #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
     capture_fps: float = 15.0

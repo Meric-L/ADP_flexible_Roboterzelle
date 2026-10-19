@@ -27,6 +27,7 @@ from ..tagmap import (
 )
 from ._common import (
     add_detection_arguments,
+    detector_options,
     add_source_arguments,
     describe_pose,
     fit_calibration,
@@ -59,7 +60,7 @@ def main(argv=None) -> int:
     # An existing map supplies roles, sizes and CAD offsets; only the world
     # poses are recomputed.
     existing = load_tag_map(args.tag_map) if args.tag_map else empty_tag_map(args.frame_id, args.anchor)
-    detector = build_detector(args.family, args.backend)
+    detector = build_detector(args.family, args.backend, **detector_options(args))
     source = frame_sources.open_source(
         args.source, resolution=tuple(args.resolution) if args.resolution else None
     )

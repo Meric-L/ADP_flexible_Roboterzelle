@@ -62,6 +62,20 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug-Ausgaben")
 
 
+def add_decoder_arguments(parser: argparse.ArgumentParser) -> None:
+    """Frei waehlbare Detektor-Parameter, ohne Angabe gilt der OpenCV-Standard."""
+    parser.add_argument(
+        "--detector-param",
+        action="append",
+        default=[],
+        metavar="NAME=WERT",
+        help=(
+            "OpenCV-DetectorParameters-Attribut setzen, z. B. errorCorrectionRate=0.8 "
+            "(wiederholbar; Wert als JSON, sonst als Text)"
+        ),
+    )
+
+
 def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--calibration", type=Path, required=True, help="Kalibrierdatei (JSON)"
@@ -71,6 +85,7 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--backend", default="aruco", choices=("aruco", "pupil", "auto"), help="Detektor"
     )
+    add_decoder_arguments(parser)
     parser.add_argument(
         "--tag-size-m",
         type=float,
@@ -88,6 +103,33 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Intrinsik auf die Bildgroesse skalieren statt abzubrechen",
     )
+
+
+def parse_detector_params(items) -> dict:
+    """`["NAME=WERT", ...]` -> `{NAME: WERT}`, Wert per `json.loads`, sonst Text.
+
+    `SystemExit` mit einer Meldung, die sagt, was zu tun ist, bei einem Eintrag
+    ohne `=`.
+    """
+    parameters = {}
+    for item in items or []:
+        name, separator, raw = item.partition("=")
+        if not separator or not name.strip():
+            raise SystemExit(
+                f"--detector-param erwartet NAME=WERT (z. B. errorCorrectionRate=0.8), "
+                f"nicht '{item}'"
+            )
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            value = raw
+        parameters[name.strip()] = value
+    return parameters
+
+
+def detector_options(args) -> dict:
+    """Die Detektor-Parameter aus den CLI-Argumenten als Keywords fuer `build_detector`."""
+    return {"detector_parameters": parse_detector_params(args.detector_param)}
 
 
 def open_source(args, *, loop: bool = False):

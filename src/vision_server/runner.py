@@ -108,8 +108,20 @@ def _build_annotator(source: DetectionSource):
 
     from .stream_overlay import AprilTagStreamAnnotator
 
+    # Detektor-Parameter wie beim Job, sonst zeigt das Overlay andere Tags --
+    # bis auf die Eckenverfeinerung: sie bleibt im Stream bewusst aus (siehe
+    # oben, CPU-Konkurrenz zum Job), auch wenn `cornerRefinementMethod`
+    # ausdruecklich in den Parametern steht.
+    stream_parameters = {
+        name: value
+        for name, value in config.detector_parameters.items()
+        if name != "cornerRefinementMethod"
+    }
     stream_detector = build_detector(
-        config.tag_family, config.detector_backend, subpixel_corner_refinement=False
+        config.tag_family,
+        config.detector_backend,
+        subpixel_corner_refinement=False,
+        detector_parameters=stream_parameters,
     )
 
     return AprilTagStreamAnnotator(
@@ -1295,6 +1307,7 @@ async def _install_cell_watch(
         apriltag.detector_backend,
         subpixel_corner_refinement=apriltag.subpixel_corner_refinement,
         apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
+        detector_parameters=apriltag.detector_parameters,
     )
     seen = {"timestamp": None}
 

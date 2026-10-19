@@ -6,6 +6,7 @@ Konvention (siehe camera.py). Verifiziert wird deshalb nur das Dispatching,
 nicht das Ansprechen der eigentlichen Kamera.
 """
 
+import types
 import unittest
 
 try:
@@ -18,7 +19,10 @@ from vision_server.camera import (
     PICAMERA2_MAIN_FORMAT,
     PICAMERA2_PREVIEW_FORMAT,
     SharedCamera,
+    format_camera_metadata,
     picamera2_video_configuration,
+    resolve_camera_controls,
+    validate_camera_controls,
     yuv420_to_bgr,
 )
 from vision_server.profiles import CameraStreamConfig
@@ -93,6 +97,112 @@ class Picamera2ConfigurationTest(unittest.TestCase):
             picamera2_video_configuration(
                 CameraStreamConfig(resolution=(640, 480), preview_resolution=(960, 720))
             )
+
+
+    def test_no_controls_key_without_camera_controls(self):
+        arguments = picamera2_video_configuration(CameraStreamConfig())
+        self.assertNotIn("controls", arguments)
+
+    def test_camera_controls_end_up_in_the_configuration(self):
+        arguments = picamera2_video_configuration(
+            CameraStreamConfig(
+                camera_controls={"ExposureValue": -0.5, "NoiseReductionMode": "Fast"}
+            )
+        )
+        self.assertEqual(
+            arguments["controls"], {"ExposureValue": -0.5, "NoiseReductionMode": "Fast"}
+        )
+
+    def test_the_controls_are_a_copy_of_the_config(self):
+        config = CameraStreamConfig(camera_controls={"Sharpness": 1.5})
+        picamera2_video_configuration(config)["controls"]["Sharpness"] = 9.0
+        self.assertEqual(config.camera_controls, {"Sharpness": 1.5})
+
+
+class FakeNoiseReductionModeEnum:
+    Off = 0
+    Fast = 1
+    HighQuality = 2
+
+
+class FakeAwbModeEnum:
+    Auto = 0
+    Daylight = 5
+
+
+FAKE_LIBCAMERA_CONTROLS = types.SimpleNamespace(
+    draft=types.SimpleNamespace(NoiseReductionModeEnum=FakeNoiseReductionModeEnum),
+    AwbModeEnum=FakeAwbModeEnum,
+    AeMeteringModeEnum=types.SimpleNamespace(CentreWeighted=0),
+    AeExposureModeEnum=types.SimpleNamespace(Normal=0),
+    AeConstraintModeEnum=types.SimpleNamespace(Normal=0),
+)
+
+
+class ResolveCameraControlsTest(unittest.TestCase):
+    """String-Enums -> libcamera-Werte, mit untergeschobenem Namensraum."""
+
+    def test_enum_names_are_resolved(self):
+        resolved = resolve_camera_controls(
+            {"NoiseReductionMode": "HighQuality", "AwbMode": "Daylight"}, FAKE_LIBCAMERA_CONTROLS
+        )
+        self.assertEqual(resolved, {"NoiseReductionMode": 2, "AwbMode": 5})
+
+    def test_numbers_and_other_controls_stay_unchanged(self):
+        controls = {"NoiseReductionMode": 1, "ExposureTime": 20000, "AeEnable": False, "Sharpness": 1.5}
+        self.assertEqual(resolve_camera_controls(controls, FAKE_LIBCAMERA_CONTROLS), controls)
+
+    def test_does_not_modify_its_input(self):
+        controls = {"NoiseReductionMode": "Off"}
+        resolve_camera_controls(controls, FAKE_LIBCAMERA_CONTROLS)
+        self.assertEqual(controls, {"NoiseReductionMode": "Off"})
+
+    def test_unknown_enum_name_raises_with_the_valid_names(self):
+        with self.assertRaises(ValueError) as caught:
+            resolve_camera_controls({"NoiseReductionMode": "Turbo"}, FAKE_LIBCAMERA_CONTROLS)
+        message = str(caught.exception)
+        self.assertIn("Turbo", message)
+        self.assertIn("HighQuality", message)
+
+
+class ValidateCameraControlsTest(unittest.TestCase):
+    AVAILABLE = {
+        "ExposureTime": (60, 66666, 20000),
+        "AnalogueGain": (1.0, 16.0, 1.0),
+        "AeEnable": (False, True, True),
+        "Sharpness": (0.0, 16.0, 1.0),
+        "ScalerCrop": ((0, 0, 64, 64), (0, 0, 4056, 3040), (0, 0, 4056, 3040)),
+    }
+
+    def test_unknown_names_raise_and_list_the_cameras_names(self):
+        with self.assertRaises(ValueError) as caught:
+            validate_camera_controls({"Sharpnes": 1.5}, self.AVAILABLE)
+        message = str(caught.exception)
+        self.assertIn("Sharpnes", message)
+        self.assertIn("Sharpness", message)
+
+    def test_number_types_are_aligned_to_the_cameras_defaults(self):
+        checked = validate_camera_controls(
+            {"AnalogueGain": 2, "ExposureTime": 20000.0, "AeEnable": 0}, self.AVAILABLE
+        )
+        self.assertIsInstance(checked["AnalogueGain"], float)
+        self.assertIsInstance(checked["ExposureTime"], int)
+        self.assertIs(checked["AeEnable"], False)
+
+    def test_json_lists_become_tuples(self):
+        checked = validate_camera_controls({"ScalerCrop": [0, 0, 100, 100]}, self.AVAILABLE)
+        self.assertEqual(checked["ScalerCrop"], (0, 0, 100, 100))
+
+
+class CameraMetadataFormatTest(unittest.TestCase):
+    def test_lists_known_keys_in_fixed_order_and_skips_missing_ones(self):
+        text = format_camera_metadata(
+            {"Lux": 120.5, "ExposureTime": 8000, "AnalogueGain": 1.0, "SensorTimestamp": 1}
+        )
+        self.assertEqual(text, "ExposureTime=8000, AnalogueGain=1.0, Lux=120.5")
+
+    def test_empty_metadata_gives_an_empty_text(self):
+        self.assertEqual(format_camera_metadata({}), "")
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
