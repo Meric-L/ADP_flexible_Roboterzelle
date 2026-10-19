@@ -77,7 +77,7 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 | [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen |
 | [`../praesentation.md`](../praesentation.md) | Foliengrundlage der Betreuer-Präsentation |
 | [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | fertig | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
-| [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | in Arbeit | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
+| [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | fertig | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
 
 Kommt eine Fach-MD dazu, hier eine Zeile ergänzen. Für Agenten listet das
 Skript `.claude/hooks/doku_regeln.py` den Ordnerinhalt ohnehin automatisch auf.

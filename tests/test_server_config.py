@@ -195,17 +195,24 @@ class DetectorParametersEnvTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         os.environ.pop("VISION_APRILTAG_DETECTOR_PARAMS", None)
 
-    def test_ceiling_preset_is_empty_opencv_standard(self):
-        self.assertEqual(config_for("cam_ceiling", "picamera2").apriltag.detector_parameters, {})
+    def test_ceiling_preset_uses_finer_sampling_grid(self):
+        self.assertEqual(
+            config_for("cam_ceiling", "picamera2").apriltag.detector_parameters,
+            {"perspectiveRemovePixelPerCell": 8},
+        )
 
-    def test_flange_preset_is_empty_too(self):
+    def test_flange_preset_is_empty(self):
         self.assertEqual(config_for("cam_flange", "realsense").apriltag.detector_parameters, {})
 
     def test_env_sets_parameters(self):
         config = config_for(
             "cam_ceiling", "picamera2", VISION_APRILTAG_DETECTOR_PARAMS='{"errorCorrectionRate": 0.8}'
         )
-        self.assertEqual(config.apriltag.detector_parameters, {"errorCorrectionRate": 0.8})
+        # Je Schluessel ueber das Preset gemischt.
+        self.assertEqual(
+            config.apriltag.detector_parameters,
+            {"perspectiveRemovePixelPerCell": 8, "errorCorrectionRate": 0.8},
+        )
 
     def test_env_overrides_and_removes_preset_entries(self):
         presets = {
@@ -241,9 +248,12 @@ class CameraControlsEnvTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         os.environ.pop("VISION_CAMERA_CONTROLS", None)
 
-    def test_ceiling_preset_is_empty(self):
+    def test_ceiling_preset_has_measured_controls(self):
         config = config_for("cam_ceiling", "picamera2")
-        self.assertEqual(config.camera_stream.camera_controls, {})
+        self.assertEqual(
+            config.camera_stream.camera_controls,
+            {"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"},
+        )
         # Die uebrigen Stream-Preset-Werte kommen weiter an.
         self.assertEqual(config.camera_stream.buffer_count, 2)
 
@@ -253,9 +263,10 @@ class CameraControlsEnvTest(unittest.TestCase):
             "picamera2",
             VISION_CAMERA_CONTROLS='{"ExposureValue": -0.5, "NoiseReductionMode": "Fast"}',
         )
+        # Je Schluessel ueber das Preset gemischt.
         self.assertEqual(
             config.camera_stream.camera_controls,
-            {"ExposureValue": -0.5, "NoiseReductionMode": "Fast"},
+            {"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"},
         )
 
     def test_env_overrides_and_removes_preset_entries(self):

@@ -28,6 +28,11 @@ from vision_server.profiles import AprilTagProfileConfig
 ROHBILD = (
     Path(__file__).resolve().parents[1] / "data" / "rohbilder" / "cam_ceiling_20261019-114704.png"
 )
+#: Dieselbe Kamera nach dem Neufokussieren, umgebaute Szene: tag36h11-IDs 0, 1
+#: (zweimal, beide physisch da), 2, 3, 583, 586; 585 ist beschaedigt und optional.
+ROHBILD_SCHARF = (
+    Path(__file__).resolve().parents[1] / "data" / "rohbilder" / "cam_ceiling_20261019-142133.png"
+)
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
@@ -232,6 +237,27 @@ class CeilingRawImageTest(unittest.TestCase):
         ids = {o.tag_id for o in build_detector("tag36h11", "aruco").detect(self.gray)}
 
         self.assertLess(len(ids), 5)
+
+
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+@unittest.skipUnless(ROHBILD_SCHARF.is_file(), "Rohbild fehlt")
+class CeilingSharpRawImageTest(unittest.TestCase):
+    """Regression auf dem neu fokussierten Deckenbild mit dem echten Preset."""
+
+    def test_ceiling_preset_finds_all_required_tags(self):
+        from vision_server.server import apriltag_config
+
+        config = apriltag_config("cam_ceiling")
+        detector = build_detector(
+            config.tag_family,
+            config.detector_backend,
+            detector_parameters=config.detector_parameters,
+        )
+
+        ids = sorted(o.tag_id for o in detector.detect(cv2.imread(str(ROHBILD_SCHARF), cv2.IMREAD_GRAYSCALE)))
+
+        # 585 (beschaedigt) darf fehlen, sonst genau diese Tags -- keine Fehlalarme.
+        self.assertEqual([i for i in ids if i != 585], [0, 1, 1, 2, 3, 583, 586])
 
 
 class AprilTagProfileConfigDefaultTest(unittest.TestCase):

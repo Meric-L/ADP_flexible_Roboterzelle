@@ -123,11 +123,13 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # kalibrierung-linsenmodell-je-kamera.md).
         "calibration_model": "fisheye",
         # Detektor-Parameter (OpenCV-DetectorParameters, Attributname -> Wert).
-        # Stand 19.10.2026: Kamera neu fokussiert, die fuer das unscharfe Bild
-        # gemessenen Werte (errorCorrectionRate 1.0, Rand 0.3, ppc 8) sind
-        # verworfen, es gilt der OpenCV-Standard. Werte folgen nach Messung am
-        # neuen Bild; zum Ausprobieren VISION_APRILTAG_DETECTOR_PARAMS setzen.
-        "detector_parameters": {},
+        # Stand 19.10.2026, Kamera neu fokussiert: der OpenCV-Standard findet
+        # alle Tags; ein feineres Abtastraster (8 statt 4 Pixel je Zelle) gibt
+        # unter kuenstlicher Verschlechterung +3 bis +5 Treffer Reserve, ohne
+        # Fehlalarme. errorCorrectionRate bewusst NICHT erhoeht -- mehr Reichweite,
+        # aber falsche IDs. Messung: doc/projektdoku/kamera-und-detektor-analyse.md.
+        # Zum Ausprobieren VISION_APRILTAG_DETECTOR_PARAMS setzen.
+        "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -184,11 +186,19 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
         # volle Frame).
         "overlay_timeout_s": 8.0,
-        # libcamera-Controls (ISP/Belichtung), z. B. {"ExposureValue": -0.5,
-        # "Sharpness": 1.5, "NoiseReductionMode": "Fast"}. Stand 19.10.2026:
-        # Kamera neu fokussiert, Werte folgen nach Messung -- bis dahin
-        # Picamera2-Standard. Zum Ausprobieren VISION_CAMERA_CONTROLS setzen.
-        "camera_controls": {},
+        # libcamera-Controls (ISP/Belichtung). Bester von 14 gemessenen
+        # Einstellungen (Einstellungstest 19.10.2026, siehe
+        # doc/projektdoku/kamera-und-detektor-analyse.md): etwas dunkler, damit
+        # das Weiss der Tags nicht ausbrennt (Automatik: 15-48 %), etwas mehr
+        # ISP-Schaerfe und Kontrast. Kontrast >= 1.25 und Matrix-Messung brennen
+        # die Tags dagegen komplett aus. Die Kalibrierung muss mit diesen Werten
+        # aufgenommen werden. Zum Ausprobieren VISION_CAMERA_CONTROLS setzen.
+        "camera_controls": {
+            "ExposureValue": -0.5,
+            "Sharpness": 1.5,
+            "Contrast": 1.15,
+            "NoiseReductionMode": "Fast",
+        },
     },
 }
 

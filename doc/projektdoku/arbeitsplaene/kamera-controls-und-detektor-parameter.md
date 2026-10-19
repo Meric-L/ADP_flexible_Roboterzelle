@@ -1,6 +1,6 @@
 # Kamera-Controls und Detektor-Parameter ohne Codeänderung einstellen
 
-**Status:** in Arbeit — 19.10.2026
+**Status:** fertig — 19.10.2026
 **Verantwortlich:** Meric (`Agent: Kamera-Controls`)
 **Thema:** vision
 **Branch:** apriltag
@@ -161,3 +161,22 @@ Belichtungswerte (`journalctl -u opcua-server.service | grep -i "Kamera-Metadate
   gelesen, bevor der Capture-Loop startet (kein Wettlauf um Requests).
 - Die Warnung für RealSense/OpenCV kommt bei jedem Öffnen (auch Neu-Öffnen),
   nicht streng nur einmal.
+
+## Nachtrag 19.10.2026: Werte im Preset `cam_ceiling`
+
+Nach dem Einstellungstest (14 Aufnahmen, Bericht
+[`../kamera-und-detektor-analyse.md`](../kamera-und-detektor-analyse.md)) stehen in
+`src/vision_server/server.py`:
+
+- `PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]` =
+  `{"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"}`
+  -- Rang 1 nach Erkennungsreserve, kein Ausbrennen der Tags.
+- `PI_APRILTAG_PRESETS["cam_ceiling"]["detector_parameters"]` =
+  `{"perspectiveRemovePixelPerCell": 8}` -- kleine Reserve ohne Fehlalarme;
+  `errorCorrectionRate` bleibt beim OpenCV-Standard.
+- Umgebungsvariablen mischen sich weiter je Schluessel darueber.
+- Regressionstest `tests/test_detector.py::CeilingSharpRawImageTest`: das Preset
+  findet auf `data/rohbilder/cam_ceiling_20261019-142133.png` genau
+  0, 1, 1, 2, 3, 583, 586 (585 beschaedigt, optional).
+- Offen: Pruefung am Pi (OpenCV 4.x, libcamera-Enum `NoiseReductionMode`),
+  Neukalibrierung mit diesen Controls.
