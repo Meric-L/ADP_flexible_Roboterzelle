@@ -1,0 +1,61 @@
+{
+  "name": "11_fest_dunkler",
+  "datei": "11_fest_dunkler.png",
+  "controls": {
+    "AeEnable": false,
+    "ExposureTime": 12501,
+    "AnalogueGain": 2.0
+  },
+  "metadaten": {
+    "SensorTimestamp": 12707927628000,
+    "FrameWallClock": 1792415869372224768,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 50992,
+    "ExposureTime": 12490,
+    "ControlListSequence": 12,
+    "ColourGains": [
+      2.576310396194458,
+      2.0133447647094727
+    ],
+    "DigitalGain": 1.0008162260055542,
+    "FrameDuration": 85335,
+    "Lux": 360.2658386230469,
+    "SensorTemperature": 31.0,
+    "AeState": 0,
+    "ColourTemperature": 3510,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.045012950897217,
+      -0.8140856623649597,
+      -0.23092851042747498,
+      -0.3891594409942627,
+      1.9659253358840942,
+      -0.5767658948898315,
+      -0.07608819752931595,
+      -0.6666259765625,
+      1.7427153587341309
+    ]
+  },
+  "mittelwert": 72.5,
+  "anteil_ausgebrannt_pct": 0.04,
+  "laplace_varianz": 133.1,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

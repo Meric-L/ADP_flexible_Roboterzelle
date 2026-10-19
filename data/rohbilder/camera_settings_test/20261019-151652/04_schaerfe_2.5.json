@@ -1,0 +1,59 @@
+{
+  "name": "04_schaerfe_2.5",
+  "datei": "04_schaerfe_2.5.png",
+  "controls": {
+    "Sharpness": 2.5
+  },
+  "metadaten": {
+    "SensorTimestamp": 12673536311000,
+    "FrameWallClock": 1792415834980907776,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74799,
+    "ExposureTime": 20808,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.5778095722198486,
+      2.0087287425994873
+    ],
+    "DigitalGain": 1.0003639459609985,
+    "FrameDuration": 85335,
+    "Lux": 355.06512451171875,
+    "SensorTemperature": 30.0,
+    "AeState": 2,
+    "ColourTemperature": 3516,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0440423488616943,
+      -0.8129498958587646,
+      -0.2310933768749237,
+      -0.3892679512500763,
+      1.9665775299072266,
+      -0.5773095488548279,
+      -0.07740655541419983,
+      -0.6616759896278381,
+      1.7390835285186768
+    ]
+  },
+  "mittelwert": 96.6,
+  "anteil_ausgebrannt_pct": 3.2,
+  "laplace_varianz": 268.1,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

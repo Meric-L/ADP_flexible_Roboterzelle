@@ -1,0 +1,61 @@
+{
+  "name": "09_fest_wie_auto",
+  "datei": "09_fest_wie_auto.png",
+  "controls": {
+    "AeEnable": false,
+    "ExposureTime": 20836,
+    "AnalogueGain": 2.0
+  },
+  "metadaten": {
+    "SensorTimestamp": 12697865210000,
+    "FrameWallClock": 1792415859309806848,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74765,
+    "ExposureTime": 20808,
+    "ControlListSequence": 9,
+    "ColourGains": [
+      2.5813019275665283,
+      2.0113539695739746
+    ],
+    "DigitalGain": 1.0013073682785034,
+    "FrameDuration": 85335,
+    "Lux": 356.8832702636719,
+    "SensorTemperature": 31.0,
+    "AeState": 0,
+    "ColourTemperature": 3515,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0443196296691895,
+      -0.8132743239402771,
+      -0.23104627430438995,
+      -0.3892369568347931,
+      1.9663912057876587,
+      -0.5771542191505432,
+      -0.07702993601560593,
+      -0.6630900502204895,
+      1.7401210069656372
+    ]
+  },
+  "mittelwert": 97.5,
+  "anteil_ausgebrannt_pct": 3.14,
+  "laplace_varianz": 153.5,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "08_messung_matrix",
+  "datei": "08_messung_matrix.png",
+  "controls": {
+    "AeMeteringMode": "Matrix"
+  },
+  "metadaten": {
+    "SensorTimestamp": 12693007367000,
+    "FrameWallClock": 1792415854451963648,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 73532,
+    "ExposureTime": 25340,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.577877998352051,
+      2.007162570953369
+    ],
+    "DigitalGain": 1.000308871269226,
+    "FrameDuration": 85335,
+    "Lux": 350.93597412109375,
+    "SensorTemperature": 31.0,
+    "AeState": 2,
+    "ColourTemperature": 3518,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0437397956848145,
+      -0.8125960230827332,
+      -0.2311447411775589,
+      -0.38930174708366394,
+      1.966780662536621,
+      -0.5774789452552795,
+      -0.07781730592250824,
+      -0.6601337790489197,
+      1.7379519939422607
+    ]
+  },
+  "mittelwert": 108.0,
+  "anteil_ausgebrannt_pct": 4.5,
+  "laplace_varianz": 157.5,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

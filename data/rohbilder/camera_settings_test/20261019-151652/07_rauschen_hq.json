@@ -1,0 +1,59 @@
+{
+  "name": "07_rauschen_hq",
+  "datei": "07_rauschen_hq.png",
+  "controls": {
+    "NoiseReductionMode": "HighQuality"
+  },
+  "metadaten": {
+    "SensorTimestamp": 12688148016000,
+    "FrameWallClock": 1792415849592612608,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74738,
+    "ExposureTime": 20753,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.5773279666900635,
+      2.011944532394409
+    ],
+    "DigitalGain": 1.0005602836608887,
+    "FrameDuration": 85335,
+    "Lux": 357.35711669921875,
+    "SensorTemperature": 31.0,
+    "AeState": 2,
+    "ColourTemperature": 3512,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0446832180023193,
+      -0.8136999011039734,
+      -0.23098449409008026,
+      -0.3891963064670563,
+      1.9661468267440796,
+      -0.5769505500793457,
+      -0.07653595507144928,
+      -0.6649447679519653,
+      1.7414817810058594
+    ]
+  },
+  "mittelwert": 97.5,
+  "anteil_ausgebrannt_pct": 3.13,
+  "laplace_varianz": 153.6,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

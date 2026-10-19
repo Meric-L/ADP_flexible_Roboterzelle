@@ -1,0 +1,61 @@
+{
+  "name": "10_fest_kurz",
+  "datei": "10_fest_kurz.png",
+  "controls": {
+    "AeEnable": false,
+    "ExposureTime": 10418,
+    "AnalogueGain": 4.0
+  },
+  "metadaten": {
+    "SensorTimestamp": 12702965997000,
+    "FrameWallClock": 1792415864410593792,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 75428,
+    "ExposureTime": 10390,
+    "ControlListSequence": 12,
+    "ColourGains": [
+      2.570084810256958,
+      2.011385202407837
+    ],
+    "DigitalGain": 1.002638816833496,
+    "FrameDuration": 85335,
+    "Lux": 355.6706237792969,
+    "SensorTemperature": 31.0,
+    "AeState": 0,
+    "ColourTemperature": 3510,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 4.0,
+    "ColourCorrectionMatrix": [
+      2.0450382232666016,
+      -0.8141152262687683,
+      -0.23092421889305115,
+      -0.38915660977363586,
+      1.965908408164978,
+      -0.5767517685890198,
+      -0.07605388760566711,
+      -0.6667547821998596,
+      1.742809772491455
+    ]
+  },
+  "mittelwert": 97.2,
+  "anteil_ausgebrannt_pct": 3.1,
+  "laplace_varianz": 170.7,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "name": "12_kombi",
+  "datei": "12_kombi.png",
+  "controls": {
+    "ExposureValue": -0.5,
+    "Sharpness": 1.5,
+    "Contrast": 1.15,
+    "NoiseReductionMode": "Fast"
+  },
+  "metadaten": {
+    "SensorTimestamp": 12712877379000,
+    "FrameWallClock": 1792415874321975808,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 58212,
+    "ExposureTime": 14342,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.576002597808838,
+      2.0128414630889893
+    ],
+    "DigitalGain": 1.0017223358154297,
+    "FrameDuration": 85335,
+    "Lux": 360.3374328613281,
+    "SensorTemperature": 32.0,
+    "AeState": 2,
+    "ColourTemperature": 3511,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0449373722076416,
+      -0.8139971494674683,
+      -0.23094135522842407,
+      -0.3891679048538208,
+      1.9659761190414429,
+      -0.5768082737922668,
+      -0.07619097828865051,
+      -0.6662400960922241,
+      1.7424321174621582
+    ]
+  },
+  "mittelwert": 72.2,
+  "anteil_ausgebrannt_pct": 2.59,
+  "laplace_varianz": 219.6,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "name": "00_auto",
+  "datei": "00_auto.png",
+  "controls": {},
+  "metadaten": {
+    "SensorTimestamp": 12653904524000,
+    "FrameWallClock": 1792415815349120768,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74797,
+    "ExposureTime": 20836,
+    "ControlListSequence": 11,
+    "ColourGains": [
+      2.5679149627685547,
+      2.011711597442627
+    ],
+    "DigitalGain": 1.0001264810562134,
+    "FrameDuration": 85335,
+    "Lux": 355.46734619140625,
+    "SensorTemperature": 29.0,
+    "AeState": 2,
+    "ColourTemperature": 3509,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.045239210128784,
+      -0.8143502473831177,
+      -0.23089009523391724,
+      -0.38913416862487793,
+      1.9657734632492065,
+      -0.5766392350196838,
+      -0.07578109204769135,
+      -0.6677790880203247,
+      1.7435612678527832
+    ]
+  },
+  "mittelwert": 97.2,
+  "anteil_ausgebrannt_pct": 3.13,
+  "laplace_varianz": 153.4,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

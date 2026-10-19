@@ -1,0 +1,59 @@
+{
+  "name": "02_ev_minus_1.0",
+  "datei": "02_ev_minus_1.0.png",
+  "controls": {
+    "ExposureValue": -1.0
+  },
+  "metadaten": {
+    "SensorTimestamp": 12663760781000,
+    "FrameWallClock": 1792415825205377792,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 41672,
+    "ExposureTime": 10114,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.5568692684173584,
+      2.009025812149048
+    ],
+    "DigitalGain": 1.0020246505737305,
+    "FrameDuration": 85335,
+    "Lux": 359.6747131347656,
+    "SensorTemperature": 31.0,
+    "AeState": 2,
+    "ColourTemperature": 3507,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0454370975494385,
+      -0.8145816326141357,
+      -0.2308565080165863,
+      -0.38911205530166626,
+      1.9656405448913574,
+      -0.5765284895896912,
+      -0.07551249116659164,
+      -0.6687875986099243,
+      1.744301199913025
+    ]
+  },
+  "mittelwert": 63.3,
+  "anteil_ausgebrannt_pct": 0.03,
+  "laplace_varianz": 122.4,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

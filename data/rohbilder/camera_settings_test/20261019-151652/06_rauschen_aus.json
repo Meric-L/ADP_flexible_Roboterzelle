@@ -1,0 +1,59 @@
+{
+  "name": "06_rauschen_aus",
+  "datei": "06_rauschen_aus.png",
+  "controls": {
+    "NoiseReductionMode": "Off"
+  },
+  "metadaten": {
+    "SensorTimestamp": 12683272482000,
+    "FrameWallClock": 1792415844717078784,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 77223,
+    "ExposureTime": 20725,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.5706207752227783,
+      2.0116090774536133
+    ],
+    "DigitalGain": 1.0012317895889282,
+    "FrameDuration": 85335,
+    "Lux": 357.160888671875,
+    "SensorTemperature": 31.0,
+    "AeState": 2,
+    "ColourTemperature": 3510,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.04504656791687,
+      -0.8141248226165771,
+      -0.23092281818389893,
+      -0.38915568590164185,
+      1.9659028053283691,
+      -0.5767471194267273,
+      -0.07604273408651352,
+      -0.6667966842651367,
+      1.7428405284881592
+    ]
+  },
+  "mittelwert": 97.4,
+  "anteil_ausgebrannt_pct": 3.11,
+  "laplace_varianz": 173.9,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

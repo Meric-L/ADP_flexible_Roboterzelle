@@ -1,0 +1,57 @@
+{
+  "name": "99_auto_kontrolle",
+  "datei": "99_auto_kontrolle.png",
+  "controls": {},
+  "metadaten": {
+    "SensorTimestamp": 12717775499000,
+    "FrameWallClock": 1792415879220095744,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74746,
+    "ExposureTime": 20753,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.574289321899414,
+      2.0103964805603027
+    ],
+    "DigitalGain": 1.0008262395858765,
+    "FrameDuration": 85335,
+    "Lux": 356.9359436035156,
+    "SensorTemperature": 31.0,
+    "AeState": 2,
+    "ColourTemperature": 3513,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.0445828437805176,
+      -0.8135822415351868,
+      -0.2310015857219696,
+      -0.38920754194259644,
+      1.9662144184112549,
+      -0.5770068764686584,
+      -0.07667258381843567,
+      -0.6644318103790283,
+      1.7411054372787476
+    ]
+  },
+  "mittelwert": 97.4,
+  "anteil_ausgebrannt_pct": 3.12,
+  "laplace_varianz": 153.6,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}

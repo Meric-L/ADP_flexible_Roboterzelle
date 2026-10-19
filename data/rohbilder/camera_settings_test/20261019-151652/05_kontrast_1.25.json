@@ -1,0 +1,59 @@
+{
+  "name": "05_kontrast_1.25",
+  "datei": "05_kontrast_1.25.png",
+  "controls": {
+    "Contrast": 1.25
+  },
+  "metadaten": {
+    "SensorTimestamp": 12678428803000,
+    "FrameWallClock": 1792415839873399808,
+    "ScalerCrop": [
+      0,
+      0,
+      4056,
+      3040
+    ],
+    "FocusFoM": 74731,
+    "ExposureTime": 20753,
+    "ControlListSequence": 14,
+    "ColourGains": [
+      2.5735692977905273,
+      2.009960889816284
+    ],
+    "DigitalGain": 1.0006024837493896,
+    "FrameDuration": 85335,
+    "Lux": 355.3253173828125,
+    "SensorTemperature": 30.0,
+    "AeState": 2,
+    "ColourTemperature": 3513,
+    "SensorBlackLevels": [
+      4096,
+      4096,
+      4096,
+      4096
+    ],
+    "AnalogueGain": 2.0,
+    "ColourCorrectionMatrix": [
+      2.044546365737915,
+      -0.8135395646095276,
+      -0.23100778460502625,
+      -0.38921162486076355,
+      1.9662388563156128,
+      -0.5770273208618164,
+      -0.07672211527824402,
+      -0.6642458438873291,
+      1.7409690618515015
+    ]
+  },
+  "mittelwert": 89.3,
+  "anteil_ausgebrannt_pct": 6.48,
+  "laplace_varianz": 223.9,
+  "tag_ids": [
+    0,
+    1,
+    2,
+    3,
+    583,
+    586
+  ]
+}
