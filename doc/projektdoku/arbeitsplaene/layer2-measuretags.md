@@ -77,7 +77,7 @@ Die Methode antwortet erst nach der Messung. Das Ergebnis kommt **direkt zurück
               "reprojectionErrorPx": 0.4, "decisionMargin": 55.0,
               "sizeM": 0.08, "sizeSource": "request" | "tagmap" | "default",
               "ambiguous": false, "ambiguityRatio": 0.3, "frameCount": 3,
-              "distanceM": 0.351, "viewAngleDeg": 4.2 } ],
+              "distanceM": 0.351, "viewAngleDeg": 4.2, "nearEdge": [] } ],
   "error": null | "NO_FRAME" }
 ```
 
@@ -91,6 +91,7 @@ Die Methode antwortet erst nach der Messung. Das Ergebnis kommt **direkt zurück
 - **`cornersPx`/`centerPx`/`decisionMargin`:** aus dem letzten Bild. Die Pixel sind roh (verzeichnet). Die Reihenfolge der Ecken ist die von `tag_object_points`: oben links, im Uhrzeigersinn.
 - **`sizeM`/`sizeSource`:** die Größe, mit der gerechnet wurde. Vorrang hat die Anfrage, dann die Tag-Map, dann der Rückfall von 8 cm. Eine falsche Größe skaliert den Abstand linear.
 - **`viewAngleDeg`:** Winkel zwischen Tag-Normale und Sichtlinie, 0 = frontal.
+- **`nearEdge`** (ergänzt am 19.10.2026): die Bildränder (`left`, `right`, `top`, `bottom`), denen eine Ecke des Tags im letzten Bild näher als 5 % der Bildgröße kommt. Für die Suche nach anfangs unerreichbaren Tags: Die Steuerung fährt bestmöglich heran, misst und schwenkt bei einem randnahen Tag gezielt in diese Richtung nach. Ein angeschnittener Tag wird gar nicht erkannt, deshalb kommt der Hinweis vorher, solange er noch ganz im Bild ist.
 
 ### Intrinsik
 

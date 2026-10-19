@@ -125,6 +125,23 @@ class ResultTest(unittest.TestCase):
         self.assertEqual(sizes.size_and_source(3), (0.08, "default"))
         self.assertEqual(sizes.size_for(9, 0.5), 0.05)  # Schnittstelle wie TagMap
 
+    def test_near_edge(self):
+        from vision_server.measuretag import near_edge
+
+        size = (640, 480)
+        self.assertEqual(near_edge([[300, 200], [340, 200], [340, 240], [300, 240]], size), [])
+        self.assertEqual(near_edge([[10, 200], [50, 200], [50, 240], [10, 240]], size), ["left"])
+        self.assertEqual(
+            near_edge([[600, 460], [635, 460], [635, 478], [600, 478]], size), ["right", "bottom"]
+        )
+        # Im Ergebnis je Tag, aus dem letzten Bild (SQUARE liegt oben links).
+        frames = [FrameMeasurement(WALL, (640, 480), (tag_pose(7, (0, 0, 0.35)),))]
+        [tag] = build_result(
+            frames, frames_requested=1, frame_id="cam_flange", sizes=self.sizes(),
+            intrinsics_source="calibration", calibration_id="",
+        )["tags"]
+        self.assertEqual(tag["nearEdge"], ["left", "top"])
+
     def test_view_angle(self):
         frontal = geometry.from_rvec_tvec((math.pi, 0, 0), (0, 0, 0.35))
         self.assertAlmostEqual(view_angle_deg(frontal), 0.0, places=6)

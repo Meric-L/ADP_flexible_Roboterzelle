@@ -1671,4 +1671,5 @@ Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, f
 
 - **Messung:** Der Pi misst `T_cam_tag` (Kamera-KS wie OpenCV), ohne Welt-KS und ohne CAD-Versatz. Er nutzt nur Bilder, die **nach** dem Aufruf eintreffen, und mittelt standardmäßig über 3 davon.
 - **Mehrdeutige Orientierung:** Sie wird geliefert und mit `ambiguous` markiert. Dann auf die Position regeln, nicht auf die Drehung.
+- **`nearEdge`:** sagt je Tag, welchen Bildrändern er nahe kommt (innerhalb 5 %). Die Steuerung nutzt das bei der Suche nach anfangs unerreichbaren Tags, um gezielt nachzuschwenken. Fahrbefehle schickt der Pi bewusst nicht.
 - **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.

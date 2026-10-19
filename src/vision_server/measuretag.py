@@ -29,6 +29,10 @@ FRAME_CONVENTION = "z_forward_x_right_y_down"
 
 DEFAULT_FRAMES = 3
 MAX_FRAMES = 10
+#: Ab diesem Abstand zum Bildrand (Anteil der Bildgroesse) gilt ein Tag als
+#: randnah. Ein angeschnittener Tag wird gar nicht erkannt -- der Hinweis
+#: kommt also vorher, solange er noch ganz im Bild ist.
+EDGE_MARGIN = 0.05
 
 NO_FRAME = "NO_FRAME"
 
@@ -180,6 +184,7 @@ def build_result(
                 "frameCount": len(seen),
                 "distanceM": float(np.linalg.norm(pose[:3, 3])),
                 "viewAngleDeg": view_angle_deg(pose),
+                "nearEdge": near_edge(corners, frames[-1].image_size) if corners else [],
             }
         )
 
@@ -197,6 +202,28 @@ def build_result(
         "tags": tags,
         "error": error,
     }
+
+
+def near_edge(corners, image_size, margin: float = EDGE_MARGIN) -> list[str]:
+    """Bildraender, denen der Tag naeher als `margin` kommt.
+
+    Fuer die Suche in der Steuerung: liegt der Tag am Rand, in diese Richtung
+    nachschwenken, statt blind zu suchen. Reihenfolge fest: left, right, top,
+    bottom (Bild-KS: x nach rechts, y nach unten).
+    """
+    width, height = image_size
+    xs = [corner[0] for corner in corners]
+    ys = [corner[1] for corner in corners]
+    sides = []
+    if min(xs) < margin * width:
+        sides.append("left")
+    if max(xs) > (1.0 - margin) * width:
+        sides.append("right")
+    if min(ys) < margin * height:
+        sides.append("top")
+    if max(ys) > (1.0 - margin) * height:
+        sides.append("bottom")
+    return sides
 
 
 def view_angle_deg(pose_cam_tag) -> float:
