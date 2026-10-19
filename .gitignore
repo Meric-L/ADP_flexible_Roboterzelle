@@ -1,5 +1,6 @@
 concept/
-data/
+data/*
+!data/rohbilder/
 hardware/
 *.txt
 *.bat

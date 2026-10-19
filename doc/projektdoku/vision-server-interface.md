@@ -1673,3 +1673,16 @@ Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, f
 - **Mehrdeutige Orientierung:** Sie wird geliefert und mit `ambiguous` markiert. Dann auf die Position regeln, nicht auf die Drehung.
 - **`nearEdge`:** sagt je Tag, welchen Bildrändern er nahe kommt (innerhalb 5 %). Die Steuerung nutzt das bei der Suche nach anfangs unerreichbaren Tags, um gezielt nachzuschwenken. Fahrbefehle schickt der Pi bewusst nicht.
 - **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.
+
+## 18. SaveRawImage: Kamera-Vollbild als PNG speichern
+
+Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem Pi, als Rohmaterial zum Nachrechnen. Planung und Hintergründe stehen im Arbeitsplan [`arbeitsplaene/rohbild-speichern.md`](arbeitsplaene/rohbild-speichern.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `SaveRawImage` | `() -> (FileName: String, Error: Int32)`, am Vision-System und unter `VisionProgram` gespiegelt |
+
+- **Ablage:** `data/rohbilder/<frame_id>_<YYYYmmdd-HHMMSS>.png`. Existiert der Name schon, hängt der Server `_2`, `_3`, … an, eine Datei wird nie überschrieben. `frame_id` ist die des AprilTag-Profils, sonst der Name des Vision-Systems.
+- **`FileName`:** Pfad relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
+- **`Error`:** `0` gespeichert, `1` noch kein Kamerabild, `3` ein Job läuft (das PNG-Encoding eines 12-MP-Bilds soll den Job-Timeout nicht gefährden), `6` Schreiben fehlgeschlagen.
+- **Konfiguration:** `VisionServerConfig.raw_image_dir`, `None` legt die Methode nicht an. Der Ordner liegt unter `data/` und ist in `.gitignore` ausgenommen, die PNGs tauchen also in `git status` auf. Große Rohbilder nur bewusst committen.

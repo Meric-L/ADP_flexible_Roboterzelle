@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
+from .profiles import _REPO_ROOT, AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
 #: Die Nodesets liegen im Paket, das sie braucht -- frueher lagen sie unter
 #: `src/OPCUA/`, weil das Verzeichnis aelter war als `vision_server/`
@@ -74,6 +74,9 @@ class VisionServerConfig:
     #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
     #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `vision_server/server.py` sie.
     camera_stream: CameraStreamConfig | None = None
+    #: Ablage fuer `SaveRawImage` (verlustfreie PNG-Vollbilder). `None` = die
+    #: Methode nicht anlegen.
+    raw_image_dir: Path | None = _REPO_ROOT / "data" / "rohbilder"
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:
