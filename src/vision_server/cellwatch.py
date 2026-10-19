@@ -43,7 +43,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -81,6 +81,19 @@ MAX_REQUIRED_MISSES = 60
 UNRELIABLE_RATE = 0.5
 #: Erst ab so vielen Bildern ist eine Erkennungsrate eine Aussage.
 MIN_FRAMES_FOR_RATE = 5
+#: Ein Modul gilt als flach liegend, wenn seine Hochachse hoechstens so weit
+#: von der Welt-Z abweicht. Dann ist sein Gierwinkel auch bei mehrdeutiger
+#: Pose verlaesslich: die beiden Loesungen unterscheiden sich nur im Kippen
+#: (simuliert, Draufsicht aus 2,5 m: 225 von 300 Posen mehrdeutig, Gierfehler
+#: beider Loesungen hoechstens 6 Grad).
+FLAT_MAX_TILT_DEG = 30.0
+
+
+def is_flat(pose) -> bool:
+    """Liegt das Modul flach (Hochachse nahe Welt-Z, nach oben oder unten)?"""
+    return abs(float(np.asarray(pose, dtype=np.float64)[2, 2])) >= math.cos(
+        math.radians(FLAT_MAX_TILT_DEG)
+    )
 
 
 def conservative_rate(hits: int, frames: int) -> float:
@@ -146,6 +159,12 @@ class TagSighting:
     yaw_deg: float
     ambiguous: bool = False
     module_id: str = ""
+    #: Flach liegend: dann zaehlt der Gierwinkel auch bei `ambiguous`.
+    flat: bool = False
+
+    @property
+    def has_yaw(self) -> bool:
+        return not self.ambiguous or self.flat
 
 
 @dataclass(frozen=True)
@@ -160,6 +179,9 @@ class ReferenceTag:
 @dataclass
 class _TagState:
     exceeded_since: float | None = None
+    #: Abweichung beim letzten Bild, fuer `pending`.
+    last_distance: float | None = None
+    last_rotation: float | None = None
     back_since: float | None = None
     last_seen: float | None = None
     last_seen_wall: datetime | None = None
@@ -177,9 +199,33 @@ class CellWatchTracker:
     started_at: float
     _frames: deque = field(default_factory=deque)
     _tags: dict[int, _TagState] = field(default_factory=dict)
+    #: Letztes `(t, wall)` -- rechnet monotone Zeitpunkte in Uhrzeit um.
+    _clock: tuple | None = None
+
+    def carry_from(self, previous: "CellWatchTracker", *, same_reference: bool) -> None:
+        """Verlauf einer vorigen Ueberwachung uebernehmen (neu scharf schalten).
+
+        Der Bildverlauf -- und damit die Erkennungsrate je Tag -- gilt
+        unabhaengig von der Referenz. Ohne ihn braeuchte "disappeared" nach
+        jedem Aendern einer Zeit oder Schwelle bis zu 2 min. Bei derselben
+        Referenz bleiben auch laufende Kandidaten und Meldungen bestehen; bei
+        einer neuen zaehlen fruehere Bilder nicht als "fehlt".
+        """
+        self._frames = deque(previous._frames)
+        self._clock = previous._clock
+        if same_reference:
+            self._tags = previous._tags
+            self.started_at = previous.started_at
+
+    def _wall_at(self, t: float) -> str | None:
+        if self._clock is None:
+            return None
+        clock_t, clock_wall = self._clock
+        return (clock_wall - timedelta(seconds=clock_t - t)).isoformat(timespec="seconds")
 
     def update(self, t: float, wall: datetime, sightings: dict[int, TagSighting]) -> None:
         """Ein gueltiges Bild. Ungueltige Bilder kommen gar nicht erst hierher."""
+        self._clock = (t, wall)
         self._frames.append((t, sightings))
         # Lang genug fuer die Erkennungsrate vor einer Luecke und fuer bis zu
         # `MAX_REQUIRED_MISSES` Fehlbilder.
@@ -235,6 +281,62 @@ class CellWatchTracker:
                     ),
                 }
             )
+        return result
+
+    def pending(self, t: float) -> list[dict]:
+        """Was gerade nach einer Aenderung aussieht, aber noch nicht gemeldet
+        ist -- fuer die sofortige Anzeige. `confirmInS` ist die Zeit bis zur
+        Meldung, falls es so bleibt (bei "disappeared" geschaetzt: die
+        geforderte Zahl Fehlbilder haengt von der Erkennungsrate ab)."""
+        options = self.options
+        window = self._window(t)
+        result = []
+        for tag_id in sorted(set(self.reference) | set(self._tags)):
+            state = self._tags.get(tag_id)
+            if state is None or state.change is not None:
+                continue
+            seen = any(tag_id in sightings for _, sightings in window)
+            if tag_id in self.reference:
+                module_id = self.reference[tag_id].module_id
+                if not seen:
+                    last = state.last_seen if state.last_seen is not None else self.started_at
+                    missing = sum(1 for frame_t, _ in self._frames if frame_t > last)
+                    if missing < 2:
+                        continue
+                    rate, rated = self.detection_rate(tag_id, until=last)
+                    needed = required_misses(conservative_rate(round(rate * rated), rated))
+                    confirm = max(
+                        options.missing_persist_s - (t - last),
+                        (needed - missing) * options.interval_s,
+                        0.0,
+                    )
+                    result.append(
+                        _pending(tag_id, module_id, DISAPPEARED, self._wall_at(last), None, None, confirm)
+                    )
+                elif state.exceeded_since is not None:
+                    confirm = max(options.persist_s - (t - state.exceeded_since), 0.0)
+                    result.append(
+                        _pending(
+                            tag_id, module_id, MOVED, self._wall_at(state.exceeded_since),
+                            state.last_distance, state.last_rotation, confirm,
+                        )
+                    )
+            elif seen:
+                first_seen = next(
+                    (frame_t for frame_t, sightings in self._frames if tag_id in sightings), t
+                )
+                module_id = next(
+                    (
+                        sightings[tag_id].module_id
+                        for _, sightings in reversed(self._frames)
+                        if tag_id in sightings
+                    ),
+                    "",
+                )
+                confirm = max(options.persist_s - (t - first_seen), 0.0)
+                result.append(
+                    _pending(tag_id, module_id, APPEARED, self._wall_at(first_seen), None, None, confirm)
+                )
         return result
 
     @property
@@ -298,6 +400,7 @@ class CellWatchTracker:
         rotation = (
             abs(_wrap_deg(yaw - reference.yaw_deg)) if has_yaw and reference.has_yaw else None
         )
+        state.last_distance, state.last_rotation = distance, rotation
         exceeded = distance > options.moved_threshold_m or (
             rotation is not None and rotation > options.rotated_threshold_deg
         )
@@ -356,15 +459,28 @@ class CellWatchTracker:
 
 
 def _median(seen: list[TagSighting]) -> tuple[tuple[float, float, float], float | None, bool]:
-    """Median der Position; Median der Drehung nur ueber eindeutige Sichtungen."""
+    """Median der Position; Median der Drehung ueber die Sichtungen mit
+    verlaesslichem Gierwinkel (eindeutig, oder flach liegend)."""
     position = tuple(float(v) for v in np.median([s.position for s in seen], axis=0))
-    yaws = [s.yaw_deg for s in seen if not s.ambiguous]
+    yaws = [s.yaw_deg for s in seen if s.has_yaw]
     if not yaws:
         return position, None, False
     # Um den ersten Wert herum mitteln, damit -179/+179 nicht 0 ergibt.
     anchor = yaws[0]
     yaw = anchor + float(np.median([_wrap_deg(y - anchor) for y in yaws]))
     return position, _wrap_deg(yaw), True
+
+
+def _pending(tag_id, module_id, kind, since, distance, rotation, confirm_s) -> dict:
+    return {
+        "tagId": int(tag_id),
+        "moduleId": module_id or "",
+        "kind": kind,
+        "since": since,
+        "distanceM": distance,
+        "rotationDeg": rotation,
+        "confirmInS": round(float(confirm_s), 1),
+    }
 
 
 def _wrap_deg(angle: float) -> float:
@@ -454,7 +570,7 @@ def reference_from_payload(payload_json: str, world_frame: str) -> dict[int, Ref
                     position=tuple(float(v) for v in pose[:3, 3]),
                     yaw_deg=yaw_deg(pose),
                     module_id=str(detection.get("moduleId") or ""),
-                    has_yaw=not attributes.get("ambiguous", False),
+                    has_yaw=not attributes.get("ambiguous", False) or is_flat(pose),
                 )
     return reference
 
@@ -481,6 +597,7 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
             yaw_deg=yaw_deg(location.pose),
             ambiguous=bool(location.ambiguous),
             module_id=location.module_id,
+            flat=is_flat(location.pose),
         )
     return sightings, ""
 
@@ -562,12 +679,24 @@ class CellWatch:
 
         now = self._ports.monotonic()
         previous = self._tracker if self.active else None
+        # Dieselbe Referenz wie bisher -- typisch, wenn das Frontend nur eine
+        # Zeit oder Schwelle aendert und mit demselben Job neu scharf schaltet.
+        same_reference = (
+            previous is not None
+            and job_id is not None
+            and job_id == self._reference_job_id
+            and self._reference_source == "job"
+        )
         self._options = options
         self._reference_job_id = job_id
         if not self.active:
             self._visible = None  # nach einem Stopp nichts Altes zeigen
         if reference is not None:
-            self._set_reference(reference, "job", now)
+            if same_reference:
+                # Gleiche Referenz-ID: es ist dieselbe Referenz, nur neu eingestellt.
+                self._tracker = CellWatchTracker(options, reference, now)
+            else:
+                self._set_reference(reference, "job", now)
         else:
             # "Ignorieren": was gerade stabil zu sehen ist, wird die Referenz.
             # Laeuft die Ueberwachung schon, reicht ihre Beobachtung meist.
@@ -578,6 +707,8 @@ class CellWatch:
                 self._tracker = CellWatchTracker(options, {}, now)
                 self._reference_id = None
                 self._reference_source = "observation"
+        if previous is not None:
+            self._tracker.carry_from(previous, same_reference=same_reference)
         self._state = WATCHING
         self._message = "" if self._reference_id else "Referenz wird aufgenommen"
         _log.info(
@@ -697,6 +828,10 @@ class CellWatch:
                 else [],
                 "options": self._options.to_dict(),
                 "changes": tracker.changes if referenced and self.active else [],
+                # Noch nicht bestaetigt -- fuer die sofortige Anzeige.
+                "pending": tracker.pending(self._ports.monotonic())
+                if referenced and self.active
+                else [],
             },
             allow_nan=False,
             default=float,

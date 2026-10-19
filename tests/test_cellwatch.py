@@ -1,6 +1,7 @@
 """Zellen-Ueberwachung: bestaetigte Aenderungen statt Alarm bei jedem Ausreisser."""
 
 import json
+import math
 import random
 import tempfile
 import types
@@ -116,6 +117,72 @@ class TrackerTest(unittest.TestCase):
         self.run_frames(tracker, [both] * 8, start=t)
         self.assertEqual(tracker.changes, [])
 
+    def test_a_flat_module_turned_by_15_degrees_is_reported_even_if_ambiguous(self):
+        """Draufsicht der Decke: flache Tags sind fast immer mehrdeutig. Der
+        Gierwinkel ist dabei stabil und muss zaehlen."""
+        rng = random.Random(3)
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
+        frames = [
+            {7: TagSighting((1.0, 1.0, 0.0), 15.0 + rng.uniform(-3, 3), ambiguous=True, flat=True)}
+            for _ in range(10)
+        ]
+        self.run_frames(tracker, frames)
+        [change] = tracker.changes
+        self.assertEqual(change["kind"], MOVED)
+        self.assertAlmostEqual(change["rotationDeg"], 15.0, delta=3.0)
+        self.assertLess(change["distanceM"], 0.01)  # nur gedreht, nicht verschoben
+
+        # An einer senkrechten Flaeche bleibt mehrdeutig ohne Drehung.
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
+        self.run_frames(
+            tracker, [{7: TagSighting((1.0, 1.0, 0.0), 15.0, ambiguous=True, flat=False)}] * 10
+        )
+        self.assertEqual(tracker.changes, [])
+
+    def test_flatness_comes_from_the_pose(self):
+        from vision_server.cellwatch import is_flat
+
+        self.assertTrue(is_flat(geometry.identity()))
+        self.assertTrue(is_flat(geometry.from_rvec_tvec((math.radians(25), 0, 0), (0, 0, 0))))
+        self.assertTrue(is_flat(geometry.from_rvec_tvec((math.pi, 0, 0), (0, 0, 0))))  # kopfueber
+        self.assertFalse(is_flat(geometry.from_rvec_tvec((math.radians(90), 0, 0), (0, 0, 0))))
+        location = types.SimpleNamespace(
+            tag_id=7, pose=geometry.identity(), ambiguous=True, module_id="MOD-A"
+        )
+        joint = types.SimpleNamespace(solver="joint", reprojection_error_px=0.7)
+        sightings, _ = sightings_from_locations([location], joint, OPTIONS)
+        self.assertTrue(sightings[7].flat)
+        self.assertTrue(sightings[7].has_yaw)
+
+    def test_pending_shows_candidates_before_confirmation(self):
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0), t8=(0.5, 0.5, 0.0)), 0.0)
+        both = {7: sighting(1.0, 1.0), 8: sighting(0.5, 0.5)}
+        t = self.run_frames(tracker, [both] * 30)
+        self.assertEqual(tracker.pending(t), [])
+
+        # Tag 7 um 6 cm verschoben: sofort als Kandidat, gemeldet nach persistS.
+        t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 8: sighting(0.5, 0.5)}] * 3, start=t)
+        [moved] = tracker.pending(t - 1)
+        self.assertEqual((moved["tagId"], moved["kind"], moved["moduleId"]), (7, MOVED, "MOD-t7"))
+        self.assertAlmostEqual(moved["distanceM"], 0.06, places=6)
+        self.assertGreater(moved["confirmInS"], 0.0)
+        self.assertIsNotNone(moved["since"])
+        self.assertEqual(tracker.changes, [])
+        t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 8: sighting(0.5, 0.5)}] * 5, start=t)
+        self.assertEqual([c["kind"] for c in tracker.changes], [MOVED])
+        self.assertEqual(tracker.pending(t - 1), [])  # bestaetigt: nicht mehr pending
+
+        # Tag 8 verdeckt: nach persistS ohne Sichtung pending, mit Restzeit.
+        t = self.run_frames(tracker, [{7: sighting(1.06, 1.0)}] * 6, start=t)
+        [gone] = [p for p in tracker.pending(t - 1) if p["tagId"] == 8]
+        self.assertEqual(gone["kind"], DISAPPEARED)
+        self.assertGreater(gone["confirmInS"], 0.0)
+
+        # Ein neuer Tag: pending, bis er bestaetigt ist.
+        t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 9: sighting(0.2, 0.2, module_id="MOD-N")}] * 2, start=t)
+        [new] = [p for p in tracker.pending(t - 1) if p["tagId"] == 9]
+        self.assertEqual((new["kind"], new["moduleId"]), (APPEARED, "MOD-N"))
+
     def test_required_misses_follow_the_detection_rate(self):
         from vision_server.cellwatch import MAX_REQUIRED_MISSES, required_misses
 
@@ -230,15 +297,21 @@ class JsonTest(unittest.TestCase):
             "detections": [
                 {"moduleId": "ROBOT", "position": list(position), "orientation": list(orientation),
                  "attributes": {"tagId": 20, "tagIds": [20, 21], "role": "robot"}},
+                # Flach liegend und mehrdeutig: Gierwinkel zaehlt trotzdem.
                 {"moduleId": "TAG-9", "position": [0, 0, 0], "orientation": [0, 0, 0, 1],
                  "attributes": {"tagId": 9, "ambiguous": True}},
+                # An einer senkrechten Flaeche (90 Grad um x) und mehrdeutig: nicht.
+                {"moduleId": "TAG-11", "position": [0, 0, 0],
+                 "orientation": [math.sin(math.pi / 4), 0, 0, math.cos(math.pi / 4)],
+                 "attributes": {"tagId": 11, "ambiguous": True}},
             ],
         }
         reference = reference_from_payload(json.dumps(payload), "world")
-        self.assertEqual(sorted(reference), [9, 20, 21])
+        self.assertEqual(sorted(reference), [9, 11, 20, 21])
         self.assertEqual(reference[21].module_id, "ROBOT")
         self.assertAlmostEqual(reference[20].yaw_deg, yaw_deg(pose))
-        self.assertFalse(reference[9].has_yaw)
+        self.assertTrue(reference[9].has_yaw)
+        self.assertFalse(reference[11].has_yaw)
         with self.assertRaises(ValueError):
             reference_from_payload(json.dumps({**payload, "frameId": "cam_ceiling"}), "world")
         with self.assertRaises(ValueError):
@@ -349,6 +422,35 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(self.status["referenceId"], first_reference)
         self.assertEqual(self.status["referenceSource"], "observation")
         await self.ticks(watch, 3)
+        self.assertEqual(self.status["changes"], [])
+
+    async def test_rearming_keeps_the_history(self):
+        """Zeit oder Schwelle aendern = neu scharf schalten mit demselben Job:
+        Verlauf, Kandidaten und Meldungen bleiben, die Referenz-ID auch."""
+        self.results["job-000001"] = json.dumps(
+            {"frameId": "world", "resultState": 0, "detections": [
+                {"moduleId": "MOD-A", "position": [1.0, 1.0, 0.0], "orientation": [0, 0, 0, 1],
+                 "attributes": {"tagId": 7}}]}
+        )
+        watch = self.watch()
+        await watch.start('{"referenceJobId": "job-000001"}', run_loop=False)
+        reference_id = self.status["referenceId"]
+        self.frame = ({7: sighting(1.2, 1.0)}, "")
+        await self.ticks(watch, 8)
+        self.assertEqual(self.status["state"], "changed")
+        frames_before = len(watch._tracker._frames)
+
+        await watch.start('{"referenceJobId": "job-000001", "persistS": 4}', run_loop=False)
+        self.assertEqual(self.status["referenceId"], reference_id)
+        self.assertEqual(self.status["options"]["persistS"], 4.0)
+        self.assertEqual(len(watch._tracker._frames), frames_before)
+        self.assertEqual(self.status["changes"][0]["kind"], "moved")  # Meldung bleibt
+
+        # Neue Referenz: Verlauf bleibt (Erkennungsrate), Meldungen nicht.
+        self.results["job-000002"] = self.results["job-000001"].replace("1.0, 1.0", "1.2, 1.0")
+        await watch.start('{"referenceJobId": "job-000002"}', run_loop=False)
+        self.assertNotEqual(self.status["referenceId"], reference_id)
+        self.assertEqual(len(watch._tracker._frames), frames_before)
         self.assertEqual(self.status["changes"], [])
 
     async def test_null_reference_is_recorded_first(self):
