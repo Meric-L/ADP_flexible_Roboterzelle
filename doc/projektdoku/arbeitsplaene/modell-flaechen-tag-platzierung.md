@@ -339,3 +339,17 @@ des Modells.
 - [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - [ ] Das Datenformat `placement` in `apriltag-referenz.md` übernehmen, als eigenen Abschnitt.
 - Weiterentwicklung: im bestehenden Plan einen neuen Abschnitt ergänzen oder einen Folgeplan anlegen und hier verlinken.
+
+## Nachtrag 19.10.2026: Tag per Button um 90° drehen
+
+Im Modulkatalog erscheinen an zwei Stellen Buttons ↺ / ↻, die einen AprilTag um ±90° um seine Normale drehen (beim Blick auf den Tag: ↺ = gegen den Uhrzeigersinn, ↻ = im Uhrzeigersinn):
+
+1. **Im Platzier-Panel** (Schritt 4) vor dem Häkchen „Oberkante des Drucks nach oben": ruft `turnPlacement(placement, ±1)` auf.
+2. **In der Tag-Zeile** (neben „Auf Modell platzieren"): dreht platzierte Tags per `turnPlacement`; für Tags ohne Platzierung wird `turnRotationDegAboutTagZ` auf `rotationDeg` angewendet.
+
+Gedreht wird immer aus der aktuellen, **sichtbaren Lage**:
+- Steht `inPlaneRotationDeg` auf `null` („Oberkante oben"), wird der Winkel aus den Achsen der Platzierung (über `placementAxes`) berechnet, und ±90° werden addiert — danach ist es eine Zahl in (−180°, 180°].
+- Das Häkchen „Oberkante des Drucks nach oben" geht dabei automatisch aus.
+- Der Tag springt nicht; die Platzierung bleibt sonst unverändert.
+
+**Datenformat unverändert:** Das Feld `placement` bleibt wie beschrieben, nur `inPlaneRotationDeg` ändert sich. Pi, Tag-Map und Layer 2 sind nicht betroffen; dorthin gehen weiter nur `position` und `rotationDeg`. Näheres: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
