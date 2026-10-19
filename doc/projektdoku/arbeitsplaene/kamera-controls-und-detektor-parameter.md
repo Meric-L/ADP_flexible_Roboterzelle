@@ -71,7 +71,7 @@ def validate_camera_controls(controls, available) -> dict  # Namen prüfen, Type
 ```
 
 Beide Felder sind aus der Preset-Tabelle plus Env-Override in
-`server.apriltag_config()` bzw. `server.build_config()` gemerged.
+`server.apriltag_config()` bzw. `server.vision_config()` gemerged.
 
 ### Umgebungsvariablen (Daten-Format)
 
@@ -147,4 +147,17 @@ Belichtungswerte (`journalctl -u opcua-server.service | grep -i "Kamera-Metadate
 
 ## Abweichungen vom Plan
 
-(wird bei der Umsetzung gefüllt)
+- Betroffene Dateien: Tests liegen in `test_server_config.py` (Env-Merge),
+  `test_camera.py` (Controls, Enum-Auflösung) und `test_detector.py`; die CLI-
+  Werkzeuge `detect.py`, `build_tagmap.py`, `calibrate_handeye.py` blieben
+  unverändert, sie nutzen `_common.detector_options(args)`.
+- Zusätzliche Schnittstelle: `tagloc.detector.apply_detector_parameters(parameters, values)`
+  (gibt die abweichenden Einträge zurück), `ArucoTagDetector.changed_parameters`
+  (fürs Start-Log), `server.merged_json_object_env(name, preset)`,
+  `camera.format_camera_metadata`, `camera.CAMERA_ENUM_CONTROLS`.
+- `detector_parameters` und `camera_controls` sind Felder mit `hash=False`, die
+  Dataclasses bleiben hashbar.
+- Die Metadaten werden in `SharedCamera._open_camera` direkt nach dem Warmup
+  gelesen, bevor der Capture-Loop startet (kein Wettlauf um Requests).
+- Die Warnung für RealSense/OpenCV kommt bei jedem Öffnen (auch Neu-Öffnen),
+  nicht streng nur einmal.

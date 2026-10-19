@@ -12,6 +12,7 @@ OpenCV.
 """
 
 import logging
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -81,6 +82,57 @@ def aruco_dictionary(family: str = "tag36h11"):
     return predefined_dictionary(name)
 
 
+def apply_detector_parameters(
+    parameters: Any, values: Mapping[str, Any] | None
+) -> dict[str, tuple[Any, Any]]:
+    """Setzt `values` (Attributname -> Wert) auf ein `DetectorParameters`-Objekt.
+
+    Der Wert wird auf den Typ des vorhandenen Attributs gebracht (bool, int,
+    float). `ValueError` bei unbekanntem Namen oder einem Wert, der nicht in
+    diesen Typ passt. Rueckgabe: nur die Eintraege, die vom bisherigen Wert
+    abweichen, als `{name: (vorher, nachher)}` -- fuers Start-Log.
+    """
+    changed: dict[str, tuple[Any, Any]] = {}
+    for name, value in (values or {}).items():
+        if not hasattr(parameters, name):
+            raise ValueError(
+                f"Unbekannter Detektor-Parameter '{name}' -- erwartet wird ein Attribut von "
+                "cv2.aruco.DetectorParameters (z. B. errorCorrectionRate), Gross-/"
+                "Kleinschreibung beachten"
+            )
+        current = getattr(parameters, name)
+        try:
+            converted = _as_type_of(current, value)
+            setattr(parameters, name, converted)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"Detektor-Parameter '{name}': Wert {value!r} passt nicht zum Typ "
+                f"{type(current).__name__} ({error})"
+            ) from error
+        if converted != current:
+            changed[name] = (current, converted)
+    return changed
+
+
+def _as_type_of(current: Any, value: Any) -> Any:
+    """Bringt `value` auf den Typ von `current`; `ValueError`/`TypeError` sonst."""
+    if isinstance(current, bool):  # vor int: bool ist ein int
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int) and value in (0, 1):
+            return bool(value)
+        raise ValueError("erwartet true/false")
+    if isinstance(value, bool):
+        raise ValueError("true/false statt einer Zahl")
+    if isinstance(current, int):
+        if isinstance(value, float) and not value.is_integer():
+            raise ValueError("erwartet eine ganze Zahl")
+        return int(value)
+    if isinstance(current, float):
+        return float(value)
+    return value
+
+
 class ArucoTagDetector:
     """Detection via `cv2.aruco`. The default path.
 
@@ -98,10 +150,14 @@ class ArucoTagDetector:
         parameters: Any = None,
         subpixel_corner_refinement: bool = False,
         apriltag_quad_decimate: float = 0.0,
-        error_correction_rate: float | None = None,
-        perspective_remove_margin_per_cell: float | None = None,
-        perspective_remove_pixel_per_cell: int | None = None,
+        detector_parameters: Mapping[str, Any] | None = None,
     ) -> None:
+        """`detector_parameters`: Attributname von `cv2.aruco.DetectorParameters`
+        -> Wert, z. B. `{"errorCorrectionRate": 0.8}`; `None`/leer = OpenCV-
+        Standard. Unbekannter Name oder unpassender Wert wirft `ValueError`.
+        Die Eintraege werden NACH `subpixel_corner_refinement` gesetzt und
+        gewinnen damit, z. B. ein ausdrueckliches `cornerRefinementMethod`.
+        """
         import cv2
 
         self.family = family
@@ -114,25 +170,6 @@ class ArucoTagDetector:
             self._parameters = aruco.DetectorParameters()
         else:  # OpenCV < 4.7
             self._parameters = aruco.DetectorParameters_create()
-
-        # Dekodier-Parameter fuer optisch weiche Bilder (Deckenkamera, siehe
-        # `AprilTagProfileConfig.error_correction_rate`). `None` = OpenCV-
-        # Standard. Achtung: `error_correction_rate` 1.0 korrigiert bis zu 5
-        # statt 3 Bitfehler -- das Fehlalarmrisiko je Viereck-Kandidat steigt
-        # theoretisch von ~0,03 % auf ~1,5 %, die Randpruefung davor filtert
-        # den Grossteil. Attribute, die eine OpenCV-Version nicht kennt, werden
-        # uebersprungen (Erkennung laeuft dann mit dem Standard).
-        for attribute, value in (
-            ("errorCorrectionRate", error_correction_rate),
-            ("perspectiveRemoveIgnoredMarginPerCell", perspective_remove_margin_per_cell),
-            ("perspectiveRemovePixelPerCell", perspective_remove_pixel_per_cell),
-        ):
-            if value is None:
-                continue
-            try:
-                setattr(self._parameters, attribute, value)
-            except Exception:  # pragma: no cover - fehlt/read-only je nach Build
-                _log.debug("%s nicht setzbar", attribute)
 
         # Subpixel-accurate corners: kann die Pose-Qualitaet auf Distanz
         # verbessern, kostet aber messbar CPU-Zeit (py-spy auf pi1: ~46% des
@@ -160,6 +197,14 @@ class ArucoTagDetector:
                     self._parameters.aprilTagQuadDecimate = apriltag_quad_decimate
                 except Exception:  # pragma: no cover - read-only depending on build
                     _log.debug("aprilTagQuadDecimate nicht setzbar")
+
+        # Frei waehlbare Detektor-Parameter (Preset, Umgebungsvariable, CLI).
+        # Bewusst streng: ein Tippfehler im Namen soll beim Start auffallen
+        # und nicht stumm wirkungslos bleiben.
+        #: Vom Standard abweichende Eintraege `{name: (vorher, nachher)}`, fuers Log.
+        self.changed_parameters = apply_detector_parameters(
+            self._parameters, detector_parameters
+        )
 
         self._detector = None
         if hasattr(aruco, "ArucoDetector"):
@@ -218,9 +263,7 @@ def build_detector(
     *,
     subpixel_corner_refinement: bool = False,
     apriltag_quad_decimate: float = 0.0,
-    error_correction_rate: float | None = None,
-    perspective_remove_margin_per_cell: float | None = None,
-    perspective_remove_pixel_per_cell: int | None = None,
+    detector_parameters: Mapping[str, Any] | None = None,
 ) -> TagDetector:
     """Build the detector for the requested family.
 
@@ -229,16 +272,14 @@ def build_detector(
 
     `subpixel_corner_refinement`/`apriltag_quad_decimate` gelten nur fuer
     `"aruco"`/`"auto"` -- `pupil_apriltags` hat keine aequivalente Einstellung.
-    Dasselbe gilt fuer `error_correction_rate`, `perspective_remove_margin_per_cell`
-    und `perspective_remove_pixel_per_cell` (`None` = OpenCV-Standard).
+    Dasselbe gilt fuer `detector_parameters` (Attributname von
+    `cv2.aruco.DetectorParameters` -> Wert, `None` = OpenCV-Standard).
     """
     backend = backend.lower()
     aruco_options = dict(
         subpixel_corner_refinement=subpixel_corner_refinement,
         apriltag_quad_decimate=apriltag_quad_decimate,
-        error_correction_rate=error_correction_rate,
-        perspective_remove_margin_per_cell=perspective_remove_margin_per_cell,
-        perspective_remove_pixel_per_cell=perspective_remove_pixel_per_cell,
+        detector_parameters=detector_parameters,
     )
     if backend == "aruco":
         return ArucoTagDetector(family, **aruco_options)

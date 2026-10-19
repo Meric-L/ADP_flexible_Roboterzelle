@@ -63,24 +63,16 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def add_decoder_arguments(parser: argparse.ArgumentParser) -> None:
-    """Optionale Dekodier-Parameter, `None` = OpenCV-Standard."""
+    """Frei waehlbare Detektor-Parameter, ohne Angabe gilt der OpenCV-Standard."""
     parser.add_argument(
-        "--error-correction-rate",
-        type=float,
-        default=None,
-        help="Anteil korrigierbarer Bitfehler (OpenCV-Standard 0.6), fuer weiche Bilder",
-    )
-    parser.add_argument(
-        "--perspective-remove-margin",
-        type=float,
-        default=None,
-        help="Ignorierter Zellrand je Bit (OpenCV-Standard 0.13)",
-    )
-    parser.add_argument(
-        "--perspective-remove-ppc",
-        type=int,
-        default=None,
-        help="Pixel je Zelle nach der Entzerrung (OpenCV-Standard 4)",
+        "--detector-param",
+        action="append",
+        default=[],
+        metavar="NAME=WERT",
+        help=(
+            "OpenCV-DetectorParameters-Attribut setzen, z. B. errorCorrectionRate=0.8 "
+            "(wiederholbar; Wert als JSON, sonst als Text)"
+        ),
     )
 
 
@@ -113,13 +105,31 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def parse_detector_params(items) -> dict:
+    """`["NAME=WERT", ...]` -> `{NAME: WERT}`, Wert per `json.loads`, sonst Text.
+
+    `SystemExit` mit einer Meldung, die sagt, was zu tun ist, bei einem Eintrag
+    ohne `=`.
+    """
+    parameters = {}
+    for item in items or []:
+        name, separator, raw = item.partition("=")
+        if not separator or not name.strip():
+            raise SystemExit(
+                f"--detector-param erwartet NAME=WERT (z. B. errorCorrectionRate=0.8), "
+                f"nicht '{item}'"
+            )
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            value = raw
+        parameters[name.strip()] = value
+    return parameters
+
+
 def detector_options(args) -> dict:
-    """Die optionalen Dekodier-Parameter aus den CLI-Argumenten fuer `build_detector`."""
-    return {
-        "error_correction_rate": args.error_correction_rate,
-        "perspective_remove_margin_per_cell": args.perspective_remove_margin,
-        "perspective_remove_pixel_per_cell": args.perspective_remove_ppc,
-    }
+    """Die Detektor-Parameter aus den CLI-Argumenten als Keywords fuer `build_detector`."""
+    return {"detector_parameters": parse_detector_params(args.detector_param)}
 
 
 def open_source(args, *, loop: bool = False):

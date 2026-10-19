@@ -23,7 +23,6 @@ if cv2 is not None:
     from tagloc.detector import ArucoTagDetector, build_detector
 
 from vision_server.profiles import AprilTagProfileConfig
-from vision_server.server import apriltag_config
 
 #: Weiches Deckenkamerabild mit den tag36h11-IDs 0, 1, 2, 3, 583 (19.10.2026).
 ROHBILD = (
@@ -106,59 +105,122 @@ class AprilTagQuadDecimateTest(unittest.TestCase):
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
-class DecoderParametersTest(unittest.TestCase):
-    """Dekodier-Parameter fuer weiche Bilder, `None` = OpenCV-Standard."""
+class DetectorParametersTest(unittest.TestCase):
+    """Frei waehlbare `DetectorParameters`, leer/`None` = OpenCV-Standard."""
 
-    def test_none_leaves_opencv_defaults(self):
-        detector = ArucoTagDetector("tag36h11")
+    def test_none_and_empty_leave_opencv_defaults(self):
         standard = cv2.aruco.DetectorParameters()
 
-        parameters = detector._parameters
-        self.assertEqual(parameters.errorCorrectionRate, standard.errorCorrectionRate)
-        self.assertEqual(
-            parameters.perspectiveRemoveIgnoredMarginPerCell,
-            standard.perspectiveRemoveIgnoredMarginPerCell,
-        )
-        self.assertEqual(
-            parameters.perspectiveRemovePixelPerCell, standard.perspectiveRemovePixelPerCell
-        )
+        for mapping in (None, {}):
+            parameters = ArucoTagDetector("tag36h11", detector_parameters=mapping)._parameters
+            self.assertEqual(parameters.errorCorrectionRate, standard.errorCorrectionRate)
+            self.assertEqual(
+                parameters.adaptiveThreshWinSizeMax, standard.adaptiveThreshWinSizeMax
+            )
 
-    def test_sets_parameters_when_given(self):
+    def test_sets_the_given_attributes(self):
         detector = ArucoTagDetector(
             "tag36h11",
-            error_correction_rate=1.0,
-            perspective_remove_margin_per_cell=0.3,
-            perspective_remove_pixel_per_cell=8,
+            detector_parameters={
+                "errorCorrectionRate": 0.8,
+                "adaptiveThreshWinSizeMax": 33,
+                "perspectiveRemoveIgnoredMarginPerCell": 0.3,
+            },
         )
 
         parameters = detector._parameters
-        self.assertEqual(parameters.errorCorrectionRate, 1.0)
+        self.assertAlmostEqual(parameters.errorCorrectionRate, 0.8)
+        self.assertEqual(parameters.adaptiveThreshWinSizeMax, 33)
         self.assertAlmostEqual(parameters.perspectiveRemoveIgnoredMarginPerCell, 0.3)
+
+    def test_unknown_name_raises_value_error(self):
+        with self.assertRaises(ValueError) as caught:
+            ArucoTagDetector("tag36h11", detector_parameters={"errorCorrectionrate": 0.8})
+
+        self.assertIn("errorCorrectionrate", str(caught.exception))
+
+    def test_values_are_converted_to_the_attribute_type(self):
+        detector = ArucoTagDetector(
+            "tag36h11",
+            detector_parameters={
+                "errorCorrectionRate": 1,  # int -> float
+                "perspectiveRemovePixelPerCell": 8.0,  # ganzzahliges float -> int
+                "detectInvertedMarker": 1,  # 0/1 -> bool
+            },
+        )
+
+        parameters = detector._parameters
+        self.assertIsInstance(parameters.errorCorrectionRate, float)
+        self.assertEqual(parameters.errorCorrectionRate, 1.0)
+        self.assertIsInstance(parameters.perspectiveRemovePixelPerCell, int)
         self.assertEqual(parameters.perspectiveRemovePixelPerCell, 8)
+        self.assertIs(parameters.detectInvertedMarker, True)
+
+    def test_wrong_type_raises_value_error(self):
+        for name, value in (
+            ("errorCorrectionRate", "viel"),
+            ("perspectiveRemovePixelPerCell", 8.5),
+            ("detectInvertedMarker", "ja"),
+            ("adaptiveThreshWinSizeMax", True),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    ArucoTagDetector("tag36h11", detector_parameters={name: value})
+
+    def test_changed_parameters_lists_only_deviations(self):
+        standard = cv2.aruco.DetectorParameters().errorCorrectionRate
+
+        detector = ArucoTagDetector(
+            "tag36h11",
+            detector_parameters={"errorCorrectionRate": standard, "adaptiveThreshWinSizeMax": 33},
+        )
+
+        self.assertEqual(list(detector.changed_parameters), ["adaptiveThreshWinSizeMax"])
+
+    def test_explicit_corner_refinement_wins_over_the_subpixel_flag(self):
+        detector = ArucoTagDetector(
+            "tag36h11",
+            subpixel_corner_refinement=True,
+            detector_parameters={"cornerRefinementMethod": cv2.aruco.CORNER_REFINE_NONE},
+        )
+
+        self.assertEqual(
+            detector._parameters.cornerRefinementMethod, cv2.aruco.CORNER_REFINE_NONE
+        )
 
     def test_build_detector_passes_them_through(self):
-        detector = build_detector("tag36h11", "aruco", error_correction_rate=0.8)
+        detector = build_detector(
+            "tag36h11", "aruco", detector_parameters={"errorCorrectionRate": 0.8}
+        )
 
         self.assertAlmostEqual(detector._parameters.errorCorrectionRate, 0.8)
+
+    def test_build_detector_rejects_unknown_names(self):
+        with self.assertRaises(ValueError):
+            build_detector("tag36h11", "aruco", detector_parameters={"gibtsNicht": 1})
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 @unittest.skipUnless(ROHBILD.is_file(), "Rohbild fehlt")
 class CeilingRawImageTest(unittest.TestCase):
-    """Regression auf dem echten, weichen Deckenbild (4056x3040)."""
+    """Regression auf dem echten, weichen Deckenbild (4056x3040, alter Fokus)."""
 
     @classmethod
     def setUpClass(cls):
         cls.gray = cv2.imread(str(ROHBILD), cv2.IMREAD_GRAYSCALE)
 
-    def test_cam_ceiling_config_finds_all_five_tags(self):
-        config = apriltag_config("cam_ceiling")
+    def test_explicit_parameters_find_all_five_tags_of_the_blurry_image(self):
+        # Haertefall des alten, unscharfen Fokus (19.10.2026, vor dem
+        # Neufokussieren): diese Parameter sind KEIN Preset mehr, der Test
+        # dokumentiert den Fall und prueft die Mechanik.
         detector = build_detector(
-            config.tag_family,
-            config.detector_backend,
-            error_correction_rate=config.error_correction_rate,
-            perspective_remove_margin_per_cell=config.perspective_remove_margin_per_cell,
-            perspective_remove_pixel_per_cell=config.perspective_remove_pixel_per_cell,
+            "tag36h11",
+            "aruco",
+            detector_parameters={
+                "errorCorrectionRate": 1.0,
+                "perspectiveRemoveIgnoredMarginPerCell": 0.3,
+                "perspectiveRemovePixelPerCell": 8,
+            },
         )
 
         ids = {observation.tag_id for observation in detector.detect(self.gray)}
@@ -184,26 +246,17 @@ class AprilTagProfileConfigDefaultTest(unittest.TestCase):
         # bis auf dem Pi mit echten Distanzen gemessen wurde.
         self.assertEqual(AprilTagProfileConfig().apriltag_quad_decimate, 0.0)
 
-    def test_decoder_parameters_default_to_opencv_standard(self):
-        config = AprilTagProfileConfig()
+    def test_detector_parameters_default_to_empty(self):
+        self.assertEqual(AprilTagProfileConfig().detector_parameters, {})
 
-        self.assertIsNone(config.error_correction_rate)
-        self.assertIsNone(config.perspective_remove_margin_per_cell)
-        self.assertIsNone(config.perspective_remove_pixel_per_cell)
+    def test_default_mappings_are_not_shared_between_instances(self):
+        first = AprilTagProfileConfig()
+        first.detector_parameters["errorCorrectionRate"] = 0.8
 
-    def test_only_ceiling_preset_sets_decoder_parameters(self):
-        ceiling = apriltag_config("cam_ceiling")
-        flange = apriltag_config("cam_flange")
+        self.assertEqual(AprilTagProfileConfig().detector_parameters, {})
 
-        self.assertEqual(
-            (
-                ceiling.error_correction_rate,
-                ceiling.perspective_remove_margin_per_cell,
-                ceiling.perspective_remove_pixel_per_cell,
-            ),
-            (1.0, 0.3, 8),
-        )
-        self.assertIsNone(flange.error_correction_rate)
+    def test_config_stays_hashable(self):
+        hash(AprilTagProfileConfig(detector_parameters={"errorCorrectionRate": 0.8}))
 
 
 if __name__ == "__main__":

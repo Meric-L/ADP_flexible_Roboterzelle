@@ -136,3 +136,17 @@ Kein neuer Fehlerpfad. Unbekannte Attribute in älteren OpenCV-Versionen werden
 - Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
 - Zeile im Index aktualisiert.
 - Fachwissen in `apriltag-referenz.md` übernommen.
+
+## Nachtrag 19.10.2026
+
+Die Kamera ist neu fokussiert, die Werte 1.0 / 0.3 / 8 gelten nicht mehr und
+sind verworfen. Die oben beschriebenen Einzel-Keywords
+`error_correction_rate`, `perspective_remove_margin_per_cell` und
+`perspective_remove_pixel_per_cell` (in `ArucoTagDetector`, `build_detector`,
+`AprilTagProfileConfig`) sowie die CLI-Optionen `--error-correction-rate`,
+`--perspective-remove-margin`, `--perspective-remove-ppc` sind **entfernt**.
+Stattdessen gibt es ein generisches Mapping `detector_parameters`
+(OpenCV-`DetectorParameters`-Attributname → Wert), das Preset `cam_ceiling`
+ist leer (OpenCV-Standard). Der Regressionstest auf dem alten Rohbild
+übergibt die Werte ausdrücklich. Schnittstellen:
+[`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md).

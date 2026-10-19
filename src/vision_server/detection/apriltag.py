@@ -349,11 +349,17 @@ class AprilTagDetectionSource(DetectionSource):
                 self._config.detector_backend,
                 subpixel_corner_refinement=self._config.subpixel_corner_refinement,
                 apriltag_quad_decimate=self._config.apriltag_quad_decimate,
-                error_correction_rate=self._config.error_correction_rate,
-                perspective_remove_margin_per_cell=self._config.perspective_remove_margin_per_cell,
-                perspective_remove_pixel_per_cell=self._config.perspective_remove_pixel_per_cell,
+                detector_parameters=self._config.detector_parameters,
             )
             self._detector = await self.run_blocking(build)
+            changed = getattr(self._detector, "changed_parameters", None)
+            if changed:
+                _log.info(
+                    "Detektor-Parameter abweichend vom OpenCV-Standard: %s",
+                    ", ".join(f"{name}={old} -> {new}" for name, (old, new) in changed.items()),
+                )
+            else:
+                _log.info("Detektor-Parameter: OpenCV-Standard")
         self.configuration_id = self._build_configuration_id()
         await self.camera.open()
         if calibration_missing is not None:
