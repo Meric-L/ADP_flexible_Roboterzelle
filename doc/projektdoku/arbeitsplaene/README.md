@@ -76,6 +76,7 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 | [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | End-to-End-Testanleitung AprilTag |
 | [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen |
 | [`../praesentation.md`](../praesentation.md) | Foliengrundlage der Betreuer-Präsentation |
+| [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | in Arbeit | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
 
 Kommt eine Fach-MD dazu, hier eine Zeile ergänzen. Für Agenten listet das
 Skript `.claude/hooks/doku_regeln.py` den Ordnerinhalt ohnehin automatisch auf.
