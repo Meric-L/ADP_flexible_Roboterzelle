@@ -73,7 +73,7 @@ class BuildAnnotatorTest(unittest.TestCase):
         source._detector = object()
         self.assertIsNone(_build_annotator(source))
 
-    def test_the_stream_detector_uses_the_decoder_parameters_of_the_job(self):
+    def test_the_stream_detector_uses_the_detector_parameters_of_the_job(self):
         from unittest.mock import patch
 
         from vision_server.profiles import AprilTagProfileConfig
@@ -82,9 +82,7 @@ class BuildAnnotatorTest(unittest.TestCase):
         source._detector = object()
         source._calibration = object()
         source._config = AprilTagProfileConfig(
-            error_correction_rate=1.0,
-            perspective_remove_margin_per_cell=0.3,
-            perspective_remove_pixel_per_cell=8,
+            detector_parameters={"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}
         )
 
         with patch("tagloc.detector.build_detector") as build_detector, patch(
@@ -93,10 +91,37 @@ class BuildAnnotatorTest(unittest.TestCase):
             _build_annotator(source)
 
         keywords = build_detector.call_args.kwargs
-        self.assertEqual(keywords["error_correction_rate"], 1.0)
-        self.assertEqual(keywords["perspective_remove_margin_per_cell"], 0.3)
-        self.assertEqual(keywords["perspective_remove_pixel_per_cell"], 8)
+        self.assertEqual(
+            keywords["detector_parameters"],
+            {"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33},
+        )
         self.assertFalse(keywords["subpixel_corner_refinement"])
+
+    def test_the_stream_detector_drops_corner_refinement_from_the_parameters(self):
+        """Subpixel bleibt im Stream aus (CPU-Konkurrenz zum Job), auch wenn
+        `cornerRefinementMethod` ausdruecklich in den Parametern steht."""
+        from unittest.mock import patch
+
+        from vision_server.profiles import AprilTagProfileConfig
+
+        source = CameraSource()
+        source._detector = object()
+        source._calibration = object()
+        source._config = AprilTagProfileConfig(
+            detector_parameters={"errorCorrectionRate": 0.8, "cornerRefinementMethod": 3}
+        )
+
+        with patch("tagloc.detector.build_detector") as build_detector, patch(
+            "vision_server.stream_overlay.AprilTagStreamAnnotator"
+        ):
+            _build_annotator(source)
+
+        self.assertEqual(
+            build_detector.call_args.kwargs["detector_parameters"],
+            {"errorCorrectionRate": 0.8},
+        )
+        # Das Config-Mapping des Jobs bleibt unveraendert.
+        self.assertIn("cornerRefinementMethod", source._config.detector_parameters)
 
     def test_the_stream_gets_its_own_detector_without_subpixel_refinement(self):
         """Regression: Job und Stream teilten sich bis 2026-09-24 EINE
@@ -125,9 +150,7 @@ class BuildAnnotatorTest(unittest.TestCase):
             source._config.tag_family,
             source._config.detector_backend,
             subpixel_corner_refinement=False,
-            error_correction_rate=None,
-            perspective_remove_margin_per_cell=None,
-            perspective_remove_pixel_per_cell=None,
+            detector_parameters={},
         )
         self.assertIs(annotator_cls.call_args.kwargs["detector"], stream_detector)
         self.assertIsNot(annotator_cls.call_args.kwargs["detector"], source._detector)

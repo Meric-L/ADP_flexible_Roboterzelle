@@ -22,6 +22,7 @@ alle Namespace-Indizes um eins nach unten; wer sie ueber
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import signal
@@ -121,13 +122,12 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # das beste Modell fuer die HQ-Kamera bei 4056x3040 (Arbeitsplan
         # kalibrierung-linsenmodell-je-kamera.md).
         "calibration_model": "fisheye",
-        # Das Deckenbild ist optisch weich (Kanten 4-8 px bei Zellen von
-        # 6-13 px): mit den OpenCV-Standards fehlten Tag 0 und 3. Messung am
-        # Rohbild cam_ceiling_20261019-114704.png (19.10.2026), Begruendung
-        # und Fehlalarmrisiko bei AprilTagProfileConfig.error_correction_rate.
-        "error_correction_rate": 1.0,
-        "perspective_remove_margin_per_cell": 0.3,
-        "perspective_remove_pixel_per_cell": 8,
+        # Detektor-Parameter (OpenCV-DetectorParameters, Attributname -> Wert).
+        # Stand 19.10.2026: Kamera neu fokussiert, die fuer das unscharfe Bild
+        # gemessenen Werte (errorCorrectionRate 1.0, Rand 0.3, ppc 8) sind
+        # verworfen, es gilt der OpenCV-Standard. Werte folgen nach Messung am
+        # neuen Bild; zum Ausprobieren VISION_APRILTAG_DETECTOR_PARAMS setzen.
+        "detector_parameters": {},
     },
     "cam_flange": {
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -184,6 +184,11 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
         # volle Frame).
         "overlay_timeout_s": 8.0,
+        # libcamera-Controls (ISP/Belichtung), z. B. {"ExposureValue": -0.5,
+        # "Sharpness": 1.5, "NoiseReductionMode": "Fast"}. Stand 19.10.2026:
+        # Kamera neu fokussiert, Werte folgen nach Messung -- bis dahin
+        # Picamera2-Standard. Zum Ausprobieren VISION_CAMERA_CONTROLS setzen.
+        "camera_controls": {},
     },
 }
 
@@ -192,6 +197,34 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
 #: Quelltext, nicht im Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map
 #: zur Zelle.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def merged_json_object_env(name: str, preset: dict | None) -> dict:
+    """`preset` mit dem JSON-Objekt der Umgebungsvariable `name` uebersteuert.
+
+    Je Schluessel gewinnt die Umgebungsvariable, `null` entfernt einen
+    Preset-Eintrag. Nicht gesetzt oder leer = unveraendertes Preset.
+    `ValueError` bei ungueltigem JSON oder wenn es kein Objekt ist -- beim
+    Start, nicht erst mitten im Betrieb.
+    """
+    merged = dict(preset or {})
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return merged
+    try:
+        override = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{name} ist kein gueltiges JSON ({error}): {raw!r}") from error
+    if not isinstance(override, dict):
+        raise ValueError(
+            f"{name} muss ein JSON-Objekt sein, z. B. '{{\"name\": 1.0}}', nicht {raw!r}"
+        )
+    for key, value in override.items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
 
 
 def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
@@ -209,6 +242,11 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     default.
     """
     preset = dict(PI_APRILTAG_PRESETS.get(frame_id, {}))
+    # OpenCV-Detektor-Parameter: Preset, je Schluessel von der Umgebungs-
+    # variable uebersteuert (`null` entfernt einen Eintrag).
+    preset["detector_parameters"] = merged_json_object_env(
+        "VISION_APRILTAG_DETECTOR_PARAMS", preset.get("detector_parameters")
+    )
     # Uebersteuert das Linsenmodell des Presets, z. B. fuer einen
     # Vergleichslauf mit dem anderen Modell, ohne den Code anzufassen.
     model_override = os.getenv("VISION_CALIBRATION_MODEL")
@@ -371,14 +409,24 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # `CameraStreamConfig.stream_enabled`) -- `resolution` bleibt gesetzt,
     # weil dieselbe `CameraStreamConfig` auch die Job-Kamera oeffnet.
     stream_enabled = os.getenv("VISION_DISABLE_STREAM") != "1"
+    # Kamera-Controls: Preset, je Schluessel von der Umgebungsvariable
+    # uebersteuert. Auch fuer die anderen Backends gelesen, damit ein gesetztes
+    # `VISION_CAMERA_CONTROLS` dort die Warnung "wird ignoriert" ausloest.
+    stream_preset = dict(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {})
+    camera_controls = merged_json_object_env(
+        "VISION_CAMERA_CONTROLS", stream_preset.pop("camera_controls", None)
+    )
     camera_stream = (
-        CameraStreamConfig(backend=backend, stream_enabled=stream_enabled)
+        CameraStreamConfig(
+            backend=backend, stream_enabled=stream_enabled, camera_controls=camera_controls
+        )
         if backend == "realsense"
         else CameraStreamConfig(
             backend=backend,
             resolution=apriltag.resolution,
             stream_enabled=stream_enabled,
-            **(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {}),
+            camera_controls=camera_controls,
+            **stream_preset,
         )
     )
     return VisionServerConfig(

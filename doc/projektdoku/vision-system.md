@@ -276,3 +276,42 @@ Festgehalten in `tests/test_part10_fassade.py`.
   Abschnitt 10.3. Eine Kalibrierung für 2028×1520 wird bis zur Neukalibrierung
   hochgerechnet (`allow_resolution_mismatch` im Preset `cam_ceiling`) — nach
   der Neukalibrierung bei 4056×3040 den Schalter wieder entfernen.
+
+## Kamera-Controls (Picamera2)
+
+Für die Deckenkamera (Picamera2) lassen sich libcamera-Controls ohne
+Codeänderung setzen: Feld `CameraStreamConfig.camera_controls`, Preset
+`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]` (vorerst leer,
+Werte folgen nach Messung) und Umgebungsvariable `VISION_CAMERA_CONTROLS`
+(JSON-Objekt, je Schlüssel gewinnt die Variable, `null` entfernt einen
+Preset-Eintrag):
+
+```
+VISION_CAMERA_CONTROLS='{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}'
+```
+
+- Die Controls gehen als `controls=` in die Video-Konfiguration und werden
+  mit den Picamera2-Standards (`FrameDurationLimits`, `NoiseReductionMode`)
+  gemischt, nicht ersetzt.
+- Typen: `ExposureTime` in µs (int), `AnalogueGain` (float), `AeEnable`
+  (bool), `ExposureValue`, `Sharpness`, `Contrast`, `Brightness`,
+  `Saturation` (float). Die Enum-Controls `NoiseReductionMode`,
+  `AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode` dürfen
+  als Name angegeben werden (`"HighQuality"`, `"Off"`, `"Fast"`).
+- Ein Name, den die Kamera nicht kennt (`Picamera2.camera_controls`), oder
+  ein unbekannter Enum-Name wirft beim Öffnen `ValueError`; die Meldung
+  listet die gültigen Namen.
+- Nach dem Warmup loggt der Server die tatsächlichen Metadaten
+  (`ExposureTime`, `AnalogueGain`, `DigitalGain`, `Lux`, `ColourTemperature`,
+  `FocusFoM`): `journalctl -u opcua-server.service | grep "Kamera-Metadaten"`.
+  Daraus wählt man feste Belichtungswerte.
+- RealSense und OpenCV ignorieren das Feld (einmalige Warnung je Öffnen).
+
+**Hardware-Hinweis:** Die Deckenkamera hat ein M12-Objektiv mit fester
+Blende. Einstellbar sind nur der Fokus (am Objektiv, von Hand) und die ISP-/
+Belichtungs-Controls oben.
+
+Setzen auf dem Pi: Drop-In per `sudo systemctl edit opcua-server.service`
+mit `Environment='VISION_CAMERA_CONTROLS=...'`, danach
+`sudo systemctl restart opcua-server.service`. Schnittstellen:
+[`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).

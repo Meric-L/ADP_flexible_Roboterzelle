@@ -1037,3 +1037,25 @@ Betrieb Geister-IDs auf, `error_correction_rate` Richtung 0.8 senken.
 Standardparametern Tags (nur [583]) und braucht 2,7 s.
 
 Regressionstest: `tests/test_detector.py` (`CeilingRawImageTest`).
+
+### Nachtrag 19.10.2026: Werte verworfen, Parameter frei einstellbar
+
+Die Kamera ist neu fokussiert. Die Werte 1.0 / 0.3 / 8 gehörten zum
+unscharfen Bild und sind **nicht mehr gesetzt**: `cam_ceiling` läuft mit dem
+OpenCV-Standard. Die drei Einzel-Keywords (`error_correction_rate`,
+`perspective_remove_margin_per_cell`, `perspective_remove_pixel_per_cell`)
+und die CLI-Optionen dazu sind entfernt. An ihre Stelle tritt ein
+generisches Mapping `detector_parameters` (Attributname von
+`cv2.aruco.DetectorParameters` → Wert):
+
+- Preset: `PI_APRILTAG_PRESETS[...]["detector_parameters"]` in `server.py`.
+- Umgebungsvariable `VISION_APRILTAG_DETECTOR_PARAMS` (JSON-Objekt), z. B.
+  `'{"errorCorrectionRate": 0.8}'`; je Schlüssel gewinnt die Variable,
+  `null` entfernt einen Preset-Eintrag.
+- CLI: `--detector-param NAME=WERT`, wiederholbar.
+- Unbekannte Namen und Werte vom falschen Typ werfen beim Start `ValueError`.
+
+Details und Schnittstellen:
+[`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
+Der Regressionstest auf dem alten Rohbild übergibt die Werte jetzt
+ausdrücklich und dokumentiert damit den Härtefall.

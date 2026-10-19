@@ -169,7 +169,104 @@ def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
         arguments["lores"] = {"size": preview, "format": PICAMERA2_PREVIEW_FORMAT}
     if config.buffer_count is not None:
         arguments["buffer_count"] = int(config.buffer_count)
+    if config.camera_controls:
+        # Picamera2 legt seine Video-Standards (`FrameDurationLimits`,
+        # `NoiseReductionMode`) unter diese Controls: `create_video_configuration`
+        # mischt sie mit den Standards, ersetzt sie nicht. Namen und Enum-Strings
+        # sind hier noch unaufgeloest, siehe `resolve_camera_controls`.
+        arguments["controls"] = dict(config.camera_controls)
     return arguments
+
+
+#: Enum-Controls, die als Name angegeben werden duerfen -> Pfad der Enum-Klasse
+#: in `libcamera.controls`. `NoiseReductionMode` liegt dort unter `draft`.
+CAMERA_ENUM_CONTROLS: dict[str, str] = {
+    "NoiseReductionMode": "draft.NoiseReductionModeEnum",
+    "AeMeteringMode": "AeMeteringModeEnum",
+    "AeExposureMode": "AeExposureModeEnum",
+    "AeConstraintMode": "AeConstraintModeEnum",
+    "AwbMode": "AwbModeEnum",
+}
+
+
+def resolve_camera_controls(controls: dict[str, Any], namespace: Any) -> dict[str, Any]:
+    """Ersetzt Enum-Namen (`"Fast"`) durch die libcamera-Werte.
+
+    `namespace` ist `libcamera.controls` (injizierbar, damit es ohne libcamera
+    testbar bleibt). Nur die Controls aus `CAMERA_ENUM_CONTROLS` werden
+    aufgeloest; Zahlen und alle anderen Werte bleiben unveraendert.
+    `ValueError` mit den gueltigen Namen bei einem unbekannten Enum-Namen.
+    """
+    resolved = dict(controls)
+    for name, path in CAMERA_ENUM_CONTROLS.items():
+        value = resolved.get(name)
+        if not isinstance(value, str):
+            continue
+        enum_class = namespace
+        for part in path.split("."):
+            enum_class = getattr(enum_class, part)
+        if not hasattr(enum_class, value):
+            valid = ", ".join(sorted(n for n in dir(enum_class) if n[:1].isupper()))
+            raise ValueError(
+                f"Kamera-Control {name}: unbekannter Name '{value}' (gueltig: {valid})"
+            )
+        resolved[name] = getattr(enum_class, value)
+    return resolved
+
+
+def validate_camera_controls(
+    controls: dict[str, Any], available: dict[str, Any]
+) -> dict[str, Any]:
+    """Prueft die Namen gegen `Picamera2.camera_controls` und gleicht Zahlentypen an.
+
+    `available` bildet Control-Name auf `(Minimum, Maximum, Standard)` ab. Ein
+    ganzzahliger Wert fuer ein Float-Control wird `float` (und umgekehrt, wenn
+    er ganzzahlig ist), `0`/`1` fuer ein Bool-Control wird `bool`; Listen aus
+    JSON werden zu Tupeln. `ValueError` mit den Namen der Kamera, wenn ein
+    Control dort nicht vorkommt -- ein Tippfehler soll beim Start auffallen.
+    """
+    unknown = sorted(name for name in controls if name not in available)
+    if unknown:
+        raise ValueError(
+            f"Unbekannte Kamera-Controls: {', '.join(unknown)} "
+            f"(diese Kamera kennt: {', '.join(sorted(available))})"
+        )
+    checked: dict[str, Any] = {}
+    for name, value in controls.items():
+        info = available[name]
+        default = info[2] if isinstance(info, (tuple, list)) and len(info) >= 3 else None
+        if isinstance(value, list):
+            value = tuple(value)
+        if isinstance(default, bool):
+            if isinstance(value, int) and value in (0, 1):
+                value = bool(value)
+        elif isinstance(default, float) and isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
+        elif (
+            isinstance(default, int)
+            and isinstance(value, float)
+            and value.is_integer()
+        ):
+            value = int(value)
+        checked[name] = value
+    return checked
+
+
+#: Metadaten, die nach dem Warmup ins Log gehen: damit waehlt man feste
+#: Belichtungswerte fuer `camera_controls`.
+CAMERA_METADATA_KEYS: tuple[str, ...] = (
+    "ExposureTime",
+    "AnalogueGain",
+    "DigitalGain",
+    "Lux",
+    "ColourTemperature",
+    "FocusFoM",
+)
+
+
+def format_camera_metadata(metadata: dict[str, Any]) -> str:
+    """Die Eintraege aus `CAMERA_METADATA_KEYS`, die die Kamera meldet, als eine Zeile."""
+    return ", ".join(f"{key}={metadata[key]}" for key in CAMERA_METADATA_KEYS if key in metadata)
 
 
 #: `calibration_id` einer aus der RealSense gelesenen Werks-Intrinsik.
@@ -319,6 +416,13 @@ class SharedCamera:
         import time
 
         backend = self._config.backend
+        if self._config.camera_controls and backend != "picamera2":
+            _log.warning(
+                "camera_controls %s werden ignoriert: nur das Backend picamera2 setzt sie "
+                "(Backend ist '%s')",
+                self._config.camera_controls,
+                backend,
+            )
         if backend == "picamera2":
             camera = self._open_picamera2()
         elif backend == "realsense":
@@ -331,15 +435,44 @@ class SharedCamera:
                 f"{', '.join(CAMERA_BACKENDS)})"
             )
         time.sleep(self._config.warmup_s)
+        if backend == "picamera2":
+            self._log_metadata(camera)
         return camera
+
+    def _log_metadata(self, camera: Any) -> None:
+        """Loggt die tatsaechlichen Belichtungswerte nach dem Warmup, einmal je Oeffnung.
+
+        Laeuft im Kamera-Worker-Thread, bevor der Capture-Loop startet -- kein
+        Wettlauf um die Requests. Ein Fehler hier ist nur ein fehlendes Log,
+        kein Grund, die Kamera nicht zu nutzen.
+        """
+        try:
+            text = format_camera_metadata(camera.capture_metadata())
+        except Exception:
+            _log.warning("Kamera-Metadaten nach dem Warmup nicht lesbar", exc_info=True)
+            return
+        _log.info("Kamera-Metadaten nach dem Warmup: %s", text or "keine")
 
     def _open_picamera2(self) -> Any:
         from picamera2 import Picamera2
 
+        arguments = picamera2_video_configuration(self._config)
         camera = Picamera2()
-        camera.configure(
-            camera.create_video_configuration(**picamera2_video_configuration(self._config))
-        )
+        if "controls" in arguments:
+            try:
+                from libcamera import controls as libcamera_controls
+
+                arguments["controls"] = resolve_camera_controls(
+                    validate_camera_controls(arguments["controls"], camera.camera_controls),
+                    libcamera_controls,
+                )
+            except Exception:
+                # Fehlkonfiguration (ValueError) oder libcamera fehlt: die Kamera
+                # nicht offen lassen, sonst scheitert jedes Neu-Oeffnen am Handle.
+                camera.close()
+                raise
+            _log.info("Kamera-Controls: %s", self._config.camera_controls)
+        camera.configure(camera.create_video_configuration(**arguments))
         camera.start()
         self._preview_size = (
             tuple(self._config.preview_resolution)

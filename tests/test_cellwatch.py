@@ -530,8 +530,7 @@ class CellWatchOpcUaTest(unittest.IsolatedAsyncioTestCase):
             apriltag=types.SimpleNamespace(
                 tag_family="tag36h11", detector_backend="aruco",
                 subpixel_corner_refinement=False, apriltag_quad_decimate=0.0,
-                error_correction_rate=None, perspective_remove_margin_per_cell=None,
-                perspective_remove_pixel_per_cell=None,
+                detector_parameters={},
             ),
         )
         source = types.SimpleNamespace(
