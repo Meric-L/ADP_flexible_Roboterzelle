@@ -34,6 +34,7 @@ nicht gibt.
 | [`zellen-ueberwachung.md`](zellen-ueberwachung.md) | apriltag | fertig | `Agent: Zellen-Überwachung (Layer 1)` | 13.10.2026 |
 | [`layer2-measuretags.md`](layer2-measuretags.md) | apriltag | fertig | `Agent: MeasureTags auf dem Hand-Pi` | 15.10.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
+| [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md) | frontend | in Arbeit | Meric, `Agent: Tag um 90° drehen` | 19.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
