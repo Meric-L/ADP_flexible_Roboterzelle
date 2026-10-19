@@ -104,10 +104,10 @@ class TrackerTest(unittest.TestCase):
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0), t8=(0.5, 0.5, 0.0)), 0.0)
         both = {7: sighting(1.0, 1.0), 8: sighting(0.5, 0.5)}
         only8 = {8: sighting(0.5, 0.5)}
-        t = self.run_frames(tracker, [both] * 5)
+        t = self.run_frames(tracker, [both] * 30)  # sicher erkannt
         t = self.run_frames(tracker, [only8] * 15, start=t)  # 15 s verdeckt
         self.assertEqual(tracker.changes, [])
-        t = self.run_frames(tracker, [both] * 3, start=t)
+        t = self.run_frames(tracker, [both] * 30, start=t)
         t = self.run_frames(tracker, [only8] * 25, start=t)  # 25 s weg
         [change] = tracker.changes
         self.assertEqual((change["tagId"], change["kind"]), (7, DISAPPEARED))
@@ -116,14 +116,74 @@ class TrackerTest(unittest.TestCase):
         self.run_frames(tracker, [both] * 8, start=t)
         self.assertEqual(tracker.changes, [])
 
+    def test_required_misses_follow_the_detection_rate(self):
+        from vision_server.cellwatch import MAX_REQUIRED_MISSES, required_misses
+
+        self.assertEqual(required_misses(0.95), 4)  # zuverlaessig: kaum laenger als bisher
+        self.assertEqual(required_misses(0.4), 23)  # Tag 2 am Decken-Pi: 0,6^23 < 0,001 %
+        self.assertEqual(required_misses(0.01), MAX_REQUIRED_MISSES)
+
+    def test_a_tag_at_the_detection_limit_raises_no_false_alarm(self):
+        """Wie Tag 2 im Betrieb: nur in jedem fuenften Bild erkannt, dazwischen
+        Luecken bis 30 s. Der Scan (mehrere Bilder) findet ihn trotzdem."""
+        options = CellWatchOptions(interval_s=2.0)
+        tracker = CellWatchTracker(
+            options, reference(t2=(0.4, 0.4, 0.0), t7=(1.0, 1.0, 0.0)), 0.0
+        )
+        rng = random.Random(4)
+        t = 0.0
+        for index in range(150):  # 5 Minuten
+            sightings = {7: sighting(1.0, 1.0)}
+            if rng.random() < 0.2:
+                sightings[2] = sighting(0.4, 0.4)
+            tracker.update(t, WALL, sightings)
+            t += 2.0
+            self.assertEqual(tracker.changes, [], f"Fehlalarm nach {t:.0f} s")
+        [weak] = [entry for entry in tracker.visibility(t) if entry["tagId"] == 2]
+        self.assertTrue(weak["unreliable"])
+        self.assertLess(weak["seenRatio"], 0.5)
+        [solid] = [entry for entry in tracker.visibility(t) if entry["tagId"] == 7]
+        self.assertFalse(solid["unreliable"])
+        self.assertEqual(solid["seenRatio"], 1.0)
+
+        # Wirklich weg: wird gemeldet, nur eben spaeter als ein sicherer Tag.
+        for _ in range(65):
+            tracker.update(t, WALL, {7: sighting(1.0, 1.0)})
+            t += 2.0
+        self.assertEqual([c["tagId"] for c in tracker.changes], [2])
+        self.assertEqual(tracker.changes[0]["kind"], DISAPPEARED)
+
+    def test_conservative_rate_is_below_the_measured_one(self):
+        from vision_server.cellwatch import conservative_rate
+
+        self.assertEqual(conservative_rate(0, 0), 0.0)
+        self.assertLess(conservative_rate(12, 20), 0.6)  # 60 % aus 20 Bildern: vorsichtig
+        self.assertGreater(conservative_rate(12, 20), 0.35)
+        self.assertGreater(conservative_rate(95, 100), 0.88)
+
+    def test_an_hour_at_forty_percent_raises_no_alarm(self):
+        """Gemessen am Decken-Pi (15.10.2026): Tag 2 in ~40 % der Pruefungen."""
+        tracker = CellWatchTracker(CellWatchOptions(interval_s=2.0), reference(t2=(0.4, 0.4, 0.0)), 0.0)
+        rng = random.Random(15)
+        t = 0.0
+        for _ in range(1800):  # eine Stunde bei 2 s
+            tracker.update(t, WALL, {2: sighting(0.4, 0.4)} if rng.random() < 0.4 else {})
+            t += 2.0
+            self.assertEqual(tracker.changes, [], f"Fehlalarm nach {t:.0f} s")
+
     def test_missing_needs_enough_valid_frames(self):
         """Pausen (keine gueltigen Bilder) zaehlen nicht als "fehlt"."""
+        from vision_server.cellwatch import conservative_rate, required_misses
+
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
-        tracker.update(0.0, WALL, {7: sighting(1.0, 1.0)})
-        tracker.update(30.0, WALL, {})
-        tracker.update(31.0, WALL, {})
+        t = self.run_frames(tracker, [{7: sighting(1.0, 1.0)}] * 30)  # sicher erkannt
+        needed = required_misses(conservative_rate(30, 30))
+        t += 60.0  # Pause: die Zeit laeuft, aber kein Bild zaehlt als "fehlt"
+        for _ in range(needed - 1):
+            tracker.update(t, WALL, {})
+            t += 1.0
         self.assertEqual(tracker.changes, [])
-        tracker.update(32.0, WALL, {})
+        tracker.update(t, WALL, {})
         self.assertEqual(tracker.changes[0]["kind"], DISAPPEARED)
 
     def test_a_new_tag_appears_only_when_seen_in_most_frames(self):
@@ -318,6 +378,20 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((self.status["state"], self.status["visibleTagIds"]), ("watching", [7, 583, 584]))
         await watch.stop()
         self.assertIsNone(self.status["visibleTagIds"])
+
+    async def test_status_carries_visibility_and_a_hint_for_weak_tags(self):
+        watch = self.watch()
+        await watch.start("{}", run_loop=False)
+        await self.ticks(watch, 6)  # Referenz aus der Beobachtung: Tag 7
+        self.assertEqual(self.status["tagVisibility"][0]["tagId"], 7)
+        self.assertEqual(self.status["tagVisibility"][0]["seenRatio"], 1.0)
+        # Tag 7 wird nur noch selten erkannt.
+        for index in range(12):
+            self.frame = ({7: sighting(1.0, 1.0)} if index % 4 == 0 else {}, "")
+            await self.ticks(watch, 1)
+        self.assertEqual(self.status["state"], "watching")
+        self.assertTrue(self.status["tagVisibility"][0]["unreliable"])
+        self.assertIn("unsicher erkannt: Tag 7", self.status["message"])
 
     async def test_pause_while_busy_or_without_a_statement(self):
         watch = self.watch()

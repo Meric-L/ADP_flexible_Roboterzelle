@@ -19,7 +19,10 @@ CAD-Versatz aus der Tag-Map, wie im Payload). Die Regeln:
 * appeared: Ein Tag ausserhalb der Referenz ist ueber `persist_s` in der
   Mehrzahl der Bilder zu sehen.
 * disappeared: Ein Referenz-Tag fehlt laenger als `missing_persist_s`, und
-  zwar in mindestens `MIN_FRAMES_FOR_MISSING` gueltigen Bildern.
+  zwar in so vielen gueltigen Bildern hintereinander, dass Zufall bei seiner
+  bisherigen Erkennungsrate ausgeschlossen ist (`required_misses`). Ein Tag,
+  der ohnehin nur in jedem fuenften Bild erkannt wird, fehlt oft 20 s lang
+  rein zufaellig -- er gilt als `unreliable` und braucht laenger.
 * Hysterese: Eine Aenderung erlischt erst, wenn der Tag `persist_s` lang
   stabil zurueck ist (unter dem halben Schwellwert bzw. wieder gesehen).
 
@@ -64,6 +67,46 @@ DISAPPEARED = "disappeared"
 #: Ein Tag gilt erst als verschwunden, wenn er in so vielen gueltigen Bildern
 #: gefehlt hat -- zwei Bilder in 20 s waeren keine Aussage.
 MIN_FRAMES_FOR_MISSING = 3
+#: So unwahrscheinlich muss es sein, dass ein vorhandener Tag die geforderten
+#: Bilder hintereinander rein zufaellig verpasst. Bewusst sehr klein: geprueft
+#: wird alle 2 s, ein Tag mit 40 % Erkennungsrate (gemessen am Decken-Pi,
+#: 15.10.2026) beginnt ~700 Luecken pro Stunde. Mit 1 % gab es mehrere
+#: Fehlalarme pro Stunde, mit 0,01 % in der Simulation noch einen in zehn
+#: Stunden, mit 0,001 % keinen in 20 Stunden.
+MISS_BY_CHANCE = 1e-5
+#: Obergrenze der geforderten Fehlbilder -- auch ein schlecht erkannter Tag
+#: soll irgendwann als fehlend gemeldet werden koennen (bei 2 s: 2 min).
+MAX_REQUIRED_MISSES = 60
+#: Unter dieser Erkennungsrate gilt ein Tag als unsicher erkannt.
+UNRELIABLE_RATE = 0.5
+#: Erst ab so vielen Bildern ist eine Erkennungsrate eine Aussage.
+MIN_FRAMES_FOR_RATE = 5
+
+
+def conservative_rate(hits: int, frames: int) -> float:
+    """Untere Grenze des 95-%-Wilson-Intervalls der Erkennungsrate.
+
+    Die gemessene Rate aus wenigen Bildern streut stark: bei echten 40 % sind
+    60 % aus 20 Bildern nicht selten -- und eine zu hoch geschaetzte Rate
+    fordert zu wenige Fehlbilder (gefunden mit einer simulierten Stunde).
+    Die untere Grenze schaetzt vorsichtig.
+    """
+    if frames <= 0:
+        return 0.0
+    z = 1.96
+    p = hits / frames
+    denominator = 1 + z * z / frames
+    centre = p + z * z / (2 * frames)
+    margin = z * math.sqrt(p * (1 - p) / frames + z * z / (4 * frames * frames))
+    return max(0.0, (centre - margin) / denominator)
+
+
+def required_misses(rate: float) -> int:
+    """Fehlbilder hintereinander, bevor ein Tag mit dieser Erkennungsrate als
+    verschwunden gilt: `(1 - rate)^n < MISS_BY_CHANCE`."""
+    rate = min(max(rate, 0.05), 0.99)
+    needed = math.ceil(math.log(MISS_BY_CHANCE) / math.log(1.0 - rate))
+    return min(MAX_REQUIRED_MISSES, max(MIN_FRAMES_FOR_MISSING, needed))
 
 
 @dataclass(frozen=True)
@@ -119,6 +162,7 @@ class _TagState:
     exceeded_since: float | None = None
     back_since: float | None = None
     last_seen: float | None = None
+    last_seen_wall: datetime | None = None
     change: dict | None = None
 
 
@@ -137,17 +181,61 @@ class CellWatchTracker:
     def update(self, t: float, wall: datetime, sightings: dict[int, TagSighting]) -> None:
         """Ein gueltiges Bild. Ungueltige Bilder kommen gar nicht erst hierher."""
         self._frames.append((t, sightings))
-        horizon = t - 2.0 * max(self.options.persist_s, self.options.missing_persist_s)
+        # Lang genug fuer die Erkennungsrate vor einer Luecke und fuer bis zu
+        # `MAX_REQUIRED_MISSES` Fehlbilder.
+        horizon = t - max(
+            4.0 * max(self.options.persist_s, self.options.missing_persist_s),
+            3.0 * MAX_REQUIRED_MISSES * self.options.interval_s,
+        )
         while self._frames and self._frames[0][0] < horizon:
             self._frames.popleft()
         for tag_id in set(self.reference) | set(sightings) | set(self._tags):
             state = self._tags.setdefault(tag_id, _TagState())
             if tag_id in sightings:
                 state.last_seen = t
+                state.last_seen_wall = wall
             if tag_id in self.reference:
                 self._update_reference_tag(tag_id, state, t, wall)
             else:
                 self._update_new_tag(tag_id, state, t, wall)
+
+    def detection_rate(self, tag_id: int, until: float) -> tuple[float, int]:
+        """Anteil der gueltigen Bilder mit dem Tag bis `until`, ueber den
+        ganzen behaltenen Verlauf (bis `2 * MAX_REQUIRED_MISSES` Takte):
+        `(Rate, Bilder)`."""
+        frames = [sightings for frame_t, sightings in self._frames if frame_t <= until]
+        if not frames:
+            return 0.0, 0
+        return sum(1 for sightings in frames if tag_id in sightings) / len(frames), len(frames)
+
+    def visibility(self, t: float) -> list[dict]:
+        """Je Tag (Referenz und gesehene): wie oft er in den letzten
+        `missing_persist_s` Sekunden gueltiger Bilder erkannt wurde.
+
+        Das ist die stabile Antwort auf "ist der Tag im Bild?" -- ein
+        einzelnes Bild flackert bei einem Tag an der Erkennungsgrenze.
+        """
+        start = t - self.options.missing_persist_s
+        window = [sightings for frame_t, sightings in self._frames if frame_t > start]
+        tag_ids = set(self.reference) | {tag_id for sightings in window for tag_id in sightings}
+        result = []
+        for tag_id in sorted(tag_ids):
+            seen = sum(1 for sightings in window if tag_id in sightings)
+            rate, rated = self.detection_rate(tag_id, until=t)
+            state = self._tags.get(tag_id)
+            last_wall = state.last_seen_wall if state is not None else None
+            result.append(
+                {
+                    "tagId": int(tag_id),
+                    "seenRatio": seen / len(window) if window else None,
+                    "framesChecked": len(window),
+                    "lastSeenAt": last_wall.isoformat(timespec="seconds") if last_wall else None,
+                    "unreliable": bool(
+                        rated >= MIN_FRAMES_FOR_RATE and 0.0 < rate < UNRELIABLE_RATE
+                    ),
+                }
+            )
+        return result
 
     @property
     def changes(self) -> list[dict]:
@@ -188,7 +276,11 @@ class CellWatchTracker:
         # Verschwunden: lange nicht gesehen, in genug gueltigen Bildern.
         last = state.last_seen if state.last_seen is not None else self.started_at
         missing_frames = sum(1 for frame_t, _ in self._frames if frame_t > last)
-        if not seen and t - last > options.missing_persist_s and missing_frames >= MIN_FRAMES_FOR_MISSING:
+        # Ohne Verlauf (z. B. direkt nach dem Scharfschalten) ist die
+        # vorsichtige Rate 0 -- dann gilt die Obergrenze, nicht 3 Bilder.
+        rate, rated_frames = self.detection_rate(tag_id, until=last)
+        needed = required_misses(conservative_rate(round(rate * rated_frames), rated_frames))
+        if not seen and t - last > options.missing_persist_s and missing_frames >= needed:
             if state.change is None or state.change["kind"] != DISAPPEARED:
                 state.change = _change(tag_id, DISAPPEARED, reference, None, None, None, wall)
             return
@@ -573,7 +665,7 @@ class CellWatch:
         elif self._tracker.changes:
             self._state, self._message = CHANGED, _describe(self._tracker.changes)
         else:
-            self._state, self._message = WATCHING, ""
+            self._state, self._message = WATCHING, _unreliable_hint(tracker.visibility(now))
         await self._publish()
 
     async def _pause(self, reason: str, *, force: bool = False) -> None:
@@ -600,6 +692,9 @@ class CellWatch:
                 else None,
                 "watchedTagIds": sorted(tracker.reference) if referenced else [],
                 "visibleTagIds": self._visible if self.active else None,
+                "tagVisibility": tracker.visibility(self._ports.monotonic())
+                if tracker is not None and self.active
+                else [],
                 "options": self._options.to_dict(),
                 "changes": tracker.changes if referenced and self.active else [],
             },
@@ -612,6 +707,18 @@ class CellWatch:
             await self._ports.publish(self.status_json())
         except Exception:
             _log.exception("CellWatchStatus konnte nicht geschrieben werden")
+
+
+def _unreliable_hint(visibility: list[dict]) -> str:
+    """Hinweis auf Tags an der Erkennungsgrenze -- kein Alarm, aber der
+    Grund, warum "nicht im Bild" flackert."""
+    weak = [entry for entry in visibility if entry["unreliable"]]
+    if not weak:
+        return ""
+    parts = ", ".join(
+        f"Tag {entry['tagId']} ({round(100 * (entry['seenRatio'] or 0))} %)" for entry in weak
+    )
+    return f"unsicher erkannt: {parts} der Bilder -- Tag groesser drucken, umsetzen oder Licht pruefen"
 
 
 def _describe(changes: list[dict]) -> str:

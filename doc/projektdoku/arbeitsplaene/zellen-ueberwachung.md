@@ -66,6 +66,8 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
   "referenceSource": "job" | "observation" | null,
   "lastCheckAt": "2026-10-13T12:00:00+00:00" | null, "watchedTagIds": [7, 20, 21],
   "visibleTagIds": [7, 583, 584] | null,
+  "tagVisibility": [ { "tagId": 2, "seenRatio": 0.2, "framesChecked": 10,
+                       "lastSeenAt": "ISO" | null, "unreliable": true } ],
   "options": { "movedThresholdM": 0.05, ... },
   "changes": [ { "tagId": 7, "moduleId": "MOD-A", "kind": "moved|appeared|disappeared",
                  "referencePosition": [x,y,z] | null, "currentPosition": [x,y,z] | null,
@@ -81,7 +83,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
 - **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welttags) mit RMS ≤ `maxCameraErrorPx`. Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend. Der Default ist 6 px: Auf Pi 1 lag das gemeinsame PnP bei einer Kalibrierung mit 0,43 px stabil bei 3,3 px, der Rest ist rund 1 cm Ungenauigkeit der Tag-Map. Bei einer Pause wegen zu großem Fehler nennt `message` den Welttag mit dem größten `jointReprojectionErrorPx`, also den Kandidaten zum Nachmessen.
 - **moved:** Der Median der Position (bzw. Drehung um die Hochachse) der letzten `persistS` Sekunden weicht länger als `persistS` um mehr als den Schwellwert ab. Bei mehrdeutigen Tags zählt nur die Position.
 - **appeared:** Ein Tag außerhalb der Referenz ist seit mindestens `persistS` sichtbar, und zwar in der Mehrzahl der Bilder des Fensters.
-- **disappeared:** Ein Referenz-Tag fehlt länger als `missingPersistS`, und zwar in mindestens 3 gültigen Bildern.
+- **disappeared:** Ein Referenz-Tag fehlt länger als `missingPersistS`, und zwar in so vielen gültigen Bildern hintereinander, dass ein zufälliges Verpassen bei seiner bisherigen Erkennungsrate unter 0,001 % liegt (mindestens 3, höchstens 60; Rate vorsichtig als untere 95-%-Grenze). Nachgeschärft am 15.10.2026: Ein Tag an der Erkennungsgrenze (nur in jedem fünften Bild erkannt) löste nach 20 s Lücke einen Fehlalarm aus, obwohl der Scan ihn fand.
 - **Hysterese:**
   - moved erlischt erst, wenn der Tag `persistS` lang unter dem halben Schwellwert liegt.
   - disappeared erlischt erst, wenn der Tag wieder in der Mehrzahl der Bilder ist.
