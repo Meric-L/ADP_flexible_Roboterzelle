@@ -1275,6 +1275,8 @@ State-Machine-Zustand**: das Nodeset kennt keinen passenden Zustand für
 
 ### 12.8 Stand
 
+**Kalibrierbrett seit 19.10.2026:** Beide Pis kalibrieren mit dem neuen Schachbrett, **6×7 innere Ecken, 23 mm je Feld** (`cols=6`, `rows=7` in `server.py`, beide Kameras). `cols`/`rows` zählen die **Innenecken**, nicht die Felder: Das Brett hat 7×8 Felder. Mit der alten Einstellung (7×9, 22 mm) wird das neue Brett nicht gefunden, die Overlay-Anzeige „Board gefunden“ im Modus `calibration` bleibt dann leer. Die Zahlen unten gehören zu den Kalibrierungen mit dem alten Brett (7×9, 22 mm). Bereits gespeicherte Kalibrierdateien bleiben gültig, sie tragen ihr Brett im Feld `board`. Nach der Umstellung beide Kameras mit dem neuen Brett neu kalibrieren, damit auch die Dokumentation in der Datei stimmt. Cols + Rows = 13 ist ungerade, das Brett eignet sich damit auch für die automatische Hand-Auge-Kalibrierung mit Schachbrett (Abschnitt 15.1).
+
 Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
 (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).
 
