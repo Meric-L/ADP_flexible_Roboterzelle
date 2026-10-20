@@ -1,6 +1,6 @@
 # Tag-Position per Hand-Kamera einmessen — Bezugskanten statt Mesh-Matching
 
-**Status:** in Arbeit — 20.10.2026 (Nachtrag Roboter-Variante; Bezugskanten-Teil fertig, an Hardware nicht getestet)
+**Status:** fertig — 20.10.2026 (an echter Hardware nicht getestet)
 **Verantwortlich:** Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen`
 **Thema:** apriltag
 **Branch:** `tag-einmessen` (dieses Repo und `webskillcomposition`)
@@ -518,6 +518,15 @@ abzugleichen (ICP). Er ist **verworfen**, Entscheidung des Nutzers vom 20.10.202
   - Die Basis-Korrektur über Welt-Tag-Anker (`apriltag-welttag-konzept.md`) wird im Panel nicht genutzt.
   - Der Konflikt-Neuversuch beim Katalog-Speichern (`keep`) ist nur per Code geprüft.
   - Die Statuszeile im Editor zeigt während einer laufenden Messung bis zum Speichern den alten Stand.
+- **Roboter-Variante (an Hardware nicht getestet):**
+  - Fehler aus Hand-Auge-Kalibrierung und Gelenkwinkeln ist nicht gemessen (erwartet ~1–2 mm).
+  - Die Streuungsschwellen 3 mm und 1° sind Annahmen.
+  - ±12° bei 0,35 m ist ungetestet; ob die Schrägansicht `frameCount` ≥ 2 erreicht, ist offen.
+  - Seitlich am Fuß liegende Tags sind evtl. unerreichbar und bleiben dann ausstehend.
+  - Die Wagen-Bounds im Katalog müssen den Footprint beschreiben. Der Demo1-Default
+    `boundsFromSize([0.3,0.3,0.3])` ist ein Platzhalter.
+  - Gelenkpunkte nahe der Basis unter 0,05 m im Footprint würden jede Stellung blockieren. Das ist eine
+    bestehende Eigenschaft der Clearance-Prüfung, nicht durch diese Umsetzung eingeführt.
 
 ## Abweichungen vom Plan
 
@@ -572,7 +581,40 @@ Abweichungen, Stand Umsetzung:
 
 ## Nachtrag 20.10.2026: Roboter-Variante (Tags auf dem Roboter selbst)
 
-Umsetzung: Agent S5 (Sonnet), Signaturen werden nach Abschluss geprüft.
+Umsetzung: Agent S5 (Sonnet). Commits: `webskillcomposition` `e82bb61` (Frontend, Branch
+`tag-einmessen`), dieses Repo `15e7bb0` (Doku-Nachtrag). Stand: Frontend 560 Tests grün (39 neu),
+`tsc` und `vite build` sauber. An der Hardware nicht gelaufen.
+
+**Tatsächliche Exporte.** `model/robotTagRun.ts`: `ROBOT_TAG_STANDOFF_M`, `ROBOT_TAG_TILTS`,
+`ROBOT_TAG_MIN_VIEWS`, `ROBOT_TAG_MAX_SPREAD_MM` (3), `ROBOT_TAG_MAX_SPREAD_DEG` (1),
+`ROBOT_MODULE_TO_BASE`, `robotTagViews`, `robotTagJob`, `RobotTagJob`, `RobotTagMeasured`,
+`RobotTagRunOptions`, `RobotTagJobResult`, `combineRobotTagViews`, `measureRobotTags`. Neu in
+`model/tagReferenceRun.ts`: `driveClear` (Fahrt mit Clearance und Umweg über die Startstellung, vom
+Modul-Lauf und vom Roboter-Lauf genutzt; Verhalten des Modul-Laufs unverändert).
+
+**Abweichungen vom Plan (Stand Umsetzung):**
+
+- `ROBOT_MODULE_TO_BASE = IDENTITY_POSE`: Das Robotermodul-KS ist die Roboterbasis (URDF-Wurzel; die
+  Vorwärtskinematik rechnet im selben Frame; `robotBaseFrom` übernimmt die Modulpose ohne Versatz).
+  Der Job bleibt generisch (`moduleToBase` = T_module_base, `robotTagJob(..., moduleToBase?)`).
+- `measureRobotTags` hat zusätzlich `approach?(job, seed)`. Gibt es einen Anfahrtswinkel, fährt der
+  Roboter zuerst dorthin, wie beim Modul-Lauf; sonst startet das Zentrieren dort, wo er steht.
+  Das Ergebnis trägt `returnNote?`.
+- Ist das Zentrieren mehrdeutig, werden die Ansichten um die gemessene Position mit der
+  Katalog-Orientierung geplant.
+- Die Clearance-Prüfung `keepOutFromRobotBounds` (`cellClearance.ts` unverändert) blockiert Ansichten
+  über dem eigenen Wagen nicht grundsätzlich. Geprüft werden Flansch, Kamera und Gelenkpunkte nur,
+  wenn sie unter Tischplatte + 5 cm im Footprint liegen, bzw. unter Boden + 10 cm. `legCollision`
+  wie beim Modul-Lauf.
+- Fahrfehler: Eine unerreichbare oder per Clearance verworfene Ansicht wird übersprungen (Warnung).
+  Ein Fahrfehler ohne Blockade bricht den Tag ab.
+- Panel: Ein Start-Button misst erst Modul-Tags, dann Roboter-Tags („N Module, M Roboter“). Der
+  Roboterlauf selbst braucht kein Layer-1-Ergebnis, der Button verlangt aber weiter ein Layer-1-Ergebnis
+  mit platziertem Roboter (`layer2Gate`). Der Hinweis „Layer 1 neu scannen“ nennt auch die Roboterbasis.
+- Datenformat: `parseMeasurement` verwirft ein fehlendes oder unbekanntes `method` (dann wird der Tag
+  neu gemessen). Ungültige optionale Felder (`deltaNormalMm`, `spreadDeg`, `views`) verwirft es einzeln.
+- Anzeige: `describeTagMeasurement(tag, { robot: true })`. Gemessen: „measured … via robot joints · Δ …
+  · n views“. Ungemessen: „not measured yet · measured with the robot's hand camera“.
 
 Vorgabe des Nutzers vom 20.10.2026: Die Tags des Roboters (Katalogeintrag `kind: "robot"`)
 werden ebenfalls mit der Hand-Kamera eingemessen, im selben Tab „Tags einmessen“, nach derselben
@@ -618,9 +660,15 @@ direkt bekannt. Der Pi bleibt unverändert, es wird nur `MeasureTags` benutzt.
 
 ```ts
 export const ROBOT_TAG_STANDOFF_M = 0.35;
-export const ROBOT_TAG_TILTS: ReadonlyArray<{ axis: "x" | "y"; deg: number }>;   // +12x, −12x, +12y
+export const ROBOT_TAG_TILTS: ReadonlyArray<{ axis: "x" | "y"; deg: number }>;   // +12 um x, −12 um x, +12 um y
 export const ROBOT_TAG_MIN_VIEWS = 2;
+export const ROBOT_TAG_MAX_SPREAD_MM = 3;                                        // Annahme, nicht gemessen
+export const ROBOT_TAG_MAX_SPREAD_DEG = 1;                                       // Annahme, nicht gemessen
+export const ROBOT_MODULE_TO_BASE: Pose = IDENTITY_POSE;                         // T_module_base
 export function robotTagViews(standoffM?: number): Pose[];                       // camInTag je Ansicht
+export function robotTagJob(moduleId: string,
+  tag: { tagId: number; sizeM: number; position: Vec3; rotationDeg: Vec3 },
+  moduleToBase?: Pose): RobotTagJob;
 export interface RobotTagJob { moduleId: string; tagId: number; tagSizeM: number;
   moduleTagGuess: { position: Vec3; rotationDeg: Vec3 }; guessTagInBase: Pose; moduleToBase: Pose }
 export interface RobotTagMeasured { moduleTag: Pose; position: Vec3; rotationDeg: Vec3;
@@ -628,11 +676,18 @@ export interface RobotTagMeasured { moduleTag: Pose; position: Vec3; rotationDeg
   spreadMm: number; spreadDeg: number; views: number; warnings: string[] }
 export function combineRobotTagViews(job: RobotTagJob,
   views: Array<{ tagInBase: Pose; ambiguous: boolean }>): RobotTagMeasured | { error: string };
-export function measureRobotTags(options: { jobs: RobotTagJob[]; deps: RobotDriveDeps;
-  flangeToCamera: Pose; measureTags: (tagIds: number[]) => Promise<MeasureOutcome>;
-  clearance?; stopped?; standoffM?; onProgress?; onMeasured?(job, measured) }):
-  Promise<{ results: Array<{ job; status: "measured" | "failed" | "skipped"; reason?; measured?; warnings }>;
-            halted: boolean; returnNote?: string }>;
+export interface RobotTagRunOptions { jobs: RobotTagJob[]; deps: RobotDriveDeps;
+  flangeToCamera: Pose; measureTags(tagIds: number[]): Promise<MeasureOutcome>;
+  approach?(job: RobotTagJob, seed: number[]): number[] | null;
+  clearance?(angles: number[]): "Wagen" | "Boden" | null; stopped?(): boolean; standoffM?: number;
+  onProgress?(job: RobotTagJob, detail: string): void;
+  onMeasured?(job: RobotTagJob, measured: RobotTagMeasured): void | Promise<void> }
+export type RobotTagJobResult =
+  | { job; status: "measured"; measured: RobotTagMeasured; warnings: string[] }
+  | { job; status: "failed" | "skipped"; reason: string; warnings: string[] };
+export function measureRobotTags(options: RobotTagRunOptions):
+  Promise<{ results: RobotTagJobResult[]; halted: boolean; returnNote?: string }>;
+// Wirft nicht: Fehler stehen je Tag im Ergebnis.
 ```
 
 #### Datenformat — Erweiterung `TagCameraMeasurement` in `config/moduleCatalog.ts`
@@ -687,4 +742,4 @@ scannen“ bleibt, weil die Roboterbasis in Layer 1 aus diesen Tags berechnet wi
       dabei das Datenformat `placement`.
 - [x] Nachtrag 20.10.2026 in `modell-flaechen-tag-platzierung.md` mit Link auf diesen Plan.
 - [ ] Am Pi mit Zollstock-Referenz verifiziert, Ergebnis in `doc/projektdoku/` festgehalten.
-- [ ] Roboter-Variante umgesetzt und Schnittstellen nachgetragen.
+- [x] Roboter-Variante umgesetzt und Schnittstellen nachgetragen (Commits `e82bb61`, `15e7bb0`).

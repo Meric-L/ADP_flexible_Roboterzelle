@@ -1124,3 +1124,71 @@ Jeder Tag wird **einmal** eingemessen, wenn sein Modul neu angelegt oder bearbei
 - Speichern aus dem Editor verwirft `measurement` bei neuen Tags und bei Tags, deren `tagId`, `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes Speichern behält es.
 - Import und Laden lassen `measurement` unverändert.
 - Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind. Der Start erfolgt nur per Klick, weil der Roboter fährt.
+
+### Tags auf dem Roboter selbst (über Gelenkwinkel)
+
+Die Tags des Roboters (Katalogeintrag `kind: "robot"`) werden im selben Tab „Tags einmessen“ gemessen,
+ohne Bezugskanten und ohne Layer 1. Der Pi bleibt unverändert: Es wird nur `MeasureTags` benutzt
+(`frames` 3). Umsetzung im Frontend (`webskillcomposition`, `model/robotTagRun.ts`), Arbeitsplan
+[`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), Nachtrag
+„Roboter-Variante“.
+
+**Prinzip**
+
+- Die Roboterbasis ist das Modul-KS des Roboters: `ROBOT_MODULE_TO_BASE` = Identität (URDF-Wurzel; die
+  Vorwärtskinematik rechnet im selben Frame, `robotBaseFrom` übernimmt die Modulpose ohne Versatz).
+  Damit ist `T_module_tag = T_module_base · T_base_tag`, und der Katalogwert ist der Startwert
+  `T_base_tag`.
+- Je Ansicht gilt `T_base_tag = FK(Gelenke) · T_flansch_cam · T_cam_tag` (`tagInBaseFrom`,
+  `model/tagServo.ts`). Gelesen werden die **Ist**-Gelenke nach der Fahrt, nicht die Sollwerte.
+- Volle 6 DoF. Der Fehler geht direkt in das Ergebnis ein: Hand-Auge-Kalibrierung und Gelenkwinkel.
+  Mehrere Ansichten aus verschiedenen Gelenkstellungen mitteln einen Teil davon heraus.
+
+**Ansichten (3)**
+
+- Erst wird wie beim Modul-Lauf zentriert (`centreOnTag`, Abstand 0,35 m). Danach liegen drei Kamerapositionen
+  auf einer Kugel um den Tag-Mittelpunkt, je 0,35 m entfernt und auf den Tag gerichtet: gekippt um +12° und
+  −12° um Tag-x sowie um +12° um Tag-y (`ROBOT_TAG_TILTS`, `robotTagViews`). Konvention wie
+  `PlanTagReferenceView`: Die Kamera schaut entlang −Tag-z.
+- Je Ansicht: `flangeForView` → `planMove` → Fahrt mit Clearance → Ist-Gelenke lesen → FK → `MeasureTags`.
+- Gültig ist eine Ansicht nur mit `frameCount` ≥ 2, nicht `placeholder`-Intrinsik, ohne Pi-Fehler und mit
+  dem Tag im Bild. Ist sie nicht erreichbar oder verletzt die Clearance, wird sie mit Warnung übersprungen.
+  Ein Fahrfehler ohne Blockade bricht den Tag ab.
+
+**Mittelung**
+
+- Position: Mittel über alle gültigen Ansichten.
+- Orientierung: Mittel über die nicht mehrdeutigen Ansichten (`ambiguous: false`). Sind alle mehrdeutig,
+  bleibt die Orientierung aus dem Katalog, mit Warnung.
+- Mindestens **2** gültige Ansichten (`ROBOT_TAG_MIN_VIEWS`), sonst bleibt der Tag ausstehend.
+- Streuung: `spreadMm` (RMS der Positionen um das Mittel), `spreadDeg` (RMS der Winkel zum Mittel).
+  Über 3 mm bzw. 1° kommt eine Warnung („Hand-Auge-Kalibrierung prüfen“). Die Schwellen sind Annahmen
+  und nicht an der Hardware gemessen.
+
+**Datenformat**
+
+`ModuleTag.measurement` (`TagCameraMeasurement`) mit `method: "robot-fk"`. Der Wert `"camera-edges"` gilt
+für die Modul-Tags. Felder:
+
+- `dofs` ist bei `robot-fk` immer `"full"`, `lines` ist `[]`.
+- `deltaMm`: neu minus Startwert, in Tag-x und Tag-y des Startwerts, mm.
+- `deltaNormalMm` (nur `robot-fk`, optional): dieselbe Verschiebung entlang Tag-z des Startwerts, mm.
+- `deltaRotDeg`: der gesamte Drehwinkel zwischen Startwert und Ergebnis.
+- `spreadMm`, `spreadDeg` (nur `robot-fk`, optional), `views` (nur `robot-fk`, optional): Anzahl der
+  gültigen Ansichten.
+
+`parseMeasurement` in `model/catalogStore.ts` verwirft ein fehlendes oder unbekanntes `method` (dann wird
+der Tag neu gemessen). Ungültige optionale Felder verwirft es einzeln. `describeTagMeasurement(tag,
+{ robot: true })` zeigt „measured … via robot joints · Δ … mm / …° · n views“, und ungemessen
+„not measured yet · measured with the robot's hand camera“.
+
+**Grenzen**
+
+- Hand-Auge-Kalibrierung und Gelenkwinkel gehen direkt ein. Erwartet werden ~1–2 mm, nicht gemessen.
+- Nur Tags, die die eigene Hand-Kamera sieht und erreicht. Seitlich am Fuß liegende Tags sind evtl.
+  unerreichbar und bleiben ausstehend.
+- Die Clearance (`keepOutFromRobotBounds`) blockiert Ansichten über dem eigenen Wagen nicht grundsätzlich:
+  geprüft werden Flansch, Kamera und Gelenkpunkte nur unter Tischplatte + 5 cm im Footprint bzw. unter
+  Boden + 10 cm. Die Wagen-Bounds im Katalog müssen den Footprint beschreiben.
+- Fehlt `frameCount` im Ergebnis (`null`), gilt die Ansicht als gültig. Der Pi liefert das Feld immer.
+- ±12° bei 0,35 m und ob die Schrägansicht `frameCount` ≥ 2 erreicht, sind ungetestet.
