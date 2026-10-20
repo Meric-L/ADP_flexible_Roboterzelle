@@ -38,7 +38,7 @@ nicht gibt.
 | [`rohbild-speichern.md`](rohbild-speichern.md) | vision | fertig | Meric, `Agent: Rohbild speichern` | 19.10.2026 |
 | [`stream-overlay-schlank.md`](stream-overlay-schlank.md) | frontend | fertig | Meric, `Agent: Stream-Overlay verschlanken` | 21.10.2026 |
 | [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md) | vision | fertig | Meric, `Agent: Livestream-Tags aus voller Auflösung` | 21.10.2026 |
-| [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | fertig | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
+| [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | in Arbeit | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

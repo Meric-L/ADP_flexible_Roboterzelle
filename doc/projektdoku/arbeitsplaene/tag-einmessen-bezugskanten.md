@@ -1,6 +1,6 @@
 # Tag-Position per Hand-Kamera einmessen — Bezugskanten statt Mesh-Matching
 
-**Status:** fertig — 20.10.2026 (an echter Hardware nicht getestet)
+**Status:** in Arbeit — 20.10.2026 (Nachtrag Roboter-Variante; Bezugskanten-Teil fertig, an Hardware nicht getestet)
 **Verantwortlich:** Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen`
 **Thema:** apriltag
 **Branch:** `tag-einmessen` (dieses Repo und `webskillcomposition`)
@@ -485,6 +485,8 @@ und committet (`docs:` / `feat(apriltag):`), **nicht pushen**.
 | S3 | Sonnet | Katalogseite: `ModuleTag.measurement` und `placement.lines` in `config/moduleCatalog.ts`, `model/catalogStore.ts`, `model/tagPlacement.ts`, `model/tagMeasurementState.ts` (neu), `components/ModuleCatalogModal.tsx`; Einmal-Regel; Ableitung alter Platzierungen | webskillcomposition: genannte | parallel zu S1/S2, gegen die Schnittstelle dieses Plans |
 | S4 | Sonnet | Aufrufe und Ablauf: `opcua-server/config/piServers.ts` (`TagReferenceBinding`), `model/tagReferenceCall.ts` (neu), `model/tagReferenceRun.ts` (neu), `components/TagReferencePanel.tsx` (neu, Layer-2-Fenster) | webskillcomposition: genannte | nach S3 |
 | H2 | Haiku | Plan auf `fertig`, tatsächliche Schnittstellen aus den Berichten von S1/S2 nachtragen, neuer Abschnitt in `vision-server-interface.md`, eigener Abschnitt „Tag-Position mit der Kamera einmessen“ in `apriltag-referenz.md` (dabei auch das `placement`-Format, offener Punkt aus dem Flächen-Plan), README-Zeile; zusätzlich Doku zum Frontend-Teil (Abschnitt „Frontend“ dieses Plans, Stand nach S3/S4) | nur Doku | nach S2 bzw. nach S3/S4 |
+| H3 | Haiku | Nachtrag „Roboter-Variante“ in diesem Plan (Abschnitt „Nachtrag 20.10.2026“, Kopf, Aufteilung, Punkt „Nach Abschluss“), Index-Zeile | nur `doc/projektdoku/…` | sofort (20.10.2026) |
+| S5 | Sonnet | Roboter-Variante im Frontend: `model/robotTagRun.ts` (neu, rein), `TagCameraMeasurement` um `method: "robot-fk"` und die optionalen Felder in `config/moduleCatalog.ts`, `parseMeasurement` in `model/catalogStore.ts`, `applyTagMeasurement`/`describeTagMeasurement` in `model/tagMeasurementState.ts`, Block „Roboter-Tags (über Gelenkwinkel)“ in `components/TagReferencePanel.tsx` | webskillcomposition: genannte | nach S4 (Panel), gegen die Schnittstelle des Nachtrags |
 
 ## Verworfen: Tiefen-ICP gegen das ganze Mesh
 
@@ -568,6 +570,113 @@ Abweichungen, Stand Umsetzung:
 - Frontend (`webskillcomposition`, Branch `tag-einmessen`): 521 Tests grün, davon 78 neu; `tsc` und `vite build` sauber.
 - Commits, dieses Repo: `7c4ea3c`, `8a64a35`, `8c26b7f`, `45317d3`; `webskillcomposition`: `9647295`.
 
+## Nachtrag 20.10.2026: Roboter-Variante (Tags auf dem Roboter selbst)
+
+Umsetzung: Agent S5 (Sonnet), Signaturen werden nach Abschluss geprüft.
+
+Vorgabe des Nutzers vom 20.10.2026: Die Tags des Roboters (Katalogeintrag `kind: "robot"`)
+werden ebenfalls mit der Hand-Kamera eingemessen, im selben Tab „Tags einmessen“, nach derselben
+Einmal-Regel (nur Tags ohne `measurement`; Speichern eines geänderten Tags im Editor verwirft sie).
+
+### Ziel / Prinzip
+
+Der Modulursprung des Roboters ist die Roboterbasis (`moduleCatalog.ts`, `kind: "robot"`).
+Statt Bezugskanten wird die Kette über die Gelenkwinkel genutzt:
+
+    T_base_tag,i = FK(Gelenke_i) · T_flansch_cam · T_cam_tag,i      (tagInBaseFrom in tagServo.ts)
+    T_module_tag = T_module_base · mittel_i(T_base_tag,i)            (T_module_base = Identität,
+                                                                      falls der Code nichts anderes zeigt)
+
+Volle 6 DoF. Fehlerquellen: Hand-Auge-Kalibrierung und Gelenkwinkel (~1–2 mm erwartet, nicht gemessen).
+Mehrere Ansichten aus verschiedenen Gelenkstellungen mitteln einen Teil davon heraus.
+Kein Layer 1 nötig: der Startwert `T_base_tag_guess = T_base_module · T_module_tag(Katalog)` ist
+direkt bekannt. Der Pi bleibt unverändert, es wird nur `MeasureTags` benutzt.
+
+### Ablauf je Roboter-Tag
+
+1. Startwert `tagInBase` aus dem Katalog (s. o.).
+2. `centreOnTag` (expectedTagInBase = Startwert, standoff 0,35 m) → genaue `tagInBase`.
+   Fehlschlag → Tag bleibt ausstehend, Grund „für die eigene Hand-Kamera nicht sichtbar/erreichbar“.
+3. Ansichten: `ROBOT_TAG_VIEWS` = 3 Kamerposen im Tag-KS (`camInTag`). Die Kamera schaut entlang −Tag-z
+   (gleiche Konvention wie `PlanTagReferenceView`: Bild-x = Tag-x, Bild-y = −Tag-y), Abstand 0,35 m,
+   gekippt um +12° um Tag-x, −12° um Tag-x, +12° um Tag-y (Kippung durch den Tag-Mittelpunkt).
+   Je Ansicht: `flangeForView(tagInBase, camInTag, flangeToCamera)` → `planMove` (Erreichbarkeit +
+   Clearance) → fahren → **Ist-Gelenke lesen und FK rechnen** (nicht das Soll) → `MeasureTags`
+   (tagIds [tagId], frames 3). Gültig nur bei `frameCount ≥ 2`, `intrinsicsSource ≠ "placeholder"`.
+   Unerreichbare Ansicht überspringen.
+4. Mindestens **2 gültige Ansichten**, sonst Tag fehlgeschlagen (ausstehend).
+5. Mittel: Position über alle gültigen Ansichten, Orientierung über die nicht mehrdeutigen
+   (`ambiguous: false`). Sind alle mehrdeutig, kommt die Orientierung aus dem Startwert, mit Warnung.
+6. Streuung: `spreadMm` (RMS der Positionen um das Mittel), `spreadDeg` (RMS der Winkelabstände).
+   Warnung bei `spreadMm > 3` oder `spreadDeg > 1` (Hinweis: Hand-Auge-Kalibrierung prüfen).
+7. Ergebnis in den Katalog: `position`/`rotationDeg` (Katalogformat via `rpyDegFromQuaternion`),
+   `measurement` mit `method: "robot-fk"`.
+
+### Schnittstellen
+
+#### TypeScript — `model/robotTagRun.ts` (neu, rein, testbar, ohne `tagMeasurementState`-Import)
+
+```ts
+export const ROBOT_TAG_STANDOFF_M = 0.35;
+export const ROBOT_TAG_TILTS: ReadonlyArray<{ axis: "x" | "y"; deg: number }>;   // +12x, −12x, +12y
+export const ROBOT_TAG_MIN_VIEWS = 2;
+export function robotTagViews(standoffM?: number): Pose[];                       // camInTag je Ansicht
+export interface RobotTagJob { moduleId: string; tagId: number; tagSizeM: number;
+  moduleTagGuess: { position: Vec3; rotationDeg: Vec3 }; guessTagInBase: Pose; moduleToBase: Pose }
+export interface RobotTagMeasured { moduleTag: Pose; position: Vec3; rotationDeg: Vec3;
+  deltaMm: [number, number]; deltaNormalMm: number; deltaRotDeg: number;
+  spreadMm: number; spreadDeg: number; views: number; warnings: string[] }
+export function combineRobotTagViews(job: RobotTagJob,
+  views: Array<{ tagInBase: Pose; ambiguous: boolean }>): RobotTagMeasured | { error: string };
+export function measureRobotTags(options: { jobs: RobotTagJob[]; deps: RobotDriveDeps;
+  flangeToCamera: Pose; measureTags: (tagIds: number[]) => Promise<MeasureOutcome>;
+  clearance?; stopped?; standoffM?; onProgress?; onMeasured?(job, measured) }):
+  Promise<{ results: Array<{ job; status: "measured" | "failed" | "skipped"; reason?; measured?; warnings }>;
+            halted: boolean; returnNote?: string }>;
+```
+
+#### Datenformat — Erweiterung `TagCameraMeasurement` in `config/moduleCatalog.ts`
+
+```ts
+method: "camera-edges" | "robot-fk"
+dofs: "full" | "partial"            // robot-fk immer "full"
+deltaMm: [number, number]           // robot-fk: Verschiebung neu − Startwert in Tag-x/-y des Startwerts
+deltaNormalMm?: number              // nur robot-fk: Verschiebung entlang Tag-z des Startwerts
+deltaRotDeg: number                 // robot-fk: gesamter Drehwinkel zwischen Startwert und neu
+spreadMm: number
+spreadDeg?: number                  // nur robot-fk
+views?: number                      // nur robot-fk: Anzahl gültiger Ansichten
+lines: string[]                     // robot-fk: []
+```
+
+`parseMeasurement` in `model/catalogStore.ts` akzeptiert beide Methoden und die optionalen Felder.
+`applyTagMeasurement` nimmt die neuen optionalen Felder und `method` an (Standard `"camera-edges"`).
+`describeTagMeasurement` zeigt für robot-fk z. B. „measured 2026-10-20 via robot joints · Δ 1.2 mm / 0.3° · 3 views“.
+
+#### Panel — `components/TagReferencePanel.tsx`
+
+Eigener Block „Roboter-Tags (über Gelenkwinkel)“ mit den ausstehenden Tags des Zellroboters
+(`useCellRobot` → Katalogeintrag). Derselbe Start-Button misst zuerst die Modul-Tags, dann die
+Roboter-Tags (Anzahl getrennt angezeigt). Ergebnis wie bei den Modulen gespeichert
+(`saveModuleCatalog(applyTagMeasurement(...))`, ein Konflikt-Neuversuch). Ein Hinweis „Layer 1 neu
+scannen“ bleibt, weil die Roboterbasis in Layer 1 aus diesen Tags berechnet wird.
+
+### Fehlerfälle
+
+- Tag für die eigene Kamera nicht sichtbar oder nicht erreichbar (z. B. seitlich am Fuß) →
+  ausstehend mit Grund; der Tag bleibt beim Katalogwert. Ansichten, die die Clearance
+  (Selbstkollision mit dem Roboterbereich) verletzen, werden übersprungen.
+- Weniger als 2 gültige Ansichten → ausstehend.
+- Keine Hand-Auge-Kalibrierung → Lauf startet nicht (wie bisher).
+- Alle Ansichten mehrdeutig → Orientierung aus dem Startwert, Warnung.
+
+### Genauigkeit / Grenzen
+
+- Hand-Auge-Kalibrierung und Gelenkwinkel gehen direkt in das Ergebnis ein. Erwartet ~1–2 mm,
+  **nicht gemessen**. Ein Abgleich am Pi mit Zollstock-Referenz steht aus.
+- Nur Tags, die die eigene Hand-Kamera sehen kann. Andere Tags bleiben ausstehend.
+- Der Pi bleibt unverändert; es wird nur die bestehende `MeasureTags`-Methode benutzt.
+
 ## Nach Abschluss
 
 - [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
@@ -578,3 +687,4 @@ Abweichungen, Stand Umsetzung:
       dabei das Datenformat `placement`.
 - [x] Nachtrag 20.10.2026 in `modell-flaechen-tag-platzierung.md` mit Link auf diesen Plan.
 - [ ] Am Pi mit Zollstock-Referenz verifiziert, Ergebnis in `doc/projektdoku/` festgehalten.
+- [ ] Roboter-Variante umgesetzt und Schnittstellen nachgetragen.
