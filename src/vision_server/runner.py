@@ -937,12 +937,28 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             or (layer2_run is not None and layer2_run.active),
         )
     if apriltag_source is not None and space.last_tag_measurement is not None:
-        await _install_measure_tags(
-            space, config, apriltag_source, calibration_methods, states,
+        # MeasureTags und MeasureTagReference nehmen beide frische Bilder; sie
+        # sperren sich gegenseitig (und MeasureTagReference auch sich selbst).
+        tags_activity = _Activity()
+        reference_activity = _Activity()
+        measuring_busy = (
             lambda: jobs.busy
             or (calibration_session is not None and calibration_session.busy)
-            or (hand_eye_session is not None and hand_eye_session.active),
+            or (hand_eye_session is not None and hand_eye_session.active)
         )
+        await _install_measure_tags(
+            space, config, apriltag_source, calibration_methods, states,
+            measuring_busy,
+            activity=tags_activity,
+            blocked_by=lambda: reference_activity.active,
+        )
+        if space.last_tag_reference is not None:
+            await _install_tag_reference(
+                space, config, apriltag_source, calibration_methods, states,
+                measuring_busy,
+                activity=reference_activity,
+                blocked_by=lambda: tags_activity.active or reference_activity.active,
+            )
 
     camera_owner = _camera_owner(sources, opened)
     if camera_owner is not None and config.raw_image_dir is not None:
@@ -982,6 +998,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["HandEyeStatus"] = space.hand_eye_status
     if space.last_tag_measurement is not None:
         mirror_nodes["LastTagMeasurement"] = space.last_tag_measurement
+    if space.last_tag_reference is not None:
+        mirror_nodes["LastTagReference"] = space.last_tag_reference
     if space.cell_watch_status is not None:
         mirror_nodes["CellWatchStatus"] = space.cell_watch_status
     program = await install_vision_program(
@@ -1177,6 +1195,17 @@ async def _install_hand_eye_session(
     return session
 
 
+class _Activity:
+    """Merkt, ob gerade eine Messung mit frischen Bildern laeuft.
+
+    Einfaches Flag: der Server ist single-threaded (asyncio), zwischen Pruefen
+    und Setzen liegt kein `await`.
+    """
+
+    def __init__(self) -> None:
+        self.active = False
+
+
 async def _install_measure_tags(
     space: VisionAddressSpace,
     config: VisionServerConfig,
@@ -1184,6 +1213,9 @@ async def _install_measure_tags(
     methods: dict[str, Node],
     states: VisionStateMachines,
     busy: Callable[[], bool],
+    *,
+    activity: _Activity | None = None,
+    blocked_by: Callable[[], bool] = lambda: False,
 ) -> None:
     """Legt MeasureTags an: Tags in Kamerakoordinaten fuer die Regelung der
     Steuerung. Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Antwortet
@@ -1192,6 +1224,8 @@ async def _install_measure_tags(
     `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
     """
     from .measuretag import RESULT_SCHEMA, dumps, parse_request
+
+    activity = activity if activity is not None else _Activity()
 
     def refusal(code: VisionErrorCode, message: str):
         result = {"schema": RESULT_SCHEMA, "tags": [], "error": f"{code.name}: {message}"}
@@ -1210,9 +1244,16 @@ async def _install_measure_tags(
             return refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
         if states.state_names()[0] != "Operational":
             return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
-        if busy():
-            return refusal(VisionErrorCode.BUSY, "Job, Kalibrierung oder Hand-Auge-Sitzung laeuft")
-        result = await apriltag_source.measure_tags(request)
+        if busy() or blocked_by():
+            return refusal(
+                VisionErrorCode.BUSY,
+                "Job, Kalibrierung, Hand-Auge-Sitzung oder Tag-Einmessung laeuft",
+            )
+        activity.active = True
+        try:
+            result = await apriltag_source.measure_tags(request)
+        finally:
+            activity.active = False
         payload = dumps(result)
         try:
             await space.last_tag_measurement.write_value(
@@ -1233,6 +1274,112 @@ async def _install_measure_tags(
         [ua.VariantType.String],
         [ua.VariantType.String, ua.VariantType.Int32],
     )
+
+
+async def _install_tag_reference(
+    space: VisionAddressSpace,
+    config: VisionServerConfig,
+    apriltag_source: Any,
+    methods: dict[str, Node],
+    states: VisionStateMachines,
+    busy: Callable[[], bool],
+    *,
+    activity: _Activity | None = None,
+    blocked_by: Callable[[], bool] = lambda: False,
+) -> None:
+    """Legt MeasureTagReference und PlanTagReferenceView an: Tag-Position eines
+    Moduls ueber Bezugskanten einmessen. Nur auf dem Hand-Pi (Knoten nur mit
+    `hand_eye_path`). Beide antworten direkt mit dem Ergebnis; der Knoten
+    `LastTagReference` ist nur zur Anzeige.
+
+    * `MeasureTagReference` braucht frische Kamerabilder: `Operational`,
+      sonst `INVALID_STATE`; `BUSY` bei Job, Kamera-Kalibrierung,
+      Hand-Auge-Sitzung, `MeasureTags` oder einer weiteren Einmessung.
+    * `PlanTagReferenceView` rechnet nur mit der Kalibrierung, ohne Bild:
+      braucht `Operational` (erst dann ist die Kalibrierung geladen), ist aber
+      nie `BUSY` -- sie stoert weder Job noch Kalibrierung noch Messung.
+
+    Siehe `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
+    """
+    from .tagreference import build_result, build_view, dumps, parse_request
+
+    activity = activity if activity is not None else _Activity()
+
+    def reply(payload: dict, code: VisionErrorCode):
+        return (
+            ua.Variant(dumps(payload), ua.VariantType.String),
+            ua.Variant(int(code), ua.VariantType.Int32),
+        )
+
+    def refusal(code: VisionErrorCode, message: str):
+        return reply(build_result(error=f"{code.name}: {message}"), code)
+
+    def view_refusal(code: VisionErrorCode, message: str):
+        return reply(build_view(error=f"{code.name}: {message}"), code)
+
+    @uamethod
+    async def measure_tag_reference(parent, request_json: str):
+        """1:MeasureTagReference -- Tag-Position ueber Bezugskanten einmessen."""
+        try:
+            request = parse_request(request_json or "")
+        except ValueError as error:
+            _log.warning("MeasureTagReference abgelehnt: %s", error)
+            return refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
+        if states.state_names()[0] != "Operational":
+            return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
+        if busy() or blocked_by():
+            return refusal(
+                VisionErrorCode.BUSY,
+                "Job, Kalibrierung, Hand-Auge-Sitzung, MeasureTags oder Tag-Einmessung laeuft",
+            )
+        activity.active = True
+        try:
+            result = await apriltag_source.measure_tag_reference(request)
+        except ValueError as error:
+            # z. B. Bildgroesse passt nicht zur Kalibrierung
+            _log.warning("MeasureTagReference nicht moeglich: %s", error)
+            return refusal(VisionErrorCode.DETECTION_FAILED, str(error))
+        finally:
+            activity.active = False
+        payload = dumps(result)
+        try:
+            await space.last_tag_reference.write_value(ua.Variant(payload, ua.VariantType.String))
+        except Exception:
+            _log.exception("LastTagReference konnte nicht geschrieben werden")
+        code = VisionErrorCode.DETECTION_FAILED if result["error"] else VisionErrorCode.OK
+        return (
+            ua.Variant(payload, ua.VariantType.String),
+            ua.Variant(int(code), ua.VariantType.Int32),
+        )
+
+    @uamethod
+    async def plan_tag_reference_view(parent, request_json: str):
+        """1:PlanTagReferenceView -- Kamerapose im Tag-KS planen, ohne Bild."""
+        try:
+            request = parse_request(request_json or "")
+        except ValueError as error:
+            _log.warning("PlanTagReferenceView abgelehnt: %s", error)
+            return view_refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
+        if states.state_names()[0] != "Operational":
+            return view_refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
+        try:
+            view = apriltag_source.plan_tag_reference_view(request)
+        except ValueError as error:
+            _log.warning("PlanTagReferenceView abgelehnt: %s", error)
+            return view_refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
+        return reply(view, VisionErrorCode.OK)
+
+    for name, handler in (
+        ("MeasureTagReference", measure_tag_reference),
+        ("PlanTagReferenceView", plan_tag_reference_view),
+    ):
+        methods[name] = await space.vision_system.add_method(
+            ua.NodeId(f"{config.vision_system_name}.{name}", space.own_idx),
+            ua.QualifiedName(name, space.own_idx),
+            handler,
+            [ua.VariantType.String],
+            [ua.VariantType.String, ua.VariantType.Int32],
+        )
 
 
 async def _install_save_raw_image(
