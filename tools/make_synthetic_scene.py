@@ -383,6 +383,211 @@ def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibrat
 
 
 # --------------------------------------------------------------------------
+# Reference edges (Tag auf heller Flaeche vor dunklem Hintergrund)
+# --------------------------------------------------------------------------
+
+
+def _polygon_basis(points: np.ndarray):
+    """Return `(origin, e1, e2)`: an orthonormal basis of the polygon's plane."""
+    origin = points[0]
+    first = points[1] - origin
+    first = first / float(np.linalg.norm(first))
+    normal = np.cross(first, points[2] - origin)
+    norm = float(np.linalg.norm(normal))
+    if norm < 1e-12:
+        raise ValueError("Flaechenpolygon ist entartet (Punkte auf einer Geraden)")
+    second = np.cross(normal / norm, first)
+    return origin, first, second
+
+
+def _inset_polygon(points: np.ndarray, edge_widths: dict[int, float]) -> np.ndarray:
+    """Move the given edges of a convex polygon inwards by their width.
+
+    Clips the polygon against one half-plane per edge (Sutherland-Hodgman) in
+    the polygon's own plane; the returned 3D points lie in that plane.
+    """
+    origin, first, second = _polygon_basis(points)
+    flat = np.column_stack([(points - origin) @ first, (points - origin) @ second])
+    # Orientation: the inward normal of an edge points to the polygon centre.
+    centre = flat.mean(axis=0)
+    clipped = [tuple(point) for point in flat]
+    for index, width in edge_widths.items():
+        a = flat[index % len(flat)]
+        b = flat[(index + 1) % len(flat)]
+        along = (b - a) / float(np.linalg.norm(b - a))
+        inward = np.array([-along[1], along[0]])
+        if float(inward @ (centre - a)) < 0.0:
+            inward = -inward
+        anchor = a + float(width) * inward
+        result = []
+        for k, current in enumerate(clipped):
+            previous = clipped[k - 1]
+            d_current = float((np.array(current) - anchor) @ inward)
+            d_previous = float((np.array(previous) - anchor) @ inward)
+            if d_current >= 0.0:
+                if d_previous < 0.0:
+                    t = d_previous / (d_previous - d_current)
+                    result.append(tuple(np.array(previous) + t * (np.array(current) - np.array(previous))))
+                result.append(current)
+            elif d_previous >= 0.0:
+                t = d_previous / (d_previous - d_current)
+                result.append(tuple(np.array(previous) + t * (np.array(current) - np.array(previous))))
+        clipped = result
+    if len(clipped) < 3:
+        raise ValueError("Nut breiter als die Flaeche")
+    inner = np.array(clipped)
+    return origin + np.outer(inner[:, 0], first) + np.outer(inner[:, 1], second)
+
+
+def _fill_polygon(canvas, pixels: np.ndarray, value: int) -> None:
+    """Fill a projected polygon with sub-pixel accurate vertices."""
+    import cv2
+
+    fixed = np.round(np.asarray(pixels, dtype=np.float64) * 16.0).astype(np.int32)
+    cv2.fillPoly(canvas, [fixed], int(value), lineType=cv2.LINE_8, shift=4)
+
+
+def render_reference_scene(
+    pose_cam_tag: Pose,
+    pose_module_tag: Pose,
+    calibration: CameraCalibration,
+    surface_polygon,
+    *,
+    tag_id: int = 7,
+    tag_size_m: float = 0.08,
+    family: str = "tag36h11",
+    image_size: tuple[int, int] | None = None,
+    groove_edges: dict[int, float] | None = None,
+    background: int = 60,
+    surface: int = 205,
+    groove_gray: int = 130,
+    noise_sigma: float = 0.0,
+    blur_sigma_px: float = 0.6,
+    seed: int = 20261020,
+    supersample: int = 4,
+    marker_px: int = 320,
+    quiet_px: int = 40,
+):
+    """Render a tag on a bright surface in front of a darker background.
+
+    The surface borders are the reference edges. `surface_polygon` is a planar
+    polygon in the **module frame** (N x 3, in order); its edge `i` runs from
+    point `i` to point `i + 1` and is reported as edge `"E{i}"`. The tag sits
+    at `pose_module_tag` (`T_module_tag`), seen with `pose_cam_tag`
+    (`T_cam_tag`); the module pose follows from both. The polygon does not
+    have to lie in the tag plane -- an edge below the tag plane is how the
+    height handling gets tested.
+
+    `groove_edges` maps an edge index to a width in meters: a second, parallel
+    edge that distance inside the surface (an item groove), rendered as a strip
+    of `groove_gray` -- same polarity as the main edge, so a detector sees two
+    similar edges.
+
+    The tag is printed on the surface (its white cells and the quiet zone have
+    the surface gray), so the tag outline does not add a competing edge.
+
+    Lens distortion of `calibration` is applied: the scene is rendered ideal
+    (with padding) and remapped through `tagloc.lens.undistort_points`, so any
+    lens model works. Afterwards: `blur_sigma_px` (optics), Gaussian noise
+    `noise_sigma` in gray levels.
+
+    Returns `(image in BGR, truth)`; truth is a dict with `pose_cam_tag`,
+    `pose_module_tag`, `pose_cam_module` and `edges`, a list of
+    `{"id", "start", "end"}` (module frame, meters).
+    """
+    import cv2
+
+    from tagloc import lens
+
+    polygon = np.asarray(surface_polygon, dtype=np.float64).reshape(-1, 3)
+    if len(polygon) < 3:
+        raise ValueError("Flaechenpolygon braucht mindestens 3 Punkte")
+    pose_cam_tag = np.asarray(pose_cam_tag, dtype=np.float64)
+    pose_module_tag = np.asarray(pose_module_tag, dtype=np.float64)
+    pose_cam_module = compose(pose_cam_tag, invert(pose_module_tag))
+
+    width, height = tuple(image_size or calibration.image_size)
+    factor = max(1, int(supersample))
+    view = synthetic_from(calibration, (width, height))
+    distorted = bool(np.any(np.asarray(view.distortion, dtype=np.float64) != 0.0))
+    pad = int(0.2 * max(width, height)) if distorted else 0
+
+    matrix = np.asarray(view.camera_matrix, dtype=np.float64).copy()
+    matrix[0, 2] += pad
+    matrix[1, 2] += pad
+    ideal = _scaled_calibration(
+        CameraCalibration(
+            camera_matrix=matrix,
+            distortion=np.zeros(5, dtype=np.float64),
+            image_size=(width + 2 * pad, height + 2 * pad),
+            frame_id=view.frame_id,
+        ),
+        factor,
+    )
+    canvas = np.full(
+        ((height + 2 * pad) * factor, (width + 2 * pad) * factor), int(background), dtype=np.uint8
+    )
+
+    camera = polygon @ pose_cam_module[:3, :3].T + pose_cam_module[:3, 3]
+    if np.any(camera[:, 2] <= 1e-3):
+        raise ValueError("Flaeche liegt (teilweise) hinter der Kamera")
+    outline = _project(polygon, pose_cam_module, ideal)
+    grooves = dict(groove_edges or {})
+    if grooves:
+        _fill_polygon(canvas, outline, groove_gray)
+        inner = _inset_polygon(polygon, grooves)
+        _fill_polygon(canvas, _project(inner, pose_cam_module, ideal), surface)
+    else:
+        _fill_polygon(canvas, outline, surface)
+
+    tag_corners = _project(tag_object_points(tag_size_m), pose_cam_tag, ideal)
+    patch, quad = marker_patch(family, tag_id, marker_px, quiet_px)
+    patch = np.round(patch.astype(np.float64) * (float(surface) / 255.0)).astype(np.uint8)
+    _paste(canvas, patch, quad, tag_corners)
+
+    if distorted:
+        # Distorted output pixel -> ideal coordinates, on the final grid, then
+        # interpolated up to the supersampled grid (the map is smooth).
+        columns, rows = np.meshgrid(np.arange(width), np.arange(height))
+        grid = np.column_stack([columns.reshape(-1), rows.reshape(-1)]).astype(np.float64)
+        source = lens.undistort_points(grid, view).reshape(height, width, 2).astype(np.float32)
+        if factor > 1:
+            source = cv2.resize(source, (width * factor, height * factor), interpolation=cv2.INTER_LINEAR)
+        map_x = (source[..., 0] + pad) * factor + (factor - 1) / 2.0
+        map_y = (source[..., 1] + pad) * factor + (factor - 1) / 2.0
+        canvas = cv2.remap(
+            canvas, map_x.astype(np.float32), map_y.astype(np.float32), cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT, borderValue=int(background),
+        )
+
+    image = canvas
+    if factor > 1:
+        image = cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA)
+    image = image.astype(np.float32)
+    if blur_sigma_px > 0.0:
+        image = cv2.GaussianBlur(image, (0, 0), float(blur_sigma_px))
+    if noise_sigma > 0.0:
+        rng = np.random.default_rng(int(seed))
+        image = image + rng.normal(0.0, float(noise_sigma), image.shape).astype(np.float32)
+    image = np.clip(np.round(image), 0, 255).astype(np.uint8)
+
+    truth = {
+        "pose_cam_tag": pose_cam_tag,
+        "pose_module_tag": pose_module_tag,
+        "pose_cam_module": pose_cam_module,
+        "edges": [
+            {
+                "id": f"E{index}",
+                "start": polygon[index].copy(),
+                "end": polygon[(index + 1) % len(polygon)].copy(),
+            }
+            for index in range(len(polygon))
+        ],
+    }
+    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR), truth
+
+
+# --------------------------------------------------------------------------
 # Chessboard
 # --------------------------------------------------------------------------
 
