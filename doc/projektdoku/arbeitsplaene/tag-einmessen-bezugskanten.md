@@ -3,7 +3,7 @@
 **Status:** in Arbeit — 20.10.2026
 **Verantwortlich:** Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen`
 **Thema:** apriltag
-**Branch:** tag-einmessen
+**Branch:** `tag-einmessen` (dieses Repo und `webskillcomposition`)
 
 ## Ziel
 
@@ -15,8 +15,8 @@ im Modul-KS. Vorher wurden die Abstände von Hand gemessen, und der Messfehler g
 
 ### Kontext
 
-`T_module_tag` (`ModuleTag.position`/`rotationDeg` im Modulkatalog → `tagToModule` in der
-Tag-Map) wird heute von Hand bestimmt: im Katalog Fläche + Ecke bzw. zwei Kanten wählen
+`T_module_tag` (`ModuleTag.position`/`rotationDeg` im Modulkatalog, nur im Frontend; die
+Tag-Map des Pi enthält nur Welt-Tags) wird heute von Hand bestimmt: im Katalog Fläche + Ecke bzw. zwei Kanten wählen
 (`placement`, siehe `modell-flaechen-tag-platzierung.md`), dann mit dem Zollstock die
 Abstände messen. Der Fehler geht 1:1 in jede Modulpose ein.
 
@@ -81,6 +81,7 @@ class LineMeasurement:
     support_px: float; residual_px: float; contrast: float
     candidates: int; ambiguous: bool
     reason: str | None        # "NOT_VISIBLE" | "NO_EDGE" | "PERPENDICULAR_TO_TAG" | None
+    extent_m: float = 0.0     # Länge des gemessenen Kantenstücks in der Tag-Ebene; gewichtet die Drehung, nicht im Ergebnis-JSON
 
 @dataclass(frozen=True)
 class InPlaneCorrection:
@@ -106,11 +107,27 @@ def plan_reference_view(pose_module_tag_guess, lines, calib, *, tag_size_m,
 def catalog_rpy_deg(rotation) -> np.ndarray   # Katalogformat: RPY feste Achsen X,Y,Z, Grad
 ```
 
-`ValueError` bei ungültigen Eingaben (Kante kürzer als 2 cm, Größe ≤ 0).
+`ValueError` bei ungültigen Eingaben (Kante kürzer als 2 cm, Größe ≤ 0, nicht endliche Werte, Auflösung passt nicht zur Kalibrierung).
 
 Wiederverwendet werden `tagloc.geometry` (`compose`, `invert`, `pose_to_dict`,
 `from_position_quaternion`), `tagloc.lens` (`project_points`, `undistort_points`) und
 `tagloc.pose.tag_object_points`.
+
+### Python — `src/vision_server/tagreference.py` (neu, ohne asyncua und ohne Kamera)
+
+```python
+parse_request(text: str) -> TagReferenceRequest          # ValueError mit Klartext bei Schema-, Pflicht- oder Grenzverletzung
+combine_tag_pose(tag_poses) -> tuple[np.ndarray, bool]   # (T_cam_tag, ambiguous) aus den Bildern mit Tag
+keep_guess_rotation(correction, pose_module_tag_guess) -> InPlaneCorrection  # nur der Tag-Ursprung wandert, Drehung aus Startwert
+summarize_lines(per_frame) -> list[dict]                 # eine Zeile je Kante über alle Bilder
+reference_warnings(*, correction, lines, search_band_m, tag_ambiguous, intrinsics_source) -> list[str]
+build_result(*, ..., error: str | None = None) -> dict   # wsc.vision.tagreference.result/1
+build_view(plan=None, *, error: str | None = None) -> dict  # wsc.vision.tagreference.view/1
+dumps(result: dict) -> str                               # json, allow_nan=False
+```
+
+`TagReferenceRequest` (frozen): `tag_id`, `tag_size_m` (`None` = Tag-Map bzw. config),
+`pose_module_tag_guess`, `lines`, `search_band_m`, `frames`, `line_extent_m`, `tilt_deg`.
 
 ### OPC UA (nur Hand-Pi, `hand_eye_path` gesetzt; unter `VisionMachine`, verlinkt unter `VisionProgram`)
 
@@ -120,17 +137,19 @@ Wiederverwendet werden `tagloc.geometry` (`compose`, `invert`, `pose_to_dict`,
 | `PlanTagReferenceView` | `ns=<vision>;s=VisionMachine.PlanTagReferenceView` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` — rechnet nur, kein Bild |
 | `LastTagReference` | `ns=<vision>;s=VisionMachine.LastTagReference` | String (JSON), nur zur Anzeige |
 
-Error wie bei `MeasureTags`:
+| Error | `MeasureTagReference` | `PlanTagReferenceView` |
+| --- | --- | --- |
+| `OK` | gemessen. Auch wenn Kanten fehlen (dann `dofs` reduziert bzw. `none`). | geplant, auch mit `fits: false`. |
+| `DETECTION_FAILED` | `NO_FRAME`, `TAG_NOT_SEEN`; auch ein `ValueError` der Messung (z. B. Bildgröße passt nicht zur Kalibrierung) | entfällt (kein Bild) |
+| `INVALID_ARGUMENT` | Anfrage-JSON bzw. Werte ungültig | wie links |
+| `INVALID_STATE` | Vision-System nicht `Operational` | wie links |
+| `BUSY` | Job, Kamera-Kalibrierung, Hand-Auge-Sitzung, `MeasureTags` oder weitere Einmessung läuft | kein `BUSY`: rechnet nur, kein Bild |
 
-| Error | Wann |
-| --- | --- |
-| `OK` | gemessen bzw. geplant. Auch wenn Kanten fehlen (dann `dofs` reduziert). |
-| `DETECTION_FAILED` | `NO_FRAME` bzw. `TAG_NOT_SEEN` |
-| `INVALID_ARGUMENT` | JSON bzw. Werte ungültig |
-| `INVALID_STATE` | Vision-System nicht `Operational` |
-| `BUSY` | Job, Kamera-Kalibrierung, Hand-Auge-Sitzung oder MeasureTags läuft |
+Bei Ablehnung steht im JSON `"<CODE>: Text"`; bei Mess-Fehlern (`NO_FRAME`, `TAG_NOT_SEEN`)
+der nackte Code. `ResultJson` ist immer gültiges JSON.
 
-`ResultJson` ist immer gültiges JSON.
+`LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht
+bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
 
 ### Daten / Payload
 
@@ -143,12 +162,19 @@ Error wie bei `MeasureTags`:
   "lines": [ { "id": "A", "start": [x,y,z], "end": [x,y,z] },
              { "id": "B", "start": [x,y,z], "end": [x,y,z] } ],
   "searchBandM": 0.015, "frames": 3,
-  "view": { "lineExtentM": 0.10, "tiltDeg": 0 } }
+  "view": { "lineExtentM": 0.10, "tiltDeg": 10 } }
 ```
 
 - `moduleTagGuess` = `T_module_tag` aus dem Katalog (`position`/`rotationDeg` umgerechnet).
 - `lines` = echte 3D-Kanten im Modul-KS (die `EdgeLine`s der Platzierung, **nicht** auf die
   Fläche projiziert); 1–4 Stück.
+- `tagSizeM` (optional): Vorrang Anfrage > Tag-Map > `config.tag_size_m`.
+- `searchBandM` (Standard 0,015; 0,003–0,05 m), `frames` (Standard 3; 1–10),
+  `view.lineExtentM` (Standard 0,10; (0, 1] m), `view.tiltDeg` (Standard **10**; |tiltDeg| < 80).
+- `lines`: `id` nicht leer und eindeutig, jede Kante ≥ 2 cm.
+- `moduleTagGuess.orientation` ist ein Quaternion `[qx, qy, qz, qw]`: es wird normiert,
+  ein Nullquaternion ist ungültig.
+- Unbekannte Felder werden ignoriert.
 
 **Ergebnis** `wsc.vision.tagreference.result/1`:
 
@@ -164,26 +190,49 @@ Error wie bei `MeasureTags`:
                   "moduleTag": { "position": [...], "orientation": [...] },
                   "position": [...], "rotationDeg": [...],
                   "spreadMm": 0.2, "spreadDeg": 0.05, "residualMm": 0.3 },
+  "warnings": [],
   "error": null }
 ```
+
+- `framesUsed`: Bilder, in denen der Tag erkannt wurde.
+- Mehrdeutige Tag-Pose: Gibt es mindestens ein eindeutiges Bild, wird die Drehung nur über
+  diese Bilder gemittelt, die Position über alle. Eine Pose gilt für alle Bilder (der Roboter
+  steht), die Korrektur bleibt `full`. Gibt es kein eindeutiges Bild, werden die Kanten mit der
+  mehrdeutigen Pose gemessen; die Orientierung bleibt dann exakt der Startwert
+  (`deltaRotDeg`, `spreadDeg` = 0), nur der Tag-Ursprung wandert, und es gibt eine Warnung.
+- `lines[]`: je Kante ein Eintrag über alle Bilder. `found`, sobald in einem Bild gefunden;
+  Werte (`offsetMm`, `angleDeg`, `supportPx`, ...) als Mittel über die eindeutigen Bilder, sonst
+  über die gefundenen; `ambiguous`, sobald in irgendeinem Bild mehrdeutig; `reason` nur bei
+  nicht gefundenen Kanten.
+- `warnings[]`: Platzhalter-Intrinsik; Tag mehrdeutig; `dofs` `none` (Startwert unverändert) oder
+  `partial`; mehrdeutige Kante; Korrektur über dem Suchband bzw. eine Kantenverschiebung
+  ≥ 0,9 × Suchband (Startwert vermutlich falsch).
+- Fehlerfall: `correction: null`, `lines: []`, `tag: null`. `error` ist bei Mess-Fehlern der nackte
+  Code (`TAG_NOT_SEEN`, `NO_FRAME`), bei Ablehnung `"<CODE>: Text"`.
 
 **Planung** `wsc.vision.tagreference.view/1` (von `PlanTagReferenceView`, Antwort):
 
 ```json
 { "schema": "wsc.vision.tagreference.view/1",
   "camInTag": { "position": [x,y,z], "orientation": [qx,qy,qz,qw] },
-  "standoffM": 0.38, "fits": true, "uncovered": [] }
+  "standoffM": 0.38, "fits": true, "uncovered": [], "error": null }
 ```
 
-`camInTag` ist die Kamerapose im Tag-KS (Kamera-KS OpenCV: +Z aus der Linse). `uncovered`
-nennt die Kanten, die nicht ins Bild passen.
+`camInTag` ist die Kamerapose im Tag-KS (Kamera-KS OpenCV: +Z aus der Linse). Die Kamera
+schaut entlang −Tag-z; Bild-x = Tag-x, Bild-y = −Tag-y. `tiltDeg` kippt um Tag-x durch den
+Zielpunkt (positiv: Kamera nach −y). `fits: false`: Der Tag ist immer im Bild; Kanten werden
+nach Abstand zum Tag nacheinander dazugenommen, solange alles bei `max_standoff` passt.
+`uncovered` nennt die übrigen Kanten (ggf. `"tag"`). Ablehnung: `camInTag: null`, `fits: false`,
+`uncovered: []`, `error` mit `"<CODE>: Text"`.
 
-### Katalog (Frontend, Vorschlag für die `webskillcomposition`-Sitzung)
+### Katalog (Frontend)
 
-Optionales `ModuleTag.measurement = { method: "camera-edges", measuredAt, dofs, deltaMm,
-deltaRotDeg, spreadMm, lines: ["A","B"] }`. `position`/`rotationDeg` werden mit
-`correction.position`/`correction.rotationDeg` überschrieben, `placement` bleibt als
-Protokoll des Startwerts (wird nicht entfernt). Danach Tag-Map wie bisher per `SetTagMap`.
+Die Datenform steht im Abschnitt „Frontend“ (`ModuleTag.measurement`, `placement.lines`).
+`position`/`rotationDeg` werden mit `correction.position`/`correction.rotationDeg`
+überschrieben, `placement` bleibt als Protokoll des Startwerts. **Modul-Tags stehen bewusst
+nicht in der Tag-Map des Pi** (dort nur Welt-Tags, siehe Kopfkommentar `moduleCatalog.ts` in
+`webskillcomposition`). Der Katalog wirkt nur im Frontend: Layer-1-Platzierung und
+`moduleTagGuess` der Layer-2-Anfragen.
 
 ## Fehlerfälle
 
@@ -193,10 +242,11 @@ Protokoll des Startwerts (wird nicht entfernt). Danach Tag-Map wie bisher per `S
 | Kein frisches Bild | `DETECTION_FAILED`, `NO_FRAME` |
 | Kante außerhalb des Bilds | `found: false`, `reason: "NOT_VISIBLE"` |
 | Keine Kante im Suchband | `found: false`, `reason: "NO_EDGE"` |
-| Kante mehrdeutig (Item-Nut) | `ambiguous: true`; die Kante wird für `dofs: "full"` nicht verwendet |
+| Kante mehrdeutig (Item-Nut) | `ambiguous: true`; die Kante geht in keine Korrektur ein (`dofs` ggf. reduziert) |
 | Kante (fast) senkrecht zur Tag-Ebene | `reason: "PERPENDICULAR_TO_TAG"` |
-| Korrektur größer als das Suchband | Warnung; Startwert vermutlich falsch |
-| Tag `ambiguous` | Drehung aus dem Startwert, nur Position korrigiert |
+| Korrektur über dem Suchband bzw. Kantenverschiebung ≥ 0,9 × Suchband | Warnung; Startwert vermutlich falsch |
+| Keine Kante verwertbar | `dofs: "none"`, Startwert unverändert, Warnung |
+| Tag `ambiguous` | Gibt es eindeutige Bilder: Drehung über sie, Position über alle, Korrektur `full`. Sonst: Drehung exakt aus dem Startwert, nur der Tag-Ursprung wandert (`keep_guess_rotation`), Warnung |
 
 ## Vorgehen
 
@@ -221,21 +271,21 @@ Protokoll des Startwerts (wird nicht entfernt). Danach Tag-Map wie bisher per `S
    (`"partial"`, entlang der Kante unverändert); 0 → `"none"`.
    `T_tag_module_neu = D · T_tag_module_guess`, `T_module_tag_neu = inv(…)`.
    Neigung und Abstand zur Fläche (`offsetM`) bleiben aus dem Startwert (Tag liegt bündig).
-7. Mehrere Bilder (`frames`): Kanten je Bild messen, Korrektur über alle gemittelt, Streuung
-   melden. Mehrere Ansichten sind dadurch trivial — die Steuerung ruft mehrfach auf und
+7. Mehrere Bilder (`frames`): Kanten je Bild messen, Korrektur über die Bilder mit der höchsten
+   `dofs`-Stufe gemittelt, Streuung melden. Mehrere Ansichten sind dadurch trivial — die Steuerung ruft mehrfach auf und
    mittelt, keine Vorwärtskinematik nötig.
 
 ### Kamera passend platzieren
 
 `plan_reference_view` berechnet die Kamerapose **im Tag-KS** (`T_tag_cam`): frontal
-(optional Kippwinkel gegen Spiegelung), zentriert über Tag + den tagnahen Stücken beider
+(Kippwinkel gegen Spiegelung; Anfrage-Standard 10 Grad, Python-Default 0), zentriert über Tag + den tagnahen Stücken beider
 Kanten (Standard je 10 cm), Abstand so, dass alles mit 10 % Rand ins Bild passt
 (0,25–0,60 m). Die Steuerung rechnet
 
 `Flanschziel = T_base_tag (aus MeasureTags/Layer 2) · T_tag_cam · inv(T_flansch_cam)`,
 
-fährt hin und ruft die Messung auf. Passt es nicht in ein Bild → `fits: false` plus welche
-Kante fehlt (v1: dann nur diese Kante weglassen bzw. Teilkorrektur).
+fährt hin und ruft die Messung auf. Passt nicht alles in ein Bild → `fits: false`, `uncovered` nennt die fehlenden Kanten. Ohne sie
+fehlt dann in der Messung die Kante (`NOT_VISIBLE`); v1 ist das eine Teilkorrektur.
 
 ### Verifikation
 
@@ -249,10 +299,115 @@ Kante fehlt (v1: dann nur diese Kante weglassen bzw. Teilkorrektur).
 - Am Pi (später, Nutzer): Tag mit Zollstock-Referenz, Ziel < 1–2 mm / < 0,5°. Ergebnis in
   `doc/projektdoku/` festhalten.
 
+## Messwerte (synthetisch)
+
+Synthetische Szenen aus `tools/make_synthetic_scene.py` (`render_reference_scene`), Startfehler
+1 cm / 2°. „Detektor-Pose“ heißt: Tag-Pose aus der AprilTag-Erkennung statt der echten Pose.
+Fehler = Abweichung von der bekannten Wahrheit. **Nicht am Pi gemessen** (das steht noch aus).
+
+**S1, Einzelbild, 1600 × 1200, f = 1600, Tag 80 mm:**
+
+| Fall | Positionsfehler | Drehfehler |
+| --- | --- | --- |
+| Echte Pose, frontal | 0,024 mm | 0,014° |
+| Detektor-Pose, 15° gekippt | 0,27–0,28 mm | 0,045° |
+| Detektor-Pose, frontal | 0,24 mm | 0,013° |
+| Verzeichnung k1 = −0,12 | 0,034 mm | – |
+| Fisheye-Verzeichnung | 0,029 mm | – |
+| Unschärfe 3 px + Rauschen σ = 6 | 0,015 mm | – |
+| Kante 3 cm unter der Tag-Ebene, echte Pose | 0,010 mm | – |
+| Kante 3 cm unter der Tag-Ebene, Detektor-Pose, Kippung 5–20° | 0,05–0,21 mm | – |
+
+**S2, Messung durch `measure_tag_reference`, 640 × 480, f = 600, 3 Bilder:**
+
+| Ansicht | Positionsfehler | Drehfehler |
+| --- | --- | --- |
+| Kippung 10°, Abstand 0,296 m | 0,63 mm | 0,07° |
+| Kippung 15°, Abstand 0,298 m | 0,23 mm | 0,10° |
+| Kippung 10°, Abstand 0,35 m | 0,25 mm | 0,11° |
+
+**Grenzen:**
+
+- Frontale Sicht auf einen erhöhten Tag liefert die Spiegellösung der Tag-Pose (13°). Daher
+  Standard-Kippung 10°.
+- Nut mit gleicher Polarität wie die Kante: `ambiguous` → Teilkorrektur (`partial`).
+- Fast unsichtbare Nut (< 8 Graustufen Kontrast): es wird still die innere Kante gemessen,
+  Fehler 5 mm. Physikalisch nicht erkennbar.
+- Falsche Tag-Größe: alle Kanten `NO_EDGE`.
+
+## Frontend (webskillcomposition, Branch `tag-einmessen`)
+
+Die Steuerung läuft im Frontend (`webskillcomposition`) gegen die Schnittstellen oben. Pfade
+der Dateien: unten im Abschnitt „Dateien“.
+
+### Ablauf
+
+1. **Modulkatalog:** „Place on model“ speichert die echten 3D-Bezugskanten in `placement.lines`
+   (corner: beide Eckkanten A und B; edges: die zwei gewählten Kanten).
+2. **Layer 1** (Deckenkamera) platziert die Module grob.
+3. Grob-Tagpose `tagInBase` aus `approachTags`.
+4. `centreOnTag` (MeasureTags, Standoff ca. 0,35 m) liefert die genaue Tagpose.
+5. `PlanTagReferenceView` liefert `camInTag`. Flanschziel = `tagInBase · camInTag · inv(T_flansch_cam)`;
+   dorthin fahren.
+6. `MeasureTagReference` mit `moduleTagGuess` aus dem Katalog und `lines` aus `placement.lines`.
+7. Ergebnis: `position`/`rotationDeg` und `measurement` in den Katalog (Backend
+   `/api/module-catalog`).
+8. Danach Layer 1 neu scannen.
+
+### Einmal-Regel
+
+Vorgabe des Nutzers vom 20.10.2026: Jeder Tag wird nur einmal eingemessen, und zwar dann, wenn
+sein Modul im Modulkatalog neu angelegt oder bearbeitet wurde.
+
+- `ModuleTag.measurement` fehlt = ausstehend.
+- Speichern aus dem Editor verwirft `measurement` bei Tags, die neu sind oder deren `tagId`,
+  `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes
+  Speichern behält sie.
+- Import und Laden lassen `measurement` unverändert.
+- Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind.
+- Der Start erfolgt nur per Klick (Roboterbewegung).
+
+### Datenformat
+
+```ts
+interface TagReferenceLine { id: string; start: Vec3; end: Vec3 }   // Modul-KS, m, nicht projiziert
+TagPlacement.lines?: TagReferenceLine[]
+interface TagCameraMeasurement { method: "camera-edges"; measuredAt: string; dofs: "full" | "partial";
+  guess: { position: Vec3; rotationDeg: Vec3 }; deltaMm: [number, number]; deltaRotDeg: number;
+  spreadMm: number; lines: string[] }
+ModuleTag.measurement?: TagCameraMeasurement
+```
+
+`placement` bleibt nach der Messung als Protokoll des Startwerts erhalten.
+
+### Alte Platzierungen ohne `lines`
+
+Die Kanten werden aus `edgeA`/`edgeB` abgeleitet: Länge 0,15 m; bei corner wird die zweite Kante
+entlang `inward` gelegt (90°-Annahme). Solche Platzierungen zeigt die Oberfläche mit dem Hinweis
+„Kanten geschätzt“.
+
+### Dateien
+
+Pfade relativ zu `frontend/src/features/cell-modules/`, außer `piServers.ts`
+(`frontend/src/features/opcua-server/config/`):
+
+- `config/moduleCatalog.ts`: Typen `TagReferenceLine`, `TagCameraMeasurement`, `lines`, `measurement`
+- `model/catalogStore.ts`
+- `model/tagPlacement.ts`
+- `model/tagMeasurementState.ts` (neu): Einmal-Regel
+- `components/ModuleCatalogModal.tsx`
+- `opcua-server/config/piServers.ts`: `TagReferenceBinding`
+- `model/tagReferenceCall.ts` (neu)
+- `model/tagReferenceRun.ts` (neu)
+- `components/TagReferencePanel.tsx` (neu, im Layer-2-Fenster)
+
+Signaturen werden nach Abschluss nachgetragen.
+
 ## Aufteilung
 
-Alle arbeiten im selben Worktree (Basis aktueller `apriltag`-Stand, Branch `tag-einmessen`),
-jeweils nur auf ihren Dateien. Die Koordination prüft jeden Diff, lässt die Tests laufen
+Alle Agenten dieses Repos arbeiten im selben Worktree (Basis aktueller `apriltag`-Stand,
+Branch `tag-einmessen`), jeweils nur auf ihren Dateien. Die Frontend-Agenten (S3, S4, H2 im
+Doku-Teil) arbeiten im Worktree von `webskillcomposition` auf Branch `tag-einmessen`. Die Koordination prüft jeden Diff, lässt die Tests laufen
 und committet (`docs:` / `feat(apriltag):`), **nicht pushen**.
 
 | # | Agent | Aufgabe | Dateien | Wann |
@@ -260,7 +415,9 @@ und committet (`docs:` / `feat(apriltag):`), **nicht pushen**.
 | H1 | Haiku | Arbeitsplan (dieser Plan, Schnittstellen 1:1), Zeile in `arbeitsplaene/README.md`, Nachtrag in `modell-flaechen-tag-platzierung.md` mit Link; verworfene Mesh-Variante unter „Verworfen“ | nur `doc/projektdoku/…` | sofort, parallel zu S1 |
 | S1 | Sonnet | `src/tagloc/reference_edges.py` (Rechnung 2–7, Ansichtsplanung, RPY), synthetischer Renderer `render_reference_scene` in `tools/make_synthetic_scene.py` (Tag auf heller Fläche mit Kanten, optional Nut-Doppelkante, Rauschen, Unschärfe), `tests/test_reference_edges.py` | genannte | sofort |
 | S2 | Sonnet | `src/vision_server/tagreference.py` (parse/build wie `measuretag.py`), `measure_tag_reference` in `detection/apriltag.py`, `_install_tag_reference` in `runner.py`, Knoten in `address_space.py`, BUSY-Sperre, `tests/test_tagreference.py` inkl. OPC-UA-Methodentest | genannte | nach S1 |
-| H2 | Haiku | Plan auf `fertig`, tatsächliche Schnittstellen aus den Berichten von S1/S2 nachtragen, neuer Abschnitt in `vision-server-interface.md`, eigener Abschnitt „Tag-Position mit der Kamera einmessen“ in `apriltag-referenz.md` (dabei auch das `placement`-Format, offener Punkt aus dem Flächen-Plan), README-Zeile | nur Doku | nach S2 |
+| S3 | Sonnet | Katalogseite: `ModuleTag.measurement` und `placement.lines` in `config/moduleCatalog.ts`, `model/catalogStore.ts`, `model/tagPlacement.ts`, `model/tagMeasurementState.ts` (neu), `components/ModuleCatalogModal.tsx`; Einmal-Regel; Ableitung alter Platzierungen | webskillcomposition: genannte | parallel zu S1/S2, gegen die Schnittstelle dieses Plans |
+| S4 | Sonnet | Aufrufe und Ablauf: `opcua-server/config/piServers.ts` (`TagReferenceBinding`), `model/tagReferenceCall.ts` (neu), `model/tagReferenceRun.ts` (neu), `components/TagReferencePanel.tsx` (neu, Layer-2-Fenster) | webskillcomposition: genannte | nach S3 |
+| H2 | Haiku | Plan auf `fertig`, tatsächliche Schnittstellen aus den Berichten von S1/S2 nachtragen, neuer Abschnitt in `vision-server-interface.md`, eigener Abschnitt „Tag-Position mit der Kamera einmessen“ in `apriltag-referenz.md` (dabei auch das `placement`-Format, offener Punkt aus dem Flächen-Plan), README-Zeile; zusätzlich Doku zum Frontend-Teil (Abschnitt „Frontend“ dieses Plans, Stand nach S3/S4) | nur Doku | nach S2 bzw. nach S3/S4 |
 
 ## Verworfen: Tiefen-ICP gegen das ganze Mesh
 
@@ -281,16 +438,48 @@ abzugleichen (ICP). Er ist **verworfen**, Entscheidung des Nutzers vom 20.10.202
   Kamera-Controls.
 - **Kanten, die nicht in ein Bild mit dem Tag passen:** v1 nicht unterstützt (nur
   Teilkorrektur), später Verkettung über die Vorwärtskinematik.
-- **Frontend-Teil** (Ansicht anfahren, Ergebnis in den Katalog schreiben) läuft in einer
-  eigenen `webskillcomposition`-Sitzung gegen diese Schnittstelle. Dieser Plan beschreibt
-  nur die Schnittstelle, nicht die Umsetzung im Frontend.
-- **Echte 3D-Kanten:** Das Frontend muss die `EdgeLine`s als echte 3D-Kanten mitschicken,
-  nicht die auf die Fläche projizierten Kanten aus `placement.edges`.
+- **Frontend-Teil** (Ansicht anfahren, Ergebnis in den Katalog schreiben): Umsetzung im Branch
+  `tag-einmessen` von `webskillcomposition`, Beschreibung im Abschnitt „Frontend“.
+- **Echte 3D-Kanten** (im Branch umgesetzt, siehe Abschnitt „Frontend“): Das Frontend schickt die
+  `EdgeLine`s als echte 3D-Kanten in `placement.lines`, nicht die auf die Fläche projizierten
+  Kanten aus `placement.edges`.
 
 ## Abweichungen vom Plan
 
 Wird während der Umsetzung gefüllt. Weicht die Realität vom Plan ab, wird der Plan
 korrigiert.
+
+Abweichungen, Stand Umsetzung:
+
+- `LineMeasurement.extent_m: float = 0.0`: Länge des gemessenen Kantenstücks in der Tag-Ebene,
+  gewichtet die Drehung in der Korrektur. Nicht im Ergebnis-JSON.
+- `view.tiltDeg` Standard **10** statt 0 (frontal kippt die Tag-Pose in die Spiegellösung). Der
+  Python-Default von `plan_reference_view` bleibt 0.
+- Grenzen der Anfrage: `searchBandM` 0,003–0,05 m, `frames` 1–10, `lineExtentM` (0, 1] m,
+  `|tiltDeg|` < 80, `lines` 1–4 mit nicht leerer, eindeutiger `id` und ≥ 2 cm. Quaternion wird
+  normiert, Null ist ungültig. Unbekannte Felder werden ignoriert. `tagSizeM`-Vorrang: Anfrage >
+  Tag-Map > `config.tag_size_m`.
+- Ergebnis: zusätzlich `warnings: []` (Platzhalter-Intrinsik, Tag mehrdeutig, `dofs` none/partial,
+  mehrdeutige Kante, Korrektur nahe am Suchband). Fehlerfall: `correction: null`, `lines: []`,
+  `tag: null`. `error` ist bei Mess-Fehlern der nackte Code, bei Ablehnung `"<CODE>: Text"`.
+- `framesUsed` zählt Bilder mit erkanntem Tag. `lines[]` ist je Kante über die Bilder
+  zusammengefasst; `ambiguous` wird true, sobald in irgendeinem Bild mehrdeutig.
+- View: zusätzlich `error` (null bei Erfolg). Ablehnung: `camInTag: null`, `fits: false`,
+  `uncovered: []`.
+- Mehrdeutige Tag-Pose: Ohne eindeutiges Bild bleibt die Orientierung exakt der Startwert, nur der
+  Tag-Ursprung wandert (`keep_guess_rotation`); `deltaRotDeg` und `spreadDeg` sind dann 0.
+- Error-Codes: `PlanTagReferenceView` hat kein `BUSY` (rechnet nur), braucht aber `Operational`
+  (sonst `INVALID_STATE`). `DETECTION_FAILED` auch bei `ValueError` der Messung (z. B. Bildgröße
+  passt nicht zur Kalibrierung). `MeasureTags` ist jetzt zusätzlich `BUSY`, solange eine
+  Einmessung läuft (**Verhaltensänderung an bestehender Methode**).
+- `LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht bei
+  Ablehnungen.
+- **Falsch im Plan:** „Danach Tag-Map wie bisher per `SetTagMap`“ und „`tagToModule` in der
+  Tag-Map“. Modul-Tags stehen bewusst nicht in der Tag-Map des Pi (dort nur Welt-Tags). Der Katalog
+  wirkt nur im Frontend.
+- `catalog_rpy_deg` übernommen wie `tagGeometry.ts`: R = Rz · Ry · Rx, Ausgabe `[roll, pitch, yaw]`
+  in Grad; bei pitch ±90° alles in roll, yaw = 0.
+- Doku: H2 um den Frontend-Teil erweitert statt eine zweite H2-Zeile anzulegen; S3 und S4 neu.
 
 ## Nach Abschluss
 
