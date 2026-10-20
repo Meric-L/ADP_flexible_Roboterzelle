@@ -1,6 +1,6 @@
 # Tag-Position per Hand-Kamera einmessen — Bezugskanten statt Mesh-Matching
 
-**Status:** in Arbeit — 20.10.2026
+**Status:** fertig — 20.10.2026 (an echter Hardware nicht getestet)
 **Verantwortlich:** Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen`
 **Thema:** apriltag
 **Branch:** `tag-einmessen` (dieses Repo und `webskillcomposition`)
@@ -340,19 +340,40 @@ Fehler = Abweichung von der bekannten Wahrheit. **Nicht am Pi gemessen** (das st
 Die Steuerung läuft im Frontend (`webskillcomposition`) gegen die Schnittstellen oben. Pfade
 der Dateien: unten im Abschnitt „Dateien“.
 
-### Ablauf
+### Ablauf (Stand Code)
 
 1. **Modulkatalog:** „Place on model“ speichert die echten 3D-Bezugskanten in `placement.lines`
-   (corner: beide Eckkanten A und B; edges: die zwei gewählten Kanten).
-2. **Layer 1** (Deckenkamera) platziert die Module grob.
-3. Grob-Tagpose `tagInBase` aus `approachTags`.
-4. `centreOnTag` (MeasureTags, Standoff ca. 0,35 m) liefert die genaue Tagpose.
-5. `PlanTagReferenceView` liefert `camInTag`. Flanschziel = `tagInBase · camInTag · inv(T_flansch_cam)`;
-   dorthin fahren.
-6. `MeasureTagReference` mit `moduleTagGuess` aus dem Katalog und `lines` aus `placement.lines`.
-7. Ergebnis: `position`/`rotationDeg` und `measurement` in den Katalog (Backend
-   `/api/module-catalog`).
-8. Danach Layer 1 neu scannen.
+   (corner: beide Eckkanten A und B; edges: die zwei gewählten Kanten). Ausstehend sind Tags ohne
+   `measurement` (`pendingTags`), ohne Welt-Tags; der Lauf nimmt nur Tags von Modulen, die in der
+   Zelle platziert sind (`TagReferencePanel`).
+2. **Layer 1** (Deckenkamera) platziert die Module grob. Daraus die Grob-Tagpose `coarseTagInBase`
+   (`approachTags`).
+3. **Je Tag** (`measureTagReferences` in `model/tagReferenceRun.ts`, ein Roboterzug nach dem
+   anderen; gefahren wird nichts, das die IK nicht erreicht oder das Wagen oder Boden berührt):
+   a. **Anfahrt:** Gibt es einen Anfahrtswinkel (`approach`, aus `planApproach` auf den Grobwert),
+      fährt der Roboter zuerst dorthin. Sonst startet das Zentrieren dort, wo er steht.
+   b. **Zentrieren:** `centreOnTag` mit MeasureTags, Standoff 0,35 m, Startpunkt ist der
+      Layer-1-Grobwert; sucht bei Bedarf, wenn der Tag nicht im Bild ist. Ergebnis ist `tagInBase`.
+   c. **Orientierung:** Ist die Tag-Pose beim Zentrieren mehrdeutig (`ambiguous`, bei ca. 35 cm oft
+      gespiegelt), wird nur die gemessene Position übernommen; die Orientierung bleibt die aus Layer 1.
+   d. **Ansicht planen:** `PlanTagReferenceView` mit allen Kanten des Tags. Bei `fits: false` werden
+      die Kanten aus `uncovered` weggelassen und mit den übrigen neu geplant (Warnung). Bleibt keine
+      Kante übrig, schlägt der Tag fehl. Ein `error` oder fehlende Kamerapose ebenso.
+   e. **Erreichbarkeit und Weg:** Flanschziel `flangeForView(tagInBase, camInTag, flangeToCamera)`,
+      Gelenkwinkel per `planMove`. Nicht konvergent: Tag fehlgeschlagen. Ein Ziel, das Wagen oder
+      Boden berührt, wird nicht gefahren. Ist der direkte Weg blockiert, fährt er über die
+      Startstellung; blockiert schon der Weg dorthin, schlägt der Schritt fehl.
+   f. **Messen:** `MeasureTagReference` mit `moduleTagGuess` und den Kanten aus (d). Timeout 60 s.
+   g. **Übernahme:** nur wenn `error` leer ist, die Intrinsik nicht `placeholder` und `dofs` nicht
+      `none`. Dann `onMeasured` (`keep` im Panel): `applyTagMeasurement` schreibt in den Katalog;
+      wurde zwischenzeitlich gespeichert, wird einmal auf den neueren Stand aufgesetzt. Scheitert das
+      Speichern, bleibt der Tag ausstehend.
+
+   Fehler in a bis g beenden den Lauf nicht: der Tag bekommt seinen Grund, der nächste folgt. Ein
+   Halt (`stopped`) setzt die restlichen Tags auf `skipped`.
+4. **Ende:** Ohne Halt fährt der Roboter zurück in die Startstellung (`returnNote`); bei einem Halt
+   bleibt er stehen. Danach Layer 1 neu scannen, damit die Modulposen den neuen Tag-Wert nutzen
+   (Hinweis im Panel).
 
 ### Einmal-Regel
 
@@ -401,7 +422,53 @@ Pfade relativ zu `frontend/src/features/cell-modules/`, außer `piServers.ts`
 - `model/tagReferenceRun.ts` (neu)
 - `components/TagReferencePanel.tsx` (neu, im Layer-2-Fenster)
 
-Signaturen werden nach Abschluss nachgetragen.
+**Signaturen (Stand Umsetzung):**
+
+`model/tagMeasurementState.ts`
+- `DERIVED_LINE_LENGTH_M = 0.15`: Länge der aus `edgeA`/`edgeB` abgeleiteten Kanten.
+- `interface PendingTag { moduleId: string; tag: ModuleTag }`
+- `pendingTags(catalog: CellModuleDefinition[]): PendingTag[]`: Tags ohne `measurement`, ohne Welt-Tags.
+- `referenceLinesOf(tag: ModuleTag): { lines: TagReferenceLine[]; derived: boolean } | null`:
+  `placement.lines`, sonst abgeleitet (`derived: true`); `null` ohne `placement`.
+- `applyTagMeasurement(catalog, moduleId, tagId, measured): CellModuleDefinition[]`: setzt
+  `position`/`rotationDeg` auf die Messung, `measurement.guess` auf den bisherigen Wert.
+  Wirft `Error` bei unbekanntem Modul oder Tag.
+- `invalidateChangedMeasurements(previous, next, current?): CellModuleDefinition`: neue Tags und Tags,
+  deren `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert hat, verlieren `measurement`.
+  Unveränderte Tags übernehmen den Stand aus `current` (inkl. einer zwischenzeitlichen Messung); fehlt
+  der Tag dort, verliert er `measurement`. Ohne Änderung kommt `next` selbst zurück.
+- `describeTagMeasurement(tag: ModuleTag): string`: Text für die Tag-Zeile im Editor.
+
+`model/tagReferenceCall.ts`
+- `TAG_REFERENCE_REQUEST_SCHEMA`, `TAG_REFERENCE_RESULT_SCHEMA`, `TAG_REFERENCE_VIEW_SCHEMA`:
+  `wsc.vision.tagreference.request/1`, `…result/1`, `…view/1`.
+- `interface TagReferenceRequest { tagId; tagSizeM; moduleTagGuess: { position; rotationDeg }; lines: TagReferenceLine[]; searchBandM?; frames?; view?: { lineExtentM?; tiltDeg? } }`
+- `tagReferenceRequestJson(request): string`: wandelt `rotationDeg` in ein Quaternion (`quaternionFromRpyDeg`).
+- `parseTagReferenceResult(raw: unknown): TagReferenceResult | null`, `parseTagReferenceView(raw: unknown): TagReferenceView | null`:
+  `null` bei nicht lesbarer Antwort.
+- `measureTagReference(controller, serverUrl, nodeId, requestJson, opts?): Promise<MeasureReferenceOutcome>`: Timeout 60 s.
+- `planTagReferenceView(controller, serverUrl, nodeId, requestJson, opts?): Promise<PlanViewOutcome>`: Timeout 15 s.
+- `opts` = `{ sleep?, timeoutMs? }` (für Tests).
+- `TagReferenceOutcome<Answer> = { status: "measured" | "planned"; result: Answer } | { status: "failed"; reason: string }`;
+  `MeasureReferenceOutcome` und `PlanViewOutcome` darauf aufgesetzt.
+
+`model/tagReferenceRun.ts`
+- `DEFAULT_CENTRING_STANDOFF_M = 0.35`
+- `interface TagReferenceJob { moduleId; moduleName; tagId; tagSizeM; moduleTagGuess; lines; coarseTagInBase: Pose }`
+- `TagReferenceJobResult`: `measured` (mit `result`), `failed` (mit `reason`, optional `result`), `skipped` (mit `reason`); jeweils mit `warnings`.
+- `measureTagReferences(options: TagReferenceRunOptions): Promise<TagReferenceRunOutcome>` → `{ results, halted, returnNote }`.
+  Wirft nicht; Fehler stehen je Tag im Ergebnis. Optionen: `jobs`, `deps`, `flangeToCamera`, `measureTags`,
+  `planView`, `measureReference`, optional `approach`, `clearance`, `stopped`, `standoffM`, `onProgress`, `onMeasured`.
+- `flangeForView(tagInBase: Pose, camInTag: Pose, flangeToCamera: Pose): Pose`
+
+`config/moduleCatalog.ts`: Typen `TagReferenceLine`, `TagCameraMeasurement`, `TagPlacement.lines?`, `ModuleTag.measurement?`.
+
+`opcua-server/config/piServers.ts`
+- `interface TagReferenceBinding { measureNodeId; planViewNodeId; lastNodeId }`, im Hand-Pi-Profil als `tagReference`.
+  Leere NodeIds heißen: die Methode fehlt auf dem Pi.
+
+`components/TagReferencePanel.tsx`: Default-Export `TagReferencePanel({ sceneState })`, eingebunden als Tab
+„Tags einmessen“ in `components/AutolocateLayer2Window.tsx`.
 
 ## Aufteilung
 
@@ -443,6 +510,12 @@ abzugleichen (ICP). Er ist **verworfen**, Entscheidung des Nutzers vom 20.10.202
 - **Echte 3D-Kanten** (im Branch umgesetzt, siehe Abschnitt „Frontend“): Das Frontend schickt die
   `EdgeLine`s als echte 3D-Kanten in `placement.lines`, nicht die auf die Fläche projizierten
   Kanten aus `placement.edges`.
+- **Hardwaretests stehen aus** (Stand 20.10.2026 nicht am Roboter gelaufen):
+  - Kamerakonvention gegen `flangeToCamera` am echten Roboter prüfen (Tag-Pose und Flanschziel müssen zusammenpassen).
+  - `centreOnTag` bei seitlich liegenden Tags.
+  - Die Basis-Korrektur über Welt-Tag-Anker (`apriltag-welttag-konzept.md`) wird im Panel nicht genutzt.
+  - Der Konflikt-Neuversuch beim Katalog-Speichern (`keep`) ist nur per Code geprüft.
+  - Die Statuszeile im Editor zeigt während einer laufenden Messung bis zum Speichern den alten Stand.
 
 ## Abweichungen vom Plan
 
@@ -480,14 +553,28 @@ Abweichungen, Stand Umsetzung:
 - `catalog_rpy_deg` übernommen wie `tagGeometry.ts`: R = Rz · Ry · Rx, Ausgabe `[roll, pitch, yaw]`
   in Grad; bei pitch ±90° alles in roll, yaw = 0.
 - Doku: H2 um den Frontend-Teil erweitert statt eine zweite H2-Zeile anzulegen; S3 und S4 neu.
+- Frontend: `shiftPlacement`/`rotatePlacement` existieren im Frontend nicht; deshalb wird dort bei
+  einem verschobenen Ursprung oder gedrehter X-Achse kein `placement` angepasst.
+- Frontend: `placementMatches` (`model/tagPlacement.ts`) akzeptiert einen gemessenen Tag, solange
+  `measurement.guess` zum `placement` passt. Sonst gilt der Tag als von Hand überschrieben.
+- Frontend: Mehrdeutige Tag-Pose beim Zentrieren: übernommen wird nur die gemessene Position, die
+  Orientierung bleibt die aus Layer 1 (nicht im Plan festgelegt).
+- Frontend: Bei `fits: false` plant die Steuerung mit den passenden Kanten neu (`planTagReferenceView`
+  ein zweites Mal).
+
+## Umsetzung und Tests
+
+- Pi (dieses Repo, Branch `tag-einmessen`): 737 Tests grün, davon 62 neu.
+- Frontend (`webskillcomposition`, Branch `tag-einmessen`): 521 Tests grün, davon 78 neu; `tsc` und `vite build` sauber.
+- Commits, dieses Repo: `7c4ea3c`, `8a64a35`, `8c26b7f`, `45317d3`; `webskillcomposition`: `9647295`.
 
 ## Nach Abschluss
 
-- [ ] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [ ] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` auf `fertig` gesetzt.
-- [ ] `vision-server-interface.md`: neuer Abschnitt für `MeasureTagReference`,
+- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
+- [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` auf `fertig` gesetzt.
+- [x] `vision-server-interface.md`: neuer Abschnitt für `MeasureTagReference`,
       `PlanTagReferenceView` und `LastTagReference`.
-- [ ] `apriltag-referenz.md`: eigener Abschnitt „Tag-Position mit der Kamera einmessen“,
+- [x] `apriltag-referenz.md`: eigener Abschnitt „Tag-Position mit der Kamera einmessen“,
       dabei das Datenformat `placement`.
 - [x] Nachtrag 20.10.2026 in `modell-flaechen-tag-platzierung.md` mit Link auf diesen Plan.
 - [ ] Am Pi mit Zollstock-Referenz verifiziert, Ergebnis in `doc/projektdoku/` festgehalten.

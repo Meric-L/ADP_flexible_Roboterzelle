@@ -1067,3 +1067,60 @@ Details und Schnittstellen:
 [`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
 Der Regressionstest auf dem alten Rohbild übergibt die Werte jetzt
 ausdrücklich und dokumentiert damit den Härtefall.
+
+## 14. Tag-Position mit der Kamera einmessen (nur Hand-Pi)
+
+Arbeitsplan mit Begründung und Schnittstellen: [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md). OPC-UA-Methoden: [`vision-server-interface.md`](vision-server-interface.md), Abschnitt 19.
+
+### Prinzip
+
+- **Die Kamera ersetzt den Zollstock.** Der Modulkatalog liefert den Startwert `T_module_tag` (Position, Drehung). Die zwei Bezugskanten (`placement.lines`) sind echte 3D-Strecken im Modul-KS. Die Hand-Kamera sieht Tag und beide Kanten im **selben** Bild. Gemessen wird deshalb im Tag-KS, ohne Roboterkinematik und ohne Hand-Auge-Fehler.
+- **Korrektur nur in der Tag-Ebene**, drei Freiheitsgrade: x, y und θ (Drehung um Tag-z). Neigung und Abstand zur Fläche bleiben aus dem Startwert (der Tag liegt bündig).
+- **`dofs`:** `full` = zwei nicht parallele Kanten (≥ 20°), alle drei Größen. `partial` = eine Kante: senkrecht zu ihr und die Drehung, entlang der Kante bleibt der Startwert. `none` = keine verwertbare Kante, der Startwert bleibt.
+- **Kantenhöhe `h`** über der Tag-Ebene kommt aus dem Startwert. Ein Fehler in `h` verschiebt die Messung seitlich um `Δh · tan(Sehwinkel)`. Deshalb frontal messen und die Kante nahe der Bildmitte halten. Die Tiefe der RealSense kann später optional genutzt werden.
+- **Standard-Kippung 10°:** Frontal auf einen erhöhten Tag liefert die Tag-Pose die Spiegellösung (ca. 13°). Der Anfrage-Standard ist `tiltDeg` = 10; der Python-Default `plan_reference_view(tilt_deg=0.0)` bleibt 0.
+- **Messwerte:** nur synthetisch (`tools/make_synthetic_scene.py`, Messung über `measure_tag_reference`): 0,23 bis 0,63 mm und 0,07 bis 0,11° bei 3 Bildern. Am Pi noch nicht gemessen.
+
+### Python-API `src/tagloc/reference_edges.py`
+
+Datenklassen: `ReferenceLine` (id, start, end; Modul-KS, m), `LineMeasurement`, `InPlaneCorrection` (dofs, delta_xy_m, delta_rot_deg, pose_module_tag, residual_m), `ViewPlan` (pose_tag_cam, standoff_m, fits, uncovered).
+
+- `measure_reference_lines(gray, calib, pose_cam_tag, pose_module_tag_guess, lines, *, tag_size_m, search_band_m=0.015, tag_margin_m=0.01) -> list[LineMeasurement]`: eine Messung je Bild.
+- `fit_in_plane_correction(measurements, pose_module_tag_guess) -> InPlaneCorrection`
+- `average_corrections(corrections) -> (InPlaneCorrection, dict)`: mehrere Bilder mitteln; das dict nennt die Streuung in mm und Grad.
+- `plan_reference_view(pose_module_tag_guess, lines, calib, *, tag_size_m, line_extent_m=0.10, margin=0.10, min_standoff_m=0.25, max_standoff_m=0.60, tilt_deg=0.0) -> ViewPlan`
+- `catalog_rpy_deg(rotation) -> ndarray`: Rotation ins Katalogformat (RPY in Grad).
+- `ValueError` bei ungültigen Eingaben: Kante kürzer als 2 cm, Größe ≤ 0, nicht endliche Werte, Auflösung passt nicht zur Kalibrierung.
+- `cv2` wird nur innerhalb der Funktionen importiert.
+
+### Datenformat im Modulkatalog
+
+Die Felder von `ModuleTag.placement` stehen in [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md) unter „Daten: `ModuleTag.placement`“ (`mode`, `normal`, `edgeA`, `edgeB`, `distancesM`, `inPlaneRotationDeg`, `flipped`, `offsetM`). Neu hinzu kommt:
+
+- **`placement.lines`** (optional): `TagReferenceLine[]` mit `id` (`"A"`, `"B"`), `start`, `end`. Die Kanten **ungeprojiziert**, Modul-KS, Meter. Die Kamera sucht genau diese Linien. Fehlt das Feld, leitet das Frontend die Kanten aus `edgeA`/`edgeB` ab (Länge 0,15 m; bei `corner` liegt die zweite Kante entlang `inward`), und die Oberfläche markiert sie als „Kanten geschätzt“.
+- **`measurement`** (`TagCameraMeasurement`, fehlt = noch nicht eingemessen). Das Beispiel zeigt nur das Format, die Zahlen sind erfunden:
+
+```json
+{ "tagId": 4, "sizeM": 0.1,
+  "position": [-0.2, -0.15, 0.8], "rotationDeg": [0, 0, 0],
+  "placement": { "mode": "corner", "normal": [0, 0, 1],
+                 "edgeA": { "point": [-0.3, -0.2, 0.8], "direction": [1, 0, 0], "inward": [0, 1, 0] },
+                 "distancesM": [0.1, 0.05], "inPlaneRotationDeg": null, "offsetM": 0.005,
+                 "lines": [ { "id": "A", "start": [-0.3, -0.2, 0.8], "end": [0.0, -0.2, 0.8] },
+                            { "id": "B", "start": [-0.3, -0.2, 0.8], "end": [-0.3, 0.0, 0.8] } ] },
+  "measurement": { "method": "camera-edges", "measuredAt": "2026-10-20T10:31:00Z", "dofs": "full",
+                   "guess": { "position": [-0.2, -0.15, 0.8], "rotationDeg": [0, 0, 0] },
+                   "deltaMm": [1.8, -0.6], "deltaRotDeg": 0.4, "spreadMm": 0.2, "lines": ["A", "B"] } }
+```
+
+Gemessen werden `position`/`rotationDeg` überschrieben. `placement` bleibt als Protokoll des Startwerts, und `measurement.guess` hält den Startwert fest. Der Pi bekommt weiter nur Welt-Tags, Modul-Tags stehen nicht in seiner Tag-Map.
+
+Erledigt ist damit der offene Punkt „`placement`-Format in `apriltag-referenz.md` übernehmen“ aus [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md).
+
+### Einmal-Regel
+
+Jeder Tag wird **einmal** eingemessen, wenn sein Modul neu angelegt oder bearbeitet wurde (Vorgabe vom 20.10.2026).
+
+- Speichern aus dem Editor verwirft `measurement` bei neuen Tags und bei Tags, deren `tagId`, `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes Speichern behält es.
+- Import und Laden lassen `measurement` unverändert.
+- Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind. Der Start erfolgt nur per Klick, weil der Roboter fährt.
