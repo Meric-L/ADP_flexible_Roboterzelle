@@ -16,12 +16,14 @@ genuegt, und auf dem Pi kommt keine Abhaengigkeit dazu.
 
     GET /stream.mjpg    endloser MJPEG-Stream
     GET /snapshot.jpg   das neueste Einzelbild
+    GET /tagreference.jpg  Debug-Bild der letzten MeasureTagReference (404 ohne)
 """
 
 import asyncio
 import base64
 import contextlib
 import logging
+from pathlib import Path
 
 from .camera_stream import CameraStreamPublisher
 
@@ -53,7 +55,10 @@ class MjpegServer:
         *,
         host: str = "0.0.0.0",
         max_clients: int = 4,
+        tag_reference_dir: Path | None = None,
     ) -> None:
+        #: Protokollablage der Tag-Einmessung (`tagreference_log`); `None` = 404.
+        self._tag_reference_dir = tag_reference_dir
         self._publisher = publisher
         self._host = host
         self._requested_port = port
@@ -99,6 +104,8 @@ class MjpegServer:
                 await self._stream(writer)
             elif path == "/snapshot.jpg":
                 await self._snapshot(writer)
+            elif path == "/tagreference.jpg":
+                await self._tag_reference(writer)
             else:
                 await self._respond(writer, b"404 Not Found", b"text/plain", b"not found")
         except (ConnectionError, TimeoutError, asyncio.IncompleteReadError):
@@ -149,6 +156,24 @@ class MjpegServer:
             )
             return
         await self._respond(writer, b"200 OK", b"image/jpeg", base64.b64decode(latest[1]))
+
+    async def _tag_reference(self, writer: asyncio.StreamWriter) -> None:
+        from .tagreference_log import latest_overlay
+
+        def read() -> bytes | None:
+            path = latest_overlay(self._tag_reference_dir)
+            try:
+                return path.read_bytes() if path is not None else None
+            except OSError:
+                return None
+
+        body = await asyncio.get_running_loop().run_in_executor(None, read)
+        if body is None:
+            await self._respond(
+                writer, b"404 Not Found", b"text/plain", b"keine Einmess-Messung"
+            )
+            return
+        await self._respond(writer, b"200 OK", b"image/jpeg", body)
 
     async def _stream(self, writer: asyncio.StreamWriter) -> None:
         if self._clients >= self._max_clients:

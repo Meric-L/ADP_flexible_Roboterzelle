@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -281,6 +282,10 @@ class AprilTagDetectionSource(DetectionSource):
         #: (`TagSnapshot`). Wird nur ersetzt, nie veraendert -- das Overlay
         #: liest es aus seinem eigenen Thread ohne Sperre.
         self.latest_tags: TagSnapshot | None = None
+        #: Wird je gemessenem Bild von `MeasureTagReference` mit
+        #: `(debug, corners_px, image_size, title, layers)` aufgerufen (Mess-Thread),
+        #: damit der Livestream die Kantensuche live zeigt. `None` = niemand hoert zu.
+        self.reference_debug_sink: Callable[..., None] | None = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -523,7 +528,7 @@ class AprilTagDetectionSource(DetectionSource):
             tag_poses = [tag_pose for tag_pose in tag_poses if tag_pose.tag_id in tag_ids]
         return tag_poses, frame_tools.image_size(image)
 
-    async def measure_tag_reference(self, request) -> dict:
+    async def measure_tag_reference(self, request, artifacts: dict | None = None) -> dict:
         """`MeasureTagReference`: Tag-Position ueber Bezugskanten einmessen.
 
         Wie `measure_tags`: nur Bilder, die **nach** dem Aufruf eintreffen,
@@ -543,6 +548,11 @@ class AprilTagDetectionSource(DetectionSource):
         Fehler (`error`): `NO_FRAME` (kein frisches Bild) bzw. `TAG_NOT_SEEN`
         (Tag in keinem Bild). Nicht messbare Kanten sind kein Fehler, sie
         senken nur `dofs`.
+
+        `artifacts`: ist es ein dict, fuellt die Methode es fuer das
+        Mess-Protokoll: `frames` (Rohbilder mit Tag) und `overlay` (Debug-
+        Ansicht des letzten Bilds, BGR, volle Aufloesung; fehlt, wenn die
+        Kantensuche nicht lief).
         """
         from datetime import datetime, timedelta, timezone
 
@@ -597,6 +607,8 @@ class AprilTagDetectionSource(DetectionSource):
 
         tag_poses = [item[1] for item in seen]
         tag_pose, tag_ambiguous = combine_tag_pose(tag_poses)
+        if artifacts is not None:
+            artifacts["frames"] = [item[0] for item in seen]
         line_frames, corrections = await self.run_blocking(
             self._measure_reference,
             [item[0] for item in seen],
@@ -604,6 +616,7 @@ class AprilTagDetectionSource(DetectionSource):
             tag_ambiguous,
             request,
             size_m,
+            artifacts,
         )
         correction, spread = average_corrections(corrections)
         warnings = reference_warnings(
@@ -625,26 +638,56 @@ class AprilTagDetectionSource(DetectionSource):
             warnings=warnings,
         )
 
-    def _measure_reference(self, images, tag_pose, tag_ambiguous, request, size_m):
+    def _measure_reference(
+        self, images, tag_pose, tag_ambiguous, request, size_m, artifacts=None
+    ):
         """Kanten und Korrektur je Bild: `(Messungen je Bild, Korrekturen je Bild)`. Worker-Thread."""
         from tagloc import frames as frame_tools
-        from tagloc.reference_edges import fit_in_plane_correction, measure_reference_lines
+        from tagloc.reference_edges import (
+            fit_in_plane_correction,
+            measure_reference_lines,
+            tag_outline_px,
+        )
+        from tagloc.reference_overlay import draw_reference_debug
 
         from ..tagreference import keep_guess_rotation
 
         guess = request.pose_module_tag_guess
         line_frames = []
         corrections = []
-        for image in images:
+        want_debug = artifacts is not None or self.reference_debug_sink is not None
+        for index, image in enumerate(images, start=1):
+            debug: list | None = [] if want_debug else None
+            calibration = self._calibration_for(image)
             measurements = measure_reference_lines(
                 frame_tools.to_gray(image),
-                self._calibration_for(image),
+                calibration,
                 tag_pose,
                 guess,
                 request.lines,
                 tag_size_m=size_m,
                 search_band_m=request.search_band_m,
+                debug=debug,
             )
+            if debug is not None:
+                try:
+                    title = f"Tag {request.tag_id} - Messung Bild {index}/{len(images)}"
+                    corners = tag_outline_px(calibration, tag_pose, size_m, 0.0)
+                    if self.reference_debug_sink is not None:
+                        self.reference_debug_sink(
+                            debug, corners, frame_tools.image_size(image), title, request.overlay
+                        )
+                    if artifacts is not None and index == len(images):
+                        artifacts["overlay"] = draw_reference_debug(
+                            image,
+                            debug,
+                            tag_corners_px=corners,
+                            title=title,
+                            layers=request.overlay,
+                        )
+                except Exception:
+                    # Die Anzeige darf die Messung nie stoeren.
+                    _log.exception("Debug-Ansicht der Einmessung nicht erzeugt")
             correction = fit_in_plane_correction(measurements, guess)
             if tag_ambiguous:
                 correction = keep_guess_rotation(correction, guess)

@@ -660,7 +660,10 @@ class ResultTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy/cv2/asyncua fehlen")
 class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
-    async def start(self, source, busy, blocked_by=lambda: False, state="Operational", activity=None):
+    async def start(
+        self, source, busy, blocked_by=lambda: False, state="Operational", activity=None,
+        annotator=None, debug_dir=None,
+    ):
         server = Server()
         await server.init()
         idx = await server.register_namespace("http://launch-rm.de/vision")
@@ -672,14 +675,19 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             ua.QualifiedName("LastTagReference", idx), "", ua.VariantType.String,
         )
         space = types.SimpleNamespace(vision_system=vision_system, own_idx=idx, last_tag_reference=node)
-        config = types.SimpleNamespace(vision_system_name="VisionMachine")
+        config = types.SimpleNamespace(
+            vision_system_name="VisionMachine", tag_reference_debug_dir=debug_dir
+        )
         methods = {}
         await _install_tag_reference(
             space, config, source, methods,
             types.SimpleNamespace(state_names=lambda: (state, "Ready")),
-            busy, blocked_by=blocked_by, activity=activity,
+            busy, blocked_by=blocked_by, activity=activity, annotator=annotator,
         )
-        self.assertEqual(list(methods), ["MeasureTagReference", "PlanTagReferenceView"])
+        self.assertEqual(
+            list(methods), ["SetTagReferencePreview", "MeasureTagReference", "PlanTagReferenceView"]
+        )
+        self.set_preview_method = server.get_node(ua.NodeId("VisionMachine.SetTagReferencePreview", idx))
         return (
             vision_system,
             node,
@@ -750,7 +758,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         blocked = {"value": False}
         calls = []
 
-        async def measure(request):
+        async def measure(request, artifacts=None):
             calls.append(request)
             return build_result(error=None, frames_used=0)
 
@@ -793,7 +801,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
 
     async def test_not_operational_is_invalid_state(self):
         source = types.SimpleNamespace(
-            measure_tag_reference=lambda request: None, plan_tag_reference_view=lambda request: None
+            measure_tag_reference=lambda request, artifacts=None: None, plan_tag_reference_view=lambda request: None
         )
         vision_system, _, measure_method, plan_method = await self.start(
             source, lambda: False, state="Preoperational"
@@ -807,7 +815,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         # Waehrend einer Einmessung sind weitere Einmessungen und MeasureTags BUSY -- und umgekehrt.
         release = asyncio.Event()
 
-        async def measure(request):
+        async def measure(request, artifacts=None):
             await release.wait()
             return build_result(error=None)
 

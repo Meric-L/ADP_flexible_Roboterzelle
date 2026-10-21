@@ -79,6 +79,9 @@ class VisionAddressSpace:
     #: Ergebnis der letzten `MeasureTagReference` (JSON), nur zur Anzeige. Nur
     #: auf dem Hand-Pi, wie `last_tag_measurement`.
     last_tag_reference: Node | None = None
+    #: Live-Auswertung der Einmess-Vorschau (JSON, hoechstens 3 Hz), siehe
+    #: `tagreference_preview.py`. Nur auf dem Hand-Pi.
+    tag_reference_preview_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -296,6 +299,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     hand_eye_status: Node | None = None
     last_tag_measurement: Node | None = None
     last_tag_reference: Node | None = None
+    tag_reference_preview_status: Node | None = None
     cell_watch_status: Node | None = None
     if config.apriltag is not None and config.apriltag.hand_eye_path is None:
         cell_watch_status = await vision_system.add_variable(
@@ -338,6 +342,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             "",
             ua.VariantType.String,
         )
+        tag_reference_preview_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.TagReferencePreviewStatus", own_idx),
+            ua.QualifiedName("TagReferencePreviewStatus", own_idx),
+            "",
+            ua.VariantType.String,
+        )
 
     _log.info(
         "VisionSystem '%s' als %s unter %s angelegt",
@@ -372,5 +382,6 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         cell_watch_status=cell_watch_status,
         last_tag_measurement=last_tag_measurement,
         last_tag_reference=last_tag_reference,
+        tag_reference_preview_status=tag_reference_preview_status,
         amcm_idx=amcm_idx,
     )

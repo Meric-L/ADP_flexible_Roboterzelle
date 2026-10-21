@@ -318,10 +318,8 @@ def _ransac_lines(points, signs, rng, min_inliers):
     return found
 
 
-def _tag_mask(calibration, pose_cam_tag, tag_size_m, margin_m, shape) -> np.ndarray:
-    """Maske der Tag-Flaeche plus Rand im Bild (True = ausgeblendet)."""
-    import cv2
-
+def tag_outline_px(calibration, pose_cam_tag, tag_size_m, margin_m):
+    """Umriss der Tag-Flaeche plus Rand im Rohbild, `(N, 2)`; `None` wenn nicht projizierbar."""
     half = tag_size_m / 2.0 + margin_m
     steps = 40
     along = np.linspace(-half, half, steps, endpoint=False)
@@ -335,12 +333,22 @@ def _tag_mask(calibration, pose_cam_tag, tag_size_m, margin_m, shape) -> np.ndar
     )
     points = np.column_stack([outline, np.zeros(len(outline))])
     camera = points @ pose_cam_tag[:3, :3].T + pose_cam_tag[:3, 3]
-    mask = np.zeros(shape, dtype=np.uint8)
     if np.any(camera[:, 2] <= 1e-3):
-        return mask.astype(bool)
+        return None
     rvec, tvec = to_rvec_tvec(pose_cam_tag)
     projected = lens.project_points(points, rvec, tvec, calibration)
     if not np.all(np.isfinite(projected)):
+        return None
+    return projected
+
+
+def _tag_mask(calibration, pose_cam_tag, tag_size_m, margin_m, shape) -> np.ndarray:
+    """Maske der Tag-Flaeche plus Rand im Bild (True = ausgeblendet)."""
+    import cv2
+
+    mask = np.zeros(shape, dtype=np.uint8)
+    projected = tag_outline_px(calibration, pose_cam_tag, tag_size_m, margin_m)
+    if projected is None:
         return mask.astype(bool)
     cv2.fillPoly(mask, [np.round(projected).astype(np.int32)], 1)
     return mask.astype(bool)
@@ -461,6 +469,26 @@ def _collect_edge_points(blurred, mask, positions, normals, band_px):
     )
 
 
+def _pts(array) -> list:
+    """Bildpunkte als JSON-taugliche Liste `[[u, v], ...]` (Rohbild-Pixel)."""
+    return np.round(np.asarray(array, dtype=np.float64).reshape(-1, 2), 2).tolist()
+
+
+def _undistorted_to_raw(points, calibration) -> np.ndarray:
+    """Punkte des idealen (entzerrten) Bildes zurueck ins verzeichnete Rohbild."""
+    matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    rays = np.column_stack(
+        [
+            (points[:, 0] - matrix[0, 2]) / matrix[0, 0],
+            (points[:, 1] - matrix[1, 2]) / matrix[1, 1],
+            np.ones(len(points)),
+        ]
+    )
+    zero = np.zeros(3)
+    return lens.project_points(rays, zero, zero, calibration)
+
+
 def _measure_one(
     line_id,
     start_module,
@@ -472,8 +500,51 @@ def _measure_one(
     pose_tag_cam,
     pose_tag_module,
     search_band_m,
+    debug=None,
 ):
-    """Eine Bezugskante messen."""
+    """Eine Bezugskante messen; mit `debug` (Liste) wird ein Debug-Dict angehaengt."""
+    dbg = None if debug is None else {"id": line_id}
+    result = _measure_one_impl(
+        line_id,
+        start_module,
+        end_module,
+        gray_blurred,
+        mask,
+        calibration,
+        pose_cam_tag,
+        pose_tag_cam,
+        pose_tag_module,
+        search_band_m,
+        dbg,
+    )
+    if dbg is not None:
+        dbg.update(
+            found=bool(result.found),
+            supportPx=round(float(result.support_px), 1),
+            contrast=round(float(result.contrast), 1),
+            reason=result.reason,
+            ambiguous=bool(result.ambiguous),
+            offsetMm=None if result.offset_m is None else round(result.offset_m * 1000.0, 3),
+            angleDeg=None if result.angle_deg is None else round(result.angle_deg, 3),
+        )
+        debug.append(dbg)
+    return result
+
+
+def _measure_one_impl(
+    line_id,
+    start_module,
+    end_module,
+    gray_blurred,
+    mask,
+    calibration,
+    pose_cam_tag,
+    pose_tag_cam,
+    pose_tag_module,
+    search_band_m,
+    dbg=None,
+):
+    """Eine Bezugskante messen (Rechnung); `dbg` ist `None` oder ein Dict zum Befuellen."""
     start_tag = _to_tag(pose_tag_module, start_module)
     end_tag = _to_tag(pose_tag_module, end_module)
     direction = end_tag - start_tag
@@ -509,6 +580,8 @@ def _measure_one(
         return _failed(line_id, middle, unit, REASON_NOT_VISIBLE)
     first, last = run
     segment = pixels[first : last + 1]
+    if dbg is not None:
+        dbg["guessPx"] = _pts(segment[:: max(1, len(segment) // 60)])
     steps = np.linalg.norm(np.diff(segment, axis=0), axis=1)
     arclength = np.concatenate([[0.0], np.cumsum(steps)])
     total = float(arclength[-1])
@@ -535,6 +608,15 @@ def _measure_one(
     edge_points, signs, contrasts, profile_index = _collect_edge_points(
         gray_blurred, mask, positions, normals, band_px
     )
+    if dbg is not None:
+        dbg.update(
+            profilesPx=_pts(positions),
+            normalsPx=_pts(normals),
+            bandPx=round(float(band_px), 2),
+            edgePointsPx=_pts(edge_points),
+            candidates=[],
+            measuredPx=None,
+        )
     min_inliers = max(5, int(0.2 * count))
     if len(edge_points) < min_inliers:
         return _failed(line_id, visible_middle, unit, REASON_NO_EDGE)
@@ -583,6 +665,15 @@ def _measure_one(
         return _failed(line_id, visible_middle, unit, REASON_NO_EDGE)
     candidates.sort(key=lambda item: -item["score"])
     best = candidates[0]
+    if dbg is not None:
+        dbg["candidates"] = [
+            {
+                "inliersPx": _pts(edge_points[item["indices"]]),
+                "score": round(float(item["score"]), 3),
+                "chosen": item is best,
+            }
+            for item in candidates
+        ]
     ambiguous = any(
         other["score"] >= _AMBIGUITY_SCORE_RATIO * best["score"]
         and abs(float(_line_distance(best["centre"][None, :], other["centre"], other["direction"])[0]))
@@ -628,6 +719,15 @@ def _measure_one(
             float(guess_plane @ measured_plane),
         )
     )
+    if dbg is not None:
+        # Gewaehlte Linie im idealen Bild ueber die Inlier-Ausdehnung, zurueck ins Rohbild.
+        along = (undistorted[indices] - best["centre"]) @ best["direction"]
+        ts = np.linspace(float(along.min()), float(along.max()), 12)
+        ideal_points = best["centre"][None, :] + ts[:, None] * best["direction"][None, :]
+        raw_points = _undistorted_to_raw(ideal_points, calibration)
+        if np.all(np.isfinite(raw_points)):
+            dbg["measuredPx"] = _pts(raw_points[[0, -1]])
+            dbg["measuredPolyPx"] = _pts(raw_points)
     return LineMeasurement(
         id=line_id,
         found=True,
@@ -657,8 +757,13 @@ def measure_reference_lines(
     tag_size_m: float,
     search_band_m: float = 0.015,
     tag_margin_m: float = 0.01,
+    debug: list | None = None,
 ) -> list[LineMeasurement]:
     """Misst die Bezugskanten im Bild, im Tag-KS.
+
+    `debug`: ist es eine Liste, wird je Kante ein Dict mit Zwischenergebnissen
+    angehaengt (Rohbild-Pixel, siehe `tagloc.reference_overlay`) und einmal
+    `{"id": "_tag", "maskOutlinePx": ...}`; die Rechnung bleibt unveraendert.
 
     `gray`: Graubild (oder BGR), Aufloesung wie `calib`. `pose_cam_tag`:
     `T_cam_tag` aus der Tag-Erkennung. `pose_module_tag_guess`: Startwert
@@ -697,6 +802,11 @@ def measure_reference_lines(
     pose_tag_cam = invert(pose_cam_tag)
     blurred = cv2.GaussianBlur(image.astype(np.float32), (0, 0), _SMOOTH_SIGMA_PX)
     mask = _tag_mask(calib, pose_cam_tag, tag_size, margin, image.shape)
+    if debug is not None:
+        outline = tag_outline_px(calib, pose_cam_tag, tag_size, margin)
+        debug.append(
+            {"id": "_tag", "maskOutlinePx": [] if outline is None else _pts(outline)}
+        )
     return [
         _measure_one(
             line_id,
@@ -709,6 +819,7 @@ def measure_reference_lines(
             pose_tag_cam,
             pose_tag_module,
             band,
+            debug,
         )
         for line_id, start, end in checked
     ]

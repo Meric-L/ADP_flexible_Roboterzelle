@@ -174,6 +174,7 @@ def _start_camera_stream(
         annotator=annotator,
         mode_node=space.camera_stream_mode,
         progress_node=space.calibration_progress,
+        preview_status_node=space.tag_reference_preview_status,
     )
     stream.start()
     _log.info(
@@ -203,7 +204,9 @@ async def _start_mjpeg_server(
     config = space.config.camera_stream
     if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:
         return None
-    server = MjpegServer(stream, config.http_port)
+    server = MjpegServer(
+        stream, config.http_port, tag_reference_dir=space.config.tag_reference_debug_dir
+    )
     try:
         await server.start()
     except OSError:
@@ -958,6 +961,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
                 measuring_busy,
                 activity=reference_activity,
                 blocked_by=lambda: tags_activity.active or reference_activity.active,
+                annotator=annotator,
             )
 
     camera_owner = _camera_owner(sources, opened)
@@ -1000,6 +1004,8 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         mirror_nodes["LastTagMeasurement"] = space.last_tag_measurement
     if space.last_tag_reference is not None:
         mirror_nodes["LastTagReference"] = space.last_tag_reference
+    if space.tag_reference_preview_status is not None:
+        mirror_nodes["TagReferencePreviewStatus"] = space.tag_reference_preview_status
     if space.cell_watch_status is not None:
         mirror_nodes["CellWatchStatus"] = space.cell_watch_status
     program = await install_vision_program(
@@ -1286,8 +1292,9 @@ async def _install_tag_reference(
     *,
     activity: _Activity | None = None,
     blocked_by: Callable[[], bool] = lambda: False,
+    annotator: Any = None,
 ) -> None:
-    """Legt MeasureTagReference und PlanTagReferenceView an: Tag-Position eines
+    """Legt MeasureTagReference, PlanTagReferenceView und SetTagReferencePreview an: Tag-Position eines
     Moduls ueber Bezugskanten einmessen. Nur auf dem Hand-Pi (Knoten nur mit
     `hand_eye_path`). Beide antworten direkt mit dem Ergebnis; der Knoten
     `LastTagReference` ist nur zur Anzeige.
@@ -1299,9 +1306,24 @@ async def _install_tag_reference(
       braucht `Operational` (erst dann ist die Kalibrierung geladen), ist aber
       nie `BUSY` -- sie stoert weder Job noch Kalibrierung noch Messung.
 
+    * `SetTagReferencePreview(RequestJson) -> Error` schaltet die Live-Vorschau
+      der Kantensuche im Livestream (Overlay-Modus `tagreference`) fuer einen
+      Tag ein; `""` schaltet sie aus. `INVALID_ARGUMENT`, `INVALID_STATE`
+      (nicht `Operational` oder kein Livestream-Overlay), nie `BUSY`.
+      `MeasureTagReference` setzt die Vorschau selbst auf ihre Anfrage und
+      schreibt, wenn `saveDebug` (Standard `true`), ein Mess-Protokoll
+      (`tagreference_log.py`, `debugDir` im Ergebnis).
+
     Siehe `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
     """
     from .tagreference import build_result, build_view, dumps, parse_request
+    from .tagreference_log import write_protocol
+
+    if annotator is not None and hasattr(annotator, "show_reference_debug"):
+        # Die Messung zeigt dem Livestream ihre Kantensuche Bild fuer Bild.
+        apriltag_source.reference_debug_sink = annotator.show_reference_debug
+    else:
+        annotator = None
 
     activity = activity if activity is not None else _Activity()
 
@@ -1333,14 +1355,44 @@ async def _install_tag_reference(
                 "Job, Kalibrierung, Hand-Auge-Sitzung, MeasureTags oder Tag-Einmessung laeuft",
             )
         activity.active = True
+        if annotator is not None:
+            annotator.set_reference_preview(request)
+            annotator.set_reference_measuring(True)
+        artifacts: dict = {}
         try:
-            result = await apriltag_source.measure_tag_reference(request)
+            result = await apriltag_source.measure_tag_reference(request, artifacts)
         except ValueError as error:
             # z. B. Bildgroesse passt nicht zur Kalibrierung
             _log.warning("MeasureTagReference nicht moeglich: %s", error)
             return refusal(VisionErrorCode.DETECTION_FAILED, str(error))
         finally:
             activity.active = False
+            if annotator is not None:
+                annotator.set_reference_measuring(False)
+        directory = config.tag_reference_debug_dir
+        if request.save_debug and directory is not None:
+            try:
+                folder = await asyncio.to_thread(
+                    write_protocol,
+                    directory,
+                    request.tag_id,
+                    request_json,
+                    result,
+                    artifacts.get("frames", []),
+                    artifacts.get("overlay"),
+                )
+                try:
+                    result["debugDir"] = folder.relative_to(_REPO_ROOT).as_posix()
+                except ValueError:
+                    result["debugDir"] = folder.as_posix()
+                # result.json im Ordner kennt debugDir nicht -- nachtragen.
+                await asyncio.to_thread(
+                    (folder / "result.json").write_text,
+                    dumps(result),
+                    "utf-8",
+                )
+            except Exception:
+                _log.warning("Mess-Protokoll nicht geschrieben", exc_info=True)
         payload = dumps(result)
         try:
             await space.last_tag_reference.write_value(ua.Variant(payload, ua.VariantType.String))
@@ -1368,6 +1420,34 @@ async def _install_tag_reference(
             _log.warning("PlanTagReferenceView abgelehnt: %s", error)
             return view_refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
         return reply(view, VisionErrorCode.OK)
+
+    @uamethod
+    async def set_tag_reference_preview(parent, request_json: str):
+        """1:SetTagReferencePreview -- Live-Vorschau der Kantensuche ein-/ausschalten."""
+
+        def code(value: VisionErrorCode):
+            return (ua.Variant(int(value), ua.VariantType.Int32),)
+
+        text = request_json or ""
+        request = None
+        if text.strip():
+            try:
+                request = parse_request(text)
+            except ValueError as error:
+                _log.warning("SetTagReferencePreview abgelehnt: %s", error)
+                return code(VisionErrorCode.INVALID_ARGUMENT)
+        if states.state_names()[0] != "Operational" or annotator is None:
+            return code(VisionErrorCode.INVALID_STATE)
+        annotator.set_reference_preview(request)
+        return code(VisionErrorCode.OK)
+
+    methods["SetTagReferencePreview"] = await space.vision_system.add_method(
+        ua.NodeId(f"{config.vision_system_name}.SetTagReferencePreview", space.own_idx),
+        ua.QualifiedName("SetTagReferencePreview", space.own_idx),
+        set_tag_reference_preview,
+        [ua.VariantType.String],
+        [ua.VariantType.Int32],
+    )
 
     for name, handler in (
         ("MeasureTagReference", measure_tag_reference),

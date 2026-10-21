@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 import numpy as np
@@ -62,6 +62,11 @@ class TagReferenceRequest:
     frames: int = DEFAULT_FRAMES
     line_extent_m: float = DEFAULT_LINE_EXTENT_M
     tilt_deg: float = DEFAULT_TILT_DEG
+    #: Wirksame Overlay-Ebenen der Debug-Ansicht (alle Schluessel aus
+    #: `tagloc.reference_overlay.LAYER_KEYS`, fehlende = `True`).
+    overlay: dict = field(default_factory=dict)
+    #: `MeasureTagReference`: Mess-Protokoll auf Platte schreiben.
+    save_debug: bool = True
 
 
 def _is_int(value) -> bool:
@@ -85,8 +90,9 @@ def _vector(value, length: int, name: str) -> list[float]:
 def parse_request(text: str) -> TagReferenceRequest:
     """`wsc.vision.tagreference.request/1` lesen; ValueError mit Klartext.
 
-    Pflicht: `tagId`, `moduleTagGuess`, `lines` (1 bis 4). Unbekannte Felder
-    werden ignoriert.
+    Pflicht: `tagId`, `moduleTagGuess`, `lines` (1 bis 4). Optional:
+    `overlay` (Ebenen der Debug-Ansicht) und `saveDebug` (Mess-Protokoll).
+    Unbekannte Felder werden ignoriert.
     """
     from tagloc.geometry import from_position_quaternion
     from tagloc.reference_edges import MIN_LINE_LENGTH_M, ReferenceLine
@@ -157,7 +163,23 @@ def parse_request(text: str) -> TagReferenceRequest:
     if not _is_number(tilt) or abs(tilt) >= MAX_TILT_DEG:
         raise ValueError(f"view.tiltDeg muss betragsmaessig kleiner als {MAX_TILT_DEG:.0f} Grad sein.")
 
+    from tagloc.reference_overlay import LAYER_KEYS, effective_layers
+
+    overlay = data.get("overlay")
+    if overlay is None:
+        overlay = {}
+    if not isinstance(overlay, dict):
+        raise ValueError("overlay muss ein Objekt {guess, band, candidates, ...} sein.")
+    for key in LAYER_KEYS:
+        if key in overlay and not isinstance(overlay[key], bool):
+            raise ValueError(f"overlay.{key} muss true oder false sein.")
+    save_debug = data.get("saveDebug", True)
+    if not isinstance(save_debug, bool):
+        raise ValueError("saveDebug muss true oder false sein.")
+
     return TagReferenceRequest(
+        overlay=effective_layers(overlay),
+        save_debug=save_debug,
         tag_id=int(tag_id),
         tag_size_m=float(tag_size) if tag_size is not None else None,
         pose_module_tag_guess=pose,
@@ -319,6 +341,7 @@ def build_result(
     spread: dict | None = None,
     warnings: Sequence[str] = (),
     error: str | None = None,
+    debug_dir: str | None = None,
 ) -> dict:
     """Das Ergebnis-JSON (`wsc.vision.tagreference.result/1`) als dict.
 
@@ -378,6 +401,7 @@ def build_result(
         "correction": correction_dict,
         "warnings": list(warnings),
         "error": error,
+        "debugDir": debug_dir,
     }
 
 
