@@ -143,9 +143,10 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
     (seit 21.10.2026 wieder, vom 23.09. bis 21.10.2026 war sie aus); abschalten
     mit `OPCUA_MDNS=0`.
   - **LDS-Anmeldung** (`src/vision_server/discovery/lds.py` über `Server.register_to_discovery()`):
-    **seit 23.09.2026 standardmäßig aus** — der Server erscheint dann nicht im
-    Aggregation-Server. Einschalten mit
-    `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/`, dann alle 60 s erneuert.
+    **standardmäßig an** (seit 21.10.2026 wieder, vom 23.09. bis 21.10.2026
+    war sie aus und der Server erschien nicht im Aggregation-Server). Meldet
+    sich bei `opc.tcp://10.10.38.27:4840/` an und erneuert alle 60 s.
+    Abschalten mit `OPCUA_LDS_URL=""`, umbiegen mit einer anderen URL.
     **Nur darüber** nimmt der Aggregation-Server der Zelle das Modul auf —
     mDNS allein genügt ihm nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
   Scheitert eine der beiden, läuft der Server weiter und loggt eine Warnung.

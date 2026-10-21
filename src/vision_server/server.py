@@ -498,14 +498,14 @@ async def main():
             # Erst der Server, dann Ankuendigung und Registrierung -- wer den
             # Dienst findet, soll ihn auch erreichen. Beim Verlassen werden
             # beide zurueckgezogen.
-            # mDNS ist standardmaessig an (`OPCUA_MDNS=0` schaltet ab), die
-            # LDS-Anmeldung aus (`OPCUA_LDS_URL` schaltet ein).
+            # Beide sind standardmaessig an (`OPCUA_MDNS=0` bzw.
+            # `OPCUA_LDS_URL=""` schalten ab).
             async with (
                 mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
                 # angemeldet ist. Messung und Begruendung stehen in `discovery.lds`.
-                # Standardmaessig aus -- ohne `OPCUA_LDS_URL` kehrt das sofort
+                # Standardmaessig an; mit `OPCUA_LDS_URL=""` kehrt das sofort
                 # zurueck, und das Modul erscheint dort nicht.
                 lds.register(server),
             ):
