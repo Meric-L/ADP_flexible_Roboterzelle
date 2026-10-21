@@ -420,7 +420,7 @@ Pfade relativ zu `frontend/src/features/cell-modules/`, außer `piServers.ts`
 - `opcua-server/config/piServers.ts`: `TagReferenceBinding`
 - `model/tagReferenceCall.ts` (neu)
 - `model/tagReferenceRun.ts` (neu)
-- `components/TagReferencePanel.tsx` (neu, im Layer-2-Fenster)
+- `components/TagReferencePanel.tsx` (neu), `components/TagReferenceWindow.tsx` (neu, Fenster aus den Settings)
 
 **Signaturen (Stand Umsetzung):**
 
@@ -467,8 +467,12 @@ Pfade relativ zu `frontend/src/features/cell-modules/`, außer `piServers.ts`
 - `interface TagReferenceBinding { measureNodeId; planViewNodeId; lastNodeId }`, im Hand-Pi-Profil als `tagReference`.
   Leere NodeIds heißen: die Methode fehlt auf dem Pi.
 
-`components/TagReferencePanel.tsx`: Default-Export `TagReferencePanel({ sceneState })`, eingebunden als Tab
-„Tags einmessen“ in `components/AutolocateLayer2Window.tsx`.
+`components/TagReferencePanel.tsx`: Default-Export `TagReferencePanel({ sceneState })`, im Fenster
+`components/TagReferenceWindow.tsx` („Tags einmessen · Hand-Kamera“). Geöffnet wird es in den Settings unter
+„Zellüberwachung“ mit dem Button **„Tags einmessen“** neben „Modulkatalog“ (`viewport/components/ViewportHeaderControls.tsx`).
+Offen/zu steht in `model/autolocateUi.ts` (`tagReferenceOpen`, `openTagReference()`, `closeTagReference()`, nicht über
+einen Reload gehalten). Solange das Fenster offen ist, zeigt die Layer-2-Zeile im Autolocate-Bereich statt der
+Annäherung nur einen Hinweis — beide Panels übernehmen den Roboter (`useRobotHold`).
 
 ## Aufteilung
 
@@ -529,6 +533,11 @@ abzugleichen (ICP). Er ist **verworfen**, Entscheidung des Nutzers vom 20.10.202
     bestehende Eigenschaft der Clearance-Prüfung, nicht durch diese Umsetzung eingeführt.
 
 ## Abweichungen vom Plan
+
+- **Nachtrag 21.10.2026 — Ort der Bedienung:** Der Tab „Tags einmessen“ war in `AutolocateLayer2Window.tsx`
+  eingebaut. Dieses Fenster wird seit `2b56b4f` (20.10.2026) nirgends mehr geöffnet, der Tab war also unerreichbar.
+  Jetzt: eigenes Fenster aus den Settings neben dem Modulkatalog (Wunsch des Nutzers), webskillcomposition
+  `10f73f2`, `d94673a`. Der Tab im toten Fenster ist unverändert geblieben.
 
 Wird während der Umsetzung gefüllt. Weicht die Realität vom Plan ab, wird der Plan
 korrigiert.
@@ -617,7 +626,7 @@ Modul-Lauf und vom Roboter-Lauf genutzt; Verhalten des Modul-Laufs unverändert)
   · n views“. Ungemessen: „not measured yet · measured with the robot's hand camera“.
 
 Vorgabe des Nutzers vom 20.10.2026: Die Tags des Roboters (Katalogeintrag `kind: "robot"`)
-werden ebenfalls mit der Hand-Kamera eingemessen, im selben Tab „Tags einmessen“, nach derselben
+werden ebenfalls mit der Hand-Kamera eingemessen, im selben Fenster „Tags einmessen“, nach derselben
 Einmal-Regel (nur Tags ohne `measurement`; Speichern eines geänderten Tags im Editor verwirft sie).
 
 ### Ziel / Prinzip

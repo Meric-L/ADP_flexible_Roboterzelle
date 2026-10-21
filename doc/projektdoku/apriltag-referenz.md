@@ -1127,7 +1127,7 @@ Jeder Tag wird **einmal** eingemessen, wenn sein Modul neu angelegt oder bearbei
 
 ### Tags auf dem Roboter selbst (über Gelenkwinkel)
 
-Die Tags des Roboters (Katalogeintrag `kind: "robot"`) werden im selben Tab „Tags einmessen“ gemessen,
+Die Tags des Roboters (Katalogeintrag `kind: "robot"`) werden im selben Fenster „Tags einmessen“ (Settings → Zellüberwachung, neben „Modulkatalog“) gemessen,
 ohne Bezugskanten und ohne Layer 1. Der Pi bleibt unverändert: Es wird nur `MeasureTags` benutzt
 (`frames` 3). Umsetzung im Frontend (`webskillcomposition`, `model/robotTagRun.ts`), Arbeitsplan
 [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), Nachtrag
