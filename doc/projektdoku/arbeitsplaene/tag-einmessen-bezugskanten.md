@@ -752,3 +752,13 @@ scannen“ bleibt, weil die Roboterbasis in Layer 1 aus diesen Tags berechnet wi
 - [x] Nachtrag 20.10.2026 in `modell-flaechen-tag-platzierung.md` mit Link auf diesen Plan.
 - [ ] Am Pi mit Zollstock-Referenz verifiziert, Ergebnis in `doc/projektdoku/` festgehalten.
 - [x] Roboter-Variante umgesetzt und Schnittstellen nachgetragen (Commits `e82bb61`, `15e7bb0`).
+
+## Nachtrag 21.10.2026: Live-Ansicht und Testphase
+
+Der erste Versuch am Roboter hat „so semi gut“ funktioniert. Deshalb kommt eine Live-Ansicht der
+Kantensuche dazu: Im Fenster „Tags einmessen“ sieht man, welche Linien der Hand-Pi zieht und warum
+er eine Kante verwirft, mit Debug-Bild und Rohbildern auf dem Pi. Für die Testphase misst jeder
+Lauf alle messbaren Tags neu (`TAG_MEASURE_ALL_TESTPHASE = true`), damit der Versuch oft wiederholt
+werden kann. Die Einmal-Regel (nur ausstehende Tags, einmal pro neuem bzw. bearbeitetem Modul) bleibt
+der Zielzustand für später und ist im Code erhalten. Details in
+[`tag-einmessen-liveview.md`](tag-einmessen-liveview.md).
