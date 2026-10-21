@@ -36,6 +36,7 @@ nicht gibt.
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
 | [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md) | frontend | fertig | Meric, `Agent: Tag um 90° drehen` | 19.10.2026 |
 | [`rohbild-speichern.md`](rohbild-speichern.md) | vision | fertig | Meric, `Agent: Rohbild speichern` | 19.10.2026 |
+| [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md) | vision | in Arbeit | Meric, `Agent: Livestream-Tags aus voller Auflösung` | 21.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
