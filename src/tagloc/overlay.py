@@ -94,6 +94,8 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
 
 
+#: Breite des gruenen Tag-Rahmens in `draw_tag_boxes`, Pixel.
+_TAG_BOX_PX = 2
 #: Versatz fuer den 1-px-Rand der Tag-ID in `draw_tag_boxes`.
 _ONE_PX_RING = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)]
 
@@ -104,15 +106,13 @@ def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
     Kein Achsenkreuz, kein Eck-Punkt, keine Distanz, kein Reprojektionsfehler;
     mehrdeutige Posen werden nicht anders gefaerbt. Das Label sitzt knapp ueber
     der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Der Rahmen ist
-    halb so dick wie die uebrigen Overlay-Linien, die Zahl hat einen 1 px breiten
+    genau 2 px breit, die Zahl hat einen 1 px breiten
     schwarzen Rand. Posen ohne `observation` werden uebersprungen. Aendert
     `image` in-place.
     """
     import cv2
 
     scale = _scale_for(image)
-    # Rahmen halb so dick wie die uebrigen Overlay-Linien (bei 960 px: 1 statt 3 px).
-    box_thickness = max(1, int(_THICKNESS * scale / 2))
     font_scale = _FONT_SCALE * scale
     text_thickness = max(1, round(_THICKNESS * scale) - 1)
     text_height = round(_FONT_SCALE * scale * 30)
@@ -121,7 +121,14 @@ def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
         if tag_pose.observation is None:
             continue
         corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
-        cv2.polylines(image, [corners], isClosed=True, color=COLOR_OK, thickness=box_thickness)
+        # Rahmen genau `_TAG_BOX_PX` breit: 1-px-Linie mehrfach um je 1 px
+        # versetzt. Ueber `thickness` geht das nicht -- OpenCV rastert
+        # Strichstaerke t als 2t-1 Pixel (2 -> 3 px).
+        for dx in range(_TAG_BOX_PX):
+            for dy in range(_TAG_BOX_PX):
+                cv2.polylines(
+                    image, [corners + (dx, dy)], isClosed=True, color=COLOR_OK, thickness=1
+                )
         x = int(corners[:, 0, 0].min())
         y = max(text_height, int(corners[:, 0, 1].min()) - margin)
         label = f"#{tag_pose.tag_id}"

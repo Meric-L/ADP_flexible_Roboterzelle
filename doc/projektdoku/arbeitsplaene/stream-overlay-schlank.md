@@ -107,9 +107,12 @@ oben bleibt gültig.
 
 ## Nachtrag 21.10.2026: dünnerer Rahmen, Tag-ID mit schwarzem Rand
 
-- Der grüne Rahmen in `draw_tag_boxes` ist halb so dick wie die übrigen
-  Overlay-Linien: `max(1, int(_THICKNESS * scale / 2))`, bei 960 px
-  Stream-Breite 1 px statt 3 px.
+- Der grüne Rahmen in `draw_tag_boxes` ist genau 2 px breit
+  (`_TAG_BOX_PX`), unabhängig von der Bildbreite. Gezeichnet wird eine
+  1-px-Linie, 2 × 2-mal um je 1 px versetzt. Über `thickness` geht das nicht:
+  OpenCV rastert Strichstärke t als 2t − 1 Pixel, aus 2 werden also 3 px.
+  Vorher waren es bei 960 px rund 5 px (Stärke 3). Ein erster Versuch mit
+  1 px war zu dünn.
 - Die Tag-ID hat einen genau 1 px breiten schwarzen Rand. Gezeichnet wird
   die Schrift schwarz, um je 1 px in alle acht Richtungen versetzt, dann grün
   darüber. Eine dickere Strichstärke für die Kontur funktioniert nicht
