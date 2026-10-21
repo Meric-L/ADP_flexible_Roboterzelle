@@ -27,7 +27,7 @@ import json
 import logging
 import math
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..camera import SharedCamera
@@ -46,6 +46,27 @@ POLL_INTERVAL_S = 0.02
 #: An unknown frame yields an empty source, which `merge_locations` then
 #: ranks below both known cameras instead of guessing.
 SOURCE_BY_FRAME = {"cam_ceiling": "ceiling", "cam_flange": "flange"}
+
+
+@dataclass(frozen=True)
+class TagSnapshot:
+    """Die Tags eines Bilds in voller Kameraaufloesung -- fuers Livestream-Overlay.
+
+    Der Livestream zeigt ein verkleinertes Bild, soll aber zeigen, was die
+    Erkennung auf dem vollen Frame findet. Erkennt er dafuer selbst im
+    Stream-Takt, frisst das am Pi eine Core (py-spy, 24.09.2026). Deshalb
+    haelt die Quelle hier das neueste Ergebnis fest, das Job, Zellen-
+    Ueberwachung oder Messung ohnehin berechnet haben, und das Overlay
+    zeichnet es nur (`stream_overlay.py`). Die Ecken stehen in Pixeln von
+    `image_size`; der Zeichner rechnet sie auf die Stream-Groesse um.
+    """
+
+    tag_poses: tuple
+    image_size: tuple[int, int]
+    #: "job" | "cellwatch" | "measure" | "overlay"
+    origin: str
+    #: `time.monotonic()` nach der Erkennung.
+    taken_at: float
 
 
 def robot_pose_from_parameters(parameters) -> Any | None:
@@ -256,6 +277,10 @@ class AprilTagDetectionSource(DetectionSource):
         self._drift = None
         #: Welttags des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
         self._world_tag_sample: list = []
+        #: Neuestes Ergebnis in voller Aufloesung, egal aus welchem Pfad
+        #: (`TagSnapshot`). Wird nur ersetzt, nie veraendert -- das Overlay
+        #: liest es aus seinem eigenen Thread ohne Sperre.
+        self.latest_tags: TagSnapshot | None = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -493,6 +518,7 @@ class AprilTagDetectionSource(DetectionSource):
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        self._remember_tags(tag_poses, image, "measure")
         if tag_ids is not None:
             tag_poses = [tag_pose for tag_pose in tag_poses if tag_pose.tag_id in tag_ids]
         return tag_poses, frame_tools.image_size(image)
@@ -680,6 +706,7 @@ class AprilTagDetectionSource(DetectionSource):
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        self._remember_tags(tag_poses, image, "cellwatch")
         localization = localize_camera(
             tag_poses,
             self._tag_map,
@@ -713,6 +740,17 @@ class AprilTagDetectionSource(DetectionSource):
             visible,
         )
 
+    def _remember_tags(self, tag_poses, image, origin: str) -> None:
+        """Haelt `tag_poses` als neuestes Ergebnis fuers Livestream-Overlay fest."""
+        from tagloc import frames as frame_tools
+
+        self.latest_tags = TagSnapshot(
+            tag_poses=tuple(tag_poses),
+            image_size=tuple(frame_tools.image_size(image)),
+            origin=origin,
+            taken_at=time.monotonic(),
+        )
+
     def _calibration_for(self, image):
         """Die Kalibrierung, passend zur Aufloesung dieses Bilds."""
         from tagloc import frames as frame_tools
@@ -738,6 +776,7 @@ class AprilTagDetectionSource(DetectionSource):
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        self._remember_tags(tag_poses, image, "measure")
         return next((pose for pose in tag_poses if pose.tag_id == tag_id), None)
 
     # -- Capture ---------------------------------------------------------------
@@ -779,6 +818,7 @@ class AprilTagDetectionSource(DetectionSource):
             default_size_m=self._config.tag_size_m,
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
+        self._remember_tags(tag_poses, image, "job")
         # Mit Kalibrierung: bei zwei und mehr Welttags ein gemeinsames PnP
         # ueber alle ihre Ecken statt des Mittels der Einzel-Tags.
         localization = localize_camera(

@@ -95,3 +95,12 @@ Wie geplant umgesetzt, Schnittstelle unverändert gegenüber oben.
   691 Tests OK (`PYTHONPATH=src python -m unittest discover -s tests -t .`).
 - Doku angepasst: `vision-server-interface.md`, `apriltag-referenz.md`,
   `apriltag-e2e-test.md`, Hinweis in `praesentation.md`.
+
+## Nachtrag 21.10.2026: Merge mit „Livestream-Tags in voller Auflösung“
+
+Zusammengeführt mit [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md).
+Das Overlay schätzt seitdem nicht mehr selbst auf der kleinen Leinwand. Es
+zeichnet das neueste Ergebnis in voller Auflösung (`latest_tags`), mit auf
+Stream-Größe umgerechneten Ecken, über `draw_tag_boxes`. Die Schnittstelle
+oben bleibt gültig.
+

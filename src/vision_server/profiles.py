@@ -233,8 +233,17 @@ class CameraStreamConfig:
     overlay_mode: str = "apriltag"
     #: Minimum gap between two detection runs for the overlay. The stream is
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
-    #: last result is redrawn.
+    #: last result is redrawn. Gilt seit 21.10.2026 nur noch fuer den Modus
+    #: "calibration"; "apriltag" siehe `overlay_detect_interval_s`.
     overlay_interval_s: float = 0.5
+    #: Modus "apriltag": das Overlay zeigt das neueste Ergebnis in voller
+    #: Aufloesung von Job, Zellen-Ueberwachung oder Messung. Ist es aelter
+    #: als dieser Wert, erkennt das Overlay selbst in voller Aufloesung --
+    #: im Hintergrund und nicht waehrend Job oder Kalibrierung. Am Pi kostet
+    #: ein Lauf auf 12 MP grob 1 s; bei 5 s also etwa 20 % einer Core statt
+    #: der ~100 %, die eine Erkennung alle 0,5 s kostete. `0` = nie selbst
+    #: erkennen, nur fremde Ergebnisse zeigen.
+    overlay_detect_interval_s: float = 5.0
     #: Watchdog: so lange darf ein einzelnes `capture_array()` dauern. Danach
     #: gilt die Kamera als haengend -- Picamera2 wartet sonst ewig auf einen
     #: Frame, den libcamera nie liefert (Pi 1, 2026-09-22).

@@ -755,6 +755,58 @@ sind Job- und Stream-Auflösung ohnehin identisch (640×480).
 Hauptstrom im Format `RGB888`: Picamera2 legt es als B,G,R ab, also direkt
 OpenCV-BGR — die frühere Farbumrechnung auf jedem Frame entfällt.
 
+### 10.4 „AprilTags markieren“ zeigt das Ergebnis in voller Auflösung
+
+> **Seit 21.10.2026.** Plan:
+> [`arbeitsplaene/livestream-tags-volle-aufloesung.md`](arbeitsplaene/livestream-tags-volle-aufloesung.md).
+> Ersetzt für den Modus `apriltag` die Aussagen zum Rechentakt in 10.1
+> (`overlay_interval_s`) und zur Erkennungsauflösung in 10.3.
+
+Gestreamt wird weiter nur das kleine Bild (`max_stream_width`, 960 px). Die
+markierten Tags stammen aber aus einer Erkennung auf dem **vollen** Frame
+(Deckenkamera 4056×3040). Davor erkannte das Overlay vom 24.09. bis zum
+21.10.2026 selbst auf dem kleinen Bild. Das zeigte nachweislich andere Tags
+als der Job. Gemessen auf `data/rohbilder/cam_ceiling_20261019-142133.png`
+am PC:
+
+| Auflösung | `detect()` | gefundene IDs |
+| --- | --- | --- |
+| 4056×3040 (Job) | 153–166 ms | 0, 1, 1, 2, 3, 583, 586 |
+| 960×720 (altes Overlay) | 26–32 ms | 0, 1, 1, 2, 583, **584** |
+
+Das Overlay erkennt dabei **nicht im Stream-Takt**. Alle 0,5 s auf 12 MP zu
+erkennen kostete am Pi eine Core und ließ Jobs in den 20-s-Timeout laufen
+(py-spy, 24.09.2026). Gezeichnet wird stattdessen das neueste Ergebnis, das
+ohnehin entsteht:
+
+| Quelle | Wann | Zusätzliche CPU |
+| --- | --- | --- |
+| Job | jedes Bild eines AprilTag-Jobs | keine |
+| Zellen-Überwachung | alle 2 s, solange sie scharf ist | keine |
+| Messung | `MeasureTag`/`MeasureTags`, Hand-Auge-Aufnahmen | keine |
+| Overlay selbst | nur wenn das neueste Ergebnis älter als `overlay_detect_interval_s` (Standard 5 s) ist | am Pi grob 1 s je Lauf |
+
+Die eigene Erkennung läuft im Hintergrund, `annotate()` wartet nicht auf sie.
+Es läuft höchstens eine gleichzeitig, und keine, solange ein Job oder eine
+Kamera-Kalibrierung läuft. Das ist dasselbe Signal, mit dem die
+Zellen-Überwachung pausiert. Sie nutzt den Stream-Detektor: dieselben
+Parameter wie der Job, nur ohne Eckenverfeinerung (bei `cam_ceiling` ist sie
+auch im Job aus). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
+selbst und zeigt nur Ergebnisse von Job, Zellen-Überwachung und Messung.
+
+Die Pixel-Ecken werden von der Auflösung des Ergebnisses auf die Stream-Größe
+umgerechnet. Gezeichnet wird nur der grüne Kasten mit `#<id>`
+(`draw_tag_boxes`, siehe 10.1), ohne Achsenkreuz und ohne Statusleiste.
+
+Auflösung, Quelle und Alter des gezeigten Ergebnisses stehen damit nicht im
+Bild. Vor dem ersten Ergebnis kommt das Bild ohne Markierung. Bei bewegten
+Modulen kann die Markierung bis zu einigen Sekunden hinter dem Bild herlaufen.
+
+Python: `AprilTagDetectionSource.latest_tags` (`TagSnapshot` mit `tag_poses`,
+`image_size`, `origin` = `job`/`cellwatch`/`measure`/`overlay`, `taken_at`),
+`AprilTagStreamAnnotator(full_resolution_tags=..., detect_interval_s=...)`,
+`AprilTagStreamAnnotator.set_busy(...)`.
+
 ## 11. OPC 40100-2: Anlagensicht
 
 Part 1 beantwortet, **wie man das System bedient**. Part 2 — *Asset Management
