@@ -173,6 +173,30 @@ Einschränkung: nicht geprüft, ob einzelne Dateien in fremden Tests mitgeprüft
 
 ## 3. AprilTag: Doppelungen und Lücken
 
+### 3.1 Toter Code mit AprilTag-Bezug (Übersicht)
+
+Zusammenzug aus Abschnitt 1 — alles, was zur Erkennung, Pose, Tag-Map oder zur
+Tag-Anfahrt gehört und nirgends in der Produktion läuft. Details und Belege dort.
+
+| Repo | Was | Ref. | Konfidenz |
+|---|---|---|---|
+| Zelle | Prototyp-Erkennung und -Kalibrierung `src/apriltag/` (inkl. `MANUAL_TEST.md`) | T1 | sicher |
+| Zelle | `SharedCameraSource`, `iter_frames`, `ImageFolderSource.current_path` (Bildquellen der Tag-CLIs) | T2, T3 | sicher |
+| Zelle | `poses_to_json` (Ausgabe der Tag-Posen im CLI) | T4 | sicher |
+| Zelle | `build_detection_source` (Einzahl, Erkennungsquelle) | T5 | sicher |
+| Zelle | `world_tag_for_robot` (Welttag-Wahl für einen Roboter; nur im Test) | T7 | sicher |
+| Zelle | `PupilAprilTagDetector` samt `--backend pupil` und `auto`-Fallback: nie produktiv gesetzt, nie getestet | P1 | wahrscheinlich |
+| WSC | `AutolocateLayer2Window` und die Kette `Layer2RunPanel`, `RobotRunConfirm`, `EndEffectorSpinTest`, `endEffectorSpin`, `useLayer2Run` (Tag-Anfahrt, abgelöst durch `AutolocateActions`) | W1, W2 | sicher |
+| WSC | `layer2Target`, `setLayer2Target`, `Layer2TargetMarker` (Zielmarker rendert nie) | W3 | sicher |
+| WSC | `startNodeId`/`targetNodeId` in `Layer2Binding` (`piServers.ts`) | W4 | wahrscheinlich |
+| WSC | `tag-tool/model/units.ts` `snapToStep` (nur Definition); das übrige Tag-Tool ist durch die Katalog-Platzierung doppelt, aber teilweise noch genutzt | P5, 1.3 | sicher / Zukunft offen |
+
+Alles andere in Zelle und WSC mit Tag-Bezug (`tagloc/*`, `tagreference`, `cellwatch`,
+`tagPlacement`, `tagGeometry`, Tag-Einmessen) wird benutzt; für die Rechnung gibt es
+Tests, nur die Oberfläche und die Hooks sind es nicht (Abschnitt 2).
+
+### 3.2 Doppelungen und Lücken
+
 | # | Befund | Wo | Einschätzung |
 |---|---|---|---|
 | P1 | **Zwei Detektor-Backends.** `ArucoTagDetector` (Standard) und `PupilAprilTagDetector` (Fallback bei `backend="auto"`, wählbar mit `--backend pupil`) | Zelle: `tagloc/detector.py:231,287,293`, `cli/_common.py:86`, `profiles.py:49` | Produktiv wird nur `"aruco"` gesetzt; das pupil-Backend hat keinen Test. Wenn `src/apriltag/` (T1) fällt, bleibt `pupil-apriltags` allein für diesen ungetesteten Fallback als Abhängigkeit. Risiko mittel: der Fallback deckt OpenCV ohne die Tag-Familie ab (`altlasten.md` D3) |
