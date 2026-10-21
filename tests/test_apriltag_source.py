@@ -677,5 +677,52 @@ class MeasureTagTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(source._anchor)
 
 
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class LatestTagsTest(unittest.TestCase):
+    """`latest_tags`: das neueste Ergebnis in voller Aufloesung fuers
+    Livestream-Overlay, aus jedem Pfad, der ohnehin erkennt."""
+
+    def source(self, folder):
+        from tagloc.calibration import default_calibration
+
+        source = AprilTagDetectionSource(profile_config(Path(folder)), camera=FakeCamera())
+        source._detector = FakeDetector([tag_pose(5, (0, 0, 1))])
+        source._calibration = default_calibration((400, 300))
+        source._tag_map = tagmap.empty_tag_map()
+        return source
+
+    def _run(self, call):
+        from unittest.mock import patch
+
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose(5, (0, 0, 1))]):
+            call(image)
+
+    def test_is_empty_before_the_first_image(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(self.source(folder).latest_tags)
+
+    def test_a_job_image_is_remembered_with_its_size(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(source._locate)
+        snapshot = source.latest_tags
+        self.assertEqual(snapshot.origin, "job")
+        self.assertEqual(snapshot.image_size, (400, 300))
+        self.assertEqual([pose.tag_id for pose in snapshot.tag_poses], [5])
+
+    def test_the_cell_watch_image_is_remembered(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(lambda image: source.observe_cell(image, source._detector))
+        self.assertEqual(source.latest_tags.origin, "cellwatch")
+
+    def test_a_measurement_is_remembered(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(lambda image: source._measure_tag(image, 5))
+        self.assertEqual(source.latest_tags.origin, "measure")
+
+
 if __name__ == "__main__":
     unittest.main()

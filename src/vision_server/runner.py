@@ -96,6 +96,11 @@ def _build_annotator(source: DetectionSource):
     Verfeinerung nicht (Demo-Bild, kleinere Aufloesung als der Job) --
     deshalb bekommt er eine EIGENE Detektor-Instanz mit der Verfeinerung
     fest aus, unabhaengig vom Config-Wert fuer den Job-Pfad.
+
+    Seit 21.10.2026 zeichnet das Overlay die Tags aus der Erkennung in voller
+    Aufloesung (`source.latest_tags`) und erkennt nur noch selten selbst, im
+    Hintergrund und nicht waehrend eines Jobs (`set_busy`). Der eigene
+    Detektor bleibt dafuer -- ein Detektor ist nicht fuer zwei Threads gebaut.
     """
     job_detector = getattr(source, "_detector", None)
     calibration = getattr(source, "_calibration", None)
@@ -131,6 +136,8 @@ def _build_annotator(source: DetectionSource):
         tag_map=getattr(source, "_tag_map", None),
         interval_s=getattr(camera_config, "overlay_interval_s", 0.5),
         detection_max_width=getattr(camera_config, "max_stream_width", None),
+        full_resolution_tags=lambda: getattr(source, "latest_tags", None),
+        detect_interval_s=getattr(camera_config, "overlay_detect_interval_s", 5.0),
     )
 
 
@@ -602,6 +609,13 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
 
     calibration_session = _build_calibration_session(sources, opened, config)
     camera_stream, annotator = _start_camera_stream(space, sources, opened)
+    if annotator is not None and hasattr(annotator, "set_busy"):
+        # Wie die Zellen-Ueberwachung: waehrend Job oder Kalibrierung keine
+        # eigene Overlay-Erkennung, der Job soll die CPU fuer sich haben.
+        annotator.set_busy(
+            lambda: jobs.busy
+            or (calibration_session is not None and calibration_session.busy)
+        )
     camera_health = await _start_camera_health(space, assets, sources, opened)
     camera_http = (
         await _start_mjpeg_server(space, camera_stream)

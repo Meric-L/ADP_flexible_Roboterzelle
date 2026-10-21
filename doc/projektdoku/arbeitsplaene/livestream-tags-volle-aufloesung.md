@@ -1,6 +1,6 @@
 # Livestream zeigt die Tags aus der Erkennung in voller Auflösung
 
-**Status:** in Arbeit — 21.10.2026
+**Status:** fertig — 21.10.2026 (Code und Tests; am Pi nicht gemessen, siehe Offene Fragen)
 **Verantwortlich:** Meric, `Agent: Livestream-Tags aus voller Auflösung`
 **Thema:** vision
 **Branch:** apriltag-stream-volle-aufloesung (von `apriltag`)
@@ -97,6 +97,8 @@ class AprilTagStreamAnnotator:
                  detect_interval_s: float = 5.0) -> None: ...
     def set_busy(self, busy: Callable[[], bool] | None) -> None:
         """Solange busy() True ist, startet das Overlay keine eigene Erkennung."""
+    def close(self) -> None:
+        """Gibt den Erkennungs-Thread frei (CameraStreamPublisher.stop ruft es)."""
 ```
 
 `detect_interval_s <= 0` schaltet die eigene Erkennung ab. Dann zeigt das
@@ -133,4 +135,25 @@ Neues Feld in `CameraStreamConfig`:
 
 ## Abweichungen vom Plan
 
-Wird während der Umsetzung gefüllt.
+- Zusätzlich `AprilTagStreamAnnotator.close()`. `CameraStreamPublisher.stop()`
+  ruft es auf und gibt damit den Erkennungs-Thread frei.
+- Ein gescheiterter eigener Versuch zählt als Versuch. Der nächste kommt erst
+  nach `overlay_detect_interval_s`, nicht im nächsten Tick.
+- Schnittstellen wie geplant umgesetzt. Die Fach-MD hat den neuen Abschnitt
+  `vision-server-interface.md` 10.4.
+
+## Messung (PC, 21.10.2026)
+
+`data/rohbilder/cam_ceiling_20261019-142133.png`, Stream-Detektor mit den
+Parametern von `cam_ceiling` (`perspectiveRemovePixelPerCell` 8, ohne
+Eckenverfeinerung):
+
+| Auflösung | `detect()` | gefundene IDs |
+| --- | --- | --- |
+| 4056×3040 | 153–166 ms | 0, 1, 1, 2, 3, 583, 586 |
+| 960×720 | 26–32 ms | 0, 1, 1, 2, 583, 584 |
+
+Das alte Overlay (960) zeigte also zwei Tags nicht (3, 586) und einen, den die
+volle Auflösung nicht findet (584). Die Annahme „im Zweifel fehlt ein Tag im
+Overlay, nie umgekehrt“ hielt damit nicht. Am Pi 4 (5–10× langsamer) kostet
+ein Lauf in voller Auflösung ca. 0,8–1,6 s, alle 5 s also 16–32 % einer Core.

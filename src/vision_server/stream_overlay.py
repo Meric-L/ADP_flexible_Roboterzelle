@@ -12,17 +12,38 @@ Two rules keep this sustainable in production:
    the last result is redrawn. Invisible for a fixed-mounted camera, but not
    to the Pi's CPU.
 
+Im Modus "apriltag" gilt seit 21.10.2026 zusaetzlich: die Tags kommen aus
+einer Erkennung in **voller** Kameraaufloesung, gestreamt wird trotzdem nur
+das kleine Bild. Das Overlay erkennt dafuer nicht im Stream-Takt -- das kostete
+am Pi eine ganze Core und liess Jobs in den Timeout laufen (py-spy,
+24.09.2026) --, sondern zeichnet das neueste Ergebnis, das Job,
+Zellen-Ueberwachung oder Messung ohnehin berechnet haben
+(`AprilTagDetectionSource.latest_tags`). Nur wenn das zu alt ist, erkennt es
+selbst, selten, im Hintergrund und nie waehrend eines Jobs. Siehe
+`doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
+
 Runs entirely in the publisher's worker thread -- `annotate` is never called
 directly on the event loop.
 """
 
 import logging
 import time
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from typing import Any
 
 from .profiles import AprilTagProfileConfig
 
 _log = logging.getLogger(__name__)
+
+#: Statuszeile: woher das gezeigte Ergebnis stammt.
+_ORIGIN_LABELS = {
+    "job": "Job",
+    "cellwatch": "Zellen-Ueberwachung",
+    "measure": "Messung",
+    "overlay": "Overlay",
+}
 
 
 class AprilTagStreamAnnotator:
@@ -44,6 +65,8 @@ class AprilTagStreamAnnotator:
         tag_map: Any,
         interval_s: float = 0.5,
         detection_max_width: int | None = None,
+        full_resolution_tags: Callable[[], Any] | None = None,
+        detect_interval_s: float = 5.0,
     ) -> None:
         self._config = config
         self._detector = detector
@@ -57,8 +80,25 @@ class AprilTagStreamAnnotator:
         #: dem Pi spuerbar lang und drueckt die Stream-Framerate. `None`
         #: laesst den Original-Frame unangetastet.
         self._detection_max_width = detection_max_width
+        #: Liefert das neueste `TagSnapshot` der Quelle (Job, Zellen-
+        #: Ueberwachung, Messung) oder `None`.
+        self._full_resolution_tags = full_resolution_tags
+        #: Ist das neueste Ergebnis aelter, erkennt das Overlay selbst in
+        #: voller Aufloesung. `<= 0`: nie selbst erkennen.
+        self._detect_interval_s = detect_interval_s
+        #: Solange das `True` liefert (Job, Kamera-Kalibrierung), startet
+        #: keine eigene Erkennung -- der Job soll die CPU fuer sich haben.
+        self._busy: Callable[[], bool] | None = None
+        #: Ergebnis der eigenen Erkennung, `TagSnapshot` oder `None`.
+        self._own_tags: Any = None
+        #: Eigener Ein-Thread-Pool: `annotate()` wartet nie auf die
+        #: Erkennung (am Pi ~1 s auf 12 MP), der Stream stockt nicht.
+        self._executor: ThreadPoolExecutor | None = None
+        self._pending: Future | None = None
+        #: Zeitpunkt des letzten eigenen Versuchs, auch eines gescheiterten --
+        #: sonst wuerde ein Fehler jeden Tick neu versucht.
+        self._last_own_attempt = float("-inf")
         self._last_run = 0.0
-        self._last_tag_poses: list = []
         self._last_board = None
         self._scaled: dict[tuple[int, int], Any] = {}
         #: Waehrend `runner.py`s `StartCalibration`/`FinishCalibration`/
@@ -89,6 +129,13 @@ class AprilTagStreamAnnotator:
         genug, ohne dass eine Sperre noetig waere.
         """
         self._calibration_session = session
+
+    def set_busy(self, busy: Callable[[], bool] | None) -> None:
+        """Haengt das Belegt-Signal ein (`runner.py`: Job oder Kalibrierung).
+
+        Erst nach dem Annotator gebaut, deshalb nicht im Konstruktor.
+        """
+        self._busy = busy
 
     @property
     def calibration_progress(self) -> dict | None:
@@ -221,17 +268,10 @@ class AprilTagStreamAnnotator:
                     )
                 return canvas
 
-            # Leinwand zuerst bauen -- Erkennung und Zeichnen teilen sich ab
-            # jetzt dieselbe (kleinere) Aufloesung, genau wie der
-            # Kalibrier-Zweig oben. Frueher lief die Erkennung zusaetzlich
-            # auf dem vollen Sensor-Frame mit anschliessendem manuellen
-            # Ecken-Rescale (sx/sy) -- auf pi1 kostete das laut py-spy ~102%
-            # einer Core und liess AprilTag-Jobs den 20s-Timeout reissen.
-            # Demo-Livestream erkennt deshalb auf der Uebertragungsaufloesung;
-            # Job-Erkennung (AprilTagDetectionSource._locate) und Kalibrierung
-            # bleiben unveraendert auf voller Aufloesung. Im Zweifel zeigt das
-            # Overlay einen Tag nicht an, den der Job trotzdem findet -- nie
-            # umgekehrt.
+            # Gezeichnet wird auf dem kleinen Bild, die Tags stammen aus einer
+            # Erkennung in voller Aufloesung (siehe Modul-Docstring). Bis
+            # 21.10.2026 erkannte das Overlay selbst auf dieser kleinen
+            # Leinwand -- billig, aber kein Beleg dafuer, was der Job findet.
             if self._detection_max_width is not None:
                 from .camera_stream import _resize_for_stream
 
@@ -241,21 +281,18 @@ class AprilTagStreamAnnotator:
             output_size = frame_tools.image_size(canvas)
             calibration = self._calibration_for(output_size)
 
-            if due:
-                from tagloc.pose import estimate_tag_poses
+            snapshot = self._newest_tags()
+            if self._own_detection_due(snapshot, now):
+                self._start_own_detection(image, now)
 
-                self._last_tag_poses = estimate_tag_poses(
-                    self._detector.detect(frame_tools.to_gray(canvas)),
-                    calibration,
-                    tag_map=self._tag_map,
-                    default_size_m=self._config.tag_size_m,
-                    max_reprojection_error_px=self._config.max_reproj_error_px,
-                )
-                self._last_run = now
-
+            tag_poses = (
+                _scale_corners(snapshot.tag_poses, snapshot.image_size, output_size)
+                if snapshot is not None
+                else []
+            )
             draw_tag_overlay(
                 canvas,
-                self._last_tag_poses,
+                tag_poses,
                 calibration,
                 tag_map=self._tag_map,
                 default_size_m=self._config.tag_size_m,
@@ -264,13 +301,78 @@ class AprilTagStreamAnnotator:
                 canvas,
                 [
                     f"Modus: AprilTag   Familie {self._config.tag_family}",
-                    summarise(self._last_tag_poses, self._tag_map),
+                    summarise(tag_poses, self._tag_map),
+                    _snapshot_line(snapshot, now),
                 ],
             )
             return canvas
         except Exception:
             _log.exception("Overlay fehlgeschlagen, sende unmarkiertes Bild")
             return image
+
+    def _newest_tags(self):
+        """Das juengere von Quellen-Ergebnis und eigener Erkennung, oder `None`."""
+        candidates = [self._own_tags]
+        if self._full_resolution_tags is not None:
+            candidates.append(self._full_resolution_tags())
+        candidates = [snapshot for snapshot in candidates if snapshot is not None]
+        return max(candidates, key=lambda snapshot: snapshot.taken_at, default=None)
+
+    def _own_detection_due(self, snapshot, now: float) -> bool:
+        """Selbst erkennen nur, wenn niemand sonst ein frisches Ergebnis hat."""
+        if self._detect_interval_s <= 0 or self._detector is None:
+            return False
+        if self._pending is not None and not self._pending.done():
+            return False
+        if now - self._last_own_attempt < self._detect_interval_s:
+            return False
+        if snapshot is not None and now - snapshot.taken_at < self._detect_interval_s:
+            return False
+        return not (self._busy is not None and self._busy())
+
+    def _start_own_detection(self, image: Any, now: float) -> None:
+        """Startet eine Erkennung in voller Aufloesung im Hintergrund.
+
+        `image` ist der geteilte Frame -- `to_gray` legt ein neues Array an,
+        der Frame selbst wird nicht veraendert.
+        """
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="stream-overlay-detect"
+            )
+        self._last_own_attempt = now
+        self._pending = self._executor.submit(self._detect_full_resolution, image)
+
+    def _detect_full_resolution(self, image: Any) -> None:
+        """Eigene Erkennung auf dem vollen Frame. Laeuft im Overlay-Thread."""
+        try:
+            from tagloc import frames as frame_tools
+            from tagloc.pose import estimate_tag_poses
+
+            from .detection.apriltag import TagSnapshot
+
+            size = frame_tools.image_size(image)
+            tag_poses = estimate_tag_poses(
+                self._detector.detect(frame_tools.to_gray(image)),
+                self._calibration_for(size),
+                tag_map=self._tag_map,
+                default_size_m=self._config.tag_size_m,
+                max_reprojection_error_px=self._config.max_reproj_error_px,
+            )
+            self._own_tags = TagSnapshot(
+                tag_poses=tuple(tag_poses),
+                image_size=tuple(size),
+                origin="overlay",
+                taken_at=time.monotonic(),
+            )
+        except Exception:
+            _log.exception("Overlay-Erkennung in voller Aufloesung fehlgeschlagen")
+
+    def close(self) -> None:
+        """Gibt den Erkennungs-Thread frei; eine laufende Erkennung endet von selbst."""
+        executor, self._executor = self._executor, None
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def _undistorted(self, image: Any) -> Any:
         """Das Bild entzerrt mit der aktiven Kalibrierung, ohne Markierungen.
@@ -304,6 +406,40 @@ class AprilTagStreamAnnotator:
             self._undistort_maps[size] = maps
         # `remap` schreibt in ein neues Bild -- der geteilte Frame bleibt unberuehrt.
         return cv2.remap(canvas, maps[0], maps[1], cv2.INTER_LINEAR)
+
+
+def _scale_corners(tag_poses, source_size, target_size) -> list:
+    """Rechnet die Pixel-Ecken von `source_size` auf `target_size` um.
+
+    Nur die Ecken: die Pose ist metrisch und wird beim Zeichnen mit der auf
+    die Zielgroesse skalierten Kalibrierung projiziert.
+    """
+    if tuple(source_size) == tuple(target_size):
+        return list(tag_poses)
+    sx = target_size[0] / source_size[0]
+    sy = target_size[1] / source_size[1]
+    return [
+        replace(
+            pose,
+            observation=replace(
+                pose.observation,
+                corners=tuple((x * sx, y * sy) for x, y in pose.observation.corners),
+            ),
+        )
+        if pose.observation is not None
+        else pose
+        for pose in tag_poses
+    ]
+
+
+def _snapshot_line(snapshot, now: float) -> str:
+    """Statuszeile: Aufloesung, Quelle und Alter des gezeigten Ergebnisses."""
+    if snapshot is None:
+        return "Noch keine Erkennung in voller Aufloesung"
+    width, height = snapshot.image_size
+    origin = _ORIGIN_LABELS.get(snapshot.origin, snapshot.origin)
+    age = max(0.0, now - snapshot.taken_at)
+    return f"Volle Aufl. {width}x{height}, {origin} vor {age:.0f} s"
 
 
 __all__ = ["AprilTagStreamAnnotator"]

@@ -135,62 +135,143 @@ class ApplyCalibrationTest(unittest.TestCase):
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
-class AprilTagCanvasDetectionTest(unittest.TestCase):
-    def test_detects_and_draws_on_the_same_resized_canvas(self):
-        """Erkennung und Zeichnen teilen sich seit dem CPU-Fix (pi1,
-        Job-Timeouts durch Overlay-Erkennung in voller Aufloesung) dieselbe
-        verkleinerte Leinwand -- kein separater Ecken-Rescale-Schritt mehr."""
-        from tagloc.calibration import default_calibration
+class AprilTagFullResolutionTest(unittest.TestCase):
+    """Modus "apriltag" seit 21.10.2026: gezeichnet wird auf dem kleinen
+    Stream-Bild, die Tags stammen aus einer Erkennung in voller Aufloesung.
+    Das Overlay erkennt nicht mehr im Stream-Takt -- auf pi1 kostete das in
+    voller Aufloesung eine Core und liess Jobs in den Timeout laufen."""
+
+    CORNERS = ((100.0, 60.0), (140.0, 60.0), (140.0, 100.0), (100.0, 100.0))
+
+    def _tag_pose(self):
         from tagloc.geometry import identity
         from tagloc.observations import TagObservation, TagPose
 
-        image = np.zeros((300, 400, 3), dtype=np.uint8)
-        observation = TagObservation(7, ((100, 60), (140, 60), (140, 100), (100, 100)))
-        detector = SimpleNamespace(detect=lambda gray: [observation])
-        annotator = AprilTagStreamAnnotator(
+        return TagPose(
+            tag_id=7, pose_cam_tag=identity(), observation=TagObservation(7, self.CORNERS)
+        )
+
+    def _snapshot(self, origin="job", age_s=0.0):
+        import time
+
+        from vision_server.detection.apriltag import TagSnapshot
+
+        return TagSnapshot(
+            tag_poses=(self._tag_pose(),),
+            image_size=(400, 300),
+            origin=origin,
+            taken_at=time.monotonic() - age_s,
+        )
+
+    def _annotator(self, *, detector=None, snapshot=None, detect_interval_s=5.0):
+        from tagloc.calibration import default_calibration
+
+        return AprilTagStreamAnnotator(
             CONFIG,
-            detector=detector,
+            detector=detector or SimpleNamespace(detect=lambda gray: []),
             calibration=default_calibration((400, 300)),
             tag_map=None,
             detection_max_width=200,
+            full_resolution_tags=lambda: snapshot,
+            detect_interval_s=detect_interval_s,
         )
-        tag_pose = TagPose(tag_id=7, pose_cam_tag=identity(), observation=observation)
-        with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose]) as estimate:
-            with patch("tagloc.overlay.draw_tag_overlay") as draw:
+
+    def _annotate(self, annotator, image):
+        with patch("tagloc.overlay.draw_tag_overlay") as draw:
+            with patch("tagloc.overlay.draw_status_bar") as status:
                 result = annotator.annotate(image, "apriltag")
+        return result, draw, status
+
+    def test_draws_the_full_resolution_result_scaled_to_the_stream(self):
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        annotator = self._annotator(snapshot=self._snapshot())
+
+        result, draw, status = self._annotate(annotator, image)
 
         self.assertEqual(result.shape[:2], (150, 200))
-        # Erkennung laeuft auf der verkleinerten Leinwand (200x150), nicht
-        # mehr auf dem vollen Frame (400x300) -- die Kalibrierung ist deshalb
-        # bereits auf die Canvas-Groesse skaliert.
-        self.assertEqual(estimate.call_args.args[0], [observation])
-        self.assertEqual(estimate.call_args.args[1].image_size, (200, 150))
-        # Kein separater Rescale mehr: die vom (gefakten) Detektor gelieferten
-        # Koordinaten kommen unveraendert bei draw_tag_overlay an.
-        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (100.0, 60.0))
+        # Ecken von 400x300 auf 200x150 umgerechnet, Kalibrierung ebenso.
+        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
         self.assertEqual(draw.call_args.args[2].image_size, (200, 150))
-        self.assertEqual(annotator._last_tag_poses[0].observation.corners[0], (100, 60))
+        self.assertIn("Volle Aufl. 400x300, Job vor 0 s", status.call_args.args[1])
         self.assertFalse(np.any(image))
 
-    def test_detector_receives_the_resized_canvas_not_the_full_frame(self):
-        """Regression fuer den CPU-Fix: die teure Erkennung darf nicht mehr
-        auf dem vollen (hier 400x300) Frame laufen."""
-        from tagloc.calibration import default_calibration
+    def test_no_own_detection_while_a_fresh_result_exists(self):
+        detector = SimpleNamespace(detect=lambda gray: [])
+        with patch.object(detector, "detect", wraps=detector.detect) as detect:
+            annotator = self._annotator(detector=detector, snapshot=self._snapshot())
+            self._annotate(annotator, np.zeros((300, 400, 3), dtype=np.uint8))
 
+        detect.assert_not_called()
+        self.assertIsNone(annotator._pending)
+
+    def test_own_detection_runs_on_the_full_frame_in_the_background(self):
+        """Ohne frisches Ergebnis erkennt das Overlay selbst -- auf dem
+        vollen Frame (400x300), nicht auf der Leinwand (200x150)."""
         image = np.zeros((300, 400, 3), dtype=np.uint8)
         detector = SimpleNamespace(detect=lambda gray: [])
         with patch.object(detector, "detect", wraps=detector.detect) as detect:
-            annotator = AprilTagStreamAnnotator(
-                CONFIG,
-                detector=detector,
-                calibration=default_calibration((400, 300)),
-                tag_map=None,
-                detection_max_width=200,
-            )
-            with patch("tagloc.overlay.draw_tag_overlay"):
-                annotator.annotate(image, "apriltag")
+            annotator = self._annotator(detector=detector)
+            with patch("tagloc.pose.estimate_tag_poses", return_value=[self._tag_pose()]):
+                _, draw, status = self._annotate(annotator, image)
+                annotator._pending.result(timeout=5)
 
-        self.assertEqual(detect.call_args.args[0].shape[:2], (150, 200))
+        self.assertEqual(detect.call_args.args[0].shape[:2], (300, 400))
+        # Der erste Tick wartet nicht auf die Erkennung ...
+        self.assertEqual(draw.call_args.args[1], [])
+        self.assertIn("Noch keine Erkennung in voller Aufloesung", status.call_args.args[1])
+        # ... der naechste zeigt ihr Ergebnis.
+        _, draw, status = self._annotate(annotator, image)
+        self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
+        self.assertIn("Overlay", status.call_args.args[1][2])
+        annotator.close()
+
+    def test_an_old_result_triggers_an_own_detection(self):
+        annotator = self._annotator(snapshot=self._snapshot(age_s=10.0))
+
+        with patch("tagloc.pose.estimate_tag_poses", return_value=[]):
+            self._annotate(annotator, np.zeros((300, 400, 3), dtype=np.uint8))
+            annotator._pending.result(timeout=5)
+
+        self.assertEqual(annotator._own_tags.origin, "overlay")
+        annotator.close()
+
+    def test_no_own_detection_while_busy(self):
+        annotator = self._annotator()
+        annotator.set_busy(lambda: True)
+
+        self._annotate(annotator, np.zeros((300, 400, 3), dtype=np.uint8))
+
+        self.assertIsNone(annotator._pending)
+
+    def test_own_detection_can_be_switched_off(self):
+        annotator = self._annotator(detect_interval_s=0)
+
+        self._annotate(annotator, np.zeros((300, 400, 3), dtype=np.uint8))
+
+        self.assertIsNone(annotator._pending)
+
+    def test_a_failed_own_detection_is_not_retried_every_tick(self):
+        def broken(gray):
+            raise RuntimeError("kaputt")
+
+        annotator = self._annotator(detector=SimpleNamespace(detect=broken))
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        with self.assertLogs("vision_server.stream_overlay", level="ERROR"):
+            self._annotate(annotator, image)
+            first = annotator._pending
+            first.result(timeout=5)
+
+        self._annotate(annotator, image)
+
+        self.assertIs(annotator._pending, first)
+        self.assertIsNone(annotator._own_tags)
+        annotator.close()
+
+    def test_the_newer_of_source_and_own_result_is_shown(self):
+        annotator = self._annotator(snapshot=self._snapshot(origin="cellwatch", age_s=1.0))
+        annotator._own_tags = self._snapshot(origin="overlay", age_s=3.0)
+
+        self.assertEqual(annotator._newest_tags().origin, "cellwatch")
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")

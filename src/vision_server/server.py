@@ -181,11 +181,11 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         # dafuer nicht: allein das Kodieren eines 4056x3040-Bildes
         # ueberschritt ihn zuverlaessig, das Overlay fiel jeden Tick auf das
         # unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte komplett auf
-        # Pi 1). "apriltag" verkleinert seit der Umstellung auf
-        # Software-Downscale (siehe stream_overlay.py.annotate) VOR Erkennung
-        # und Zeichnen auf `detection_max_width` -- braucht die Reserve nicht
-        # mehr zwingend, der grosszuegige Wert bleibt als Sicherheitsmarge
-        # bestehen. cam_flange braucht das nicht -- dort hat sich an der
+        # Pi 1). "apriltag" zeichnet seit 21.10.2026 nur noch ein fertiges
+        # Ergebnis in voller Aufloesung auf das verkleinerte Bild; die eigene
+        # Erkennung laeuft im Hintergrund (siehe stream_overlay.py) -- braucht
+        # die Reserve nicht mehr zwingend, der grosszuegige Wert bleibt als
+        # Sicherheitsmarge bestehen. cam_flange braucht das nicht -- dort hat sich an der
         # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
         # volle Frame).
         "overlay_timeout_s": 8.0,

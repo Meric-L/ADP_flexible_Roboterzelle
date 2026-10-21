@@ -236,14 +236,13 @@ class CameraStreamPublisher:
             return self._latest
         # "apriltag" und "off" gehen vom vollen Frame aus, nicht von der
         # kleinen ISP-Vorschau:
-        # - "apriltag" bekommt den vollen Frame als Eingabe, verkleinert ihn
-        #   aber selbst als ERSTEN Schritt in `AprilTagStreamAnnotator.
-        #   annotate()` auf `detection_max_width` -- Erkennung UND Zeichnen
-        #   laufen auf dieser kleineren Leinwand (siehe Kommentar dort:
-        #   Job-Erkennung und Kalibrierung bleiben unveraendert auf voller
-        #   Aufloesung, nur der Demo-Livestream ist guenstiger). Frueher lief
-        #   die Erkennung hier zusaetzlich auf dem vollen Frame -- auf pi1
-        #   laut py-spy ~102% einer Core und Ursache fuer Job-Timeouts.
+        # - "apriltag" bekommt den vollen Frame als Eingabe und zeichnet auf
+        #   eine auf `detection_max_width` verkleinerte Leinwand. Die Tags
+        #   stammen aus einer Erkennung in voller Aufloesung -- meist der
+        #   des Jobs oder der Zellen-Ueberwachung, sonst einer seltenen
+        #   eigenen im Hintergrund (seit 21.10.2026, siehe stream_overlay.py).
+        #   Im Stream-Takt auf dem vollen Frame zu erkennen kostete auf pi1
+        #   laut py-spy ~102% einer Core und liess Jobs in den Timeout laufen.
         # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
         #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
         #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
@@ -343,3 +342,7 @@ class CameraStreamPublisher:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        # Der Annotator haelt einen eigenen Erkennungs-Thread (stream_overlay.py).
+        close = getattr(self._annotator, "close", None)
+        if close is not None:
+            close()
