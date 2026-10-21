@@ -94,28 +94,48 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
 
 
+#: Versatz fuer den 1-px-Rand der Tag-ID in `draw_tag_boxes`.
+_ONE_PX_RING = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)]
+
+
 def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
     """Schlankes Stream-Overlay: je Tag nur gruener Umriss und "#<id>".
 
     Kein Achsenkreuz, kein Eck-Punkt, keine Distanz, kein Reprojektionsfehler;
     mehrdeutige Posen werden nicht anders gefaerbt. Das Label sitzt knapp ueber
-    der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Posen ohne
-    `observation` werden uebersprungen. Aendert `image` in-place.
+    der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Der Rahmen ist
+    halb so dick wie die uebrigen Overlay-Linien, die Zahl hat einen 1 px breiten
+    schwarzen Rand. Posen ohne `observation` werden uebersprungen. Aendert
+    `image` in-place.
     """
     import cv2
 
     scale = _scale_for(image)
-    thickness = max(1, round(_THICKNESS * scale))
+    # Rahmen halb so dick wie die uebrigen Overlay-Linien (bei 960 px: 1 statt 3 px).
+    box_thickness = max(1, int(_THICKNESS * scale / 2))
+    font_scale = _FONT_SCALE * scale
+    text_thickness = max(1, round(_THICKNESS * scale) - 1)
     text_height = round(_FONT_SCALE * scale * 30)
     margin = max(4, round(6 * scale))
     for tag_pose in tag_poses:
         if tag_pose.observation is None:
             continue
         corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
-        cv2.polylines(image, [corners], isClosed=True, color=COLOR_OK, thickness=thickness)
+        cv2.polylines(image, [corners], isClosed=True, color=COLOR_OK, thickness=box_thickness)
         x = int(corners[:, 0, 0].min())
         y = max(text_height, int(corners[:, 0, 1].min()) - margin)
-        _put_text(image, f"#{tag_pose.tag_id}", (x, y), COLOR_OK)
+        label = f"#{tag_pose.tag_id}"
+        # Schwarzer Rand genau 1 px: die Schrift schwarz um je 1 px in alle
+        # acht Richtungen versetzt, dann gruen darueber. Nicht ueber eine
+        # dickere Strichstaerke -- OpenCV 5 ignoriert die bei putText.
+        for dx, dy in _ONE_PX_RING:
+            cv2.putText(
+                image, label, (x + dx, y + dy), cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                COLOR_SHADOW, text_thickness,
+            )
+        cv2.putText(
+            image, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_OK, text_thickness
+        )
     return image
 
 

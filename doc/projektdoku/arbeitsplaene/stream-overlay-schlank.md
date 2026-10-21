@@ -104,3 +104,15 @@ zeichnet das neueste Ergebnis in voller Auflösung (`latest_tags`), mit auf
 Stream-Größe umgerechneten Ecken, über `draw_tag_boxes`. Die Schnittstelle
 oben bleibt gültig.
 
+
+## Nachtrag 21.10.2026: dünnerer Rahmen, Tag-ID mit schwarzem Rand
+
+- Der grüne Rahmen in `draw_tag_boxes` ist halb so dick wie die übrigen
+  Overlay-Linien: `max(1, int(_THICKNESS * scale / 2))`, bei 960 px
+  Stream-Breite 1 px statt 3 px.
+- Die Tag-ID hat einen genau 1 px breiten schwarzen Rand. Gezeichnet wird
+  die Schrift schwarz, um je 1 px in alle acht Richtungen versetzt, dann grün
+  darüber. Eine dickere Strichstärke für die Kontur funktioniert nicht
+  zuverlässig: OpenCV 5 (PC) ignoriert die Strichstärke bei `putText`, OpenCV
+  4.x (Pi) nicht.
+- Die Schnittstelle bleibt unverändert.
