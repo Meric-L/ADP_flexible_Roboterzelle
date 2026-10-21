@@ -138,6 +138,19 @@ class CellWatchOptions:
     #: mehr zu sehen; ein grober Fehler (falsche Taggroesse, verschobener
     #: Welttag) liegt weit darueber.
     max_camera_error_px: float = 6.0
+    #: Mindestzahl Welttags im Bild. Ab 2 schaetzt der Pi die Kamerapose neu
+    #: (gemeinsames PnP, auf ~6 mm genau). Mit 1 nutzt er die gespeicherte
+    #: Pose der fest montierten Kamera und prueft den einen Welttag nur auf
+    #: Konsistenz -- aus einem einzelnen Tag waere die Pose aus 2,5 m um
+    #: Zentimeter ungenau (simuliert: Median 40 mm, Ausreisser bis 1,5 m durch
+    #: gekippte Loesungen, 31-38 % der Bilder ueber 5 cm). Mit 2 ist es wie
+    #: bisher: unter zwei Welttags wird pausiert.
+    min_world_tags: int = 1
+    #: So viel mehr Eckenfehler als beim Speichern der Pose darf der eine
+    #: Welttag haben, bevor "Kamera bewegt?" gilt. Gemessen: unbewegt hoechstens
+    #: ~1 px mehr, bei 5 mm Verschiebung ~1,4 px, bei 10 mm ~3,4 px, bei 0,1
+    #: Grad ~1,4 px; 2 px erkennt also Verschiebungen ab ~7 mm.
+    stored_pose_margin_px: float = 2.0
 
     def to_dict(self) -> dict:
         return {
@@ -147,6 +160,8 @@ class CellWatchOptions:
             "missingPersistS": self.missing_persist_s,
             "intervalS": self.interval_s,
             "maxCameraErrorPx": self.max_camera_error_px,
+            "minWorldTags": self.min_world_tags,
+            "storedPoseMarginPx": self.stored_pose_margin_px,
         }
 
 
@@ -529,12 +544,20 @@ def parse_start(text: str) -> tuple[str | None, CellWatchOptions]:
         ("missingPersistS", "missing_persist_s"),
         ("intervalS", "interval_s"),
         ("maxCameraErrorPx", "max_camera_error_px"),
+        ("storedPoseMarginPx", "stored_pose_margin_px"),
     ):
         value = data.get(key, getattr(defaults, name))
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
             raise ValueError(f"{key} muss eine positive Zahl sein.")
         values[name] = float(value)
-    return job_id or None, CellWatchOptions(**values)
+    min_world_tags = data.get("minWorldTags", defaults.min_world_tags)
+    if (
+        isinstance(min_world_tags, bool)
+        or not isinstance(min_world_tags, int)
+        or not 1 <= min_world_tags <= 4
+    ):
+        raise ValueError("minWorldTags muss eine Ganzzahl von 1 bis 4 sein.")
+    return job_id or None, CellWatchOptions(min_world_tags=min_world_tags, **values)
 
 
 def reference_from_payload(payload_json: str, world_frame: str) -> dict[int, ReferenceTag]:
@@ -584,12 +607,21 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
     from tagloc.localize import SOLVER_JOINT
 
     if localization is None:
-        return None, "kein Welttag im Bild -- keine Verortung"
+        return None, NO_WORLD_TAG
     if localization.solver != SOLVER_JOINT:
-        return None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau"
+        return None, "weniger als zwei Welt-Tags im Bild -- Kamerapose zu ungenau"
     error = localization.reprojection_error_px
     if not math.isfinite(error) or error > options.max_camera_error_px:
         return None, f"Kamerapose unplausibel (RMS {error:.1f} px){_worst_tag(localization)}"
+    return _sightings(locations), ""
+
+
+#: Pausengrund ohne Welttag im Bild. Alle Gruende, die an der Verortung
+#: scheitern, nennen "Welt-Tag" -- daran erkennt das Frontend die Pause.
+NO_WORLD_TAG = "kein Welt-Tag im Bild -- keine Verortung"
+
+
+def _sightings(locations) -> dict:
     sightings = {}
     for location in locations:
         sightings[int(location.tag_id)] = TagSighting(
@@ -599,7 +631,139 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
             module_id=location.module_id,
             flat=is_flat(location.pose),
         )
-    return sightings, ""
+    return sightings
+
+
+class CameraPoseKeeper:
+    """Merkt sich die Pose der fest montierten Deckenkamera und beurteilt
+    jedes Bild.
+
+    * Ab zwei Welttags (gemeinsames PnP, Fehler im Rahmen) gilt die Pose aus
+      dem Bild, und sie wird gemerkt: Mittel der letzten `HISTORY` Posen, dazu
+      je Welttag sein Eckenfehler als Grundlinie (er enthaelt den Kartenfehler
+      von ~1 cm, den die gemeinsame Loesung nicht wegrechnen kann).
+    * Mit genau einem Welttag gilt die gemerkte Pose. Der Tag wird nur auf
+      Konsistenz geprueft: Liegen seine Ecken um mehr als
+      `stored_pose_margin_px` ueber der Grundlinie, hat sich die Kamera
+      vermutlich bewegt -- das Bild zaehlt nicht. Nach `BAD_FRAMES_TO_DROP`
+      solchen Bildern in Folge wird die Pose verworfen, und es braucht wieder
+      zwei Welttags.
+    * Ohne gemerkte Pose (Start, nach Verwerfen, neue Tag-Map) mit nur einem
+      Welttag: Pause, kein Raten.
+    """
+
+    HISTORY = 20
+    #: Weicht ein neues gemeinsames Ergebnis so weit von der gemerkten Pose ab,
+    #: wurde die Kamera bewegt: der Verlauf faengt neu an, statt zu mitteln.
+    RESET_TRANSLATION_M = 0.015
+    RESET_ROTATION_DEG = 0.5
+    BAD_FRAMES_TO_DROP = 5
+    #: Gewicht des neuen Werts bei der Grundlinie (gleitender Mittelwert).
+    BASELINE_ALPHA = 0.2
+
+    def __init__(self) -> None:
+        self._poses: deque = deque(maxlen=self.HISTORY)
+        self._baseline: dict[int, float] = {}
+        self._map_key: tuple | None = None
+        self._bad_frames = 0
+
+    @staticmethod
+    def _key(tag_map) -> tuple:
+        return tuple(
+            sorted(
+                (int(tag_id), tuple(round(float(v), 4) for v in np.asarray(pose)[:3, 3]))
+                for tag_id, pose in tag_map.reference_poses().items()
+            )
+        )
+
+    def clear(self) -> None:
+        self._poses.clear()
+        self._baseline.clear()
+        self._bad_frames = 0
+
+    def stored_for(self, tag_map):
+        """Die gemerkte Pose, oder `None`. Eine neue Tag-Map verwirft sie: sie
+        gilt nur gegen die Weltposen, mit denen sie geschaetzt wurde."""
+        key = self._key(tag_map)
+        if key != self._map_key:
+            self.clear()
+            self._map_key = key
+        if not self._poses:
+            return None
+        from tagloc.geometry import average_poses
+
+        return average_poses(list(self._poses))
+
+    def judge(self, locations, localization, options: CellWatchOptions, tag_map):
+        """`(Sichtungen, "")` oder `(None, Grund)`; wie `sightings_from_locations`."""
+        from tagloc.localize import SOLVER_JOINT, SOLVER_STORED
+
+        self.stored_for(tag_map)  # prueft die Tag-Map
+        if localization is None:
+            return None, NO_WORLD_TAG
+        if localization.solver == SOLVER_JOINT:
+            sightings, reason = sightings_from_locations(locations, localization, options)
+            if sightings is not None:
+                self._remember(localization)
+            return sightings, reason
+        if options.min_world_tags >= 2:
+            return None, "weniger als zwei Welt-Tags im Bild -- Kamerapose zu ungenau"
+        if localization.solver != SOLVER_STORED:
+            return None, (
+                "Kamerapose noch nicht bekannt -- erst muessen 2 Welt-Tags gleichzeitig "
+                "zu sehen sein"
+            )
+        errors = localization.tag_errors_px
+        excess = {
+            tag_id: error - self._baseline.get(tag_id, self._mean_baseline())
+            for tag_id, error in errors.items()
+        }
+        worst = max(excess, key=excess.get) if excess else None
+        if worst is None or excess[worst] > options.stored_pose_margin_px:
+            self._bad_frames += 1
+            if self._bad_frames >= self.BAD_FRAMES_TO_DROP:
+                self.clear()
+                return None, (
+                    "Kamera bewegt? Der Welt-Tag passt nicht mehr zur gespeicherten Kamerapose "
+                    "-- Pose verworfen, 2 Welt-Tags gleichzeitig noetig"
+                )
+            if worst is None:
+                return None, "Welt-Tag nicht auswertbar -- keine Verortung"
+            return None, (
+                f"Welt-Tag {worst} passt nicht zur gespeicherten Kamerapose "
+                f"(+{excess[worst]:.1f} px) -- Kamera bewegt?"
+            )
+        self._bad_frames = 0
+        return _sightings(locations), ""
+
+    def _mean_baseline(self) -> float:
+        return sum(self._baseline.values()) / len(self._baseline) if self._baseline else 0.0
+
+    def _remember(self, localization) -> None:
+        """Ein gutes gemeinsames Ergebnis in die gemerkte Pose uebernehmen."""
+        from tagloc.geometry import (
+            average_poses,
+            rotation_distance_rad,
+            translation_distance_m,
+        )
+
+        self._bad_frames = 0
+        pose = localization.pose_world_cam
+        if self._poses:
+            current = average_poses(list(self._poses))
+            if (
+                translation_distance_m(current, pose) > self.RESET_TRANSLATION_M
+                or math.degrees(rotation_distance_rad(current, pose)) > self.RESET_ROTATION_DEG
+            ):
+                self.clear()
+        self._poses.append(pose)
+        for tag_id, error in localization.tag_errors_px.items():
+            previous = self._baseline.get(tag_id)
+            self._baseline[tag_id] = (
+                error
+                if previous is None
+                else (1 - self.BASELINE_ALPHA) * previous + self.BASELINE_ALPHA * error
+            )
 
 
 def _worst_tag(localization) -> str:
@@ -609,7 +773,7 @@ def _worst_tag(localization) -> str:
     if not errors:
         return ""
     tag_id = max(errors, key=errors.get)
-    return f" -- am schlechtesten passt Welttag {tag_id} ({errors[tag_id]:.1f} px), nachmessen?"
+    return f" -- am schlechtesten passt Welt-Tag {tag_id} ({errors[tag_id]:.1f} px), nachmessen?"
 
 
 # --- Ablauf -------------------------------------------------------------------

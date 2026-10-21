@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import time
+from dataclasses import replace
 from typing import Any
 
 from ..camera import SharedCamera
@@ -91,6 +92,38 @@ def _finite_or_none(value: float | None) -> float | None:
         return None
     number = float(value)
     return None if math.isnan(number) or math.isinf(number) else round(number, 4)
+
+
+def _world_tag_errors(tag_poses, tag_map, pose_world_cam, calibration) -> dict:
+    """Je sichtbarem Welttag: RMS (px) seiner Ecken unter `pose_world_cam`.
+
+    Die Weltpose kommt aus der Tag-Map, projiziert wird mit dem Linsenmodell
+    und verglichen mit den **rohen** (verzeichneten) Ecken des Detektors.
+    """
+    import numpy as np
+
+    from tagloc import lens
+    from tagloc.geometry import compose, invert, rvec_from_rotation
+    from tagloc.pose import tag_object_points
+
+    references = tag_map.reference_poses()
+    errors = {}
+    for tag_pose in tag_poses:
+        world_pose = references.get(tag_pose.tag_id)
+        if world_pose is None or tag_pose.observation is None:
+            continue
+        pose_cam_tag = compose(invert(pose_world_cam), world_pose)
+        projected = lens.project_points(
+            tag_object_points(tag_map.size_for(tag_pose.tag_id, 0.0)),
+            rvec_from_rotation(pose_cam_tag[:3, :3]),
+            np.ascontiguousarray(pose_cam_tag[:3, 3]),
+            calibration,
+        )
+        seen = np.asarray(tag_pose.observation.corners, dtype=np.float64).reshape(4, 2)
+        errors[int(tag_pose.tag_id)] = float(
+            np.sqrt(np.mean(np.sum((projected - seen) ** 2, axis=1)))
+        )
+    return errors
 
 
 def _observed_world_tags(tag_poses, tag_map, localization) -> list:
@@ -603,9 +636,17 @@ class AprilTagDetectionSource(DetectionSource):
             )
         return pose, ""
 
-    def observe_cell(self, image, detector: Any):
+    def observe_cell(self, image, detector: Any, stored_world_cam=None):
         """Ein Bild fuer die Zellen-Ueberwachung:
         `(Modul-Orte je Tag, Lokalisierung, alle erkannten Tag-IDs)`.
+
+        Mit `stored_world_cam` (die frueher aus mindestens zwei Welttags
+        geschaetzte Pose der fest montierten Kamera) rechnet das Bild auch dann
+        im Welt-KS, wenn nur ein Welttag zu sehen ist: Die Pose aus einem
+        einzelnen Tag ist aus 2,5 m um Zentimeter ungenau (gekippte Loesungen),
+        die gespeicherte nicht. Die Lokalisierung hat dann `solver="stored"`,
+        und `tag_errors_px` sagt je sichtbarem Welttag, wie weit seine Ecken
+        unter dieser Pose von den gesehenen liegen -- die Konsistenzpruefung.
 
         Dieselbe Rechnung wie ein Job -- Tag-Posen, gemeinsames PnP ueber die
         Welttags, `locate_modules` --, aber **ohne Seiteneffekte**: kein Anker,
@@ -621,7 +662,12 @@ class AprilTagDetectionSource(DetectionSource):
         Welttag fehlt.
         """
         from tagloc import frames as frame_tools
-        from tagloc.localize import locate_modules, localize_camera
+        from tagloc.localize import (
+            SOLVER_JOINT,
+            SOLVER_STORED,
+            locate_modules,
+            localize_camera,
+        )
         from tagloc.pose import estimate_tag_poses
 
         calibration = self._calibration_for(image)
@@ -642,6 +688,19 @@ class AprilTagDetectionSource(DetectionSource):
         )
         if localization is None:
             return [], None, visible
+        if stored_world_cam is not None and localization.solver != SOLVER_JOINT:
+            errors = _world_tag_errors(
+                tag_poses, self._tag_map, stored_world_cam, calibration
+            )
+            localization = replace(
+                localization,
+                pose_world_cam=stored_world_cam,
+                solver=SOLVER_STORED,
+                reprojection_error_px=(
+                    sum(errors.values()) / len(errors) if errors else float("nan")
+                ),
+                tag_errors_px=errors,
+            )
         return (
             locate_modules(
                 tag_poses,

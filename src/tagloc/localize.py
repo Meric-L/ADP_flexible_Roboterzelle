@@ -71,6 +71,10 @@ ORIGIN_ROBOT_POSE = "robot_pose"
 SOLVER_JOINT = "joint"
 SOLVER_SINGLE = "single"
 SOLVER_AVERAGE = "average"
+#: Die Kamerapose wurde nicht aus diesem Bild geschaetzt, sondern aus einer
+#: frueheren, genauen Schaetzung uebernommen (fest montierte Kamera). Der
+#: eine sichtbare Welttag dient dann nur noch zur Konsistenzpruefung.
+SOLVER_STORED = "stored"
 
 
 @dataclass(frozen=True)

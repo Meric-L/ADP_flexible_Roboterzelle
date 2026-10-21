@@ -51,6 +51,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
 
 ```json
 { "referenceJobId": "job-000123" | null, "movedThresholdM": 0.05, "rotatedThresholdDeg": 10,
+  "minWorldTags": 1, "storedPoseMarginPx": 2,
   "persistS": 5, "missingPersistS": 20, "intervalS": 2, "maxCameraErrorPx": 6 }
 ```
 
@@ -82,7 +83,7 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
 
 ### Regeln (`CellWatchTracker`)
 
-- **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welttags) mit RMS ≤ `maxCameraErrorPx`. Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend. Der Default ist 6 px: Auf Pi 1 lag das gemeinsame PnP bei einer Kalibrierung mit 0,43 px stabil bei 3,3 px, der Rest ist rund 1 cm Ungenauigkeit der Tag-Map. Bei einer Pause wegen zu großem Fehler nennt `message` den Welttag mit dem größten `jointReprojectionErrorPx`, also den Kandidaten zum Nachmessen.
+- **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welt-Tags) mit RMS ≤ `maxCameraErrorPx`, **oder** (`minWorldTags` 1, Standard) genau ein Welt-Tag mit der gemerkten Kamerapose, das zu ihr passt (siehe „Ein Welt-Tag genügt“). Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend. Der Default ist 6 px: Auf Pi 1 lag das gemeinsame PnP bei einer Kalibrierung mit 0,43 px stabil bei 3,3 px, der Rest ist rund 1 cm Ungenauigkeit der Tag-Map. Bei einer Pause wegen zu großem Fehler nennt `message` den Welttag mit dem größten `jointReprojectionErrorPx`, also den Kandidaten zum Nachmessen.
 - **moved:** Der Median der Position (bzw. Drehung um die Hochachse) der letzten `persistS` Sekunden weicht länger als `persistS` um mehr als den Schwellwert ab. Bei mehrdeutigen Tags zählt nur die Position, außer das Modul liegt flach (Hochachse ≤ 30° zur Welt-Z): Dann zählt auch die Drehung, denn die beiden Lösungen unterscheiden sich nur im Kippen. Nachgeschärft am 19.10.2026: Ein gedrehtes Modul wurde nie gemeldet, weil in der Draufsicht fast jeder flache Tag mehrdeutig ist.
 - **appeared:** Ein Tag außerhalb der Referenz ist seit mindestens `persistS` sichtbar, und zwar in der Mehrzahl der Bilder des Fensters.
 - **disappeared:** Ein Referenz-Tag fehlt länger als `missingPersistS`, und zwar in so vielen gültigen Bildern hintereinander, dass ein zufälliges Verpassen bei seiner bisherigen Erkennungsrate unter 0,001 % liegt (mindestens 3, höchstens 60; Rate vorsichtig als untere 95-%-Grenze). Nachgeschärft am 15.10.2026: Ein Tag an der Erkennungsgrenze (nur in jedem fünften Bild erkannt) löste nach 20 s Lücke einen Fehlalarm aus, obwohl der Scan ihn fand.
@@ -91,6 +92,19 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
   - disappeared erlischt erst, wenn der Tag wieder in der Mehrzahl der Bilder ist.
   - appeared erlischt erst, wenn der Tag `persistS` lang nicht mehr zu sehen war.
 - **Welttags:** Sie werden nicht überwacht. `locate_modules` liefert sie gar nicht erst.
+
+### Ein Welt-Tag genügt (19.10.2026)
+
+Zwei Welt-Tags gleichzeitig zu sehen war oft nicht gegeben, denn einer ist häufig verdeckt. Die Kamera ist fest montiert. Deshalb gilt: Aus Bildern mit mindestens zwei Welt-Tags schätzt der Pi die Pose (gemeinsames PnP) und merkt sie sich. Bei genau einem sichtbaren Welt-Tag nutzt er die gemerkte Pose und prüft den Tag nur auf Konsistenz.
+
+- **Warum nicht neu aus einem Tag:** Aus 2,5 m ist die Pose aus nur einem Tag um Zentimeter ungenau (simuliert: Modulfehler Median 29–40 mm, 95 % unter ~90–100 mm, Ausreißer bis 1,5 m durch gekippte Lösungen, 24–38 % der Bilder über 5 cm). Mit gemerkter Pose: Median 12 mm, 95 % unter 33 mm, höchstens 46 mm, 0 % über 5 cm. Der Rest ist der Messfehler des Modul-Tags selbst. In der Simulation hatte der Modul-Tag 19,8 cm, bei 8 cm großen Tags ist der Fehler größer. Das ist aber unabhängig von der Zahl der Welt-Tags.
+- **Konsistenzprüfung:** Die Ecken des einen Welt-Tags werden unter der gemerkten Pose projiziert und mit den gesehenen verglichen. Verglichen wird mit dem Wert, den derselbe Tag beim Speichern der Pose hatte (er enthält den Kartenfehler von ~1 cm). Mehr als `storedPoseMarginPx` (2 px) darüber heißt: Kamera bewegt? Gemessen: unbewegt höchstens ~1 px, 5 mm Verschiebung ~1,4 px, 10 mm ~3,4 px, 0,1° ~1,4 px.
+- **Pausen** (`message` nennt immer „Welt-Tag“):
+  - kein Welt-Tag im Bild,
+  - Start oder nach Verwerfen mit nur einem Welt-Tag („Kamerapose noch nicht bekannt“),
+  - der Welt-Tag passt nicht zur gemerkten Pose („Kamera bewegt?“).
+  Nach 5 unpassenden Bildern in Folge wird die Pose verworfen, und es braucht wieder zwei Welt-Tags gleichzeitig.
+- **Grenzen:** Ändert sich die Tag-Map, ist die Pose verworfen. Weicht ein neues gemeinsames Ergebnis um mehr als 15 mm oder 0,5° ab, fängt der Verlauf neu an, statt zu mitteln. `minWorldTags: 2` schaltet auf das alte Verhalten zurück.
 
 ### Ressourcen
 

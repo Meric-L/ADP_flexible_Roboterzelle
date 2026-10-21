@@ -346,7 +346,7 @@ class JsonTest(unittest.TestCase):
         )
         sightings, reason = sightings_from_locations([location], bad, CellWatchOptions())
         self.assertIsNone(sightings)
-        self.assertIn("Welttag 585 (14.5 px)", reason)
+        self.assertIn("Welt-Tag 585 (14.5 px)", reason)
 
 
 class FakeClock:

@@ -1299,7 +1299,7 @@ async def _install_cell_watch(
     # Erst hier: die Ueberwachung braucht numpy/OpenCV, der Rest des Servers nicht.
     from tagloc.detector import build_detector
 
-    from .cellwatch import CellWatch, CellWatchPorts, sightings_from_locations
+    from .cellwatch import CameraPoseKeeper, CellWatch, CellWatchPorts
 
     apriltag = config.apriltag
     detector = build_detector(
@@ -1310,6 +1310,9 @@ async def _install_cell_watch(
         detector_parameters=apriltag.detector_parameters,
     )
     seen = {"timestamp": None}
+    #: Die Pose der fest montierten Kamera, einmal aus >= 2 Welttags geschaetzt;
+    #: lebt ueber `StartCellWatch`-Aufrufe hinweg (Zeiten aendern, neue Referenz).
+    keeper = CameraPoseKeeper()
 
     async def observe(options):
         frame = apriltag_source.camera.latest_frame
@@ -1318,10 +1321,12 @@ async def _install_cell_watch(
         if frame.timestamp == seen["timestamp"]:
             return None, ""  # kein neues Bild, keine Aussage
         seen["timestamp"] = frame.timestamp
+        tag_map = apriltag_source._tag_map
+        stored = keeper.stored_for(tag_map) if options.min_world_tags <= 1 else None
         locations, localization, visible = await asyncio.to_thread(
-            apriltag_source.observe_cell, frame.image, detector
+            apriltag_source.observe_cell, frame.image, detector, stored
         )
-        sightings, reason = sightings_from_locations(locations, localization, options)
+        sightings, reason = keeper.judge(locations, localization, options, tag_map)
         return sightings, reason, visible
 
     async def publish(status: str) -> None:
