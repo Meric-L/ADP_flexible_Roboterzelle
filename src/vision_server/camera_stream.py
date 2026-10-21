@@ -316,6 +316,9 @@ class CameraStreamPublisher:
         """Schreibt den Stand der Einmess-Vorschau, wenn er neu ist (im Event-Loop)."""
         if self._preview_status_node is None or self._annotator is None:
             return
+        expire = getattr(self._annotator, "expire_reference_preview", None)
+        if expire is not None:
+            expire()
         status = getattr(self._annotator, "reference_preview_status", None)
         if status is None or status is self._preview_status_written:
             return

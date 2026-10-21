@@ -22,7 +22,6 @@ from .overlay import (
     COLOR_AMBIGUOUS,
     COLOR_OK,
     COLOR_TEXT,
-    _put_text,
     _scale_for,
 )
 
@@ -51,8 +50,9 @@ def _dashed(image, points, color, thickness) -> None:
     import cv2
 
     pts = _int_points(points)
-    for index in range(0, len(pts) - 1, 2):
-        cv2.line(image, tuple(pts[index]), tuple(pts[index + 1]), color, thickness)
+    for width, shade in ((thickness + 2, _HALO), (thickness, color)):
+        for index in range(0, len(pts) - 1, 2):
+            cv2.line(image, tuple(pts[index]), tuple(pts[index + 1]), shade, width, cv2.LINE_AA)
 
 
 def _band_edges(debug_line: dict) -> list[np.ndarray]:
@@ -77,17 +77,66 @@ def _label(debug_line: dict) -> str:
     return f"{name}  {offset:+.1f} mm  {angle:.1f} deg".replace(".", ",")
 
 
-def _label_anchor(debug_line: dict, width: int, height: int):
+_HALO = (20, 20, 20)
+_FONT_SCALE = 0.55
+_BOX_ALPHA = 0.6
+
+
+def _label_anchor(debug_line: dict, scale: float):
+    """Textposition (links unten der Box) ~12 px senkrecht neben der Kante, oder `None`."""
     for key in ("measuredPx", "guessPx"):
         points = debug_line.get(key)
         if points:
             pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
             middle = pts[len(pts) // 2] if key == "guessPx" else pts.mean(axis=0)
-            return (
-                int(min(max(middle[0] + 6, 4), max(width - 120, 4))),
-                int(min(max(middle[1] - 8, 16), height - 4)),
-            )
+            direction = pts[-1] - pts[0]
+            norm = float(np.linalg.norm(direction))
+            if norm < 1e-6:
+                normal = np.array([0.0, -1.0])
+            else:
+                normal = np.array([-direction[1], direction[0]]) / norm
+                if normal[1] > 0 or (abs(normal[1]) < 1e-9 and normal[0] < 0):
+                    normal = -normal
+            return middle + normal * 12.0 * scale
     return None
+
+
+def _text_box(canvas, text: str, origin, color, scale: float) -> None:
+    """Text mit halbtransparentem dunklem Rechteck dahinter (ohne Kontur), im Bild gehalten."""
+    import cv2
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = _FONT_SCALE * scale
+    thickness = max(1, round(scale))
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad = max(2, round(3 * scale))
+    height, width = canvas.shape[:2]
+    left = int(min(max(origin[0], 0), max(width - text_w - 2 * pad, 0)))
+    top = int(min(max(origin[1] - text_h - pad, 0), max(height - text_h - baseline - 2 * pad, 0)))
+    right = min(left + text_w + 2 * pad, width)
+    bottom = min(top + text_h + baseline + 2 * pad, height)
+    region = canvas[top:bottom, left:right]
+    region[:] = (region * (1.0 - _BOX_ALPHA)).astype(canvas.dtype)
+    cv2.putText(
+        canvas, text, (left + pad, top + pad + text_h), font, font_scale, color, thickness,
+        cv2.LINE_AA,
+    )
+
+
+def _halo_polyline(canvas, points, color, thickness: int, closed: bool = False) -> None:
+    """Linie mit dunklem Saum (1-2 px breiter) darunter, damit sie auf hellem Grund sichtbar bleibt."""
+    import cv2
+
+    pts = [_int_points(points).reshape(-1, 1, 2)]
+    cv2.polylines(canvas, pts, closed, _HALO, thickness + 2, cv2.LINE_AA)
+    cv2.polylines(canvas, pts, closed, color, thickness, cv2.LINE_AA)
+
+
+def _dot(canvas, centre, radius: int, color) -> None:
+    import cv2
+
+    cv2.circle(canvas, centre, radius + 1, _HALO, -1, cv2.LINE_AA)
+    cv2.circle(canvas, centre, radius, color, -1, cv2.LINE_AA)
 
 
 def draw_reference_debug(
@@ -115,47 +164,44 @@ def draw_reference_debug(
     scale = _scale_for(canvas)
     thin = max(1, round(scale))
     thick = max(2, round(2 * scale))
-    dot = max(1, round(1.5 * scale))
+    dot = max(2, round(2 * scale))
 
     for entry in debug:
         outline = entry.get("maskOutlinePx")
         if outline and on["mask"]:
-            cv2.polylines(
-                canvas, [_int_points(outline).reshape(-1, 1, 2)], True, COLOR_MASK, thin
-            )
+            _halo_polyline(canvas, outline, COLOR_MASK, thin, closed=True)
     if tag_corners_px is not None and on["tagBox"]:
-        corners = _int_points(tag_corners_px).reshape(-1, 1, 2)
-        cv2.polylines(canvas, [corners], True, COLOR_OK, thick)
+        _halo_polyline(canvas, tag_corners_px, COLOR_OK, thick, closed=True)
 
     for entry in debug:
         if entry.get("id") == "_tag":
             continue
         for edge in _band_edges(entry) if on["band"] else []:
-            cv2.polylines(canvas, [_int_points(edge).reshape(-1, 1, 2)], False, COLOR_GUESS, thin)
+            _halo_polyline(canvas, edge, COLOR_GUESS, thin)
         guess = entry.get("guessPx")
         if guess and on["guess"]:
             _dashed(canvas, guess, COLOR_GUESS, thick)
         for u, v in _int_points(entry.get("edgePointsPx") or []) if on["candidates"] else []:
-            cv2.circle(canvas, (int(u), int(v)), dot, COLOR_CANDIDATE_POINT, -1)
+            _dot(canvas, (int(u), int(v)), dot, COLOR_CANDIDATE_POINT)
         for candidate in (entry.get("candidates") or []) if on["rejected"] else []:
             if candidate.get("chosen"):
                 continue
             for u, v in _int_points(candidate.get("inliersPx") or []):
-                cv2.circle(canvas, (int(u), int(v)), dot + 1, COLOR_REJECTED, -1)
+                _dot(canvas, (int(u), int(v)), dot, COLOR_REJECTED)
         measured = entry.get("measuredPx")
         if measured and on["chosen"]:
             poly = entry.get("measuredPolyPx") or measured
             colour = COLOR_BAD if entry.get("ambiguous") else COLOR_CHOSEN
-            cv2.polylines(canvas, [_int_points(poly).reshape(-1, 1, 2)], False, colour, thick)
-        anchor = _label_anchor(entry, width, height)
+            _halo_polyline(canvas, poly, colour, thick)
+        anchor = _label_anchor(entry, scale)
         if anchor is not None and on["labels"]:
             colour = COLOR_BAD if entry.get("ambiguous") else (
                 COLOR_CHOSEN if measured else COLOR_AMBIGUOUS
             )
-            _put_text(canvas, _label(entry), anchor, colour)
+            _text_box(canvas, _label(entry), anchor, colour, scale)
 
     if title:
-        _put_text(canvas, title, (round(8 * scale), round(22 * scale)), COLOR_TEXT)
+        _text_box(canvas, title, (round(6 * scale), round(4 * scale) + 20 * scale), COLOR_TEXT, scale)
     return canvas
 
 

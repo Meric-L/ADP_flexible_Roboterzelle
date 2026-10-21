@@ -114,6 +114,8 @@ class AprilTagStreamAnnotator:
         self._preview_pending: Future | None = None
         self._last_preview_start = float("-inf")
         self._last_preview_error: str | None = None
+        #: `(View, Ausgabegroesse, skalierte Debug-Daten, Ecken)` des letzten Zeichnens.
+        self._scaled_cache: tuple | None = None
 
     def apply_calibration(self, calibration: Any) -> None:
         """Ersetzt die Kalibrierung, die das Overlay fuers Achsenkreuz nutzt
@@ -159,6 +161,27 @@ class AprilTagStreamAnnotator:
         self.reference_preview_status = build_status(
             active=True, tag_id=request.tag_id, tag_seen=False, layers=request.overlay
         )
+
+    def expire_reference_preview(self, now: float | None = None) -> None:
+        """Schaltet eine abgelaufene Vorschau aus (auch ausserhalb des Modus "tagreference")."""
+        preview = self._preview
+        if preview is not None and (time.monotonic() if now is None else now) > preview.expires_at:
+            self.set_reference_preview(None)
+
+    def _status_for_current_preview(self) -> None:
+        """Status passend zur aktuellen Vorschau (nach einem Wettlauf mit dem Auswerter)."""
+        from .tagreference_preview import build_status
+
+        preview = self._preview
+        if preview is None:
+            self.reference_preview_status = build_status(active=False, tag_id=None, tag_seen=False)
+        else:
+            self.reference_preview_status = build_status(
+                active=True,
+                tag_id=preview.request.tag_id,
+                tag_seen=False,
+                layers=preview.request.overlay,
+            )
 
     def set_reference_measuring(self, measuring: bool) -> None:
         """`MeasureTagReference` laeuft (True) bzw. ist fertig (False)."""
@@ -357,9 +380,7 @@ class AprilTagStreamAnnotator:
         """
         from tagloc import frames as frame_tools
         from tagloc.overlay import draw_tag_boxes
-        from tagloc.reference_overlay import draw_reference_debug, scale_debug
-
-        from .tagreference_preview import build_status
+        from tagloc.reference_overlay import draw_reference_debug
 
         if self._detection_max_width is not None:
             from .camera_stream import _resize_for_stream
@@ -369,31 +390,30 @@ class AprilTagStreamAnnotator:
             canvas = image.copy()
         output_size = frame_tools.image_size(canvas)
 
+        self.expire_reference_preview(now)
         preview = self._preview
-        if preview is not None and now > preview.expires_at:
-            self.set_reference_preview(None)
-            preview = None
         if preview is not None and self._reference_preview_due(now):
             self._start_reference_preview(image, preview, now)
 
-        view = self._view
-        if view is not None and now - view.taken_at <= view.hold_s:
-            sx = output_size[0] / view.image_size[0]
-            sy = output_size[1] / view.image_size[1]
-            corners = None
-            if view.corners_px is not None:
-                import numpy as np
+        # Tag-Rahmen der uebrigen Tags: wie im Modus "apriltag" aus dem neuesten
+        # Ergebnis, eigene Erkennung nur, wenn keine Vorschau-Auswertung laeuft.
+        snapshot = self._newest_tags()
+        evaluating = self._preview_pending is not None and not self._preview_pending.done()
+        if not evaluating and self._own_detection_due(snapshot, now):
+            self._start_own_detection(image, now)
 
-                corners = np.asarray(view.corners_px, dtype=np.float64) * [sx, sy]
+        view = self._view
+        # Eine laufende Auswertung haelt das alte Bild: kein Flackern bei langsamer Rechnung.
+        if view is not None and (now - view.taken_at <= view.hold_s or evaluating):
+            debug, corners = self._scaled_view(view, output_size)
+            if corners is None and snapshot is not None:
+                draw_tag_boxes(
+                    canvas, _scale_corners(snapshot.tag_poses, snapshot.image_size, output_size)
+                )
             return draw_reference_debug(
-                canvas,
-                scale_debug(view.debug, sx, sy),
-                tag_corners_px=corners,
-                title=view.title,
-                layers=view.layers,
+                canvas, debug, tag_corners_px=corners, title=view.title, layers=view.layers
             )
 
-        snapshot = self._newest_tags()
         if snapshot is not None:
             draw_tag_boxes(canvas, _scale_corners(snapshot.tag_poses, snapshot.image_size, output_size))
         title = (
@@ -402,6 +422,23 @@ class AprilTagStreamAnnotator:
             else "keine Einmess-Vorschau"
         )
         return draw_reference_debug(canvas, [], title=title)
+
+    def _scaled_view(self, view: Any, output_size: tuple) -> tuple:
+        """`(Debug, Ecken)` der View auf Stream-Groesse; je (View, Groesse) nur einmal gerechnet."""
+        import numpy as np
+        from tagloc.reference_overlay import scale_debug
+
+        cached = self._scaled_cache
+        if cached is not None and cached[0] is view and cached[1] == tuple(output_size):
+            return cached[2], cached[3]
+        sx = output_size[0] / view.image_size[0]
+        sy = output_size[1] / view.image_size[1]
+        corners = None
+        if view.corners_px is not None:
+            corners = np.asarray(view.corners_px, dtype=np.float64) * [sx, sy]
+        debug = scale_debug(view.debug, sx, sy)
+        self._scaled_cache = (view, tuple(output_size), debug, corners)
+        return debug, corners
 
     def _reference_preview_due(self, now: float) -> bool:
         from .tagreference_preview import PREVIEW_INTERVAL_S
@@ -492,6 +529,10 @@ class AprilTagStreamAnnotator:
                 debug=debug,
                 layers=request.overlay,
             )
+            if self._preview is not preview:
+                # Wettlauf: waehrend der Zuweisung wurde umgeschaltet (Event-Loop).
+                self._view = None
+                self._status_for_current_preview()
             self._last_preview_error = None
         except Exception as error:
             # Bei 3 Hz nicht jedes Mal den ganzen Stacktrace ins Log.

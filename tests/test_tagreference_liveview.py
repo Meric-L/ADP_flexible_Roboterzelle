@@ -9,6 +9,7 @@ import asyncio
 import base64
 import dataclasses
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -128,6 +129,16 @@ class DebugDataTest(SceneSource, unittest.TestCase):
         self.measure(debug, lines=far)
         self.assertEqual(debug[1]["reason"], "NOT_VISIBLE")
         self.assertNotIn("guessPx", debug[1])
+
+    def test_a_broken_debug_path_never_breaks_the_measurement(self):
+        from unittest import mock
+
+        plain = self.measure()
+        for name in ("_pts", "_undistorted_to_raw"):
+            with self.subTest(name), mock.patch(f"tagloc.reference_edges.{name}", side_effect=RuntimeError("kaputt")):
+                with self.assertLogs("tagloc.reference_edges", "WARNING"):
+                    broken = self.measure([])
+                self.assertTrue(_same_measurements(plain, broken))
 
     def draw_cases(self):
         found = []
@@ -342,12 +353,73 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         self.assertGreater(int(diff.sum()), 200)
         self.assertFalse(diff[-20:, -20:].any())
 
+    def test_without_a_preview_the_own_detection_keeps_the_boxes_alive(self):
+        annotator = self.annotator()
+        annotator.annotate(self.images[0], "tagreference")
+        self.assertIsNotNone(annotator._pending)  # eigene Erkennung wie im Modus apriltag
+        annotator._pending.result(timeout=30)
+        self.assertEqual([p.tag_id for p in annotator._own_tags.tag_poses], [TAG_ID])
+
+    def test_tag_not_in_the_picture_still_draws_the_other_tags(self):
+        annotator = self.annotator()
+        annotator.annotate(self.images[0], "tagreference")
+        annotator._pending.result(timeout=30)
+        annotator.set_reference_preview(self.request(tagId=99))
+        annotator.annotate(self.images[0], "tagreference")
+        self.settle(annotator)
+        out = annotator.annotate(self.images[0], "tagreference")
+        self.assertFalse(annotator.reference_preview_status["tagSeen"])
+        bare = draw_reference_debug(self.images[0], [], title="Tag 99 nicht im Bild")
+        self.assertFalse(np.array_equal(out, bare))  # Rahmen von Tag 7 sind dazugekommen
+
+    def test_a_running_evaluation_keeps_the_old_picture(self):
+        annotator = self.annotator()
+        annotator.set_reference_preview(self.request())
+        annotator.annotate(self.images[0], "tagreference")
+        self.settle(annotator)
+        view = annotator._view
+        annotator._view = dataclasses.replace(view, taken_at=time.monotonic() - 10)  # veraltet
+        annotator._preview_pending = _Pending()
+        out = annotator.annotate(self.images[0], "tagreference")
+        again = annotator.annotate(self.images[0], "tagreference")
+        self.assertTrue(np.array_equal(out, again))
+        self.assertIs(annotator._scaled_cache[0], annotator._view)  # gecacht
+        annotator._preview_pending = None
+        annotator.annotate(self.images[0], "tagreference")  # nun veraltet und keine Auswertung: neu
+
+    def test_expiry_is_checked_outside_the_mode_too(self):
+        annotator = self.annotator()
+        annotator.set_reference_preview(self.request())
+        annotator._preview = dataclasses.replace(annotator._preview, expires_at=time.monotonic() - 1)
+        annotator.expire_reference_preview()
+        self.assertFalse(annotator.reference_preview_status["active"])
+
+    def test_switching_during_the_evaluation_leaves_the_right_status(self):
+        annotator = self.annotator()
+        annotator.set_reference_preview(self.request())
+        old = annotator._preview
+        original = annotator._calibration_for
+
+        def switch_off(size):
+            annotator.set_reference_preview(None)  # Event-Loop schaltet mitten in der Auswertung aus
+            return original(size)
+
+        annotator._calibration_for = switch_off
+        annotator._evaluate_reference(self.images[0], old)
+        self.assertFalse(annotator.reference_preview_status["active"])
+        self.assertIsNone(annotator._view)
+
     def test_other_modes_are_unchanged(self):
         annotator = self.annotator()
         annotator.set_reference_preview(self.request())
         out = annotator.annotate(self.images[0], "off")
         self.assertIs(out is self.images[0] or np.array_equal(out, self.images[0]), True)
         self.assertIsNone(annotator._preview_pending)
+
+
+class _Pending:
+    def done(self):
+        return False
 
 
 class _StatusAnnotator:
@@ -554,7 +626,7 @@ class ProtocolFolderTest(unittest.TestCase):
             second = tagreference_log.write_protocol(Path(folder), 7, "{}", {}, [image], None, now=now)
             self.assertEqual((first.name, second.name), ("20261021-120000_tag7", "20261021-120000_tag7_2"))
 
-    def test_latest_overlay(self):
+    def test_latest_overlay_only_counts_the_newest_measurement(self):
         image = np.zeros((4, 4, 3), dtype=np.uint8)
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
@@ -564,10 +636,47 @@ class ProtocolFolderTest(unittest.TestCase):
             old = tagreference_log.write_protocol(
                 directory, 7, "{}", {}, [], image, now=datetime(2026, 10, 21, 12, 0, 0)
             )
-            tagreference_log.write_protocol(  # neuer, aber ohne Overlay (saveDebug ohne Bild)
+            self.assertEqual(tagreference_log.latest_overlay(directory), old / "overlay.jpg")
+            newer = tagreference_log.write_protocol(  # TAG_NOT_SEEN: kein Overlay
                 directory, 7, "{}", {}, [], None, now=datetime(2026, 10, 21, 12, 0, 5)
             )
-            self.assertEqual(tagreference_log.latest_overlay(directory), old / "overlay.jpg")
+            os.utime(old, (1000, 1000))
+            self.assertTrue(newer.is_dir())
+            self.assertIsNone(tagreference_log.latest_overlay(directory))  # nicht das alte Bild
+
+    def test_foreign_folders_are_never_touched_or_served(self):
+        image = np.zeros((4, 4, 3), dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            foreign = directory / "meine-notizen"
+            foreign.mkdir()
+            (foreign / "overlay.jpg").write_bytes(b"x")
+            os.utime(foreign, (1, 1))
+            for index in range(4):
+                tagreference_log.write_protocol(
+                    directory, 7, "{}", {}, [], image, now=datetime(2026, 10, 21, 12, 0, index)
+                )
+            tagreference_log.prune(directory, keep=2)
+            self.assertTrue((foreign / "overlay.jpg").exists())
+            self.assertEqual(len([p for p in directory.iterdir() if p.name != "meine-notizen"]), 2)
+            self.assertNotEqual(tagreference_log.latest_overlay(directory).parent, foreign)
+
+    def test_new_folder_survives_a_wrong_clock(self):
+        image = np.zeros((4, 4, 3), dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            for index in range(50):
+                path = tagreference_log.write_protocol(
+                    directory, 7, "{}", {}, [], image, now=datetime(2026, 10, 21, 12, 0, 0) + timedelta(seconds=index)
+                )
+                os.utime(path, (1_000_000 + index, 1_000_000 + index))
+            # Uhr steht nach dem Neustart auf 2000: der Name der neuen Messung sortiert VOR allen alten.
+            new = tagreference_log.write_protocol(
+                directory, 7, "{}", {}, [], image, now=datetime(2000, 1, 1, 0, 0, 0)
+            )
+            self.assertTrue(new.exists())
+            self.assertEqual(len(list(directory.iterdir())), 50)
+            self.assertEqual(tagreference_log.latest_overlay(directory), new / "overlay.jpg")
 
 
 class _NoPublisher:

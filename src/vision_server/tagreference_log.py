@@ -8,6 +8,7 @@ die Messung selbst darf daran nicht scheitern.
 """
 
 import json
+import re
 import shutil
 from collections.abc import Sequence
 from datetime import datetime
@@ -17,6 +18,7 @@ from typing import Any
 #: So viele Protokollordner bleiben hoechstens liegen.
 MAX_FOLDERS = 50
 OVERLAY_NAME = "overlay.jpg"
+_FOLDER_PATTERN = re.compile(r"^\d{8}-\d{6}_tag\d+(_\d+)?$")
 
 
 def write_protocol(
@@ -52,23 +54,47 @@ def write_protocol(
             raise OSError(f"frame{index}.png konnte nicht geschrieben werden")
     if overlay is not None and not cv2.imwrite(str(folder / OVERLAY_NAME), overlay):
         raise OSError(f"{OVERLAY_NAME} konnte nicht geschrieben werden")
-    prune(directory)
+    prune(directory, protect=folder)
     return folder
 
 
-def prune(directory: Path, keep: int = MAX_FOLDERS) -> None:
-    """Loescht die aeltesten Protokollordner, bis hoechstens `keep` bleiben."""
-    folders = sorted(path for path in directory.iterdir() if path.is_dir())
-    for old in folders[: max(0, len(folders) - keep)]:
+def _own_folders(directory: Path) -> list[Path]:
+    """Eigene Protokollordner, neueste zuerst (nach mtime, Namen als Gleichstand).
+
+    Nach mtime, nicht nach Namen: der Pi hat keine RTC, die Uhr kann beim Start
+    falsch stehen. Fremde Ordner zaehlen nicht.
+    """
+    found = []
+    for path in directory.iterdir():
+        if _FOLDER_PATTERN.match(path.name) and path.is_dir():
+            try:
+                found.append((path.stat().st_mtime, path.name, path))
+            except OSError:
+                continue
+    return [item[2] for item in sorted(found, reverse=True)]
+
+
+def prune(directory: Path, keep: int = MAX_FOLDERS, protect: Path | None = None) -> None:
+    """Loescht die aeltesten eigenen Protokollordner, bis hoechstens `keep` bleiben.
+
+    `protect` (der gerade angelegte Ordner) wird nie geloescht; fremde Ordner auch nicht.
+    """
+    folders = [path for path in _own_folders(directory) if path != protect]
+    # Der geschuetzte Ordner zaehlt mit, bleibt aber immer.
+    for old in folders[max(0, keep - (1 if protect is not None else 0)) :]:
         shutil.rmtree(old, ignore_errors=True)
 
 
 def latest_overlay(directory: Path | None) -> Path | None:
-    """`overlay.jpg` des neuesten Protokollordners, der eines hat, sonst `None`."""
+    """`overlay.jpg` der NEUESTEN Messung, sonst `None`.
+
+    Hat die neueste Messung kein Bild (z. B. Tag nicht gesehen), gibt es kein
+    Bild: ein aelteres einer anderen Messung waere irrefuehrend.
+    """
     if directory is None or not directory.is_dir():
         return None
-    for folder in sorted((p for p in directory.iterdir() if p.is_dir()), reverse=True):
-        candidate = folder / OVERLAY_NAME
-        if candidate.is_file():
-            return candidate
-    return None
+    folders = _own_folders(directory)
+    if not folders:
+        return None
+    candidate = folders[0] / OVERLAY_NAME
+    return candidate if candidate.is_file() else None

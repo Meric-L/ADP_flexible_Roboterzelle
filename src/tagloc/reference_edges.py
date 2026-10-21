@@ -28,6 +28,7 @@ dem Tag. Kamera-KS: OpenCV (+Z aus der Linse, +X rechts, +Y unten).
 `cv2` wird nur innerhalb der Funktionen importiert.
 """
 
+import logging
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -469,6 +470,14 @@ def _collect_edge_points(blurred, mask, positions, normals, band_px):
     )
 
 
+def _debug_step(step) -> None:
+    """Fuehrt einen Debug-Schritt aus; ein Fehler darin darf die Messung nie stoeren."""
+    try:
+        step()
+    except Exception:
+        logging.getLogger(__name__).warning("Debug-Daten der Kantensuche fehlgeschlagen", exc_info=True)
+
+
 def _pts(array) -> list:
     """Bildpunkte als JSON-taugliche Liste `[[u, v], ...]` (Rohbild-Pixel)."""
     return np.round(np.asarray(array, dtype=np.float64).reshape(-1, 2), 2).tolist()
@@ -518,14 +527,16 @@ def _measure_one(
         dbg,
     )
     if dbg is not None:
-        dbg.update(
-            found=bool(result.found),
-            supportPx=round(float(result.support_px), 1),
-            contrast=round(float(result.contrast), 1),
-            reason=result.reason,
-            ambiguous=bool(result.ambiguous),
-            offsetMm=None if result.offset_m is None else round(result.offset_m * 1000.0, 3),
-            angleDeg=None if result.angle_deg is None else round(result.angle_deg, 3),
+        _debug_step(
+            lambda: dbg.update(
+                found=bool(result.found),
+                supportPx=round(float(result.support_px), 1),
+                contrast=round(float(result.contrast), 1),
+                reason=result.reason,
+                ambiguous=bool(result.ambiguous),
+                offsetMm=None if result.offset_m is None else round(result.offset_m * 1000.0, 3),
+                angleDeg=None if result.angle_deg is None else round(result.angle_deg, 3),
+            )
         )
         debug.append(dbg)
     return result
@@ -581,7 +592,7 @@ def _measure_one_impl(
     first, last = run
     segment = pixels[first : last + 1]
     if dbg is not None:
-        dbg["guessPx"] = _pts(segment[:: max(1, len(segment) // 60)])
+        _debug_step(lambda: dbg.update(guessPx=_pts(segment[:: max(1, len(segment) // 60)])))
     steps = np.linalg.norm(np.diff(segment, axis=0), axis=1)
     arclength = np.concatenate([[0.0], np.cumsum(steps)])
     total = float(arclength[-1])
@@ -609,13 +620,15 @@ def _measure_one_impl(
         gray_blurred, mask, positions, normals, band_px
     )
     if dbg is not None:
-        dbg.update(
-            profilesPx=_pts(positions),
-            normalsPx=_pts(normals),
-            bandPx=round(float(band_px), 2),
-            edgePointsPx=_pts(edge_points),
-            candidates=[],
-            measuredPx=None,
+        _debug_step(
+            lambda: dbg.update(
+                profilesPx=_pts(positions),
+                normalsPx=_pts(normals),
+                bandPx=round(float(band_px), 2),
+                edgePointsPx=_pts(edge_points),
+                candidates=[],
+                measuredPx=None,
+            )
         )
     min_inliers = max(5, int(0.2 * count))
     if len(edge_points) < min_inliers:
@@ -666,14 +679,18 @@ def _measure_one_impl(
     candidates.sort(key=lambda item: -item["score"])
     best = candidates[0]
     if dbg is not None:
-        dbg["candidates"] = [
-            {
-                "inliersPx": _pts(edge_points[item["indices"]]),
-                "score": round(float(item["score"]), 3),
-                "chosen": item is best,
-            }
-            for item in candidates
-        ]
+        _debug_step(
+            lambda: dbg.update(
+                candidates=[
+                    {
+                        "inliersPx": _pts(edge_points[item["indices"]]),
+                        "score": round(float(item["score"]), 3),
+                        "chosen": item is best,
+                    }
+                    for item in candidates
+                ]
+            )
+        )
     ambiguous = any(
         other["score"] >= _AMBIGUITY_SCORE_RATIO * best["score"]
         and abs(float(_line_distance(best["centre"][None, :], other["centre"], other["direction"])[0]))
@@ -720,14 +737,18 @@ def _measure_one_impl(
         )
     )
     if dbg is not None:
-        # Gewaehlte Linie im idealen Bild ueber die Inlier-Ausdehnung, zurueck ins Rohbild.
-        along = (undistorted[indices] - best["centre"]) @ best["direction"]
-        ts = np.linspace(float(along.min()), float(along.max()), 12)
-        ideal_points = best["centre"][None, :] + ts[:, None] * best["direction"][None, :]
-        raw_points = _undistorted_to_raw(ideal_points, calibration)
-        if np.all(np.isfinite(raw_points)):
-            dbg["measuredPx"] = _pts(raw_points[[0, -1]])
-            dbg["measuredPolyPx"] = _pts(raw_points)
+
+        def _measured_line():
+            # Gewaehlte Linie im idealen Bild ueber die Inlier-Ausdehnung, zurueck ins Rohbild.
+            along = (undistorted[indices] - best["centre"]) @ best["direction"]
+            ts = np.linspace(float(along.min()), float(along.max()), 12)
+            ideal_points = best["centre"][None, :] + ts[:, None] * best["direction"][None, :]
+            raw_points = _undistorted_to_raw(ideal_points, calibration)
+            if np.all(np.isfinite(raw_points)):
+                dbg["measuredPx"] = _pts(raw_points[[0, -1]])
+                dbg["measuredPolyPx"] = _pts(raw_points)
+
+        _debug_step(_measured_line)
     return LineMeasurement(
         id=line_id,
         found=True,
@@ -803,9 +824,14 @@ def measure_reference_lines(
     blurred = cv2.GaussianBlur(image.astype(np.float32), (0, 0), _SMOOTH_SIGMA_PX)
     mask = _tag_mask(calib, pose_cam_tag, tag_size, margin, image.shape)
     if debug is not None:
-        outline = tag_outline_px(calib, pose_cam_tag, tag_size, margin)
-        debug.append(
-            {"id": "_tag", "maskOutlinePx": [] if outline is None else _pts(outline)}
+        entry = {"id": "_tag", "maskOutlinePx": []}
+        debug.append(entry)
+        _debug_step(
+            lambda: entry.update(
+                maskOutlinePx=_pts(tag_outline_px(calib, pose_cam_tag, tag_size, margin))
+                if tag_outline_px(calib, pose_cam_tag, tag_size, margin) is not None
+                else []
+            )
         )
     return [
         _measure_one(
