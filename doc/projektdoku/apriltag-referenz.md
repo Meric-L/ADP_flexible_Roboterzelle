@@ -1192,3 +1192,42 @@ der Tag neu gemessen). Ungültige optionale Felder verwirft es einzeln. `describ
   Boden + 10 cm. Die Wagen-Bounds im Katalog müssen den Footprint beschreiben.
 - Fehlt `frameCount` im Ergebnis (`null`), gilt die Ansicht als gültig. Der Pi liefert das Feld immer.
 - ±12° bei 0,35 m und ob die Schrägansicht `frameCount` ≥ 2 erreicht, sind ungetestet.
+
+### Live-Ansicht der Kantensuche
+
+Seit 21.10.2026 zeigt der Stream während der Einmessung, was die Kantensuche tut (Plan
+[`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)). Die Rechnung
+bleibt dieselbe: `measure_reference_lines(..., debug=...)` füllt nur eine Liste, Ergebnis und
+`LineMeasurement` sind mit und ohne `debug` bitgleich.
+
+**Was man sieht**, in dieser Reihenfolge der Suche:
+
+1. **Startwert-Kante** (gelb gestrichelt): die Kante aus dem Modulkatalog, in das Bild projiziert, nur der sichtbare Teil.
+2. **Suchband** (dünne gelbe Ränder): Bereich, in dem nach Kanten gesucht wird (`bandPx`).
+3. **Kandidatenpunkte** (cyan): alle Gradientenmaxima im Band.
+4. **Verworfene Linien** (orange): RANSAC-Geraden aus den Kandidaten, die nicht gewählt wurden (Inlier je Linie).
+5. **Gewählte Linie** (grün, rot bei `ambiguous`), mit Saum; Beschriftung je Kante mit Δ mm und Grad, bzw. `NO_EDGE` oder `mehrdeutig`.
+6. **Tag-Maske** (grau) und Tag-Rahmen, wie im Stream sonst.
+
+Die Ebenen sind einzeln abschaltbar (`overlay` in der Anfrage, acht Schalter, siehe
+[`vision-server-interface.md`](vision-server-interface.md) §19.1). Ohne aktive Vorschau läuft der
+Stream im Modus `tagreference` mit dem Titel „keine Einmess-Vorschau“ und normalen Tag-Rahmen.
+
+**Debug-Daten je Kante** (Pixel des Rohbilds, verzeichnet, volle Auflösung): `guessPx`, `profilesPx`,
+`normalsPx`, `bandPx`, `edgePointsPx`, `candidates` (mit `inliersPx`, `score`, `chosen`), `measuredPx`,
+`measuredPolyPx`, dazu `found`, `supportPx`, `contrast`, `ambiguous`, `offsetMm`, `angleDeg`. Einmal je Aufruf
+`_tag` mit `maskOutlinePx`. Die Zeichnung (`tagloc/reference_overlay.py`) rechnet nichts, sie zeichnet nur
+diese Daten.
+
+**Rechenlast:** die Vorschau wertet höchstens 3 Hz aus (`PREVIEW_INTERVAL_S`), auf demselben
+Ein-Thread-Pool wie die eigene Erkennung des Livestreams (der Detektor ist nicht für zwei Threads gebaut).
+Auf dem Testrechner 52–62 ms je Auswertung, am Hand-Pi nicht gemessen.
+
+**Mess-Protokoll:** jede Messung schreibt unter `data/tagreference/` einen Ordner mit Anfrage, Ergebnis,
+den Rohbildern (PNG) und dem Debug-Bild. Die letzte Messung ist unter `GET /tagreference.jpg` abrufbar.
+Details und Aufräumregel: `vision-server-interface.md` §19.1.
+
+**Testphase „alle Tags“ (Frontend, Stand 21.10.2026):** Der Schalter „Alle Tags neu einmessen (Testphase)“
+ist standardmäßig an. Jeder Lauf misst dann alle messbaren Tags neu, damit der Versuch oft wiederholt
+werden kann. Das ist eine **Ausnahme zur Einmal-Regel** oben. Zielzustand (Vorgabe des Nutzers): Schalter
+aus bzw. `TAG_MEASURE_ALL_TESTPHASE = false` in `tagMeasurementState.ts`, dann gilt wieder nur die Einmal-Regel.

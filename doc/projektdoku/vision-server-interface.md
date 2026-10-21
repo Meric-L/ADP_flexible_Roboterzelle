@@ -644,6 +644,7 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
 | `apriltag` (Standard) | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die Tag-ID `#<id>` (`tagloc.overlay.draw_tag_boxes`), keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und die orange Färbung mehrdeutiger Posen zeigt der Stream nicht mehr; Mehrdeutigkeit steht weiter in den Job-Ergebnissen (`ambiguous`, `ambiguityRatio`, `confidence`). Das ausführliche Overlay mit Achsenkreuz liefert die CLI `python -m tagloc.cli.detect --overlay` |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
 | `undistorted` | „Entzerrt" | nichts — das Bild **entzerrt** mit der aktiven Kalibrierung (Linsenmodell der Kamera, `alpha`/`balance` = 1: ganzes Bild mit gebogenen schwarzen Rändern). Ohne echte Kalibrierung (Platzhalter oder keine Datei) das Rohbild mit dem Hinweis „Keine Kalibrierung -- Rohbild“ |
+| `tagreference` | „Tag einmessen“ | nur mit laufender Einmess-Vorschau (`SetTagReferencePreview`, siehe §19.1): die Kantensuche der gewählten Tag-Kanten — Startwert-Kante, Suchband, Kandidatenpunkte, verworfene und gewählte Linie, Beschriftung mit Δ mm und °, Tag-Rahmen. Die Ebenen sind einzeln schaltbar (§19.1). Ohne Vorschau: Tag-Rahmen wie `apriltag` mit Titel „keine Einmess-Vorschau“ |
 
 Verhalten:
 
@@ -1810,3 +1811,41 @@ Die Methoden liegen unter `VisionMachine` und sind unter `VisionProgram` verlink
 - Ablehnung: `camInTag: null`, `fits: false`, `uncovered: []`, `error` als `"<CODE>: Text"`.
 
 Die Anfrage schreibt weder in die Tag-Map des Pi noch ändert sie Welt-Tags. Modul-Tags und ihre Pose stehen nur im Modulkatalog des Frontends. Das Flanschziel rechnet die Steuerung selbst.
+
+### 19.1 Live-Ansicht und Mess-Protokoll
+
+Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)) sieht man die Kantensuche live im Livestream und bekommt jede Messung als Protokoll auf den Pi.
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `SetTagReferencePreview` | `ns=<vision>;s=VisionMachine.SetTagReferencePreview` | `(RequestJson: String) -> (Error: Int32)` |
+| `TagReferencePreviewStatus` | `ns=<vision>;s=VisionMachine.TagReferencePreviewStatus` | String (JSON), Abo möglich, höchstens 3 Hz |
+| `GET /tagreference.jpg` | MJPEG-Port (`http://<host>:<port>/tagreference.jpg`) | JPEG, `Cache-Control: no-store`, CORS `*` |
+
+- **`SetTagReferencePreview`**: `RequestJson` ist `wsc.vision.tagreference.request/1` (Parser wie bei
+  `MeasureTagReference`; `frames` und `view` werden ignoriert). Ein Tag an, `""` aus. Error: `OK`,
+  `INVALID_ARGUMENT` (ungültiges JSON, fehlender Tag, ungültiges `overlay`), `INVALID_STATE` (nicht
+  `Operational` oder kein Livestream-Overlay). Nie `BUSY`. Nur Hand-Pi, unter `VisionProgram` verlinkt.
+  Die Vorschau läuft nach 120 s ohne Erneuerung ab. Die Prüfung läuft auch außerhalb des Modus `tagreference`.
+- **`MeasureTagReference`** setzt die Vorschau automatisch auf ihre eigene Anfrage. Signatur bleibt.
+- **Status** `TagReferencePreviewStatus`, Schema `wsc.vision.tagreference.preview/1`:
+  `{ "schema", "active", "tagId", "tagSeen", "updatedAt", "overlay", "lines": [ {"id", "found", "offsetMm",
+  "angleDeg", "ambiguous", "reason", "supportPx", "contrast"} ] }`. Ohne aktive Vorschau: `active: false`,
+  `tagId: null`, `lines: []`.
+- **Overlay-Ebenen** (`overlay` in der Anfrage, Schlüssel `guess`, `band`, `candidates`, `rejected`,
+  `chosen`, `mask`, `labels`, `tagBox`): fehlende Schlüssel = `true`, unbekannte werden ignoriert, ein
+  Wert, der kein Bool ist, ergibt `INVALID_ARGUMENT`. Im Status steht die wirksame Belegung.
+- **`saveDebug`** in der Anfrage von `MeasureTagReference` (Standard `true`): `false` legt kein Protokoll
+  an, `debugDir` ist dann `null`.
+- **Mess-Protokoll**: je Messung `data/tagreference/<YYYYmmdd-HHMMSS>_tag<id>/` (Config
+  `tag_reference_debug_dir`, `None` = aus) mit `request.json`, `result.json`, `frame<k>.png` (Rohbilder,
+  verlustfrei) und `overlay.jpg`. Höchstens 50 eigene Ordner, nach mtime aufgeräumt, der neue Ordner bleibt.
+  `ResultJson.debugDir` ist der repo-relative Pfad oder `null`; bei Schreibfehlern nur eine Log-Warnung.
+- **`GET /tagreference.jpg`** liefert `overlay.jpg` aus dem neuesten Messordner. 404, wenn keine
+  Messung vorliegt.
+- **Stream-Modus `tagreference`**: höchstens 3 Hz, das letzte Debug-Bild wird zwischen zwei Auswertungen
+  bis 1 s gehalten. Eine Messung hält ihr Debug-Bild 5 s im Stream. Tag nicht im Bild: Titel „Tag 7 nicht im Bild“.
+
+**Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
+die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
+und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.
