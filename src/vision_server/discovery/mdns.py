@@ -17,8 +17,9 @@ Zwei bewusste Abweichungen von der Anleitung:
    laeuft der Server weiter und es steht eine Warnung im Log -- ein Server,
    den man per URL erreicht, ist mehr wert als gar keiner.
 
-**Standardmaessig abgeschaltet** (seit 23.09.2026): ohne `OPCUA_MDNS=1` kuendigt
-sich der Server nicht an. Er laeuft trotzdem und ist per URL erreichbar.
+**Standardmaessig an** (seit 21.10.2026 wieder; vom 23.09. bis 21.10.2026 war
+sie aus). `OPCUA_MDNS=0` (oder `false`/`no`/`off`) schaltet die Ankuendigung
+ab; der Server laeuft dann trotzdem und ist per URL erreichbar.
 """
 
 import contextlib
@@ -40,11 +41,12 @@ _NAME_ALLOWED = re.compile(r"[^A-Za-z0-9-]+")
 
 
 def enabled() -> bool:
-    """Ob angekuendigt werden soll; standardmaessig nicht.
+    """Ob angekuendigt werden soll; standardmaessig ja.
 
-    `OPCUA_MDNS=1` (oder `true`/`yes`/`on`) schaltet die Ankuendigung ein.
+    `OPCUA_MDNS=0` (oder `false`/`no`/`off`) schaltet die Ankuendigung ab.
+    Leer oder ungesetzt zaehlt als an.
     """
-    return os.getenv("OPCUA_MDNS", "").strip().lower() in ("1", "true", "yes", "on")
+    return os.getenv("OPCUA_MDNS", "").strip().lower() not in ("0", "false", "no", "off")
 
 
 def sanitize_instance_name(name: str) -> str:
@@ -116,7 +118,7 @@ async def announce(
     Die angekuendigte Adresse, oder `None`, wenn nicht angekuendigt wurde.
     """
     if not enabled():
-        _log.info("mDNS abgeschaltet (OPCUA_MDNS nicht gesetzt); keine Ankuendigung")
+        _log.info("mDNS abgeschaltet (OPCUA_MDNS=0); keine Ankuendigung")
         yield None
         return
 
