@@ -264,6 +264,11 @@ Rechenzeit und gehört nicht dauerhaft ins Bild.
 > **Dazu sagen:** Das Achsenkreuz ist die eigentliche Information — ein
 > verdrehtes Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
 
+> **Anmerkung, Stand 21.10.2026:** Der Livestream zeigt im Modus `apriltag`
+> jetzt nur noch einen grünen Kasten und die Tag-ID. Das Achsenkreuz (samt
+> Modulname, Distanz, Reprojektionsfehler) gibt es weiter über die CLI
+> (`python -m tagloc.cli.detect --overlay`).
+
 ---
 
 ## 16 — Stand der Prüfung

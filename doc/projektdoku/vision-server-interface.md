@@ -641,7 +641,7 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
 | Wert | Anzeige im Frontend | Was markiert wird |
 | --- | --- | --- |
 | `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
-| `apriltag` (Standard) | „AprilTags markieren" | Umriss jedes erkannten Tags, **Achsenkreuz im Tag** (X rot, Y grün, Z blau), ID, Modulname aus der Tag-Map, Distanz, Reprojektionsfehler; mehrdeutige Posen orange statt grün |
+| `apriltag` (Standard) | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die Tag-ID `#<id>` (`tagloc.overlay.draw_tag_boxes`), keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und die orange Färbung mehrdeutiger Posen zeigt der Stream nicht mehr; Mehrdeutigkeit steht weiter in den Job-Ergebnissen (`ambiguous`, `ambiguityRatio`, `confidence`). Das ausführliche Overlay mit Achsenkreuz liefert die CLI `python -m tagloc.cli.detect --overlay` |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
 | `undistorted` | „Entzerrt" | nichts — das Bild **entzerrt** mit der aktiven Kalibrierung (Linsenmodell der Kamera, `alpha`/`balance` = 1: ganzes Bild mit gebogenen schwarzen Rändern). Ohne echte Kalibrierung (Platzhalter oder keine Datei) das Rohbild mit dem Hinweis „Keine Kalibrierung -- Rohbild“ |
 

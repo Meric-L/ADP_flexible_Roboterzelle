@@ -6,6 +6,10 @@ does: the outline shows *that* something was detected, the axis cross shows
 *how* the pose sits -- a twisted cross is obvious at a glance, a wrong number
 is not.
 
+Der Livestream (Modus `apriltag`) nutzt dagegen die schlanke Variante
+`draw_tag_boxes`: nur gruener Kasten und Tag-ID, ohne Achsenkreuz und
+Statusleiste. Die ausfuehrliche Variante bleibt der CLI (`python -m tagloc.cli.detect --overlay`).
+
 One rule for this module: it only draws, it never computes. Poses arrive
 already finished. That lets the same code run for the stream, a CLI window,
 and a still image.
@@ -88,6 +92,31 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     # Bold first corner: makes a rotated detection visible at a glance.
     first = tuple(int(value) for value in tag_pose.observation.corners[0])
     cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
+
+
+def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
+    """Schlankes Stream-Overlay: je Tag nur gruener Umriss und "#<id>".
+
+    Kein Achsenkreuz, kein Eck-Punkt, keine Distanz, kein Reprojektionsfehler;
+    mehrdeutige Posen werden nicht anders gefaerbt. Das Label sitzt knapp ueber
+    der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Posen ohne
+    `observation` werden uebersprungen. Aendert `image` in-place.
+    """
+    import cv2
+
+    scale = _scale_for(image)
+    thickness = max(1, round(_THICKNESS * scale))
+    text_height = round(_FONT_SCALE * scale * 30)
+    margin = max(4, round(6 * scale))
+    for tag_pose in tag_poses:
+        if tag_pose.observation is None:
+            continue
+        corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
+        cv2.polylines(image, [corners], isClosed=True, color=COLOR_OK, thickness=thickness)
+        x = int(corners[:, 0, 0].min())
+        y = max(text_height, int(corners[:, 0, 1].min()) - margin)
+        _put_text(image, f"#{tag_pose.tag_id}", (x, y), COLOR_OK)
+    return image
 
 
 def draw_tag_axes(
@@ -309,6 +338,7 @@ __all__ = [
     "draw_board_overlay",
     "draw_status_bar",
     "draw_tag_axes",
+    "draw_tag_boxes",
     "draw_tag_outline",
     "draw_tag_overlay",
     "has_display",

@@ -156,7 +156,7 @@ class AprilTagCanvasDetectionTest(unittest.TestCase):
         )
         tag_pose = TagPose(tag_id=7, pose_cam_tag=identity(), observation=observation)
         with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose]) as estimate:
-            with patch("tagloc.overlay.draw_tag_overlay") as draw:
+            with patch("tagloc.overlay.draw_tag_boxes") as draw:
                 result = annotator.annotate(image, "apriltag")
 
         self.assertEqual(result.shape[:2], (150, 200))
@@ -166,11 +166,33 @@ class AprilTagCanvasDetectionTest(unittest.TestCase):
         self.assertEqual(estimate.call_args.args[0], [observation])
         self.assertEqual(estimate.call_args.args[1].image_size, (200, 150))
         # Kein separater Rescale mehr: die vom (gefakten) Detektor gelieferten
-        # Koordinaten kommen unveraendert bei draw_tag_overlay an.
+        # Koordinaten kommen unveraendert bei draw_tag_boxes an.
         self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (100.0, 60.0))
-        self.assertEqual(draw.call_args.args[2].image_size, (200, 150))
         self.assertEqual(annotator._last_tag_poses[0].observation.corners[0], (100, 60))
         self.assertFalse(np.any(image))
+
+    def test_apriltag_mode_draws_boxes_and_no_status_bar(self):
+        from tagloc.calibration import default_calibration
+        from tagloc.geometry import identity
+        from tagloc.observations import TagObservation, TagPose
+
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        observation = TagObservation(7, ((100, 60), (140, 60), (140, 100), (100, 100)))
+        tag_pose = TagPose(tag_id=7, pose_cam_tag=identity(), observation=observation)
+        detector = SimpleNamespace(detect=lambda gray: [observation])
+        annotator = AprilTagStreamAnnotator(
+            CONFIG,
+            detector=detector,
+            calibration=default_calibration((400, 300)),
+            tag_map=None,
+        )
+        with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose]):
+            with patch("tagloc.overlay.draw_tag_boxes") as boxes:
+                with patch("tagloc.overlay.draw_status_bar") as bar:
+                    annotator.annotate(image, "apriltag")
+
+        boxes.assert_called_once()
+        bar.assert_not_called()
 
     def test_detector_receives_the_resized_canvas_not_the_full_frame(self):
         """Regression fuer den CPU-Fix: die teure Erkennung darf nicht mehr
@@ -187,7 +209,7 @@ class AprilTagCanvasDetectionTest(unittest.TestCase):
                 tag_map=None,
                 detection_max_width=200,
             )
-            with patch("tagloc.overlay.draw_tag_overlay"):
+            with patch("tagloc.overlay.draw_tag_boxes"):
                 annotator.annotate(image, "apriltag")
 
         self.assertEqual(detect.call_args.args[0].shape[:2], (150, 200))

@@ -632,6 +632,8 @@ def normalise_mode(mode) -> str
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None
 def draw_tag_axes(image, tag_pose, calibration, axis_length_m: float) -> None
+def draw_tag_boxes(image, tag_poses) -> image
+    # schlank, vom Livestream benutzt: gruener Kasten + "#<id>", sonst nichts
 def draw_tag_overlay(image, tag_poses, calibration, *,
                      tag_map=None, default_size_m=0.05, show_distance=True)
 def draw_board_overlay(image, board_sample, *, coverage=None)
@@ -661,7 +663,13 @@ Y grün, Z blau — zusätzlich der Umriss und die ID. Genau das zeichnet
 erkannt wurde, das Achsenkreuz zeigt, **wie** die Pose liegt. Ein verdrehtes
 Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
 
-Beschriftet wird je Tag: ID, Modulname aus der Karte, Distanz und
+> **Stand 21.10.2026:** Das gilt für `draw_tag_overlay` und damit die CLI
+> (`python -m tagloc.cli.detect`). Der **Livestream** (Modus `apriltag`) nutzt stattdessen
+> `draw_tag_boxes`: je Tag nur ein grüner Kasten und `#<id>`, ohne Achsenkreuz,
+> Modulname, Distanz, Reprojektionsfehler, orange Färbung und ohne Statusleiste.
+> Die Modi `calibration`/`undistorted` sind unverändert (mit Statusleiste).
+
+Beschriftet wird (`draw_tag_overlay`) je Tag: ID, Modulname aus der Karte, Distanz und
 Reprojektionsfehler. **Mehrdeutige Posen werden orange statt grün gezeichnet** —
 das ist die Information, nach der man beim Debuggen sucht.
 

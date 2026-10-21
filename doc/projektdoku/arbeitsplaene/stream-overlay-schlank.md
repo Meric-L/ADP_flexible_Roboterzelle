@@ -1,6 +1,6 @@
 # Livestream-Overlay: nur grüner Kasten und Tag-ID
 
-**Status:** in Arbeit — 21.10.2026
+**Status:** fertig — 21.10.2026 (Tests grün, am echten Pi-Stream nicht angesehen)
 **Verantwortlich:** Meric, `Agent: Stream-Overlay verschlanken`
 **Thema:** frontend
 **Branch:** apriltag-overlay-schlank
@@ -53,7 +53,7 @@ def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
 ```
 
 `draw_tag_overlay`, `draw_status_bar` und `summarise` bleiben unverändert —
-die CLI (`tagloc detect`) zeigt weiterhin das ausführliche Debug-Overlay.
+die CLI (`python -m tagloc.cli.detect --overlay`) zeigt weiterhin das ausführliche Debug-Overlay.
 
 `AprilTagStreamAnnotator.annotate(image, "apriltag")`: ruft `draw_tag_boxes`
 statt `draw_tag_overlay` und **kein** `draw_status_bar` mehr. Die Modi
@@ -78,3 +78,20 @@ unmarkierte Bild.
 ## Offene Fragen
 
 - Keine.
+
+## Umsetzung
+
+Wie geplant umgesetzt, Schnittstelle unverändert gegenüber oben.
+
+- `draw_tag_boxes`: Umriss per `cv2.polylines` in `COLOR_OK`; Label `#<id>` an
+  der linken Kante der Eck-Bounding-Box, knapp über deren Oberkante
+  (`max(4, round(6 * scale))` px), nach oben auf die Schrifthöhe begrenzt,
+  damit es nicht aus dem Bild fällt.
+- `stream_overlay.py`: Die Pose-Schätzung im Modus `apriltag` läuft wie bisher
+  (ihr Ergebnis liefert die Ecken für die Kästen); nur das Zeichnen ist reduziert.
+- Tests: `tests/test_stream_overlay.py` (Stream ruft `draw_tag_boxes`, kein
+  `draw_status_bar`), `tests/test_overlay_scaling.py` (mehrdeutige Pose wird
+  grün gezeichnet, Pose ohne Observation wird übersprungen). Gesamte Suite:
+  691 Tests OK (`PYTHONPATH=src python -m unittest discover -s tests -t .`).
+- Doku angepasst: `vision-server-interface.md`, `apriltag-referenz.md`,
+  `apriltag-e2e-test.md`, Hinweis in `praesentation.md`.

@@ -1,8 +1,8 @@
 """Overlay for the camera livestream: what the server marks in the image.
 
 The stream is a debugging tool. It should show not just that an image
-arrives, but what detection sees in it -- detected tags with axis cross and
-outline, or the found board corners in calibration mode.
+arrives, but what detection sees in it -- detected tags as a green box with tag ID
+(no axis cross, no status bar), or the found board corners in calibration mode.
 
 Two rules keep this sustainable in production:
 
@@ -147,8 +147,7 @@ class AprilTagStreamAnnotator:
             from tagloc.overlay import (
                 draw_board_overlay,
                 draw_status_bar,
-                draw_tag_overlay,
-                summarise,
+                draw_tag_boxes,
             )
 
             if mode == "undistorted":
@@ -253,20 +252,7 @@ class AprilTagStreamAnnotator:
                 )
                 self._last_run = now
 
-            draw_tag_overlay(
-                canvas,
-                self._last_tag_poses,
-                calibration,
-                tag_map=self._tag_map,
-                default_size_m=self._config.tag_size_m,
-            )
-            draw_status_bar(
-                canvas,
-                [
-                    f"Modus: AprilTag   Familie {self._config.tag_family}",
-                    summarise(self._last_tag_poses, self._tag_map),
-                ],
-            )
+            draw_tag_boxes(canvas, self._last_tag_poses)
             return canvas
         except Exception:
             _log.exception("Overlay fehlgeschlagen, sende unmarkiertes Bild")
