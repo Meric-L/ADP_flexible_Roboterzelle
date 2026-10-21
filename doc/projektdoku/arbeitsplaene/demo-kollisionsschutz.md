@@ -1,6 +1,6 @@
 # DEMO-Kollisionsschutz FR3: 20 cm Abstand zu Tisch und Modulen
 
-**Status:** in Arbeit — 21.10.2026
+**Status:** fertig — 21.10.2026 (Code und Tests; am Roboter nicht getestet)
 **Verantwortlich:** Meric, `Agent: DEMO-Kollisionsschutz automatische Fahrten`
 **Thema:** frontend
 **Branch:** `demo-kollisionsschutz` in `webskillcomposition` (von `Ungetestet`); Doku: `demo-kollisionsschutz-doku`
@@ -18,10 +18,23 @@ ersetzt (siehe „Für die spätere richtige Lösung“).
 Betroffen sind nur:
 - Anfahrplan und Zentrieren (`ApproachPlanPanel`, `centreOnTag`);
 - Layer-2-Lauf (`moveFlangeTo`);
-- Hand-Auge-Automatik (`HandEyeAutoPanel`);
+- Hand-Auge-Automatik (`HandEyeAutoPanel`, Hand-Auge-Tisch);
 - Spin-Test (`EndEffectorSpinTest`).
 
 Manuelle Fahrten (Ziehen, Slider, IK-Gizmo, Actions-Panel) bleiben unverändert.
+
+## Regeln (tatsächlich umgesetzt)
+
+- Abstand 20 cm (`DEMO_CLEARANCE_M`) zu allem: Tisch, Boden, Modulen, unbekannten Tags. Geprüft werden Gelenke, Flansch, Greiferspitze (`FR3_TOOL_OFFSET_M`) und Kamera.
+- Zielmodul nur auf dem **letzten** Teilstück 5 cm (`DEMO_LOOSE_CLEARANCE_M`). Bei Hand-Auge ist das Ziel `Wagen`, bei Anker-Zielen `Boden` + `Wagen`.
+- Start-Verletzungen gelten locker, bis der Arm frei ist (Wegfahren). Auf dem Direktweg muss ein Nicht-Ziel-Start-Hindernis bis zum Ende frei werden, sonst Transit.
+- Gedrehte Module werden im Modul-KS geprüft, nicht in einer achsparallelen Hülle.
+- Transit-Haltung FR3 `[j1, 0, 0, -1.6, 0, 1.6, π/4]` (Greiferspitze ≈ 0,51 m über der Basis).
+- `centreOnTag` und Spin-Test fahren ohne Transit (`transit: false`). Ist der Direktweg blockiert, wird nicht gefahren.
+- Der Anfahrplan überspringt blockierte Stopps.
+- Layer 2 und Hand-Auge melden „Weg kommt X näher als 20 cm“.
+- Nur FR3 und nur wenn der Schalter an ist; sonst altes Verhalten.
+- Manuelle Fahrten und `callRobotGoto` bleiben unverändert.
 
 ## Bereits gelesen
 
@@ -32,22 +45,21 @@ Manuelle Fahrten (Ziehen, Slider, IK-Gizmo, Actions-Panel) bleiben unverändert.
 
 ## Betroffene Dateien
 
-Alle unter `webskillcomposition/frontend/src/features/cell-modules/`:
+Alle unter `webskillcomposition/frontend/src/features/`:
 
-- `model/cellClearance.ts` (+ Test)
-- `model/demoRoute.ts` (neu, + Test)
-- `model/cellModules.ts` (`unknownTags`, additiv)
-- `model/robotDrive.ts` (`driveRoute`)
-- `components/ApproachPlanPanel.tsx`
-- `components/HandEyeAutoPanel.tsx`
-- `components/EndEffectorSpinTest.tsx`
-- `centreOnTag.ts`
-- `components/Layer2RunPanel.tsx` (+ Tests)
+- `cell-modules/model/cellClearance.ts` (+ Test)
+- `cell-modules/model/demoRoute.ts` (neu, + Test)
+- `cell-modules/model/useDemoClearance.ts` (neu)
+- `cell-modules/model/cellModules.ts` (`unknownTags`, additiv)
+- `cell-modules/model/robotDrive.ts` (`driveRoute`, `driveSafe`)
+- `cell-modules/model/centreOnTag.ts`, `endEffectorSpin.ts`, `approachPlan.ts`
+- `cell-modules/components/ApproachPlanPanel.tsx`, `HandEyeAutoPanel.tsx`, `HandEyeCalibrationWindow.tsx`, `EndEffectorSpinTest.tsx`, `Layer2RunPanel.tsx` (+ Tests), `RouteList.tsx`
+- `viewport/model/sceneState.ts` (`unknownTags` im Szenenzustand)
 
 ## Schnittstellen
 
-**Der wichtigste Abschnitt.** Die Demo ändert keine Schnittstelle nach außen. Die
-TypeScript-Signaturen sind **geplant** und werden nach der Umsetzung korrigiert.
+**Der wichtigste Abschnitt.** Die Demo ändert keine Schnittstelle nach außen.
+Die TypeScript-Signaturen unten sind die **tatsächlichen** Stände nach der Umsetzung.
 
 ### OPC UA
 
@@ -58,41 +70,94 @@ Befehl, kein neuer Knoten.
 
 Keine Änderung.
 
-### TypeScript (geplant)
+### TypeScript
 
 ```ts
-// Modul: model/cellClearance.ts
-export const DEMO_CLEARANCE_M = 0.20;
-// KeepOut bekommt modules: { label: string; min: Vec3; max: Vec3 }[]
-export function collision(points: Vec3[], keepOut: KeepOut, clearanceM?: number): string | null;
-// Rückgabe: Label des Hindernisses (z. B. "MOD-A", "Tisch", "Boden") oder null
+// model/cellClearance.ts
+export const DEMO_CLEARANCE_M = 0.2;        // Abstand aller Armpunkte zu Tisch, Boden, Modulen, unbekannten Tags
+export const DEMO_LOOSE_CLEARANCE_M = 0.05; // lockerer Abstand für Hindernisse, denen der Arm schon zu nah steht
+export interface KeepOut { minX; maxX; minY; maxY; topZ; floorZ; modules?: KeepOutModule[] } // Basis-KS
+export interface KeepOutModule {
+  id?: string;               // Katalog-moduleId, `unknown-<tagId>`; ohne id gilt label
+  label: string;             // Name für Meldungen
+  min: Vec3; max: Vec3;      // Box im eigenen KS
+  fromBase?: Pose;           // T_box_base: Basis-KS -> KS der Box (gedrehte Boxen)
+}
+export function collision(points: Vec3[], keepOut: KeepOut, clearanceM?: number, loose?: ReadonlySet<string>): string | null;
+// Id des ersten getroffenen Hindernisses ("Wagen", "Boden", moduleId, "unknown-<tagId>") oder null.
+// loose: diese Ids gelten nur mit DEMO_LOOSE_CLEARANCE_M. Ohne clearanceM: altes Verhalten (Tisch 5 cm, Boden 10 cm).
+export function armPoints(kinematics, angles: number[], flangeToCamera: Pose | null, toolOffsetM?: number): Vec3[];
+export function interpolate(from: number[], to: number[], steps: number): number[][];
 
-// Modul: model/demoRoute.ts   (Kopfkommentar: DEMO, ersetzt durch richtige Lösung)
-export const DEMO_COLLISION_GUARD_ENABLED: boolean;
+// model/demoRoute.ts  (Kopfkommentar: DEMO, ersetzt durch richtige Lösung)
+export const DEMO_COLLISION_GUARD_ENABLED = true;  // false: altes Verhalten überall
+export const FR3_TOOL_OFFSET_M = 0.1034;
+export const DEMO_ROUTE_STEPS = 20;
+export function demoAppliesTo(modelId: string | null | undefined): boolean;  // Schalter an und modelId fr3 / fr3_wagon
 export function moduleKeepOuts(
-  modules: CellModule[],
+  modules: Pick<PlacedCellModule, "moduleId" | "name" | "isRobot" | "bounds" | "worldPosition" | "worldOrientation">[],
   unknownTags: UnknownTag[],
-  baseInWorld: Pose,
+  baseInWorld: Pose,        // T_world_base
   floorZWorld: number,
-): KeepOut[];
+): KeepOutModule[];         // Roboter übersprungen; unbekannte Tags: 0,2 x 0,2 m vom Boden bis 10 cm über den Tag
 export function demoTransitPose(jointNames: string[], from: number[], j1: number): number[];
-// FR3-Werte: [j1, 0, 0, -1.6, 0, 1.6, π/4]; restliche Gelenke aus from
-export type Leg = { joints: number[] };
-export type RoutePlan = { legs: Leg[] } | { blocked: string };
+export interface DemoClear {          // Prüffunktion
+  (angles: number[], loose?: ReadonlySet<string>): string | null; // Id des ersten Treffers oder null
+  labelOf?(id: string): string;       // Name zu einer Id für Meldungen
+}
+export function violatedAt(clear: DemoClear, angles: number[]): Set<string>;  // alle Hindernisse, denen angles zu nah kommt
+export function demoLegHit(from: number[], to: number[], clear: DemoClear, steps: number,
+  loose: Set<string> /* wird verändert */, fixedLoose?: ReadonlySet<string>): string | null;
+export function demoBlockedMessage(hit: string, clear?: DemoClear): string;
+  // "Weg kommt <Name> näher als 20 cm"
+export type DemoRoute = { legs: number[][] } | { blocked: string; hit: string };
 export function planDemoRoute(
+  jointNames: string[],
   from: number[],
   to: number[],
-  clear: (joints: number[]) => string | null,
-  steps?: number,              // Default 20
-): RoutePlan;
-export function useDemoClearance(): (from: number[], to: number[]) => RoutePlan;
+  clear: DemoClear,
+  steps?: number,                    // Default DEMO_ROUTE_STEPS
+  options?: { target?: string[] },   // Ziel-Ids: nur auf dem letzten Teilstück locker
+): DemoRoute;
+// { legs }: Direktweg (ein Teilstück) oder T(J1_start), T(J1_ziel), Ziel.
+// { blocked, hit }: Direktweg blockiert (hit) und Transit ebenfalls; blocked ist die Meldung.
 
-// Modul: model/robotDrive.ts
-export async function driveRoute(
-  deps: DriveDeps,
-  legs: Leg[],
-  seed: number[],
-): Promise<void>;   // wirft beim ersten fehlgeschlagenen Teilstück
+// model/useDemoClearance.ts
+export function demoBaseInWorld(cellModules: PlacedCellModule[]): Pose | null;
+export function buildDemoClearance(args: {
+  modelId; entryBounds; kinematics: FlangeKinematics | null; flangeToCamera: Pose | null;
+  cellModules: PlacedCellModule[]; unknownTags: UnknownTag[]; catalog: CellModuleDefinition[];
+  baseInWorld?: Pose | null;
+}): DemoClear | null;      // null: Demo gilt nicht (Modell, Schalter, Kinematik, Umriss fehlt)
+export function forwardDemoClear(get: () => DemoClear | null): DemoClear;  // stabil, fragt get() je Aufruf
+export function useDemoClearance(
+  robot: { model: { id: string } | undefined; entry: Pick<CellModuleDefinition, "bounds"> | undefined; kinematics: FlangeKinematics | null },
+  cellModules: PlacedCellModule[],
+  unknownTags: UnknownTag[],
+  flangeToCamera?: Pose | null,
+  baseInWorld?: Pose | null,
+): DemoClear | null;
+
+// model/robotDrive.ts
+export interface RobotDriveDeps { /* ... */ demoClear?: DemoClear; }  // gesetzt: Wege werden geprüft
+export type JointDriveOutcome =
+  | ...
+  | { status: "failed"; reason: string; blockedBy?: string };       // blockedBy: Hindernis, das den Weg sperrt
+export type DriveTarget = ... & { moduleId?: string; demoTarget?: string[]; purpose?: Layer2Purpose };
+export function driveRoute(deps: RobotDriveDeps, legs: number[][], seed: number[]): Promise<JointDriveOutcome>;
+// Fährt Teilstücke nacheinander, stoppt beim ersten gescheiterten (Ergebnis des letzten Teilstücks).
+export function driveSafe(deps: RobotDriveDeps, angles: number[], seed: number[],
+  options?: { transit?: boolean /* Default true */; target?: string[] }): Promise<JointDriveOutcome>;
+// Ohne deps.demoClear: driveJoints. Mit: Direktweg, sonst Transit; transit:false nur Direktweg.
+
+// model/cellModules.ts (additiv)
+export interface PlacementResult { /* ... */ unknownTags: UnknownTag[]; }  // UnknownTag: { tagId: number; position: Vec3 }
+
+// viewport/model/sceneState.ts (additiv)
+export interface ViewportSceneState { /* ... */ unknownTags: UnknownTag[]; }
+
+// model/centreOnTag.ts: Parameter demoTarget?: string[] (Default [])
+// model/endEffectorSpin.ts: Teilstücke über driveSafe(..., { transit: false })
 ```
 
 ### Daten / Payload
@@ -112,17 +177,16 @@ Keine Änderung.
 | Nicht FR3 oder `DEMO_COLLISION_GUARD_ENABLED = false` | Altes Verhalten, keine Prüfung. |
 | Direktweg frei | Ein Teilstück. |
 | Direktweg blockiert, Transit frei | Drei Teilstücke: `T(J1_start) → T(J1_ziel) → Ziel`. |
-| Transit blockiert | `blocked` mit Hindernis, z. B. „DEMO-Kollisionsschutz: Weg kommt MOD-A näher als 20 cm“. Es wird nicht gefahren. |
+| Transit blockiert | `blocked` mit Hindernis, z. B. „Weg kommt MOD-A näher als 20 cm“. Es wird nicht gefahren, `blockedBy` ist gesetzt. |
+| `transit: false` und Direktweg blockiert | Nicht fahren, `blockedBy` gesetzt (centreOnTag, Spin-Test). |
 | Teilstück scheitert (Fehler von `driveJoints`) | Abbruch; Rest wird nicht gefahren. |
 
 ## Vorgehen
 
-1. `cellClearance.ts`: Abstand 20 cm, Modul-Boxen, Label in `collision()`, Greiferspitze in `armPoints`. Tests.
-2. `demoRoute.ts`: Module-Boxen im Basis-KS, Transit-Haltung, `planDemoRoute`. Tests mit Stub-Kinematik.
-3. `cellModules.ts`: `unknownTags` mit Position. `robotDrive.ts`: `driveRoute`. Tests.
-4. Einbindung in `moveFlangeTo`, `ApproachPlanPanel`, `HandEyeAutoPanel`, `EndEffectorSpinTest`, `centreOnTag`. Kommentar `// DEMO-Kollisionsschutz` an jeder Aufrufstelle.
-5. `tsc --noEmit` und `vitest run` grün, dann Commits.
-6. Am Roboter: Gelenk-Linearität messen, Pappkarton-Test (siehe „Offene Fragen“).
+Umgesetzt in dieser Reihenfolge: Modell (`cellClearance.ts`), Route
+(`demoRoute.ts`, `useDemoClearance.ts`), `unknownTags` und `driveRoute`/`driveSafe`,
+Einbindung in Layer 2, Anfahrplan, Hand-Auge-Automatik, Spin-Test und
+`centreOnTag` (Kommentar `// DEMO-Kollisionsschutz` an jeder Aufrufstelle), Tests.
 
 ## Grenzen
 
@@ -132,19 +196,33 @@ Keine Änderung.
 - Layer-1-Posen sind einige cm ungenau.
 - Task-Programme auf dem Roboter-Server sind nicht abgedeckt.
 - Manuelle Fahrten sind absichtlich nicht abgedeckt.
+- Vorschauen (Layer-2-Plan, Hand-Auge `planViews`) zeigen die Demo-Sperre nicht (bewusst offen).
+- Kamera wird in Layer 2, Hand-Auge und Spin-Test nicht als Punkt geprüft (die Greiferspitze liegt vorn).
 
 ## Offene Fragen
 
 - Ist die `go_to`-Bahn wirklich linear im Gelenkraum? Am Roboter messen: zwei
   Stellungen langsam (0,1) hin und her fahren, `robotJointState`-Strom
-  aufzeichnen, prüfen, dass jedes Gelenk ungefähr linear fährt.
-- Messposen nah an Modulen werden evtl. abgelehnt, weil für alle Module der
-  gleiche Abstand gilt. Das ist so gewollt, muss aber am Roboter gesehen werden.
+  aufzeichnen, prüfen, dass jedes Gelenk ungefähr linear fährt (Annahme der Prüfung).
+- Messposen nah an Modulen werden evtl. abgelehnt. Am Roboter sehen.
 - Pappkarton als Modul ins Zellmodell stellen und darüber hinweg fahren lassen.
 
 ## Abweichungen vom Plan
 
-Wird nach der Umsetzung gefüllt.
+- Zielmodul locker statt „gleicher Abstand für alle Module“ (Nutzerentscheidung 21.10.2026). Sonst wären Messposen nicht fahrbar.
+- Anker-Ziele (`Boden`, `Wagen`) und Hand-Auge-Tisch (`Wagen`) ebenfalls locker.
+- Start-Verletzungen locker bis frei statt sofort streng.
+- Prüfung gedrehter Boxen im Modul-KS statt achsparalleler Hülle.
+- `planDemoRoute` hat `jointNames` als ersten Parameter; Rückgabe `DemoRoute` mit `legs` bzw. `blocked` + `hit`.
+- `driveRoute` gibt `JointDriveOutcome` zurück statt `void`; zusätzlich `driveSafe` mit `transit` und `target`.
+- `transit: false` für `centreOnTag` und Spin-Test.
+- Hand-Auge-Automatik fährt jetzt mit `AUTO_DRIVE_MAX_SPEED`.
+- Review-Ablauf: Umsetzung Sonnet, Review Opus (2 Runden), Doku Haiku.
+
+## Verifikation
+
+- `tsc --noEmit` sauber.
+- `vitest run`: 476 Tests grün (54 Dateien).
 
 ## Für die spätere richtige Lösung
 
@@ -157,6 +235,6 @@ Wird nach der Umsetzung gefüllt.
 
 ## Nach Abschluss
 
-- [ ] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [ ] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
+- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
+- [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - [ ] Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/projektdoku/` übernommen.
