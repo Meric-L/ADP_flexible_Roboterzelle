@@ -107,6 +107,22 @@ def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None
             return None
         return BoardSample(corners=np.asarray(corners), ids=np.asarray(ids))
 
+    sample = _detect_chessboard(gray, spec)
+    if sample is None:
+        # Helle Felder auf schwarzem Traeger, ohne helle Ruhezone: Die dunklen
+        # Randfelder verschmelzen mit dem Rahmen, und die Detektoren finden das
+        # Raster nicht. Invertiert ist der Rand hell und das Brett sieht aus
+        # wie ein gedrucktes Standardbrett. Die Ecken liegen an denselben
+        # Stellen; die Feldfarbe fuer den Ursprung liest
+        # `canonical_chessboard_corners` weiter am Originalbild.
+        sample = _detect_chessboard(cv2.bitwise_not(gray), spec)
+    return sample
+
+
+def _detect_chessboard(gray, spec: BoardSpec) -> BoardSample | None:
+    """Ein Detektionsdurchgang fuer ein Schachbrett: SB, dann klassisch."""
+    import cv2
+
     if hasattr(cv2, "findChessboardCornersSB"):
         # Der neuere "Sector-Based"-Detektor: robuster bei schlechtem Licht,
         # Unschaerfe und starker Neigung als die klassische Methode, und

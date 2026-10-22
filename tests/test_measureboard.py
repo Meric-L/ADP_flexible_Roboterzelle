@@ -93,6 +93,27 @@ BOARD = '"board": {"type": "chessboard", "cols": 6, "rows": 7, "squareSizeM": 0.
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy/asyncua fehlen")
 class DetectionHelpersTest(unittest.TestCase):
+    def test_board_on_a_black_carrier_is_found_on_the_inverted_image(self):
+        """Helle Felder auf schwarzem Traeger: Am Originalbild scheitert die
+        Erkennung (echtes Bild, 22.10.2026), am invertierten nicht."""
+        from unittest import mock
+
+        from tagloc import boards
+
+        image = render()
+        sentinel = boards.BoardSample(corners=np.zeros((REAL_COLS * REAL_ROWS, 1, 2)), ids=None)
+        calls = []
+
+        def fake(gray, board_spec):
+            calls.append(int(gray[0, 0]))
+            # nur das invertierte Bild (Ecke 255 - Original) liefert etwas
+            return sentinel if int(gray[0, 0]) == 255 - int(image[0, 0]) else None
+
+        with mock.patch.object(boards, "_detect_chessboard", fake):
+            found = boards.detect_board(image, spec())
+            self.assertIs(found, sentinel)
+        self.assertEqual(len(calls), 2)  # erst Original, dann invertiert
+
     def test_partial_patterns(self):
         self.assertEqual(partial_patterns(spec()), [(5, 6), (4, 5), (3, 4), (3, 3)])
         self.assertEqual(partial_patterns(spec(5, 6)), [(4, 5), (3, 4), (3, 3)])
