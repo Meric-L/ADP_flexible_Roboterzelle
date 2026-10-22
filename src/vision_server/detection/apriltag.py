@@ -728,6 +728,7 @@ class AprilTagDetectionSource(DetectionSource):
         seen_timestamp = self._latest_timestamp()
         frames = []
         error = None
+        last_image = None
         for _ in range(request.frames):
             try:
                 frame = await self._next_frame(seen_timestamp)
@@ -735,12 +736,16 @@ class AprilTagDetectionSource(DetectionSource):
                 error = NO_FRAME
                 break
             seen_timestamp = frame.timestamp
+            last_image = frame.image
             observed = await self.run_blocking(self._observe_board, frame.image, spec)
             age_s = loop.time() - frame.timestamp
             frames.append(
                 replace(observed, captured_at=datetime.now(timezone.utc) - timedelta(seconds=age_s))
             )
-        return build_result(
+        diagnosis = None
+        if request.diagnose and last_image is not None:
+            diagnosis = await self.run_blocking(self._diagnose_board, last_image, spec)
+        result = build_result(
             frames,
             spec=spec,
             frames_requested=request.frames,
@@ -750,6 +755,16 @@ class AprilTagDetectionSource(DetectionSource):
             max_error_px=self._config.max_reproj_error_px,
             error=error if not frames else None,
         )
+        if diagnosis is not None:
+            result["diagnosis"] = diagnosis
+        return result
+
+    def _diagnose_board(self, image, spec):
+        """Erkennungsversuche am letzten Bild, nur auf Anfrage. Worker-Thread."""
+        from tagloc import frames as frame_tools
+        from tagloc.boards import diagnose_board
+
+        return diagnose_board(frame_tools.to_gray(image), spec)
 
     def _observe_board(self, image, spec):
         """Ein Bild fuer `MeasureBoard`: ganzes Brett, Teilraster oder nichts. Worker-Thread."""

@@ -39,6 +39,8 @@ class BoardRequest:
     #: `None` = die Brettgroesse aus der Konfiguration der Kamera.
     board: object | None
     frames: int = DEFAULT_FRAMES
+    #: Fehlersuche: dem Ergebnis `diagnosis` beilegen (kostet einige Erkennungsversuche).
+    diagnose: bool = False
 
 
 @dataclass(frozen=True)
@@ -74,7 +76,10 @@ def parse_request(text: str, parse_board) -> BoardRequest:
     frames = data.get("frames", DEFAULT_FRAMES)
     if isinstance(frames, bool) or not isinstance(frames, int) or not 1 <= frames <= MAX_FRAMES:
         raise ValueError(f"frames muss eine Ganzzahl von 1 bis {MAX_FRAMES} sein.")
-    return BoardRequest(board, int(frames))
+    diagnose = data.get("diagnose", False)
+    if not isinstance(diagnose, bool):
+        raise ValueError("diagnose muss true oder false sein.")
+    return BoardRequest(board, int(frames), diagnose)
 
 
 def _iso(moment: datetime) -> str:

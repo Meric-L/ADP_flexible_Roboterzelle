@@ -1717,6 +1717,7 @@ Mit `MeasureBoard` bringt die Steuerung das Schachbrett mittig ins Bild, bevor s
   - **Brett nur teilweise sichtbar** (`found: true`, `complete: false`): `partial {gridCols, gridRows, cornerCount, bboxPx}`, dazu `centerPx`, `offsetPx`, `nearEdge`. Keine Pose, denn der Ursprung eines Teilrasters ist beliebig.
   - **Nichts gefunden:** `found: false`, kein Fehler.
   - `offsetPx` zeigt vom Bildmittelpunkt zum Schwerpunkt der Ecken (x nach rechts, y nach unten). Dorthin muss die Kamera, damit das Brett in die Mitte rückt.
+- **Fehlersuche `"diagnose": true`:** Das Ergebnis enthält dann `diagnosis` für das letzte Bild: `largestGrid {cols, rows}` (größtes Raster, das der schnelle Detektor um die Angabe herum findet), `sbExact`, `classicExact`, `sbSwapped`, `tried`, `imageSize`, `grayMin/Max/Mean`, `saturatedFraction`. Kostet einige Erkennungsversuche, nur zum Analysieren.
 - **`samples[i].reprojectionErrorPx`** im `HandEyeStatus`: mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch bei verworfenen. `null`, wenn nichts gefunden wurde.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)

@@ -143,6 +143,22 @@ class SourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("passt schlecht", reason)
         self.assertGreater(info["reprojectionErrorPx"], 0.0001)
 
+    async def test_diagnose_reports_the_largest_grid(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = self.source(folder, [render()] * 3)
+            request = parse_request('{' + BOARD + ', "frames": 1, "diagnose": true}', _parse_board)
+            result = await source.measure_board_view(request)
+            plain = await source.measure_board_view(parse_request('{' + BOARD + ', "frames": 1}', _parse_board))
+        diagnosis = result["diagnosis"]
+        self.assertEqual(diagnosis["largestGrid"], {"cols": REAL_COLS, "rows": REAL_ROWS})
+        self.assertTrue(diagnosis["sbExact"])
+        self.assertEqual(diagnosis["imageSize"], [640, 480])
+        self.assertNotIn("diagnosis", plain)
+
+    def test_diagnose_must_be_boolean(self):
+        with self.assertRaises(ValueError):
+            parse_request('{"diagnose": "ja"}', _parse_board)
+
     async def test_view_complete_partial_nothing_and_no_frame(self):
         with tempfile.TemporaryDirectory() as folder:
             source, _ = self.source(folder, [render()] * 3, samples_per_job=2)

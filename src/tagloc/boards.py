@@ -184,6 +184,58 @@ def detect_partial_board(gray, spec: BoardSpec):
     return None
 
 
+def diagnose_board(gray, spec: BoardSpec) -> dict:
+    """Warum findet die Erkennung das Brett nicht? Nur fuer die Fehlersuche.
+
+    Probiert das angegebene Raster mit beiden Detektoren, das vertauschte
+    (Zeilen/Spalten) und Raster um die Angabe herum mit dem schnellen
+    Detektor, groesstes zuerst. `largestGrid` ist das erste gefundene.
+    Dazu Helligkeitswerte des Bilds (Belichtung, Ueberstrahlung).
+    """
+    import cv2
+
+    result = {
+        "imageSize": [int(gray.shape[1]), int(gray.shape[0])],
+        "grayMin": int(gray.min()),
+        "grayMax": int(gray.max()),
+        "grayMean": round(float(gray.mean()), 1),
+        "saturatedFraction": round(float((gray >= 250).mean()), 4),
+        "sbExact": None,
+        "classicExact": None,
+        "sbSwapped": None,
+        "largestGrid": None,
+        "tried": [],
+    }
+    if spec.type != CHESSBOARD or not hasattr(cv2, "findChessboardCornersSB"):
+        return result
+
+    def sb(cols, rows) -> bool:
+        found, _ = cv2.findChessboardCornersSB(gray, (cols, rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE)
+        return bool(found)
+
+    result["sbExact"] = sb(spec.cols, spec.rows)
+    found, _ = cv2.findChessboardCorners(
+        gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
+    )
+    result["classicExact"] = bool(found)
+    if spec.cols != spec.rows:
+        result["sbSwapped"] = sb(spec.rows, spec.cols)
+    candidates = sorted(
+        {
+            (cols, rows)
+            for cols in range(max(3, spec.cols - 2), spec.cols + 2)
+            for rows in range(max(3, spec.rows - 2), spec.rows + 2)
+        },
+        key=lambda size: (-size[0] * size[1], size),
+    )
+    for cols, rows in candidates:
+        result["tried"].append([cols, rows])
+        if sb(cols, rows):
+            result["largestGrid"] = {"cols": cols, "rows": rows}
+            break
+    return result
+
+
 def compute_coverage(samples, image_size: tuple[int, int]) -> tuple[float, float]:
     """Fraction of image width/height covered by all samples combined.
 
@@ -384,5 +436,6 @@ __all__ = [
     "compute_coverage",
     "detect_board",
     "detect_partial_board",
+    "diagnose_board",
     "partial_patterns",
 ]
