@@ -104,6 +104,7 @@ Zwei Welt-Tags gleichzeitig zu sehen war oft nicht gegeben, denn einer ist häuf
   - Start oder nach Verwerfen mit nur einem Welt-Tag („Kamerapose noch nicht bekannt“),
   - der Welt-Tag passt nicht zur gemerkten Pose („Kamera bewegt?“).
   Nach 5 unpassenden Bildern in Folge wird die Pose verworfen, und es braucht wieder zwei Welt-Tags gleichzeitig.
+- **Überlebt Neustarts (22.10.2026):** Die Pose liegt in `data/calibration/cellwatch_camera_pose.json` (Schema `wsc.vision.cellwatch.camerapose/1`: Pose, Grundlinie je Welt-Tag, Tag-Map-Schlüssel, Anzahl). Gespeichert ab 5 Posen, danach höchstens alle 10 min, atomar (temporäre Datei, dann ersetzen). Beim Start wird sie geladen. Zusätzlich liefert der Referenz-Scan sie: `cameraLocalization.poseInWorld`/`tagErrorsPx` bei `solver: "joint"`, `StartCellWatch` übernimmt sie, wenn keine gemerkt ist oder die Kamera sich bewegt hat (> 15 mm / 0,5°). Auch eine wiederhergestellte Pose wird auf Konsistenz geprüft: Wurde die Kamera während der Pause bewegt, fällt sie samt Datei weg. Status: `cameraPose: {source: measured|file|scan|null, poseCount, savedAt}`. Schlägt das Schreiben fehl, kommt eine Warnung je Intervall, kein Absturz.
 - **Grenzen:** Ändert sich die Tag-Map, ist die Pose verworfen. Weicht ein neues gemeinsames Ergebnis um mehr als 15 mm oder 0,5° ab, fängt der Verlauf neu an, statt zu mitteln. `minWorldTags: 2` schaltet auf das alte Verhalten zurück.
 
 ### Ressourcen

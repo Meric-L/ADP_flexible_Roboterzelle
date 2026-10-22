@@ -1326,7 +1326,8 @@ async def _install_cell_watch(
     seen = {"timestamp": None}
     #: Die Pose der fest montierten Kamera, einmal aus >= 2 Welttags geschaetzt;
     #: lebt ueber `StartCellWatch`-Aufrufe hinweg (Zeiten aendern, neue Referenz).
-    keeper = CameraPoseKeeper()
+    keeper = CameraPoseKeeper(path=apriltag.calibration_path.parent / "cellwatch_camera_pose.json")
+    keeper.load()
 
     async def observe(options):
         frame = apriltag_source.camera.latest_frame
@@ -1353,6 +1354,8 @@ async def _install_cell_watch(
             result_for_job=results.result_for_job,
             world_frame=lambda: apriltag_source._tag_map.frame_id,
             publish=publish,
+            adopt_pose=lambda pose, errors: keeper.adopt(pose, errors, apriltag_source._tag_map),
+            pose_info=keeper.info,
         )
     )
     await cell_watch.publish_idle()

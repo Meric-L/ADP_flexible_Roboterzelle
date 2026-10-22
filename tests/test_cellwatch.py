@@ -7,6 +7,7 @@ import tempfile
 import types
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 try:
     import numpy as np
@@ -633,6 +634,7 @@ class CellWatchOpcUaTest(unittest.IsolatedAsyncioTestCase):
                 tag_family="tag36h11", detector_backend="aruco",
                 subpixel_corner_refinement=False, apriltag_quad_decimate=0.0,
                 detector_parameters={},
+                calibration_path=Path(tempfile.mkdtemp()) / "cam.json",
             ),
         )
         source = types.SimpleNamespace(

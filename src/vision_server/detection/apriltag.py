@@ -191,7 +191,7 @@ def _localization_summary(localization) -> dict | None:
     from tagloc.localize import ORIGIN_ROBOT_POSE
 
     anchored = localization.origin == ORIGIN_ROBOT_POSE
-    return {
+    summary = {
         "solver": "anchor" if anchored else localization.solver,
         "reprojectionErrorPx": None
         if anchored
@@ -200,6 +200,18 @@ def _localization_summary(localization) -> dict | None:
         "spreadDeg": _finite_or_none(math.degrees(localization.spread_rad)),
         "worldTagIds": [int(tag_id) for tag_id in localization.world_tag_ids],
     }
+    if not anchored and localization.solver == "joint":
+        # Die Pose selbst, nur wenn sie aus >= 2 Welttags gemeinsam geschaetzt
+        # ist: Die Zellen-Ueberwachung merkt sie sich, damit danach ein einziger
+        # Welttag genuegt. Dazu der Eckenfehler je Welttag als Grundlinie.
+        from tagloc.geometry import pose_to_dict
+
+        summary["poseInWorld"] = pose_to_dict(localization.pose_world_cam)
+        summary["tagErrorsPx"] = {
+            str(int(tag_id)): _finite_or_none(error)
+            for tag_id, error in localization.tag_errors_px.items()
+        }
+    return summary
 
 
 def _merge_world_tags(samples) -> tuple:

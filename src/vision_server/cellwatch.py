@@ -39,11 +39,14 @@ import contextlib
 import json
 import logging
 import math
+import os
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -650,8 +653,18 @@ class CameraPoseKeeper:
       zwei Welttags.
     * Ohne gemerkte Pose (Start, nach Verwerfen, neue Tag-Map) mit nur einem
       Welttag: Pause, kein Raten.
+
+    Die Pose uebersteht Neustarts: Sie liegt in `path` (erst ab
+    `SAVE_MIN_POSES` Posen, danach hoechstens alle `SAVE_INTERVAL_S`), und der
+    Referenz-Scan eines `StartCellWatch` kann sie liefern (`adopt`). Beides
+    ist durch die Konsistenzpruefung abgesichert: Wurde die Kamera waehrend
+    der Pause bewegt, passt der eine Welttag nicht mehr, und die Pose faellt
+    weg. Eine geaenderte Tag-Map entwertet sie ebenfalls.
     """
 
+    SCHEMA = "wsc.vision.cellwatch.camerapose/1"
+    SAVE_MIN_POSES = 5
+    SAVE_INTERVAL_S = 600.0
     HISTORY = 20
     #: Weicht ein neues gemeinsames Ergebnis so weit von der gemerkten Pose ab,
     #: wurde die Kamera bewegt: der Verlauf faengt neu an, statt zu mitteln.
@@ -661,11 +674,20 @@ class CameraPoseKeeper:
     #: Gewicht des neuen Werts bei der Grundlinie (gleitender Mittelwert).
     BASELINE_ALPHA = 0.2
 
-    def __init__(self) -> None:
+    def __init__(self, path: Path | None = None, clock=time.monotonic, wall=None) -> None:
         self._poses: deque = deque(maxlen=self.HISTORY)
         self._baseline: dict[int, float] = {}
         self._map_key: tuple | None = None
         self._bad_frames = 0
+        self._path = Path(path) if path is not None else None
+        self._clock = clock
+        self._wall = wall or (lambda: datetime.now(timezone.utc))
+        #: Woher die Pose stammt: `measured` (>= 2 Welttags in einem Bild),
+        #: `file` (nach Neustart wiederhergestellt) oder `scan` (aus dem
+        #: Referenz-Scan uebernommen). `None` ohne Pose.
+        self._source: str | None = None
+        self._saved_clock: float | None = None
+        self._saved_at: str | None = None
 
     @staticmethod
     def _key(tag_map) -> tuple:
@@ -680,13 +702,135 @@ class CameraPoseKeeper:
         self._poses.clear()
         self._baseline.clear()
         self._bad_frames = 0
+        self._source = None
+
+    def drop(self) -> None:
+        """Pose verwerfen **und** die Datei loeschen: Die Pose gilt nicht mehr,
+        ein Neustart darf sie nicht wiederherstellen."""
+        self.clear()
+        self._saved_clock = None
+        if self._path is not None:
+            try:
+                self._path.unlink(missing_ok=True)
+            except OSError:
+                _log.warning("Gemerkte Kamerapose %s nicht loeschbar", self._path, exc_info=True)
+
+    def info(self) -> dict:
+        """Fuer den Status: woher die Pose stammt und wie fest sie steht."""
+        return {
+            "source": self._source,
+            "poseCount": len(self._poses),
+            "savedAt": self._saved_at,
+        }
+
+    # --- Datei ------------------------------------------------------------
+
+    def load(self) -> bool:
+        """Die gemerkte Pose aus der Datei holen. `False` ohne (brauchbare) Datei."""
+        if self._path is None or not self._path.is_file():
+            return False
+        from tagloc.geometry import pose_from_dict
+
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+            if data.get("schema") != self.SCHEMA:
+                raise ValueError(f"Schema {data.get('schema')!r}")
+            pose = pose_from_dict(data["poseWorldCam"])
+            baseline = {int(k): float(v) for k, v in (data.get("baselinePx") or {}).items()}
+            map_key = tuple(
+                (int(tag_id), tuple(float(v) for v in position))
+                for tag_id, position in data["mapKey"]
+            )
+            count = max(1, min(int(data.get("poseCount", 1)), self.HISTORY))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            _log.warning("Gemerkte Kamerapose %s unbrauchbar (%s) -- ignoriert", self._path, error)
+            return False
+        self.clear()
+        # Mit dem Gewicht, das sie beim Speichern hatte: neue Messungen
+        # ersetzen sie nach und nach, statt sie sofort zu verdraengen.
+        self._poses.extend([pose] * count)
+        self._baseline = baseline
+        self._map_key = map_key
+        self._source = "file"
+        self._saved_clock = self._clock()
+        self._saved_at = data.get("savedAt")
+        _log.info("Gemerkte Kamerapose aus %s wiederhergestellt (%d Posen)", self._path, count)
+        return True
+
+    def _save(self) -> None:
+        if self._path is None or not self._poses:
+            return
+        from tagloc.geometry import average_poses, pose_to_dict
+
+        saved_at = self._wall().isoformat(timespec="seconds")
+        payload = {
+            "schema": self.SCHEMA,
+            "savedAt": saved_at,
+            "poseWorldCam": pose_to_dict(average_poses(list(self._poses))),
+            "baselinePx": {str(tag_id): round(value, 4) for tag_id, value in self._baseline.items()},
+            "mapKey": [[tag_id, list(position)] for tag_id, position in (self._map_key or ())],
+            "poseCount": len(self._poses),
+        }
+        temporary = self._path.with_name(self._path.name + ".tmp")
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            os.replace(temporary, self._path)
+        except OSError:
+            # Auch ein Fehlschlag zaehlt als Versuch: sonst kaeme die Warnung
+            # mit Traceback bei jedem Bild (alle 2 s), solange der Ort kaputt ist.
+            self._saved_clock = self._clock()
+            _log.warning("Kamerapose nicht gespeichert nach %s", self._path, exc_info=True)
+            return
+        self._saved_clock = self._clock()
+        self._saved_at = saved_at
+
+    def _maybe_save(self) -> None:
+        """Erst ab `SAVE_MIN_POSES` Posen, dann hoechstens alle `SAVE_INTERVAL_S`:
+        die Datei liegt auf einer SD-Karte, und die Pose aendert sich kaum."""
+        if self._path is None or len(self._poses) < self.SAVE_MIN_POSES:
+            return
+        if self._saved_clock is None or self._clock() - self._saved_clock >= self.SAVE_INTERVAL_S:
+            self._save()
+
+    def adopt(self, pose, baseline: dict, tag_map) -> bool:
+        """Die Kamerapose eines Referenz-Scans uebernehmen (`True`, wenn sie gilt).
+
+        Der Scan hat die Kamera schon aus mehreren Welttags verortet, genau wie
+        eine Messung hier. Steht schon eine gemerkte Pose, gewinnt sie, solange
+        die beiden uebereinstimmen (sie ist ueber viele Bilder gemittelt). Weicht
+        der frische Scan deutlich ab, wurde die Kamera bewegt -- dann zaehlt er.
+        """
+        from tagloc.geometry import (
+            average_poses,
+            rotation_distance_rad,
+            translation_distance_m,
+        )
+
+        self.stored_for(tag_map)  # prueft die Tag-Map
+        if self._poses:
+            current = average_poses(list(self._poses))
+            if (
+                translation_distance_m(current, pose) <= self.RESET_TRANSLATION_M
+                and math.degrees(rotation_distance_rad(current, pose)) <= self.RESET_ROTATION_DEG
+            ):
+                return False
+            self.clear()
+        self._poses.append(pose)
+        self._baseline.update({int(k): float(v) for k, v in baseline.items()})
+        self._source = "scan"
+        self._save()
+        _log.info("Kamerapose aus dem Referenz-Scan uebernommen")
+        return True
 
     def stored_for(self, tag_map):
         """Die gemerkte Pose, oder `None`. Eine neue Tag-Map verwirft sie: sie
         gilt nur gegen die Weltposen, mit denen sie geschaetzt wurde."""
         key = self._key(tag_map)
         if key != self._map_key:
-            self.clear()
+            if self._poses:
+                _log.info("Tag-Map hat sich geaendert -- gemerkte Kamerapose verworfen")
+            self.drop()
             self._map_key = key
         if not self._poses:
             return None
@@ -722,7 +866,7 @@ class CameraPoseKeeper:
         if worst is None or excess[worst] > options.stored_pose_margin_px:
             self._bad_frames += 1
             if self._bad_frames >= self.BAD_FRAMES_TO_DROP:
-                self.clear()
+                self.drop()
                 return None, (
                     "Kamera bewegt? Der Welt-Tag passt nicht mehr zur gespeicherten Kamerapose "
                     "-- Pose verworfen, 2 Welt-Tags gleichzeitig noetig"
@@ -756,6 +900,8 @@ class CameraPoseKeeper:
                 or math.degrees(rotation_distance_rad(current, pose)) > self.RESET_ROTATION_DEG
             ):
                 self.clear()
+        if not self._poses:
+            self._source = "measured"
         self._poses.append(pose)
         for tag_id, error in localization.tag_errors_px.items():
             previous = self._baseline.get(tag_id)
@@ -764,6 +910,31 @@ class CameraPoseKeeper:
                 if previous is None
                 else (1 - self.BASELINE_ALPHA) * previous + self.BASELINE_ALPHA * error
             )
+        self._maybe_save()
+
+
+def camera_pose_from_payload(payload_json: str):
+    """`(Pose, Eckenfehler je Welttag)` der Kamera aus einem Job-Ergebnis, oder `None`.
+
+    Nur wenn die Pose im Job aus mindestens zwei Welttags gemeinsam geschaetzt
+    wurde (`cameraLocalization.solver == "joint"`): Aus einem einzelnen Tag
+    waere sie um Zentimeter ungenau.
+    """
+    from tagloc.geometry import pose_from_dict
+
+    try:
+        summary = json.loads(payload_json).get("cameraLocalization") or {}
+        if summary.get("solver") != "joint" or not summary.get("poseInWorld"):
+            return None
+        pose = pose_from_dict(summary["poseInWorld"])
+        errors = {
+            int(tag_id): float(value)
+            for tag_id, value in (summary.get("tagErrorsPx") or {}).items()
+            if value is not None
+        }
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return pose, errors
 
 
 def _worst_tag(localization) -> str:
@@ -798,6 +969,10 @@ class CellWatchPorts:
     publish: Callable[[str], Awaitable[None]]
     monotonic: Callable[[], float] = time.monotonic
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+    #: Nimmt die Kamerapose eines Referenz-Scans entgegen: `(Pose, Eckenfehler)`.
+    adopt_pose: Callable[[Any, dict], Any] | None = None
+    #: Woher die gemerkte Kamerapose stammt, fuer den Status.
+    pose_info: Callable[[], dict] | None = None
 
 
 class CellWatch:
@@ -840,6 +1015,11 @@ class CellWatch:
             except (ValueError, KeyError, TypeError) as error:
                 _log.warning("StartCellWatch abgelehnt: %s", error)
                 return VisionErrorCode.INVALID_STATE
+            # Der Scan hat die Kamera schon verortet: Mit seiner Pose genuegt
+            # danach ein Welttag, auch gleich nach dem Start.
+            scan_pose = camera_pose_from_payload(payload)
+            if scan_pose is not None and self._ports.adopt_pose is not None:
+                self._ports.adopt_pose(*scan_pose)
 
         now = self._ports.monotonic()
         previous = self._tracker if self.active else None
@@ -987,6 +1167,7 @@ class CellWatch:
                 else None,
                 "watchedTagIds": sorted(tracker.reference) if referenced else [],
                 "visibleTagIds": self._visible if self.active else None,
+                "cameraPose": self._ports.pose_info() if self._ports.pose_info else None,
                 "tagVisibility": tracker.visibility(self._ports.monotonic())
                 if tracker is not None and self.active
                 else [],
