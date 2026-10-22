@@ -80,8 +80,9 @@ RECOMMENDED_SAMPLES = 8
 class HandEyePorts:
     """Was die Session vom Server braucht."""
 
-    #: Misst `T_cam_tag`: `(Pose, "")` oder `(None, Grund)`.
-    measure_tag: Callable[[int], Awaitable[tuple[Any, str]]]
+    #: Misst `T_cam_tag`: `(Pose, "")` oder `(None, Grund)`, optional mit einem
+    #: dritten Element `Info` (`reprojectionErrorPx`).
+    measure_tag: Callable[[int], Awaitable[tuple]]
     #: Laeuft ein Job, eine Kamera-Kalibrierung oder ein Layer-2-Lauf?
     busy: Callable[[], bool]
     #: Ziel der Kalibrierdatei.
@@ -92,7 +93,7 @@ class HandEyePorts:
     publish: Callable[[str], Awaitable[None]]
     frame_id: str = "cam_flange"
     #: Misst `T_cam_board` eines Schachbretts; `None`: kann der Server nicht.
-    measure_board: Callable[[BoardSpec], Awaitable[tuple[Any, str]]] | None = None
+    measure_board: Callable[[BoardSpec], Awaitable[tuple]] | None = None
 
 
 @dataclass
@@ -100,6 +101,9 @@ class _Sample:
     flange_in_base: Pose
     cam_to_tag: Pose | None
     detail: str
+    #: Mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch wenn sie
+    #: verworfen wurde (z. B. weil er zu gross war). `None`, wenn nichts gefunden wurde.
+    reprojection_error_px: float | None = None
     #: Nach `finish`: Abweichung der Brettlage dieser Aufnahme vom Mittel der
     #: verwendeten, und ob sie als Ausreisser verworfen wurde. Vorher `None`.
     residual_m: float | None = None
@@ -121,6 +125,14 @@ class _State:
     board: BoardSpec | None = None
     samples: list[_Sample] = field(default_factory=list)
     result: dict | None = None
+
+
+def _finite_or_none(value) -> float | None:
+    """Endliche Zahl oder `None` -- `json.dumps(allow_nan=False)` vertraegt kein NaN."""
+    if value is None:
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
 
 
 def rotation_diversity(poses_base_flange: list[Pose]) -> tuple[float, int]:
@@ -211,19 +223,28 @@ class HandEyeSession:
             return VisionErrorCode.INVALID_ARGUMENT
         self._measuring = True
         try:
-            cam_to_tag, reason = await self._measure(s)
+            cam_to_tag, reason, info = await self._measure(s)
         except Exception as error:  # Kamera weg -- Bericht, kein Absturz
             _log.exception("Hand-Auge-Aufnahme fehlgeschlagen")
-            cam_to_tag, reason = None, f"Messung fehlgeschlagen: {error}"
+            cam_to_tag, reason, info = None, f"Messung fehlgeschlagen: {error}", {}
         finally:
             self._measuring = False
         if self._s is not s or s.state != CAPTURING:
             return VisionErrorCode.CANCELLED  # waehrend der Messung abgebrochen
         detail = reason if cam_to_tag is None else f"{self._target_label()} gemessen"
-        s.samples.append(_Sample(flange_in_base, cam_to_tag, detail))
+        s.samples.append(
+            _Sample(
+                flange_in_base,
+                cam_to_tag,
+                detail,
+                reprojection_error_px=_finite_or_none(info.get("reprojectionErrorPx")),
+            )
+        )
         s.message = self._hint() if cam_to_tag is not None else f"Aufnahme verworfen: {reason}"
         await self._publish()
-        return VisionErrorCode.OK if cam_to_tag is not None else VisionErrorCode.DETECTION_FAILED
+        if cam_to_tag is not None:
+            return VisionErrorCode.OK
+        return VisionErrorCode.DETECTION_FAILED
 
     async def finish(self) -> VisionErrorCode:
         """Rechnet, speichert, aktiviert. Zu wenige oder zu aehnliche Posen:
@@ -335,12 +356,16 @@ class HandEyeSession:
     async def publish_idle(self) -> None:
         await self._publish()
 
-    async def _measure(self, s: _State) -> tuple[Any, str]:
+    async def _measure(self, s: _State) -> tuple[Any, str, dict]:
+        """`(Pose | None, Grund, Info)`. Die Messfunktionen duerfen auch nur
+        `(Pose, Grund)` liefern."""
         if s.board is None:
-            return await self._ports.measure_tag(s.tag_id)
-        if self._ports.measure_board is None:
-            return None, "Dieser Server kann kein Schachbrett messen"
-        return await self._ports.measure_board(s.board)
+            result = await self._ports.measure_tag(s.tag_id)
+        elif self._ports.measure_board is None:
+            return None, "Dieser Server kann kein Schachbrett messen", {}
+        else:
+            result = await self._ports.measure_board(s.board)
+        return result[0], result[1], (result[2] if len(result) > 2 else {})
 
     def _target_label(self) -> str:
         board = self._s.board
@@ -425,6 +450,8 @@ class HandEyeSession:
                         "camToTag": (
                             pose_to_dict(sample.cam_to_tag) if sample.cam_to_tag is not None else None
                         ),
+                        # Mittel der Bilder dieser Aufnahme, auch bei verworfenen.
+                        "reprojectionErrorPx": sample.reprojection_error_px,
                         # Erst nach `FinishHandEyeCalibration`, sonst `null`.
                         "residualM": sample.residual_m,
                         "residualDeg": sample.residual_deg,

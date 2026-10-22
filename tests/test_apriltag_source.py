@@ -635,28 +635,30 @@ class MeasureTagTest(unittest.IsolatedAsyncioTestCase):
         source = FakeMeasureSource(profile_config(Path(folder)), camera=camera)
         source._detector = FakeDetector(tag_poses)
         source._tag_map = tagmap.empty_tag_map()
-        for _ in range(3):
+        # Ein Bild aus der Zeit VOR dem Aufruf plus drei neue: Gemessen wird nur
+        # auf den neuen, das schon vorhandene wird uebersprungen.
+        for _ in range(4):
             camera.push_frame(object())
         return source, camera
 
     async def test_the_tag_pose_is_averaged_over_the_job_samples(self):
         with tempfile.TemporaryDirectory() as folder:
             source, camera = self.source(folder, [tag_pose(12, (0.1, 0.0, 0.5)), tag_pose(3, (0, 0, 1))])
-            pose, reason = await source.measure_tag(12)
+            pose, reason, _ = await source.measure_tag(12)
         self.assertEqual(reason, "")
         np.testing.assert_allclose(pose[:3, 3], [0.1, 0.0, 0.5])
-        self.assertEqual(len(camera.consumed), 3)
+        self.assertEqual(len(camera.consumed), 4)  # eins davon nur zum Merken des Zeitstempels
 
     async def test_missing_and_ambiguous_tags_give_a_reason(self):
         with tempfile.TemporaryDirectory() as folder:
             source, _ = self.source(folder, [tag_pose(3, (0, 0, 1))])
-            pose, reason = await source.measure_tag(12)
+            pose, reason, _ = await source.measure_tag(12)
         self.assertIsNone(pose)
         self.assertIn("nicht gesehen", reason)
 
         with tempfile.TemporaryDirectory() as folder:
             source, _ = self.source(folder, [tag_pose(12, (0, 0, 1), ambiguity=0.95)])
-            pose, reason = await source.measure_tag(12)
+            pose, reason, _ = await source.measure_tag(12)
         self.assertIsNone(pose)
         self.assertIn("mehrdeutig", reason)
 
@@ -664,7 +666,7 @@ class MeasureTagTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             source = FakeMeasureSource(profile_config(Path(folder)), camera=FakeCamera())
             source._detector = FakeDetector()
-            pose, reason = await source.measure_tag(12)
+            pose, reason, _ = await source.measure_tag(12)
         self.assertIsNone(pose)
         self.assertIn("Kamerabild", reason)
 

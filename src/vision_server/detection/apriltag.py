@@ -585,73 +585,97 @@ class AprilTagDetectionSource(DetectionSource):
         self._anchor = None
         self._drift = None
 
-    async def measure_tag(self, tag_id: int) -> tuple[Any | None, str]:
+    def _latest_timestamp(self):
+        """Zeitstempel des neuesten schon vorhandenen Bilds, oder `None`.
+
+        Wer nur Bilder **nach** dem Aufruf will, uebergibt ihn als
+        `seen_timestamp` an `_next_frame`: Sonst kaeme als erstes das Bild, das
+        schon vor dem Aufruf im Puffer lag -- bis zu eine Bildperiode alt.
+        """
+        latest = self.camera.latest_frame
+        return latest.timestamp if latest is not None else None
+
+    async def measure_tag(self, tag_id: int) -> tuple[Any | None, str, dict]:
         """`T_cam_tag` eines Tags aus `samples_per_job` frischen Bildern.
 
         Fuer die Hand-Auge-Kalibrierung: rein im Kamera-KS, ohne Tag-Map-
         Versatz und ohne Welt-KS -- genau die Groesse, die `solve_hand_eye`
-        braucht. Liefert `(Pose, "")` oder `(None, Grund)`.
+        braucht. Liefert `(Pose, "", Info)` oder `(None, Grund, Info)`; `Info`
+        hat den mittleren `reprojectionErrorPx` aller Bilder mit dem Tag.
         """
         from tagloc.tagmap import merge_tag_poses
 
         poses = []
+        errors = []
         ambiguous = 0
-        seen_timestamp: float | None = None
+        seen_timestamp = self._latest_timestamp()
         samples = max(1, self._config.samples_per_job)
         for _ in range(samples):
             try:
                 frame = await self._next_frame(seen_timestamp)
             except VisionJobError as error:
-                return None, error.message
+                return None, error.message, {"reprojectionErrorPx": None}
             seen_timestamp = frame.timestamp
             tag_pose = await self.run_blocking(self._measure_tag, frame.image, tag_id)
             if tag_pose is None:
                 continue
+            if math.isfinite(tag_pose.reprojection_error_px):
+                errors.append(tag_pose.reprojection_error_px)
             if tag_pose.is_ambiguous:
                 # Zwei gleich gute Loesungen: welche stimmt, weiss niemand --
                 # eine falsch gekippte Messung verdirbt die ganze Kalibrierung.
                 ambiguous += 1
                 continue
             poses.append(tag_pose.pose_cam_tag)
+        info = {"reprojectionErrorPx": sum(errors) / len(errors) if errors else None}
         if poses:
-            return merge_tag_poses(poses), ""
+            return merge_tag_poses(poses), "", info
         if ambiguous:
             return None, (
                 f"Tag {tag_id} mehrdeutig ({ambiguous} von {samples} Bildern) -- "
                 "schraeger auf den Tag schauen"
-            )
-        return None, f"Tag {tag_id} nicht gesehen"
+            ), info
+        return None, f"Tag {tag_id} nicht gesehen", info
 
-    async def measure_board(self, spec) -> tuple[Any | None, str]:
+    async def measure_board(self, spec) -> tuple[Any | None, str, dict]:
         """`T_cam_board` eines Schachbretts aus `samples_per_job` frischen Bildern.
 
         Wie `measure_tag`, nur mit einem Kalibrier-Schachbrett als festem
         Ziel: viele Ecken statt vier, also eine genauere und eindeutige Pose.
-        Liefert `(Pose, "")` oder `(None, Grund)`.
+        Liefert `(Pose, "", Info)` oder `(None, Grund, Info)`. `Info` hat den
+        mittleren `reprojectionErrorPx` (auch fuer verworfene Bilder).
         """
         from tagloc.tagmap import merge_tag_poses
 
         poses = []
+        errors: list[float] = []
         reasons: list[str] = []
-        seen_timestamp: float | None = None
+        seen_timestamp = self._latest_timestamp()
         samples = max(1, self._config.samples_per_job)
         for _ in range(samples):
             try:
                 frame = await self._next_frame(seen_timestamp)
             except VisionJobError as error:
-                return None, error.message
+                return None, error.message, {"reprojectionErrorPx": None}
             seen_timestamp = frame.timestamp
-            board_pose, reason = await self.run_blocking(self._measure_board, frame.image, spec)
-            if board_pose is None:
+            pose, reason, error_px = await self.run_blocking(
+                self._measure_board, frame.image, spec
+            )
+            if error_px is not None:
+                errors.append(error_px)
+            if pose is None:
                 reasons.append(reason)
                 continue
-            poses.append(board_pose)
+            poses.append(pose)
+        info = {"reprojectionErrorPx": sum(errors) / len(errors) if errors else None}
         if poses:
-            return merge_tag_poses(poses), ""
-        return None, reasons[-1] if reasons else "Board nicht gesehen"
+            return merge_tag_poses(poses), "", info
+        return None, reasons[-1] if reasons else "Board nicht gesehen", info
 
     def _measure_board(self, image, spec):
-        """Ein Bild, ein Schachbrett: `(Pose, "")` oder `(None, Grund)`. Worker-Thread."""
+        """Ein Bild, ein Schachbrett:
+        `(Pose | None, Grund, Reprojektionsfehler | None)`.
+        Worker-Thread."""
         from tagloc import frames as frame_tools
         from tagloc.boards import (
             canonical_chessboard_corners,
@@ -662,17 +686,96 @@ class AprilTagDetectionSource(DetectionSource):
         gray = frame_tools.to_gray(image)
         sample = detect_board(gray, spec)
         if sample is None:
-            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein"
+            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein", None
         corners = canonical_chessboard_corners(gray, sample.corners, spec)
         pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
         # Ein Board mit Dutzenden Ecken passt viel besser als ein Tag;
-        # ein grosser Fehler heisst falsche Groesse oder falsches Raster.
+        # ein grosser Fehler heisst Unschaerfe, ein welliges Brett oder ein
+        # falsches Raster.
         if error_px > self._config.max_reproj_error_px:
             return None, (
                 f"Board-Pose passt schlecht ({error_px:.1f} px) -- Feldgroesse und "
                 "Eckenzahl pruefen"
+            ), error_px
+        return pose, "", error_px
+
+    def default_board_spec(self):
+        """Das Brett aus der Konfiguration der Kamera."""
+        from tagloc.boards import BoardSpec
+
+        return BoardSpec(
+            type=self._config.calibration_board_type,
+            cols=self._config.calibration_board_cols,
+            rows=self._config.calibration_board_rows,
+            square_size_m=self._config.calibration_board_square_size_m,
+            marker_size_m=self._config.calibration_board_marker_size_m,
+            dictionary=self._config.calibration_board_dictionary,
+        )
+
+    async def measure_board_view(self, request) -> dict:
+        """`MeasureBoard`: das Brett fuer das Zentrieren messen, ohne Fahrbefehle.
+
+        Nur Bilder nach dem Aufruf. Ganzes Brett: Pose und Ecken. Nur teilweise
+        sichtbar: Schwerpunkt und Bildraender eines Teilrasters. Siehe
+        `vision_server.measureboard`. Seiteneffektfrei.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from ..measureboard import NO_FRAME, build_result
+
+        spec = request.board or self.default_board_spec()
+        loop = asyncio.get_running_loop()
+        seen_timestamp = self._latest_timestamp()
+        frames = []
+        error = None
+        for _ in range(request.frames):
+            try:
+                frame = await self._next_frame(seen_timestamp)
+            except VisionJobError:
+                error = NO_FRAME
+                break
+            seen_timestamp = frame.timestamp
+            observed = await self.run_blocking(self._observe_board, frame.image, spec)
+            age_s = loop.time() - frame.timestamp
+            frames.append(
+                replace(observed, captured_at=datetime.now(timezone.utc) - timedelta(seconds=age_s))
             )
-        return pose, ""
+        return build_result(
+            frames,
+            spec=spec,
+            frames_requested=request.frames,
+            frame_id=self._config.frame_id,
+            intrinsics_source=self.intrinsics_source,
+            calibration_id=getattr(self._calibration, "calibration_id", ""),
+            max_error_px=self._config.max_reproj_error_px,
+            error=error if not frames else None,
+        )
+
+    def _observe_board(self, image, spec):
+        """Ein Bild fuer `MeasureBoard`: ganzes Brett, Teilraster oder nichts. Worker-Thread."""
+        from datetime import datetime, timezone
+
+        from tagloc import frames as frame_tools
+        from tagloc.boards import (
+            canonical_chessboard_corners,
+            detect_board,
+            detect_partial_board,
+            estimate_board_pose,
+        )
+
+        from ..measureboard import FrameBoard
+
+        gray = frame_tools.to_gray(image)
+        size = frame_tools.image_size(image)
+        now = datetime.now(timezone.utc)
+        sample = detect_board(gray, spec)
+        if sample is None:
+            return FrameBoard(now, size, partial=detect_partial_board(gray, spec))
+        corners = canonical_chessboard_corners(gray, sample.corners, spec)
+        pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
+        return FrameBoard(
+            now, size, complete=True, pose=pose, reprojection_error_px=error_px, corners=corners
+        )
 
     def observe_cell(self, image, detector: Any, stored_world_cam=None):
         """Ein Bild fuer die Zellen-Ueberwachung:

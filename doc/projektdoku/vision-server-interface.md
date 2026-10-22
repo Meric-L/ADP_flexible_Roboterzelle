@@ -1701,6 +1701,24 @@ Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. D
 
 Anders als `result` gibt es `current` auch nach einem Neustart des Servers und ohne laufende Sitzung. Das Frontend zeigt damit die Handkamera am Flansch des Roboter-Zwillings.
 
+### 15.4 `MeasureBoard`: Brett vor der Aufnahme zentrieren
+
+Mit `MeasureBoard` bringt die Steuerung das Schachbrett mittig ins Bild, bevor sie `CaptureHandEyeSample` ruft. Der Pi misst nur und schickt keine Fahrbefehle. Details im Arbeitsplan [`arbeitsplaene/hand-auge-brett-zentrieren.md`](arbeitsplaene/hand-auge-brett-zentrieren.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `MeasureBoard` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, `wsc.vision.measureboard.request/1` → `…result/1` |
+
+- **Anfrage:** `{"board": {"type","cols","rows","squareSizeM"}?, "frames": 1..10 (3)?}`. Ohne `board` gilt das Brett der Konfiguration.
+- **Bilder:** Nur Bilder, die **nach** dem Aufruf eintreffen. Das gilt auch für `MeasureTags` und `CaptureHandEyeSample`.
+- **Error:** `OK` (auch bei `found: false`), `DETECTION_FAILED` (`error: "NO_FRAME"`), `INVALID_ARGUMENT` (JSON/Brett ungültig), `INVALID_STATE` (nicht `Operational`), `BUSY` (Job oder Kamera-Kalibrierung). Läuft auch während einer Hand-Auge-Sitzung.
+- **Ergebnis-JSON:** `found`, `complete`, `frameCount`, `framesRequested`, `framesUsed`, `imageSize`, `capturedAt`/`capturedUntil`, `frameId`, `frameConvention`, `intrinsicsSource`, `calibrationId`, `board`, `error`, `message`.
+  - **Ganzes Brett** (`complete: true`): `poseInCamera {position, orientation}`, `poseOk` (Fehler unter der Schranke der Hand-Auge-Aufnahme), `reprojectionErrorPx`, `distanceM`, `viewAngleDeg`, `cornersPx` (alle Ecken), `centerPx`, `offsetPx`, `nearEdge`.
+  - **Brett nur teilweise sichtbar** (`found: true`, `complete: false`): `partial {gridCols, gridRows, cornerCount, bboxPx}`, dazu `centerPx`, `offsetPx`, `nearEdge`. Keine Pose, denn der Ursprung eines Teilrasters ist beliebig.
+  - **Nichts gefunden:** `found: false`, kein Fehler.
+  - `offsetPx` zeigt vom Bildmittelpunkt zum Schwerpunkt der Ecken (x nach rechts, y nach unten). Dorthin muss die Kamera, damit das Brett in die Mitte rückt.
+- **`samples[i].reprojectionErrorPx`** im `HandEyeStatus`: mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch bei verworfenen. `null`, wenn nichts gefunden wurde.
+
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 
 Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde, und meldet nur **bestätigte** Änderungen. Formate, Regeln und Defaults stehen im Arbeitsplan [`arbeitsplaene/zellen-ueberwachung.md`](arbeitsplaene/zellen-ueberwachung.md). Die Knoten gibt es nur mit AprilTag und ohne `hand_eye_path`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.

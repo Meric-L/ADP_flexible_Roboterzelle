@@ -10,7 +10,7 @@ Board type and geometry are parameters (`BoardSpec`), not module globals like
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -152,6 +152,36 @@ def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None
         (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-3),
     )
     return BoardSample(corners=np.asarray(refined), ids=None)
+
+
+def partial_patterns(spec: BoardSpec) -> list[tuple[int, int]]:
+    """Kleinere Raster, mit denen ein nur teilweise sichtbares Brett noch zu
+    finden ist: von knapp unter `spec` bis 3x3, groesstes zuerst."""
+    patterns = []
+    cols, rows = spec.cols - 1, spec.rows - 1
+    while min(cols, rows) >= 3:
+        patterns.append((cols, rows))
+        cols, rows = cols - 1, rows - 1
+    if (3, 3) not in patterns and min(spec.cols, spec.rows) > 3:
+        patterns.append((3, 3))
+    return patterns
+
+
+def detect_partial_board(gray, spec: BoardSpec):
+    """Ein Teilraster des Bretts im Bild: `(Ecken (N, 2), cols, rows)` oder `None`.
+
+    Fuer das Zentrieren, wenn das ganze Brett nicht im Bild ist: Die Erkennung
+    braucht das ganze Raster, aber ein kleineres passt in jeden sichtbaren
+    Teil. Der Ursprung eines Teilrasters ist beliebig -- es taugt fuer
+    Schwerpunkt und Richtung, nicht fuer eine Brettpose.
+    """
+    if spec.type != CHESSBOARD:
+        return None
+    for cols, rows in partial_patterns(spec):
+        sample = detect_board(gray, replace(spec, cols=cols, rows=rows))
+        if sample is not None:
+            return np.asarray(sample.corners, dtype=np.float64).reshape(-1, 2), cols, rows
+    return None
 
 
 def compute_coverage(samples, image_size: tuple[int, int]) -> tuple[float, float]:
@@ -353,4 +383,6 @@ __all__ = [
     "estimate_board_pose",
     "compute_coverage",
     "detect_board",
+    "detect_partial_board",
+    "partial_patterns",
 ]
