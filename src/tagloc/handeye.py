@@ -73,6 +73,10 @@ class HandEye:
     rms_position_m: float = float("nan")
     rms_rotation_deg: float = float("nan")
     sample_count: int = 0
+    #: Groesste Abweichung (nicht RMS) unter den verwendeten Aufnahmen. Ab
+    #: 22.10.2026 getrennt vom RMS; aeltere Dateien haben sie nicht.
+    max_position_m: float = float("nan")
+    max_rotation_deg: float = float("nan")
 
 
 @dataclass(frozen=True)
@@ -228,6 +232,126 @@ def solve_hand_eye(
     return pose_flange_cam, spread_m, math.degrees(spread_rad)
 
 
+#: Ausreisser: eine Aufnahme, deren Brettlage mehr als `OUTLIER_MAD_FACTOR` mal
+#: die robuste Streuung (MAD) ueber dem Median der Abweichungen liegt -- aber
+#: nie unter den Untergrenzen: bei sauberen Daten ist die MAD fast null, und
+#: ohne Untergrenze waere jedes Hundertstel Millimeter ein "Ausreisser".
+OUTLIER_MAD_FACTOR = 3.0
+OUTLIER_FLOOR_M = 0.002
+OUTLIER_FLOOR_DEG = 0.3
+#: Hoechstens dieser Anteil der Aufnahmen wird verworfen.
+OUTLIER_MAX_FRACTION = 0.25
+#: So viele Aufnahmen bleiben mindestens uebrig.
+MIN_KEPT = 4
+
+
+@dataclass(frozen=True)
+class HandEyeSolution:
+    """Ergebnis von `solve_hand_eye_robust`."""
+
+    pose_flange_cam: Pose
+    #: Echtes RMS der Abweichungen der Brettlage vom Mittel, ueber die
+    #: verwendeten Aufnahmen.
+    rms_position_m: float
+    rms_rotation_deg: float
+    #: Groesste Abweichung unter den verwendeten Aufnahmen.
+    max_position_m: float
+    max_rotation_deg: float
+    #: Je Eingabe-Aufnahme `(Abweichung in m, in Grad)` der Brettlage vom Mittel
+    #: der verwendeten -- auch fuer verworfene.
+    residuals: tuple[tuple[float, float], ...]
+    #: Indizes der verworfenen Eingabe-Aufnahmen, in der Reihenfolge des Verwerfens.
+    rejected: tuple[int, ...]
+    used_count: int
+
+
+def _reconstruct(poses_base_flange, poses_cam_tag, pose_flange_cam) -> list[Pose]:
+    """`T_base_tag = T_base_flansch · T_flansch_cam · T_cam_tag` je Aufnahme."""
+    return [
+        compose(flange, pose_flange_cam, tag)
+        for flange, tag in zip(poses_base_flange, poses_cam_tag)
+    ]
+
+
+def _distance(centre: Pose, pose: Pose) -> tuple[float, float]:
+    return (
+        translation_distance_m(centre, pose),
+        math.degrees(rotation_distance_rad(centre, pose)),
+    )
+
+
+def _threshold(values: list[float], floor: float) -> float:
+    """Median + `OUTLIER_MAD_FACTOR` robuste Standardabweichungen, mindestens `floor`."""
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(np.asarray(values) - median)))
+    return max(floor, median + OUTLIER_MAD_FACTOR * 1.4826 * mad)
+
+
+def solve_hand_eye_robust(
+    poses_base_flange: Sequence[Pose],
+    poses_cam_tag: Sequence[Pose],
+    *,
+    reject: bool = True,
+) -> HandEyeSolution:
+    """`solve_hand_eye` mit Ausreisserpruefung und ehrlichen Guetezahlen.
+
+    Der Tag (oder das Brett) steht fest, also muss `T_base_tag` aus jeder
+    Aufnahme dieselbe Pose ergeben. Das Residuum einer Aufnahme ist ihr
+    Abstand zum Mittel **der anderen** (leave-one-out): eine schlechte
+    Aufnahme zieht das Mittel nicht zu sich. Liegt das groesste Residuum ueber
+    der Schwelle, wird genau diese Aufnahme verworfen und neu geloest, bis
+    nichts mehr auffaellt. Verworfen werden hoechstens `OUTLIER_MAX_FRACTION`
+    der Aufnahmen und nie unter `MIN_KEPT`; scheitert das Neulosen (die
+    uebrigen drehen nicht genug um mehrere Achsen), bleibt die letzte gute
+    Loesung.
+
+    Raises:
+        ValueError: wie `solve_hand_eye`, schon fuer die erste Loesung.
+    """
+    flanges = list(poses_base_flange)
+    tags = list(poses_cam_tag)
+    pose, _, _ = solve_hand_eye(flanges, tags)
+    used = list(range(len(flanges)))
+    rejected: list[int] = []
+    max_rejected = int(len(flanges) * OUTLIER_MAX_FRACTION)
+
+    while reject and len(rejected) < max_rejected and len(used) > max(MIN_SAMPLES, MIN_KEPT):
+        reconstructed = _reconstruct(flanges, tags, pose)
+        loo = {
+            i: _distance(
+                average_poses([reconstructed[j] for j in used if j != i]), reconstructed[i]
+            )
+            for i in used
+        }
+        threshold_m = _threshold([loo[i][0] for i in used], OUTLIER_FLOOR_M)
+        threshold_deg = _threshold([loo[i][1] for i in used], OUTLIER_FLOOR_DEG)
+        worst = max(used, key=lambda i: max(loo[i][0] / threshold_m, loo[i][1] / threshold_deg))
+        if max(loo[worst][0] / threshold_m, loo[worst][1] / threshold_deg) <= 1.0:
+            break
+        trial = [i for i in used if i != worst]
+        try:
+            trial_pose, _, _ = solve_hand_eye([flanges[i] for i in trial], [tags[i] for i in trial])
+        except ValueError:
+            break
+        used, pose = trial, trial_pose
+        rejected.append(worst)
+
+    reconstructed = _reconstruct(flanges, tags, pose)
+    centre = average_poses([reconstructed[i] for i in used])
+    residuals = tuple(_distance(centre, pose_i) for pose_i in reconstructed)
+    kept = [residuals[i] for i in used]
+    return HandEyeSolution(
+        pose_flange_cam=pose,
+        rms_position_m=math.sqrt(sum(m * m for m, _ in kept) / len(kept)),
+        rms_rotation_deg=math.sqrt(sum(d * d for _, d in kept) / len(kept)),
+        max_position_m=max(m for m, _ in kept),
+        max_rotation_deg=max(d for _, d in kept),
+        residuals=residuals,
+        rejected=tuple(rejected),
+        used_count=len(used),
+    )
+
+
 def load_hand_eye(path) -> HandEye:
     """Read a hand-eye calibration from JSON."""
     path = Path(path)
@@ -249,6 +373,8 @@ def load_hand_eye(path) -> HandEye:
         rms_position_m=_or_nan(data.get("rmsPositionM")),
         rms_rotation_deg=_or_nan(data.get("rmsRotationDeg")),
         sample_count=int(data.get("sampleCount", 0)),
+        max_position_m=_or_nan(data.get("maxPositionM")),
+        max_rotation_deg=_or_nan(data.get("maxRotationDeg")),
     )
 
 
@@ -264,6 +390,8 @@ def save_hand_eye(path, hand_eye: HandEye) -> None:
         "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
         "rmsPositionM": _finite(hand_eye.rms_position_m),
         "rmsRotationDeg": _finite(hand_eye.rms_rotation_deg),
+        "maxPositionM": _finite(hand_eye.max_position_m),
+        "maxRotationDeg": _finite(hand_eye.max_rotation_deg),
         "sampleCount": int(hand_eye.sample_count),
         "createdAt": now,
     }
@@ -284,11 +412,13 @@ __all__ = [
     "MIN_SAMPLES",
     "SCHEMA",
     "HandEye",
+    "HandEyeSolution",
     "RobotAnchor",
     "anchor_world_base",
     "camera_pose_from_robot",
     "load_hand_eye",
     "save_hand_eye",
     "solve_hand_eye",
+    "solve_hand_eye_robust",
     "target_spread",
 ]

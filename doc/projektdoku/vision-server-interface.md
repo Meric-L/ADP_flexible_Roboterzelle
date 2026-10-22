@@ -1689,7 +1689,13 @@ Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. D
 - Jede Aufnahme braucht das **ganze** Brett im Bild. Sonst wird sie verworfen (`DETECTION_FAILED`), und die Sitzung läuft weiter.
 - Der Status hat dann `tagId = -1` und `target = {"type": "chessboard", ...}`. `samples[].camToTag` ist `T_cam_board`.
 
-### 15.2 Gespeicherte Kalibrierung im Status
+### 15.2 Gütezahlen und Ausreißer (ab 22.10.2026)
+
+- `result.rmsPositionM`/`rmsRotationDeg` sind das **echte RMS**, `maxPositionM`/`maxRotationDeg` das **Maximum** der Abweichung der Brett- bzw. Tag-Lage vom Mittel über die verwendeten Aufnahmen. Vorher stand das Maximum unter dem Namen RMS.
+- Nach `FinishHandEyeCalibration` hat jede Aufnahme `samples[i].residualM`, `residualDeg` und `rejected`. Eine Aufnahme, deren Lage mehr als Median + 3 × MAD (mindestens 2 mm / 0,3°) vom Mittel der anderen abweicht, wird verworfen und die Kalibrierung neu gelöst (höchstens ein Viertel, nie unter 4 Aufnahmen). `result.rejectedCount` und `result.rejectedSamples` fassen es zusammen, `sampleCount` zählt nur die verwendeten.
+- Die Datei und `current` tragen zusätzlich `maxPositionM`/`maxRotationDeg`.
+
+### 15.3 Gespeicherte Kalibrierung im Status
 
 `HandEyeStatus` hat das Feld `current`. Darin steht die Kalibrierung aus `data/handeye/cam_flange.json`: `{poseFlangeCam, calibrationId, rmsPositionM, rmsRotationDeg, sampleCount}`, ohne Datei `null`.
 

@@ -99,11 +99,13 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
 
 ```json
 { "poseFlangeCam": {..}, "rmsPositionM": 0.0012, "rmsRotationDeg": 0.21, "sampleCount": 8,
+  "maxPositionM": 0.0031, "maxRotationDeg": 0.52, "rejectedCount": 1, "rejectedSamples": [3],
   "knownTagCheckM": 0.004 | null, "knownTagCheckDeg": 0.6 | null,
   "path": ".../data/handeye/cam_flange.json", "backupPath": ".../cam_flange.json.20261013T101500Z.bak" | null }
 ```
 
-- `rmsPositionM`/`rmsRotationDeg`: die größte Abweichung des rekonstruierten Tag-Orts vom Mittel (`tagloc.handeye.target_spread`). Das Gütemaß kommt ohne zweite Messkette aus.
+- `rmsPositionM`/`rmsRotationDeg`: das **echte RMS** der Abweichung der rekonstruierten Brett- bzw. Tag-Lage vom Mittel, über die verwendeten Aufnahmen. `maxPositionM`/`maxRotationDeg` ist die **größte** Abweichung. Bis 21.10.2026 stand hier das Maximum unter dem Namen RMS (`tagloc.handeye.target_spread`). Beides misst nur die Konsistenz der Lage über die Aufnahmen, nicht die Genauigkeit von `T_flansch_cam`.
+- **Ausreißer** (ab 22.10.2026, `tagloc.handeye.solve_hand_eye_robust`): Das Residuum einer Aufnahme ist ihr Abstand zum Mittel **der anderen** (leave-one-out). Liegt das größte über Median + 3 × MAD (mindestens 2 mm bzw. 0,3°), wird genau diese Aufnahme verworfen und neu gelöst, bis nichts mehr auffällt. Höchstens ein Viertel der Aufnahmen, nie unter 4 übrig. Scheitert das Neulösen (die übrigen drehen nicht genug), bleibt die letzte gute Lösung. Das Residuum jeder Aufnahme steht nach `FinishHandEyeCalibration` im Status unter `samples[i]`: `residualM`, `residualDeg`, `rejected` (vorher `null`, auch für nicht angenommene Aufnahmen). `result.rejectedCount` und `result.rejectedSamples` (Indizes in `samples[]`) fassen es zusammen, `sampleCount` zählt nur die verwendeten. Die Datei `cam_flange.json` enthält zusätzlich `maxPositionM`/`maxRotationDeg`, alte Dateien ohne diese Felder lassen sich weiter laden.
 - `knownTagCheckM`/`Deg`: nur mit `tagInBase`. Das ist die Abweichung von `mittel(T_base_flansch · T_flansch_cam · T_cam_tag)` zu `tagInBase`. Ein großer Wert spricht eher gegen den Katalog als gegen die Kalibrierung.
 
 ### Python

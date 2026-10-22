@@ -46,7 +46,13 @@ from tagloc.geometry import (
     rvec_from_rotation,
     translation_distance_m,
 )
-from tagloc.handeye import MIN_SAMPLES, HandEye, load_hand_eye, save_hand_eye, solve_hand_eye
+from tagloc.handeye import (
+    MIN_SAMPLES,
+    HandEye,
+    load_hand_eye,
+    save_hand_eye,
+    solve_hand_eye_robust,
+)
 
 from .errors import VisionErrorCode
 from .layer2.plan import _load, _pose
@@ -94,6 +100,11 @@ class _Sample:
     flange_in_base: Pose
     cam_to_tag: Pose | None
     detail: str
+    #: Nach `finish`: Abweichung der Brettlage dieser Aufnahme vom Mittel der
+    #: verwendeten, und ob sie als Ausreisser verworfen wurde. Vorher `None`.
+    residual_m: float | None = None
+    residual_deg: float | None = None
+    rejected: bool | None = None
 
     @property
     def accepted(self) -> bool:
@@ -220,28 +231,46 @@ class HandEyeSession:
         s = self._s
         if s.state != CAPTURING or self._measuring:
             return VisionErrorCode.INVALID_STATE
-        accepted = [sample for sample in s.samples if sample.accepted]
+        # Indizes statt Vergleichen: `_Sample` haelt numpy-Posen, `==` und
+        # `list.index` wuerden daran scheitern.
+        accepted_indices = [index for index, sample in enumerate(s.samples) if sample.accepted]
+        accepted = [s.samples[index] for index in accepted_indices]
         flanges = [sample.flange_in_base for sample in accepted]
         tags = [sample.cam_to_tag for sample in accepted]
         s.state = SOLVING
         s.message = f"Berechne aus {len(accepted)} Aufnahmen"
         await self._publish()
         try:
-            pose_flange_cam, spread_m, spread_deg = await asyncio.to_thread(
-                solve_hand_eye, flanges, tags
-            )
+            solution = await asyncio.to_thread(solve_hand_eye_robust, flanges, tags)
         except ValueError as error:
             s.state = CAPTURING
             s.message = f"Nicht berechnet: {error}"
             await self._publish()
             return VisionErrorCode.INVALID_STATE
 
+        pose_flange_cam = solution.pose_flange_cam
+        # Verworfene Aufnahmen gehen nicht in die Kalibrierung, ihr Residuum
+        # steht trotzdem im Status -- damit man sieht, welche Pose schlecht war.
+        rejected_positions = set(solution.rejected)
+        for position, (sample, (residual_m, residual_deg)) in enumerate(
+            zip(accepted, solution.residuals)
+        ):
+            sample.residual_m, sample.residual_deg = residual_m, residual_deg
+            sample.rejected = position in rejected_positions
+        used = [
+            (flange, tag)
+            for index, (flange, tag) in enumerate(zip(flanges, tags))
+            if index not in solution.rejected
+        ]
+        flanges, tags = [u[0] for u in used], [u[1] for u in used]
         hand_eye = HandEye(
             pose_flange_cam=pose_flange_cam,
             frame_id=self._ports.frame_id,
-            rms_position_m=spread_m,
-            rms_rotation_deg=spread_deg,
-            sample_count=len(accepted),
+            rms_position_m=solution.rms_position_m,
+            rms_rotation_deg=solution.rms_rotation_deg,
+            sample_count=solution.used_count,
+            max_position_m=solution.max_position_m,
+            max_rotation_deg=solution.max_rotation_deg,
         )
         try:
             backup = await asyncio.to_thread(save_with_backup, self._ports.path, hand_eye)
@@ -256,9 +285,16 @@ class HandEyeSession:
 
         s.result = {
             "poseFlangeCam": pose_to_dict(pose_flange_cam),
-            "rmsPositionM": spread_m,
-            "rmsRotationDeg": spread_deg,
-            "sampleCount": len(accepted),
+            # Echtes RMS der Abweichung der Brettlage ueber die verwendeten
+            # Aufnahmen; das Maximum steht getrennt daneben.
+            "rmsPositionM": solution.rms_position_m,
+            "rmsRotationDeg": solution.rms_rotation_deg,
+            "maxPositionM": solution.max_position_m,
+            "maxRotationDeg": solution.max_rotation_deg,
+            "sampleCount": solution.used_count,
+            "rejectedCount": len(solution.rejected),
+            #: Indizes in `samples[]`, in der Reihenfolge des Verwerfens.
+            "rejectedSamples": [accepted_indices[i] for i in solution.rejected],
             "knownTagCheckM": None,
             "knownTagCheckDeg": None,
             "path": str(self._ports.path),
@@ -273,9 +309,15 @@ class HandEyeSession:
                 rotation_distance_rad(reconstructed, s.tag_in_base)
             )
         s.state = FINISHED
+        dropped = (
+            f", {len(solution.rejected)} Ausreisser verworfen"
+            if solution.rejected
+            else ""
+        )
         s.message = (
-            f"Gespeichert und aktiv: Streuung {spread_m * 1000:.1f} mm / {spread_deg:.2f} Grad "
-            f"ueber {len(accepted)} Posen"
+            f"Gespeichert und aktiv: RMS {solution.rms_position_m * 1000:.1f} mm / "
+            f"{solution.rms_rotation_deg:.2f} Grad (max {solution.max_position_m * 1000:.1f} mm) "
+            f"ueber {solution.used_count} Posen{dropped}"
         )
         _log.info("Hand-Auge-Kalibrierung: %s", s.message)
         await self._publish()
@@ -345,6 +387,8 @@ class HandEyeSession:
             "calibrationId": hand_eye.calibration_id,
             "rmsPositionM": hand_eye.rms_position_m if math.isfinite(hand_eye.rms_position_m) else None,
             "rmsRotationDeg": hand_eye.rms_rotation_deg if math.isfinite(hand_eye.rms_rotation_deg) else None,
+            "maxPositionM": hand_eye.max_position_m if math.isfinite(hand_eye.max_position_m) else None,
+            "maxRotationDeg": hand_eye.max_rotation_deg if math.isfinite(hand_eye.max_rotation_deg) else None,
             "sampleCount": hand_eye.sample_count,
         }
 
@@ -381,6 +425,10 @@ class HandEyeSession:
                         "camToTag": (
                             pose_to_dict(sample.cam_to_tag) if sample.cam_to_tag is not None else None
                         ),
+                        # Erst nach `FinishHandEyeCalibration`, sonst `null`.
+                        "residualM": sample.residual_m,
+                        "residualDeg": sample.residual_deg,
+                        "rejected": sample.rejected,
                     }
                     for index, sample in enumerate(s.samples)
                 ],
