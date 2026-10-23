@@ -48,7 +48,7 @@ Die Methode antwortet erst nach der Messung. Das Ergebnis kommt **direkt zurück
 | `DETECTION_FAILED` | kein frisches Kamerabild (`error: "NO_FRAME"`) |
 | `INVALID_ARGUMENT` | JSON bzw. Werte ungültig |
 | `INVALID_STATE` | Vision-System nicht `Operational` |
-| `BUSY` | Job, Kamera-Kalibrierung oder Hand-Auge-Sitzung läuft |
+| `BUSY` | Job oder Kamera-Kalibrierung läuft (eine offene Hand-Auge-Sitzung sperrt nicht, seit 22.10.2026) |
 
 ### Daten
 

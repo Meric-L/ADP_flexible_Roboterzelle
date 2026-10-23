@@ -87,8 +87,17 @@ def build_board(spec: BoardSpec) -> Any:
     )
 
 
-def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None:
-    """Look for the board in a grayscale image. `None` if not found."""
+def detect_board(
+    gray, spec: BoardSpec, board: Any = None, *, max_side: int | None = None
+) -> BoardSample | None:
+    """Look for the board in a grayscale image. `None` if not found.
+
+    `max_side`: ein Schachbrett wird auf einem auf diese Kantenlaenge verkleinerten
+    Bild gesucht und die Ecken danach im vollen Bild nachgeschaerft. Das ist
+    deutlich schneller, vor allem wenn nichts zu finden ist -- ein Fehlversuch
+    kostet am vollen Bild Sekunden, und ohne Brett im Bild gibt es nur
+    Fehlversuche. Fuer Anfragen, die schnell antworten muessen.
+    """
     import cv2
 
     if spec.type == CHARUCO:
@@ -106,6 +115,18 @@ def detect_board(gray, spec: BoardSpec, board: Any = None) -> BoardSample | None
         if corners is None or ids is None or len(corners) < 4:
             return None
         return BoardSample(corners=np.asarray(corners), ids=np.asarray(ids))
+
+    if max_side is not None and max(gray.shape[:2]) > max_side:
+        scale = max_side / max(gray.shape[:2])
+        small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        sample = detect_board(small, spec)
+        if sample is None:
+            return None
+        seeds = np.ascontiguousarray(np.asarray(sample.corners, dtype=np.float32).reshape(-1, 1, 2) / scale)
+        refined = cv2.cornerSubPix(
+            gray, seeds, (11, 11), (-1, -1), (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-3)
+        )
+        return BoardSample(corners=np.asarray(refined), ids=None)
 
     sample = _detect_chessboard(gray, spec)
     if sample is None:
@@ -183,7 +204,7 @@ def partial_patterns(spec: BoardSpec) -> list[tuple[int, int]]:
     return patterns
 
 
-def detect_partial_board(gray, spec: BoardSpec):
+def detect_partial_board(gray, spec: BoardSpec, *, max_side: int | None = None):
     """Ein Teilraster des Bretts im Bild: `(Ecken (N, 2), cols, rows)` oder `None`.
 
     Fuer das Zentrieren, wenn das ganze Brett nicht im Bild ist: Die Erkennung
@@ -194,7 +215,7 @@ def detect_partial_board(gray, spec: BoardSpec):
     if spec.type != CHESSBOARD:
         return None
     for cols, rows in partial_patterns(spec):
-        sample = detect_board(gray, replace(spec, cols=cols, rows=rows))
+        sample = detect_board(gray, replace(spec, cols=cols, rows=rows), max_side=max_side)
         if sample is not None:
             return np.asarray(sample.corners, dtype=np.float64).reshape(-1, 2), cols, rows
     return None

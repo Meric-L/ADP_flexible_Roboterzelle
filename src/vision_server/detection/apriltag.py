@@ -38,6 +38,8 @@ from .base import Detection, DetectionRequest, DetectionSource
 _log = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 0.02
+#: `MeasureBoard` sucht das Brett auf einem Bild dieser laengsten Kante (siehe `_observe_board`).
+OBSERVE_MAX_SIDE = 640
 
 #: Frame id -> which of the two cameras this is. Mirrors the frames that
 #: `vision_server.server.PI_IDENTITIES` assigns per Pi. Deliberately plain
@@ -729,7 +731,7 @@ class AprilTagDetectionSource(DetectionSource):
         frames = []
         error = None
         last_image = None
-        for _ in range(request.frames):
+        for index in range(request.frames):
             try:
                 frame = await self._next_frame(seen_timestamp)
             except VisionJobError:
@@ -737,7 +739,11 @@ class AprilTagDetectionSource(DetectionSource):
                 break
             seen_timestamp = frame.timestamp
             last_image = frame.image
-            observed = await self.run_blocking(self._observe_board, frame.image, spec)
+            # Das Teilraster braucht nur das letzte Bild -- und die Suche ist der
+            # teuerste Teil, wenn das Brett nicht ganz im Bild ist.
+            observed = await self.run_blocking(
+                self._observe_board, frame.image, spec, index == request.frames - 1
+            )
             age_s = loop.time() - frame.timestamp
             frames.append(
                 replace(observed, captured_at=datetime.now(timezone.utc) - timedelta(seconds=age_s))
@@ -766,8 +772,13 @@ class AprilTagDetectionSource(DetectionSource):
 
         return diagnose_board(frame_tools.to_gray(image), spec)
 
-    def _observe_board(self, image, spec):
-        """Ein Bild fuer `MeasureBoard`: ganzes Brett, Teilraster oder nichts. Worker-Thread."""
+    def _observe_board(self, image, spec, with_partial: bool = True):
+        """Ein Bild fuer `MeasureBoard`: ganzes Brett, Teilraster oder nichts. Worker-Thread.
+
+        Gesucht wird auf einem auf `OBSERVE_MAX_SIDE` (laengste Kante) verkleinerten Bild, damit die
+        Antwort auch ohne Brett im Bild schnell kommt (ein Fehlversuch kostet am
+        vollen Bild Sekunden, am Pi ein Vielfaches). Die Ecken werden danach im
+        vollen Bild nachgeschaerft."""
         from datetime import datetime, timezone
 
         from tagloc import frames as frame_tools
@@ -783,9 +794,10 @@ class AprilTagDetectionSource(DetectionSource):
         gray = frame_tools.to_gray(image)
         size = frame_tools.image_size(image)
         now = datetime.now(timezone.utc)
-        sample = detect_board(gray, spec)
+        sample = detect_board(gray, spec, max_side=OBSERVE_MAX_SIDE)
         if sample is None:
-            return FrameBoard(now, size, partial=detect_partial_board(gray, spec))
+            partial = detect_partial_board(gray, spec, max_side=OBSERVE_MAX_SIDE) if with_partial else None
+            return FrameBoard(now, size, partial=partial)
         corners = canonical_chessboard_corners(gray, sample.corners, spec)
         pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
         return FrameBoard(

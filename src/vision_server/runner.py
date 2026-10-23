@@ -940,13 +940,13 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
         await _install_measure_tags(
             space, config, apriltag_source, calibration_methods, states,
             lambda: jobs.busy
-            or (calibration_session is not None and calibration_session.busy)
-            or (hand_eye_session is not None and hand_eye_session.active),
+            or (calibration_session is not None and calibration_session.busy),
         )
-        # Anders als MeasureTags laeuft MeasureBoard gerade WAEHREND einer
-        # Hand-Auge-Sitzung: Die Steuerung zentriert das Brett damit, bevor sie
-        # `CaptureHandEyeSample` ruft. Gesperrt ist es nur fuer Job und Kamera-
-        # Kalibrierung.
+        # MeasureTags und MeasureBoard laufen auch WAEHREND einer Hand-Auge-
+        # Sitzung: Sie lesen nur Kamerabilder und aendern keinen Zustand. Eine
+        # haengengebliebene Sitzung soll Layer 2 nicht sperren, und die Steuerung
+        # zentriert das Brett mit MeasureBoard, bevor sie `CaptureHandEyeSample`
+        # ruft. Gesperrt sind sie nur fuer Job und Kamera-Kalibrierung.
         await _install_measure_board(
             space, config, apriltag_source, calibration_methods, states,
             lambda: jobs.busy
@@ -1365,7 +1365,7 @@ async def _install_cell_watch(
     states: VisionStateMachines,
     busy_reason: Callable[[], str],
 ) -> Any:
-    """Legt StartCellWatch/StopCellWatch an und verdrahtet die Ueberwachung.
+    """Legt Start-/Stop-/Pause-/ResumeCellWatch an und verdrahtet die Ueberwachung.
 
     Nur auf der Deckenkamera (Knoten nur ohne `hand_eye_path`). Liest die
     Frames der geteilten Kamera -- dieselben wie Livestream und Jobs, keine
@@ -1442,9 +1442,23 @@ async def _install_cell_watch(
         error = await cell_watch.stop()
         return (ua.Variant(int(error), ua.VariantType.Int32),)
 
+    @uamethod
+    async def pause_cell_watch(parent, reason_text: str, max_pause_s: float):
+        """1:PauseCellWatch -- pausieren, solange der Roboter faehrt."""
+        error = await cell_watch.pause(reason_text or "", max_pause_s)
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
+    @uamethod
+    async def resume_cell_watch(parent):
+        """1:ResumeCellWatch -- Pause beenden."""
+        error = await cell_watch.resume()
+        return (ua.Variant(int(error), ua.VariantType.Int32),)
+
     for name, handler, inputs in (
         ("StartCellWatch", start_cell_watch, [ua.VariantType.String]),
         ("StopCellWatch", stop_cell_watch, []),
+        ("PauseCellWatch", pause_cell_watch, [ua.VariantType.String, ua.VariantType.Double]),
+        ("ResumeCellWatch", resume_cell_watch, []),
     ):
         methods[name] = await space.vision_system.add_method(
             ua.NodeId(f"{method_prefix}.{name}", space.own_idx),

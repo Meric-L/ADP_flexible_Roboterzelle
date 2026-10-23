@@ -114,6 +114,27 @@ class DetectionHelpersTest(unittest.TestCase):
             self.assertIs(found, sentinel)
         self.assertEqual(len(calls), 2)  # erst Original, dann invertiert
 
+    def test_search_on_a_reduced_image_is_as_accurate(self):
+        """`max_side`: schneller suchen, im vollen Bild nachschaerfen. Die Pose
+        stimmt mit der aus der Suche am vollen Bild ueberein (Millimeter), der
+        Reprojektionsfehler ist nicht schlechter."""
+        from tagloc.boards import canonical_chessboard_corners, detect_board, estimate_board_pose
+
+        calibration = CameraCalibration(K, np.zeros(5), (640, 480), model=PINHOLE)
+        for roll, tilt in ((0, 0), (20, 10), (60, 35)):
+            with self.subTest(roll=roll, tilt=tilt):
+                image = render(roll, tilt)
+                poses = []
+                for max_side in (None, 320):
+                    sample = detect_board(image, spec(), max_side=max_side)
+                    self.assertIsNotNone(sample)
+                    corners = canonical_chessboard_corners(image, sample.corners, spec())
+                    poses.append(estimate_board_pose(corners, spec(), calibration))
+                (full_pose, full_error), (fast_pose, fast_error) = poses
+                self.assertLess(np.linalg.norm(full_pose[:3, 3] - fast_pose[:3, 3]), 0.003)
+                self.assertLessEqual(fast_error, max(full_error, 0.2))
+        self.assertIsNone(detect_board(np.full((480, 640), 128, np.uint8), spec(), max_side=320))
+
     def test_partial_patterns(self):
         self.assertEqual(partial_patterns(spec()), [(5, 6), (4, 5), (3, 4), (3, 3)])
         self.assertEqual(partial_patterns(spec(5, 6)), [(4, 5), (3, 4), (3, 3)])
