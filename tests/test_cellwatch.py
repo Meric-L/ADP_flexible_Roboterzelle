@@ -510,6 +510,89 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         await self.ticks(watch, 1)
         self.assertEqual(self.status["state"], "watching")
 
+    async def test_manual_pause_evaluates_nothing_and_resume_starts_fresh(self):
+        self.results["job-000001"] = json.dumps(
+            {"frameId": "world", "resultState": 0, "detections": [
+                {"moduleId": "MOD-A", "position": [1.0, 1.0, 0.0], "orientation": [0, 0, 0, 1],
+                 "attributes": {"tagId": 7}}]}
+        )
+        watch = self.watch()
+        await watch.start('{"referenceJobId": "job-000001"}', run_loop=False)
+        await self.ticks(watch, 3)
+        self.assertEqual(self.status["state"], "watching")
+        self.assertEqual(await watch.pause("Roboter faehrt", 0), VisionErrorCode.OK)
+        self.assertEqual((self.status["state"], self.status["message"]), ("paused", "Roboter faehrt"))
+        self.assertEqual(self.status["manualPause"]["reason"], "Roboter faehrt")
+        # Der Tag wandert weit weg, aber waehrend der Pause zaehlt das nicht.
+        self.frame = ({7: sighting(2.0, 1.0)}, "")
+        await self.ticks(watch, 20)
+        self.assertEqual((self.status["state"], self.status["changes"], self.status["pending"]), ("paused", [], []))
+        self.assertEqual(await watch.resume(), VisionErrorCode.OK)
+        self.assertEqual((self.status["state"], self.status["message"]), ("watching", ""))
+        self.assertIsNone(self.status["manualPause"])
+        # Nach dem Resume zaehlt der Tag an der neuen Stelle wie ein frisch gesehener:
+        # erst nach `persist_s` bestaetigt, nicht sofort.
+        await self.ticks(watch, 1)
+        self.assertEqual(self.status["changes"], [])
+        await self.ticks(watch, 8)
+        self.assertEqual(self.status["changes"][0]["kind"], "moved")
+
+    async def test_resume_keeps_confirmed_changes_and_drops_candidates(self):
+        self.results["job-000001"] = json.dumps(
+            {"frameId": "world", "resultState": 0, "detections": [
+                {"moduleId": "MOD-A", "position": [1.0, 1.0, 0.0], "orientation": [0, 0, 0, 1],
+                 "attributes": {"tagId": 7}}]}
+        )
+        watch = self.watch()
+        await watch.start('{"referenceJobId": "job-000001"}', run_loop=False)
+        self.frame = ({7: sighting(1.3, 1.0)}, "")
+        await self.ticks(watch, 8)
+        self.assertEqual(self.status["state"], "changed")
+        await watch.pause("Roboter faehrt")
+        self.assertEqual(self.status["state"], "paused")
+        await watch.resume()
+        self.assertEqual(self.status["state"], "changed")  # bestaetigte Meldung bleibt
+        self.assertIn("MOD-A verschoben", self.status["message"])
+
+    async def test_pause_ends_by_itself(self):
+        watch = self.watch()
+        await watch.start("{}", run_loop=False)
+        await watch.pause("Roboter faehrt", 5)
+        await self.ticks(watch, 4)
+        self.assertEqual(self.status["state"], "paused")
+        await self.ticks(watch, 2)
+        self.assertEqual(self.status["state"], "watching")
+        self.assertIsNone(self.status["manualPause"])
+
+    async def test_pause_default_and_limit(self):
+        watch = self.watch()
+        await watch.start("{}", run_loop=False)
+        await watch.pause("a", 0)
+        self.assertEqual(watch._pause_until - self.clock.t, 600.0)
+        await watch.pause("b", 99999)
+        self.assertEqual(watch._pause_until - self.clock.t, 3600.0)
+        await watch.pause("", -1)
+        self.assertEqual(watch._pause_reason, "Ueberwachung pausiert")
+        self.assertEqual(await watch.pause("x", float("nan")), VisionErrorCode.INVALID_ARGUMENT)
+        self.assertEqual(await watch.pause("x", float("inf")), VisionErrorCode.INVALID_ARGUMENT)
+
+    async def test_pause_and_resume_when_off_idempotent_and_rearming(self):
+        watch = self.watch()
+        self.assertEqual(await watch.pause("x"), VisionErrorCode.INVALID_STATE)
+        self.assertEqual(await watch.resume(), VisionErrorCode.INVALID_STATE)
+        await watch.start("{}", run_loop=False)
+        self.assertEqual(await watch.resume(), VisionErrorCode.OK)  # nichts zu beenden
+        await watch.pause("eins")
+        await watch.pause("zwei")  # Grund und Frist werden ersetzt
+        self.assertEqual(self.status["message"], "zwei")
+        # Neu scharf schalten hebt die Pause nicht auf.
+        await watch.start("{}", run_loop=False)
+        self.assertEqual((self.status["state"], self.status["message"]), ("paused", "zwei"))
+        await watch.stop()
+        await watch.start("{}", run_loop=False)  # Stopp verwirft die Pause
+        self.assertEqual(self.status["state"], "watching")
+        self.assertIsNone(self.status["manualPause"])
+
     async def test_refusals_and_stop(self):
         watch = self.watch()
         self.assertEqual(await watch.stop(), VisionErrorCode.INVALID_STATE)
@@ -645,7 +728,7 @@ class CellWatchOpcUaTest(unittest.IsolatedAsyncioTestCase):
         states = types.SimpleNamespace(state_names=lambda: ("Operational", "Ready"))
         methods = {}
         watch = await _install_cell_watch(space, config, source, results, methods, states, lambda: "")
-        self.assertEqual(set(methods), {"StartCellWatch", "StopCellWatch"})
+        self.assertEqual(set(methods), {"StartCellWatch", "StopCellWatch", "PauseCellWatch", "ResumeCellWatch"})
         status = json.loads(await space.cell_watch_status.read_value())
         self.assertEqual(status["state"], "off")
 
@@ -654,6 +737,14 @@ class CellWatchOpcUaTest(unittest.IsolatedAsyncioTestCase):
         await watch.tick()
         status = json.loads(await space.cell_watch_status.read_value())
         self.assertEqual((status["state"], status["message"]), ("paused", "kein Kamerabild"))
+        node = server.get_node(ua.NodeId("VisionMachine.PauseCellWatch", idx))
+        self.assertEqual(await vision_system.call_method(node, "Roboter faehrt", 0.0), 0)
+        status = json.loads(await space.cell_watch_status.read_value())
+        self.assertEqual((status["state"], status["message"]), ("paused", "Roboter faehrt"))
+        node = server.get_node(ua.NodeId("VisionMachine.ResumeCellWatch", idx))
+        self.assertEqual(await vision_system.call_method(node), 0)
+        status = json.loads(await space.cell_watch_status.read_value())
+        self.assertEqual(status["state"], "watching")
         node = server.get_node(ua.NodeId("VisionMachine.StopCellWatch", idx))
         self.assertEqual(await vision_system.call_method(node), 0)
 

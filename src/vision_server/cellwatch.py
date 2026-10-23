@@ -63,6 +63,13 @@ CHANGED = "changed"
 PAUSED = "paused"
 FAILED = "failed"
 
+#: `PauseCellWatch`: Dauer der Pause, wenn der Aufrufer keine nennt, und die
+#: laengste erlaubte -- danach geht die Ueberwachung von selbst weiter, auch
+#: wenn niemand `ResumeCellWatch` ruft (Frontend abgestuerzt, Roboter still).
+DEFAULT_PAUSE_S = 600.0
+MAX_PAUSE_S = 3600.0
+DEFAULT_PAUSE_REASON = "Ueberwachung pausiert"
+
 MOVED = "moved"
 APPEARED = "appeared"
 DISAPPEARED = "disappeared"
@@ -234,6 +241,23 @@ class CellWatchTracker:
         if same_reference:
             self._tags = previous._tags
             self.started_at = previous.started_at
+
+    def restart(self, t: float) -> None:
+        """Nach einer Pause neu anfangen: Bilder von vorher zaehlen nicht mehr,
+        alle Zeitgeber starten bei `t`, alle Tags gelten als eben gesehen.
+
+        Bestaetigte Meldungen bleiben -- sie erlischt die uebliche Hysterese.
+        Kandidaten (`pending`) sind weg: Waehrend der Pause fuhr der Roboter,
+        und was er in der Zeit verschoben hat, haette man nicht gesehen.
+        """
+        self._frames.clear()
+        self.started_at = t
+        for state in self._tags.values():
+            state.exceeded_since = None
+            state.back_since = None
+            state.last_distance = None
+            state.last_rotation = None
+            state.last_seen = t
 
     def _wall_at(self, t: float) -> str | None:
         if self._clock is None:
@@ -992,6 +1016,10 @@ class CellWatch:
         #: Alle im zuletzt geprueften Bild erkannten Tags; `None` vor dem ersten.
         self._visible: list[int] | None = None
         self._task: asyncio.Task | None = None
+        #: Von aussen verordnete Pause (`PauseCellWatch`): Grund und Ablauf
+        #: (monoton). `None` = keine.
+        self._pause_reason: str | None = None
+        self._pause_until = 0.0
 
     @property
     def active(self) -> bool:
@@ -1055,6 +1083,9 @@ class CellWatch:
             self._tracker.carry_from(previous, same_reference=same_reference)
         self._state = WATCHING
         self._message = "" if self._reference_id else "Referenz wird aufgenommen"
+        if self._pause_reason is not None:
+            # Neu scharf schalten hebt eine verordnete Pause nicht auf.
+            self._state, self._message = PAUSED, self._pause_reason
         _log.info(
             "Zellen-Ueberwachung scharf (%s)",
             f"Referenz Job {job_id}" if job_id else "Referenz aus der Beobachtung",
@@ -1068,10 +1099,56 @@ class CellWatch:
         if not self.active:
             return VisionErrorCode.INVALID_STATE
         await self._halt()
+        self._pause_reason = None
         self._state = OFF
         self._message = "gestoppt"
         await self._publish()
         return VisionErrorCode.OK
+
+    async def pause(self, reason: str, max_pause_s: float = 0.0) -> VisionErrorCode:
+        """Pausieren, solange die Zelle nicht stillsteht (Roboter faehrt).
+
+        Waehrend der Pause wird kein Bild ausgewertet und nichts in den
+        Verlauf aufgenommen. `max_pause_s <= 0` heisst `DEFAULT_PAUSE_S`;
+        laenger als `MAX_PAUSE_S` geht nicht. Noch einmal rufen aendert Grund
+        und Frist. Nur bei laufender Ueberwachung.
+        """
+        if not self.active:
+            return VisionErrorCode.INVALID_STATE
+        try:
+            seconds = float(max_pause_s)
+        except (TypeError, ValueError):
+            return VisionErrorCode.INVALID_ARGUMENT
+        if not math.isfinite(seconds):
+            return VisionErrorCode.INVALID_ARGUMENT
+        seconds = DEFAULT_PAUSE_S if seconds <= 0 else min(seconds, MAX_PAUSE_S)
+        self._pause_reason = (reason or "").strip() or DEFAULT_PAUSE_REASON
+        self._pause_until = self._ports.monotonic() + seconds
+        self._state, self._message = PAUSED, self._pause_reason
+        _log.info("Zellen-Ueberwachung pausiert: %s (hoechstens %.0f s)", self._pause_reason, seconds)
+        await self._publish()
+        return VisionErrorCode.OK
+
+    async def resume(self) -> VisionErrorCode:
+        """Pause beenden. Ohne verordnete Pause tut es nichts (`OK`)."""
+        if not self.active:
+            return VisionErrorCode.INVALID_STATE
+        if self._pause_reason is not None:
+            await self._resume_now()
+        return VisionErrorCode.OK
+
+    async def _resume_now(self) -> None:
+        self._pause_reason = None
+        tracker = self._tracker
+        tracker.restart(self._ports.monotonic())
+        if self._reference_id is None:
+            self._state, self._message = WATCHING, "Referenz wird aufgenommen"
+        elif tracker.changes:
+            self._state, self._message = CHANGED, _describe(tracker.changes)
+        else:
+            self._state, self._message = WATCHING, ""
+        _log.info("Zellen-Ueberwachung geht weiter")
+        await self._publish()
 
     async def aclose(self) -> None:
         await self._halt()
@@ -1110,6 +1187,12 @@ class CellWatch:
         """Ein Auswerteschritt. Oeffentlich fuer Tests."""
         if not self.active:
             return
+        if self._pause_reason is not None:
+            if self._ports.monotonic() < self._pause_until:
+                await self._pause(self._pause_reason)
+                return
+            _log.warning("Zellen-Ueberwachung: Pause abgelaufen, ohne Resume -- geht von selbst weiter")
+            await self._resume_now()
         reason = self._ports.busy_reason()
         if reason:
             await self._pause(reason)
@@ -1172,6 +1255,8 @@ class CellWatch:
                 if tracker is not None and self.active
                 else [],
                 "options": self._options.to_dict(),
+                # Von aussen verordnete Pause, sonst `null`.
+                "manualPause": self._manual_pause_info(),
                 "changes": tracker.changes if referenced and self.active else [],
                 # Noch nicht bestaetigt -- fuer die sofortige Anzeige.
                 "pending": tracker.pending(self._ports.monotonic())
@@ -1181,6 +1266,15 @@ class CellWatch:
             allow_nan=False,
             default=float,
         )
+
+    def _manual_pause_info(self) -> dict | None:
+        if self._pause_reason is None or not self.active:
+            return None
+        remaining = max(0.0, self._pause_until - self._ports.monotonic())
+        return {
+            "reason": self._pause_reason,
+            "resumesAt": (self._ports.now() + timedelta(seconds=remaining)).isoformat(timespec="seconds"),
+        }
 
     async def _publish(self) -> None:
         try:

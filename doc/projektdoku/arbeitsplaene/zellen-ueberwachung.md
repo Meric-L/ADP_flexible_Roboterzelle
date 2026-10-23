@@ -34,6 +34,8 @@ Alles liegt unter `VisionMachine`, zusätzlich unter `VisionProgram` verlinkt. E
 | --- | --- | --- |
 | StartCellWatch | `ns=<vision>;s=VisionMachine.StartCellWatch` | `(OptionsJson: String) -> (Error: Int32)` |
 | StopCellWatch | `ns=<vision>;s=VisionMachine.StopCellWatch` | `() -> (Error: Int32)` |
+| PauseCellWatch | `ns=<vision>;s=VisionMachine.PauseCellWatch` | `(ReasonText: String, MaxPauseS: Double) -> (Error: Int32)` (Nachtrag 22.10.2026, siehe `vision-server-interface.md` Abschnitt 16) |
+| ResumeCellWatch | `ns=<vision>;s=VisionMachine.ResumeCellWatch` | `() -> (Error: Int32)` (Nachtrag 22.10.2026) |
 | CellWatchStatus | `ns=<vision>;s=VisionMachine.CellWatchStatus` | String (JSON), Lesen/Abo |
 
 | Methode | Code | Wann |
