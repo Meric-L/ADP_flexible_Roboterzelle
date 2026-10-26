@@ -762,3 +762,53 @@ Lauf alle messbaren Tags neu (`TAG_MEASURE_ALL_TESTPHASE = true`), damit der Ver
 werden kann. Die Einmal-Regel (nur ausstehende Tags, einmal pro neuem bzw. bearbeitetem Modul) bleibt
 der Zielzustand für später und ist im Code erhalten. Details in
 [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md).
+
+## Nachtrag 26.10.2026: Messansicht über 5 Kandidaten, Kanten-Gegenprobe der Roboter-Tags
+
+Anlass: Beim Versuch am Roboter scheiterte Tag 3 an der Messansicht („Keine Gelenkstellung … 77 mm /
+10,2° daneben“). Roboter-Tag 1 meldete eine Streuung von 1,1° über die Ansichten. Beides ist
+nur im Frontend umgesetzt (webskillcomposition, Branch `tag-einmessen-liveview`, Commits `4b6ed6f`,
+`745ea5b`). **An der Pi-Schnittstelle ändert sich nichts.** Genutzt werden nur die schon
+dokumentierten Request-Felder `view.tiltDeg` und `saveDebug`.
+
+### Erreichbarkeit der Ansicht
+
+Die Messansicht (Kamera im Tag-KS vom Pi) wird nicht mehr nur einmal aus der aktuellen
+Stellung gelöst. `planViewMove` probiert drei IK-Startwerte (aktuelle Stellung, Startstellung,
+Mitte der Gelenkbereiche) und dreht die Kamera um ihre Sichtachse: Modul-Tags 0°/180° (der Pi legt
+den Bildausschnitt mittig, eine halbe Drehung zeigt dasselbe), Roboter-Tags 0°/±90°/180°.
+Genommen wird die erste Lösung ohne Wagen- oder Bodenberührung.
+
+### 5 Kandidaten-Ansichten (Modul-Tags und Gegenprobe)
+
+1. `PlanTagReferenceView` wird für die Kippungen `10, -10, 20, -20, 30°` um Tag-x aufgerufen
+   (`TAG_REFERENCE_VIEW_TILTS_DEG`). Welche Kanten passen (`fits`/`uncovered`), entscheidet
+   die erste Kippung; die übrigen werden für dieselben Kanten geplant.
+2. Jede erreichbare Ansicht wird angefahren. Dort läuft eine kurze `MeasureTagReference` mit
+   `saveDebug: false`. Die Live-Ansicht läuft vom Anfahren an mit.
+3. Die beste Ansicht gewinnt (`referenceScore`). Verglichen wird in dieser Reihenfolge: `dofs`
+   (full > partial > none), dann die Anzahl der Kanten mit `found && !ambiguous`, dann das
+   kleinere `residualMm`, dann die Summe von `supportPx`.
+4. Zurück in die beste Ansicht, dann (bei „Schritt für Schritt“) die Bestätigung und die
+   eigentliche Messung mit Protokoll. Bringt diese Messung nichts Verwertbares, zählt die
+   Prüfmessung derselben Ansicht, mit Warnung.
+
+Nicht erreichbare oder nicht planbare Kandidaten werden übersprungen und als Warnung genannt. Ist
+keiner erreichbar, scheitert der Tag mit dem Grund des ersten Kandidaten.
+
+### Kanten-Gegenprobe der Roboter-Tags
+
+Roboter-Tags, die im Katalog Bezugskanten haben (`placement`), werden nach dem Gelenkwinkel-Lauf
+noch einmal über die Kanten gemessen (Schalter „Roboter-Tags mit Kanten gegenprüfen“, Standard an).
+Die Kantenmessung hängt nicht von Hand-Auge-Kalibrierung und Kinematik ab und ist deshalb eine
+unabhängige Probe. **Gespeichert wird weiter nur das Ergebnis `robot-fk`.** Der Vergleich wird
+nur in der Zeile des Tags angezeigt; das Katalogformat bleibt unverändert.
+
+- Startwert der Kantenmessung: der Katalogwert. Gesucht wird dort, wo die Gelenkwinkel den Tag
+  gefunden haben (sonst am Katalogwert). Das Modul-KS des Roboters ist das Basis-KS.
+- Vergleich (`compareRobotTagWithEdges`): Kanten minus Gelenkwinkel, im Tag-KS des
+  Gelenkwinkel-Ergebnisses. Verglichen werden die Verschiebung in der Tag-Ebene (x, y) und die
+  Drehung um Tag-z. Die Normale wird nicht verglichen, weil die Kanten sie nicht messen. Bei nur
+  einer Kante (`partial`) zählt nur die Verschiebung quer zu ihr.
+- Grenzen: 2 mm in der Ebene, 1° Drehung. Darüber steht der Hinweis in Bernstein:
+  „Hand-Auge-Kalibrierung oder Kantenmaße im Katalog prüfen“.
