@@ -893,3 +893,11 @@ Branch `tag-einmessen-liveview`).
 ### Offen
 
 - Am Roboter noch nicht geprüft.
+
+## Nachtrag 27.10.2026: Tags zum Anfahren auswählen
+
+- Anlass: Der Nutzer will wählen, welche Tags angefahren werden, statt immer alle.
+- Im Panel „Tags einmessen“ hat jede Zeile (Modul- und Roboter-Tags) ein Häkchen. Darüber steht „Auswahl: alle / keine“ (ab 2 auswählbaren Zeilen; gilt für Modul- und Roboter-Tags zusammen). Zeilen ohne Bezugskanten oder ohne Layer-1-Lage haben kein Häkchen (nicht messbar).
+- Neue Zeilen sind automatisch angehakt. Ohne Eingriff werden wie bisher alle angefahren. Die Auswahl gilt für die Sitzung (nur im Fenster, nicht gespeichert) und bleibt über „Liste neu lesen“ und weitere Läufe erhalten.
+- Angefahren werden nur die angehakten Tags. Die Kanten-Gegenprobe der Roboter-Tags läuft ebenfalls nur für angehakte. Der Startknopf zählt die Auswahl („… einmessen (2 Module, 1 Roboter)“). Ist nichts angehakt, steht dort „Kein Tag ausgewählt.“
+- Umsetzung: `tickedRows` in `frontend/src/features/cell-modules/model/tagMeasurementState.ts`, Panel `TagReferencePanel.tsx`. Frontend-Commit `471a73f` (webskillcomposition, Branch `tag-einmessen-liveview`). Keine Schnittstellenänderung.
