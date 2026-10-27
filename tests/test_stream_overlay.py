@@ -195,6 +195,28 @@ class AprilTagFullResolutionTest(unittest.TestCase):
         status.assert_not_called()
         self.assertFalse(np.any(image))
 
+    def test_overlay_pauses_while_measuring_and_returns_the_raw_image(self):
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        annotator = self._annotator(snapshot=self._snapshot())
+        paused = {"value": True}
+        annotator.set_overlay_paused(lambda: paused["value"])
+
+        result, draw, _ = self._annotate(annotator, image)
+        self.assertIs(result, image)  # Rohbild, nichts gezeichnet, nichts erkannt
+        draw.assert_not_called()
+
+        # Danach laeuft das Overlay wieder wie gewaehlt.
+        paused["value"] = False
+        result, draw, _ = self._annotate(annotator, image)
+        self.assertEqual(result.shape[:2], (150, 200))
+        draw.assert_called_once()
+
+    def test_pause_does_not_touch_other_modes(self):
+        annotator = self._annotator(snapshot=self._snapshot())
+        annotator.set_overlay_paused(lambda: True)
+        result = annotator.annotate(np.zeros((300, 400, 3), dtype=np.uint8), "calibration")
+        self.assertEqual(result.shape[:2], (150, 200))  # Kalibrier-Vorschau unveraendert
+
     def test_no_own_detection_while_a_fresh_result_exists(self):
         detector = SimpleNamespace(detect=lambda gray: [])
         with patch.object(detector, "detect", wraps=detector.detect) as detect:

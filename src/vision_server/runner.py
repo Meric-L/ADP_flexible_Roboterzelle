@@ -936,6 +936,14 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             or (calibration_session is not None and calibration_session.busy)
             or (layer2_run is not None and layer2_run.active),
         )
+    if annotator is not None and hasattr(annotator, "set_overlay_paused") and apriltag_source is not None:
+        # Auf dem Hand-Pi wuerde das Overlay waehrend einer Messung oder
+        # Hand-Auge-Sitzung in voller Aufloesung mitrechnen, die CPU gehoert
+        # der Messung. Der Stream zeigt dann das Rohbild.
+        annotator.set_overlay_paused(
+            lambda: apriltag_source.measure_calls > 0
+            or (hand_eye_session is not None and hand_eye_session.active)
+        )
     if apriltag_source is not None and space.last_tag_measurement is not None:
         await _install_measure_tags(
             space, config, apriltag_source, calibration_methods, states,
@@ -1276,7 +1284,12 @@ async def _install_measure_tags(
             return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
         if busy():
             return refusal(VisionErrorCode.BUSY, "Job, Kalibrierung oder Hand-Auge-Sitzung laeuft")
-        result = await apriltag_source.measure_tags(request)
+        # Solange gemessen wird, haelt das Stream-Overlay an (siehe unten).
+        apriltag_source.measure_calls += 1
+        try:
+            result = await apriltag_source.measure_tags(request)
+        finally:
+            apriltag_source.measure_calls -= 1
         payload = dumps(result)
         try:
             await space.last_tag_measurement.write_value(

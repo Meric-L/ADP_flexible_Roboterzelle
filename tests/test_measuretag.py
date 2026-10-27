@@ -306,7 +306,15 @@ class MeasureTagsOpcUaTest(unittest.IsolatedAsyncioTestCase):
         async def measure_tags(request):
             return {"schema": RESULT_SCHEMA, "tags": [{"tagId": 7}], "error": None}
 
-        source = types.SimpleNamespace(measure_tags=measure_tags)
+        seen_during = []
+
+        async def measure_tags(request):  # noqa: F811 -- merkt sich den Zaehler waehrend der Messung
+            seen_during.append(source.measure_calls)
+            if request.tag_ids == [13]:
+                raise RuntimeError("Messung kaputt")
+            return {"schema": RESULT_SCHEMA, "tags": [{"tagId": 7}], "error": None}
+
+        source = types.SimpleNamespace(measure_tags=measure_tags, measure_calls=0)
         busy = {"value": False}
         methods = {}
         await _install_measure_tags(
@@ -325,6 +333,16 @@ class MeasureTagsOpcUaTest(unittest.IsolatedAsyncioTestCase):
         result_json, error = await vision_system.call_method(method, "kaputt")
         self.assertEqual(error, int(VisionErrorCode.INVALID_ARGUMENT))
         self.assertTrue(json.loads(result_json)["error"].startswith("INVALID_ARGUMENT"))
+        # Waehrend der Messung zaehlt sie als laufend (Stream-Overlay haelt an), danach nicht mehr.
+        self.assertEqual(seen_during, [1])
+        self.assertEqual(source.measure_calls, 0)
+        # Auch ein Fehler in der Messung stellt den Zaehler zurueck.
+        try:
+            await vision_system.call_method(method, '{"tagIds": [13]}')
+        except Exception:
+            pass  # asyncua meldet die Ausnahme je nach Version als Fehlerstatus
+        self.assertEqual(len(seen_during), 2)  # die fehlerhafte Messung lief wirklich
+        self.assertEqual(source.measure_calls, 0)
         busy["value"] = True
         _, error = await vision_system.call_method(method, "{}")
         self.assertEqual(error, int(VisionErrorCode.BUSY))

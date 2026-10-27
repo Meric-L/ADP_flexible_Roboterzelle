@@ -291,6 +291,9 @@ class AprilTagDetectionSource(DetectionSource):
         self._drift = None
         #: Welttags des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
         self._world_tag_sample: list = []
+        #: Laufende `MeasureTags`-Aufrufe (`runner.py`); das Stream-Overlay haelt
+        #: solange an.
+        self.measure_calls = 0
         #: Neuestes Ergebnis in voller Aufloesung, egal aus welchem Pfad
         #: (`TagSnapshot`). Wird nur ersetzt, nie veraendert -- das Overlay
         #: liest es aus seinem eigenen Thread ohne Sperre.

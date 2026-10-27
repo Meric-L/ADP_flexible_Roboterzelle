@@ -81,6 +81,10 @@ class AprilTagStreamAnnotator:
         #: Solange das `True` liefert (Job, Kamera-Kalibrierung), startet
         #: keine eigene Erkennung -- der Job soll die CPU fuer sich haben.
         self._busy: Callable[[], bool] | None = None
+        #: Solange das `True` liefert (MeasureTags laeuft, Hand-Auge-Sitzung offen),
+        #: zeichnet "apriltag" nichts und gibt das Rohbild zurueck: Die Messung
+        #: soll die CPU des Pi fuer sich haben, und der Stream bleibt nicht stehen.
+        self._overlay_paused: Callable[[], bool] | None = None
         #: Ergebnis der eigenen Erkennung, `TagSnapshot` oder `None`.
         self._own_tags: Any = None
         #: Eigener Ein-Thread-Pool: `annotate()` wartet nie auf die
@@ -174,6 +178,10 @@ class AprilTagStreamAnnotator:
             dictionary=self._config.calibration_board_dictionary,
         )
 
+    def set_overlay_paused(self, paused: Callable[[], bool] | None) -> None:
+        """Haengt das Signal ein, das das Tag-Overlay anhaelt (`runner.py`)."""
+        self._overlay_paused = paused
+
     def annotate(self, image: Any, mode: str) -> Any:
         """Return an annotated copy. Never lets an exception escape.
 
@@ -191,6 +199,9 @@ class AprilTagStreamAnnotator:
 
             if mode == "undistorted":
                 return self._undistorted(image)
+
+            if mode == "apriltag" and self._overlay_paused is not None and self._overlay_paused():
+                return image  # Rohbild, ohne Erkennung und ohne Zeichnen
 
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
