@@ -812,3 +812,80 @@ nur in der Zeile des Tags angezeigt; das Katalogformat bleibt unverändert.
   einer Kante (`partial`) zählt nur die Verschiebung quer zu ihr.
 - Grenzen: 2 mm in der Ebene, 1° Drehung. Darüber steht der Hinweis in Bernstein:
   „Hand-Auge-Kalibrierung oder Kantenmaße im Katalog prüfen“.
+
+## Nachtrag 27.10.2026: Ansichten vereinen (gewichteter Schätzer), Kippung um x und y, Kantenabstände
+
+### Anlass
+
+Am Roboter war bei Tag 3 (nah am Sockel) nur 1 von 5 Ansichten erreichbar („bestenfalls 112 mm /
+91,6° daneben“). Bisher wurde nur die beste Ansicht genommen, nicht gemittelt. Jetzt werden alle
+erreichbaren Ansichten gemessen und zu einem Ergebnis vereint.
+
+### Ansichten
+
+Fünf Kandidaten:
+
+| # | Kippung | Achse | Geplant durch |
+| --- | --- | --- | --- |
+| 1 | +10° | Tag-x | Pi (`view.tiltDeg`) |
+| 2 | −10° | Tag-x | Pi (`view.tiltDeg`) |
+| 3 | +10° | Tag-y | Frontend |
+| 4 | −10° | Tag-y | Frontend |
+| 5 | +20° | Tag-x | Pi (`view.tiltDeg`) |
+
+Die y-Kippungen rechnet das Frontend. Es holt den Pi-Plan mit Kippung 0° einmal und dreht die Kamera
+dann um die Tag-y-Achse durch den Zielpunkt (Zielpunkt = Kameraposition + `standoffM` entlang der
+Blickachse; Funktion `tiltViewAboutTagY`). Die Rollwinkel um die Blickachse sind jetzt 0°, 180°, 90°
+und −90° (vorher nur 0° und 180°). Die IK-Startwerte kommen zusätzlich aus den Winkeln schon
+geplanter Ansichten.
+
+### Ablauf
+
+- Jede erreichbare Ansicht wird angefahren und voll gemessen (Debug-Protokoll nach Einstellung).
+- Bei „Schritt für Schritt“ wird einmal vor der ersten Messung gefragt.
+- Keine Rückfahrt in die beste Ansicht und keine zusätzliche Messung mehr.
+- Eine fehlgeschlagene Messung einer Ansicht bricht den Tag nicht ab.
+- Ein Stopp wirkt vor der nächsten Ansicht.
+
+### Schätzer
+
+Umgesetzt in `frontend/src/features/cell-modules/model/tagReferenceFusion.ts`, Funktion
+`fuseReferenceViews`.
+
+- Gerechnet wird im Tag-KS des Katalog-Startwerts. Unbekannt sind (dx, dy, dθ).
+- Eine full-Ansicht liefert 2 Positionszeilen, eine partial-Ansicht 1 Zeile quer zur gefundenen
+  Kante. Zwei partial-Ansichten mit verschiedenen Kanten ergeben zusammen ein full.
+- Die Drehung um Tag-z ist ein gewichtetes Mittel.
+- Gewichte: 1/(0,1² + Rest² + Streuung²) mm bzw. 1/(0,05² + Streuung²) °.
+- Ausreißer: Ab 3 Ansichten wird höchstens eine verworfen, und zwar nur, wenn sie mehr als 3σ
+  UND mehr als 1 mm bzw. 0,5° neben der Lösung liegt.
+- Höhe und Kippung des Tags bleiben die des Katalog-Startwerts (wie bisher beim Pi).
+- Streuung im Ergebnis = gewichtete RMS-Abweichung der Ansichten von der Lösung. Warnung ab 1 mm
+  bzw. 0,5°.
+- Mit nur einer nutzbaren Ansicht wird deren Ergebnis unverändert übernommen.
+
+Warum symmetrische Kippungen: Blickwinkelabhängige Fehler (z. B. eine Kante, die nicht in der
+angenommenen Höhe liegt, oder ein Kippfehler der Tag-Pose) heben sich in erster Ordnung auf.
+
+### Anzeige
+
+Ergebniszeile:
+
+`Δ … · Kante A 50,5 mm (Katalog 50,0) · Kante B … · k von 5 Ansichten vereint, Streuung x mm / y°`
+
+- Kantenabstand = Abstand der Tag-Mitte von der Kantengeraden in der Tag-Ebene, senkrecht zur
+  Kante. Gemessen wird wie mit dem Lineal auf der Fläche, ein Höhenunterschied zählt nicht.
+  Verglichen wird gegen den Katalog-Startwert (`tagEdgeDistance.ts`).
+- Bei der Kanten-Gegenprobe der Roboter-Tags steht dort „(Gelenke …)“ statt „(Katalog …)“.
+- Im Katalog wird zusätzlich `views` gespeichert (Anzahl vereinter Ansichten). Sonst bleibt das
+  Format unverändert.
+
+### Schnittstellen
+
+Keine Änderung an der Pi-Schnittstelle. Genutzt werden nur die vorhandenen Felder `view.tiltDeg`,
+`standoffM` und `saveDebug`. Die Änderung steckt im Frontend-Commit `509fbe4` (webskillcomposition,
+Branch `tag-einmessen-liveview`).
+
+### Offen
+
+- Am Roboter noch nicht geprüft.
