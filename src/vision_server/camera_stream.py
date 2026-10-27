@@ -102,6 +102,7 @@ class CameraStreamPublisher:
         annotator: Any = None,
         mode_node: Node | None = None,
         progress_node: Node | None = None,
+        preview_status_node: Node | None = None,
     ) -> None:
         self._camera = camera
         self._node = node
@@ -116,6 +117,10 @@ class CameraStreamPublisher:
         #: gerade eine `CalibrationSession` haengen hat (siehe
         #: `AprilTagStreamAnnotator.calibration_progress`).
         self._progress_node = progress_node
+        #: `TagReferencePreviewStatus`-Knoten; geschrieben wird nur, wenn der
+        #: Annotator einen neuen Stand hat (`reference_preview_status`).
+        self._preview_status_node = preview_status_node
+        self._preview_status_written: Any = None
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
         #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
@@ -252,7 +257,7 @@ class CameraStreamPublisher:
         # getuntes Downscale vor `detect_board` (`detection_max_width`).
         # "undistorted" ebenfalls vom vollen Frame: die Kalibrierung gehoert
         # zum Sensorbild, nicht zur ISP-Vorschau mit eigenem Ausschnitt.
-        if mode in ("apriltag", "off", "undistorted"):
+        if mode in ("apriltag", "off", "undistorted", "tagreference"):
             source = frame.image
         else:
             source = getattr(frame, "preview", None)
@@ -307,6 +312,22 @@ class CameraStreamPublisher:
         except Exception:
             _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
 
+    async def _publish_preview_status(self) -> None:
+        """Schreibt den Stand der Einmess-Vorschau, wenn er neu ist (im Event-Loop)."""
+        if self._preview_status_node is None or self._annotator is None:
+            return
+        expire = getattr(self._annotator, "expire_reference_preview", None)
+        if expire is not None:
+            expire()
+        status = getattr(self._annotator, "reference_preview_status", None)
+        if status is None or status is self._preview_status_written:
+            return
+        self._preview_status_written = status
+        try:
+            await self._preview_status_node.write_value(json.dumps(status))
+        except Exception:
+            _log.exception("TagReferencePreviewStatus konnte nicht geschrieben werden")
+
     async def _publish_loop(self) -> None:
         """Tickt mit `http_fps`, solange MJPEG-Zuschauer da sind, sonst mit `stream_fps`.
 
@@ -319,6 +340,7 @@ class CameraStreamPublisher:
         while True:
             started = loop.time()
             node_due = started >= self._next_node_write
+            await self._publish_preview_status()
             frame = self._camera.latest_frame
             if frame is not None:
                 try:

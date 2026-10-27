@@ -644,6 +644,7 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
 | `apriltag` (Standard) | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die Tag-ID `#<id>` (`tagloc.overlay.draw_tag_boxes`), keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und die orange Färbung mehrdeutiger Posen zeigt der Stream nicht mehr; Mehrdeutigkeit steht weiter in den Job-Ergebnissen (`ambiguous`, `ambiguityRatio`, `confidence`). Das ausführliche Overlay mit Achsenkreuz liefert die CLI `python -m tagloc.cli.detect --overlay` |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
 | `undistorted` | „Entzerrt" | nichts — das Bild **entzerrt** mit der aktiven Kalibrierung (Linsenmodell der Kamera, `alpha`/`balance` = 1: ganzes Bild mit gebogenen schwarzen Rändern). Ohne echte Kalibrierung (Platzhalter oder keine Datei) das Rohbild mit dem Hinweis „Keine Kalibrierung -- Rohbild“ |
+| `tagreference` | „Tag einmessen“ | nur mit laufender Einmess-Vorschau (`SetTagReferencePreview`, siehe §19.1): die Kantensuche der gewählten Tag-Kanten — Startwert-Kante, Suchband, Kandidatenpunkte, verworfene und gewählte Linie, Beschriftung mit Δ mm und °, Tag-Rahmen. Die Ebenen sind einzeln schaltbar (§19.1). Ohne Vorschau: Tag-Rahmen wie `apriltag` mit Titel „keine Einmess-Vorschau“ |
 
 Verhalten:
 
@@ -1780,3 +1781,106 @@ Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem
 - **`FileName`:** Pfad relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
 - **`Error`:** `0` gespeichert, `1` noch kein Kamerabild, `3` ein Job läuft (das PNG-Encoding eines 12-MP-Bilds soll den Job-Timeout nicht gefährden), `6` Schreiben fehlgeschlagen.
 - **Konfiguration:** `VisionServerConfig.raw_image_dir`, `None` legt die Methode nicht an. Der Ordner liegt unter `data/` und ist in `.gitignore` ausgenommen, die PNGs tauchen also in `git status` auf. Große Rohbilder nur bewusst committen.
+
+## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
+
+Die Hand-Kamera misst die Lage eines Modul-Tags relativ zu zwei Bezugskanten des Moduls, die im selben Bild liegen. Sie ersetzt den Zollstock. Die Steuerung fragt mit `PlanTagReferenceView`, wohin die Kamera soll (rechnet nur, kein Bild), fährt dorthin und ruft `MeasureTagReference` auf. Ablauf und Begründung stehen im Arbeitsplan [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), das Verfahren in [`apriltag-referenz.md`](apriltag-referenz.md) (Abschnitt 14).
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `MeasureTagReference` | `ns=<vision>;s=VisionMachine.MeasureTagReference` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, misst mit Bildern |
+| `PlanTagReferenceView` | `ns=<vision>;s=VisionMachine.PlanTagReferenceView` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, rechnet nur |
+| `LastTagReference` | `ns=<vision>;s=VisionMachine.LastTagReference` | String (JSON), nur zur Anzeige |
+
+Die Methoden liegen unter `VisionMachine` und sind unter `VisionProgram` verlinkt. Sie gibt es nur auf dem Hand-Pi (`hand_eye_path` gesetzt).
+
+**Error-Codes je Methode** (Zahlen wie in Abschnitt 6, `VisionErrorCode`):
+
+| Error | `MeasureTagReference` | `PlanTagReferenceView` |
+| --- | --- | --- |
+| 0 `OK` | gemessen; auch wenn Kanten fehlen (dann `dofs` reduziert oder `none`) | geplant, auch mit `fits: false` |
+| 5 `DETECTION_FAILED` | `NO_FRAME`, `TAG_NOT_SEEN`; auch ein `ValueError` der Messung (z. B. Bildgröße passt nicht zur Kalibrierung) | entfällt (kein Bild) |
+| 2 `INVALID_ARGUMENT` | Anfrage-JSON bzw. Werte ungültig | wie links |
+| 1 `INVALID_STATE` | Vision-System nicht `Operational` | wie links |
+| 3 `BUSY` | Job, Kamera-Kalibrierung, Hand-Auge-Sitzung, `MeasureTags` oder eine weitere Einmessung läuft | kein `BUSY`: rechnet nur, kein Bild |
+
+- Bei Ablehnung steht im JSON `"<CODE>: Text"`; bei Mess-Fehlern (`NO_FRAME`, `TAG_NOT_SEEN`) der nackte Code. `ResultJson` ist immer gültiges JSON.
+- `LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
+- **BUSY-Regeln:** Während `MeasureTagReference` läuft, antwortet `MeasureTags` mit `BUSY`. Umgekehrt meldet `MeasureTagReference` `BUSY`, solange `MeasureTags` läuft. Verhaltensänderung: `MeasureTags` antwortet jetzt zusätzlich mit `BUSY`, solange eine Einmessung läuft. `PlanTagReferenceView` wird davon nicht gesperrt.
+
+**Anfrage** `wsc.vision.tagreference.request/1` (für beide Methoden):
+
+```json
+{ "schema": "wsc.vision.tagreference.request/1",
+  "tagId": 7, "tagSizeM": 0.08,
+  "moduleTagGuess": { "position": [x,y,z], "orientation": [qx,qy,qz,qw] },
+  "lines": [ { "id": "A", "start": [x,y,z], "end": [x,y,z] },
+             { "id": "B", "start": [x,y,z], "end": [x,y,z] } ],
+  "searchBandM": 0.015, "frames": 3,
+  "view": { "lineExtentM": 0.10, "tiltDeg": 10 } }
+```
+
+- `moduleTagGuess`: `T_module_tag` aus dem Katalog (Startwert). `lines`: 3D-Kanten im Modul-KS, 1 bis 4 Stück, je ≥ 2 cm, `id` eindeutig.
+- Optional: `tagSizeM` (Vorrang Anfrage > Tag-Map > `config.tag_size_m`), `searchBandM` (Standard 0,015; 0,003 bis 0,05 m), `frames` (Standard 3; 1 bis 10), `view.lineExtentM` (Standard 0,10; (0, 1] m), `view.tiltDeg` (Standard **10**; |tiltDeg| < 80).
+- `moduleTagGuess.orientation` wird normiert; ein Nullquaternion ist ungültig. Unbekannte Felder werden ignoriert.
+
+**Ergebnis** `wsc.vision.tagreference.result/1` (von `MeasureTagReference`):
+
+- `capturedAt`, `capturedUntil`, `imageSize`, `intrinsicsSource` (`calibration` | `realsense_factory` | `placeholder`), `framesUsed` (Bilder mit erkanntem Tag).
+- `tag`: `poseInCamera`, `reprojectionErrorPx`, `viewAngleDeg`, `ambiguous`. `null` im Fehlerfall.
+- `lines[]`: je Kante `id`, `found`, `offsetMm`, `angleDeg`, `supportPx`, `residualPx`, `contrast`, `candidates`, `ambiguous`, `reason` (`NOT_VISIBLE` | `NO_EDGE` | `PERPENDICULAR_TO_TAG`, nur bei nicht gefundenen Kanten).
+- `correction`: `dofs` (`full` | `partial` | `none`), `deltaMm`, `deltaRotDeg`, `moduleTag` sowie `position` und `rotationDeg` (Katalogformat), `spreadMm`, `spreadDeg`, `residualMm`. `null` im Fehlerfall.
+- `warnings[]` und `error` (`null` bei Erfolg).
+- Mehrdeutige Tag-Pose: ohne eindeutiges Bild bleibt die Orientierung exakt der Startwert; nur der Tag-Ursprung wandert, und es gibt eine Warnung.
+
+**Planung** `wsc.vision.tagreference.view/1` (von `PlanTagReferenceView`):
+
+```json
+{ "schema": "wsc.vision.tagreference.view/1",
+  "camInTag": { "position": [x,y,z], "orientation": [qx,qy,qz,qw] },
+  "standoffM": 0.38, "fits": true, "uncovered": [], "error": null }
+```
+
+- `camInTag`: Kamerapose im Tag-KS (OpenCV, +Z aus der Linse). Die Kamera schaut entlang −Tag-z.
+- `fits: false`: Der Tag ist immer im Bild; Kanten werden nach Abstand nacheinander zugenommen, solange alles bei `max_standoff` passt. `uncovered` nennt die übrigen Kanten (ggf. `"tag"`).
+- Ablehnung: `camInTag: null`, `fits: false`, `uncovered: []`, `error` als `"<CODE>: Text"`.
+
+Die Anfrage schreibt weder in die Tag-Map des Pi noch ändert sie Welt-Tags. Modul-Tags und ihre Pose stehen nur im Modulkatalog des Frontends. Das Flanschziel rechnet die Steuerung selbst.
+
+### 19.1 Live-Ansicht und Mess-Protokoll
+
+Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)) sieht man die Kantensuche live im Livestream und bekommt jede Messung als Protokoll auf den Pi.
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `SetTagReferencePreview` | `ns=<vision>;s=VisionMachine.SetTagReferencePreview` | `(RequestJson: String) -> (Error: Int32)` |
+| `TagReferencePreviewStatus` | `ns=<vision>;s=VisionMachine.TagReferencePreviewStatus` | String (JSON), Abo möglich, höchstens 3 Hz |
+| `GET /tagreference.jpg` | MJPEG-Port (`http://<host>:<port>/tagreference.jpg`) | JPEG, `Cache-Control: no-store`, CORS `*` |
+
+- **`SetTagReferencePreview`**: `RequestJson` ist `wsc.vision.tagreference.request/1` (Parser wie bei
+  `MeasureTagReference`; `frames` und `view` werden ignoriert). Ein Tag an, `""` aus. Error: `OK`,
+  `INVALID_ARGUMENT` (ungültiges JSON, fehlender Tag, ungültiges `overlay`), `INVALID_STATE` (nicht
+  `Operational` oder kein Livestream-Overlay). Nie `BUSY`. Nur Hand-Pi, unter `VisionProgram` verlinkt.
+  Die Vorschau läuft nach 120 s ohne Erneuerung ab. Die Prüfung läuft auch außerhalb des Modus `tagreference`.
+- **`MeasureTagReference`** setzt die Vorschau automatisch auf ihre eigene Anfrage. Signatur bleibt.
+- **Status** `TagReferencePreviewStatus`, Schema `wsc.vision.tagreference.preview/1`:
+  `{ "schema", "active", "tagId", "tagSeen", "updatedAt", "overlay", "lines": [ {"id", "found", "offsetMm",
+  "angleDeg", "ambiguous", "reason", "supportPx", "contrast"} ] }`. Ohne aktive Vorschau: `active: false`,
+  `tagId: null`, `lines: []`.
+- **Overlay-Ebenen** (`overlay` in der Anfrage, Schlüssel `guess`, `band`, `candidates`, `rejected`,
+  `chosen`, `mask`, `labels`, `tagBox`): fehlende Schlüssel = `true`, unbekannte werden ignoriert, ein
+  Wert, der kein Bool ist, ergibt `INVALID_ARGUMENT`. Im Status steht die wirksame Belegung.
+- **`saveDebug`** in der Anfrage von `MeasureTagReference` (Standard `true`): `false` legt kein Protokoll
+  an, `debugDir` ist dann `null`.
+- **Mess-Protokoll**: je Messung `data/tagreference/<YYYYmmdd-HHMMSS>_tag<id>/` (Config
+  `tag_reference_debug_dir`, `None` = aus) mit `request.json`, `result.json`, `frame<k>.png` (Rohbilder,
+  verlustfrei) und `overlay.jpg`. Höchstens 50 eigene Ordner, nach mtime aufgeräumt, der neue Ordner bleibt.
+  `ResultJson.debugDir` ist der repo-relative Pfad oder `null`; bei Schreibfehlern nur eine Log-Warnung.
+- **`GET /tagreference.jpg`** liefert `overlay.jpg` aus dem neuesten Messordner. 404, wenn keine
+  Messung vorliegt.
+- **Stream-Modus `tagreference`**: höchstens 3 Hz, das letzte Debug-Bild wird zwischen zwei Auswertungen
+  bis 1 s gehalten. Eine Messung hält ihr Debug-Bild 5 s im Stream. Tag nicht im Bild: Titel „Tag 7 nicht im Bild“.
+
+**Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
+die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
+und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.

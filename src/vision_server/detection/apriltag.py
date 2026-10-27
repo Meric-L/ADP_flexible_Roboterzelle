@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -298,6 +299,10 @@ class AprilTagDetectionSource(DetectionSource):
         #: (`TagSnapshot`). Wird nur ersetzt, nie veraendert -- das Overlay
         #: liest es aus seinem eigenen Thread ohne Sperre.
         self.latest_tags: TagSnapshot | None = None
+        #: Wird je gemessenem Bild von `MeasureTagReference` mit
+        #: `(debug, corners_px, image_size, title, layers)` aufgerufen (Mess-Thread),
+        #: damit der Livestream die Kantensuche live zeigt. `None` = niemand hoert zu.
+        self.reference_debug_sink: Callable[..., None] | None = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention
         self.configuration_id = self._build_configuration_id()
@@ -539,6 +544,199 @@ class AprilTagDetectionSource(DetectionSource):
         if tag_ids is not None:
             tag_poses = [tag_pose for tag_pose in tag_poses if tag_pose.tag_id in tag_ids]
         return tag_poses, frame_tools.image_size(image)
+
+    async def measure_tag_reference(self, request, artifacts: dict | None = None) -> dict:
+        """`MeasureTagReference`: Tag-Position ueber Bezugskanten einmessen.
+
+        Wie `measure_tags`: nur Bilder, die **nach** dem Aufruf eintreffen,
+        seiteneffektfrei, ohne Welt-KS. Je Bild wird der Tag (`request.tag_id`)
+        erkannt; aus den Bildern mit Tag entsteht eine gemeinsame Tag-Pose (der
+        Roboter steht). Darauf misst `measure_reference_lines` die Kanten im
+        Rohbild, `fit_in_plane_correction` rechnet je Bild die Korrektur,
+        `average_corrections` mittelt sie.
+
+        Mehrdeutiger Tag: Gibt es in mindestens einem Bild eine eindeutige
+        Tag-Pose, gilt deren gemittelte Drehung fuer alle Bilder (der Roboter
+        steht, die Pose ist dieselbe). Ist **kein** Bild eindeutig, ist die
+        Drehung unbelastbar (Spiegelloesung): die Korrektur uebernimmt dann nur
+        die Position, die Drehung bleibt aus dem Startwert
+        (`tagreference.keep_guess_rotation`), und es gibt eine Warnung.
+
+        Fehler (`error`): `NO_FRAME` (kein frisches Bild) bzw. `TAG_NOT_SEEN`
+        (Tag in keinem Bild). Nicht messbare Kanten sind kein Fehler, sie
+        senken nur `dofs`.
+
+        `artifacts`: ist es ein dict, fuellt die Methode es fuer das
+        Mess-Protokoll: `frames` (Rohbilder mit Tag) und `overlay` (Debug-
+        Ansicht des letzten Bilds, BGR, volle Aufloesung; fehlt, wenn die
+        Kantensuche nicht lief).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from tagloc.reference_edges import average_corrections
+
+        from ..measuretag import SizeLookup
+        from ..tagreference import (
+            NO_FRAME,
+            TAG_NOT_SEEN,
+            build_result,
+            combine_tag_pose,
+            reference_warnings,
+            summarize_lines,
+        )
+
+        sizes = SizeLookup(
+            {request.tag_id: request.tag_size_m} if request.tag_size_m else {},
+            self._tag_map,
+            self._config.tag_size_m,
+        )
+        size_m = sizes.size_for(request.tag_id)
+        loop = asyncio.get_running_loop()
+        latest = self.camera.latest_frame
+        seen_timestamp = latest.timestamp if latest is not None else None
+        #: `(Bild, TagPose | None, Aufnahmezeit, Bildgroesse)` je frischem Bild.
+        captured: list[tuple] = []
+        for _ in range(request.frames):
+            try:
+                frame = await self._next_frame(seen_timestamp)
+            except VisionJobError:
+                break
+            seen_timestamp = frame.timestamp
+            tag_poses, image_size = await self.run_blocking(
+                self._detect_in_camera, frame.image, sizes, frozenset({request.tag_id})
+            )
+            age_s = loop.time() - frame.timestamp
+            captured_at = datetime.now(timezone.utc) - timedelta(seconds=age_s)
+            tag_pose = tag_poses[0] if tag_poses else None
+            captured.append((frame.image, tag_pose, captured_at, image_size))
+
+        common = {
+            "captured_at": captured[0][2] if captured else None,
+            "captured_until": captured[-1][2] if captured else None,
+            "image_size": captured[-1][3] if captured else None,
+            "intrinsics_source": self.intrinsics_source,
+        }
+        seen = [item for item in captured if item[1] is not None]
+        if not captured:
+            return build_result(**common, error=NO_FRAME)
+        if not seen:
+            return build_result(**common, error=TAG_NOT_SEEN)
+
+        tag_poses = [item[1] for item in seen]
+        tag_pose, tag_ambiguous = combine_tag_pose(tag_poses)
+        if artifacts is not None:
+            artifacts["frames"] = [item[0] for item in seen]
+        line_frames, corrections = await self.run_blocking(
+            self._measure_reference,
+            [item[0] for item in seen],
+            tag_pose,
+            tag_ambiguous,
+            request,
+            size_m,
+            artifacts,
+        )
+        correction, spread = average_corrections(corrections)
+        warnings = reference_warnings(
+            correction=correction,
+            lines=summarize_lines(line_frames),
+            search_band_m=request.search_band_m,
+            tag_ambiguous=tag_ambiguous,
+            intrinsics_source=self.intrinsics_source,
+        )
+        return build_result(
+            **{**common, "captured_at": seen[0][2], "captured_until": seen[-1][2]},
+            frames_used=len(seen),
+            tag_poses=tag_poses,
+            tag_pose=tag_pose,
+            tag_ambiguous=tag_ambiguous,
+            line_frames=line_frames,
+            correction=correction,
+            spread=spread,
+            warnings=warnings,
+        )
+
+    def _measure_reference(
+        self, images, tag_pose, tag_ambiguous, request, size_m, artifacts=None
+    ):
+        """Kanten und Korrektur je Bild: `(Messungen je Bild, Korrekturen je Bild)`. Worker-Thread."""
+        from tagloc import frames as frame_tools
+        from tagloc.reference_edges import (
+            fit_in_plane_correction,
+            measure_reference_lines,
+            tag_outline_px,
+        )
+        from tagloc.reference_overlay import draw_reference_debug
+
+        from ..tagreference import keep_guess_rotation
+
+        guess = request.pose_module_tag_guess
+        line_frames = []
+        corrections = []
+        want_debug = artifacts is not None or self.reference_debug_sink is not None
+        for index, image in enumerate(images, start=1):
+            debug: list | None = [] if want_debug else None
+            calibration = self._calibration_for(image)
+            measurements = measure_reference_lines(
+                frame_tools.to_gray(image),
+                calibration,
+                tag_pose,
+                guess,
+                request.lines,
+                tag_size_m=size_m,
+                search_band_m=request.search_band_m,
+                debug=debug,
+            )
+            if debug is not None:
+                try:
+                    title = f"Tag {request.tag_id} - Messung Bild {index}/{len(images)}"
+                    corners = tag_outline_px(calibration, tag_pose, size_m, 0.0)
+                    if self.reference_debug_sink is not None:
+                        self.reference_debug_sink(
+                            debug, corners, frame_tools.image_size(image), title, request.overlay
+                        )
+                    if artifacts is not None and index == len(images):
+                        artifacts["overlay"] = draw_reference_debug(
+                            image,
+                            debug,
+                            tag_corners_px=corners,
+                            title=title,
+                            layers=request.overlay,
+                        )
+                except Exception:
+                    # Die Anzeige darf die Messung nie stoeren.
+                    _log.exception("Debug-Ansicht der Einmessung nicht erzeugt")
+            correction = fit_in_plane_correction(measurements, guess)
+            if tag_ambiguous:
+                correction = keep_guess_rotation(correction, guess)
+            line_frames.append(measurements)
+            corrections.append(correction)
+        return line_frames, corrections
+
+    def plan_tag_reference_view(self, request) -> dict:
+        """`PlanTagReferenceView`: Kamerapose im Tag-KS, aus der Tag und Kanten ins Bild passen.
+
+        Rechnet nur mit der Kalibrierung (Brennweite, Bildgroesse), ohne
+        Kamerabild -- kein Warten, keine Seiteneffekte.
+        """
+        from tagloc.reference_edges import plan_reference_view
+
+        from ..measuretag import SizeLookup
+        from ..tagreference import build_view
+
+        sizes = SizeLookup(
+            {request.tag_id: request.tag_size_m} if request.tag_size_m else {},
+            self._tag_map,
+            self._config.tag_size_m,
+        )
+        plan = plan_reference_view(
+            request.pose_module_tag_guess,
+            request.lines,
+            self._calibration,
+            tag_size_m=sizes.size_for(request.tag_id),
+            line_extent_m=request.line_extent_m,
+            tilt_deg=request.tilt_deg,
+        )
+        return build_view(plan)
 
     def apply_tag_map(self, tag_map: Any) -> list[str]:
         """Uebernimmt eine neue Tag-Map in die laufende Quelle.

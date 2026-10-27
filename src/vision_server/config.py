@@ -77,6 +77,9 @@ class VisionServerConfig:
     #: Ablage fuer `SaveRawImage` (verlustfreie PNG-Vollbilder). `None` = die
     #: Methode nicht anlegen.
     raw_image_dir: Path | None = _REPO_ROOT / "data" / "rohbilder"
+    #: Mess-Protokoll von `MeasureTagReference` (siehe `tagreference_log.py`).
+    #: `None` = nichts schreiben; `GET /tagreference.jpg` liefert dann 404.
+    tag_reference_debug_dir: Path | None = _REPO_ROOT / "data" / "tagreference"
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:

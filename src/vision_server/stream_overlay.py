@@ -104,6 +104,22 @@ class AprilTagStreamAnnotator:
         #: Entzerr-Maps je Stream-Aufloesung fuer den Modus "undistorted" --
         #: `initUndistortRectifyMap` ist teuer, `remap` mit fertigen Maps nicht.
         self._undistort_maps: dict[tuple[int, int], Any] = {}
+        #: Einmess-Vorschau (Modus "tagreference"). Alle drei Felder sind
+        #: unveraenderliche Objekte (`tagreference_preview`), die der Event-
+        #: Loop setzt und der Overlay-Thread liest -- Attribut-Zuweisung genuegt.
+        self._preview: Any = None
+        self._view: Any = None
+        #: Zuletzt berechneter Status fuer `TagReferencePreviewStatus`; der
+        #: Publisher schreibt ihn, wenn sich das Objekt geaendert hat.
+        self.reference_preview_status: dict | None = None
+        #: Waehrend `MeasureTagReference` wertet die Vorschau nicht selbst aus:
+        #: die Messung liefert ihre Debug-Daten (`show_reference_debug`).
+        self._reference_measuring = False
+        self._preview_pending: Future | None = None
+        self._last_preview_start = float("-inf")
+        self._last_preview_error: str | None = None
+        #: `(View, Ausgabegroesse, skalierte Debug-Daten, Ecken)` des letzten Zeichnens.
+        self._scaled_cache: tuple | None = None
 
     def apply_calibration(self, calibration: Any) -> None:
         """Ersetzt die Kalibrierung, die das Overlay fuers Achsenkreuz nutzt
@@ -125,6 +141,71 @@ class AprilTagStreamAnnotator:
         genug, ohne dass eine Sperre noetig waere.
         """
         self._calibration_session = session
+
+    def set_reference_preview(self, request: Any) -> None:
+        """Schaltet die Einmess-Vorschau fuer `request` ein, `None` = aus.
+
+        Event-Loop-seitig aufgerufen (OPC-UA-Methoden); die Auswertung selbst
+        laeuft im Overlay-Thread, nur im Modus "tagreference".
+        """
+        from .tagreference_preview import PREVIEW_TTL_S, ReferencePreview, build_status
+
+        if request is None:
+            self._preview = None
+            self._view = None
+            self.reference_preview_status = build_status(
+                active=False, tag_id=None, tag_seen=False
+            )
+            return
+        self._preview = ReferencePreview(request, time.monotonic() + PREVIEW_TTL_S)
+        # Neue Anfrage (anderer Tag, andere Ebenen): das alte Bild gilt nicht
+        # mehr, die naechste Auswertung darf sofort starten.
+        self._view = None
+        self._last_preview_start = float("-inf")
+        self.reference_preview_status = build_status(
+            active=True, tag_id=request.tag_id, tag_seen=False, layers=request.overlay
+        )
+
+    def expire_reference_preview(self, now: float | None = None) -> None:
+        """Schaltet eine abgelaufene Vorschau aus (auch ausserhalb des Modus "tagreference")."""
+        preview = self._preview
+        if preview is not None and (time.monotonic() if now is None else now) > preview.expires_at:
+            self.set_reference_preview(None)
+
+    def _status_for_current_preview(self) -> None:
+        """Status passend zur aktuellen Vorschau (nach einem Wettlauf mit dem Auswerter)."""
+        from .tagreference_preview import build_status
+
+        preview = self._preview
+        if preview is None:
+            self.reference_preview_status = build_status(active=False, tag_id=None, tag_seen=False)
+        else:
+            self.reference_preview_status = build_status(
+                active=True,
+                tag_id=preview.request.tag_id,
+                tag_seen=False,
+                layers=preview.request.overlay,
+            )
+
+    def set_reference_measuring(self, measuring: bool) -> None:
+        """`MeasureTagReference` laeuft (True) bzw. ist fertig (False)."""
+        self._reference_measuring = bool(measuring)
+
+    def show_reference_debug(
+        self, debug, corners_px, image_size, title: str, layers: dict
+    ) -> None:
+        """Debug-Daten einer laufenden Messung anzeigen (aus dem Mess-Thread aufgerufen)."""
+        from .tagreference_preview import MEASURE_HOLD_S, ReferenceView
+
+        self._view = ReferenceView(
+            debug=tuple(debug),
+            corners_px=corners_px,
+            image_size=tuple(image_size),
+            title=title,
+            layers=dict(layers),
+            taken_at=time.monotonic(),
+            hold_s=MEASURE_HOLD_S,
+        )
 
     def set_busy(self, busy: Callable[[], bool] | None) -> None:
         """Haengt das Belegt-Signal ein (`runner.py`: Job oder Kalibrierung).
@@ -270,6 +351,9 @@ class AprilTagStreamAnnotator:
                     )
                 return canvas
 
+            if mode == "tagreference":
+                return self._tag_reference_view(image, now)
+
             # Gezeichnet wird auf dem kleinen Bild, die Tags stammen aus einer
             # Erkennung in voller Aufloesung (siehe Modul-Docstring). Bis
             # 21.10.2026 erkannte das Overlay selbst auf dieser kleinen
@@ -296,6 +380,176 @@ class AprilTagStreamAnnotator:
         except Exception:
             _log.exception("Overlay fehlgeschlagen, sende unmarkiertes Bild")
             return image
+
+    def _tag_reference_view(self, image: Any, now: float) -> Any:
+        """Modus "tagreference": Kantensuche der Einmessung live im Stream.
+
+        Zeichnet die letzte Auswertung (siehe `_evaluate_reference`) auf die
+        verkleinerte Leinwand, Koordinaten vom Quellbild umgerechnet. Die
+        Auswertung selbst startet hoechstens 3 Mal je Sekunde im Hintergrund;
+        dieser Aufruf wartet nie darauf.
+        """
+        from tagloc import frames as frame_tools
+        from tagloc.overlay import draw_tag_boxes
+        from tagloc.reference_overlay import draw_reference_debug
+
+        if self._detection_max_width is not None:
+            from .camera_stream import _resize_for_stream
+
+            canvas = _resize_for_stream(image, self._detection_max_width)
+        else:
+            canvas = image.copy()
+        output_size = frame_tools.image_size(canvas)
+
+        self.expire_reference_preview(now)
+        preview = self._preview
+        if preview is not None and self._reference_preview_due(now):
+            self._start_reference_preview(image, preview, now)
+
+        # Tag-Rahmen der uebrigen Tags: wie im Modus "apriltag" aus dem neuesten
+        # Ergebnis, eigene Erkennung nur, wenn keine Vorschau-Auswertung laeuft.
+        snapshot = self._newest_tags()
+        evaluating = self._preview_pending is not None and not self._preview_pending.done()
+        if not evaluating and self._own_detection_due(snapshot, now):
+            self._start_own_detection(image, now)
+
+        view = self._view
+        # Eine laufende Auswertung haelt das alte Bild: kein Flackern bei langsamer Rechnung.
+        if view is not None and (now - view.taken_at <= view.hold_s or evaluating):
+            debug, corners = self._scaled_view(view, output_size)
+            if corners is None and snapshot is not None:
+                draw_tag_boxes(
+                    canvas, _scale_corners(snapshot.tag_poses, snapshot.image_size, output_size)
+                )
+            return draw_reference_debug(
+                canvas, debug, tag_corners_px=corners, title=view.title, layers=view.layers
+            )
+
+        if snapshot is not None:
+            draw_tag_boxes(canvas, _scale_corners(snapshot.tag_poses, snapshot.image_size, output_size))
+        title = (
+            f"Tag {preview.request.tag_id} - Vorschau startet"
+            if preview is not None
+            else "keine Einmess-Vorschau"
+        )
+        return draw_reference_debug(canvas, [], title=title)
+
+    def _scaled_view(self, view: Any, output_size: tuple) -> tuple:
+        """`(Debug, Ecken)` der View auf Stream-Groesse; je (View, Groesse) nur einmal gerechnet."""
+        import numpy as np
+        from tagloc.reference_overlay import scale_debug
+
+        cached = self._scaled_cache
+        if cached is not None and cached[0] is view and cached[1] == tuple(output_size):
+            return cached[2], cached[3]
+        sx = output_size[0] / view.image_size[0]
+        sy = output_size[1] / view.image_size[1]
+        corners = None
+        if view.corners_px is not None:
+            corners = np.asarray(view.corners_px, dtype=np.float64) * [sx, sy]
+        debug = scale_debug(view.debug, sx, sy)
+        self._scaled_cache = (view, tuple(output_size), debug, corners)
+        return debug, corners
+
+    def _reference_preview_due(self, now: float) -> bool:
+        from .tagreference_preview import PREVIEW_INTERVAL_S
+
+        if self._detector is None or self._reference_measuring:
+            return False
+        if self._preview_pending is not None and not self._preview_pending.done():
+            return False
+        if now - self._last_preview_start < PREVIEW_INTERVAL_S:
+            return False
+        return not (self._busy is not None and self._busy())
+
+    def _start_reference_preview(self, image: Any, preview: Any, now: float) -> None:
+        """Startet eine Vorschau-Auswertung im Hintergrund.
+
+        Derselbe Ein-Thread-Pool wie die eigene Erkennung: der Detektor ist
+        nicht fuer zwei Threads gebaut, so laufen beide nacheinander.
+        """
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="stream-overlay-detect"
+            )
+        self._last_preview_start = now
+        self._preview_pending = self._executor.submit(self._evaluate_reference, image, preview)
+
+    def _evaluate_reference(self, image: Any, preview: Any) -> None:
+        """Tag erkennen, Kanten messen (mit Debug-Daten). Laeuft im Overlay-Thread."""
+        try:
+            from tagloc import frames as frame_tools
+            from tagloc.pose import estimate_tag_poses
+            from tagloc.reference_edges import measure_reference_lines
+
+            from .measuretag import SizeLookup
+            from .tagreference_preview import PREVIEW_HOLD_S, ReferenceView, build_status
+
+            request = preview.request
+            size = frame_tools.image_size(image)
+            calibration = self._calibration_for(size)
+            gray = frame_tools.to_gray(image)
+            sizes = SizeLookup(
+                {request.tag_id: request.tag_size_m} if request.tag_size_m else {},
+                self._tag_map,
+                self._config.tag_size_m,
+            )
+            tag_poses = estimate_tag_poses(
+                self._detector.detect(gray),
+                calibration,
+                tag_map=sizes,
+                default_size_m=self._config.tag_size_m,
+                max_reprojection_error_px=self._config.max_reproj_error_px,
+            )
+            tag = next((item for item in tag_poses if item.tag_id == request.tag_id), None)
+            debug: list = []
+            corners = None
+            if tag is not None:
+                measure_reference_lines(
+                    gray,
+                    calibration,
+                    tag.pose_cam_tag,
+                    request.pose_module_tag_guess,
+                    request.lines,
+                    tag_size_m=sizes.size_for(request.tag_id),
+                    search_band_m=request.search_band_m,
+                    debug=debug,
+                )
+                if tag.observation is not None:
+                    corners = [list(corner) for corner in tag.observation.corners]
+            if self._preview is not preview:
+                return  # inzwischen aus- oder umgeschaltet
+            title = (
+                f"Tag {request.tag_id} - Vorschau"
+                if tag is not None
+                else f"Tag {request.tag_id} nicht im Bild"
+            )
+            self._view = ReferenceView(
+                debug=tuple(debug),
+                corners_px=corners,
+                image_size=tuple(size),
+                title=title,
+                layers=request.overlay,
+                taken_at=time.monotonic(),
+                hold_s=PREVIEW_HOLD_S,
+            )
+            self.reference_preview_status = build_status(
+                active=True,
+                tag_id=request.tag_id,
+                tag_seen=tag is not None,
+                debug=debug,
+                layers=request.overlay,
+            )
+            if self._preview is not preview:
+                # Wettlauf: waehrend der Zuweisung wurde umgeschaltet (Event-Loop).
+                self._view = None
+                self._status_for_current_preview()
+            self._last_preview_error = None
+        except Exception as error:
+            # Bei 3 Hz nicht jedes Mal den ganzen Stacktrace ins Log.
+            if str(error) != self._last_preview_error:
+                self._last_preview_error = str(error)
+                _log.exception("Einmess-Vorschau fehlgeschlagen")
 
     def _newest_tags(self):
         """Das juengere von Quellen-Ergebnis und eigener Erkennung, oder `None`."""

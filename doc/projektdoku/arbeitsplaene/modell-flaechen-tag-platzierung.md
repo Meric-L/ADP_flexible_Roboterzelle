@@ -370,3 +370,7 @@ Die Bedienung oben nennt die deutschen Bezeichnungen. Seit `4b01ab3` ist die Obe
 | Abbrechen | Cancel |
 
 Das Feld „Drehung ab der Kante“ gibt es nicht mehr. `inPlaneRotationDeg` bleibt im Datenformat, wird aber nur noch über ↺ / ↻ bzw. das Häkchen gesetzt. Abwählen des Häkchens behält die Lage. Details: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
+
+## Nachtrag 20.10.2026: Abstände mit der Kamera einmessen
+
+Die mit „Place on model“ gewählten Bezugskanten werden künftig von der Hand-Kamera vermessen statt mit dem Zollstock. Der Katalogwert bleibt Startwert und bestimmt das Suchfenster; das Ergebnis überschreibt danach `position`/`rotationDeg`, `placement` bleibt als Protokoll des Startwerts. Ablauf und Schnittstelle stehen in [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md). Dafür muss das Frontend die echten 3D-Kanten (EdgeLine, nicht auf die Fläche projiziert) mitschicken, weil die Kamera genau diese Kanten im Bild sucht.
