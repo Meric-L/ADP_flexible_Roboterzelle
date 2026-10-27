@@ -901,3 +901,11 @@ Branch `tag-einmessen-liveview`).
 - Neue Zeilen sind automatisch angehakt. Ohne Eingriff werden wie bisher alle angefahren. Die Auswahl gilt für die Sitzung (nur im Fenster, nicht gespeichert) und bleibt über „Liste neu lesen“ und weitere Läufe erhalten.
 - Angefahren werden nur die angehakten Tags. Die Kanten-Gegenprobe der Roboter-Tags läuft ebenfalls nur für angehakte. Der Startknopf zählt die Auswahl („… einmessen (2 Module, 1 Roboter)“). Ist nichts angehakt, steht dort „Kein Tag ausgewählt.“
 - Umsetzung: `tickedRows` in `frontend/src/features/cell-modules/model/tagMeasurementState.ts`, Panel `TagReferencePanel.tsx`. Frontend-Commit `471a73f` (webskillcomposition, Branch `tag-einmessen-liveview`). Keine Schnittstellenänderung.
+
+## Nachtrag 27.10.2026: Testphase speichert nicht automatisch
+
+- Anlass: Im Testmodus („Alle Tags neu einmessen (Testphase)“, Einstellung `measureAll`) hat jeder Lauf sein Ergebnis in den Katalog geschrieben. Der nächste Lauf startete dann vom letzten Messergebnis statt von der Eingabe des Nutzers, und „(Katalog …)“ in der Ergebniszeile zeigte das letzte Ergebnis (Beispiel MOD-7 Tag 3: Eingabe 50,0 / 50,0 mm, angezeigt 51,6 / 49,0 mm aus dem Lauf davor).
+- Neu: Im Testmodus legt ein Lauf die Ergebnisse (Modul- und Roboter-Tags) nur bereit. Die Ergebniszeile endet mit „· Testphase: nicht in den Katalog übernommen“, darunter ein Knopf „In Katalog übernehmen“. Erst der Klick speichert (wie bisher über `applyTagMeasurement`); danach „· in den Katalog übernommen“ und der Hinweis, Layer 1 neu zu scannen. Bei einem Fehler bleibt der Knopf und „Nicht gespeichert: …“ erscheint.
+- Bereitgelegte Ergebnisse verfallen beim nächsten Lauf und bei „Liste neu lesen“.
+- Außerhalb des Testmodus wird wie bisher sofort gespeichert. Die Kanten-Gegenprobe der Roboter-Tags speichert ohnehin nie.
+- Umsetzung: `frontend/src/features/cell-modules/components/TagReferencePanel.tsx` (State `pendingKeeps`), Schalter-Hinweis in `TagReferenceWindow.tsx`. Frontend-Commit `373f386` (webskillcomposition, Branch `tag-einmessen-liveview`). Keine Schnittstellen- und keine Katalogformat-Änderung.
