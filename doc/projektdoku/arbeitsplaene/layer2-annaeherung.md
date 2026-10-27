@@ -136,3 +136,36 @@ def tag_in_world_from_detection(detection, tag_id, tag_map) -> Pose   # ValueErr
 - [x] Indexzeile in `README.md`.
 - [x] `vision-server-interface.md` Abschnitt 14 ergänzt.
 - [x] Testlauf: 536 Tests, davon 1 Fehlschlag, der nichts mit dieser Änderung zu tun hat (`test_mjpeg_server…viewers_run_faster`, schlägt auch ohne diese Änderung fehl). Neu: `test_layer2_plan.py` (+3), `test_layer2_run.py` (+8, Klasse `Layer2ApproachTest`).
+
+## Nachtrag: Arm fährt nicht mehr in den eigenen Wagen
+
+Repo `webskillcomposition`, Branch `Ungetestet`.
+
+### Problem
+
+Bei der Layer-2-Fahrt kam der FR3 seinem Wagen sehr nah oder fuhr hinein, obwohl es die Sperrzone gibt (`frontend/src/features/cell-modules/model/cellClearance.ts`, aus `bounds` von ROBOT_FRANKA: x −0,20…0,89 m, y −0,41…0,36 m, Tischplatte z = 0; passt zu `wagon.stl` mit 1,09 × 0,72 m).
+
+Ursachen:
+1. Es wurden nur Punkte geprüft (Gelenkmittelpunkte, Flansch, Kamera), kein Volumen. Die FR3-Glieder haben etwa 6–8 cm Radius, die Hand etwa 10 cm.
+2. Hand und Finger bis `tool_point` (0,1034 m vor dem Flansch) fehlten.
+3. `legCollision` prüfte fest 10 Schritte, unabhängig davon, wie weit die Fahrt ging.
+
+### Lösung
+
+- Der Arm wird als Kette von Kugeln modelliert. Die Segmente werden in Abständen von höchstens 2 cm abgetastet.
+- `ARM_RADIUS_M = 0,08` gilt für die Glieder, `HAND_RADIUS_M = 0,10` für Flansch, Werkzeugspitze und Kamera.
+- Der Abstand beträgt `TABLE_CLEARANCE_M = 0,05` ab der Kugeloberfläche, der Boden wird entsprechend mit `FLOOR_CLEARANCE_M` geprüft.
+- `flangeKinematics.points()` liefert Flansch und Werkzeugspitze aus dem URDF. Das Feld `toolFrom` markiert, ab wo der Hand-Radius gilt.
+- `legCollision` tastet so fein ab, dass kein Gelenk pro Schritt mehr als 0,05 rad fährt (höchstens 200 Schritte).
+- Link0 (Fuß auf dem Wagen) wird nicht geprüft. Die Kette beginnt an Gelenk 1 (z ≈ 0,333 m).
+- Die Rückgabe bleibt `"Wagen"` | `"Boden"` | `null`, die Aufrufer bleiben unverändert.
+- Zentrier-Korrekturen (`centreOnTag`) prüfen weiterhin nur ihr Ziel. Sie sind klein.
+
+### Folge und Risiko
+
+Die Prüfung ist strenger. Manche Sichtpunkte nah am Wagen werden ausgelassen („Sichtpunkt/Weg würde den Wagen berühren — ausgelassen“). Das ist gewollt. Werden es zu viele, lassen sich die Radien oder `TABLE_CLEARANCE_M` gezielt verkleinern.
+
+### Verifikation
+
+- Unit-Tests (`cellClearance.test.ts`) und Typprüfung.
+- Am Roboter noch offen: kein Sichtpunkt und kein Weg unter etwa 5 cm an die Wagenplatte. Die Ausgangsstellung gilt nicht als „Wagen“.
