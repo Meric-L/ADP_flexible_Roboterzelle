@@ -856,7 +856,11 @@ Umgesetzt in `frontend/src/features/cell-modules/model/tagReferenceFusion.ts`, F
 - Eine full-Ansicht liefert 2 Positionszeilen, eine partial-Ansicht 1 Zeile quer zur gefundenen
   Kante. Zwei partial-Ansichten mit verschiedenen Kanten ergeben zusammen ein full.
 - Die Drehung um Tag-z ist ein gewichtetes Mittel.
-- Gewichte: 1/(0,1² + Rest² + Streuung²) mm bzw. 1/(0,05² + Streuung²) °.
+- Gewichte je Ansicht (inverse Varianz): Position 1/(0,1² + `residualMm`² + `spreadMm`²) in mm⁻²,
+  Drehung 1/(0,05² + `spreadDeg`²) in °⁻². `residualMm` ist der Restfehler der Kantenanpassung,
+  `spreadMm`/`spreadDeg` die Streuung über die Bilder dieser einen Messung (beides aus dem
+  Pi-Ergebnis). Die Grundwerte 0,1 mm und 0,05° verhindern, dass eine Ansicht mit zufällig 0,0
+  Streuung alles bestimmt.
 - Ausreißer: Ab 3 Ansichten wird höchstens eine verworfen, und zwar nur, wenn sie mehr als 3σ
   UND mehr als 1 mm bzw. 0,5° neben der Lösung liegt.
 - Höhe und Kippung des Tags bleiben die des Katalog-Startwerts (wie bisher beim Pi).
