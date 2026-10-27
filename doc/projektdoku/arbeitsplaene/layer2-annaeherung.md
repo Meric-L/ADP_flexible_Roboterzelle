@@ -169,3 +169,79 @@ Die Prüfung ist strenger. Manche Sichtpunkte nah am Wagen werden ausgelassen (�
 
 - Unit-Tests (`cellClearance.test.ts`) und Typprüfung.
 - Am Roboter noch offen: kein Sichtpunkt und kein Weg unter etwa 5 cm an die Wagenplatte. Die Ausgangsstellung gilt nicht als „Wagen“.
+
+## Nachtrag 27.10.2026: Jeden Tag aus 3 Ansichten messen und vereinen
+
+### Anlass
+
+- Bisher maß die Layer-2-Fahrt jeden Tag nur aus der zentrierten Stellung: eine Ansicht, 2–8 Bilder.
+- Module wurden nur verschoben. Ihre Drehung blieb die aus Layer 1, weil die Orientierung eines einzelnen Tags bei ~35 cm oft unsicher ist und gespiegelt sein kann.
+- Der Anker setzte die Roboterbasis aus dieser einen Messung.
+
+### Ablauf
+
+- Anfahren und Zentrieren wie bisher.
+- Danach 3 weitere Ansichten um die Tag-Mitte, im selben Abstand (Standoff des Sichtpunkts):
+
+| Ansicht | Drehung |
+| --- | --- |
+| 1 | +12° um Tag-x |
+| 2 | −12° um Tag-x |
+| 3 | +12° um Tag-y |
+
+  Dieselbe Geometrie wie bei den Roboter-Tags.
+- Jede Ansicht wird mit Rollwinkeln 0/90/180/−90° und IK-Startwerten geplant: aktuelle Gelenke, Ausgangsstellung, Bereichsmitte, Winkel schon gemessener Ansichten. Wagen- und Wegprüfung wie bei der Fahrt.
+- Nicht erreichbare oder nicht messbare Ansichten werden übersprungen und in der Zeile genannt.
+- `T_base_tag` je Ansicht = FK(gelesene Gelenke) · T_Flansch_Kamera · T_Kamera_Tag.
+
+### Vereinen (`fuseTagViews`)
+
+Datei: `frontend/src/features/cell-modules/model/tagViews.ts` (Repo `webskillcomposition`).
+
+Eingang sind die zentrierte Messung und die Ansichten.
+
+- Position = Mittel.
+- Orientierung = Mittel der nicht gespiegelten (eindeutigen) Ansichten, sonst die geplante Orientierung.
+- Streuung = RMS.
+- Ausreißer: ab 3 Messungen wird höchstens eine verworfen, wenn sie > 3 mm bzw. > 1° vom Mittel der übrigen liegt und die übrigen untereinander auf 1,5 mm / 0,5° übereinstimmen.
+- Weniger als 2 gültige Messungen: wie bisher nur die zentrierte Messung („nur 1 Ansicht“).
+
+### Ergebnis Modul
+
+- Verschiebung aus dem Mittel.
+- Drehung wird übernommen, wenn mindestens 2 eindeutige Ansichten vorliegen und die Winkelstreuung ≤ 0,5° ist (`LAYER2_HEADING_MAX_SPREAD_DEG`). Dann wird die waagerechte Modulpose wie in Layer 1 aus der Tag-Pose berechnet (`levelModulePose`: nur Gierwinkel, Höhe bleibt die des Bodens).
+- Sonst bleibt die Drehung aus Layer 1 („Drehung aus Layer 1 behalten“).
+
+### Ergebnis Anker
+
+- Basiskorrektur aus dem Mittel.
+- Kurs nur unter derselben Bedingung. Vorher reichte eine einzige nicht gespiegelte Messung.
+
+### Anzeige in der Zeile
+
+- „N Ansichten, Streuung x,x mm / y,y°“
+- übersprungene und verworfene Ansichten
+- bei gedrehtem Modul „Δ x,x°“
+
+### Grenzen
+
+- Pro Sichtpunkt ~20–30 s länger.
+- Ein fester Versatz der Hand-Auge-Kalibrierung mittelt sich nicht heraus. Dafür neu kalibrieren.
+- Nah am Wagen sind nicht alle Ansichten erreichbar.
+
+### Schnittstellen
+
+- Keine Änderung am Pi. Betroffen ist nur `MeasureTags`.
+- Frontend, Repo `webskillcomposition`, Branch `Ungetestet`:
+
+| Commit | Inhalt |
+| --- | --- |
+| `eaab176` | gemeinsamer Teil `tagViews.ts`, Roboter-Tags unverändert |
+| `a9137d3` | Layer-2-Fahrt |
+| `53a8c55` | Wagen-Prüfung lockerer: Glieder 6 cm, Hand 8 cm, Rand 2 cm |
+| `6bce599` | Layer-2-Vorschlag als Kästen und Basis-Markierung statt Modellkopien |
+
+### Offen
+
+- Am Roboter noch nicht geprüft.
+- Erwartung: Wiederholgenauigkeit der Modulposition ~1–3 mm, Drehung ~0,3°.
