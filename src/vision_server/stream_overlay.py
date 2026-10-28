@@ -274,6 +274,7 @@ class AprilTagStreamAnnotator:
             from tagloc import frames as frame_tools
             from tagloc.overlay import (
                 draw_board_overlay,
+                draw_calibration_caption,
                 draw_status_bar,
                 draw_tag_boxes,
             )
@@ -310,10 +311,11 @@ class AprilTagStreamAnnotator:
                 # `self._last_board` bleibt trotzdem nuetzlich -- die
                 # Vorschau hier laeuft unabhaengig davon periodisch auf dem
                 # kleinen Bild und hilft beim Positionieren.
-                # Nur Eckenzahl oben links + "Kalibriermodus" unten links, ohne
-                # dunkle Kontur; Session-Fortschritt zeigt das Frontend-Modal.
+                # Eckenzahl oben links, unten links eine Zeile mit dem Datum der
+                # letzten Kalibrierung (lokale Zeit); Session-Fortschritt zeigt
+                # das Frontend-Modal.
                 draw_board_overlay(canvas, self._last_board, outline=False, compact=True)
-                draw_status_bar(canvas, ["Kalibriermodus"])
+                draw_calibration_caption(canvas, self._calibration.calibration_id)
                 return canvas
 
             if mode == "tagreference":

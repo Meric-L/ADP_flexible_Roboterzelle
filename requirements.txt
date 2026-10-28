@@ -16,3 +16,6 @@ zeroconf>=0.131
 # den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,
 # librealsense muss von Hand bzw. per vorgebautem Paket installiert werden.
 # Vor dem Rollout auf dem Hand-Pi verifizieren.
+# Zeitzonendatenbank fuer `zoneinfo` (Kalibrier-Zeile im Livestream: Europe/Berlin).
+# Unter Windows und in schlanken Images fehlt sie im System.
+tzdata

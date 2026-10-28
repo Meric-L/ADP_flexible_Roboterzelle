@@ -19,7 +19,9 @@ import logging
 import os
 import sys
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 
@@ -274,6 +276,81 @@ def draw_board_overlay(
             COLOR_BOARD,
             outline=outline,
         )
+    return image
+
+
+#: Anzeige-Zeitzone der Kalibrier-Zeile (Anwender sitzen in Deutschland).
+_DISPLAY_TIMEZONE = "Europe/Berlin"
+#: Steht statt des Datums, wenn es keine (lesbare) Kalibrierung gibt.
+NO_CALIBRATION_STAMP = "\u2013"
+CALIBRATION_CAPTION_PREFIX = "Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: "
+
+
+def format_calibration_stamp(calibration_id: str | None) -> str:
+    """Datum einer Kalibrier-ID als "TT.MM.JJJJ, HH:MM Uhr" in Europe/Berlin.
+
+    Die ID ist `<Kamera>@<ISO-8601-Zeitstempel>`; `scale_to_resolution` kann
+    weitere Teile anhaengen (`...@1280x720`), deshalb zaehlt der erste Teil
+    nach dem "@", der als Zeitstempel mit Zeitzone lesbar ist. Ohne ID, ohne
+    lesbaren oder ohne zeitzonenbehafteten Zeitstempel kommt "\u2013"
+    zurueck -- nie ein Fehler und nie der rohe String.
+    """
+    for part in str(calibration_id or "").split("@")[1:]:
+        try:
+            moment = datetime.fromisoformat(part.strip())
+        except ValueError:
+            continue
+        if moment.tzinfo is None:
+            continue
+        try:
+            local = moment.astimezone(ZoneInfo(_DISPLAY_TIMEZONE))
+        except ZoneInfoNotFoundError:
+            _log.warning("Zeitzonendatenbank ohne %s (Paket tzdata)", _DISPLAY_TIMEZONE)
+            return NO_CALIBRATION_STAMP
+        return local.strftime("%d.%m.%Y, %H:%M Uhr")
+    return NO_CALIBRATION_STAMP
+
+
+def draw_calibration_caption(image, calibration_id: str | None) -> Any:
+    """Eine Zeile unten links: "Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
+
+    Rein weisse Schrift mit genau 1 px schwarzem Rand, ohne Balken, Schatten
+    oder Transparenz. Position und Schriftgroesse wie bei `draw_status_bar`.
+
+    Der Rand kommt aus einer Textmaske, die um einen Pixel aufgeweitet wird,
+    nicht aus einem zweiten `putText` mit groesserer Strichstaerke: OpenCV 5
+    rendert die Staerken 2 und 4 fast gleich breit, das Weiss deckte das
+    Schwarz dann vollstaendig zu. Die Maske ist binaer, es gibt also nur
+    Weiss, Schwarz und das unveraenderte Bild.
+    """
+    import cv2
+
+    shape = np.asarray(image).shape
+    scale = _scale_for(image)
+    margin = round(12 * scale)
+    text = CALIBRATION_CAPTION_PREFIX + format_calibration_stamp(calibration_id)
+    if int(cv2.__version__.split(".")[0]) < 5:
+        # Die Hershey-Schrift von OpenCV 4 kennt nur ASCII und malt sonst "?".
+        text = text.replace("\u00b7", "-").replace("\u2013", "-")
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = _FONT_SCALE * scale
+    thickness = max(1, round(_THICKNESS * scale))
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad = 3  # Platz fuer den Rand rund um die Glyphen
+    x0, y0 = max(0, margin - pad), max(0, shape[0] - margin - text_h - pad)
+    x1 = min(shape[1], margin + text_w + pad)
+    y1 = min(shape[0], shape[0] - margin + baseline + pad)
+    if x1 <= x0 or y1 <= y0:
+        return image
+    mask = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+    cv2.putText(
+        mask, text, (margin - x0, shape[0] - margin - y0), font, font_scale, 255, thickness, cv2.LINE_8
+    )
+    glyphs = mask >= 96
+    border = cv2.dilate(glyphs.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~glyphs
+    region = image[y0:y1, x0:x1]
+    region[border] = COLOR_SHADOW
+    region[glyphs] = COLOR_TEXT
     return image
 
 
