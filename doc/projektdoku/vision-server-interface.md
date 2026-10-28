@@ -1723,6 +1723,32 @@ Mit `MeasureBoard` bringt die Steuerung das Schachbrett mittig ins Bild, bevor s
 - **Fehlersuche `"diagnose": true`:** Das Ergebnis enthält dann `diagnosis` für das letzte Bild: `largestGrid {cols, rows}` (größtes Raster, das der schnelle Detektor um die Angabe herum findet), `sbExact`, `classicExact`, `sbSwapped`, `tried`, `imageSize`, `grayMin/Max/Mean`, `saturatedFraction`. Kostet einige Erkennungsversuche, nur zum Analysieren.
 - **`samples[i].reprojectionErrorPx`** im `HandEyeStatus`: mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch bei verworfenen. `null`, wenn nichts gefunden wurde.
 
+### Nachtrag 28.10.2026: Verfeinerung und Vorhersagefehler
+
+Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba`. Plan: [`arbeitsplaene/handeye-genauigkeit.md`](arbeitsplaene/handeye-genauigkeit.md) (Status `in Arbeit`, Messung am Aufbau steht aus). Die Abschnitte 15 bis 15.4 oben gelten weiter, soweit sie nicht widersprechen. Die Brettangabe „6×7 Felder“ in 15.1 ist überholt: Das Brett hat 7×8 Felder, also 6×7 Innenecken (siehe `arbeitsplaene/handeye-schachbrett-automatik.md`, Nachtrag 28.10.2026).
+
+- **Verfeinerung:** Mit Brett wird `T_flansch_cam` zusammen mit der Brettlage und dem Brettmaßstab gegen die Pixel der Brettecken verfeinert (`refine_hand_eye_robust`, Start Park-Martin). Ausreißer werden nach dem Pixelfehler je Aufnahme verworfen. Ohne Brett oder ohne Ecken bleibt es bei Park-Martin, mit Hinweis in `result.warnings`.
+- **`FinishHandEyeCalibration`:**
+  - `INVALID_STATE` bei mindestens 3 angenommenen Aufnahmen und weniger als 3 Drehachsen (ab 5°). Die Sitzung bleibt offen, der Datensatz bekommt `outcome: "refused"`.
+  - `INVALID_STATE` bei weniger als 3 verwertbaren Posen. Die Sitzung bleibt offen, Datensatz `outcome: "failed"`.
+  - `INTERNAL` und Zustand `failed`, wenn die Kalibrierung berechnet, aber nicht gespeichert werden konnte.
+  - Sonst `OK`, Zustand `finished`.
+- **`HandEyeStatus`, neue Felder** (Schema `wsc.vision.handeye.status/1`):
+  - Top-level `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null` (unbekannt).
+  - `samples[i]`: `looErrorPx`, `looErrorM`. Vorhersagefehler ohne diese Aufnahme, nur nach `Finish` und nicht für verworfene Aufnahmen, sonst `null`.
+  - `result`: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `refinementConverged`, `targetInBase`, `warnings`, `sessionPath`. Die verfeinerten Werte sind ohne Verfeinerung `null`. `targetInBase` ist immer gesetzt: `{"position": [x, y, z], "orientation": [x, y, z, w]}` in Metern, Basis-KS. Mit Brett ist es der Brettursprung (erste Innenecke, +z ins Brett), sonst das Mittel über `F · X · C`.
+  - `warnings`: Liste deutscher Texte. Enthalten sind Hinweise zu den Werks- oder Platzhalter-Intrinsiks, zu fehlender Verfeinerung und zu `|boardScale − 1| > 0,3 %` („Brett nachmessen / Intrinsik pruefen“).
+  - `current`: zusätzlich `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`, jeweils aus `data/handeye/cam_flange.json`.
+- **`data/handeye/cam_flange.json`:** dieselben Zusatzschlüssel, nur wenn vorhanden.
+- **Sitzungsdatensatz:** `data/handeye/sessions/<UTC-Start>/session.json` (Schema `wsc.vision.handeye.session/1`, `outcome` finished, refused oder failed) und `sample_NNN.png` je Aufnahme. Offline neu rechnen:
+
+  ```
+  python -m tagloc.cli.calibrate_handeye --session data/handeye/sessions/<UTC-Start> [--out data/handeye/cam_flange.json] [--no-scale]
+  ```
+
+- **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
+- **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 
 Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde, und meldet nur **bestätigte** Änderungen. Formate, Regeln und Defaults stehen im Arbeitsplan [`arbeitsplaene/zellen-ueberwachung.md`](arbeitsplaene/zellen-ueberwachung.md). Die Knoten gibt es nur mit AprilTag und ohne `hand_eye_path`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.

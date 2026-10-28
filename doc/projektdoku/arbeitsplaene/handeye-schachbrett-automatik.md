@@ -107,3 +107,11 @@ HandEyePorts.measure_board: Callable[[BoardSpec], Awaitable[tuple[Pose | None, s
 - [x] Indexzeile in `README.md`.
 - [x] `vision-server-interface.md` Abschnitt 15.1.
 - [x] Testlauf: 567 Tests. Einzelne zeitabhängige Livestream-Tests (`test_camera_stream`, `test_mjpeg_server`) schlagen im Gesamtlauf sporadisch fehl, einzeln laufen sie durch, unabhängig von dieser Änderung. Neu: `test_boards_pose.py` (4), `HandEyeBoardTest` (4).
+
+## Nachtrag 28.10.2026: Brettgröße
+
+Das gelaserte Brett hat **7×8 Felder** zu 23 mm, also **6×7 Innenecken**. So steht es im Code: `src/vision_server/server.py` (Kommentar „Neues Brett seit 19.10.2026: 6x7 innere Ecken, 23 mm/Feld“) und `DEFAULT_BOARD` im Frontend (`cols: 6, rows: 7, squareSizeM: 0.023`).
+
+Die Angaben „6×7 Felder / 5×6 Innenecken“ weiter oben in diesem Dokument (Abschnitt Ziel, Punkt 1, und die Erläuterung zu `cols`/`rows`) sind damit überholt. Sie bleiben stehen; maßgeblich ist dieser Nachtrag.
+
+`tests/test_boards_pose.py` rendert bewusst ein 5×6-Innenecken-Brett (`SPEC`). Das ist ein synthetisches Testbild für die Posenberechnung und kein Widerspruch zur Hardware. Der Kommentar über `SPEC` nennt dort noch „6x7 Felder, also 5x6 Innenecken“ für das Labor-Brett. Das ist dort falsch; geändert wurde es nicht.
