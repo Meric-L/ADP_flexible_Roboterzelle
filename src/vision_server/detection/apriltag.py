@@ -428,6 +428,7 @@ class AprilTagDetectionSource(DetectionSource):
                 self._config.tag_family,
                 self._config.detector_backend,
                 subpixel_corner_refinement=self._config.subpixel_corner_refinement,
+                corner_refinement_method=self._config.corner_refinement_method,
                 apriltag_quad_decimate=self._config.apriltag_quad_decimate,
                 detector_parameters=self._config.detector_parameters,
             )
@@ -846,13 +847,23 @@ class AprilTagDetectionSource(DetectionSource):
         Wie `measure_tag`, nur mit einem Kalibrier-Schachbrett als festem
         Ziel: viele Ecken statt vier, also eine genauere und eindeutige Pose.
         Liefert `(Pose, "", Info)` oder `(None, Grund, Info)`. `Info` hat den
-        mittleren `reprojectionErrorPx` (auch fuer verworfene Bilder).
+        mittleren `reprojectionErrorPx` (auch fuer verworfene Bilder). Bei Erfolg
+        zusaetzlich fuer die Hand-Auge-Verfeinerung und den Datensatz:
+        `corners` (kanonische Ecken `(N, 2)` im verzerrten Bild, Mittel ueber
+        die verwendeten Bilder -- der Roboter steht), `calibration` (die dazu
+        verwendete Intrinsik), `intrinsicsSource` und `image` (das letzte
+        verwendete Bild).
         """
+        import numpy as np
+
         from tagloc.tagmap import merge_tag_poses
 
         poses = []
+        corner_sets = []
         errors: list[float] = []
         reasons: list[str] = []
+        calibration = None
+        last_image = None
         seen_timestamp = self._latest_timestamp()
         samples = max(1, self._config.samples_per_job)
         for _ in range(samples):
@@ -861,7 +872,7 @@ class AprilTagDetectionSource(DetectionSource):
             except VisionJobError as error:
                 return None, error.message, {"reprojectionErrorPx": None}
             seen_timestamp = frame.timestamp
-            pose, reason, error_px = await self.run_blocking(
+            pose, reason, error_px, corners, used_calibration = await self.run_blocking(
                 self._measure_board, frame.image, spec
             )
             if error_px is not None:
@@ -870,15 +881,24 @@ class AprilTagDetectionSource(DetectionSource):
                 reasons.append(reason)
                 continue
             poses.append(pose)
+            corner_sets.append(corners)
+            calibration, last_image = used_calibration, frame.image
         info = {"reprojectionErrorPx": sum(errors) / len(errors) if errors else None}
         if poses:
+            info.update(
+                corners=np.mean(np.stack(corner_sets), axis=0),
+                calibration=calibration,
+                intrinsicsSource=self.intrinsics_source,
+                image=last_image,
+            )
             return merge_tag_poses(poses), "", info
         return None, reasons[-1] if reasons else "Board nicht gesehen", info
 
     def _measure_board(self, image, spec):
         """Ein Bild, ein Schachbrett:
-        `(Pose | None, Grund, Reprojektionsfehler | None)`.
-        Worker-Thread."""
+        `(Pose | None, Grund, Reprojektionsfehler | None, Ecken | None,
+        Kalibrierung | None)`. Die Ecken sind kanonisch geordnet, im
+        verzerrten Bild. Worker-Thread."""
         from tagloc import frames as frame_tools
         from tagloc.boards import (
             canonical_chessboard_corners,
@@ -889,9 +909,10 @@ class AprilTagDetectionSource(DetectionSource):
         gray = frame_tools.to_gray(image)
         sample = detect_board(gray, spec)
         if sample is None:
-            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein", None
+            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein", None, None, None
         corners = canonical_chessboard_corners(gray, sample.corners, spec)
-        pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
+        calibration = self._calibration_for(image)
+        pose, error_px = estimate_board_pose(corners, spec, calibration)
         # Ein Board mit Dutzenden Ecken passt viel besser als ein Tag;
         # ein grosser Fehler heisst Unschaerfe, ein welliges Brett oder ein
         # falsches Raster.
@@ -899,8 +920,8 @@ class AprilTagDetectionSource(DetectionSource):
             return None, (
                 f"Board-Pose passt schlecht ({error_px:.1f} px) -- Feldgroesse und "
                 "Eckenzahl pruefen"
-            ), error_px
-        return pose, "", error_px
+            ), error_px, None, None
+        return pose, "", error_px, corners, calibration
 
     def default_board_spec(self):
         """Das Brett aus der Konfiguration der Kamera."""

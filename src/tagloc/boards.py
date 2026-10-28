@@ -301,6 +301,13 @@ def _chessboard_object_points(spec: BoardSpec) -> np.ndarray:
     return grid * spec.square_size_m
 
 
+def chessboard_object_points(spec: BoardSpec) -> np.ndarray:
+    """Die Innenecken im Board-KS, `(N, 3)` float64: Ursprung erste Ecke, +x
+    entlang der Zeile, +y zur naechsten Zeile, z = 0 -- in der Reihenfolge der
+    kanonischen Ecken (`canonical_chessboard_corners`)."""
+    return _chessboard_object_points(spec).astype(np.float64)
+
+
 def chessboard_is_unambiguous(spec: BoardSpec) -> bool:
     """Ob sich ein Schachbrett um 180 Grad gedreht vom Original unterscheidet.
 
@@ -469,6 +476,7 @@ __all__ = [
     "calibrate_from_samples",
     "canonical_chessboard_corners",
     "chessboard_is_unambiguous",
+    "chessboard_object_points",
     "estimate_board_pose",
     "compute_coverage",
     "detect_board",

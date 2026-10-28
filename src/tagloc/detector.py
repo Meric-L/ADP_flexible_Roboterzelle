@@ -133,6 +133,17 @@ def _as_type_of(current: Any, value: Any) -> Any:
     return value
 
 
+#: Verfahren der Eckenverfeinerung (`corner_refinement_method`).
+CORNER_METHOD_APRILTAG = "apriltag"
+CORNER_METHOD_SUBPIX = "subpix"
+CORNER_METHOD_NONE = "none"
+CORNER_METHODS = (CORNER_METHOD_APRILTAG, CORNER_METHOD_SUBPIX, CORNER_METHOD_NONE)
+_CORNER_REFINE_CONSTANTS = {
+    CORNER_METHOD_APRILTAG: "CORNER_REFINE_APRILTAG",
+    CORNER_METHOD_SUBPIX: "CORNER_REFINE_SUBPIX",
+}
+
+
 class ArucoTagDetector:
     """Detection via `cv2.aruco`. The default path.
 
@@ -151,15 +162,24 @@ class ArucoTagDetector:
         subpixel_corner_refinement: bool = False,
         apriltag_quad_decimate: float = 0.0,
         detector_parameters: Mapping[str, Any] | None = None,
+        corner_refinement_method: str = CORNER_METHOD_APRILTAG,
     ) -> None:
         """`detector_parameters`: Attributname von `cv2.aruco.DetectorParameters`
         -> Wert, z. B. `{"errorCorrectionRate": 0.8}`; `None`/leer = OpenCV-
         Standard. Unbekannter Name oder unpassender Wert wirft `ValueError`.
         Die Eintraege werden NACH `subpixel_corner_refinement` gesetzt und
         gewinnen damit, z. B. ein ausdrueckliches `cornerRefinementMethod`.
+        `corner_refinement_method` waehlt bei aktiver Verfeinerung das
+        Verfahren: `"apriltag"` (CORNER_REFINE_APRILTAG), `"subpix"`
+        (CORNER_REFINE_SUBPIX) oder `"none"`.
         """
         import cv2
 
+        if corner_refinement_method not in CORNER_METHODS:
+            raise ValueError(
+                f"Unbekannte Eckenverfeinerung '{corner_refinement_method}' "
+                f"(erwartet eines von {', '.join(CORNER_METHODS)})"
+            )
         self.family = family
         aruco = cv2.aruco
         self._dictionary = aruco_dictionary(family)
@@ -178,8 +198,8 @@ class ArucoTagDetector:
         # `AprilTagProfileConfig.subpixel_corner_refinement`, Default aus).
         # Konstruktor-Default bleibt bewusst konservativ (aus), Aufrufer
         # sollen explizit entscheiden.
-        if subpixel_corner_refinement:
-            refine = getattr(cv2.aruco, "CORNER_REFINE_APRILTAG", None)
+        if subpixel_corner_refinement and corner_refinement_method != CORNER_METHOD_NONE:
+            refine = getattr(cv2.aruco, _CORNER_REFINE_CONSTANTS[corner_refinement_method], None)
             if refine is not None:
                 try:
                     self._parameters.cornerRefinementMethod = refine
@@ -264,6 +284,7 @@ def build_detector(
     subpixel_corner_refinement: bool = False,
     apriltag_quad_decimate: float = 0.0,
     detector_parameters: Mapping[str, Any] | None = None,
+    corner_refinement_method: str = CORNER_METHOD_APRILTAG,
 ) -> TagDetector:
     """Build the detector for the requested family.
 
@@ -280,6 +301,7 @@ def build_detector(
         subpixel_corner_refinement=subpixel_corner_refinement,
         apriltag_quad_decimate=apriltag_quad_decimate,
         detector_parameters=detector_parameters,
+        corner_refinement_method=corner_refinement_method,
     )
     if backend == "aruco":
         return ArucoTagDetector(family, **aruco_options)

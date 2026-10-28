@@ -84,9 +84,39 @@ def _solve_tag_pose(
         )
         if not found:
             raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
-        rvec, tvec = rvecs[0], tvecs[0]
+        # IPPE liefert beide Kandidaten ohne Nachschaerfung. Beide mit
+        # Levenberg-Marquardt verfeinern und den mit der kleineren
+        # Reprojektion nehmen -- wie `boards.estimate_board_pose`.
+        candidates = []
+        for candidate_rvec, candidate_tvec in zip(rvecs, tvecs):
+            candidate_rvec = np.array(candidate_rvec, dtype=np.float64)
+            candidate_tvec = np.array(candidate_tvec, dtype=np.float64)
+            if hasattr(cv2, "solvePnPRefineLM"):
+                candidate_rvec, candidate_tvec = cv2.solvePnPRefineLM(
+                    object_points,
+                    image_points,
+                    camera_matrix,
+                    no_distortion,
+                    candidate_rvec,
+                    candidate_tvec,
+                )
+            candidates.append(
+                (
+                    _reprojection_error_px(
+                        object_points, image_points, candidate_rvec, candidate_tvec, camera_matrix
+                    ),
+                    candidate_rvec,
+                    candidate_tvec,
+                )
+            )
+        _, rvec, tvec = min(candidates, key=lambda candidate: candidate[0])
         ambiguity = 0.0
         if errors is not None and len(errors) >= 2:
+            # Das Verhaeltnis kommt bewusst aus den **rohen** IPPE-Fehlern, nicht
+            # aus den verfeinerten: Nach der Verfeinerung erklaeren beide Loesungen
+            # ein Tag mit nur vier Ecken fast gleich gut, das Verhaeltnis stiege
+            # ueber `AMBIGUITY_THRESHOLD` (0,6), und `measure_tag` verwuerfe
+            # eindeutige Tags. Die Schwelle ist am rohen Verhaeltnis gemessen.
             best = float(np.asarray(errors).reshape(-1)[0])
             second = float(np.asarray(errors).reshape(-1)[1])
             # In (0, 1]: near 1 means both solutions explain the image

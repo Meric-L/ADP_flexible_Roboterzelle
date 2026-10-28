@@ -63,6 +63,12 @@ class AprilTagProfileConfig:
     #: `deckenkamera-volle-aufloesung.md`, Offene Fragen) -- noch nicht
     #: entschieden, noch nicht umgesetzt.
     subpixel_corner_refinement: bool = False
+    #: Verfahren, wenn `subpixel_corner_refinement` aktiv ist: `"apriltag"`
+    #: (CORNER_REFINE_APRILTAG), `"subpix"` (CORNER_REFINE_SUBPIX, Standard)
+    #: oder `"none"`. Die Handkamera (`cam_flange`) hat die Verfeinerung seit
+    #: 28.10.2026 an: ein fester Versatz beim Anfahren kommt auch von
+    #: gerundeten Tag-Ecken.
+    corner_refinement_method: str = "subpix"
     #: Dezimierungsfaktor fuer `cv2.aruco.DetectorParameters.
     #: aprilTagQuadDecimate` -- wirkt nur, wenn `subpixel_corner_refinement`
     #: aktiv ist (aktuell also inert, siehe dort). Standard-AprilTag-

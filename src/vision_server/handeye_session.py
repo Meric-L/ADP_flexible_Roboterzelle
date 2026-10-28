@@ -35,7 +35,12 @@ from typing import Any
 
 import numpy as np
 
-from tagloc.boards import CHESSBOARD, BoardSpec, chessboard_is_unambiguous
+from tagloc.boards import (
+    CHESSBOARD,
+    BoardSpec,
+    chessboard_is_unambiguous,
+    chessboard_object_points,
+)
 from tagloc.geometry import (
     Pose,
     average_poses,
@@ -47,9 +52,15 @@ from tagloc.geometry import (
     translation_distance_m,
 )
 from tagloc.handeye import (
+    AXIS_THRESHOLD_DEG,
     MIN_SAMPLES,
     HandEye,
+    HandEyeSolution,
+    leave_one_out_errors,
     load_hand_eye,
+    reconstruction_spread,
+    refine_hand_eye_robust,
+    rotation_diversity,
     save_hand_eye,
     solve_hand_eye_robust,
 )
@@ -62,6 +73,9 @@ _log = logging.getLogger(__name__)
 START_SCHEMA = "wsc.vision.handeye.start/1"
 SAMPLE_SCHEMA = "wsc.vision.handeye.sample/1"
 STATUS_SCHEMA = "wsc.vision.handeye.status/1"
+#: Datensatz einer Sitzung (`data/handeye/sessions/<Zeit>/session.json`), den
+#: `tagloc.cli.calibrate_handeye --session` offline nachrechnen kann.
+SESSION_SCHEMA = "wsc.vision.handeye.session/1"
 
 IDLE = "idle"
 CAPTURING = "capturing"
@@ -69,11 +83,17 @@ SOLVING = "solving"
 FINISHED = "finished"
 FAILED = "failed"
 
-#: Ab so viel Drehung um eine Achse zaehlt sie als "deutlich gedreht".
-#: Unterhalb davon bestimmt das Rauschen der Tag-Messung die Rotation mit.
-AXIS_THRESHOLD_DEG = 5.0
 #: Empfehlung an den Bediener -- `MIN_SAMPLES` ist nur das rechnerische Minimum.
 RECOMMENDED_SAMPLES = 8
+#: `finish` verlangt Drehung um so viele Achsen (`rotation_diversity`); bei
+#: weniger ist `T_flansch_cam` nicht bestimmt, selbst wenn der Solver rechnet.
+REQUIRED_AXES = 3
+#: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass
+#: (0,3 %) gibt es einen Hinweis: Feldgroesse oder Intrinsik stimmen nicht.
+SCALE_WARNING = 0.003
+#: Werte von `intrinsicsSource`, bei denen die Intrinsik nicht von uns stammt.
+FACTORY_INTRINSICS = "realsense_factory"
+PLACEHOLDER_INTRINSICS = "placeholder"
 
 
 @dataclass(frozen=True)
@@ -93,7 +113,16 @@ class HandEyePorts:
     publish: Callable[[str], Awaitable[None]]
     frame_id: str = "cam_flange"
     #: Misst `T_cam_board` eines Schachbretts; `None`: kann der Server nicht.
+    #: Das dritte Element (`Info`) darf zusaetzlich `corners` (kanonische Ecken
+    #: `(N, 2)` im verzerrten Bild), `calibration` (`CameraCalibration`),
+    #: `intrinsicsSource` und `image` enthalten -- ohne sie gibt es keine
+    #: Verfeinerung, nur die Park-Martin-Loesung.
     measure_board: Callable[[BoardSpec], Awaitable[tuple]] | None = None
+    #: Woher die Intrinsik der Kamera stammt (`calibration`,
+    #: `realsense_factory`, `placeholder`); `None`: unbekannt.
+    intrinsics_source: Callable[[], str | None] | None = None
+    #: Wohin die Datensaetze der Sitzungen kommen; `None`: `sessions/` neben `path`.
+    sessions_dir: Path | None = None
 
 
 @dataclass
@@ -109,6 +138,15 @@ class _Sample:
     residual_m: float | None = None
     residual_deg: float | None = None
     rejected: bool | None = None
+    #: Brett-Modus: kanonische Ecken `(N, 2)` im verzerrten Bild, Mittel ueber
+    #: die verwendeten Bilder der Aufnahme. `None` bei Tags.
+    corners_px: np.ndarray | None = None
+    #: Ein Bild der Aufnahme fuer den Datensatz, nicht im Status.
+    image: Any = None
+    #: Nach `finish`: Vorhersagefehler der Verfeinerung ohne diese Aufnahme
+    #: (px; m im Kamera-KS). `None` vorher, bei Tags und bei Ausreissern.
+    loo_error_px: float | None = None
+    loo_error_m: float | None = None
 
     @property
     def accepted(self) -> bool:
@@ -125,6 +163,11 @@ class _State:
     board: BoardSpec | None = None
     samples: list[_Sample] = field(default_factory=list)
     result: dict | None = None
+    #: Intrinsik und ihre Herkunft, wie sie die Brett-Messung verwendet hat.
+    calibration: Any = None
+    intrinsics_source: str | None = None
+    #: Ordnername des Datensatzes (UTC), gesetzt beim Start.
+    stamp: str = ""
 
 
 def _finite_or_none(value) -> float | None:
@@ -135,29 +178,141 @@ def _finite_or_none(value) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def rotation_diversity(poses_base_flange: list[Pose]) -> tuple[float, int]:
-    """`(groesste Drehung zwischen zwei Posen in Grad, Zahl der Drehachsen)`.
+def _intrinsics_warnings(source: str | None) -> list[str]:
+    """Hinweise zur Herkunft der Intrinsik."""
+    if source == FACTORY_INTRINSICS:
+        return [
+            "Intrinsik: Werkswerte der Kamera, keine eigene Kalibrierung -- "
+            "Massstab und Verzeichnung koennen abweichen; Kamera neu kalibrieren."
+        ]
+    if source == PLACEHOLDER_INTRINSICS:
+        return ["Intrinsik: Platzhalter, die Posen sind nicht massshaltig."]
+    return []
 
-    Die Achsen: die Drehvektoren aller Bewegungspaare, ihre Singulaerwerte
-    normiert auf die Zahl der Paare. Dreht der Roboter nur um eine Achse,
-    liegen alle Vektoren auf einer Linie -- dann ist `T_flansch_cam` nicht
-    bestimmt, egal wie viele Aufnahmen.
-    """
-    count = len(poses_base_flange)
-    if count < 2:
-        return 0.0, 0
-    vectors = []
-    spread = 0.0
-    for first in range(count):
-        for second in range(first + 1, count):
-            motion = compose(invert(poses_base_flange[first]), poses_base_flange[second])
-            vectors.append(rvec_from_rotation(motion[:3, :3]).reshape(3))
-            spread = max(
-                spread, rotation_distance_rad(poses_base_flange[first], poses_base_flange[second])
+
+def _refine_board(
+    spec: BoardSpec, calibration, samples: list[_Sample], flanges: list[Pose], tags: list[Pose]
+) -> dict | None:
+    """Verfeinerung mit Ausreisserpruefung in Pixeln, Leave-one-out ueber die
+    verbleibenden Aufnahmen. Liefert `{"refinement", "loo", "solution"}`
+    (`solution`: `HandEyeSolution` fuers verfeinerte X, Indizes wie die Eingabe)
+    oder `None`, wenn nicht moeglich (fehlende Ecken/Intrinsik, Rechenfehler).
+    `ValueError` (Posen zu aehnlich) geht an den Aufrufer. Thread-tauglich."""
+    from tagloc import lens
+
+    if calibration is None or not samples or any(sample.corners_px is None for sample in samples):
+        return None
+    try:
+        points = chessboard_object_points(spec)
+        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+        undistorted = [lens.undistort_points(sample.corners_px, calibration) for sample in samples]
+        refinement, rejected, _ = refine_hand_eye_robust(flanges, undistorted, tags, points, matrix)
+    except ValueError:
+        raise
+    except Exception:
+        _log.exception("Gemeinsame Verfeinerung fehlgeschlagen -- Park-Martin bleibt")
+        return None
+    try:
+        kept = [i for i in range(len(samples)) if i not in rejected]
+        loo = None
+        if len(kept) > MIN_SAMPLES:
+            loo = leave_one_out_errors(
+                [flanges[i] for i in kept],
+                [undistorted[i] for i in kept],
+                [tags[i] for i in kept],
+                points,
+                matrix,
+                refinement,
             )
-    singular = np.linalg.svd(np.asarray(vectors), compute_uv=False) / math.sqrt(len(vectors))
-    axes = int(np.sum(singular >= math.radians(AXIS_THRESHOLD_DEG)))
-    return math.degrees(spread), axes
+        residuals, rms_m, rms_deg, max_m, max_deg = reconstruction_spread(
+            flanges, tags, refinement.pose_flange_cam, kept
+        )
+    except Exception:
+        _log.exception("Leave-one-out fehlgeschlagen -- Park-Martin bleibt")
+        return None
+    solution = HandEyeSolution(
+        pose_flange_cam=refinement.pose_flange_cam,
+        rms_position_m=rms_m,
+        rms_rotation_deg=rms_deg,
+        max_position_m=max_m,
+        max_rotation_deg=max_deg,
+        residuals=residuals,
+        rejected=rejected,
+        used_count=len(kept),
+    )
+    return {"refinement": refinement, "loo": loo, "solution": solution}
+
+
+def _write_session_dataset(
+    folder: Path, state: _State, outcome: str, intrinsics_source: str | None, frame_id: str
+) -> None:
+    """`session.json` plus ein PNG je Aufnahme mit Bild nach `folder` schreiben.
+
+    Ein Ordner je Sitzung (Zeit des Starts); ein zweiter Versuch derselben
+    Sitzung ueberschreibt ihn. Die Datei reicht, um mit
+    `calibrate_handeye --session` neu zu rechnen: gemeldete Flanschposen,
+    gemessene Brettposen, Ecken, Intrinsik und Brettgeometrie.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    images: dict[int, str] = {}
+    try:
+        import cv2
+
+        for index, sample in enumerate(state.samples):
+            image = sample.image
+            if image is None:
+                continue
+            name = f"sample_{index:03d}.png"
+            if cv2.imwrite(str(folder / name), np.asarray(image)):
+                images[index] = name
+    except Exception:
+        _log.exception("Bilder des Hand-Auge-Datensatzes nicht geschrieben")
+    calibration = state.calibration
+    payload = {
+        "schema": SESSION_SCHEMA,
+        "createdAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "outcome": outcome,
+        "frameId": frame_id,
+        "tagId": state.tag_id,
+        "tagInBase": pose_to_dict(state.tag_in_base) if state.tag_in_base is not None else None,
+        "board": state.board.as_dict() if state.board is not None else None,
+        "intrinsicsSource": intrinsics_source,
+        "intrinsics": (
+            {
+                "cameraMatrix": np.asarray(calibration.camera_matrix, dtype=np.float64).tolist(),
+                "distortionCoefficients": np.asarray(
+                    calibration.distortion, dtype=np.float64
+                ).reshape(-1).tolist(),
+                "distortionModel": calibration.model,
+                "imageSize": [int(calibration.image_size[0]), int(calibration.image_size[1])],
+                "calibrationId": calibration.calibration_id,
+                "frameId": calibration.frame_id,
+            }
+            if calibration is not None
+            else None
+        ),
+        "samples": [
+            {
+                "index": index,
+                "accepted": sample.accepted,
+                "detail": sample.detail,
+                "flangeInBase": pose_to_dict(sample.flange_in_base),
+                "camToTarget": (
+                    pose_to_dict(sample.cam_to_tag) if sample.cam_to_tag is not None else None
+                ),
+                "reprojectionErrorPx": sample.reprojection_error_px,
+                "cornersPx": (
+                    sample.corners_px.tolist() if sample.corners_px is not None else None
+                ),
+                "image": images.get(index),
+            }
+            for index, sample in enumerate(state.samples)
+        ],
+        "result": state.result,
+    }
+    (folder / "session.json").write_text(
+        json.dumps(payload, indent=2, default=float) + "\n", encoding="utf-8"
+    )
 
 
 def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
@@ -201,7 +356,13 @@ class HandEyeSession:
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
-        self._s = _State(state=CAPTURING, tag_id=tag_id, tag_in_base=tag_in_base, board=board)
+        self._s = _State(
+            state=CAPTURING,
+            tag_id=tag_id,
+            tag_in_base=tag_in_base,
+            board=board,
+            stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        )
         self._s.message = self._hint()
         _log.info("Hand-Auge-Kalibrierung gestartet, Ziel %s", self._target_label())
         await self._publish()
@@ -232,14 +393,20 @@ class HandEyeSession:
         if self._s is not s or s.state != CAPTURING:
             return VisionErrorCode.CANCELLED  # waehrend der Messung abgebrochen
         detail = reason if cam_to_tag is None else f"{self._target_label()} gemessen"
-        s.samples.append(
-            _Sample(
-                flange_in_base,
-                cam_to_tag,
-                detail,
-                reprojection_error_px=_finite_or_none(info.get("reprojectionErrorPx")),
-            )
+        sample = _Sample(
+            flange_in_base,
+            cam_to_tag,
+            detail,
+            reprojection_error_px=_finite_or_none(info.get("reprojectionErrorPx")),
         )
+        if cam_to_tag is not None and info.get("corners") is not None:
+            sample.corners_px = np.asarray(info["corners"], dtype=np.float64).reshape(-1, 2)
+            sample.image = info.get("image")
+            if info.get("calibration") is not None:
+                s.calibration = info["calibration"]
+            if info.get("intrinsicsSource"):
+                s.intrinsics_source = str(info["intrinsicsSource"])
+        s.samples.append(sample)
         s.message = self._hint() if cam_to_tag is not None else f"Aufnahme verworfen: {reason}"
         await self._publish()
         if cam_to_tag is not None:
@@ -258,14 +425,36 @@ class HandEyeSession:
         accepted = [s.samples[index] for index in accepted_indices]
         flanges = [sample.flange_in_base for sample in accepted]
         tags = [sample.cam_to_tag for sample in accepted]
+        _, axes = rotation_diversity(flanges)
+        if len(accepted) >= MIN_SAMPLES and axes < REQUIRED_AXES:
+            # Der Solver rechnet auch bei zwei Achsen -- aber mit einer
+            # Rotation, die das Rauschen mitbestimmt. Lieber weiter aufnehmen.
+            s.message = (
+                f"Nicht berechnet: nur {axes} Drehachse(n) erreicht, noetig sind "
+                f"{REQUIRED_AXES}. Den Flansch um alle drei Achsen kippen und "
+                "drehen (je mindestens "
+                f"{AXIS_THRESHOLD_DEG:.0f} Grad), dann erneut berechnen."
+            )
+            await self._persist("refused")
+            await self._publish()
+            return VisionErrorCode.INVALID_STATE
         s.state = SOLVING
         s.message = f"Berechne aus {len(accepted)} Aufnahmen"
         await self._publish()
+        refined: dict | None = None
         try:
-            solution = await asyncio.to_thread(solve_hand_eye_robust, flanges, tags)
+            if s.board is not None:
+                refined = await asyncio.to_thread(
+                    _refine_board, s.board, s.calibration, accepted, flanges, tags
+                )
+            if refined is not None:
+                solution = refined["solution"]
+            else:
+                solution = await asyncio.to_thread(solve_hand_eye_robust, flanges, tags)
         except ValueError as error:
             s.state = CAPTURING
             s.message = f"Nicht berechnet: {error}"
+            await self._persist("failed")
             await self._publish()
             return VisionErrorCode.INVALID_STATE
 
@@ -283,15 +472,54 @@ class HandEyeSession:
             for index, (flange, tag) in enumerate(zip(flanges, tags))
             if index not in solution.rejected
         ]
+        used_samples = [
+            sample
+            for index, sample in enumerate(accepted)
+            if index not in solution.rejected
+        ]
         flanges, tags = [u[0] for u in used], [u[1] for u in used]
+        rms_position_m, rms_rotation_deg = solution.rms_position_m, solution.rms_rotation_deg
+        max_position_m, max_rotation_deg = solution.max_position_m, solution.max_rotation_deg
+        intrinsics_source = self._intrinsics_source()
+        warnings = _intrinsics_warnings(intrinsics_source)
+        if s.board is not None:
+            if refined is None and used_samples:
+                warnings.append(
+                    "Keine gemeinsame Verfeinerung gegen die Bildpunkte moeglich -- "
+                    "Ergebnis nur aus Park-Martin."
+                )
+        if refined is not None:
+            # Das verfeinerte X ersetzt Park-Martin (`solution` ist dafuer gerechnet).
+            if refined["loo"] is not None:
+                for sample, error_px, error_m in zip(
+                    used_samples, refined["loo"].error_px, refined["loo"].error_m
+                ):
+                    sample.loo_error_px, sample.loo_error_m = error_px, error_m
+            scale = refined["refinement"].board_scale
+            if abs(scale - 1.0) > SCALE_WARNING:
+                warnings.append(
+                    f"Brettmassstab weicht {abs(scale - 1.0) * 100:.1f} % vom Nennmass ab "
+                    "-- Brett nachmessen / Intrinsik pruefen."
+                )
+        extra: dict[str, Any] = {}
+        if refined is not None:
+            extra = {
+                "refined_reprojection_rms_px": refined["refinement"].reprojection_rms_px,
+                "board_scale": refined["refinement"].board_scale,
+            }
+            if refined["loo"] is not None:
+                extra["loo_error_rms_px"] = refined["loo"].rms_px
+                extra["loo_error_rms_m"] = refined["loo"].rms_m
         hand_eye = HandEye(
             pose_flange_cam=pose_flange_cam,
             frame_id=self._ports.frame_id,
-            rms_position_m=solution.rms_position_m,
-            rms_rotation_deg=solution.rms_rotation_deg,
+            rms_position_m=rms_position_m,
+            rms_rotation_deg=rms_rotation_deg,
             sample_count=solution.used_count,
-            max_position_m=solution.max_position_m,
-            max_rotation_deg=solution.max_rotation_deg,
+            max_position_m=max_position_m,
+            max_rotation_deg=max_rotation_deg,
+            intrinsics_source=intrinsics_source or "",
+            **extra,
         )
         try:
             backup = await asyncio.to_thread(save_with_backup, self._ports.path, hand_eye)
@@ -301,6 +529,7 @@ class HandEyeSession:
             _log.exception("Hand-Auge-Kalibrierung nicht gespeichert")
             s.state = FAILED
             s.message = f"Berechnet, aber nicht gespeichert: {error}"
+            await self._persist("failed")
             await self._publish()
             return VisionErrorCode.INTERNAL
 
@@ -308,10 +537,10 @@ class HandEyeSession:
             "poseFlangeCam": pose_to_dict(pose_flange_cam),
             # Echtes RMS der Abweichung der Brettlage ueber die verwendeten
             # Aufnahmen; das Maximum steht getrennt daneben.
-            "rmsPositionM": solution.rms_position_m,
-            "rmsRotationDeg": solution.rms_rotation_deg,
-            "maxPositionM": solution.max_position_m,
-            "maxRotationDeg": solution.max_rotation_deg,
+            "rmsPositionM": rms_position_m,
+            "rmsRotationDeg": rms_rotation_deg,
+            "maxPositionM": max_position_m,
+            "maxRotationDeg": max_rotation_deg,
             "sampleCount": solution.used_count,
             "rejectedCount": len(solution.rejected),
             #: Indizes in `samples[]`, in der Reihenfolge des Verwerfens.
@@ -320,7 +549,35 @@ class HandEyeSession:
             "knownTagCheckDeg": None,
             "path": str(self._ports.path),
             "backupPath": str(backup) if backup is not None else None,
+            # Nur mit Brett und Verfeinerung, sonst `null`. Reprojektion aller
+            # Brettecken nach der gemeinsamen Verfeinerung (px).
+            "refinedReprojectionRmsPx": None,
+            #: Brettmassstab gegen das Nennmass (1.0 = Brett wie angegeben).
+            "boardScale": None,
+            #: Vorhersagefehler ohne die jeweilige Aufnahme (RMS ueber alle):
+            #: der ehrliche Genauigkeitswert, px und m (Kamera-KS).
+            "looErrorRmsPx": None,
+            "looErrorRmsM": None,
+            "refinementConverged": None,
+            #: Wo das Brett/der Tag im Basis-KS liegt (Mittel von F·X·C bzw.
+            #: das verfeinerte `T_base_brett`), Position in m.
+            "targetInBase": pose_to_dict(
+                refined["refinement"].pose_base_board
+                if refined is not None
+                else average_poses(
+                    [compose(flange, pose_flange_cam, tag) for flange, tag in zip(flanges, tags)]
+                )
+            ),
+            "warnings": warnings,
+            "sessionPath": None,
         }
+        if refined is not None:
+            s.result["refinedReprojectionRmsPx"] = refined["refinement"].reprojection_rms_px
+            s.result["boardScale"] = refined["refinement"].board_scale
+            s.result["refinementConverged"] = refined["refinement"].converged
+            if refined["loo"] is not None:
+                s.result["looErrorRmsPx"] = refined["loo"].rms_px
+                s.result["looErrorRmsM"] = refined["loo"].rms_m
         if s.tag_in_base is not None:
             reconstructed = average_poses(
                 [compose(flange, pose_flange_cam, tag) for flange, tag in zip(flanges, tags)]
@@ -336,11 +593,16 @@ class HandEyeSession:
             else ""
         )
         s.message = (
-            f"Gespeichert und aktiv: RMS {solution.rms_position_m * 1000:.1f} mm / "
-            f"{solution.rms_rotation_deg:.2f} Grad (max {solution.max_position_m * 1000:.1f} mm) "
+            f"Gespeichert und aktiv: RMS {rms_position_m * 1000:.1f} mm / "
+            f"{rms_rotation_deg:.2f} Grad (max {max_position_m * 1000:.1f} mm) "
             f"ueber {solution.used_count} Posen{dropped}"
         )
+        if refined is not None:
+            s.message += f", Reprojektion {refined['refinement'].reprojection_rms_px:.2f} px"
+            if refined["loo"] is not None:
+                s.message += f", Vorhersagefehler {refined['loo'].rms_m * 1000:.1f} mm"
         _log.info("Hand-Auge-Kalibrierung: %s", s.message)
+        s.result["sessionPath"] = await self._persist("finished")
         await self._publish()
         return VisionErrorCode.OK
 
@@ -366,6 +628,33 @@ class HandEyeSession:
         else:
             result = await self._ports.measure_board(s.board)
         return result[0], result[1], (result[2] if len(result) > 2 else {})
+
+    def _intrinsics_source(self) -> str | None:
+        """Herkunft der Intrinsik: erst die Quelle des Servers, sonst was die
+        Messungen gemeldet haben; `None`, wenn unbekannt."""
+        if self._ports.intrinsics_source is not None:
+            try:
+                source = self._ports.intrinsics_source()
+            except Exception:
+                source = None
+            if source:
+                return str(source)
+        return self._s.intrinsics_source
+
+    async def _persist(self, outcome: str) -> str | None:
+        """Datensatz der Sitzung schreiben; Fehler nur ins Log (nie ein Grund,
+        die Kalibrierung scheitern zu lassen). Liefert den Ordner oder `None`."""
+        s = self._s
+        folder = (self._ports.sessions_dir or self._ports.path.parent / "sessions") / s.stamp
+        try:
+            await asyncio.to_thread(
+                _write_session_dataset, folder, s, outcome, self._intrinsics_source(),
+                self._ports.frame_id,
+            )
+        except Exception:
+            _log.exception("Hand-Auge-Datensatz nicht geschrieben: %s", folder)
+            return None
+        return str(folder)
 
     def _target_label(self) -> str:
         board = self._s.board
@@ -415,6 +704,11 @@ class HandEyeSession:
             "maxPositionM": hand_eye.max_position_m if math.isfinite(hand_eye.max_position_m) else None,
             "maxRotationDeg": hand_eye.max_rotation_deg if math.isfinite(hand_eye.max_rotation_deg) else None,
             "sampleCount": hand_eye.sample_count,
+            "refinedReprojectionRmsPx": _finite_or_none(hand_eye.refined_reprojection_rms_px),
+            "boardScale": _finite_or_none(hand_eye.board_scale),
+            "looErrorRmsPx": _finite_or_none(hand_eye.loo_error_rms_px),
+            "looErrorRmsM": _finite_or_none(hand_eye.loo_error_rms_m),
+            "intrinsicsSource": hand_eye.intrinsics_source or None,
         }
 
     def status_json(self) -> str:
@@ -438,6 +732,9 @@ class HandEyeSession:
                     if s.board is not None
                     else {"type": "tag", "tagId": s.tag_id}
                 ),
+                #: Herkunft der Intrinsik: `calibration`, `realsense_factory`,
+                #: `placeholder` oder `null` (unbekannt).
+                "intrinsicsSource": self._intrinsics_source(),
                 "acceptedCount": len(flanges),
                 "rotationSpreadDeg": spread_deg,
                 "rotationAxes": axes,
@@ -456,6 +753,10 @@ class HandEyeSession:
                         "residualM": sample.residual_m,
                         "residualDeg": sample.residual_deg,
                         "rejected": sample.rejected,
+                        # Vorhersagefehler ohne diese Aufnahme (Brett-Modus,
+                        # nach `finish`, nicht bei Ausreissern), sonst `null`.
+                        "looErrorPx": sample.loo_error_px,
+                        "looErrorM": sample.loo_error_m,
                     }
                     for index, sample in enumerate(s.samples)
                 ],

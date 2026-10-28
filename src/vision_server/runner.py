@@ -1172,6 +1172,7 @@ async def _install_hand_eye_session(
         HandEyePorts(
             measure_tag=apriltag_source.measure_tag,
             measure_board=getattr(apriltag_source, "measure_board", None),
+            intrinsics_source=lambda: getattr(apriltag_source, "intrinsics_source", None),
             busy=busy,
             path=config.apriltag.hand_eye_path,
             apply=apriltag_source.apply_hand_eye,
@@ -1624,6 +1625,7 @@ async def _install_cell_watch(
         apriltag.tag_family,
         apriltag.detector_backend,
         subpixel_corner_refinement=apriltag.subpixel_corner_refinement,
+        corner_refinement_method=getattr(apriltag, "corner_refinement_method", "subpix"),
         apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
         detector_parameters=apriltag.detector_parameters,
     )

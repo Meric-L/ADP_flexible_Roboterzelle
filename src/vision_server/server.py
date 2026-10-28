@@ -132,6 +132,11 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
     },
     "cam_flange": {
+        # Subpixel-Ecken an (Verfahren subpix): Die Handkamera misst Tags zum
+        # Anfahren, jede Eckenrundung wirkt als fester Versatz. Die CPU-Last
+        # (siehe AprilTagProfileConfig) spielt hier bei 640x480 keine Rolle.
+        "subpixel_corner_refinement": True,
+        "corner_refinement_method": "subpix",
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
         # Frames kommen ueber SharedCamera in dieser Aufloesung an, nicht in
         # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
@@ -240,6 +245,30 @@ def merged_json_object_env(name: str, preset: dict | None) -> dict:
     return merged
 
 
+def subpixel_corner_settings(preset: dict) -> dict:
+    """`subpixel_corner_refinement` und `corner_refinement_method` aus Preset und Umgebung.
+
+    Preset-Vorgabe (`cam_flange`: an, Verfahren `"subpix"`; sonst aus).
+    `VISION_SUBPIXEL_CORNER_REFINEMENT` uebersteuert: `0`/`none` aus, `1`
+    an mit dem Verfahren des Presets, `apriltag`/`subpix` an mit diesem
+    Verfahren. Unbekannte Werte werfen `ValueError` beim Start.
+    """
+    enabled = bool(preset.get("subpixel_corner_refinement", False))
+    method = str(preset.get("corner_refinement_method", "subpix"))
+    raw = os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "").strip().lower()
+    if raw in ("0", "none", "false"):
+        enabled = False
+    elif raw in ("1", "true"):
+        enabled = True
+    elif raw in ("apriltag", "subpix"):
+        enabled, method = True, raw
+    elif raw:
+        raise ValueError(
+            f"VISION_SUBPIXEL_CORNER_REFINEMENT='{raw}': erwartet 0, 1, none, apriltag oder subpix"
+        )
+    return {"subpixel_corner_refinement": enabled, "corner_refinement_method": method}
+
+
 def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     """Return this Pi's AprilTag profile.
 
@@ -255,6 +284,9 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     default.
     """
     preset = dict(PI_APRILTAG_PRESETS.get(frame_id, {}))
+    subpixel = subpixel_corner_settings(preset)
+    for key in subpixel:
+        preset.pop(key, None)
     # OpenCV-Detektor-Parameter: Preset, je Schluessel von der Umgebungs-
     # variable uebersteuert (`null` entfernt einen Eintrag).
     preset["detector_parameters"] = merged_json_object_env(
@@ -296,7 +328,7 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         ),
         # Default aus, siehe AprilTagProfileConfig.subpixel_corner_refinement.
         # Env-Var bleibt als Schalter fuer Layer 2/Kalibrierung.
-        subpixel_corner_refinement=os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "0") == "1",
+        **subpixel,
         # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
         # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver
         # Default aendert -- siehe `AprilTagProfileConfig.apriltag_quad_decimate`.
