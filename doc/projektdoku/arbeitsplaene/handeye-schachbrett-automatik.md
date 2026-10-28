@@ -115,3 +115,9 @@ Das gelaserte Brett hat **7×8 Felder** zu 23 mm, also **6×7 Innenecken**. So s
 Die Angaben „6×7 Felder / 5×6 Innenecken“ weiter oben in diesem Dokument (Abschnitt Ziel, Punkt 1, und die Erläuterung zu `cols`/`rows`) sind damit überholt. Sie bleiben stehen; maßgeblich ist dieser Nachtrag.
 
 `tests/test_boards_pose.py` rendert bewusst ein 5×6-Innenecken-Brett (`SPEC`). Das ist ein synthetisches Testbild für die Posenberechnung und kein Widerspruch zur Hardware. Der Kommentar über `SPEC` nennt dort noch „6x7 Felder, also 5x6 Innenecken“ für das Labor-Brett. Das ist dort falsch; geändert wurde es nicht.
+
+## Nachtrag 28.10.2026 (2): Target 7×10, Brett einstellbar
+
+Der Nachtrag „Brettgröße“ oben (6×7 Innenecken) ist für das Hand-Auge-Target überholt. Maßgeblich ist jetzt das Target mit 8×11 Feldern zu 23 mm, also **7×10 Innenecken** (`cols` 7, `rows` 10, `squareSizeM` 0,023). Die Pi-Presets `cam_ceiling` und `cam_flange` stehen seit Commit `c615b36` darauf. Im Frontend ist das Brett im Hand-Auge-Fenster einstellbar; Standard ist 7×10 / 23 mm.
+
+Befund, Frontend-Modul, Posen und Livestream stehen in `handeye-genauigkeit.md` im Abschnitt „Nachtrag 28.10.2026: Target 7×10, Brett einstellbar, Livestream“. Die Angaben in diesem Dokument oben bleiben unverändert stehen.

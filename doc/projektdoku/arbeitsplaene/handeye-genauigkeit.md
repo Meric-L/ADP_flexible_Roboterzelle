@@ -329,3 +329,35 @@ Die Zahlen sagen nichts über den festen Versatz am echten FR3 aus; das klärt n
 - Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
 - Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/projektdoku/` übernommen (nicht nur hier im Plan stehen lassen).
+
+## Nachtrag 28.10.2026: Target 7×10, Brett einstellbar, Livestream
+
+**Befund am Aufbau.** Bei der Hand-Auge-Sitzung wurde jede Aufnahme verworfen, mit der Meldung „Board-Pose passt schlecht (18.0 px)“. Ursache: Das Frontend suchte 6×7 Innenecken. Das Target hat 8×11 Felder, also 7×10 Innenecken zu 23 mm. Die Suche fand dadurch ein Teilraster mit falsch zugeordneten Ecken, und der Reprojektionsfehler blieb weit über der Schwelle. Die Pi-Presets `cam_ceiling` und `cam_flange` in `src/vision_server/server.py` stehen seit Commit `c615b36` (Kollege, 28.10.2026) auf 7×10 innere Ecken, 23 mm je Feld.
+
+**Frontend** (`webskillcomposition`, Branch `handeye-brett`, Commit `54a96c8`): Das Brett ist im Hand-Auge-Fenster einstellbar: Innenecken quer, Innenecken hoch, Feldgröße in mm. Standard ist 7×10 / 23 mm. Die Eingabe wird geprüft: ganze Zahlen, quer ≥ 3, hoch ≥ 2, Summe ungerade, Feld 5–100 mm. Die Einstellung wird im Browser unter dem localStorage-Schlüssel `wsc.handEye.board/1` gemerkt. Das Modul ist `model/handEyeBoard.ts` mit `HAND_EYE_DEFAULT_BOARD`, `validateHandEyeBoard`, `loadHandEyeBoard` und `saveHandEyeBoard`.
+
+**Posen nachgerechnet** (Simulation, neuer Löser, 7×10-Brett, 640 × 480, Rauschen 0,3 px):
+- Die 18 Auto-Ansichten drehen um alle drei Achsen. RMS der Paardrehungen: 28° / 29° / 56°.
+- Das Brett liegt in allen 18 Ansichten ganz im Bild.
+- Fehler von `t_X`: Median 0,30 mm, p90 0,60 mm. Maßstab: 0,06 %.
+- Ein Satz mit stärkeren Neigungen und drei Abständen (15 Ansichten) war schlechter: 0,54 mm bzw. 1,01 mm. Die Posen bleiben deshalb, wie sie sind.
+
+**Livestream im Kalibriermodus** (`CameraStreamMode` = `calibration`, Commit `6e03cca`):
+- Keine schwarze Schriftkontur mehr. Die Texte werden mit `outline=False` gezeichnet.
+- Oben links steht nur „{n} Ecken“ in Brettfarbe, bei nicht erkanntem Brett „0 Ecken“.
+- Unten links steht nur „Kalibriermodus“. Den Sitzungsfortschritt zeigt das Frontend.
+- Gefundene Ecken sind größer markiert (Radius 6 statt 4, jeweils mal Skalierung, mindestens 3 px).
+- `draw_board_overlay` in `src/tagloc/overlay.py` hat die neuen Schalter `outline` (Standard `True`) und `compact` (Standard `False`). Die CLI-Ansicht ruft mit den Standardwerten auf und ist unverändert.
+- Die Pause während einer Messung oder Hand-Auge-Sitzung (`src/vision_server/runner.py`) gilt im Code nur für den Modus `apriltag`: dann zeigt der Stream das Rohbild (`src/vision_server/stream_overlay.py`, `annotate`). Im Modus `calibration` wird das Overlay davon nicht ausgesetzt.
+
+**Tests:**
+- Frontend: `handEyeBoard.test.ts`.
+- Pi: `tests/test_stream_calibration_overlay.py` (2 Tests; sie brauchen OpenCV und werden sonst übersprungen).
+- Pi-Suite: 867 Tests, OK (Lauf 28.10.2026 mit der Projekt-venv, `PYTHONPATH=src python -m unittest discover -s tests -t .`).
+
+**Nächste Schritte am Aufbau:**
+1. Intrinsik der Handkamera mit dem 7×10-Target neu kalibrieren.
+2. Im Hand-Auge-Fenster 7×10 / 23 mm prüfen und „Brett prüfen“ auslösen.
+3. Kalibrierfahrt durchführen.
+4. `boardScale` und den Vorhersagefehler ablesen.
+5. „Brettursprung anfahren“ ausführen und den Versatz messen.
