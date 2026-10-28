@@ -110,13 +110,14 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "max_reproj_error_px": 3.0,
         # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
         # nur die Aufloesung/Kameradistanz unterscheidet sich, nicht das
-        # Blatt. Seit 19.10.2026 das neue Brett: 6x7 innere Ecken, 23 mm/Feld.
+        # Blatt. Seit 28.10.2026 das neue Brett: 7x10 innere Ecken (8x11 Felder),
+        # 23 mm/Feld.
         # Wird es bei der Kalibrierfahrt nicht gefunden, mit dem
         # Diagnose-Skript (`tools/diagnose_board.py`) mehrere cols/rows-
         # Kombinationen gegen einen echten Frame testen.
         "calibration_board_type": "chessboard",
-        "calibration_board_cols": 6,
-        "calibration_board_rows": 7,
+        "calibration_board_cols": 7,
+        "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
         # Kannala-Brandt statt Brown-Conrady: in den Bildtests vom 29.09.2026
         # das beste Modell fuer die HQ-Kamera bei 4056x3040 (Arbeitsplan
@@ -146,16 +147,16 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Neues Brett seit 19.10.2026: 6x7 innere Ecken, 23 mm/Feld. Cols +
-        # Rows ist 13, also ungerade -- damit ist es auch fuer die automatische
+        # Neues Brett seit 28.10.2026: 7x10 innere Ecken (8x11 Felder), 23 mm/Feld.
+        # Cols + Rows ist 17, also ungerade -- damit ist es auch fuer die automatische
         # Hand-Auge-Kalibrierung mit Schachbrett geeignet (dort noetig, damit
         # die 180-Grad-Drehung des Bretts erkennbar ist). Das alte Brett (7x9
         # innere Ecken, 22 mm/Feld) gab RMS 0,2945 px, Abdeckung 96 %/95 %,
         # siehe data/calibration/cam_flange.json; ein simples Schachbrett,
         # kein ChArUco-Board, das braeuchte ArUco-Marker im Druck.
         "calibration_board_type": "chessboard",
-        "calibration_board_cols": 6,
-        "calibration_board_rows": 7,
+        "calibration_board_cols": 7,
+        "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
         # Brown-Conrady mit 5 Koeffizienten: in den Bildtests vom 29.09.2026
         # das beste Modell bei 640x480. Entspricht dem bisherigen Verhalten,
