@@ -947,6 +947,18 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             lambda: apriltag_source.measure_calls > 0
             or (hand_eye_session is not None and hand_eye_session.active)
         )
+    if apriltag_source is not None:
+        # MeasureBoard an beiden Pis. Es liest nur Kamerabilder und aendert keinen
+        # Zustand, laeuft deshalb auch waehrend einer Hand-Auge-Sitzung (die
+        # Steuerung zentriert das Brett damit vor `CaptureHandEyeSample`) und in
+        # der Aufnahmephase einer Kamera-Kalibrierung (die automatische
+        # Kalibrierfahrt nimmt nur auf, wenn das ganze Brett im Bild ist).
+        # Gesperrt fuer Jobs und waehrend der Auswertung der Kalibrierung.
+        await _install_measure_board(
+            space, config, apriltag_source, calibration_methods, states,
+            lambda: jobs.busy
+            or (calibration_session is not None and calibration_session.processing),
+        )
     if apriltag_source is not None and space.last_tag_measurement is not None:
         # MeasureTags und MeasureTagReference nehmen beide frische Bilder; sie
         # sperren sich gegenseitig (und MeasureTagReference auch sich selbst).
@@ -956,15 +968,9 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
             lambda: jobs.busy
             or (calibration_session is not None and calibration_session.busy)
         )
-        # MeasureTags und MeasureBoard laufen auch WAEHREND einer Hand-Auge-
-        # Sitzung: Sie lesen nur Kamerabilder und aendern keinen Zustand. Eine
-        # haengengebliebene Sitzung soll Layer 2 nicht sperren, und die Steuerung
-        # zentriert das Brett mit MeasureBoard, bevor sie `CaptureHandEyeSample`
-        # ruft. Gesperrt sind sie nur fuer Job und Kamera-Kalibrierung.
-        await _install_measure_board(
-            space, config, apriltag_source, calibration_methods, states,
-            measuring_busy,
-        )
+        # MeasureTags laeuft auch WAEHREND einer Hand-Auge-Sitzung: Es liest nur
+        # Kamerabilder und aendert keinen Zustand. Eine haengengebliebene Sitzung
+        # soll Layer 2 nicht sperren. Gesperrt nur fuer Job und Kamera-Kalibrierung.
         # MeasureTagReference faehrt den Roboter nicht, misst aber laenger; eine
         # Hand-Auge-Sitzung sperrt es weiterhin.
         reference_busy = (
@@ -1233,8 +1239,9 @@ async def _install_measure_board(
     busy: Callable[[], bool],
 ) -> None:
     """Legt MeasureBoard an: das Kalibrier-Schachbrett messen, damit die
-    Steuerung es vor der Hand-Auge-Aufnahme zentrieren kann. Nur auf dem
-    Hand-Pi. Antwortet erst nach der Messung, das Ergebnis kommt direkt zurueck.
+    Steuerung es vor der Hand-Auge-Aufnahme zentrieren und die Kalibrierfahrt
+    der Deckenkamera vor jeder Aufnahme pruefen kann. An beiden Pis. Antwortet
+    erst nach der Messung, das Ergebnis kommt direkt zurueck.
     Siehe `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
     """
     from .handeye_session import _parse_board
@@ -1258,7 +1265,7 @@ async def _install_measure_board(
         if states.state_names()[0] != "Operational":
             return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
         if busy():
-            return refusal(VisionErrorCode.BUSY, "Job oder Kamera-Kalibrierung laeuft")
+            return refusal(VisionErrorCode.BUSY, "Job oder Auswertung der Kalibrierung laeuft")
         result = await apriltag_source.measure_board_view(request)
         payload = dumps(result)
         if result["error"]:

@@ -211,6 +211,16 @@ class CalibrationSession:
         self._on_calibrated = callback
 
     @property
+    def processing(self) -> bool:
+        """`True` nur waehrend der Hintergrund-Auswertung nach `finish()`.
+
+        Fuer `MeasureBoard`: Waehrend der Aufnahmephase darf gemessen werden
+        (die automatische Kalibrierfahrt fragt vor jeder Aufnahme, ob das Brett
+        ganz im Bild ist), waehrend der Auswertung gehoert die CPU ihr.
+        """
+        return self._processing
+
+    @property
     def busy(self) -> bool:
         """`True` waehrend Aufnahme ODER Hintergrund-Auswertung.
 

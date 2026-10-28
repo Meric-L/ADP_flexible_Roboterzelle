@@ -360,9 +360,19 @@ class BusyTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(session.running)
         self.assertTrue(session.busy)  # Auswertung laeuft noch
+        self.assertTrue(session.processing)
         release.set()
         await session.wait_for_processing()
         self.assertFalse(session.busy)
+        self.assertFalse(session.processing)
+
+    async def test_not_processing_while_capturing(self):
+        """MeasureBoard darf in der Aufnahmephase messen, nur nicht waehrend der Auswertung."""
+        session, camera, _, _ = make_session()
+        session.start()
+        await _capture_n(session, camera, 2)
+        self.assertTrue(session.busy)
+        self.assertFalse(session.processing)
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
