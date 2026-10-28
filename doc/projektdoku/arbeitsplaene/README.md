@@ -34,6 +34,7 @@ nicht gibt.
 | [`zellen-ueberwachung.md`](zellen-ueberwachung.md) | apriltag | fertig | `Agent: Zellen-Überwachung (Layer 1)` | 13.10.2026 |
 | [`layer2-measuretags.md`](layer2-measuretags.md) | apriltag | fertig | `Agent: MeasureTags auf dem Hand-Pi` | 15.10.2026 |
 | [`hand-auge-brett-zentrieren.md`](hand-auge-brett-zentrieren.md) | apriltag | fertig | `Agent: Hand-Auge-Brett zentrieren auf dem Hand-Pi` | 22.10.2026 |
+| [`handeye-genauigkeit.md`](handeye-genauigkeit.md) | apriltag | in Arbeit | Meric, `Agent: Hand-Auge-Genauigkeit` | 28.10.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
 | [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md) | frontend | fertig | Meric, `Agent: Tag um 90° drehen` | 19.10.2026 |
 | [`rohbild-speichern.md`](rohbild-speichern.md) | vision | fertig | Meric, `Agent: Rohbild speichern` | 19.10.2026 |
