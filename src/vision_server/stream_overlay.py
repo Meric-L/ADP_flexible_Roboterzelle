@@ -310,45 +310,10 @@ class AprilTagStreamAnnotator:
                 # `self._last_board` bleibt trotzdem nuetzlich -- die
                 # Vorschau hier laeuft unabhaengig davon periodisch auf dem
                 # kleinen Bild und hilft beim Positionieren.
-                draw_board_overlay(canvas, self._last_board)
-                progress = self.calibration_progress
-                if progress is None:
-                    draw_status_bar(
-                        canvas,
-                        [
-                            f"Modus: Kalibrierung   Board: {self._board_spec().type}",
-                            f"Kalibrierung: {self._calibration.calibration_id or 'unbenannt'}",
-                        ],
-                    )
-                elif progress["processing"]:
-                    draw_status_bar(
-                        canvas,
-                        [
-                            "Modus: Kalibrierung   Auswertung laeuft ...",
-                            f"{progress['samples']} Aufnahmen werden ausgewertet",
-                        ],
-                    )
-                elif progress.get("result") is not None:
-                    result = progress["result"]
-                    if result.get("error") == 0:
-                        lines = [
-                            "Modus: Kalibrierung   Fertig",
-                            f"RMS {result.get('rms')} px, {result.get('samples')} Aufnahmen",
-                        ]
-                    else:
-                        lines = [
-                            "Modus: Kalibrierung   Fehlgeschlagen",
-                            result.get("message", ""),
-                        ]
-                    draw_status_bar(canvas, lines)
-                else:
-                    draw_status_bar(
-                        canvas,
-                        [
-                            "Modus: Kalibrierung   Session laeuft",
-                            f"Aufnahmen {progress['samples']}/{progress['minSamples']}",
-                        ],
-                    )
+                # Nur Eckenzahl oben links + "Kalibriermodus" unten links, ohne
+                # dunkle Kontur; Session-Fortschritt zeigt das Frontend-Modal.
+                draw_board_overlay(canvas, self._last_board, outline=False, compact=True)
+                draw_status_bar(canvas, ["Kalibriermodus"])
                 return canvas
 
             if mode == "tagreference":

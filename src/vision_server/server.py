@@ -147,13 +147,14 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Neues Brett seit 28.10.2026: 7x10 innere Ecken (8x11 Felder), 23 mm/Feld.
-        # Cols + Rows ist 17, also ungerade -- damit ist es auch fuer die automatische
-        # Hand-Auge-Kalibrierung mit Schachbrett geeignet (dort noetig, damit
-        # die 180-Grad-Drehung des Bretts erkennbar ist). Das alte Brett (7x9
-        # innere Ecken, 22 mm/Feld) gab RMS 0,2945 px, Abdeckung 96 %/95 %,
-        # siehe data/calibration/cam_flange.json; ein simples Schachbrett,
-        # kein ChArUco-Board, das braeuchte ArUco-Marker im Druck.
+        # Hand-Auge-/Kalibrierbrett seit 28.10.2026: 8x11 Felder = 7x10 innere
+        # Ecken, 23 mm/Feld. 7 + 10 = 17 ist ungerade, also eindeutig fuer die
+        # automatische Hand-Auge-Kalibrierung (die 180-Grad-Drehung des Bretts
+        # ist erkennbar). Eine zu kleine Eckenzahl findet ein Teilraster mit
+        # falsch zugeordneten Ecken ("Board-Pose passt schlecht", ca. 18 px).
+        # Die Intrinsik der Handkamera muss mit diesem Brett neu kalibriert
+        # werden (das alte 7x9-Brett mit 22 mm/Feld ist hinfaellig). Ein
+        # simples Schachbrett, kein ChArUco-Board.
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
         "calibration_board_rows": 10,

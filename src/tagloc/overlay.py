@@ -236,31 +236,43 @@ def draw_tag_overlay(
     return image
 
 
-def draw_board_overlay(image, board_sample: Any, *, coverage=None) -> Any:
+def draw_board_overlay(
+    image, board_sample: Any, *, coverage=None, outline: bool = True, compact: bool = False
+) -> Any:
     """Mark the found board corners -- the stream's calibration mode.
 
     Lets the frontend see *what* the calibration sees: whether the board is
     detected at all, where in the image it sits, and where samples are
     still missing.
+
+    `outline=False` zeichnet Text ohne dunkle Kontur. `compact=True` schreibt
+    oben links nur "{n} Ecken" (ohne "Board:"-Praefix, ohne Abdeckungszeile)
+    und zeichnet die Ecken etwas groesser (Stream im Kalibriermodus).
     """
     import cv2
 
     scale = _scale_for(image)
     margin = round(12 * scale)
+    origin = (margin, round(28 * scale))
     if board_sample is not None:
-        radius = max(2, round(4 * scale))
+        radius = max(3, round((6 if compact else 4) * scale))
         for point in np.asarray(board_sample.corners, dtype=np.float64).reshape(-1, 2):
             cv2.circle(image, (int(point[0]), int(point[1])), radius, COLOR_BOARD, -1)
         count = len(np.asarray(board_sample.corners).reshape(-1, 2))
-        _put_text(image, f"Board: {count} Ecken", (margin, round(28 * scale)), COLOR_BOARD)
+        text = f"{count} Ecken" if compact else f"Board: {count} Ecken"
+        _put_text(image, text, origin, COLOR_BOARD, outline=outline)
     else:
-        _put_text(image, "Board: nicht erkannt", (margin, round(28 * scale)), COLOR_AMBIGUOUS)
-    if coverage is not None:
+        if compact:
+            _put_text(image, "0 Ecken", origin, COLOR_BOARD, outline=outline)
+        else:
+            _put_text(image, "Board: nicht erkannt", origin, COLOR_AMBIGUOUS, outline=outline)
+    if coverage is not None and not compact:
         _put_text(
             image,
             f"Abdeckung x {coverage[0] * 100:.0f} %  y {coverage[1] * 100:.0f} %",
             (margin, round(52 * scale)),
             COLOR_BOARD,
+            outline=outline,
         )
     return image
 
