@@ -43,6 +43,7 @@ nicht gibt.
 | [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | fertig | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
 | [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md) | apriltag | fertig | Meric, `Agent: Live-Ansicht Tag-Einmessen` | 21.10.2026 |
 | [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
+| [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

@@ -145,10 +145,11 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
             use_case_dir=self.base,
         )
         self.camera = types.SimpleNamespace(latest_frame=None)
+        self.camera_source = types.SimpleNamespace(camera=self.camera)
         self.busy = {"value": False}
         self.methods = {}
         await _install_save_use_case_image(
-            space, config, types.SimpleNamespace(camera=self.camera), self.methods,
+            space, config, self.camera_source, self.methods,
             lambda: self.busy["value"],
         )
         self.method = server.get_node(ua.NodeId("VisionMachine.SaveUseCaseImage", idx))
@@ -161,11 +162,13 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         return self.frame(asyncio.get_running_loop().time() + 60)
 
     async def call(self, series=1, metadata='{"series": 1}'):
-        return await self.vision_system.call_method(
+        """Ruft die Methode auf; liefert (FileName, Error) -- `ResultJson` ueberspringt dieser Helfer."""
+        name, _result_json, error = await self.vision_system.call_method(
             self.method,
             ua.Variant(series, ua.VariantType.Int32),
             ua.Variant(metadata, ua.VariantType.String),
         )
+        return name, error
 
     async def test_saves_image_and_json(self):
         self.assertEqual(list(self.methods), ["SaveUseCaseImage"])
@@ -183,6 +186,45 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("hostname", document["pi"])
         second, _ = await self.call(series=4)
         self.assertEqual(Path(second).name, "versuch_002.png")
+
+    async def test_measures_the_placed_cube_and_answers_with_the_result(self):
+        from use_case_eval import synthetic
+
+        calibration = synthetic.make_calibration()
+        pose = synthetic.look_down_pose(0.0, 0.0, 220.0, 15.0, 1.0)
+        image = synthetic.render_trial(calibration, pose, 1.0, -0.5, 4.0, supersample=4)
+        self.camera_source.calibration = calibration
+        self.camera_source.intrinsics_source = "realsense_factory"
+        self.camera.latest_frame = types.SimpleNamespace(
+            image=image, timestamp=asyncio.get_running_loop().time() + 60
+        )
+        name, result_json, error = await self.vision_system.call_method(
+            self.method,
+            ua.Variant(2, ua.VariantType.Int32),
+            ua.Variant('{"series": 2}', ua.VariantType.String),
+        )
+        self.assertEqual(error, int(VisionErrorCode.OK))
+        result = json.loads(result_json)
+        self.assertTrue(result["ok"], result.get("grund"))
+        self.assertAlmostEqual(result["dx_mm"], 1.0, delta=0.1)
+        self.assertAlmostEqual(result["dy_mm"], -0.5, delta=0.1)
+        self.assertAlmostEqual(result["dtheta_deg"], 4.0, delta=0.2)
+        document = read_json(Path(name))
+        self.assertEqual(document["messung"], result)
+        self.assertEqual(document["pi"]["intrinsics"]["source"], "realsense_factory")
+        self.assertTrue((Path(name).parent / "versuch_001_messung.png").is_file())
+
+    async def test_without_calibration_the_photo_is_kept_and_the_measurement_says_why(self):
+        self.camera.latest_frame = self.fresh_frame()
+        name, result_json, error = await self.vision_system.call_method(
+            self.method,
+            ua.Variant(1, ua.VariantType.Int32),
+            ua.Variant("{}", ua.VariantType.String),
+        )
+        self.assertEqual(error, int(VisionErrorCode.OK))
+        self.assertTrue(Path(name).is_file())
+        self.assertFalse(json.loads(result_json)["ok"])
+        self.assertFalse(read_json(Path(name))["messung"]["ok"])
 
     async def test_waits_for_a_frame_taken_after_the_call(self):
         # Das Bild von vor dem Aufruf (Roboter noch in Bewegung) zaehlt nicht.

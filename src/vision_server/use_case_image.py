@@ -1,6 +1,7 @@
 """Use-Case-Foto: PNG plus Metadaten-JSON pro Versuch (OPC-UA-Methode `SaveUseCaseImage`).
 
-Ablage: `<base_dir>/reihe_<NNN>/versuch_<NNN>.png` und `versuch_<NNN>.json`.
+Ablage: `<base_dir>/reihe_<NNN>/versuch_<NNN>.png` und `versuch_<NNN>.json`,
+bei vorliegender Messung zusaetzlich `versuch_<NNN>_messung.png` (Kontrollbild).
 """
 
 import json
@@ -48,8 +49,16 @@ def save_use_case_image(
     client_meta: str,
     pi_meta: dict,
     now: datetime | None = None,
+    measurement: dict | None = None,
+    annotated: Any = None,
 ) -> tuple[Path, int]:
     """Schreibt `image` als PNG samt JSON; liefert (PNG-Pfad, Versuchsnummer).
+
+    `measurement` (Bildmessung, vor dem Speichern berechnet) steht unter
+    "messung" in der JSON -- so wird die Datei weiter in einem Zug exklusiv
+    angelegt und nie nachtraeglich umgeschrieben. `annotated` ist das
+    Kontrollbild, es kommt als `versuch_NNN_messung.png` daneben (best effort:
+    ein Fehler dabei laesst das Speichern nicht scheitern).
 
     Nie ueberschreibend: die Dateien werden exklusiv angelegt, bei einer
     Kollision (paralleler Aufruf) wird die naechste Nummer genommen. Wirft
@@ -96,6 +105,8 @@ def save_use_case_image(
         "pi": pi_meta,
         key: value,
     }
+    if measurement is not None:
+        document["messung"] = measurement
     try:
         with open(json_path, "x", encoding="utf-8") as fh:
             json.dump(document, fh, indent=2, ensure_ascii=False, default=str)
@@ -103,4 +114,12 @@ def save_use_case_image(
     except OSError:
         png_path.unlink(missing_ok=True)
         raise
+    if annotated is not None:
+        ok, control = cv2.imencode(".png", annotated)
+        if ok:
+            try:
+                with open(directory / f"versuch_{n:03d}_messung.png", "xb") as fh:
+                    fh.write(control.tobytes())
+            except OSError:
+                pass
     return png_path, n

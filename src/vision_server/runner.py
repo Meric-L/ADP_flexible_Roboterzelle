@@ -1650,7 +1650,12 @@ def _file_meta(path: Any) -> dict[str, Any]:
 
 
 def _build_use_case_pi_meta(
-    config: VisionServerConfig, frame: Any, frame_id: str, now: float
+    config: VisionServerConfig,
+    frame: Any,
+    frame_id: str,
+    now: float,
+    calibration: Any = None,
+    intrinsics_source: str = "calibration",
 ) -> dict[str, Any]:
     """Metadaten des Pi fuer die JSON-Datei; jedes Feld einzeln abgesichert."""
     meta: dict[str, Any] = {}
@@ -1677,6 +1682,10 @@ def _build_use_case_pi_meta(
         if dataclasses.is_dataclass(config.camera_stream)
         else None,
     )
+    if calibration is not None:
+        from use_case_eval.live import intrinsics_meta
+
+        put("intrinsics", lambda: intrinsics_meta(calibration, intrinsics_source))
     tag = config.apriltag
     if tag is not None:
         put("apriltag", lambda: dataclasses.asdict(tag))
@@ -1696,10 +1705,14 @@ async def _install_save_use_case_image(
     """Legt `SaveUseCaseImage` an: frisches Kamera-Vollbild + Metadaten ablegen.
 
     Eingaben `Series` (Int32, >= 1) und `MetadataJson` (String, vom Client);
-    Ausgaben `FileName` (relativ zum Repo) und `Error`. Wartet auf ein Bild,
-    das mindestens `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand.
-    Waehrend eines Jobs abgelehnt (wie `SaveRawImage`).
+    Ausgaben `FileName` (relativ zum Repo), `ResultJson` (Bildmessung als JSON,
+    bei Fehler-Codes leer) und `Error`. Wartet auf ein Bild, das mindestens
+    `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand. Waehrend eines Jobs
+    abgelehnt (wie `SaveRawImage`). Ein Messfehler laesst das Speichern nie
+    scheitern: er steht als `{"ok": false, "grund": ...}` in der Messung.
     """
+    from use_case_eval.live import load_sticker_offset, measure_for_save
+
     from .use_case_image import save_use_case_image
 
     frame_id = (
@@ -1707,9 +1720,10 @@ async def _install_save_use_case_image(
     )
     base_dir = config.use_case_dir
 
-    def reply(name: str, code: VisionErrorCode):
+    def reply(name: str, code: VisionErrorCode, result_json: str = ""):
         return (
             ua.Variant(name, ua.VariantType.String),
+            ua.Variant(result_json, ua.VariantType.String),
             ua.Variant(int(code), ua.VariantType.Int32),
         )
 
@@ -1733,15 +1747,26 @@ async def _install_save_use_case_image(
                 _log.warning("SaveUseCaseImage: kein frisches Kamerabild")
                 return reply("", VisionErrorCode.INVALID_STATE)
             await asyncio.sleep(USE_CASE_POLL_INTERVAL_S)
+        calibration = getattr(camera_source, "calibration", None)
+        intrinsics_source = getattr(camera_source, "intrinsics_source", "calibration")
         try:
-            pi_meta = _build_use_case_pi_meta(config, frame, frame_id, loop.time())
+            pi_meta = _build_use_case_pi_meta(
+                config, frame, frame_id, loop.time(), calibration, intrinsics_source
+            )
         except Exception:
             _log.exception("Use-Case-Metadaten unvollstaendig")
             pi_meta = {}
+        # Erst messen, dann speichern: die Messung steht so schon in der einmalig
+        # exklusiv angelegten JSON, nichts wird nachtraeglich umgeschrieben.
+        sticker_offset = await asyncio.to_thread(load_sticker_offset, base_dir)
+        measurement, annotated = await asyncio.to_thread(
+            measure_for_save, frame.image, calibration, sticker_offset
+        )
         try:
             path, _trial = await asyncio.to_thread(
                 save_use_case_image,
                 frame.image, base_dir, series, metadata_json or "", pi_meta,
+                None, measurement, annotated,
             )
         except Exception:
             _log.exception("Use-Case-Bild konnte nicht gespeichert werden")
@@ -1751,14 +1776,14 @@ async def _install_save_use_case_image(
         except ValueError:
             name = path.as_posix()  # ausserhalb des Repos: absoluter Pfad
         _log.info("Use-Case-Bild gespeichert: %s", name)
-        return reply(name, VisionErrorCode.OK)
+        return reply(name, VisionErrorCode.OK, json.dumps(measurement, ensure_ascii=False))
 
     methods["SaveUseCaseImage"] = await space.vision_system.add_method(
         ua.NodeId(f"{config.vision_system_name}.SaveUseCaseImage", space.own_idx),
         ua.QualifiedName("SaveUseCaseImage", space.own_idx),
         save_use_case_image_method,
         [ua.VariantType.Int32, ua.VariantType.String],
-        [ua.VariantType.String, ua.VariantType.Int32],
+        [ua.VariantType.String, ua.VariantType.String, ua.VariantType.Int32],
     )
 
 
