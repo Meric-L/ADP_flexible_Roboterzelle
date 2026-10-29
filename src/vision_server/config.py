@@ -77,6 +77,9 @@ class VisionServerConfig:
     #: Ablage fuer `SaveRawImage` (verlustfreie PNG-Vollbilder). `None` = die
     #: Methode nicht anlegen.
     raw_image_dir: Path | None = _REPO_ROOT / "data" / "rohbilder"
+    #: Ablage fuer `SaveUseCaseImage` (PNG + Metadaten-JSON je Versuch unter
+    #: `reihe_NNN/versuch_NNN.*`). `None` = die Methode nicht anlegen.
+    use_case_dir: Path | None = _REPO_ROOT / "data" / "use_case"
     #: Mess-Protokoll von `MeasureTagReference` (siehe `tagreference_log.py`).
     #: `None` = nichts schreiben; `GET /tagreference.jpg` liefert dann 404.
     tag_reference_debug_dir: Path | None = _REPO_ROOT / "data" / "tagreference"
