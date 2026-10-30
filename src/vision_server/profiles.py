@@ -30,8 +30,6 @@ DEFAULT_HAND_EYE_PATH: Path | None = None
 class AprilTagProfileConfig:
     """Betriebsparameter der AprilTag-Erkennung."""
 
-    camera_index: int = 0
-    use_picamera: bool = True
     resolution: tuple[int, int] = (2028, 1520)
     calibration_path: Path = DEFAULT_CALIBRATION_PATH
     tag_map_path: Path | None = DEFAULT_TAG_MAP_PATH
@@ -40,7 +38,6 @@ class AprilTagProfileConfig:
     hand_eye_path: Path | None = DEFAULT_HAND_EYE_PATH
     tag_family: str = "tag36h11"
     tag_size_m: float = 0.05
-    warmup_s: float = 2.0
     capture_timeout_s: float = 5.0
     samples_per_job: int = 3
     max_reproj_error_px: float = 3.0

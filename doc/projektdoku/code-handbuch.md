@@ -718,7 +718,7 @@ Eine Erkennungsquelle liefert die Erkennungen für einen Job und kennt kein OPC 
 
 **Konfiguration**
 
-- `AprilTagProfileConfig` (`profiles.py`): `tag_family` (Standard `tag36h11`), `detector_backend` (`aruco`), `tag_size_m`, `samples_per_job`, `max_reproj_error_px`, `capture_timeout_s`, `warmup_s`, `subpixel_corner_refinement` (Standard aus), `detector_parameters`, `resolution`, `frame_id`, `frame_convention`, `calibration_path`, `tag_map_path`, `hand_eye_path`, `allow_placeholder_calibration`, `allow_resolution_mismatch`, `apriltag_quad_decimate`.
+- `AprilTagProfileConfig` (`profiles.py`): `tag_family` (Standard `tag36h11`), `detector_backend` (`aruco`), `tag_size_m`, `samples_per_job`, `max_reproj_error_px`, `capture_timeout_s`, `subpixel_corner_refinement` (Standard aus), `detector_parameters`, `resolution`, `frame_id`, `frame_convention`, `calibration_path`, `tag_map_path`, `hand_eye_path`, `allow_placeholder_calibration`, `allow_resolution_mismatch`, `apriltag_quad_decimate`.
 - Pi-Presets je Rahmen in `server.py` (`PI_APRILTAG_PRESETS`). Decke: 3 Samples je Job, Fehlergrenze 3,0 px. Hand: 5 Samples, 1,5 px, Subpixel-Ecken an.
 - Kalibrierdatei `data/calibration/<Rahmen>.json`, Tag-Map `config/tagmap.json`. Beide werden beim Start geladen. Die Konfigurations-ID der Ergebnisse setzt sich aus Tag-Familie, Kalibrier- und Tag-Map-Identität zusammen (`tagloc.identity`).
 - `JOBS_DIR` ist `src/jobs/`.
