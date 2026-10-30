@@ -20,6 +20,8 @@ from datetime import datetime
 
 import numpy as np
 
+from tagloc.jsonio import finite_or_none
+
 REQUEST_SCHEMA = "wsc.vision.measuretag.request/1"
 RESULT_SCHEMA = "wsc.vision.measuretag.result/1"
 
@@ -173,7 +175,7 @@ def build_result(
                 "centerPx": list(np.mean(corners, axis=0)) if corners else None,
                 "cornersPx": corners,
                 "reprojectionErrorPx": float(np.mean(errors)) if errors else None,
-                "decisionMargin": _finite(
+                "decisionMargin": finite_or_none(
                     getattr(last.observation, "decision_margin", None)
                 ),
                 "sizeM": size_m,
@@ -235,13 +237,6 @@ def view_angle_deg(pose_cam_tag) -> float:
     towards_camera = -pose[:3, 3] / distance
     cosine = float(np.clip(pose[:3, 2] @ towards_camera, -1.0, 1.0))
     return math.degrees(math.acos(cosine))
-
-
-def _finite(value) -> float | None:
-    if value is None:
-        return None
-    value = float(value)
-    return value if math.isfinite(value) else None
 
 
 def _iso(moment: datetime) -> str:

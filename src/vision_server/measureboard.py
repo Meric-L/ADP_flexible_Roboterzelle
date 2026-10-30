@@ -21,11 +21,12 @@ Hier steckt kein asyncua und keine Kamera. Siehe
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from datetime import datetime
 
 import numpy as np
+
+from tagloc.jsonio import finite_or_none
 
 from .measuretag import DEFAULT_FRAMES, FRAME_CONVENTION, MAX_FRAMES, NO_FRAME, near_edge, view_angle_deg
 
@@ -84,13 +85,6 @@ def parse_request(text: str, parse_board) -> BoardRequest:
 
 def _iso(moment: datetime) -> str:
     return moment.isoformat(timespec="milliseconds")
-
-
-def _finite(value) -> float | None:
-    if value is None:
-        return None
-    value = float(value)
-    return value if math.isfinite(value) else None
 
 
 def build_result(
@@ -167,7 +161,7 @@ def build_result(
             poseInCamera={"position": list(position), "orientation": list(orientation)},
             # Gut genug fuer die Hand-Auge-Aufnahme? Dieselbe Schranke wie dort.
             poseOk=bool(mean_error is not None and mean_error <= max_error_px),
-            reprojectionErrorPx=_finite(mean_error),
+            reprojectionErrorPx=finite_or_none(mean_error),
             distanceM=float(np.linalg.norm(np.asarray(pose)[:3, 3])),
             viewAngleDeg=view_angle_deg(pose),
         )

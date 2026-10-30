@@ -48,8 +48,11 @@ from .geometry import (
     rvec_from_rotation,
     translation_distance_m,
 )
+from .jsonio import finite_or_none
 
 SCHEMA = "wsc.vision.handeye/1"
+#: Stellen, auf die `save_hand_eye` die Kennzahlen in der Datei rundet.
+FILE_DIGITS = 6
 
 #: Hand-Auge braucht Bewegung um mehr als eine Achse, sonst ist die Rotation
 #: nicht bestimmt. Drei Posen sind das rechnerische Minimum; die Kalibrierfahrt
@@ -830,10 +833,10 @@ def save_hand_eye(path, hand_eye: HandEye) -> None:
         "frameId": hand_eye.frame_id,
         "calibrationId": hand_eye.calibration_id or f"{hand_eye.frame_id or path.stem}@{now}",
         "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
-        "rmsPositionM": _finite(hand_eye.rms_position_m),
-        "rmsRotationDeg": _finite(hand_eye.rms_rotation_deg),
-        "maxPositionM": _finite(hand_eye.max_position_m),
-        "maxRotationDeg": _finite(hand_eye.max_rotation_deg),
+        "rmsPositionM": finite_or_none(hand_eye.rms_position_m, FILE_DIGITS),
+        "rmsRotationDeg": finite_or_none(hand_eye.rms_rotation_deg, FILE_DIGITS),
+        "maxPositionM": finite_or_none(hand_eye.max_position_m, FILE_DIGITS),
+        "maxRotationDeg": finite_or_none(hand_eye.max_rotation_deg, FILE_DIGITS),
         "sampleCount": int(hand_eye.sample_count),
         "createdAt": now,
     }
@@ -844,17 +847,12 @@ def save_hand_eye(path, hand_eye: HandEye) -> None:
         ("looErrorRmsPx", hand_eye.loo_error_rms_px),
         ("looErrorRmsM", hand_eye.loo_error_rms_m),
     ):
-        if _finite(value) is not None:
-            payload[key] = _finite(value)
+        rounded = finite_or_none(value, FILE_DIGITS)
+        if rounded is not None:
+            payload[key] = rounded
     if hand_eye.intrinsics_source:
         payload["intrinsicsSource"] = hand_eye.intrinsics_source
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-def _finite(value: float):
-    """Map NaN to `None` -- `json.dumps` would otherwise emit invalid JSON."""
-    number = float(value)
-    return None if math.isnan(number) or math.isinf(number) else round(number, 6)
 
 
 def _or_nan(value) -> float:

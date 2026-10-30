@@ -64,6 +64,7 @@ from tagloc.handeye import (
     save_hand_eye,
     solve_hand_eye_robust,
 )
+from tagloc.jsonio import finite_or_none
 
 from .errors import VisionErrorCode
 from .layer2.plan import _load, _pose
@@ -168,14 +169,6 @@ class _State:
     intrinsics_source: str | None = None
     #: Ordnername des Datensatzes (UTC), gesetzt beim Start.
     stamp: str = ""
-
-
-def _finite_or_none(value) -> float | None:
-    """Endliche Zahl oder `None` -- `json.dumps(allow_nan=False)` vertraegt kein NaN."""
-    if value is None:
-        return None
-    value = float(value)
-    return value if math.isfinite(value) else None
 
 
 def _intrinsics_warnings(source: str | None) -> list[str]:
@@ -397,7 +390,7 @@ class HandEyeSession:
             flange_in_base,
             cam_to_tag,
             detail,
-            reprojection_error_px=_finite_or_none(info.get("reprojectionErrorPx")),
+            reprojection_error_px=finite_or_none(info.get("reprojectionErrorPx")),
         )
         if cam_to_tag is not None and info.get("corners") is not None:
             sample.corners_px = np.asarray(info["corners"], dtype=np.float64).reshape(-1, 2)
@@ -699,15 +692,15 @@ class HandEyeSession:
         return {
             "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
             "calibrationId": hand_eye.calibration_id,
-            "rmsPositionM": hand_eye.rms_position_m if math.isfinite(hand_eye.rms_position_m) else None,
-            "rmsRotationDeg": hand_eye.rms_rotation_deg if math.isfinite(hand_eye.rms_rotation_deg) else None,
-            "maxPositionM": hand_eye.max_position_m if math.isfinite(hand_eye.max_position_m) else None,
-            "maxRotationDeg": hand_eye.max_rotation_deg if math.isfinite(hand_eye.max_rotation_deg) else None,
+            "rmsPositionM": finite_or_none(hand_eye.rms_position_m),
+            "rmsRotationDeg": finite_or_none(hand_eye.rms_rotation_deg),
+            "maxPositionM": finite_or_none(hand_eye.max_position_m),
+            "maxRotationDeg": finite_or_none(hand_eye.max_rotation_deg),
             "sampleCount": hand_eye.sample_count,
-            "refinedReprojectionRmsPx": _finite_or_none(hand_eye.refined_reprojection_rms_px),
-            "boardScale": _finite_or_none(hand_eye.board_scale),
-            "looErrorRmsPx": _finite_or_none(hand_eye.loo_error_rms_px),
-            "looErrorRmsM": _finite_or_none(hand_eye.loo_error_rms_m),
+            "refinedReprojectionRmsPx": finite_or_none(hand_eye.refined_reprojection_rms_px),
+            "boardScale": finite_or_none(hand_eye.board_scale),
+            "looErrorRmsPx": finite_or_none(hand_eye.loo_error_rms_px),
+            "looErrorRmsM": finite_or_none(hand_eye.loo_error_rms_m),
             "intrinsicsSource": hand_eye.intrinsics_source or None,
         }
 
