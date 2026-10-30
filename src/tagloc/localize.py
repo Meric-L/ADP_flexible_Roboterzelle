@@ -1,31 +1,34 @@
-"""From tag to module. Pure composition, no OpenCV.
+"""Vom Tag zum Modul. Reine Komposition, kein OpenCV.
 
-This is the **only** place in the project where the chain
+Dies ist die **einzige** Stelle im Projekt, an der die Kette
 
     T_world_module = T_world_cam @ T_cam_tag @ T_tag_module
 
-is executed. Both cameras call the same function; they differ only in what
-they get to see (doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md):
+ausgefuehrt wird. Beide Kameras rufen dieselbe Funktion auf; sie unterscheiden
+sich nur darin, was sie zu sehen bekommen
+(doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md):
 
-* **Ceiling camera** -- sees the world tags, the robot and the modules in the
-  same image. That is the overview, and it is the only place the question
-  "which world tag does the robot stand closest to" can be answered, because
-  it is the only camera that sees both at once.
-* **Eye-in-hand camera** -- localises itself against a world tag **once** at
-  the start of a run, then measures every module within reach from close up.
-  It does not keep the world tag in view: standing 0.3 m in front of a module,
-  the nearest world tag is a metre or two away and out of frame. The gap is
-  bridged by the kinematics -- see `anchor_from_localization` and
-  `localize_camera_from_anchor`, and `handeye.py` for the algebra.
+* **Deckenkamera** -- sieht die Welttags, den Roboter und die Module im
+  selben Bild. Das ist die Uebersicht, und nur hier laesst sich die Frage
+  "neben welchem Welttag steht der Roboter" beantworten, weil nur diese Kamera
+  beides gleichzeitig sieht.
+* **Handkamera (eye-in-hand)** -- lokalisiert sich **einmal** zu Beginn eines
+  Laufs gegen einen Welttag und vermisst danach jedes Modul in Reichweite aus
+  der Naehe. Den Welttag behaelt sie nicht im Bild: steht sie 0,3 m vor einem
+  Modul, ist der naechste Welttag ein bis zwei Meter entfernt und ausserhalb
+  des Bildfelds. Die Luecke ueberbrueckt die Kinematik -- siehe
+  `anchor_from_localization` und `localize_camera_from_anchor`, die Algebra
+  steht in `handeye.py`.
 
-**Only the world tags are fixed.** Everything else in the cell is movable --
-the modules and the robot alike. The robot is a module like any other; it is
-simply the one that is always in use.
+**Nur die Welttags sind ortsfest.** Alles andere in der Zelle ist beweglich --
+die Module ebenso wie der Roboter. Der Roboter ist ein Modul wie jedes andere;
+er ist lediglich das, das immer im Einsatz ist.
 
-`T_world_cam` can therefore come from two places, and `CameraLocalization.origin`
-says which: optically from the world tags (`ORIGIN_WORLD_TAGS`, the accurate
-one, always preferred when a world tag is in the image) or carried over from
-the anchor plus the current robot pose (`ORIGIN_ROBOT_POSE`).
+`T_world_cam` kann deshalb aus zwei Quellen stammen, und
+`CameraLocalization.origin` sagt, aus welcher: optisch aus den Welttags
+(`ORIGIN_WORLD_TAGS`, der genaue Weg, immer bevorzugt, wenn ein Welttag im Bild
+liegt) oder aus dem Anker plus der aktuellen Roboterpose uebernommen
+(`ORIGIN_ROBOT_POSE`).
 """
 
 import logging
@@ -49,9 +52,9 @@ from .tagmap import ROBOT_ROLE, TagMap, merge_tag_poses, nearest_world_tag
 
 _log = logging.getLogger(__name__)
 
-#: Where a measurement came from. The ceiling gives the overview, the flange
-#: camera the precise value -- which is exactly the precedence used by
-#: `merge_locations`: later in this tuple wins.
+#: Woher eine Messung stammt. Die Decke liefert die Uebersicht, die
+#: Flanschkamera den genauen Wert -- genau das ist die Rangfolge von
+#: `merge_locations`: Was in diesem Tupel weiter hinten steht, gewinnt.
 SOURCE_CEILING = "ceiling"
 SOURCE_FLANGE = "flange"
 SOURCE_PRECEDENCE = (SOURCE_CEILING, SOURCE_FLANGE)
@@ -79,36 +82,38 @@ SOLVER_STORED = "stored"
 
 @dataclass(frozen=True)
 class CameraLocalization:
-    """Where the camera stands, and how well the world tags agree on it."""
+    """Wo die Kamera steht und wie gut die Welttags darin uebereinstimmen."""
 
     pose_world_cam: Pose
-    #: Every world tag that contributed, ascending.
+    #: Jeder Welttag, der beigetragen hat, aufsteigend.
     world_tag_ids: tuple[int, ...]
-    #: The nearest world tag -- the one the eye-in-hand camera aligns to.
+    #: Der naechstgelegene Welttag -- an dem richtet sich die Handkamera aus.
     primary_tag_id: int
-    #: Largest deviation of a single estimate from the merged pose. The honest
-    #: quality figure: if the four world tags disagree, the survey is wrong,
-    #: and this number says so instead of disappearing into an average.
+    #: Groesste Abweichung einer Einzelschaetzung von der zusammengefuehrten
+    #: Pose. Die ehrliche Guetezahl: Widersprechen sich die vier Welttags, ist
+    #: die Vermessung falsch, und diese Zahl sagt das, statt in einem Mittel
+    #: zu verschwinden.
     spread_m: float = 0.0
     spread_rad: float = 0.0
-    #: `ORIGIN_WORLD_TAGS` or `ORIGIN_ROBOT_POSE` -- how this pose was
-    #: obtained. A consumer must be able to tell a directly measured pose from
-    #: one carried over by the kinematics; they do not have the same accuracy.
+    #: `ORIGIN_WORLD_TAGS` oder `ORIGIN_ROBOT_POSE` -- wie diese Pose
+    #: gewonnen wurde. Ein Verbraucher muss eine direkt gemessene Pose von
+    #: einer ueber die Kinematik uebernommenen unterscheiden koennen; beide
+    #: sind nicht gleich genau.
     origin: str = ORIGIN_WORLD_TAGS
-    #: `SOLVER_JOINT`, `SOLVER_SINGLE` or `SOLVER_AVERAGE`; `""` when carried
-    #: over from the anchor.
+    #: `SOLVER_JOINT`, `SOLVER_SINGLE` oder `SOLVER_AVERAGE`; `""`, wenn aus
+    #: dem Anker uebernommen.
     solver: str = ""
-    #: Reprojection RMS of the camera pose, in pixels: over all corners of all
-    #: world tags for `joint`, the tag's own for `single`. NaN otherwise.
+    #: Reprojektions-RMS der Kamerapose in Pixeln: bei `joint` ueber alle
+    #: Ecken aller Welttags, bei `single` die des einen Tags. Sonst NaN.
     reprojection_error_px: float = float("nan")
-    #: Per world tag, the RMS of its corners under the joint pose -- which tag
-    #: disagrees with the map. Empty unless `joint`.
+    #: Je Welttag der RMS seiner Ecken unter der gemeinsamen Pose -- welcher
+    #: Tag der Karte widerspricht. Leer, ausser bei `joint`.
     tag_errors_px: dict[int, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class ModuleLocation:
-    """A located module."""
+    """Ein lokalisiertes Modul."""
 
     module_id: str
     instance_id: str
@@ -118,26 +123,27 @@ class ModuleLocation:
     reprojection_error_px: float = float("nan")
     ambiguous: bool = False
     confidence: float = 1.0
-    #: Role from the tag map -- `module` or `robot`. The robot is reported
-    #: like any other module; this field is what tells them apart.
+    #: Rolle aus der Tag-Karte -- `module` oder `robot`. Der Roboter wird wie
+    #: jedes andere Modul gemeldet; dieses Feld unterscheidet die beiden.
     role: str = ""
-    #: Which camera measured this. See `SOURCE_PRECEDENCE`.
+    #: Welche Kamera das gemessen hat. Siehe `SOURCE_PRECEDENCE`.
     source: str = ""
-    #: The world tag this module sits closest to, `-1` when unknown.
+    #: Der Welttag, neben dem dieses Modul steht, `-1`, wenn unbekannt.
     reference_tag_id: int = -1
-    #: `T_worldtag_module` -- the pose relative to that world tag. The cell is
-    #: built around the world tags, so this is the number a module is set up
-    #: and checked against; `pose` stays in the common world frame.
+    #: `T_worldtag_module` -- die Pose relativ zu diesem Welttag. Die Zelle ist
+    #: um die Welttags herum aufgebaut, also ist das die Zahl, gegen die ein
+    #: Modul eingerichtet und geprueft wird; `pose` bleibt im gemeinsamen
+    #: Welt-KS.
     pose_in_reference_tag: Pose | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
 def confidence_from(tag_pose: TagPose, *, max_reprojection_error_px: float = 3.0) -> float:
-    """Compute confidence from reprojection error and ambiguity, in [0, 1].
+    """Berechnet die Konfidenz aus Reprojektionsfehler und Mehrdeutigkeit, in [0, 1].
 
-    Deliberately not a constant 1.0 as in earlier sources: a confidence
-    that's always 1.0 carries no information and tempts downstream logic
-    to trust it anyway.
+    Bewusst keine Konstante 1.0 wie in frueheren Quellen: Eine Konfidenz, die
+    immer 1.0 ist, traegt keine Information und verleitet die nachgelagerte
+    Logik trotzdem dazu, ihr zu trauen.
     """
     error = tag_pose.reprojection_error_px
     if math.isnan(error) or max_reprojection_error_px <= 0.0:
@@ -156,29 +162,30 @@ def localize_camera(
     max_reprojection_error_px: float = 3.0,
     calibration: Any = None,
 ) -> CameraLocalization | None:
-    """Determine `T_world_cam` from the world tags visible in this image.
+    """Bestimmt `T_world_cam` aus den Welttags, die in diesem Bild sichtbar sind.
 
-    For each world tag, `T_world_cam = T_world_tag @ T_cam_tag^-1`. With a
-    `calibration` and at least two world tags, the camera pose is
-    then solved **jointly** from all their corners in one PnP
-    (`tagloc.pose.solve_camera_from_world_tags`): four corners on 20 cm
-    leave the tilt of a single-tag estimate poorly determined from 2-3 m, the
-    corners of all world tags span the whole cell. `spread_m` then says how
-    far the single-tag estimates stray from the joint pose -- a diagnosis, not
-    the pose.
+    Fuer jeden Welttag gilt `T_world_cam = T_world_tag @ T_cam_tag^-1`. Mit
+    einer `calibration` und mindestens zwei Welttags wird die Kamerapose dann
+    **gemeinsam** aus all ihren Ecken in einem PnP geloest
+    (`tagloc.pose.solve_camera_from_world_tags`): Vier Ecken auf 20 cm lassen
+    die Neigung einer Einzel-Tag-Schaetzung aus 2-3 m schlecht bestimmt, die
+    Ecken aller Welttags spannen dagegen die ganze Zelle auf. `spread_m` sagt
+    dann, wie weit die Einzel-Tag-Schaetzungen von der gemeinsamen Pose
+    abweichen -- eine Diagnose, nicht die Pose.
 
-    Without a calibration (or if the joint solve fails) the single-tag
-    estimates are merged weighted by confidence, as before -- a tag seen far
-    away and at a shallow angle must not pull as hard as one filling the
-    frame. The joint solve is the only place this module touches OpenCV, and
-    only when a calibration is passed.
+    Ohne Kalibrierung (oder wenn die gemeinsame Loesung scheitert) werden die
+    Einzel-Tag-Schaetzungen wie bisher nach Konfidenz gewichtet gemittelt --
+    ein Tag, der weit weg und unter flachem Winkel gesehen wird, darf nicht so
+    stark ziehen wie einer, der das Bild fuellt. Die gemeinsame Loesung ist
+    die einzige Stelle, an der dieses Modul OpenCV beruehrt, und nur, wenn
+    eine Kalibrierung uebergeben wird.
 
-    `primary_tag_id` is the world tag closest to the camera. That is the one
-    the eye-in-hand camera aligns itself to; with a single world tag in the
-    image it is simply that tag.
+    `primary_tag_id` ist der Welttag, der der Kamera am naechsten liegt. An
+    dem richtet sich die Handkamera aus; bei nur einem Welttag im Bild ist es
+    schlicht dieser Tag.
 
-    No world tag visible -> `None`, and the caller stays in the camera frame.
-    Guessing a world pose would be the worse answer.
+    Kein Welttag sichtbar -> `None`, und der Aufrufer bleibt im Kamera-KS. Eine
+    Weltpose zu raten waere die schlechtere Antwort.
     """
     references = tag_map.reference_poses()
     candidates: list[tuple[int, Pose, float, float]] = []
@@ -193,9 +200,9 @@ def localize_camera(
                 confidence_from(
                     tag_pose, max_reprojection_error_px=max_reprojection_error_px
                 ),
-                # Distance camera -> tag, i.e. the length of the measured
-                # translation. The distance to the identity pose is exactly
-                # that norm, so this needs no numpy of its own.
+                # Abstand Kamera -> Tag, also die Laenge der gemessenen
+                # Translation. Der Abstand zur Identitaetspose ist genau diese
+                # Norm, so braucht es hier kein eigenes numpy.
                 translation_distance_m(identity(), tag_pose.pose_cam_tag),
             )
         )
@@ -224,7 +231,8 @@ def localize_camera(
     if solver == SOLVER_AVERAGE:
         _log.debug("Kamerapose aus %d Welttags gemittelt", len(candidates))
 
-    # Tie broken by tag id, so the choice is reproducible between images.
+    # Gleichstand entscheidet die Tag-ID, damit die Wahl von Bild zu Bild
+    # reproduzierbar ist.
     primary = min(candidates, key=lambda item: (item[3], item[0]))[0]
     return CameraLocalization(
         pose_world_cam=merged,
@@ -263,11 +271,12 @@ def _solve_joint(tag_poses, tag_map: TagMap, calibration, initial_world_cam: Pos
 def camera_pose_from_reference_tags(
     tag_poses: Sequence[TagPose], tag_map: TagMap
 ) -> Pose | None:
-    """Return only `T_world_cam`, without the quality figures.
+    """Liefert nur `T_world_cam`, ohne die Guetezahlen.
 
-    Kept for the CLI tools, which transform a pose and have no use for the
-    spread. New code takes `localize_camera` -- throwing `spread_m` away means
-    throwing away the answer to whether the survey still holds.
+    Bleibt fuer die CLI-Werkzeuge erhalten, die eine Pose transformieren und
+    mit der Streuung nichts anfangen. Neuer Code nimmt `localize_camera` --
+    `spread_m` wegzuwerfen hiesse, die Antwort auf die Frage wegzuwerfen, ob
+    die Vermessung noch stimmt.
     """
     localization = localize_camera(tag_poses, tag_map)
     return None if localization is None else localization.pose_world_cam
@@ -282,22 +291,22 @@ def locate_modules(
     source: str = "",
     max_reprojection_error_px: float = 3.0,
 ) -> list[ModuleLocation]:
-    """Convert module tags into module poses.
+    """Wandelt Modul-Tags in Modulposen um.
 
-    Tags without a map entry are still included -- with their tag ID as the
-    module identifier and no CAD offset. An unknown tag is information, not
-    an error: most likely the map entry is simply missing.
+    Tags ohne Karteneintrag werden trotzdem aufgenommen -- mit ihrer Tag-ID als
+    Modulkennung und ohne CAD-Versatz. Ein unbekannter Tag ist eine
+    Information, kein Fehler: Wahrscheinlich fehlt schlicht der Karteneintrag.
 
-    With a known camera pose every module additionally gets the world tag it
-    sits closest to, and its pose relative to that tag. The cell is built
-    around the world tags, so that is the number a module is set up and
-    checked against.
+    Bei bekannter Kamerapose bekommt jedes Modul zusaetzlich den Welttag, neben
+    dem es steht, und seine Pose relativ zu diesem Tag. Die Zelle ist um die
+    Welttags herum aufgebaut, also ist das die Zahl, gegen die ein Modul
+    eingerichtet und geprueft wird.
     """
     located: list[ModuleLocation] = []
     for tag_pose in tag_poses:
         entry = tag_map.get(tag_pose.tag_id)
         if entry is not None and entry.is_reference:
-            continue  # World tags are the anchor points, not modules.
+            continue  # Welttags sind die Ankerpunkte, keine Module.
         chain = [tag_pose.pose_cam_tag]
         if entry is not None:
             chain.append(entry.tag_to_module)
@@ -342,12 +351,12 @@ def locate_modules(
 
 
 def _merge_reference_poses(group: Sequence[ModuleLocation]) -> Pose | None:
-    """Average the world-tag-relative poses, but only within one world tag.
+    """Mittelt die Posen relativ zum Welttag, aber nur innerhalb eines Welttags.
 
-    A group whose members refer to different world tags has no common frame
-    to average in; the caller then keeps the world pose and drops the
-    relative one, rather than mixing two frames into a plausible-looking
-    nonsense pose.
+    Eine Gruppe, deren Mitglieder sich auf verschiedene Welttags beziehen, hat
+    kein gemeinsames KS, in dem sich mitteln liesse; der Aufrufer behaelt dann
+    die Weltpose und verwirft die relative, statt zwei KS zu einer
+    plausibel aussehenden Unsinnspose zu vermischen.
     """
     poses = [
         location.pose_in_reference_tag
@@ -362,11 +371,11 @@ def _merge_reference_poses(group: Sequence[ModuleLocation]) -> Pose | None:
 
 
 def merge_samples(samples: Sequence[Sequence[ModuleLocation]]) -> list[ModuleLocation]:
-    """Merge several samples of the same job into one result per module.
+    """Fuehrt mehrere Aufnahmen desselben Jobs zu einem Ergebnis je Modul zusammen.
 
-    Averaging only spans samples where the same tag appeared; the count ends
-    up as `sampleCount` in the attributes, so the result records how many
-    images the pose is based on.
+    Gemittelt wird nur ueber Aufnahmen, in denen derselbe Tag vorkam; die
+    Anzahl landet als `sampleCount` in den Attributen, damit das Ergebnis
+    festhaelt, auf wie vielen Bildern die Pose beruht.
     """
     grouped: dict[int, list[ModuleLocation]] = {}
     order: list[int] = []
@@ -405,16 +414,16 @@ def merge_samples(samples: Sequence[Sequence[ModuleLocation]]) -> list[ModuleLoc
 def merge_by_module(
     locations: Sequence[ModuleLocation], *, tag_map: TagMap | None = None
 ) -> list[ModuleLocation]:
-    """Merge measurements that describe the same module into one result.
+    """Fuehrt Messungen, die dasselbe Modul beschreiben, zu einem Ergebnis zusammen.
 
-    This is what several tags on the robot are for: seen from the ceiling a
-    single tag is easily hidden by the arm itself, so the robot carries more
-    than one, each with its own CAD offset to the robot base. All of them
-    therefore measure *the same* pose, and averaging them is the point.
+    Dafuer sind mehrere Tags am Roboter da: Von der Decke aus ist ein einzelner
+    Tag leicht vom Arm selbst verdeckt, deshalb traegt der Roboter mehr als
+    einen, jeden mit eigenem CAD-Versatz zur Roboterbasis. Alle messen daher
+    *dieselbe* Pose, und sie zu mitteln ist der Sinn der Sache.
 
-    Weighted by confidence. Given a `tag_map`, the nearest world tag is
-    recomputed for the merged pose -- the average may well sit closer to a
-    different world tag than any single tag did.
+    Gewichtet nach Konfidenz. Mit einer `tag_map` wird der naechstgelegene
+    Welttag fuer die zusammengefuehrte Pose neu bestimmt -- das Mittel kann
+    durchaus naeher an einem anderen Welttag liegen als jeder einzelne Tag.
     """
     grouped: dict[tuple[str, str], list[ModuleLocation]] = {}
     order: list[tuple[str, str]] = []
@@ -431,8 +440,8 @@ def merge_by_module(
         if len(group) == 1:
             merged.append(group[0])
             continue
-        # The lowest tag id names the group, so the result is reproducible
-        # regardless of the order the tags were detected in.
+        # Die kleinste Tag-ID benennt die Gruppe, damit das Ergebnis
+        # unabhaengig von der Erkennungsreihenfolge der Tags reproduzierbar ist.
         first = min(group, key=lambda location: location.tag_id)
         errors = [
             location.reprojection_error_px
@@ -472,7 +481,7 @@ def merge_by_module(
 
 
 def _rank(location: ModuleLocation) -> tuple[int, float]:
-    """Rank a measurement: a known source beats an unknown one, then confidence."""
+    """Reiht eine Messung ein: eine bekannte Quelle schlaegt eine unbekannte, dann die Konfidenz."""
     try:
         precedence = SOURCE_PRECEDENCE.index(location.source)
     except ValueError:
@@ -481,16 +490,16 @@ def _rank(location: ModuleLocation) -> tuple[int, float]:
 
 
 def merge_locations(*groups: Sequence[ModuleLocation]) -> list[ModuleLocation]:
-    """Combine the results of several cameras into one picture of the cell.
+    """Fuegt die Ergebnisse mehrerer Kameras zu einem Bild der Zelle zusammen.
 
-    The ceiling camera sees everything but coarsely; the eye-in-hand camera
-    sees little but precisely. Where both measured the same module, the
-    precise measurement wins -- `SOURCE_PRECEDENCE` decides, and confidence
-    breaks a tie between equal sources.
+    Die Deckenkamera sieht alles, aber grob; die Handkamera sieht wenig, aber
+    genau. Haben beide dasselbe Modul gemessen, gewinnt die genaue Messung --
+    `SOURCE_PRECEDENCE` entscheidet, und die Konfidenz entscheidet bei
+    gleichen Quellen.
 
-    Deliberately a pure function instead of a second network connection
-    between the two Pis: both servers keep publishing independently, and
-    whoever consumes both calls this.
+    Bewusst eine reine Funktion statt einer zweiten Netzwerkverbindung
+    zwischen den beiden Pis: Beide Server veroeffentlichen weiterhin
+    unabhaengig voneinander, und wer beide konsumiert, ruft diese Funktion auf.
     """
     best: dict[tuple[str, str], ModuleLocation] = {}
     order: list[tuple[str, str]] = []
@@ -506,27 +515,28 @@ def merge_locations(*groups: Sequence[ModuleLocation]) -> list[ModuleLocation]:
 
 
 def robot_locations(locations: Sequence[ModuleLocation]) -> list[ModuleLocation]:
-    """Return the located robots -- normally exactly one."""
+    """Liefert die lokalisierten Roboter -- normalerweise genau einen."""
     return [location for location in locations if location.role == ROBOT_ROLE]
 
 
 def world_tag_for_robot(
     tag_map: TagMap, locations: Sequence[ModuleLocation]
 ) -> tuple[int, float] | None:
-    """Return `(tag_id, distance in m)` of the world tag nearest the robot.
+    """Liefert `(tag_id, Abstand in m)` des Welttags, der dem Roboter am naechsten liegt.
 
-    The question only the ceiling camera can answer, because it is the only
-    one that sees the robot and the world tags at the same time. The robot
-    then points its eye-in-hand camera at this tag to localise itself
-    precisely.
+    Die Frage, die nur die Deckenkamera beantworten kann, weil nur sie den
+    Roboter und die Welttags gleichzeitig sieht. Der Roboter richtet dann
+    seine Handkamera auf diesen Tag aus, um sich genau zu lokalisieren.
 
-    `None` when no robot was located or the map knows no surveyed world tag.
+    `None`, wenn kein Roboter lokalisiert wurde oder die Karte keinen
+    vermessenen Welttag kennt.
     """
     robots = robot_locations(locations)
     if not robots:
         return None
-    # Several robots would be a build we do not have; take the best measured
-    # one rather than silently picking whichever came first in the list.
+    # Mehrere Roboter waeren ein Aufbau, den es nicht gibt; lieber den am
+    # besten gemessenen nehmen, als stillschweigend den, der zufaellig zuerst
+    # in der Liste steht.
     robot = max(robots, key=lambda location: location.confidence)
     return nearest_world_tag(tag_map, robot.pose)
 
@@ -536,7 +546,7 @@ def anchor_from_localization(
     pose_base_flange: Pose,
     hand_eye: HandEye,
 ) -> RobotAnchor:
-    """Anchor the robot base in the world frame from one world-tag sighting.
+    """Verankert die Roboterbasis im Welt-KS aus einer einzigen Welttag-Sichtung.
 
     Der Ankerschritt, **einmal zu Beginn eines Lokalisierungsvorgangs**: der
     Roboter richtet die Handkamera auf den Welttag, den die Deckenkamera als
@@ -559,7 +569,7 @@ def anchor_from_localization(
 def localize_camera_from_anchor(
     anchor: RobotAnchor, pose_base_flange: Pose, hand_eye: HandEye
 ) -> CameraLocalization:
-    """Carry the camera pose over to a new robot pose, without a world tag.
+    """Uebertraegt die Kamerapose auf eine neue Roboterpose, ohne Welttag.
 
     Das ist der Weg von Modul zu Modul: die Kamera steht dicht vor einem
     Modul, der naechste Welttag liegt laengst ausserhalb des Bildfelds, und
@@ -587,7 +597,7 @@ def anchor_drift(
     pose_base_flange: Pose,
     hand_eye: HandEye,
 ) -> tuple[float, float]:
-    """Return `(m, rad)` between the optical pose and the carried-over one.
+    """Liefert `(m, rad)` zwischen der optischen und der uebernommenen Pose.
 
     Kommt waehrend eines Vorgangs wieder ein Welttag ins Bild, laesst sich der
     Anker pruefen, statt ihm zu glauben: die Abweichung zwischen gemessener
@@ -605,10 +615,11 @@ def anchor_drift(
 def expected_but_missing(
     tag_map: TagMap, located: Sequence[ModuleLocation]
 ) -> list[str]:
-    """Return modules from the map that were not found.
+    """Liefert die Module aus der Karte, die nicht gefunden wurden.
 
-    Answers the abort criterion from concept/offene_punkte.md no. 6 without
-    extra configuration: the expected module list lives in the tag map.
+    Beantwortet das Abbruchkriterium aus concept/offene_punkte.md Nr. 6 ohne
+    zusaetzliche Konfiguration: Die Liste der erwarteten Module steht in der
+    Tag-Karte.
     """
     seen = {location.tag_id for location in located}
     return sorted(
