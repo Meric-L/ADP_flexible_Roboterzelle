@@ -68,6 +68,7 @@ from ..handeye import (
     solve_hand_eye,
     solve_hand_eye_robust,
 )
+from ..tagmap import DEFAULT_TAG_FAMILY
 from ._common import add_decoder_arguments, describe_pose, detector_options, setup_logging
 
 SAMPLES_SCHEMA = "wsc.vision.handeye.samples/1"
@@ -100,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bei --session den Brettmassstab nicht mitschaetzen",
     )
-    parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
     add_decoder_arguments(parser)
     parser.add_argument("--backend", default="aruco", help="Detektor-Backend")
     parser.add_argument(

@@ -18,6 +18,7 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 
 from .observations import TagObservation
+from .tagmap import DEFAULT_TAG_FAMILY
 
 _log = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def predefined_dictionary(name: str):
     return aruco.Dictionary_get(dictionary_id)  # pragma: no cover - OpenCV < 4.7
 
 
-def aruco_dictionary(family: str = "tag36h11"):
+def aruco_dictionary(family: str = DEFAULT_TAG_FAMILY):
     """Same, but for a family name from the configuration."""
     name = ARUCO_DICTIONARIES.get(family)
     if name is None:
@@ -156,7 +157,7 @@ class ArucoTagDetector:
 
     def __init__(
         self,
-        family: str = "tag36h11",
+        family: str = DEFAULT_TAG_FAMILY,
         *,
         parameters: Any = None,
         subpixel_corner_refinement: bool = False,
@@ -256,7 +257,7 @@ class PupilAprilTagDetector:
     `pose.py` computes identically for both backends.
     """
 
-    def __init__(self, family: str = "tag36h11", *, nthreads: int = 1) -> None:
+    def __init__(self, family: str = DEFAULT_TAG_FAMILY, *, nthreads: int = 1) -> None:
         from pupil_apriltags import Detector
 
         self.family = family
@@ -278,7 +279,7 @@ class PupilAprilTagDetector:
 
 
 def build_detector(
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     backend: str = "aruco",
     *,
     subpixel_corner_refinement: bool = False,
@@ -322,6 +323,7 @@ __all__ = [
     "PupilAprilTagDetector",
     "TagDetector",
     "TagObservation",
+    "apply_detector_parameters",
     "aruco_dictionary",
     "build_detector",
     "predefined_dictionary",
