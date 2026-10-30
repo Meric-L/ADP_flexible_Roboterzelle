@@ -18,13 +18,22 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 
+#: Hostname -> Rahmen-ID. Spiegelt `vision_server.server.PI_IDENTITIES` (zweites
+#: Tupelelement). Nicht importiert, weil `vision_server.server` beim Import
+#: asyncua laedt -- zu schwer fuer einen Subprozess pro Job. Dass beide Tabellen
+#: gleich bleiben, prueft `tests/test_jobs_calibrate.py`.
+FRAME_BY_HOST = {
+    "ADP-Roboter-Lokalisierung": "cam_ceiling",
+    "ADP-HandInEye-Kamera-Pi": "cam_flange",
+}
+
+
 def _frame_id() -> str:
-    """Rahmen-ID dieses Pi, wie `vision_server/server.py` sie je Pi festlegt."""
+    """Rahmen-ID dieses Pi: `VISION_FRAME_ID`, sonst nach Hostname, sonst "world"."""
     import os
     import socket
 
-    mapping = {"pi-decke": "cam_ceiling", "pi-hand": "cam_flange"}
-    return os.getenv("VISION_FRAME_ID") or mapping.get(socket.gethostname(), "world")
+    return os.getenv("VISION_FRAME_ID") or FRAME_BY_HOST.get(socket.gethostname(), "world")
 
 
 def main() -> str:
@@ -39,7 +48,8 @@ def main() -> str:
         return (
             f"Rahmen {frame_id}: KEINE KALIBRIERUNG unter {calibration_path}. "
             "Erzeugen mit: python -m tagloc.cli.calibrate --source picamera "
-            f"--board charuco --frame-id {frame_id} --out {calibration_path}"
+            "--board chessboard --cols 7 --rows 10 --square-size-m 0.023 "
+            f"--frame-id {frame_id} --out {calibration_path}"
         )
 
     try:

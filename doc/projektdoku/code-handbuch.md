@@ -252,18 +252,18 @@ Der erste Entwurf für Kamerakalibrierung und Erkennung (`calibrate_camera.py`, 
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/jobs/calibrate.py` | Ermittelt die Rahmen-ID, prüft Kalibrierdatei und Tag-Map, baut die Statuszeile | `REPO_ROOT`, `_frame_id`, `main` |
+| `src/jobs/calibrate.py` | Ermittelt die Rahmen-ID, prüft Kalibrierdatei und Tag-Map, baut die Statuszeile | `REPO_ROOT`, `FRAME_BY_HOST`, `_frame_id`, `main` |
 
 **Ablauf**
 
-1. Rahmen-ID: Umgebungsvariable `VISION_FRAME_ID`, sonst Zuordnung nach Hostname (`pi-decke` → `cam_ceiling`, `pi-hand` → `cam_flange`), sonst `world`.
+1. Rahmen-ID: Umgebungsvariable `VISION_FRAME_ID`, sonst Zuordnung nach Hostname (`ADP-Roboter-Lokalisierung` → `cam_ceiling`, `ADP-HandInEye-Kamera-Pi` → `cam_flange`), sonst `world`.
 2. Fehlt `data/calibration/<frame_id>.json`: Meldung mit dem Befehl zum Erzeugen, Ende.
 3. Datei nicht lesbar: Meldung mit dem Fehler, Ende.
 4. Sonst Statuszeile: Kennung, Auflösung, Linsenmodell, RMS, Anzahl Aufnahmen, Alter in Tagen. Dazu die Tag-Map (Kennung) oder „Tag-Map FEHLT“.
 
-**Konfiguration & Dateien**: Umgebungsvariable `VISION_FRAME_ID`. Die Hostname-Zuordnung steht fest im Code (`mapping` in `_frame_id`). Gelesen werden `data/calibration/<frame_id>.json` und `config/tagmap.json`, jeweils ab der Repo-Wurzel.
+**Konfiguration & Dateien**: Umgebungsvariable `VISION_FRAME_ID`. Die Hostname-Zuordnung steht als Tabelle `FRAME_BY_HOST` im Code; sie spiegelt `PI_IDENTITIES` aus `vision_server/server.py` (nicht importiert, da `vision_server.server` asyncua lädt), ein Test vergleicht beide. Gelesen werden `data/calibration/<frame_id>.json` und `config/tagmap.json`, jeweils ab der Repo-Wurzel.
 
-**Tests**: keine. Kein Test referenziert die Datei.
+**Tests**: `tests/test_jobs_calibrate.py` (Rahmen-ID, Kalibrierung fehlt/vorhanden/unlesbar, Tag-Map fehlt/vorhanden, Tabellenvergleich).
 
 **Weiterlesen**: [vision-server-interface.md](vision-server-interface.md) (Job `calibration`).
 
