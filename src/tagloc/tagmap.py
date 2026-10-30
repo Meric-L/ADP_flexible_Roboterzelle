@@ -1,21 +1,21 @@
-"""Tag map: what each tag is, and where it sits in the shared coordinate frame.
+"""Tag-Karte: was jeder Tag ist und wo er im gemeinsamen Koordinatensystem sitzt.
 
-Core idea of the whole concept (doc/projektdoku/apriltag-lokalisierung.md section 1):
+Kerngedanke des ganzen Konzepts (doc/projektdoku/apriltag-lokalisierung.md Abschnitt 1):
 
-    A tag carries a number, not meaning. That tag 7 is module MOD-A, with
-    its origin 40 mm below the tag centre, lives here -- in a file -- not
-    in code.
+    Ein Tag traegt eine Nummer, keine Bedeutung. Dass Tag 7 das Modul MOD-A
+    ist, mit seinem Ursprung 40 mm unter dem Tag-Mittelpunkt, steht hier --
+    in einer Datei --, nicht im Code.
 
-**Only the world tags are fixed.** Four of them sit in the border area of the
-cell and span the world frame; everything else -- modules *and the robot* --
-is movable and gets measured. The robot is a module like any other; it is
-simply the one that is always in use.
+**Nur die Welttags stehen fest.** Vier davon sitzen im Randbereich der Zelle
+und spannen das Welt-KS auf; alles andere -- Module *und der Roboter* -- ist
+beweglich und wird gemessen. Der Roboter ist ein Modul wie jedes andere; er
+ist lediglich das, das immer im Einsatz ist.
 
-Reference tags (world) and measured tags (modules, robot) run through the
-same code; they differ only in whether their world pose is in the map or
-`null` (movable, to be measured).
+Referenztags (Welt) und gemessene Tags (Module, Roboter) laufen durch
+denselben Code; sie unterscheiden sich nur darin, ob ihre Weltpose in der
+Karte steht oder `null` ist (beweglich, wird gemessen).
 
-No OpenCV: `place_tags` only works with poses, never images.
+Kein OpenCV: `place_tags` arbeitet nur mit Posen, nie mit Bildern.
 """
 
 import json
@@ -44,24 +44,24 @@ _log = logging.getLogger(__name__)
 
 SCHEMA = "wsc.vision.tagmap/2"
 
-#: Schema 1 knew the roles `robot_table` and `reference` as *fixed* anchors.
-#: That was the wrong concept -- see doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md.
+#: Schema 1 kannte die Rollen `robot_table` und `reference` als *feste* Anker.
+#: Das war das falsche Konzept -- siehe doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md.
 LEGACY_SCHEMA = "wsc.vision.tagmap/1"
 
-#: The only fixed thing in the cell: a world tag on the cell border.
+#: Das Einzige, das in der Zelle feststeht: ein Welttag am Rand der Zelle.
 WORLD_ROLE = "world"
-#: A tag on the robot. The robot is a module like any other -- it just happens
-#: to be the one that is always in use.
+#: Ein Tag am Roboter. Der Roboter ist ein Modul wie jedes andere -- er ist
+#: lediglich das, das immer im Einsatz ist.
 ROBOT_ROLE = "robot"
 MODULE_ROLE = "module"
 
-#: Roles with a fixed world pose -- used to determine `T_world_cam`.
-#: **Only** the world tag. Everything else in the cell can be moved, so
-#: nothing else may serve as an anchor.
+#: Rollen mit fester Weltpose -- dienen zur Bestimmung von `T_world_cam`.
+#: **Nur** der Welttag. Alles andere in der Zelle laesst sich verschieben,
+#: also darf nichts anderes als Anker dienen.
 REFERENCE_ROLES = frozenset({WORLD_ROLE})
 
-#: Roles whose pose is measured rather than read. The robot is in here on
-#: purpose: it stands somewhere, and where it stands is the question.
+#: Rollen, deren Pose gemessen statt gelesen wird. Der Roboter gehoert mit
+#: Absicht dazu: Er steht irgendwo, und wo er steht, ist die Frage.
 MOVABLE_ROLES = frozenset({MODULE_ROLE, ROBOT_ROLE})
 
 KNOWN_ROLES = REFERENCE_ROLES | MOVABLE_ROLES
@@ -73,38 +73,38 @@ KNOWN_ROLES = REFERENCE_ROLES | MOVABLE_ROLES
 #: Er wird zum beweglichen Robotertag, und seine Weltpose faellt dabei weg.
 LEGACY_ROLES = {"reference": WORLD_ROLE, "robot_table": ROBOT_ROLE}
 
-#: Four world tags in the border area of the cell. Not a limit of the code --
-#: `localize_camera` works with a single one -- but the expected build, so a
-#: missing tag is noticed instead of silently costing accuracy.
+#: Vier Welttags im Randbereich der Zelle. Keine Grenze des Codes --
+#: `localize_camera` kommt mit einem einzigen aus --, aber der erwartete
+#: Aufbau, damit ein fehlender Tag auffaellt, statt still Genauigkeit zu kosten.
 EXPECTED_WORLD_TAG_COUNT = 4
 
 
 @dataclass(frozen=True)
 class TagEntry:
-    """A tag and what it means."""
+    """Ein Tag und seine Bedeutung."""
 
     tag_id: int
     role: str
     size_m: float
     module_id: str = ""
     instance_id: str = ""
-    #: `None` = movable, measured rather than read.
+    #: `None` = beweglich, wird gemessen statt gelesen.
     pose_in_world: Pose | None = None
-    #: Constant offset from tag centre to module origin, from CAD.
+    #: Konstanter Versatz vom Tag-Mittelpunkt zum Modulursprung, aus dem CAD.
     tag_to_module: Pose = field(default_factory=identity)
 
     @property
     def is_world(self) -> bool:
-        """Whether this is one of the cell's fixed world tags."""
+        """Ob dies einer der festen Welttags der Zelle ist."""
         return self.role == WORLD_ROLE
 
     @property
     def is_reference(self) -> bool:
-        """Whether this tag may serve as an anchor for `T_world_cam`.
+        """Ob dieser Tag als Anker fuer `T_world_cam` dienen darf.
 
-        A world tag without a world pose is *not* an anchor: it is a world
-        tag that has not been surveyed yet, and guessing would be worse than
-        staying in the camera frame.
+        Ein Welttag ohne Weltpose ist *kein* Anker: Er ist ein Welttag, der
+        noch nicht eingemessen wurde, und Raten waere schlimmer, als im
+        Kamera-KS zu bleiben.
         """
         return self.is_world and self.pose_in_world is not None
 
@@ -114,10 +114,10 @@ class TagEntry:
 
     @property
     def is_module(self) -> bool:
-        """Whether this tag denotes something movable that gets measured.
+        """Ob dieser Tag etwas Bewegliches bezeichnet, das gemessen wird.
 
-        The robot counts as a module here -- that is the whole point of the
-        concept, not an oversight.
+        Der Roboter zaehlt hier als Modul -- das ist der Kern des Konzepts,
+        kein Versehen.
         """
         return self.role in MOVABLE_ROLES
 
@@ -130,7 +130,7 @@ DEFAULT_TAG_FAMILY = "tag36h11"
 
 @dataclass(frozen=True)
 class TagMap:
-    """All known tags of a cell, in one coordinate frame."""
+    """Alle bekannten Tags einer Zelle, in einem Koordinatensystem."""
 
     frame_id: str = "world"
     anchor_tag_id: int = 0
@@ -147,16 +147,16 @@ class TagMap:
         return self.entries.get(int(tag_id))
 
     def size_for(self, tag_id: int, default_m: float) -> float:
-        """Return the tag's size from the map, else the configured fallback.
+        """Liefert die Groesse des Tags aus der Karte, sonst den konfigurierten Rueckfall.
 
-        A wrong size scales the measured distance linearly and otherwise
-        goes unnoticed -- so the map always wins when the tag is in it.
+        Eine falsche Groesse skaliert den gemessenen Abstand linear und faellt
+        sonst nicht auf -- deshalb gewinnt die Karte immer, wenn der Tag darin steht.
         """
         entry = self.get(tag_id)
         return entry.size_m if entry is not None else default_m
 
     def reference_poses(self) -> dict[int, Pose]:
-        """Return all tags with a known world pose."""
+        """Liefert alle Tags mit bekannter Weltpose."""
         return {
             tag_id: entry.pose_in_world
             for tag_id, entry in self.entries.items()
@@ -164,29 +164,29 @@ class TagMap:
         }
 
     def world_tag_ids(self) -> list[int]:
-        """Return the IDs of all tags with role `world`, surveyed or not."""
+        """Liefert die IDs aller Tags mit der Rolle `world`, eingemessen oder nicht."""
         return sorted(tag_id for tag_id, entry in self.entries.items() if entry.is_world)
 
     def module_entries(self) -> list[TagEntry]:
-        """Return all movable tags -- the expected module list, robot included."""
+        """Liefert alle beweglichen Tags -- die erwartete Modulliste, Roboter eingeschlossen."""
         return [entry for entry in self.entries.values() if entry.is_module]
 
     def robot_entries(self) -> list[TagEntry]:
-        """Return the tags mounted on the robot.
+        """Liefert die Tags, die am Roboter montiert sind.
 
-        Several are allowed and expected: seen from the ceiling a single tag
-        is easily hidden by the arm itself, and averaging over more of them
-        is what `localize.merge_by_module` is for.
+        Mehrere sind erlaubt und erwartet: Von der Decke aus ist ein einzelner
+        Tag leicht vom Arm selbst verdeckt, und ueber mehrere zu mitteln ist
+        der Zweck von `localize.merge_by_module`.
         """
         return [entry for entry in self.entries.values() if entry.is_robot]
 
 
 def validate_tag_map(tag_map: TagMap) -> list[str]:
-    """Return what is wrong with this map, empty list = fine.
+    """Liefert, was an dieser Karte falsch ist; leere Liste = in Ordnung.
 
-    Deliberately a report rather than an exception: a cell under construction
-    must still be allowed to measure. The caller decides whether to log or to
-    abort -- `AprilTagDetectionSource.open` logs and continues.
+    Bewusst ein Bericht statt einer Ausnahme: Eine Zelle im Aufbau muss noch
+    messen duerfen. Der Aufrufer entscheidet, ob er loggt oder abbricht --
+    `AprilTagDetectionSource.open` loggt und macht weiter.
     """
     problems: list[str] = []
 
@@ -236,11 +236,11 @@ def validate_tag_map(tag_map: TagMap) -> list[str]:
 
 
 def nearest_world_tag(tag_map: TagMap, pose_world: Pose) -> tuple[int, float] | None:
-    """Return `(tag_id, distance in m)` of the world tag closest to `pose_world`.
+    """Liefert `(tag_id, Abstand in m)` des Welttags, der `pose_world` am naechsten liegt.
 
-    This is the question the ceiling camera answers for the robot: which of
-    the four world tags should the eye-in-hand camera look at to localise
-    itself. `None` when the map knows no surveyed world tag.
+    Das ist die Frage, die die Deckenkamera fuer den Roboter beantwortet:
+    Auf welchen der vier Welttags soll die Handkamera schauen, um sich zu
+    lokalisieren. `None`, wenn die Karte keinen eingemessenen Welttag kennt.
     """
     references = tag_map.reference_poses()
     if not references:
@@ -249,19 +249,19 @@ def nearest_world_tag(tag_map: TagMap, pose_world: Pose) -> tuple[int, float] | 
         tag_id: translation_distance_m(pose, pose_world)
         for tag_id, pose in references.items()
     }
-    # Sort by ID as well, so an exact tie resolves deterministically instead
-    # of depending on dict order.
+    # Zusaetzlich nach ID sortieren, damit ein exakter Gleichstand
+    # deterministisch aufgeloest wird, statt von der dict-Reihenfolge abzuhaengen.
     best = min(distances, key=lambda tag_id: (distances[tag_id], tag_id))
     return best, float(distances[best])
 
 
 def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
-    """Return an empty map -- operation without a map stays a normal case."""
+    """Liefert eine leere Karte -- der Betrieb ohne Karte bleibt ein Normalfall."""
     return TagMap(frame_id=frame_id, anchor_tag_id=anchor_tag_id, entries={})
 
 
 def _migrate_role(role: str, tag_id: int, pose_in_world, path: Path):
-    """Map a schema-1 role onto the current ones. Returns `(role, pose)`.
+    """Bildet eine Rolle aus Schema 1 auf die aktuellen ab. Liefert `(role, pose)`.
 
     Nicht still: jede Umdeutung wird einzeln gemeldet. Genau das war der Grund,
     alte Karten urspruenglich abzulehnen -- eine `robot_table`-Weltpose steht
@@ -285,7 +285,7 @@ def _migrate_role(role: str, tag_id: int, pose_in_world, path: Path):
 
 
 def load_tag_map(path: Path) -> TagMap:
-    """Read a tag map from a JSON file."""
+    """Liest eine Tag-Karte aus einer JSON-Datei."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Tag-Map nicht gefunden: {path}")
@@ -293,7 +293,7 @@ def load_tag_map(path: Path) -> TagMap:
 
 
 def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
-    """Read a tag map from JSON text.
+    """Liest eine Tag-Karte aus JSON-Text.
 
     Eine Karte im alten Schema wird **migriert, nicht abgelehnt**: sie laut
     zurueckzuweisen klingt richtig, legt aber in der Praxis die ganze Erkennung
@@ -352,14 +352,14 @@ def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
 
 
 def save_tag_map(path: Path, tag_map: TagMap) -> None:
-    """Write a tag map as JSON, sorted by tag ID."""
+    """Schreibt eine Tag-Karte als JSON, nach Tag-ID sortiert."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tag_map_to_json(tag_map), encoding="utf-8")
 
 
 def tag_map_to_json(tag_map: TagMap) -> str:
-    """Return the map as JSON text -- exactly what `save_tag_map` writes.
+    """Liefert die Karte als JSON-Text -- genau das, was `save_tag_map` schreibt.
 
     Dasselbe Format fuer Datei und OPC-UA-Methode: was das Backend schickt,
     laesst sich unveraendert ablegen und umgekehrt.
@@ -389,15 +389,15 @@ def tag_map_to_json(tag_map: TagMap) -> str:
 
 
 # --------------------------------------------------------------------------
-# Placing tags into a shared coordinate frame
+# Tags in ein gemeinsames Koordinatensystem setzen
 # --------------------------------------------------------------------------
 
-#: One sample: what was visible simultaneously in **one** image.
+#: Eine Aufnahme: was in **einem** Bild gleichzeitig sichtbar war.
 Observation = Mapping[int, Pose]
 
 
 def observed_tag_ids(observations: Sequence[Observation]) -> set[int]:
-    """Return all tag IDs that appeared at all."""
+    """Liefert alle Tag-IDs, die ueberhaupt vorkamen."""
     seen: set[int] = set()
     for observation in observations:
         seen.update(int(tag_id) for tag_id in observation)
@@ -405,11 +405,11 @@ def observed_tag_ids(observations: Sequence[Observation]) -> set[int]:
 
 
 def relative_poses(observations: Sequence[Observation]) -> dict[tuple[int, int], list[Pose]]:
-    """Build camera-free relations `T_a_b` from co-observations.
+    """Bildet kamerafreie Relationen `T_a_b` aus gemeinsamen Beobachtungen.
 
-    Two tags in the same image give `T_a_b = T_cam_a^-1 @ T_cam_b`. The
-    camera pose cancels out -- so the camera doesn't need to be known, and
-    samples may come from completely different viewpoints.
+    Zwei Tags im selben Bild ergeben `T_a_b = T_cam_a^-1 @ T_cam_b`. Die
+    Kamerapose kuerzt sich heraus -- die Kamera muss also nicht bekannt sein,
+    und die Aufnahmen duerfen aus voellig verschiedenen Blickwinkeln stammen.
     """
     edges: dict[tuple[int, int], list[Pose]] = {}
     for observation in observations:
@@ -423,31 +423,33 @@ def relative_poses(observations: Sequence[Observation]) -> dict[tuple[int, int],
 
 
 def merge_tag_poses(poses: Sequence[Pose]) -> Pose:
-    """Merge several estimates of the same pose."""
+    """Fuehrt mehrere Schaetzungen derselben Pose zusammen."""
     return average_poses(list(poses))
 
 
 def place_tags(
     observations: Sequence[Observation], *, anchor_tag_id: int
 ) -> dict[int, Pose]:
-    """Place all observed tags into **one** coordinate frame.
+    """Setzt alle beobachteten Tags in **ein** Koordinatensystem.
 
-    Origin is the anchor tag. Method: co-observations span a graph (nodes =
-    tag IDs, edges = co-seen pairs). A breadth-first search from the anchor
-    chains the relations into poses in the anchor frame. If a tag is reached
-    via several already-placed neighbours, all estimates are averaged
-    instead of taking the first one.
+    Ursprung ist der Anker-Tag. Verfahren: Gemeinsame Beobachtungen spannen
+    einen Graphen auf (Knoten = Tag-IDs, Kanten = gemeinsam gesehene Paare).
+    Eine Breitensuche vom Anker aus verkettet die Relationen zu Posen im
+    Anker-KS. Wird ein Tag ueber mehrere bereits gesetzte Nachbarn erreicht,
+    werden alle Schaetzungen gemittelt, statt die erste zu nehmen.
 
-    Tags with no path to the anchor **do not** appear in the result. This is
-    intentional: silently giving them a phantom pose would be the worse
-    error. The caller compares against `observed_tag_ids` to report them.
+    Tags ohne Weg zum Anker erscheinen **nicht** im Ergebnis. Das ist
+    Absicht: Ihnen still eine Phantompose zu geben waere der schlimmere
+    Fehler. Der Aufrufer vergleicht mit `observed_tag_ids`, um sie zu melden.
 
-    Accuracy limit: averaging happens over neighbours already placed at
-    visit time, not over all edges of the finished graph. The result thus
-    depends on the (deterministic) visit order and isn't a global
-    adjustment. Fine for a cell with few tags and short chains; if chains
-    get long, `residuals` measures whether it's still good enough. The next
-    step would be a weighted least-squares adjustment over all edges.
+    Genauigkeitsgrenze: Gemittelt wird ueber die Nachbarn, die zum Zeitpunkt
+    des Besuchs schon gesetzt sind, nicht ueber alle Kanten des fertigen
+    Graphen. Das Ergebnis haengt damit von der (deterministischen)
+    Besuchsreihenfolge ab und ist keine globale Ausgleichung. Fuer eine
+    Zelle mit wenigen Tags und kurzen Ketten ist das in Ordnung; werden die
+    Ketten lang, misst `residuals`, ob es noch gut genug ist. Der naechste
+    Schritt waere eine gewichtete Ausgleichung nach kleinsten Quadraten
+    ueber alle Kanten.
     """
     anchor_tag_id = int(anchor_tag_id)
     edges = relative_poses(observations)
@@ -465,8 +467,8 @@ def place_tags(
         for neighbour in sorted(neighbours.get(current, ())):
             if neighbour in placed:
                 continue
-            # Let all already-placed neighbours of this tag contribute, not
-            # just the one we arrived through.
+            # Alle bereits gesetzten Nachbarn dieses Tags beitragen lassen,
+            # nicht nur den, ueber den wir gekommen sind.
             candidates = [
                 compose(placed[other], relative)
                 for other in sorted(neighbours.get(neighbour, ()))
@@ -481,11 +483,11 @@ def place_tags(
 def residuals(
     observations: Sequence[Observation], placed: Mapping[int, Pose]
 ) -> dict[tuple[int, int], tuple[float, float]]:
-    """Return the closure error per edge: `(position in m, angle in rad)`.
+    """Liefert den Schliessungsfehler je Kante: `(Position in m, Winkel in rad)`.
 
-    This is the map's quality figure. An image series that closes a loop
-    must close; if it doesn't, either the calibration or a recorded tag
-    size is wrong.
+    Das ist die Guetezahl der Karte. Eine Bildserie, die eine Schleife
+    schliesst, muss sie schliessen; tut sie es nicht, stimmt entweder die
+    Kalibrierung oder eine eingetragene Tag-Groesse nicht.
     """
     result: dict[tuple[int, int], tuple[float, float]] = {}
     for (first, second), measurements in relative_poses(observations).items():
@@ -508,15 +510,16 @@ def with_world_poses(
     sizes: Mapping[int, float] | None = None,
     default_size_m: float = 0.05,
 ) -> TagMap:
-    """Write placed poses into a map as world poses.
+    """Schreibt gesetzte Posen als Weltposen in eine Karte.
 
-    Existing entries keep role, module assignment and CAD offset; only
-    `pose_in_world` is set. Movable tags (`module`, `robot`) deliberately get
-    **no** world pose -- they stand wherever they stand, and where that is
-    gets measured on every job.
+    Bestehende Eintraege behalten Rolle, Modulzuordnung und CAD-Versatz; nur
+    `pose_in_world` wird gesetzt. Bewegliche Tags (`module`, `robot`)
+    bekommen bewusst **keine** Weltpose -- sie stehen, wo sie stehen, und wo
+    das ist, wird bei jedem Job gemessen.
 
-    A tag not yet in the map becomes a world tag: surveying a cell is what
-    `build_tagmap` is for, and its output is exactly the fixed border tags.
+    Ein Tag, der noch nicht in der Karte steht, wird zum Welttag: Eine Zelle
+    einzumessen ist der Zweck von `build_tagmap`, und seine Ausgabe sind
+    genau die festen Rand-Tags.
     """
     roles = roles or {}
     sizes = sizes or {}
@@ -540,12 +543,12 @@ def with_world_poses(
 def missing_tags(
     observations: Sequence[Observation], placed: Mapping[int, Pose]
 ) -> list[int]:
-    """Return observed tags that had no path to the anchor."""
+    """Liefert beobachtete Tags, die keinen Weg zum Anker hatten."""
     return sorted(observed_tag_ids(observations) - {int(tag_id) for tag_id in placed})
 
 
 def format_residual_report(residual_map: Mapping[tuple[int, int], tuple[float, float]]) -> str:
-    """Return a human-readable summary of closure errors, largest first."""
+    """Liefert eine lesbare Zusammenfassung der Schliessungsfehler, groesste zuerst."""
     if not residual_map:
         return "keine gemeinsamen Kanten"
     lines = ["Kante        Position     Winkel"]
