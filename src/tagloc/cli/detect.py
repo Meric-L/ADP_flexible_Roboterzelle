@@ -4,17 +4,18 @@
         --calibration data/calibration/cam_ceiling.json \
         --tag-map config/tagmap.json --overlay
 
-    # reproducible, no hardware needed: image folder instead of camera
+    # reproduzierbar, keine Hardware noetig: Bildordner statt Kamera
     python -m tagloc.cli.detect --source ./aufnahmen/szene/ \
         --calibration data/calibration/cam_ceiling.json --json posen.json
 
-Per tag: ID, pose (position and quaternion xyzw), reprojection error and
-ambiguity. With `--tag-map`, also the module assignment and, once a world
-tag is visible, the world pose and the world tag the module sits closest to.
+Je Tag: ID, Pose (Position und Quaternion xyzw), Reprojektionsfehler und
+Mehrdeutigkeit. Mit `--tag-map` zusaetzlich die Modulzuordnung und, sobald ein
+Welttag sichtbar ist, die Weltpose und der Welttag, neben dem das Modul steht.
 
-`--overlay` shows a window; without a screen (Pi over SSH) that's reported
-once and the run continues without a display. `--save-overlay FOLDER` saves
-the marked images instead -- the practical way on a headless Pi.
+`--overlay` zeigt ein Fenster; ohne Bildschirm (Pi ueber SSH) wird das einmal
+gemeldet und der Lauf geht ohne Anzeige weiter. `--save-overlay ORDNER`
+speichert stattdessen die markierten Bilder -- der praktische Weg auf einem
+Pi ohne Bildschirm.
 """
 
 import argparse
@@ -123,10 +124,10 @@ def main(argv=None) -> int:
                     f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
                 )
 
-            # Without a world tag the chain stays in the camera frame. That's
-            # normal operation for the eye-in-hand camera between two world
-            # tags, not a special case: modules are still resolved, just
-            # relative to the camera.
+            # Ohne Welttag bleibt die Kette im Kamera-KS. Das ist der
+            # Normalbetrieb der Handkamera zwischen zwei Welttags, kein
+            # Sonderfall: Module werden trotzdem aufgeloest, nur relativ
+            # zur Kamera.
             localization = localize_camera(
                 tag_poses,
                 tag_map,
