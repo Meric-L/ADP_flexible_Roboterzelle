@@ -7,7 +7,7 @@
     {
       "tagId": 583,
       "role": "world",
-      "sizeM": 0.198,
+      "sizeM": 0.2,
       "poseInWorld": {
         "position": [0.0, 0.0, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
@@ -16,7 +16,7 @@
     {
       "tagId": 584,
       "role": "world",
-      "sizeM": 0.198,
+      "sizeM": 0.2,
       "poseInWorld": {
         "position": [1.593, -0.052, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
@@ -25,7 +25,7 @@
     {
       "tagId": 585,
       "role": "world",
-      "sizeM": 0.198,
+      "sizeM": 0.2,
       "poseInWorld": {
         "position": [1.593, 1.618, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
@@ -34,7 +34,7 @@
     {
       "tagId": 586,
       "role": "world",
-      "sizeM": 0.198,
+      "sizeM": 0.2,
       "poseInWorld": {
         "position": [0.0, 1.618, 0.0],
         "orientation": [0.0, 0.0, 0.0, 1.0]
