@@ -464,6 +464,76 @@ def _huber_cost(errors: np.ndarray, delta: float) -> float:
     )
 
 
+@dataclass(frozen=True)
+class _RefineProblem:
+    """Beobachtungen und Brettpunkte von `refine_hand_eye` samt Residuen-Funktion.
+
+    Der Zustand ist ein Tripel `(X, T_base_brett, Massstab)`; ein Schritt ist ein
+    Vektor aus 13 Zuwaechsen (`X` 6, Brett 6, Massstab 1), von denen ohne
+    `estimate_scale` nur die ersten 12 frei sind.
+    """
+
+    inverse_flanges: np.ndarray
+    points: np.ndarray
+    matrix: np.ndarray
+    observed: np.ndarray
+    estimate_scale: bool
+
+    @property
+    def free(self) -> int:
+        return 13 if self.estimate_scale else 12
+
+    def residuals(self, x_pose, board_pose, scale) -> np.ndarray:
+        """Projizierte minus beobachtete Ecken, `(n, m, 2)`."""
+        pixels, _ = _project_all(self.inverse_flanges, self.points, self.matrix, x_pose, board_pose, scale)
+        return pixels - self.observed
+
+    def step(self, x_pose, board_pose, scale, delta):
+        """Der Zustand nach dem Zuwachs `delta`."""
+        return (
+            _apply_increment(x_pose, delta[:6]),
+            _apply_increment(board_pose, delta[6:12]),
+            scale + (delta[12] if self.estimate_scale else 0.0),
+        )
+
+    def jacobian(self, state, size: int) -> np.ndarray:
+        """Numerische Jacobi-Matrix (zentrale Differenzen) der flachen Residuen."""
+        jacobian = np.empty((size, self.free), dtype=np.float64)
+        for column in range(self.free):
+            offset = np.zeros(13, dtype=np.float64)
+            offset[column] = _JACOBIAN_STEP
+            plus = self.residuals(*self.step(*state, offset)).reshape(-1)
+            minus = self.residuals(*self.step(*state, -offset)).reshape(-1)
+            jacobian[:, column] = (plus - minus) / (2.0 * _JACOBIAN_STEP)
+        return jacobian
+
+
+def _refine_problem(
+    flanges: list[np.ndarray],
+    corners_px: Sequence[np.ndarray],
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    estimate_scale: bool,
+) -> _RefineProblem:
+    """Prueft die Eingaben von `refine_hand_eye` und bringt sie in Arrayform.
+
+    Raises:
+        ValueError: Posen und Eckensaetze passen nicht zusammen, zu wenige
+            Aufnahmen oder Eckenzahl passt nicht zu den Brettpunkten.
+    """
+    if len(flanges) != len(corners_px):
+        raise ValueError(f"Verfeinerung: {len(flanges)} Roboterposen zu {len(corners_px)} Eckensaetzen")
+    if len(flanges) < MIN_SAMPLES:
+        raise ValueError(f"Verfeinerung braucht mindestens {MIN_SAMPLES} Aufnahmen")
+    observed = np.stack([np.asarray(c, dtype=np.float64).reshape(-1, 2) for c in corners_px])
+    points = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
+    if observed.shape[1] != points.shape[0]:
+        raise ValueError("Verfeinerung: Eckenzahl passt nicht zu den Brettpunkten")
+    matrix = np.asarray(camera_matrix, dtype=np.float64).reshape(3, 3)
+    inverse_flanges = np.stack([invert(f) for f in flanges])
+    return _RefineProblem(inverse_flanges, points, matrix, observed, estimate_scale)
+
+
 def refine_hand_eye(
     poses_base_flange: Sequence[Pose],
     corners_px: Sequence[np.ndarray],
@@ -497,47 +567,21 @@ def refine_hand_eye(
     `solve_hand_eye_robust`, `initial_base_board` aus `estimate_base_board`.
     """
     flanges = [np.asarray(f, dtype=np.float64) for f in poses_base_flange]
-    if len(flanges) != len(corners_px):
-        raise ValueError(f"Verfeinerung: {len(flanges)} Roboterposen zu {len(corners_px)} Eckensaetzen")
-    if len(flanges) < MIN_SAMPLES:
-        raise ValueError(f"Verfeinerung braucht mindestens {MIN_SAMPLES} Aufnahmen")
-    observed = np.stack([np.asarray(c, dtype=np.float64).reshape(-1, 2) for c in corners_px])
-    points = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
-    if observed.shape[1] != points.shape[0]:
-        raise ValueError("Verfeinerung: Eckenzahl passt nicht zu den Brettpunkten")
-    matrix = np.asarray(camera_matrix, dtype=np.float64).reshape(3, 3)
-    inverse_flanges = np.stack([invert(f) for f in flanges])
+    problem = _refine_problem(flanges, corners_px, object_points, camera_matrix, estimate_scale)
+    free = problem.free
 
     flange_cam = np.asarray(initial_flange_cam, dtype=np.float64).copy()
     base_board = np.asarray(initial_base_board, dtype=np.float64).copy()
     scale = float(initial_scale)
-    free = 13 if estimate_scale else 12
 
-    def residuals(x_pose, board_pose, s) -> np.ndarray:
-        pixels, _ = _project_all(inverse_flanges, points, matrix, x_pose, board_pose, s)
-        return pixels - observed  # (n, m, 2)
-
-    def step(x_pose, board_pose, s, delta):
-        return (
-            _apply_increment(x_pose, delta[:6]),
-            _apply_increment(board_pose, delta[6:12]),
-            s + (delta[12] if estimate_scale else 0.0),
-        )
-
-    current = residuals(flange_cam, base_board, scale)
+    current = problem.residuals(flange_cam, base_board, scale)
     cost = _huber_cost(np.linalg.norm(current, axis=-1), huber_delta_px)
     damping = 1e-3
     converged = False
     iterations = 0
     for iterations in range(1, max_iterations + 1):
         flat = current.reshape(-1)
-        jacobian = np.empty((flat.size, free), dtype=np.float64)
-        for column in range(free):
-            offset = np.zeros(13, dtype=np.float64)
-            offset[column] = _JACOBIAN_STEP
-            plus = residuals(*step(flange_cam, base_board, scale, offset)).reshape(-1)
-            minus = residuals(*step(flange_cam, base_board, scale, -offset)).reshape(-1)
-            jacobian[:, column] = (plus - minus) / (2.0 * _JACOBIAN_STEP)
+        jacobian = problem.jacobian((flange_cam, base_board, scale), flat.size)
         norms = np.linalg.norm(current, axis=-1)
         # IRLS: Huber-Gewicht je Ecke, fuer beide Pixelkomponenten gleich.
         corner_weight = np.where(norms <= huber_delta_px, 1.0, huber_delta_px / np.maximum(norms, 1e-12))
@@ -554,8 +598,8 @@ def refine_hand_eye(
                 continue
             delta = np.zeros(13, dtype=np.float64)
             delta[:free] = solved
-            trial = step(flange_cam, base_board, scale, delta)
-            trial_residuals = residuals(*trial)
+            trial = problem.step(flange_cam, base_board, scale, delta)
+            trial_residuals = problem.residuals(*trial)
             trial_cost = _huber_cost(np.linalg.norm(trial_residuals, axis=-1), huber_delta_px)
             if trial_cost < cost:
                 relative = (cost - trial_cost) / max(cost, 1e-18)
