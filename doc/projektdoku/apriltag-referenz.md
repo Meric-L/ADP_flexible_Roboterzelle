@@ -505,7 +505,7 @@ def expected_but_missing(tag_map: TagMap,
     # concept/offene_punkte.md Nr. 6, ohne zusaetzliche Konfiguration)
 ```
 
-`merge_samples` ist die Funktion, die `detection/apriltag.py` tatsächlich zum
+`merge_samples` ist die Funktion, die `detection/apriltag/job.py` tatsächlich zum
 Mitteln mehrerer Job-Aufnahmen benutzt — nicht zu verwechseln mit
 `merge_by_module` (mittelt mehrere Tags **einer** Aufnahme zu einer Modulpose).
 
@@ -848,7 +848,7 @@ aus.
 |---|---|
 | Profil | `apriltag` |
 | Rezept | `RecipeId = "apriltag"` |
-| Klasse | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag.py` |
+| Klasse | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag/` (Paket; `__init__.py` setzt die Klasse aus Mixins zusammen) |
 | Konfiguration | `AprilTagProfileConfig` in `src/vision_server/profiles.py` |
 | `IsSimulated` | `False` |
 

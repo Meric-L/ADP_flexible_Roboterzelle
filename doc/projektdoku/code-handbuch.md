@@ -107,7 +107,7 @@ Layer 1 ist die Deckenkamera (`pi-decke`), Layer 2 die Handkamera (`pi-hand`); Q
 
 Schichtung nach Abhängigkeiten, von `tests/test_layering.py` geprüft: `identity` und `modes` brauchen nur die Standardbibliothek. `geometry`, `observations`, `calibration`, `tagmap`, `localize` und `handeye` importieren kein `cv2`. `detector`, `pose`, `boards`, `overlay` und `frames` importieren `cv2` erst beim Aufruf. Kein Modul im Paket importiert `vision_server`. Nicht im Test erfasst sind `lens.py` und `reference_edges.py`; beide importieren `cv2` nur in Funktionen.
 
-Benutzt wird das Paket außerdem von (nur Verweis): `src/vision_server/detection/apriltag.py` (Erkennungsquelle, größter Nutzer), `stream_overlay.py` und `camera_stream.py` (Overlay, Modi), `handeye_session.py`, `calibration_session.py`, `cellwatch.py`, `layer2/plan.py`, `tagreference.py`, `measureboard.py`, `measuretag.py`, `runner.py`, `camera.py`, `src/vision_server/tools/diagnose_board.py`.
+Benutzt wird das Paket außerdem von (nur Verweis): `src/vision_server/detection/apriltag/` (Erkennungsquelle, größter Nutzer), `stream_overlay.py` und `camera_stream.py` (Overlay, Modi), `handeye_session.py`, `calibration_session.py`, `cellwatch.py`, `layer2/plan.py`, `tagreference.py`, `measureboard.py`, `measuretag.py`, `runner.py`, `camera.py`, `src/vision_server/tools/diagnose_board.py`.
 
 **Zweck**: Bibliothek für die AprilTag-Lokalisierung. Sie rechnet Kamerakalibrierung, Tag-Erkennung und Posen, Tag-Map und Modulposen in einem gemeinsamen Weltkoordinatensystem. Netzwerk und OPC UA kommen im Paket nicht vor. Die Befehle unter `cli/` nutzen dieselben Funktionen ohne Server.
 
@@ -128,6 +128,7 @@ Lesereihenfolge für Einsteiger: `geometry.py`, `observations.py`, `calibration.
 | `src/tagloc/observations.py` | Datentypen zwischen Bild und Mathematik: Tag im Bild ohne Pose, Tag mit Pose | `TagObservation`, `TagPose` (`is_ambiguous`, `is_usable`), `AMBIGUITY_THRESHOLD` |
 | `src/tagloc/identity.py` | Kennung einer Konfigurationsdatei (`<name>#<mtime>`), nur Standardbibliothek. Der Server nutzt sie für die `configurationId`. | `file_identity`, `calibration_identity`, `tag_map_identity` |
 | `src/tagloc/modes.py` | Overlay-Modi des Livestreams und ihre Beschriftungen, nur Standardbibliothek | `OVERLAY_MODES`, `DEFAULT_OVERLAY_MODE`, `normalise_mode` |
+| `src/tagloc/jsonio.py` | NaN und Unendlich zu `None`, Rundung je Aufrufer (Payload 4 Stellen, siehe `PAYLOAD_DIGITS` in `detection/apriltag/job.py`); nur Standardbibliothek | `finite_or_none(value, digits=None)` |
 | `src/tagloc/calibration.py` | Kamerakalibrierung als JSON lesen und schreiben, Auflösung prüfen und skalieren, Platzhalter ohne Messung | `CameraCalibration`, `load_calibration`, `save_calibration`, `default_calibration`, `check_resolution`, `scale_to_resolution` |
 | `src/tagloc/lens.py` | Alle linsenmodellabhängigen OpenCV-Aufrufe an einer Stelle: Pinhole (Brown-Conrady) und Fisheye (Kannala-Brandt) | `undistort_points`, `project_points`, `undistortion_maps`, `calibrate` |
 | `src/tagloc/boards.py` | Schachbrett und ChArUco: finden, auch teilweise sichtbar, Abdeckung, Brettpose, Kalibrierung aus Aufnahmen | `BoardSpec`, `detect_board`, `detect_partial_board`, `diagnose_board`, `compute_coverage`, `estimate_board_pose`, `calibrate_from_samples` |
@@ -704,7 +705,15 @@ Eine Erkennungsquelle liefert die Erkennungen für einen Job und kennt kein OPC 
 | --- | --- | --- |
 | `src/vision_server/detection/__init__.py` | Registry von Profilname zu Fabrik. Die Fabriken importieren ihr Modul erst beim Aufruf | `DETECTION_SOURCES`, `build_detection_sources()`, `JOBS_DIR` |
 | `src/vision_server/detection/base.py` | Schnittstelle `DetectionSource` (ABC) mit Datenklassen und einem eigenen Ein-Thread-Executor für blockierende Arbeit | `DetectionSource` (`acquire_and_detect`, `open`, `close`, `run_blocking`), `Detection`, `DetectionRequest` |
-| `src/vision_server/detection/apriltag.py` | Profil `apriltag`: Kamera öffnen, Kalibrierung und Tag-Map laden, Bilder auswerten, Modulposen liefern, Messungen für andere Sitzungen. Zweitgrößte Datei des Pakets | `AprilTagDetectionSource` (`open`, `acquire_and_detect`, `measure_tags`, `measure_tag`, `measure_board`, `measure_board_view`, `measure_tag_reference`, `plan_tag_reference_view`, `observe_cell`, `apply_calibration`, `apply_tag_map`, `apply_hand_eye`), `TagSnapshot`, `robot_pose_from_parameters()` |
+| `src/vision_server/detection/apriltag/__init__.py` | Profil `apriltag`: die Klasse `AprilTagDetectionSource`, aus den Mixins unten zusammengesetzt. Hält den Zustand (Kamera, Detektor, Kalibrierung, Karte, Anker); der Importpfad `vision_server.detection.apriltag` ist der alte | `AprilTagDetectionSource`, `TagSnapshot`, `robot_pose_from_parameters()`, `SOURCE_BY_FRAME` |
+| `…/apriltag/resources.py` | Betriebsmittel: Kalibrierung, Tag-Map, Hand-Auge und Detektor laden, im Betrieb tauschen, schließen | `ResourcesMixin` (`open` mit `_load_calibration`, `_load_tag_map`, `_load_hand_eye`, `_build_detector`, `_fallback_calibration`; `apply_calibration`, `apply_tag_map`, `apply_hand_eye`; `calibration`, `intrinsics_source`; `close`) |
+| `…/apriltag/capture.py` | Bilder der geteilten Kamera holen: nur frische Frames, Kalibrierung zur Bildgröße, Overlay-Stand | `CaptureMixin` (`_next_frame`, `_latest_timestamp`, `_calibration_for`, `_remember_tags`), `captured_at()`, `POLL_INTERVAL_S` |
+| `…/apriltag/job.py` | Der Job: Bilder auswerten, Module lokalisieren, Detektionen und Payload-Attribute bauen | `JobMixin` (`acquire_and_detect`, `_locate`, `_carry_with_anchor`, `_capture_samples`, `_warn_no_world_tag`, `_build_detection`, `_detection_attributes`), `robot_pose_from_parameters()`, `SOURCE_BY_FRAME`, `PAYLOAD_DIGITS` |
+| `…/apriltag/tags.py` | Tags im Kamera-KS messen, ohne Welt-KS | `TagMeasureMixin` (`measure_tags`, `_detect_in_camera`, `measure_tag`, `_measure_tag`) |
+| `…/apriltag/board.py` | Das Kalibrier-Schachbrett messen | `BoardMeasureMixin` (`measure_board`, `measure_board_view`, `default_board_spec`, `_observe_board`, `_diagnose_board`), `OBSERVE_MAX_SIDE` |
+| `…/apriltag/reference.py` | Tag-Lage über Bezugskanten einmessen und die Ansicht dafür planen | `ReferenceMixin` (`measure_tag_reference`, `_capture_reference_frames`, `_reference_result`, `_measure_reference`, `_show_reference_debug`, `plan_tag_reference_view`) |
+| `…/apriltag/cell.py` | Ein Bild für die Zellüberwachung auswerten, ohne Seiteneffekte | `CellObserveMixin` (`observe_cell`, `_with_stored_pose`) |
+| `…/apriltag/snapshot.py` | Die Tags des neuesten Bilds fürs Livestream-Overlay | `TagSnapshot` |
 | `src/vision_server/detection/script_runner.py` | Profil `calibration`: startet `src/jobs/calibrate.py` als Subprozess. Dessen stdout wird die Nachricht des Ergebnisses | `ScriptDetectionSource`, `TERMINATE_GRACE_S` |
 
 **Ablauf (AprilTag-Quelle)**
@@ -726,6 +735,7 @@ Eine Erkennungsquelle liefert die Erkennungen für einen Job und kennt kein OPC 
 Stolpersteine:
 
 - `src/jobs/calibrate.py` ist laut Docstring eine Bereitschaftsprüfung, keine Kalibrierung. Es ordnet Hostnamen anders zu (`pi-decke`, `pi-hand`) als `PI_IDENTITIES` in `server.py`. Ohne `VISION_FRAME_ID` meldet es auf den Pis den Rahmen `world`. Die Datei liegt außerhalb dieses Pakets und ist hier nur vermerkt.
+- `AprilTagDetectionSource` ist ein Paket aus Mixins: der Zustand (Kamera, Detektor, Kalibrierung, Karte, Anker) wird in `apriltag/__init__.py` gesetzt, die Methoden stehen nach Aufgabe in `resources.py`, `capture.py`, `job.py`, `tags.py`, `board.py`, `reference.py`, `cell.py`. Ein Mixin liest Attribute, die er nicht selbst anlegt (jeder nennt sie in seinem Modul-Docstring). Eine neue Methode gehört in das Modul ihrer Aufgabe; neue Attribute in `__init__`. Alle Module loggen unter dem Namen `vision_server.detection.apriltag` (`logging.getLogger(__package__)`), `assertLogs` auf diesen Namen greift also für das ganze Paket. `tagloc` wird dort nur innerhalb von Funktionen importiert (Ausnahme `tagloc.jsonio`, nur Standardbibliothek), damit der Import ohne numpy und OpenCV geht.
 - Eine neue Erkennungsquelle braucht eine Klasse in `detection/` und einen Eintrag in `DETECTION_SOURCES` (siehe [vision-system.md](vision-system.md), Abschnitt „Aufbau“).
 - Bausteine aus `tagloc`, die die Quelle benutzt (hier nur genannt): `tagloc.detector` (`build_detector`), `tagloc.calibration`, `tagloc.tagmap`, `tagloc.pose`, `tagloc.localize`, `tagloc.geometry`, `tagloc.identity`, `tagloc.handeye`, `tagloc.boards`, `tagloc.reference_edges`.
 
@@ -865,7 +875,7 @@ Bestimmt `T_flansch_cam`, also die feste Lage der Handkamera am Roboterflansch. 
 | --- | --- | --- |
 | `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()`, `_write_session_dataset()`, `_intrinsics_warnings()` |
 | `src/vision_server/runner.py` (Teil) | Installer und Sperren | `_install_hand_eye_session()` |
-| `src/vision_server/detection/apriltag.py` (Teil) | Messung des Ziels im Kamera-Bezugsrahmen, Anwendung der neuen Kalibrierung | `measure_tag()`, `measure_board()`, `apply_hand_eye()`, `intrinsics_source()` |
+| `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`, `resources.py`) | Messung des Ziels im Kamera-Bezugsrahmen, Anwendung der neuen Kalibrierung | `measure_tag()`, `measure_board()`, `apply_hand_eye()`, `intrinsics_source()` |
 
 **Ablauf**
 
@@ -967,7 +977,7 @@ Zwei Methoden, die nur messen und keine Fahrbefehle schicken. `MeasureTags` lief
 | --- | --- | --- |
 | `src/vision_server/measuretag.py` | Anfrage lesen, Tag-Größe nachschlagen (Anfrage, dann Tag-Map, dann Rückfallwert), Ergebnis bauen, Randnähe und Blickwinkel | `parse_request()`, `build_result()`, `SizeLookup`, `near_edge()`, `view_angle_deg()`, `DEFAULT_FRAMES`, `MAX_FRAMES`, `EDGE_MARGIN` |
 | `src/vision_server/measureboard.py` | Brettmessung: ganzes Brett (Pose, Ecken), Teilraster (Schwerpunkt, Bildränder) oder nichts | `parse_request()`, `build_result()`, `FrameBoard`, `BoardRequest` |
-| `src/vision_server/detection/apriltag.py` (Teil) | Die Messungen selbst | `measure_tags()`, `measure_board_view()`, `_observe_board()` |
+| `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`) | Die Messungen selbst | `measure_tags()`, `measure_board_view()`, `_observe_board()` |
 | `src/vision_server/runner.py` (Teil) | Installer und Sperren | `_install_measure_tags()`, `_install_measure_board()`, `_Activity` |
 
 **Ablauf**
@@ -983,7 +993,7 @@ Sperren: `MeasureTags` ist nur für Job und Kamera-Kalibrierung gesperrt. Es lä
 
 - `DEFAULT_FRAMES` = 3, `MAX_FRAMES` = 10 (`measuretag.py`).
 - `EDGE_MARGIN` = 0,05 (Anteil der Bildgröße, ab dem ein Tag als randnah gilt).
-- `OBSERVE_MAX_SIDE` = 640 (`detection/apriltag.py`).
+- `OBSERVE_MAX_SIDE` = 640 (`detection/apriltag/board.py`).
 - Brettgeometrie aus den `calibration_board_*`-Feldern.
 - Tag-Größe: Anfrage, dann Tag-Map, dann der Rückfallwert `tag_size_m`.
 
@@ -1012,7 +1022,7 @@ Misst die Position eines Tags auf einem Modul über dessen Bezugskanten im Bild,
 | `src/vision_server/tagreference.py` | Anfrage prüfen, Tag-Pose aus mehreren Bildern, Korrektur, Zusammenfassung, Hinweise, Ergebnis und Ansichtsplan bauen | `parse_request()`, `combine_tag_pose()`, `keep_guess_rotation()`, `summarize_lines()`, `reference_warnings()`, `build_result()`, `build_view()`, `TagReferenceRequest` |
 | `src/vision_server/tagreference_preview.py` | Zustand der Live-Vorschau, ohne Threads: Anfrage, Ablaufzeit, Status | `ReferencePreview`, `ReferenceView`, `build_status()`, `PREVIEW_TTL_S`, `MEASURE_HOLD_S` |
 | `src/vision_server/tagreference_log.py` | Mess-Protokoll je Messung, Aufräumen alter Ordner | `write_protocol()`, `prune()`, `latest_overlay()`, `MAX_FOLDERS`, `OVERLAY_NAME` |
-| `src/vision_server/detection/apriltag.py` (Teil) | Messung in der Quelle: Tag erkennen, Kanten messen, Korrektur, Ansicht planen | `measure_tag_reference()`, `_measure_reference()`, `plan_tag_reference_view()` |
+| `src/vision_server/detection/apriltag/reference.py` | Messung in der Quelle: Tag erkennen, Kanten messen, Korrektur, Ansicht planen | `measure_tag_reference()`, `_measure_reference()`, `plan_tag_reference_view()` |
 | `src/vision_server/stream_overlay.py` (Teil) | Live-Ansicht der Kantensuche im Modus `tagreference` | `set_reference_preview()`, `_tag_reference_view()`, `_evaluate_reference()` |
 
 **Ablauf**
@@ -1056,7 +1066,7 @@ Prüft laufend, ob Module in der Zelle verschoben, hinzugekommen oder entfernt w
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
 | `src/vision_server/cellwatch.py` | Logik ohne Uhr und ohne asyncua: Regeln für bewegt, neu und verschwunden. Start, Stopp, Pause und Takt. Kamerapose merken | `CellWatchTracker` (`update`, `pending`, `changes`, `stable_observation`, `detection_rate`, `visibility`), `CellWatch` (`start`, `stop`, `pause`, `resume`, `tick`, `status_json`), `CellWatchOptions`, `CameraPoseKeeper` (`judge`, `adopt`, `stored_for`, `load`), `CellWatchPorts`, `parse_start()`, `reference_from_payload()`, `camera_pose_from_payload()`, `sightings_from_locations()`, `is_flat()`, `conservative_rate()`, `required_misses()` |
-| `src/vision_server/detection/apriltag.py` (Teil) | Beobachtung je Bild mit eigenem Detektor, ohne Seiteneffekte | `observe_cell()` |
+| `src/vision_server/detection/apriltag/cell.py` | Beobachtung je Bild mit eigenem Detektor, ohne Seiteneffekte | `observe_cell()` |
 | `src/vision_server/result_management.py` (Teil) | Die Referenz kommt aus dem Ergebnis eines früheren Jobs | `ResultStore.result_for_job()` |
 | `src/vision_server/runner.py` (Teil) | Verdrahtung: Beobachtung, Veröffentlichung, Pausen bei Job und Kalibrierung | `_install_cell_watch()` |
 

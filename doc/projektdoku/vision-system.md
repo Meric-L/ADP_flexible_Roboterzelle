@@ -72,7 +72,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA |
 | `discovery/mdns.py` | mDNS-Ankündigung |
 | `discovery/lds.py` | LDS-Registrierung beim Aggregation-Server |
-| `detection/` | Strategie `DetectionSource`: `apriltag.py` (echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
+| `detection/` | Strategie `DetectionSource`: `apriltag/` (Paket, echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung. Details zu
@@ -251,7 +251,7 @@ Festgehalten in `tests/test_part10_fassade.py`.
 - `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
   Tag-Map sichtbar ist, sonst das Kamera-KS. Die Hand-Auge-Kalibrierung für
   Layer 2 ist implementiert (`AprilTagProfileConfig.hand_eye_path`, verkettet
-  in `detection/apriltag.py`) — offen ist nur noch die reale Vermessung der
+  in `detection/apriltag/`) — offen ist nur noch die reale Vermessung der
   Hand-Auge-Datei je Zelle, siehe [`vision-server-interface.md`](vision-server-interface.md)
   Abschnitt 9.
 - Verlinkt sind `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`
