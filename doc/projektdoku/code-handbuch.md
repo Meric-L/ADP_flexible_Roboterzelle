@@ -326,7 +326,7 @@ Die Messung sollte auch auf dem Pi laufen; dort zählen die Zahlen (so das Docst
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `tools/make_tag_sheet.py` | Druckbogen als SVG (A4, in mm): AprilTags oder ChArUco-Board, mit 100-mm-Maßstab zum Nachmessen | `build_parser`, `main`, `_dictionary`, `_png_data_uri` |
+| `tools/make_tag_sheet.py` | Druckbogen als SVG (A4, in mm): AprilTags oder ChArUco-Board, mit 100-mm-Maßstab zum Nachmessen | `build_parser`, `main`, `render_marker`, `render_charuco`, `_png_data_uri` (Wörterbuch und ChArUco-Board kommen aus `tagloc.detector.predefined_dictionary` und `tagloc.boards.build_board`) |
 | `tools/make_synthetic_scene.py` | Rendert Bildserien mit Tags oder Schachbrett, deren Posen bekannt sind (`wahrheit.json`); optional die passende Kalibrierung | `synthetic_calibration`, `write_tag_scene`, `write_chessboard_scene`, `render_reference_scene`, `TRUTH_FILE`, `main` |
 | `tools/measure_nodeset_import.py` | Misst RSS, Dauer und Knotenzahl beim Import der Nodesets: Part 1 MachineVision, DI 1.04.0, Machinery 1.03.0, AMCM 1.00.0. Nur Linux (`/proc/self/status`). | `main` (async), `rss_mb`, `IMPORT_ORDER` |
 
@@ -756,7 +756,7 @@ Eine Kamera, ein Capture-Loop, mehrere Leser. Der Watchdog eskaliert bis zum Pro
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/vision_server/camera.py` | Geteilte Kamera: Capture-Loop, Backends `picamera2`, `realsense` und `opencv`, Watchdog mit Neuöffnung und Prozessabbruch, Kamera-Controls | `SharedCamera` (`open`, `latest_frame`, `status`, `set_give_up_handler`, `close`), `CameraFrame`, `CameraStatus`, `exit_process()`, `picamera2_video_configuration()`, `resolve_camera_controls()`, `validate_camera_controls()`, `format_camera_metadata()`, `yuv420_to_bgr()` |
+| `src/vision_server/camera.py` | Geteilte Kamera: Capture-Loop, Backends `picamera2`, `realsense` und `opencv`, Watchdog mit Neuöffnung und Prozessabbruch, Kamera-Controls | `SharedCamera` (`open`, `latest_frame`, `status`, `set_give_up_handler`, `close`), `CameraFrame`, `CameraStatus`, `exit_process()`, `picamera2_video_configuration()`, `resolve_camera_controls()`, `validate_camera_controls()`, `format_camera_metadata()`, `yuv420_to_bgr()`, `realsense_color_profiles()` |
 | `src/vision_server/camera_health.py` | Watchdog-Zustand auf DI-DeviceHealth abbilden, Alarm beim Wechsel, Schreiben in die Anlagensicht | `device_health()`, `CameraHealthPublisher`, `HealthAlarms`, `write_device_health()` |
 | `src/vision_server/camera_stream.py` | Livestream-Publisher: Frame, optional Overlay, Base64-JPEG. Dazu Knoten für Modus, Fortschritt und Vorschau | `CameraStreamPublisher` (`start`, `stop`, `latest`, `viewer`, `next_frame`), `_encode_jpeg_base64()`, `_resize_for_stream()` |
 | `src/vision_server/stream_overlay.py` | Zeichnet auf eine Kopie des Bilds: Tags, Brettecken, entzerrtes Bild, Einmess-Vorschau | `AprilTagStreamAnnotator` (`annotate`, `apply_calibration`, `set_calibration_session`, `set_busy`, `set_overlay_paused`, `set_reference_preview`), `_scale_corners()` |
@@ -1155,7 +1155,7 @@ Direkt als Skript, etwa `python3 src/vision_server/tools/pi_load_profiler.py --d
 | `src/vision_server/tools/stream_viewer.py` (Handwerkzeug) | Lokales OpenCV-Fenster für den Livestream. Die Leertaste löst eine Kalibrieraufnahme aus | `run()` |
 | `src/vision_server/tools/diagnose_board.py` (Diagnose) | Holt ein unmarkiertes Bild vom Server und testet Rastergrößen des Schachbretts | `run()`, `_parse_combo()`, `DEFAULT_COMBOS` |
 | `src/vision_server/tools/measure_framerate.py` (Messwerkzeug) | Maximale Bildrate der Kamera, ohne die Drosselung des Servers. Ausgabe min, max, Mittelwert | `run()`, `_measure()`, `_summarise()` |
-| `src/vision_server/tools/list_realsense_profiles.py` (Handwerkzeug) | Listet die Farb-Profile einer angeschlossenen RealSense. Öffnet keine Pipeline | `main()` |
+| `src/vision_server/tools/list_realsense_profiles.py` (Handwerkzeug) | Listet die Farb-Profile einer angeschlossenen RealSense. Öffnet keine Pipeline. Die Abfrage selbst steht in `camera.realsense_color_profiles` (auch für die Fehlermeldung beim Öffnen) | `main()` |
 | `src/vision_server/tools/pi_load_profiler.py` (Messwerkzeug) | CPU und RAM je Prozess und Thread, Temperatur und Throttling. Nur Standardbibliothek, optional `py-spy top` | `run()`, `_find_vision_server_pid()`, `_read_throttled_flags()`, `_run_pyspy()` |
 
 Optionen (Auszug):

@@ -17,6 +17,8 @@ import sys
 def main() -> int:
     import pyrealsense2 as rs
 
+    from vision_server.camera import realsense_color_profiles
+
     devices = rs.context().query_devices()
     if len(devices) == 0:
         print("Keine RealSense gefunden (Kabel/USB-Port pruefen).", file=sys.stderr)
@@ -25,13 +27,7 @@ def main() -> int:
     device = devices[0]
     print(f"Geraet: {device.get_info(rs.camera_info.name)}")
 
-    profiles: set[tuple[int, int, int, str]] = set()
-    for sensor in device.query_sensors():
-        for profile in sensor.get_stream_profiles():
-            if profile.stream_type() != rs.stream.color:
-                continue
-            video = profile.as_video_stream_profile()
-            profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+    profiles = realsense_color_profiles(device)
 
     if not profiles:
         print("Kamera gefunden, aber keine Farb-Profile gemeldet.", file=sys.stderr)

@@ -18,6 +18,11 @@ import base64
 import sys
 from pathlib import Path
 
+# Marker-Woerterbuch und Board-Bau kommen aus `tagloc`, nicht aus eigenen Kopien.
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
 MARGIN_MM = 12.0
@@ -36,18 +41,6 @@ def _png_data_uri(image) -> str:
     return "data:image/png;base64," + base64.b64encode(buffer).decode("ascii")
 
 
-def _dictionary(name: str):
-    import cv2
-
-    aruco = cv2.aruco
-    if not hasattr(aruco, name):
-        raise SystemExit(f"Diese OpenCV-Version kennt '{name}' nicht")
-    identifier = getattr(aruco, name)
-    if hasattr(aruco, "getPredefinedDictionary"):
-        return aruco.getPredefinedDictionary(identifier)
-    return aruco.Dictionary_get(identifier)
-
-
 def render_marker(dictionary, tag_id: int, size_mm: float):
     """Render one marker as a bitmap at print resolution."""
     import cv2
@@ -60,26 +53,21 @@ def render_marker(dictionary, tag_id: int, size_mm: float):
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
     """Render a ChArUco board as a bitmap, plus its size in millimeters."""
-    import cv2
+    from tagloc.boards import CHARUCO, BoardSpec, build_board
 
-    dictionary = _dictionary(name)
     width_mm = spec_cols * square_mm
     height_mm = spec_rows * square_mm
     size_px = (int(width_mm * PIXELS_PER_MM), int(height_mm * PIXELS_PER_MM))
-    aruco = cv2.aruco
-    if hasattr(aruco, "CharucoBoard"):
-        try:
-            board = aruco.CharucoBoard(
-                (spec_cols, spec_rows), square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-        except TypeError:
-            board = aruco.CharucoBoard_create(
-                spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-    else:
-        board = aruco.CharucoBoard_create(
-            spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
+    board = build_board(
+        BoardSpec(
+            type=CHARUCO,
+            cols=spec_cols,
+            rows=spec_rows,
+            square_size_m=square_mm / 1000.0,
+            marker_size_m=marker_mm / 1000.0,
+            dictionary=name,
         )
+    )
     image = board.generateImage(size_px) if hasattr(board, "generateImage") else board.draw(size_px)
     return image, width_mm, height_mm
 
@@ -182,6 +170,13 @@ def main(argv=None) -> int:
     if args.out.suffix.lower() != ".svg":
         print(f"Warnung: {args.out.name} ist kein .svg -- geschrieben wird SVG", file=sys.stderr)
 
+    try:
+        return _run(args)
+    except ValueError as error:  # unbekannte Woerterbuch-Namen
+        raise SystemExit(str(error)) from None
+
+
+def _run(args) -> int:
     if args.charuco:
         image, width_mm, height_mm = render_charuco(
             args.cols, args.rows, args.square_mm, args.marker_mm, args.board_dictionary
@@ -199,7 +194,9 @@ def main(argv=None) -> int:
         ]
         title = f"Kalibrierboard ChArUco {args.cols}x{args.rows}"
     else:
-        items = layout_tags(_dictionary(args.family), args.ids, args.size_mm)
+        from tagloc.detector import predefined_dictionary
+
+        items = layout_tags(predefined_dictionary(args.family), args.ids, args.size_mm)
         title = f"AprilTags {args.family}, Kantenlaenge {args.size_mm:.0f} mm"
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

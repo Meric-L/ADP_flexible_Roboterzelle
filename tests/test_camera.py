@@ -20,6 +20,7 @@ from vision_server.camera import (
     PICAMERA2_PREVIEW_FORMAT,
     SharedCamera,
     format_camera_metadata,
+    realsense_color_profiles,
     picamera2_video_configuration,
     resolve_camera_controls,
     validate_camera_controls,
@@ -312,6 +313,39 @@ class ReadFramesTest(unittest.TestCase):
 
         self.assertEqual(image, "array:main")
         self.assertIsNone(preview)
+
+
+class RealsenseColorProfilesTest(unittest.TestCase):
+    """Die gemeinsame Profilabfrage (Fehlermeldung und Werkzeug) gegen ein Fake-SDK."""
+
+    @staticmethod
+    def _profile(rs, stream, width, height, fps, fmt):
+        video = types.SimpleNamespace(width=lambda: width, height=lambda: height)
+        return types.SimpleNamespace(
+            stream_type=lambda: stream,
+            as_video_stream_profile=lambda: video,
+            fps=lambda: fps,
+            format=lambda: types.SimpleNamespace(name=fmt),
+        )
+
+    def test_nur_farbprofile_ohne_doppelte(self):
+        import sys
+        from unittest import mock
+
+        rs = types.SimpleNamespace(stream=types.SimpleNamespace(color="color", depth="depth"))
+        profiles = [
+            self._profile(rs, "color", 640, 480, 30, "bgr8"),
+            self._profile(rs, "color", 640, 480, 30, "bgr8"),
+            self._profile(rs, "color", 1280, 720, 15, "rgb8"),
+            self._profile(rs, "depth", 640, 480, 30, "z16"),
+        ]
+        sensor = types.SimpleNamespace(get_stream_profiles=lambda: profiles)
+        device = types.SimpleNamespace(query_sensors=lambda: [sensor])
+
+        with mock.patch.dict(sys.modules, {"pyrealsense2": rs}):
+            result = realsense_color_profiles(device)
+
+        self.assertEqual(result, {(640, 480, 30, "bgr8"), (1280, 720, 15, "rgb8")})
 
 
 if __name__ == "__main__":
