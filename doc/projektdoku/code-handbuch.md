@@ -128,7 +128,7 @@ Lesereihenfolge für Einsteiger: `geometry.py`, `observations.py`, `calibration.
 | `src/tagloc/observations.py` | Datentypen zwischen Bild und Mathematik: Tag im Bild ohne Pose, Tag mit Pose | `TagObservation`, `TagPose` (`is_ambiguous`, `is_usable`), `AMBIGUITY_THRESHOLD` |
 | `src/tagloc/identity.py` | Kennung einer Konfigurationsdatei (`<name>#<mtime>`), nur Standardbibliothek. Der Server nutzt sie für die `configurationId`. | `file_identity`, `calibration_identity`, `tag_map_identity` |
 | `src/tagloc/modes.py` | Overlay-Modi des Livestreams und ihre Beschriftungen, nur Standardbibliothek | `OVERLAY_MODES`, `DEFAULT_OVERLAY_MODE`, `normalise_mode` |
-| `src/tagloc/jsonio.py` | NaN und Unendlich zu `None`, Rundung je Aufrufer (Payload 4 Stellen, siehe `PAYLOAD_DIGITS` in `detection/apriltag/job.py`); nur Standardbibliothek | `finite_or_none(value, digits=None)` |
+| `src/tagloc/jsonio.py` | NaN und Unendlich zu `None`, Rundung je Aufrufer (Payload 4 Stellen, siehe `PAYLOAD_DIGITS` in `detection/apriltag/job.py`, Hand-Auge-Datei 6 Stellen, `FILE_DIGITS` in `handeye.py`); UTC-Zeitstempel für `createdAt` und Dateinamen; nur Standardbibliothek | `finite_or_none(value, digits=None)`, `utc_now_z()` (`2026-10-31T12:00:00Z`), `utc_stamp()` (`20261031T120000Z`) |
 | `src/tagloc/calibration.py` | Kamerakalibrierung als JSON lesen und schreiben, Auflösung prüfen und skalieren, Platzhalter ohne Messung | `CameraCalibration`, `load_calibration`, `save_calibration`, `default_calibration`, `check_resolution`, `scale_to_resolution` |
 | `src/tagloc/lens.py` | Alle linsenmodellabhängigen OpenCV-Aufrufe an einer Stelle: Pinhole (Brown-Conrady) und Fisheye (Kannala-Brandt) | `undistort_points`, `project_points`, `undistortion_maps`, `calibrate` |
 | `src/tagloc/boards.py` | Schachbrett und ChArUco: finden, auch teilweise sichtbar, Abdeckung, Brettpose, Kalibrierung aus Aufnahmen | `BoardSpec`, `detect_board`, `detect_partial_board`, `diagnose_board`, `compute_coverage`, `estimate_board_pose`, `calibrate_from_samples` |
@@ -136,7 +136,7 @@ Lesereihenfolge für Einsteiger: `geometry.py`, `observations.py`, `calibration.
 | `src/tagloc/pose.py` | Pose je Tag aus den Ecken. Entzerrt vor dem Lösen, verwirft Tags über der Reprojektionsgrenze, löst gemeinsam über alle Ecken mehrerer Welttags | `estimate_tag_pose`, `estimate_tag_poses`, `solve_camera_from_world_tags`, `JointCameraPose`, `undistort_corners`, `poses_by_tag` |
 | `src/tagloc/tagmap.py` | Tag-Map: Rollen, Welttag-Posen, CAD-Versatz der Modultags, Laden und Speichern, Platzieren von Tags aus gemeinsamen Sichtungen, Schließfehler | `TagMap`, `TagEntry`, `load_tag_map`, `tag_map_from_json`, `save_tag_map`, `place_tags`, `residuals`, `with_world_poses`, `nearest_world_tag`, `validate_tag_map`, `DEFAULT_TAG_FAMILY` (Standard-Familie `tag36h11`, von CLI und `tools/make_synthetic_scene.py` benutzt) |
 | `src/tagloc/localize.py` | Kamerapose aus Welttags, Modulposen aus Modultags, Zusammenführung von Decken- und Handmessung, Anker für die Handkamera, Drift-Prüfung | `localize_camera`, `locate_modules`, `merge_samples`, `merge_by_module`, `merge_locations`, `anchor_from_localization`, `localize_camera_from_anchor`, `anchor_drift`, `expected_but_missing` |
-| `src/tagloc/handeye.py` | Hand-Auge-Kalibrierung (`T_flansch_cam`), Anker der Roboterbasis, robuste Lösung und Verfeinerung gegen Brettecken. Ohne cv2, nur numpy und Standardbibliothek. | `solve_hand_eye`, `solve_hand_eye_robust`, `refine_hand_eye_robust`, `leave_one_out_errors`, `anchor_world_base`, `camera_pose_from_robot`, `load_hand_eye`, `save_hand_eye` |
+| `src/tagloc/handeye.py` | Hand-Auge-Kalibrierung (`T_flansch_cam`), Anker der Roboterbasis, robuste Lösung und Verfeinerung gegen Brettecken. Die **eine** Verfeinerungs-Pipeline einer Brett-Sitzung (`refine_board_session`, von Server und CLI gerufen) und die **eine** Definition der `session.json` (Schema, Schreiber `session_payload`, Leser `load_session`). Ohne cv2 beim Import, nur numpy und Standardbibliothek. | `solve_hand_eye`, `solve_hand_eye_robust`, `refine_hand_eye_robust`, `leave_one_out_errors`, `refine_board_session` (`BoardRefinement`, `RefinementError`), `session_payload`, `session_json`, `load_session` (`SessionDataset`, `SessionSample`, `UnknownSessionSchema`), `anchor_world_base`, `camera_pose_from_robot`, `load_hand_eye`, `save_hand_eye`, `SESSION_SCHEMA`, `SESSION_FILE` |
 | `src/tagloc/reference_edges.py` | Tag-Position über Bezugskanten einmessen: Kantensuche im Bild, RANSAC-Geraden, Korrektur in der Tag-Ebene, Mittelung über Bilder, Kameraplanung | `measure_reference_lines`, `fit_in_plane_correction`, `average_corrections`, `plan_reference_view`, `catalog_rpy_deg`, `ReferenceLine`, `LineMeasurement` |
 | `src/tagloc/reference_overlay.py` | Zeichnet die Zwischenschritte der Kantensuche (Debug-Ansicht). Rechnet nichts. | `draw_reference_debug`, `scale_debug`, `effective_layers`, `LAYER_KEYS` |
 | `src/tagloc/overlay.py` | Zeichnet Ergebnisse ins Bild: schlanker Stream-Modus, ausführliche Variante mit Achsenkreuz für die CLI, Statusleiste, Fenster. Rechnet nichts. | `draw_tag_boxes`, `draw_tag_overlay`, `draw_board_overlay`, `draw_calibration_caption`, `draw_status_bar`, `Window`, `has_display`, `summarise` |
@@ -165,7 +165,7 @@ Lesereihenfolge für Einsteiger: `geometry.py`, `observations.py`, `calibration.
   - `calibration.check_resolution` bricht ab, wenn Kalibrierung und Bild verschiedene Auflösungen haben. `scale_to_resolution` skaliert nur bei gleichem Seitenverhältnis.
   - `tagmap.EXPECTED_WORLD_TAG_COUNT = 4`: erwartete Zahl der Welttags, kein Limit.
   - `localize.SOURCE_PRECEDENCE = ("ceiling", "flange")`: die spätere Quelle gewinnt.
-  - `handeye.MIN_SAMPLES = 3`, `MIN_AXES = 3`, `AXIS_THRESHOLD_DEG = 5.0`: Mindestzahl von Aufnahmen und deutlich gedrehten Achsen. Außerdem `OUTLIER_MAD_FACTOR = 3.0`, `HUBER_DELTA_PX = 1.0`, `REFINE_MAX_ITERATIONS = 60`.
+  - `handeye.MIN_SAMPLES = 3`, `MIN_AXES = 3`, `AXIS_THRESHOLD_DEG = 5.0`: Mindestzahl von Aufnahmen und deutlich gedrehten Achsen. Außerdem `OUTLIER_MAD_FACTOR = 3.0`, `HUBER_DELTA_PX = 1.0`, `REFINE_MAX_ITERATIONS = 60`. `BOARD_SCALE_WARNING = 0.003`: ab dieser Abweichung des Brettmaßstabs (0,3 %) der Hinweis im Status des Hand-Pis und in der Ausgabe von `calibrate_handeye --session`.
   - `reference_edges.MIN_LINE_LENGTH_M = 0.02`, `PERPENDICULAR_LIMIT_DEG = 10.0`, `MIN_ANGLE_FULL_DEG = 20.0`: Grenzen für Bezugskanten.
   - `modes.OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted", "tagreference")`, Standard `apriltag`.
   - `detector.build_detector(backend=...)`: `"aruco"` (Standard), `"pupil"`, `"auto"` (weicht auf `pupil` aus, wenn `cv2.aruco` nicht nutzbar ist).
@@ -197,7 +197,7 @@ Jeder Befehl hat `--help`. `transform` braucht kein OpenCV. Die anderen vier bra
 | `src/tagloc/cli/__init__.py` | Paketdoku mit der Befehlsliste (vier Befehle) | — |
 | `src/tagloc/cli/_common.py` | Gemeinsame Argumente, Laden von Kalibrierung und Tag-Map mit Hinweis auf den nächsten Befehl, Auflösungsprüfung, JSON-Ein- und Ausgabe (Schema `wsc.vision.detections.cli/1`) | `add_source_arguments`, `add_detection_arguments`, `add_decoder_arguments`, `open_source`, `load_inputs`, `fit_calibration`, `tag_poses_to_json`, `poses_from_json`, `parse_detector_params` |
 | `src/tagloc/cli/calibrate.py` | Kamerakalibrierung: live mit Fenster oder headless aus einem Bildordner | `build_parser`, `main`, `MIN_SAMPLES` (15) |
-| `src/tagloc/cli/calibrate_handeye.py` | Hand-Auge-Kalibrierung aus einer Aufnahmeliste oder aus einer Sitzung des Hand-Pis (`--session`) | `build_parser`, `main`, `load_samples`, `solve_session`, `SPREAD_WARNING_M` |
+| `src/tagloc/cli/calibrate_handeye.py` | Hand-Auge-Kalibrierung aus einer Aufnahmeliste oder aus einer Sitzung des Hand-Pis (`--session`) | `build_parser`, `main`, `load_samples`, `solve_session`, `_print_refinement`, `SPREAD_WARNING_M` |
 | `src/tagloc/cli/detect.py` | Erkennung auf Kamera oder Bildern. Ausgabe auf der Konsole, als Overlay-Bild oder als JSON | `build_parser`, `main` |
 | `src/tagloc/cli/transform.py` | Reine Rechnung: Pose oder Ergebnisdatei in ein anderes KS transformieren, auch umgekehrt | `build_parser`, `main`, `_load_transform` |
 | `src/tagloc/cli/build_tagmap.py` | Tag-Map aus Bildern bauen, auf denen mehrere Tags gemeinsam zu sehen sind | `build_parser`, `main` (mit `place_tags`, `residuals`, `with_world_poses`) |
@@ -208,7 +208,7 @@ Jeder Befehl hat `--help`. `transform` braucht kein OpenCV. Die anderen vier bra
 - **calibrate** mit Bildordner oder `--no-gui`: Der Code liest alle Bilder und nimmt jedes erkannte Brett auf. Mit `--no-gui` und einer Kamera gibt es im Code keinen Abbruch: Die Schleife nimmt jedes erkannte Brett auf, bis die Quelle `None` liefert. Das tut eine Live-Kamera im Normalbetrieb nicht. Der Modus ist deshalb nur mit Bildordner sinnvoll.
 - **calibrate** `--capture-to`: Die Bilder werden als `kalib_NNN.png` abgelegt, im Fenstermodus und mit `--no-gui` bei Kamera-Quelle (jedes aufgenommene Bild). Bildordner werden nicht kopiert.
 - **calibrate_handeye --samples**: Jedes Bild wird mit der Kalibrierung gemessen; gesucht wird die Tag-ID `tagId` aus der Liste, die Tag-Größe kommt aus `tagSizeM`. Ein Bild mit anderer Auflösung als die Kalibrierung bricht ab. `solve_hand_eye` rechnet, `save_hand_eye` schreibt. Eine Streuung über 5 mm gibt eine Warnung; die Datei wird trotzdem geschrieben.
-- **calibrate_handeye --session**: Nur Aufnahmen mit `accepted` zählen. Gerechnet wird in drei Stufen: `solve_hand_eye` (Park-Martin), `solve_hand_eye_robust` (mit Ausreißerverwerfung) und `refine_hand_eye_robust` gegen die Brettecken, falls Ecken und Intrinsik im Datensatz stehen. Ab vier verwendeten Aufnahmen folgt die Leave-one-out-Prüfung. Ohne `--out` nur Ausgabe.
+- **calibrate_handeye --session**: Nur Aufnahmen mit `accepted` zählen (`tagloc.handeye.load_session`). Gerechnet wird in drei Stufen: `solve_hand_eye` (Park-Martin), `solve_hand_eye_robust` (mit Ausreißerverwerfung) und, falls Ecken und Intrinsik im Datensatz stehen, `tagloc.handeye.refine_board_session`: Entzerren, `refine_hand_eye_robust` gegen die Brettecken, Leave-one-out ab vier verwendeten Aufnahmen und `reconstruction_spread`. **Dieselbe Funktion ruft der Hand-Pi** (`FinishHandEyeCalibration`), die Nachrechnung liefert daher dasselbe Ergebnis wie der Pi. Die CLI druckt nur (`_print_refinement`). Ohne `--out` nur Ausgabe. Ein Rechenfehler mitten in der Verfeinerung läuft als Traceback der Ursache durch; die Zeilen, die vor dem Umbau schon vor dem Absturz erschienen, fehlen dann.
 - **detect**: Pro Bild Auflösung der Kalibrierung prüfen (`fit_calibration`), erkennen, Posen schätzen. Mit sichtbarem Welttag: `localize_camera` und `locate_modules` im Welt-KS, sonst im Kamera-KS. `--overlay` öffnet ein Fenster (ohne Bildschirm: Hinweis, weiter ohne Fenster). `--save-overlay` schreibt markierte Bilder. `--json` schreibt die Posen des letzten Bildes. Keine Bilder gelesen: Exit-Code 1. Mit Kamera läuft der Befehl ohne `--limit` weiter, bis Strg+C oder (mit Fenster) `q`.
 - **transform**: Die Transformation kommt aus `--camera-pose` (JSON mit `T_ziel_quelle`) oder aus den Welttags der Eingabe (`--from-reference`, braucht `--tag-map`). Ohne beides ist es die Identität. `--invert` kehrt sie um.
 - **build_tagmap**: Bilder mit mindestens `--min-tags` Tags → `poses_by_tag` → `place_tags` (Anker `--anchor`) → Tags ohne Pfad zum Anker melden → `residuals` (Schließfehler je Kante) → `with_world_poses` → `save_tag_map`. Mit `--tag-map` bleiben Rollen, Größen und CAD-Versätze der bestehenden Karte erhalten; nur die Weltposen werden neu gerechnet. Kein Bild mit zwei gemeinsamen Tags: Exit-Code 1.
@@ -229,9 +229,9 @@ Befehlsspezifisch (Standardwerte in Klammern):
 - `build_tagmap`: `--out` (Pflicht), `--anchor` (0), `--frame-id` (world), `--min-tags` (2), `--tag-map` (bestehende Karte).
 - `transform`: `--input`, `--position X Y Z`, `--orientation X Y Z W` (0 0 0 1), `--camera-pose`, `--tag-map`, `--from-reference`, `--invert`, `--to` (world), `--out`.
 
-Dateien (Konvention, nicht im Code erzwungen): Kalibrierung `data/calibration/<frame_id>.json`; Hand-Auge `data/handeye/<frame_id>.json`; Sitzungsordner `data/handeye/sessions/<Zeit>/` mit `session.json` (Schema `wsc.vision.handeye.session/1`, geschrieben vom Hand-Pi); Aufnahmeliste (Schema `wsc.vision.handeye.samples/1`); Tag-Map `config/tagmap.json`.
+Dateien (Konvention, nicht im Code erzwungen): Kalibrierung `data/calibration/<frame_id>.json`; Hand-Auge `data/handeye/<frame_id>.json`; Sitzungsordner `data/handeye/sessions/<Zeit>/` mit `session.json` (Schema `wsc.vision.handeye.session/1`, geschrieben vom Hand-Pi über `tagloc.handeye.session_payload`, gelesen über `load_session`: eine Definition für beide); Aufnahmeliste (Schema `wsc.vision.handeye.samples/1`); Tag-Map `config/tagmap.json`.
 
-**Tests**: Keine eigenen Tests für die `main()`-Funktionen. `tests/test_frame_sources.py` importiert `tagloc.cli._common`. Die Logik dahinter (Kalibrierung, Hand-Auge, Tag-Map) ist über die Modul-Tests abgedeckt.
+**Tests**: Keine eigenen Tests für die `main()`-Funktionen, außer `calibrate_handeye --session`: `tests/test_handeye_dataset.py` lässt eine Sitzung des Hand-Pis laufen und rechnet ihren Datensatz mit der CLI nach (gleiche Datei wie auf dem Pi). `tests/test_frame_sources.py` importiert `tagloc.cli._common`. Die Logik dahinter (Kalibrierung, Hand-Auge, Tag-Map) ist über die Modul-Tests abgedeckt.
 
 **Weiterlesen**
 
@@ -451,7 +451,7 @@ Eine einzelne Datei: `PYTHONPATH=src .venv/bin/python -m unittest tests.test_tag
 | `tagloc.pose` | `test_apriltag_source.py`, `test_joint_camera_pose.py`, `test_lens.py`, `test_reference_edges.py`, `test_stream_overlay.py`, `test_tag_pipeline.py` |
 | `tagloc.localize` | `test_apriltag_source.py`, `test_handeye.py`, `test_joint_camera_pose.py`, `test_tag_pipeline.py`, `test_welttags.py` |
 | `tagloc.tagmap` | `test_tag_map.py`, `test_welttags.py`, `test_handeye.py`, `test_apriltag_source.py`, `test_joint_camera_pose.py`, `test_cellwatch.py`, `test_cellwatch_storedpose.py`, `test_layer2_plan.py`, `test_layer2_run.py`, `test_layer2_opcua.py`, `test_measureboard.py`, `test_measuretag.py`, `test_tagreference.py`, `test_tag_pipeline.py` |
-| `tagloc.handeye` | `test_handeye.py`, `test_handeye_refine.py`, `test_handeye_robust.py`, `test_handeye_session.py`, `test_handeye_session_refine.py`, `test_layer2_opcua.py`, `test_layer2_run.py` |
+| `tagloc.handeye` | `test_handeye.py`, `test_handeye_refine.py`, `test_handeye_robust.py`, `test_handeye_dataset.py`, `test_handeye_session.py`, `test_handeye_session_refine.py`, `test_layer2_opcua.py`, `test_layer2_run.py` |
 | `tagloc.observations` | `test_pose_filter.py`, `test_overlay_scaling.py`, `test_lens.py`, `test_welttags.py`, `test_joint_camera_pose.py`, `test_stream_overlay.py`, `test_handeye.py`, `test_apriltag_source.py` |
 | `tagloc.overlay` | `test_overlay_scaling.py`, `test_lens.py`, `test_stream_overlay.py`, `test_stream_calibration_overlay.py` |
 | `tagloc.reference_edges` | `test_reference_edges.py`, `test_tagreference.py`, `test_tagreference_liveview.py` |
@@ -886,7 +886,7 @@ Bestimmt `T_flansch_cam`, also die feste Lage der Handkamera am Roboterflansch. 
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()`, `_write_session_dataset()`, `_intrinsics_warnings()` |
+| `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()` (ruft `tagloc.handeye.refine_board_session`), `_write_session_dataset()` (baut `session.json` mit `tagloc.handeye.session_payload`), `_intrinsics_warnings()`; `finish()` in Schritten: `_axes_refusal`, `_solve`, `_annotate_samples`, `_save`, `_result_payload`, `_result_warnings`, `_summary_message` |
 | `src/vision_server/runner/hand_eye.py` | Installer und Sperren | `_install_hand_eye_session()` |
 | `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`, `resources.py`) | Messung des Ziels im Kamera-Bezugsrahmen, Anwendung der neuen Kalibrierung | `measure_tag()`, `measure_board()`, `apply_hand_eye()`, `intrinsics_source()` |
 
@@ -894,7 +894,7 @@ Bestimmt `T_flansch_cam`, also die feste Lage der Handkamera am Roboterflansch. 
 
 1. `StartHandEyeCalibration` legt das Ziel fest, Tag oder Brett.
 2. `CaptureHandEyeSample` misst das Ziel zur gemeldeten Flanschpose. Die Antwort kommt erst danach. `OK` heißt angenommen. `DETECTION_FAILED` heißt verworfen, der Grund steht im Status.
-3. `FinishHandEyeCalibration` prüft zuerst, ob der Flansch um alle drei Achsen gekippt wurde. Fehlt das, bleibt die Sitzung offen. Dann rechnet die robuste Lösung aus `tagloc.handeye`. Liegt ein Schachbrett vor, folgt eine Verfeinerung gegen die Brettecken. Weicht der Brettmaßstab um mehr als 0,3 % von 1 ab, gibt es eine Warnung.
+3. `FinishHandEyeCalibration` prüft zuerst, ob der Flansch um alle drei Achsen gekippt wurde (`_axes_refusal`). Fehlt das, bleibt die Sitzung offen. Dann rechnet die robuste Lösung aus `tagloc.handeye`. Liegt ein Schachbrett vor, folgt die Verfeinerung gegen die Brettecken (`refine_board_session`, dieselbe Funktion wie in `calibrate_handeye --session`); scheitert sie mit einem Rechenfehler (nicht `ValueError`), steht der Grund im Log und es bleibt bei Park-Martin. Weicht der Brettmaßstab um mehr als 0,3 % von 1 ab, gibt es eine Warnung.
 4. Gespeichert wird nach `data/handeye/cam_flange.json`. Die alte Datei bleibt als Sicherung daneben. Der Datensatz der Sitzung liegt unter `data/handeye/sessions/<Zeit>/`. Die neue Kalibrierung wird sofort übernommen (`apply_hand_eye`).
 5. `AbortHandEyeCalibration` verwirft die Sitzung.
 
@@ -903,7 +903,7 @@ Sperren: Eine Hand-Auge-Sitzung blockiert Kamera-Kalibrierung, `SetTagMap` und L
 **Konfiguration**
 
 - `hand_eye_path` (nur `cam_flange`): `data/handeye/cam_flange.json`. Gesetzt wird der Pfad in `apriltag_config()` in `server.py`.
-- Konstanten in `handeye_session.py`: `RECOMMENDED_SAMPLES` = 8 (Empfehlung an den Bediener), `REQUIRED_AXES` = 3, `SCALE_WARNING` = 0,003. `MIN_SAMPLES` und `AXIS_THRESHOLD_DEG` kommen aus `tagloc.handeye`.
+- Konstanten in `handeye_session.py`: `RECOMMENDED_SAMPLES` = 8 (Empfehlung an den Bediener), `REQUIRED_AXES` = 3, `SCALE_WARNING` = 0,003 (= `tagloc.handeye.BOARD_SCALE_WARNING`). `MIN_SAMPLES` und `AXIS_THRESHOLD_DEG` kommen aus `tagloc.handeye`.
 - Brettgeometrie: aus den `calibration_board_*`-Feldern der Quelle.
 
 Stolpersteine:
@@ -913,6 +913,7 @@ Stolpersteine:
 **Tests**
 - `tests/test_handeye_session.py`, `tests/test_handeye_robust.py`: Sitzung mit Fakes, Ausreißer.
 - `tests/test_handeye_session_refine.py`, `tests/test_handeye_refine.py`: Verfeinerung am Brett.
+- `tests/test_handeye_dataset.py`: `session.json` (Leser gegen Schreiber), `refine_board_session`, `calibrate_handeye --session` gegen die Sitzung des Pis.
 - `tests/test_handeye_opcua.py`: Methoden, Statusknoten, Datei.
 - `tests/test_handeye.py`: Ankern am Welttag, danach Messung ohne Welttag.
 - `tests/test_measureboard.py`: Brettmessung, die die Sitzung nutzt.
