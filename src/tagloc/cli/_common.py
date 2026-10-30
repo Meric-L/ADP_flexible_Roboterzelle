@@ -1,8 +1,8 @@
-"""Shared arguments, loading paths and output formats for the CLI tools.
+"""Gemeinsame Argumente, Ladepfade und Ausgabeformate fuer die CLI-Werkzeuge.
 
-Guideline for the error messages here: a message states **what to do**, not
-just what's missing. A traceback from `load_calibration` doesn't answer
-"now what?"; `raise SystemExit` with the next command does.
+Leitlinie fuer die Fehlermeldungen hier: Eine Meldung sagt, **was zu tun ist**,
+nicht nur, was fehlt. Ein Traceback aus `load_calibration` beantwortet nicht
+"und jetzt?"; `raise SystemExit` mit dem naechsten Befehl tut es.
 """
 
 import argparse
@@ -14,7 +14,7 @@ from ..calibration import CameraCalibration, load_calibration
 from ..geometry import Pose, pose_from_dict, pose_to_dict
 from ..tagmap import DEFAULT_TAG_FAMILY, TagMap, empty_tag_map, load_tag_map
 
-#: Exchange format between `detect` and `transform`.
+#: Austauschformat zwischen `detect` und `transform`.
 CLI_SCHEMA = "wsc.vision.detections.cli/1"
 
 
@@ -26,11 +26,11 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def require_cv2():
-    """Import OpenCV, or explain how to get it.
+    """Importiert OpenCV oder erklaert, wie man es bekommt.
 
-    The probe access to `cv2.imread` is deliberate: a broken install stays
-    importable as an empty namespace package and would otherwise only fail
-    mid-run, once a camera is already open.
+    Der Probezugriff auf `cv2.imread` ist Absicht: Eine kaputte Installation
+    bleibt als leeres Namespace-Paket importierbar und scheiterte sonst erst
+    mitten im Lauf, wenn eine Kamera schon offen ist.
     """
     try:
         import cv2
@@ -133,7 +133,7 @@ def detector_options(args) -> dict:
 
 
 def open_source(args, *, loop: bool = False):
-    """Open the `--source` argument, explaining the accepted forms on error."""
+    """Oeffnet das Argument `--source` und erklaert bei einem Fehler die erlaubten Formen."""
     from .. import frames as frame_sources
 
     try:
@@ -152,7 +152,7 @@ def open_source(args, *, loop: bool = False):
 
 
 def is_camera_source(spec) -> bool:
-    """Return whether `--source` means a live camera rather than stored images."""
+    """Liefert, ob `--source` eine Live-Kamera statt gespeicherter Bilder meint."""
     return str(spec).startswith(("camera", "picamera", "realsense"))
 
 
@@ -179,18 +179,18 @@ def load_tag_map_or_exit(path: Path) -> TagMap:
 
 
 def load_inputs(args) -> tuple[CameraCalibration, TagMap]:
-    """Load calibration and tag map; use an empty map if none was given."""
+    """Laedt Kalibrierung und Tag-Karte; nimmt eine leere Karte, wenn keine angegeben wurde."""
     calibration = load_calibration_or_exit(args.calibration)
     tag_map = load_tag_map_or_exit(args.tag_map) if args.tag_map else empty_tag_map()
     return calibration, tag_map
 
 
 def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
-    """Check the resolution and scale only if explicitly allowed.
+    """Prueft die Aufloesung und skaliert nur, wenn es ausdruecklich erlaubt ist.
 
-    A calibration for the wrong resolution makes every pose off by the
-    scale factor -- plausibly off, so unnoticed. Hence an abort here, not
-    just a warning.
+    Eine Kalibrierung fuer die falsche Aufloesung verschiebt jede Pose um den
+    Skalierungsfaktor -- plausibel verschoben, also unbemerkt. Deshalb hier
+    ein Abbruch, nicht nur eine Warnung.
     """
     from ..calibration import check_resolution, scale_to_resolution
 
@@ -210,7 +210,7 @@ def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
 
 
 def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -> dict:
-    """Return the detection result as a JSON-ready dict."""
+    """Liefert das Erkennungsergebnis als JSON-faehiges dict."""
     entries = []
     for tag_pose in tag_poses:
         entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
@@ -227,7 +227,7 @@ def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -
 
 
 def poses_from_json(path: Path) -> tuple[str, list[tuple[int, Pose]]]:
-    """Read a file written by `detect --json`."""
+    """Liest eine Datei, die `detect --json` geschrieben hat."""
     path = Path(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -261,7 +261,7 @@ def write_json(path, payload: dict) -> None:
 
 
 def describe_pose(pose: Pose) -> str:
-    """Return a pose as a compact line."""
+    """Liefert eine Pose als kompakte Zeile."""
     data = pose_to_dict(pose)
     position = " ".join(f"{value:8.4f}" for value in data["position"])
     orientation = " ".join(f"{value:7.4f}" for value in data["orientation"])
