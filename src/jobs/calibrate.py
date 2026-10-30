@@ -1,13 +1,14 @@
-"""Calibration check as an OPC-UA job.
+"""Kalibrierpruefung als OPC-UA-Job.
 
-Runs as a subprocess via `ScriptDetectionSource`, its stdout becomes the
-result's `attributes.message`.
+Laeuft als Subprozess ueber `ScriptDetectionSource`, seine Standardausgabe
+wird zur `attributes.message` des Ergebnisses.
 
-Deliberately a **check**, not a calibration: calibrating a camera needs an
-operator moving a board through the field of view -- that's the job of
-`python -m tagloc.cli.calibrate`. What a remote job can answer is "is this
-cell ready to measure?" -- is there a calibration, which camera and
-resolution it belongs to, how good it was, and whether a tag map exists.
+Bewusst eine **Pruefung**, keine Kalibrierung: Eine Kamera zu kalibrieren
+braucht einen Bediener, der ein Brett durchs Blickfeld bewegt -- das ist die
+Aufgabe von `python -m tagloc.cli.calibrate`. Was ein Remote-Job beantworten
+kann, ist "ist diese Zelle messbereit?": Gibt es eine Kalibrierung, zu
+welcher Kamera und Aufloesung sie gehoert, wie gut sie war und ob eine
+Tag-Karte existiert.
 """
 
 import sys
@@ -56,7 +57,7 @@ def main() -> str:
         from tagloc.calibration import load_calibration
 
         calibration = load_calibration(calibration_path)
-    except Exception as error:  # a broken file is a finding, not a crash
+    except Exception as error:  # eine kaputte Datei ist ein Befund, kein Absturz
         return f"Rahmen {frame_id}: Kalibrierung nicht lesbar ({error})"
 
     age_days = (
