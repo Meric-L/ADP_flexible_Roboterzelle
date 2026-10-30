@@ -11,7 +11,13 @@ import unittest
 from pathlib import Path
 
 from tagloc.cli._common import is_camera_source
-from tagloc.frames import ImageFolderSource, open_source
+from tagloc.frames import (
+    ImageFolderSource,
+    SingleImageSource,
+    image_size,
+    open_source,
+    to_gray,
+)
 
 try:
     import cv2
@@ -79,6 +85,68 @@ class ImageFolderSourceTest(unittest.TestCase):
             images = [source.read() for _ in range(5)]
 
         self.assertTrue(all(image is not None for image in images))
+
+
+@unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
+class ImageFolderOrderTest(unittest.TestCase):
+    """Reihenfolge, Filter und Ende eines Bildordners mit Tempbildern."""
+
+    def _write(self, folder: Path, name: str, value: int) -> None:
+        cv2.imwrite(str(folder / name), np.full((2, 3, 3), value, dtype=np.uint8))
+
+    def test_liest_nach_dateinamen_sortiert_und_nur_bilder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self._write(folder, "c.png", 30)
+            self._write(folder, "a.PNG", 10)  # Endung gross: zaehlt trotzdem
+            self._write(folder, "b.bmp", 20)
+            (folder / "notizen.txt").write_text("kein bild")
+            source = ImageFolderSource(folder)
+
+            self.assertEqual(len(source), 3)
+            values = [int(source.read()[0, 0, 0]) for _ in range(3)]
+            self.assertEqual(values, [10, 20, 30])
+            self.assertIsNone(source.read())
+            self.assertIsNone(source.read())  # bleibt am Ende
+            source.close()
+
+    def test_ohne_loop_endet_mit_none_mit_loop_nicht(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(Path(tmp), "eins.png", 7)
+            endlich = ImageFolderSource(Path(tmp))
+            endlos = ImageFolderSource(Path(tmp), loop=True)
+
+            self.assertIsNotNone(endlich.read())
+            self.assertIsNone(endlich.read())
+            self.assertTrue(all(endlos.read() is not None for _ in range(4)))
+
+    def test_leerer_ordner_ist_ein_fehler_mit_den_erwarteten_endungen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "readme.txt").write_text("x")
+            with self.assertRaises(FileNotFoundError) as caught:
+                ImageFolderSource(Path(tmp))
+        self.assertIn(".png", str(caught.exception))
+
+    def test_einzelbild_ist_beliebig_oft_lesbar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(Path(tmp), "x.png", 5)
+            source = SingleImageSource(Path(tmp) / "x.png")
+
+            self.assertEqual(len(source), 1)
+            self.assertTrue(all(source.read() is not None for _ in range(3)))
+
+    def test_open_source_waehlt_ordner_und_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(Path(tmp), "x.png", 5)
+            self.assertIsInstance(open_source(tmp), ImageFolderSource)
+            self.assertIsInstance(open_source(str(Path(tmp) / "x.png")), SingleImageSource)
+
+    def test_to_gray_und_image_size(self):
+        color = np.zeros((4, 6, 3), dtype=np.uint8)
+        gray = to_gray(color)
+        self.assertEqual(gray.shape, (4, 6))
+        self.assertIs(to_gray(gray), gray)  # schon einkanalig: unveraendert
+        self.assertEqual(image_size(color), (6, 4))
 
 
 if __name__ == "__main__":
