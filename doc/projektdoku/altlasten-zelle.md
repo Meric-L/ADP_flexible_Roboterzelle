@@ -316,4 +316,15 @@ Branch `apriltag-aufraeumen`. Wird beim Aufräumen fortgeschrieben.
 
 | IDs | Stand | Commit |
 | --- | --- | --- |
-| — | noch nichts umgesetzt | — |
+| T1 | umgesetzt | 863bd89 |
+| T11, B3, B6 | umgesetzt, bis auf `server.py:116` (heiße Datei) und `CLAUDE.md` (`betreuer/`-Verweise, bewusst unverändert) | 2b24719 |
+| B2 | umgesetzt (`!requirements.txt`, `!/setup.sh`, `!/setup.bat`); `concept/` und `hardware/` bleiben ignoriert | b08502a |
+| B5 | umgesetzt | 53ab6ce |
+| B7 | umgesetzt (Docstring, `--capture-to` headless bei Kamera-Quelle, Test) | e200d89 |
+| B10 | umgesetzt | c60e37d |
+| B14 | umgesetzt | 119d839 |
+| T3 | umgesetzt per Cherry-pick von 7e67251 | aaa4c4e |
+| T2, T4, T5 | umgesetzt | 944b485 |
+| T9 | teilweise: Felder in `profiles.py` entfernt; `VisionServerConfig.configuration_id` (`config.py`, heiß) bleibt | b0cff8a |
+| T10 | teilweise: `asset_model`, `calibration_session`, `nodeset_ids`, Tests; offen `tagloc/overlay.py` (heiß), `handeye_session.py` (reserviert) | ec72d8d |
+| T14 | teilweise: nur `cancel_running`; `show_distance` (`overlay.py`, heiß) bleibt | e421cc6 |
