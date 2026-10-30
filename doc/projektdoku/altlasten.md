@@ -1,5 +1,7 @@
 # Altlasten — Stand und Abbaubedingungen
 
+> **Abgelöst (30.10.2026)** durch [`altlasten-zelle.md`](altlasten-zelle.md) (dieses Repo) und [`altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition). Offene Punkte von hier sind dort neu geprüft und mit ihrer alten ID übernommen. Dieses Dokument bleibt als Verlauf stehen.
+
 Mitlaufende Liste der Dinge, die wir im Laufe des Projekts eingebaut haben und die
 **nicht zur Lokalisierung gehören**: Demo-Aufbauten, Testinstrumente, Platzhalter und
 Deployment-Behelfe. Zweck ist, dass nichts davon unbemerkt produktiv wird.

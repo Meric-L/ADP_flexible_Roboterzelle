@@ -42,6 +42,9 @@ nicht gibt.
 | [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md) | vision | fertig | Meric, `Agent: Livestream-Tags aus voller Auflösung` | 21.10.2026 |
 | [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | fertig | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
 | [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md) | apriltag | fertig | Meric, `Agent: Live-Ansicht Tag-Einmessen` | 21.10.2026 |
+| [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | fertig | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
+| [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | fertig | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
+| [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
@@ -80,10 +83,12 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 | [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | Konzept der AprilTag-Lokalisierung |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag-Referenz |
 | [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | End-to-End-Testanleitung AprilTag |
-| [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen |
+| [`../code-handbuch.md`](../code-handbuch.md) | Code-Handbuch: jede Datei unseres Codes (dieses Repo und unser Anteil an webskillcomposition) mit Zweck, Einstieg und Verweisen |
+| [`../altlasten-zelle.md`](../altlasten-zelle.md) | Aufräum-Audit dieses Repos (`apriltag`): toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken |
+| [`../altlasten-wsc.md`](../altlasten-wsc.md) | Aufräum-Audit webskillcomposition, nur unser Anteil (`origin/dev..Ungetestet`) |
+| [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen (Stand 21.09., abgelöst durch die beiden Audits) |
+| [`../altlasten-toter-code.md`](../altlasten-toter-code.md) | Audit toter Code, Stand 21.10. (abgelöst durch die beiden Audits) |
 | [`../praesentation.md`](../praesentation.md) | Foliengrundlage der Betreuer-Präsentation |
-| [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | fertig | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
-| [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | fertig | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
 
 Kommt eine Fach-MD dazu, hier eine Zeile ergänzen. Für Agenten listet das
 Skript `.claude/hooks/doku_regeln.py` den Ordnerinhalt ohnehin automatisch auf.

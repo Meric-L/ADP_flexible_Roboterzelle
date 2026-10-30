@@ -1,5 +1,7 @@
 # Altlasten — toter Code, ungetesteter Code, AprilTag-Doppelungen
 
+> **Abgelöst (30.10.2026)** durch [`altlasten-zelle.md`](altlasten-zelle.md) (dieses Repo) und [`altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition). Offene Punkte von hier sind dort neu geprüft und mit ihrer alten ID übernommen. Dieses Dokument bleibt als Verlauf stehen.
+
 Stand: 2026-10-21. Ergänzung zu [`altlasten.md`](altlasten.md) (Demo-Aufbauten,
 Platzhalter, Deployment-Behelfe). Hier geht es um **Code**: was nirgends mehr
 aufgerufen wird, was kein Test anfasst und wo es beim AprilTag-Thema zwei Wege für
