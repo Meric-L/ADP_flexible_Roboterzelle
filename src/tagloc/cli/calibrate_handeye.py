@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_samples(path: Path) -> tuple[int, float, list]:
-    """Read the capture list. Image paths resolve relative to the list."""
+    """Liest die Aufnahmeliste. Bildpfade gelten relativ zur Liste."""
     path = Path(path)
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")

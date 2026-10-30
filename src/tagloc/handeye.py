@@ -124,7 +124,7 @@ class RobotAnchor:
 def anchor_world_base(
     pose_world_cam: Pose, pose_base_flange: Pose, pose_flange_cam: Pose
 ) -> Pose:
-    """Return `T_world_base` from one world-tag sighting and the robot pose.
+    """Liefert `T_world_base` aus einer Welttag-Sichtung und der Roboterpose.
 
     `T_world_cam = T_world_base · T_base_flansch · T_flansch_cam`, nach
     `T_world_base` aufgeloest. Das ist der Ankerschritt: ab hier weiss der
@@ -137,7 +137,7 @@ def anchor_world_base(
 def camera_pose_from_robot(
     pose_world_base: Pose, pose_base_flange: Pose, pose_flange_cam: Pose
 ) -> Pose:
-    """Return `T_world_cam` from the anchor and the current robot pose.
+    """Liefert `T_world_cam` aus dem Anker und der aktuellen Roboterpose.
 
     Der Weg ohne Welttag im Bild. Die Genauigkeit haengt jetzt am Anker und an
     der Kinematik, nicht mehr am Sichtfeld.
@@ -150,7 +150,7 @@ def target_spread(
     poses_cam_tag: Sequence[Pose],
     pose_flange_cam: Pose,
 ) -> tuple[float, float]:
-    """Return how far the reconstructed target location scatters, `(m, rad)`.
+    """Liefert, wie weit der rekonstruierte Zielort streut, `(m, rad)`.
 
     Der Tag der Kalibrierfahrt steht fest. Also muss
     `T_base_tag = T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` fuer jedes
@@ -173,7 +173,7 @@ def target_spread(
 def _motion_pairs(
     poses_base_flange: Sequence[Pose], poses_cam_tag: Sequence[Pose]
 ) -> list[tuple[Pose, Pose]]:
-    """Return the `(A, B)` motion pairs of the hand-eye equation `A·X = X·B`.
+    """Liefert die Bewegungspaare `(A, B)` der Hand-Auge-Gleichung `A·X = X·B`.
 
     Der Zielort steht fest, also gilt fuer je zwei Aufnahmen `i`, `j`:
 
@@ -202,7 +202,7 @@ def _motion_pairs(
 def solve_hand_eye(
     poses_base_flange: Sequence[Pose], poses_cam_tag: Sequence[Pose]
 ) -> tuple[Pose, float, float]:
-    """Solve `T_flansch_cam` from N robot poses looking at one fixed tag.
+    """Loest `T_flansch_cam` aus N Roboterposen, die einen festen Tag ansehen.
 
     Aufnahme: der Tag bleibt liegen, der Roboter faehrt N deutlich
     verschiedene Posen an und misst ihn jedes Mal. Reine Translation reicht
@@ -1145,7 +1145,7 @@ def load_session(path) -> SessionDataset:
 
 
 def load_hand_eye(path) -> HandEye:
-    """Read a hand-eye calibration from JSON."""
+    """Liest eine Hand-Auge-Kalibrierung aus JSON."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Hand-Auge-Kalibrierung nicht gefunden: {path}")
@@ -1176,7 +1176,7 @@ def load_hand_eye(path) -> HandEye:
 
 
 def save_hand_eye(path, hand_eye: HandEye) -> None:
-    """Write a hand-eye calibration as JSON."""
+    """Schreibt eine Hand-Auge-Kalibrierung als JSON."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     now = utc_now_z()
