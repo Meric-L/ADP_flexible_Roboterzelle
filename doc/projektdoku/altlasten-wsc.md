@@ -265,7 +265,7 @@ Spalten: Ort | Was | Seite | Quelle der Werte | wer liest es.
 | `src/tagloc/localize.py:534-557`, `handeye.py:114-124` | `anchor_world_base = T_world_cam · inv(T_flange_cam) · inv(T_base_flange)` | Pi (Hand) | Tag-Map + Hand-Auge + Flanschpose aus Job | `apriltag.py:1196-1210`, `layer2/run.py` |
 | `src/vision_server/layer2/plan.py:283-292, 195, 203-205` | Anker-Schritt am **nächsten Welttag zur groben Basis**; Fahrziel `T_base_flange = inv(T_world_base) · T_world_tag · T_tag_cam · inv(T_flange_cam)` | Pi (Hand) | Tag-Map des Hand-Pi + `robotBase` aus dem Frontend | `layer2/run.py:268-290` |
 | `src/vision_server/cellwatch.py:670-722` (`CameraPoseKeeper`) | merkt Deckenkamera-Pose aus >= 2 Welttags; Schlüssel = Weltpositionen der Tag-Map | Pi | Tag-Map | Zellüberwachung |
-| `runner.py:862-922`, `address_space.py:282` | OPC UA `SetTagMap(String) -> Int32`, Variable `TagMapJson` | Pi | Schnittstelle | **niemand im Frontend** |
+| `runner/tag_map.py` (früher `runner.py:862-922`), `address_space.py:282` | OPC UA `SetTagMap(String) -> Int32`, Variable `TagMapJson` | Pi | Schnittstelle | **niemand im Frontend** |
 | `tests/test_joint_camera_pose.py:27`, `tests/test_cellwatch_storedpose.py:53-60` | alte Lagen 1,593/-0,052/1,618, `sizeM 0.198` | Pi (Test) | hartcodiert | nur Tests |
 
 #### 1.2 Frontend/Backend (WSC)

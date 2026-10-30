@@ -107,7 +107,7 @@ Layer 1 ist die Deckenkamera (`pi-decke`), Layer 2 die Handkamera (`pi-hand`); Q
 
 Schichtung nach Abhängigkeiten, von `tests/test_layering.py` geprüft: `identity` und `modes` brauchen nur die Standardbibliothek. `geometry`, `observations`, `calibration`, `tagmap`, `localize` und `handeye` importieren kein `cv2`. `detector`, `pose`, `boards`, `overlay` und `frames` importieren `cv2` erst beim Aufruf. Kein Modul im Paket importiert `vision_server`. Nicht im Test erfasst sind `lens.py` und `reference_edges.py`; beide importieren `cv2` nur in Funktionen.
 
-Benutzt wird das Paket außerdem von (nur Verweis): `src/vision_server/detection/apriltag/` (Erkennungsquelle, größter Nutzer), `stream_overlay.py` und `camera_stream.py` (Overlay, Modi), `handeye_session.py`, `calibration_session.py`, `cellwatch.py`, `layer2/plan.py`, `tagreference.py`, `measureboard.py`, `measuretag.py`, `runner.py`, `camera.py`, `src/vision_server/tools/diagnose_board.py`.
+Benutzt wird das Paket außerdem von (nur Verweis): `src/vision_server/detection/apriltag/` (Erkennungsquelle, größter Nutzer), `stream_overlay.py` und `camera_stream.py` (Overlay, Modi), `handeye_session.py`, `calibration_session.py`, `cellwatch.py`, `layer2/plan.py`, `tagreference.py`, `measureboard.py`, `measuretag.py`, `runner/`, `camera.py`, `src/vision_server/tools/diagnose_board.py`.
 
 **Zweck**: Bibliothek für die AprilTag-Lokalisierung. Sie rechnet Kamerakalibrierung, Tag-Erkennung und Posen, Tag-Map und Modulposen in einem gemeinsamen Weltkoordinatensystem. Netzwerk und OPC UA kommen im Paket nicht vor. Die Befehle unter `cli/` nutzen dieselben Funktionen ohne Server.
 
@@ -477,7 +477,7 @@ Der Vision-Server ist ein OPC-UA-Server auf Basis von `asyncua`. Er stellt ein V
 
 Ablauf im Überblick:
 
-1. **Start.** Produktiv startet `python3 -m vision_server.server` (`src/vision_server/server.py`) mit Pi-Presets, mDNS und LDS. Die Entwicklung nutzt `python -m vision_server` (`src/vision_server/__main__.py`) ohne Presets. Beide bauen eine `VisionServerConfig` und rufen `install_vision_machine()` aus `src/vision_server/runner.py` auf.
+1. **Start.** Produktiv startet `python3 -m vision_server.server` (`src/vision_server/server.py`) mit Pi-Presets, mDNS und LDS. Die Entwicklung nutzt `python -m vision_server` (`src/vision_server/__main__.py`) ohne Presets. Beide bauen eine `VisionServerConfig` und rufen `install_vision_machine()` aus `src/vision_server/runner/install.py` auf (Paket `runner`, siehe Tabelle unten).
 2. **Adressraum.** Die Nodesets werden importiert. `VisionMachine` (OPC 40100) hängt unter `Objects/Machines`. `VisionProgram` (OPC UA Teil 10) liegt daneben und nutzt denselben `JobRunner`. Die Anlagensicht (Part 2) ist optional.
 3. **Erkennungsquellen.** Jedes Profil bekommt eine Quelle. `apriltag` ist die AprilTag-Erkennung. `calibration` startet ein Prüfscript als Subprozess.
 4. **Geteilte Kamera.** `SharedCamera` hält die Kamera offen. Job, Livestream, Sitzungen und Überwachung lesen dieselben Frames.
@@ -501,7 +501,7 @@ Baut die Konfiguration und startet den Server. Der Pi-Start nutzt Presets je Hos
 
 **Einstieg**
 - Pi: `python3 -m vision_server.server` ruft `main()` in `server.py`. Die systemd-Unit liegt laut Kommentar in `server.py` nicht im Repo.
-- Entwicklung: `python -m vision_server` ruft `main()` in `__main__.py`, dieses ruft `run()` in `runner.py`.
+- Entwicklung: `python -m vision_server` ruft `main()` in `__main__.py`, dieses ruft `run()` in `runner/standalone.py`.
 
 **Dateien**
 
@@ -512,13 +512,23 @@ Baut die Konfiguration und startet den Server. Der Pi-Start nutzt Presets je Hos
 | `src/vision_server/server.py` | Einbauort auf dem Pi: Identität, Presets, mDNS und LDS, Signalbehandlung | `main()`, `vision_config()`, `apriltag_config()`, `vision_identity()`, `vision_camera_backend()`, `application_uri()`, `merged_json_object_env()`, `subpixel_corner_settings()`, `PI_IDENTITIES`, `PI_CAMERA_BACKENDS`, `PI_APRILTAG_PRESETS`, `PI_CAMERA_STREAM_PRESETS`, `PI_ASSET_PRESETS` |
 | `src/vision_server/config.py` | Konfigurationsobjekt, Standardpfade, Zuordnung RecipeId zu Profil | `VisionServerConfig`, `DEFAULT_RECIPE_PROFILES`, `DEFAULT_NODESET_PATH`, `DEFAULT_AMCM_NODESET_PATHS`, `profile_for()` |
 | `src/vision_server/profiles.py` | Betriebsparameter als frozen dataclasses | `AprilTagProfileConfig`, `CameraStreamConfig`, `AssetConfig`, `CAMERA_BACKENDS` |
-| `src/vision_server/runner.py` | Einbau des Vision-Systems in einen Server und Standalone-Lauf. Größte Datei des Pakets | `install_vision_machine()`, `VisionMachine` (`aclose()`), `run()` |
+| `src/vision_server/runner/__init__.py` | Paket `runner` (früher die Datei `runner.py`, 1924 Zeilen): Modultabelle im Docstring, hält alle früher dort definierten Namen importierbar | `install_vision_machine`, `VisionMachine`, `run` |
+| `src/vision_server/runner/install.py` | Einbau des Vision-Systems in einen Server: die Schritte in fester Reihenfolge, dazu die Sperr-Lambdas der Installer | `install_vision_machine()` |
+| `src/vision_server/runner/wiring.py` | Gemeinsamer Zustand der Einbau-Schritte (Kalibrier-Session, Annotator, Layer-2-Lauf, Hand-Auge-Sitzung, `methods`) und die Sperr-Abfragen. Ersetzt die spät gebundenen lokalen Variablen der alten Riesenfunktion | `Wiring` (`calibration_busy`, `calibration_processing`, `hand_eye_active`, `layer2_active`) |
+| `src/vision_server/runner/uamethods.py` | Bausteine der OPC-UA-Methoden: Antworten, Anlage unter fester NodeId, gemeinsamer Rahmen für Methoden mit JSON-Anfrage (Anfrage lesen, Betriebszustand, Sperre, Arbeit) | `code_reply()`, `text_reply()`, `add_vision_method()`, `json_method()`, `repo_relative()` |
+| `src/vision_server/runner/jobs.py` | Die sechs Job-Methoden des Nodesets | `install_job_methods()`, `_start_method()`, `_stop_method()`, `_abort_method()`, `_halt_method()`, `_reset_method()` |
+| `src/vision_server/runner/tag_map.py` | Leseknoten `TagMapJson` und Methode `SetTagMap` samt Datei als Zwischenspeicher | `install_tag_map()`, `_busy_reason()`, `_persist_tag_map()` |
+| `src/vision_server/runner/sources.py` | Welche Quelle hält die Kamera, Quellen öffnen | `_camera_owner()`, `_open_source()` |
+| `src/vision_server/runner/part10.py` | `VisionProgram` auf denselben Jobs, gespiegelte Knoten und Methoden | `install_part10_program()` |
+| `src/vision_server/runner/machine.py` | Das fertig verdrahtete System, Herunterfahren, Event-Loop-Watchdog | `VisionMachine` (`aclose()`), `_watch_loop_lag()` |
+| `src/vision_server/runner/standalone.py` | Standalone-Lauf als eigener Prozess | `run()` |
+| `src/vision_server/aio.py` | Kleine asyncio-Helfer, nur Standardbibliothek: Task abbrechen und abwarten, Event bei Signal | `cancel_and_wait()`, `stop_event_on_signals()` |
 
 **Ablauf**
 
 - *Pi (`server.py`, `main()`)*: Server anlegen und initialisieren. Der Endpoint nennt die LAN-IPv4, gelauscht wird auf allen Schnittstellen. Dann `install_vision_machine()`. Danach starten mDNS und LDS. Auf SIGTERM oder SIGINT wird `aclose()` gerufen.
-- *Standalone (`runner.run()`)*: `configure_server()`, `install_vision_machine()`, warten, `aclose()`. Keine mDNS, keine LDS, keine Presets. `apriltag`, `camera_stream` und `assets` sind dann `None`. Die Quelle nimmt die Standardwerte aus `profiles.py` (Backend `picamera2`, Kalibrierdatei `data/calibration/camera.json`). Ohne Kalibrierdatei bleibt der Server in `Preoperational`.
-- *Reihenfolge in `install_vision_machine()`* (grob): Adressraum, optional Anlagensicht, Automaten, Events, Ergebnisse, Quellen bauen, `JobRunner`, Methoden `StartSingleJob`, `Stop`, `StartContinuous`, `Abort`, `Halt`, `Reset`. Dann werden alle Quellen geöffnet. Nur wenn alle offen sind, geht der Server nach `Operational`. Danach folgen Kalibrier-Session, Livestream, Kamerazustand, MJPEG und die Installer der Sitzungen. Zuletzt wird das Part-10-Programm aufgesetzt.
+- *Standalone (`run()` in `runner/standalone.py`)*: `configure_server()`, `install_vision_machine()`, warten, `aclose()`. Keine mDNS, keine LDS, keine Presets. `apriltag`, `camera_stream` und `assets` sind dann `None`. Die Quelle nimmt die Standardwerte aus `profiles.py` (Backend `picamera2`, Kalibrierdatei `data/calibration/camera.json`). Ohne Kalibrierdatei bleibt der Server in `Preoperational`.
+- *Reihenfolge in `install_vision_machine()`* (grob): Adressraum, optional Anlagensicht, Automaten, Events, Ergebnisse, Quellen bauen, `JobRunner`, Methoden `StartSingleJob`, `Stop`, `StartContinuous`, `Abort`, `Halt`, `Reset`. Dann werden alle Quellen geöffnet. Nur wenn alle offen sind, geht der Server nach `Operational`. Danach folgen Kalibrier-Session, Livestream, Kamerazustand, MJPEG und die Installer der Sitzungen. Zuletzt wird das Part-10-Programm aufgesetzt. Jeder Schritt steht in einem eigenen Modul des Pakets `src/vision_server/runner/` (Tabelle oben). Die Reihenfolge ist Teil der Schnittstelle: von ihr hängt die Reihenfolge der Methoden-Anlage ab und damit die der gespiegelten Methoden unter `VisionProgram`. `Wiring` (`wiring.py`) hält, was die Schritte teilen; die Methoden-Handler lesen es erst beim Aufruf.
 - *Pi-Identität*: Vorrang hat die Umgebungsvariable, dann die Hostname-Abbildung, dann ein Rückfall. Ein unbekannter Hostname bekommt die Identität `vision-<Hostname>` und den Rahmen `world`, ohne Presets. So sendet ein frisch aufgesetzter Pi nicht stillschweigend die Id eines anderen.
 
 **Konfiguration**
@@ -570,6 +580,9 @@ Stolpersteine:
 - `tests/test_subpixel_settings.py`: `VISION_SUBPIXEL_CORNER_REFINEMENT` und Preset.
 - `tests/test_layering.py`: Abhängigkeitsrichtung, Hashbarkeit der Konfiguration.
 - `tests/test_part10_fassade.py`: `VisionProgram` als einziger Einstieg, `VisionMachine` unter `Machines`.
+- `tests/test_runner_uamethods.py`: Reihenfolge der Prüfungen im JSON-Rahmen `json_method()`, Antworten, Sperr-Abfragen von `Wiring`.
+- `tests/test_vision_program.py`: baut die ganze Maschine mit einer Attrappen-Quelle auf (`install_vision_machine()`).
+- `tests/test_aio.py`: `cancel_and_wait()` und `stop_event_on_signals()`.
 
 **Weiterlesen**
 - [vision-system.md](vision-system.md), Abschnitt „Starten“
@@ -639,7 +652,7 @@ Stolpersteine:
 Führt einen Job von der Zulassung über die Erkennung bis zum Ergebnis. Der `JobRunner` ruft nur die Erkennungsquelle auf und kennt keine Bildverarbeitung. Er hält die beiden OPC-40100-Automaten synchron und veröffentlicht jedes Ergebnis, auch Fehler.
 
 **Einstieg**
-Die Methoden `StartSingleJob`, `StartContinuous`, `Stop` und `Abort` in `runner.install_vision_machine()` rufen den `JobRunner`. Das Part-10-Programm (`VisionProgram.start`) und die Layer-2-Läufe nutzen denselben Runner. Sie hängen sich über `add_finish_listener` an das Job-Ende.
+Die Methoden `StartSingleJob`, `StartContinuous`, `Stop` und `Abort` in `runner/jobs.py` rufen den `JobRunner`. Das Part-10-Programm (`VisionProgram.start`) und die Layer-2-Läufe nutzen denselben Runner. Sie hängen sich über `add_finish_listener` an das Job-Ende.
 
 **Dateien**
 
@@ -760,7 +773,7 @@ Stolpersteine:
 Eine Kamera, ein Capture-Loop, mehrere Leser. Der Watchdog eskaliert bis zum Prozessabbruch, damit systemd neu startet, und der Kamerazustand wird als DeviceHealth in die Anlagensicht geschrieben. Der Livestream läuft über OPC UA und zusätzlich flüssiger per MJPEG über HTTP.
 
 **Einstieg**
-`SharedCamera.open()` wird von der AprilTag-Quelle aufgerufen. `runner._start_camera_stream()`, `_start_camera_health()` und `_start_mjpeg_server()` bauen den Livestream auf. `_install_save_raw_image()` legt `SaveRawImage` an.
+`SharedCamera.open()` wird von der AprilTag-Quelle aufgerufen. `runner/livestream.py` (`_start_camera_stream()`, `_start_mjpeg_server()`) und `runner/health.py` (`_start_camera_health()`) bauen den Livestream auf. `runner/save_raw_image.py` legt `SaveRawImage` an.
 
 **Dateien**
 
@@ -778,7 +791,7 @@ Eine Kamera, ein Capture-Loop, mehrere Leser. Der Watchdog eskaliert bis zum Pro
 1. `SharedCamera.open()` startet einen Worker-Thread. Der öffnet die Hardware und wartet `warmup_s`. Danach nimmt der Loop mit `capture_fps` auf. Jede Aufnahme hat ein Zeitlimit (`frame_timeout_s`).
 2. Watchdog: Fehlschläge werden gezählt. Nach `max_capture_failures` wird neu geöffnet. Ein Hänger zählt sofort voll. Nach `max_reopen_attempts` ohne Bild ruft der Watchdog den Give-up-Handler auf. Der Standard `exit_process()` beendet den Prozess hart, systemd startet ihn neu. Ein hängender Worker-Thread lässt sich in Python nicht beenden. Er bleibt zurück.
 3. Livestream: Der Publisher tickt mit `stream_fps`. Sind MJPEG-Zuschauer verbunden, tickt er mit `http_fps`. Das Overlay läuft im Worker-Thread mit dem Zeitlimit `overlay_timeout_s`. Bei Überschreitung geht das Rohbild raus. Kodiert wird nur, wenn ein neues Bild da ist.
-4. Overlay: Der Annotator erkennt nicht im Stream-Takt. Er zeichnet das letzte Ergebnis in voller Auflösung, das Job, Überwachung oder Messung ohnehin berechnet haben. Eine eigene Erkennung läuft selten, im Hintergrund, nie während eines Jobs (`set_busy`). Sie nutzt eine eigene Detektor-Instanz ohne Eckenverfeinerung (`runner._build_annotator()`).
+4. Overlay: Der Annotator erkennt nicht im Stream-Takt. Er zeichnet das letzte Ergebnis in voller Auflösung, das Job, Überwachung oder Messung ohnehin berechnet haben. Eine eigene Erkennung läuft selten, im Hintergrund, nie während eines Jobs (`set_busy`). Sie nutzt eine eigene Detektor-Instanz ohne Eckenverfeinerung (`_build_annotator()` in `runner/livestream.py`).
 5. Kamerazustand: Der Publisher schreibt nur bei einem Zustandswechsel. Vor dem Prozessabbruch schreibt er noch ein letztes FAILURE, mit einer Frist von 1 s.
 6. MJPEG: Der Server bindet nach dem Start. Gelingt das nicht, läuft der Server ohne MJPEG weiter. Der Portknoten bleibt dann 0.
 7. `SaveRawImage` wird abgelehnt, solange ein Job läuft. Die Datei heißt `<Rahmen>_<Zeit>.png`. Vorhandene Dateien werden nie überschrieben.
@@ -817,14 +830,14 @@ Stolpersteine:
 Kamera-Kalibrierung über OPC UA, während Server und Livestream weiterlaufen. Der Operator löst die Aufnahmen manuell aus, die Auswertung läuft danach im Hintergrund, und das Ergebnis wird sofort in die laufende Quelle übernommen. Der alte Weg (`tagloc.cli.calibrate`) öffnet die Kamera selbst und verlangt einen gestoppten Server.
 
 **Einstieg**
-Die Methoden `StartCalibration`, `CaptureCalibrationSample`, `FinishCalibration` und `AbortCalibration` legt `runner.install_vision_machine()` an. Testclient: `src/vision_server/tools/calibration_client.py`. Aufnahme per Tastendruck: `src/vision_server/tools/stream_viewer.py`.
+Die Methoden `StartCalibration`, `CaptureCalibrationSample`, `FinishCalibration` und `AbortCalibration` legt `install_calibration_methods()` in `runner/calibration.py` an. Testclient: `src/vision_server/tools/calibration_client.py`. Aufnahme per Tastendruck: `src/vision_server/tools/stream_viewer.py`.
 
 **Dateien**
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
 | `src/vision_server/calibration_session.py` | Aufnahmen merken, Auswertung im Hintergrund, Speichern, Fortschritt | `CalibrationSession` (`start`, `capture`, `finish`, `abort`, `progress`, `_process`, `_compute_and_save`), `MIN_SAMPLES_FOR_CALIBRATION`, `RMS_WARNING_PX`, `CAPTURE_DETECT_TIMEOUT_S`, `_save_capture_image()`, `_lazy()` |
-| `src/vision_server/runner.py` (Teil) | Methoden und Sperren, Live-Übernahme, Fortschrittsknoten während der Auswertung | `install_vision_machine()`, `_pause_stream_during_processing()`, `_write_calibration_progress()`, `_calibration_info_payload()` |
+| `src/vision_server/runner/calibration.py` | Session bauen, Methoden und Sperren, Live-Übernahme, Fortschrittsknoten während der Auswertung | `install_calibration_methods()`, `connect_live_calibration()`, `write_initial_calibration_info()`, `_pause_stream_during_processing()`, `_write_calibration_progress()`, `_calibration_info_payload()` |
 | `src/vision_server/profiles.py` (Teil) | Schachbrett-Geometrie, Linsenmodell, Archiv | `AprilTagProfileConfig.calibration_board_*`, `calibration_model`, `calibration_min_samples`, `calibration_capture_dir` |
 
 **Ablauf**
@@ -867,14 +880,14 @@ Stolpersteine:
 Bestimmt `T_flansch_cam`, also die feste Lage der Handkamera am Roboterflansch. Dafür werden Paare aus gemeldeter Flanschpose und gemessenem Tag oder Schachbrett gesammelt. Das Ergebnis wird gespeichert und sofort wirksam, die Sitzung gibt es nur am Hand-Pi.
 
 **Einstieg**
-`StartHandEyeCalibration`, `CaptureHandEyeSample`, `FinishHandEyeCalibration` und `AbortHandEyeCalibration` legt `runner._install_hand_eye_session()` an. Die Steuerung meldet je Aufnahme die Flanschpose. Die Methoden entstehen nur, wenn `hand_eye_path` gesetzt ist.
+`StartHandEyeCalibration`, `CaptureHandEyeSample`, `FinishHandEyeCalibration` und `AbortHandEyeCalibration` legt `_install_hand_eye_session()` in `runner/hand_eye.py` an. Die Steuerung meldet je Aufnahme die Flanschpose. Die Methoden entstehen nur, wenn `hand_eye_path` gesetzt ist.
 
 **Dateien**
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
 | `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()`, `_write_session_dataset()`, `_intrinsics_warnings()` |
-| `src/vision_server/runner.py` (Teil) | Installer und Sperren | `_install_hand_eye_session()` |
+| `src/vision_server/runner/hand_eye.py` | Installer und Sperren | `_install_hand_eye_session()` |
 | `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`, `resources.py`) | Messung des Ziels im Kamera-Bezugsrahmen, Anwendung der neuen Kalibrierung | `measure_tag()`, `measure_board()`, `apply_hand_eye()`, `intrinsics_source()` |
 
 **Ablauf**
@@ -918,7 +931,7 @@ Stolpersteine:
 Verankert die Zelle am Welttag und misst danach jedes Modul aus der Nähe mit der Handkamera. Die Steuerung plant und fährt, der Pi rechnet die Fahrziele (`plan.py`) und führt den Ablauf aus (`run.py`). Jeder Schritt ist ein gewöhnlicher AprilTag-Job mit denselben Events und Ergebnissen wie `StartSingleJob`.
 
 **Einstieg**
-`StartLayer2Run` und `ReportRobotPose` legt `runner._install_layer2_run()` an. Der Lauf existiert nur, wenn die AprilTag-Quelle offen ist und die Layer-2-Knoten vorhanden sind. Das ist nur am Hand-Pi der Fall. `Layer2Run` hängt sich über `JobRunner.add_finish_listener` an das Job-Ende.
+`StartLayer2Run` und `ReportRobotPose` legt `_install_layer2_run()` in `runner/layer2.py` an. Der Lauf existiert nur, wenn die AprilTag-Quelle offen ist und die Layer-2-Knoten vorhanden sind. Das ist nur am Hand-Pi der Fall. `Layer2Run` hängt sich über `JobRunner.add_finish_listener` an das Job-Ende.
 
 **Dateien**
 
@@ -927,7 +940,7 @@ Verankert die Zelle am Welttag und misst danach jedes Modul aus der Nähe mit de
 | `src/vision_server/layer2/__init__.py` | Paketbeschreibung, keine Logik. Die Module werden erst bei Bedarf importiert | – |
 | `src/vision_server/layer2/plan.py` | Fahrziele: Welttag und Modultag durch dieselbe Rechnung. Annäherung, schräge Ansicht, Erreichbarkeit | `plan_run()`, `plan_step()`, `view_target()`, `tag_facing_base()`, `find_detection()`, `parse_run_request()`, `parse_report()`, `pose_parameters()`, `RunRequest`, `PlannedStep`, `ANCHOR`, `MEASURE`, `APPROACH` |
 | `src/vision_server/layer2/run.py` | Ablaufsteuerung als asyncio-Zustandsmaschine ohne asyncua. Der Server wird über `Layer2Ports` angeschlossen | `Layer2Run` (`start`, `report`, `on_job_finished`, `abort`, `status_json`, `target_json`), `Layer2Ports`, `_Step`, `_State` |
-| `src/vision_server/runner.py` (Teil) | Verdrahtung: Ports, Methoden, Sperren | `_install_layer2_run()` |
+| `src/vision_server/runner/layer2.py` | Verdrahtung: Ports, Methoden, Sperren | `_install_layer2_run()` |
 
 **Ablauf**
 
@@ -969,7 +982,7 @@ Stolpersteine:
 Zwei Methoden, die nur messen und keine Fahrbefehle schicken. `MeasureTags` liefert Tags im Kamera-Bezugsrahmen, damit die Steuerung den nächsten Flanschpunkt rechnet (Layer 2). `MeasureBoard` liefert das Schachbrett im Bild, damit die Steuerung es vor einer Hand-Auge-Aufnahme zentrieren kann.
 
 **Einstieg**
-`MeasureTags` legt `runner._install_measure_tags()` an, nur am Hand-Pi. `MeasureBoard` legt `runner._install_measure_board()` an, an beiden Pis. Die Steuerung ruft beide direkt auf. Beide antworten mit dem Ergebnis.
+`MeasureTags` legt `_install_measure_tags()` in `runner/measure_tags.py` an, nur am Hand-Pi. `MeasureBoard` legt `_install_measure_board()` in `runner/measure_board.py` an, an beiden Pis. Beide laufen über den gemeinsamen Rahmen `json_method()` (`runner/uamethods.py`). Die Steuerung ruft beide direkt auf. Beide antworten mit dem Ergebnis.
 
 **Dateien**
 
@@ -978,7 +991,7 @@ Zwei Methoden, die nur messen und keine Fahrbefehle schicken. `MeasureTags` lief
 | `src/vision_server/measuretag.py` | Anfrage lesen, Tag-Größe nachschlagen (Anfrage, dann Tag-Map, dann Rückfallwert), Ergebnis bauen, Randnähe und Blickwinkel | `parse_request()`, `build_result()`, `SizeLookup`, `near_edge()`, `view_angle_deg()`, `DEFAULT_FRAMES`, `MAX_FRAMES`, `EDGE_MARGIN` |
 | `src/vision_server/measureboard.py` | Brettmessung: ganzes Brett (Pose, Ecken), Teilraster (Schwerpunkt, Bildränder) oder nichts | `parse_request()`, `build_result()`, `FrameBoard`, `BoardRequest` |
 | `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`) | Die Messungen selbst | `measure_tags()`, `measure_board_view()`, `_observe_board()` |
-| `src/vision_server/runner.py` (Teil) | Installer und Sperren | `_install_measure_tags()`, `_install_measure_board()`, `_Activity` |
+| `src/vision_server/runner/measure_tags.py`, `measure_board.py` | Installer und Sperren | `_install_measure_tags()`, `_install_measure_board()`, `_Activity` |
 
 **Ablauf**
 
@@ -1013,7 +1026,7 @@ Sperren: `MeasureTags` ist nur für Job und Kamera-Kalibrierung gesperrt. Es lä
 Misst die Position eines Tags auf einem Modul über dessen Bezugskanten im Bild, ohne Roboterkinematik. Die Steuerung schickt den Katalog-Startwert und die Kanten, der Pi liefert die korrigierte Tag-Pose. Dazu gibt es eine Live-Vorschau im Livestream und ein Mess-Protokoll.
 
 **Einstieg**
-`PlanTagReferenceView`, `MeasureTagReference` und `SetTagReferencePreview` legt `runner._install_tag_reference()` an. Die Steuerung ruft sie direkt auf. Die Methoden gibt es nur am Hand-Pi.
+`PlanTagReferenceView`, `MeasureTagReference` und `SetTagReferencePreview` legt `_install_tag_reference()` in `runner/tag_reference.py` an. Die Steuerung ruft sie direkt auf. Die Methoden gibt es nur am Hand-Pi.
 
 **Dateien**
 
@@ -1023,6 +1036,7 @@ Misst die Position eines Tags auf einem Modul über dessen Bezugskanten im Bild,
 | `src/vision_server/tagreference_preview.py` | Zustand der Live-Vorschau, ohne Threads: Anfrage, Ablaufzeit, Status | `ReferencePreview`, `ReferenceView`, `build_status()`, `PREVIEW_TTL_S`, `MEASURE_HOLD_S` |
 | `src/vision_server/tagreference_log.py` | Mess-Protokoll je Messung, Aufräumen alter Ordner | `write_protocol()`, `prune()`, `latest_overlay()`, `MAX_FOLDERS`, `OVERLAY_NAME` |
 | `src/vision_server/detection/apriltag/reference.py` | Messung in der Quelle: Tag erkennen, Kanten messen, Korrektur, Ansicht planen | `measure_tag_reference()`, `_measure_reference()`, `plan_tag_reference_view()` |
+| `src/vision_server/runner/tag_reference.py` | Installer: Rahmen der drei Methoden über `json_method()`, Mess-Protokoll schreiben, Sperren | `_install_tag_reference()`, `_measure()`, `_plan()`, `_write_protocol()` |
 | `src/vision_server/stream_overlay.py` (Teil) | Live-Ansicht der Kantensuche im Modus `tagreference` | `set_reference_preview()`, `_tag_reference_view()`, `_evaluate_reference()` |
 
 **Ablauf**
@@ -1059,7 +1073,7 @@ Sperren: `MeasureTagReference` ist gesperrt bei Job, Kamera-Kalibrierung, Hand-A
 Prüft laufend, ob Module in der Zelle verschoben, hinzugekommen oder entfernt wurden. Eine Änderung wird erst gemeldet, wenn sie bestätigt ist. Ein einzelnes schlechtes Bild oder ein Arm vor einem Tag löst keinen Alarm aus.
 
 **Einstieg**
-`StartCellWatch`, `StopCellWatch`, `PauseCellWatch` und `ResumeCellWatch` legt `runner._install_cell_watch()` an. Die Methoden gibt es nur an der Decke, also ohne `hand_eye_path`.
+`StartCellWatch`, `StopCellWatch`, `PauseCellWatch` und `ResumeCellWatch` legt `_install_cell_watch()` in `runner/cell_watch.py` an. Die Methoden gibt es nur an der Decke, also ohne `hand_eye_path`.
 
 **Dateien**
 
@@ -1068,7 +1082,7 @@ Prüft laufend, ob Module in der Zelle verschoben, hinzugekommen oder entfernt w
 | `src/vision_server/cellwatch.py` | Logik ohne Uhr und ohne asyncua: Regeln für bewegt, neu und verschwunden. Start, Stopp, Pause und Takt. Kamerapose merken | `CellWatchTracker` (`update`, `pending`, `changes`, `stable_observation`, `detection_rate`, `visibility`), `CellWatch` (`start`, `stop`, `pause`, `resume`, `tick`, `status_json`), `CellWatchOptions`, `CameraPoseKeeper` (`judge`, `adopt`, `stored_for`, `load`), `CellWatchPorts`, `parse_start()`, `reference_from_payload()`, `camera_pose_from_payload()`, `sightings_from_locations()`, `is_flat()`, `conservative_rate()`, `required_misses()` |
 | `src/vision_server/detection/apriltag/cell.py` | Beobachtung je Bild mit eigenem Detektor, ohne Seiteneffekte | `observe_cell()` |
 | `src/vision_server/result_management.py` (Teil) | Die Referenz kommt aus dem Ergebnis eines früheren Jobs | `ResultStore.result_for_job()` |
-| `src/vision_server/runner.py` (Teil) | Verdrahtung: Beobachtung, Veröffentlichung, Pausen bei Job und Kalibrierung | `_install_cell_watch()` |
+| `src/vision_server/runner/cell_watch.py` | Verdrahtung: Beobachtung, Veröffentlichung, Pausen bei Job und Kalibrierung | `_install_cell_watch()`, `_make_observe()` |
 
 **Ablauf**
 

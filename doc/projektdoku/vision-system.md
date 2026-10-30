@@ -63,7 +63,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `errors.py` | `VisionJobError`, Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
 | `profiles.py` | `AprilTagProfileConfig` u. a. — Kamera, Hand-Auge-Pfad, Tag-Map je Pi |
-| `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
+| `runner/` | Paket: `install_vision_machine()` (Einbau, `install.py`) und `run()` (standalone, `standalone.py`); je Aufgabe ein Modul, siehe Modul-Docstring und `code-handbuch.md` Teil A2 |
 | `vision_program.py` | Part-10-Programmfassade `VisionProgram`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame` |

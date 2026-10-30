@@ -117,13 +117,13 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `errors.py` | `VisionJobError`, Fehlercodes (Abschnitt 5) |
 | `nodeset_ids.py` | feste NodeIds/BrowseNames für Nodeset-Importe und Events |
 | `profiles.py` | `AprilTagProfileConfig` u. a. je-Pi-Profile (Kamera, Hand-Auge-Pfad, Tag-Map) |
-| `detection/` | Strategie `DetectionSource`; `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
+| `detection/` | Strategie `DetectionSource`; `apriltag/` (AprilTags, Paket), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Markiert und kodiert jeden Frame einmal; schreibt ihn als Base64-JPEG in `LatestCameraFrame` und reicht ihn an den MJPEG-Server, siehe Abschnitt 10 |
 | `mjpeg_server.py` | Livestream als MJPEG über HTTP (`/stream.mjpg`, `/snapshot.jpg`), siehe Abschnitt 10.2 |
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA, siehe Abschnitt 12 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
-| `runner.py` | verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server |
+| `runner/` | Paket: verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server (`install.py`), je Methodengruppe ein Modul |
 | `vision_program.py` | Part-10-Programmfassade `VisionProgram` auf Basis von `src/ua_program`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
 | `discovery/mdns.py`, `discovery/lds.py` | mDNS-Ankündigung und LDS-Registrierung, siehe [`vision-system.md`](vision-system.md) |
 | `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
@@ -482,7 +482,7 @@ verwenden. Sie ist über Neustarts stabil und kostet keine Browse-Runde.
 
 Das Nodeset bringt **alle** Methoden der Spec als Teil der Typdefinition mit;
 sie stehen im Adressraum, sobald die `VisionSystemType`-Instanz existiert. Ob
-sie etwas tun, entscheidet `server.link_method` in `runner.py`. Eine nicht
+sie etwas tun, entscheidet `server.link_method` in `runner/jobs.py`; die Zusatzmethoden legt `runner/` selbst an. Eine nicht
 verlinkte Methode antwortet `BadNothingToDo` auf OPC-UA-Statusebene — **nicht**
 `Error != 0` im Output.
 

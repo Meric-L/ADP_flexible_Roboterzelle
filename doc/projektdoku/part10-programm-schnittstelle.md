@@ -334,7 +334,7 @@ generischen, wiederverwendbaren Teil-10-Programmgerüsts:
   Umgehung eines asyncua-2.0.1-Bugs bei `set_available_transitions()`.
 - **`src/vision_server/vision_program.py`** — `class VisionProgram(Program)`,
   die vision-spezifische Umsetzung: verdrahtet Start/Halt/Reset/Suspend/Resume
-  mit dem `JobRunner` aus `runner.py` und legt `ParameterSet`/`ResultSet` wie
+  mit dem `JobRunner` aus `runner/install.py` und legt `ParameterSet`/`ResultSet` wie
   oben beschrieben an.
 
 Wer ein weiteres Teil-10-Programm für ein anderes Modul dieses Repos bauen
