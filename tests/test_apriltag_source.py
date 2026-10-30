@@ -1,7 +1,8 @@
-"""Tests for the AprilTag detection source (level 3: server without a camera).
+"""Tests der AprilTag-Erkennungsquelle (Stufe 3: Server ohne Kamera).
 
-The source is never `open()`ed; detector, calibration and tag map are set
-directly. So no test needs hardware, OpenCV or a calibration file.
+Die Quelle wird nie mit `open()` geoeffnet; Detektor, Kalibrierung und Tag-Map
+werden direkt gesetzt. So braucht kein Test Hardware, OpenCV oder eine
+Kalibrierdatei.
 """
 
 import json
@@ -34,11 +35,12 @@ SQUARE = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
 
 
 class FakeCamera:
-    """Provide prepared images via `latest_frame`, without hardware.
+    """Liefert vorbereitete Bilder ueber `latest_frame`, ohne Hardware.
 
-    Each call returns the next queued image with a new timestamp -- exactly
-    what `_next_frame` waits for. Once nothing is left, the last frame stays
-    and the source runs into its capture timeout.
+    Jeder Zugriff gibt das naechste Bild der Warteschlange mit neuem
+    Zeitstempel zurueck -- genau das, worauf `_next_frame` wartet. Ist nichts
+    mehr uebrig, bleibt das letzte Bild stehen, und die Quelle laeuft in ihren
+    Aufnahme-Timeout.
     """
 
     def __init__(self) -> None:
@@ -67,10 +69,10 @@ class FakeCamera:
 
 
 class FakeDetector:
-    """Provide a fixed list of observations with their associated poses.
+    """Liefert eine feste Liste von Beobachtungen mit den zugehoerigen Posen.
 
-    Runs in `run_blocking`'s worker thread; both methods just return
-    pre-determined values and need no locking.
+    Laeuft im Worker-Thread von `run_blocking`; beide Methoden geben nur
+    vorgegebene Werte zurueck und brauchen keine Sperre.
     """
 
     def __init__(self, tag_poses=()) -> None:
@@ -86,12 +88,12 @@ class FakeDetector:
 
 
 class FakeSolverSource(AprilTagDetectionSource):
-    """Replace, in `_locate`, only the step that needs OpenCV.
+    """Ersetzt in `_locate` nur den Schritt, der OpenCV braucht.
 
-    `tagloc.pose.estimate_tag_pose` solves the pose via `cv2.solvePnPGeneric`;
-    the fake detector already knows it instead. Everything after -- camera
-    pose from the world tags, module chaining, frame selection -- is still
-    production code.
+    `tagloc.pose.estimate_tag_pose` loest die Pose ueber `cv2.solvePnPGeneric`;
+    der Fake-Detektor kennt sie stattdessen schon. Alles danach -- Kamerapose
+    aus den Welttags, Verkettung der Module, Wahl des Rahmens -- ist weiter
+    Produktionscode.
     """
 
     def _locate(self, image, pose_base_flange=None):
@@ -141,7 +143,7 @@ def tag_pose(tag_id: int, translation, *, error_px: float = 0.5, ambiguity: floa
 
 
 def make_source(folder: Path, *, tag_poses=(), tag_map=None, **overrides):
-    """Build a source with a fake camera and fake detector; never `open()`ed."""
+    """Baut eine Quelle mit Fake-Kamera und Fake-Detektor; nie mit `open()` geoeffnet."""
     camera = FakeCamera()
     detector = FakeDetector(tag_poses)
     source = FakeSolverSource(profile_config(folder, **overrides), camera=camera)
@@ -152,7 +154,7 @@ def make_source(folder: Path, *, tag_poses=(), tag_map=None, **overrides):
 
 
 class ConfigurationIdTest(unittest.TestCase):
-    """The `configurationId` must be set before anything is loaded."""
+    """Die `configurationId` muss gesetzt sein, bevor irgendetwas geladen ist."""
 
     def test_names_family_calibration_and_tag_map_before_open(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -378,7 +380,7 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "world")
         self.assertEqual(detection.module_id, "MOD-A")
-        # T_world_cam comes from tag 0; tag 5 sits 0.3 m to the side.
+        # T_world_cam kommt von Tag 0; Tag 5 sitzt 0,3 m daneben.
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 0.0), atol=1e-12)
 
     async def test_stays_in_the_camera_frame_without_a_reference_tag(self):
