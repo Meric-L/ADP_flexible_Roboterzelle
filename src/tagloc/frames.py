@@ -1,10 +1,10 @@
-"""Where images come from: camera, image folder, or single image.
+"""Woher die Bilder kommen: Kamera, Bildordner oder Einzelbild.
 
-The image folder is what makes the whole pipeline reproducible without
-hardware: every CLI tool accepts `--source` as either a camera or a
-directory, so the same code runs in the lab and in tests.
+Der Bildordner macht die ganze Pipeline ohne Hardware reproduzierbar: Jedes
+CLI-Werkzeug nimmt `--source` entweder als Kamera oder als Verzeichnis, sodass
+derselbe Code im Labor und in Tests laeuft.
 
-`cv2`/`picamera2` are imported only on open.
+`cv2`/`picamera2` werden erst beim Oeffnen importiert.
 """
 
 import logging
@@ -17,20 +17,20 @@ IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff")
 
 
 class FrameSource(Protocol):
-    """Provide frames in BGR, as OpenCV expects them."""
+    """Liefert Bilder in BGR, wie OpenCV sie erwartet."""
 
     def read(self) -> Any | None:
-        """Return the next frame, or `None` when there are no more."""
+        """Liefert das naechste Bild oder `None`, wenn keine mehr kommen."""
         ...
 
     def close(self) -> None: ...
 
 
 class ImageFolderSource:
-    """Read images from a directory, sorted by filename.
+    """Liest Bilder aus einem Verzeichnis, nach Dateiname sortiert.
 
-    After the last image, `read()` returns `None` -- so CLI loops terminate
-    on their own instead of waiting for a camera that doesn't exist.
+    Nach dem letzten Bild liefert `read()` `None` -- so enden CLI-Schleifen von
+    selbst, statt auf eine Kamera zu warten, die es nicht gibt.
     """
 
     def __init__(self, folder: Path, *, loop: bool = False) -> None:
@@ -72,7 +72,7 @@ class ImageFolderSource:
 
 
 class SingleImageSource(ImageFolderSource):
-    """A single image, readable any number of times."""
+    """Ein einzelnes Bild, beliebig oft lesbar."""
 
     def __init__(self, path: Path, *, loop: bool = True) -> None:
         self._paths = [Path(path)]
@@ -81,7 +81,7 @@ class SingleImageSource(ImageFolderSource):
 
 
 class VideoCaptureSource:
-    """Camera via `cv2.VideoCapture` -- webcam or USB camera on a PC."""
+    """Kamera ueber `cv2.VideoCapture` -- Webcam oder USB-Kamera am PC."""
 
     def __init__(self, index: int = 0, resolution: tuple[int, int] | None = None) -> None:
         import cv2
@@ -102,11 +102,11 @@ class VideoCaptureSource:
 
 
 class PiCameraSource:
-    """The Raspberry Pi camera via Picamera2, for CLI calls on the Pi.
+    """Die Raspberry-Pi-Kamera ueber Picamera2, fuer CLI-Aufrufe auf dem Pi.
 
-    The server does **not** use this path; it uses the shared `SharedCamera`
-    instead -- Picamera2 allows only one open access per camera, and the
-    livestream holds it.
+    Der Server nutzt diesen Weg **nicht**; er nutzt stattdessen die geteilte
+    `SharedCamera` -- Picamera2 erlaubt je Kamera nur einen offenen Zugriff,
+    und den haelt der Livestream.
     """
 
     def __init__(self, resolution: tuple[int, int] = (2028, 1520), warmup_s: float = 2.0) -> None:
@@ -132,7 +132,7 @@ class PiCameraSource:
 
 
 class RealSenseSource:
-    """Intel RealSense via `pyrealsense2`, for CLI calls on the Hand-Pi.
+    """Intel RealSense ueber `pyrealsense2`, fuer CLI-Aufrufe auf dem Hand-Pi.
 
     Wie `PiCameraSource`: der Server nutzt diesen Pfad nicht, sondern die
     geteilte `SharedCamera` -- eine RealSense-Pipeline laesst pro Kamera nur
@@ -172,15 +172,15 @@ class RealSenseSource:
 
 
 def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: bool = False):
-    """Resolve the CLI tools' `--source` argument.
+    """Loest das `--source`-Argument der CLI-Werkzeuge auf.
 
-    Recognised forms:
+    Erkannte Formen:
 
-    * `camera` or `camera:2`  -- `cv2.VideoCapture`
-    * `picamera`              -- Picamera2 on the Pi
-    * `realsense`             -- Intel RealSense via `pyrealsense2`
-    * a directory             -- all images in it, sorted
-    * an image file           -- that one image
+    * `camera` oder `camera:2`  -- `cv2.VideoCapture`
+    * `picamera`              -- Picamera2 auf dem Pi
+    * `realsense`             -- Intel RealSense ueber `pyrealsense2`
+    * ein Verzeichnis         -- alle Bilder darin, sortiert
+    * eine Bilddatei          -- genau dieses Bild
     """
     text = str(spec)
     if text == "picamera":
@@ -202,7 +202,7 @@ def open_source(spec: str, *, resolution: tuple[int, int] | None = None, loop: b
 
 
 def to_gray(image) -> Any:
-    """Convert BGR to grayscale. An already single-channel image is unchanged."""
+    """Wandelt BGR in Graustufen um. Ein bereits einkanaliges Bild bleibt unveraendert."""
     import cv2
 
     import numpy as np
@@ -214,7 +214,7 @@ def to_gray(image) -> Any:
 
 
 def image_size(image) -> tuple[int, int]:
-    """Return `(width, height)` of an image."""
+    """Liefert `(Breite, Hoehe)` eines Bildes."""
     import numpy as np
 
     shape = np.asarray(image).shape
