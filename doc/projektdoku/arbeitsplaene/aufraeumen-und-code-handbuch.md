@@ -137,6 +137,50 @@ eigenes Feature mit eigenem Arbeitsplan).
 von `code-handbuch.md` ändern, committen, mit Rebase auf `origin/apriltag` ziehen, fast-forward pushen
 (Doku-Push auf `apriltag` ist freigegeben), Worktree entfernen.
 
+
+## Offene Aufgaben auf den Pis (Stand 30.10.2026)
+
+Ohne Zugriff auf die Pis nicht erledigt. Reihenfolge einhalten; vor jedem Neustart prüfen, dass kein Job und
+keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend startet sie neu). Vorher sichern:
+`config/tagmap.json`, lokale Änderungen (`diff > …patch`), `override.conf`.
+
+**Decken-Pi `ADP-Roboter-Lokalisierung`** (Repo `/home/adp-roboter/Desktop/ADP_Lokalisierung/ADP_flexible_Roboterzelle`)
+
+1. Prüfen, ob die am 30.10. umgestellte Unit läuft: `ExecStart=<Repo>/.venv/bin/python -m vision_server.server`,
+   `Environment=PYTHONPATH=<Repo>/src`; Sicherung `/etc/systemd/system/opcua-server.service.bak-20261030`.
+   Status aktiv, Journal ohne Traceback, Ports 4840 (OPC UA) und 8080 (MJPEG).
+2. Repo auf `origin/apriltag` setzen. Der Pi stand auf `6ebab91` (drei Commits, die auf dem Remote zurückgenommen
+   wurden) mit lokalen Änderungen an `config/tagmap.json` und `doc/projektdoku/apriltag-referenz.md`: sichern,
+   `fetch`, prüfen, dass sich `src tests tools` gegenüber `origin/apriltag` nicht unterscheiden, dann hart auf
+   `origin/apriltag` zurücksetzen.
+3. **Vorher entscheiden: Welttag-Größe 0,2 oder 0,198.** Lokal auf dem Pi stand 0,2, auf `origin/apriltag` 0,198.
+   Gilt 0,2, zuerst `config/tagmap.json` auf `apriltag` ändern und pushen, dann Schritt 2.
+4. Tippfehler im Drop-in `/etc/systemd/system/opcua-server.service.d/override.conf` beheben:
+   `VISION_APRILTAG_QUAD_DECICMATE` → `VISION_APRILTAG_QUAD_DECIMATE` (Wert 1.5). Wirkte bisher nie;
+   danach wird die Erkennung schneller, kleine/ferne Tags eher übersehen — nach dem Neustart beobachten.
+5. `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` aus dem Drop-in entfernen (Notausgang, im Betrieb nicht nötig, solange
+   `data/calibration/cam_ceiling.json` existiert).
+6. OpenCV bereinigen: installiert sind `opencv` 4.10.0 **und** `opencv-contrib-python` 5.0.0.93 (Paketkonflikt).
+   Nur `opencv-contrib-python` behalten; danach `import cv2; cv2.aruco` und einen Testjob prüfen.
+7. `daemon-reload`, ein Neustart, prüfen wie in 1.
+
+**Hand-Pi `ADP-HandInEye-Kamera-Pi`**
+
+1. Bestandsaufnahme wie beim Decken-Pi (Prompt im Chat vom 30.10.: Unit, Drop-ins, Python/venv, OpenCV- und
+   pupil-Version, `VISION_*`-Variablen, Branch/Commit/`status`, `config/tagmap.json` mit sha256 und Welttags,
+   Dateien unter `data/calibration/` und `data/handeye/`).
+2. Unit wie beim Decken-Pi auf `-m vision_server.server` umstellen (Sicherung, `daemon-reload`, Neustart, prüfen).
+3. Repo auf `origin/apriltag`; gleiche Tag-Map wie auf dem Decken-Pi (sha256 vergleichen).
+4. Auf denselben Tippfehler und dieselben Punkte 5–6 prüfen.
+
+**Danach im Repo (Sitzung A):**
+
+- Wenn **beide** Units umgestellt sind: Unit-Vorlage `deploy/opcua-server.service` versionieren, `src/OPCUA/`
+  löschen, Verweise in `vision-system.md` und im Handbuch anpassen (B13, ex D5, ex D11).
+- Wenn beide Pis OpenCV ≥ 4.7 haben: Rückfallzweige für OpenCV < 4.7 löschen (T12). Entscheidung zu
+  `pupil-apriltags` (T13): auf dem Decken-Pi installiert, im Betrieb ungenutzt (Backend `aruco`).
+- Befunde in `altlasten-zelle.md` und in den Welttag-Abschnitt von `altlasten-wsc.md` eintragen.
+
 ## Offene Fragen
 
 - Unklare Werkzeuge (z. B. `src/vision_server/tools/pi_load_profiler.py`) werden nicht gelöscht,
