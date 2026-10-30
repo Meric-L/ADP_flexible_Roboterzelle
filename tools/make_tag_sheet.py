@@ -1,12 +1,12 @@
 """Druckbogen fuer AprilTags und ChArUco-Boards, masshaltig in Millimetern.
 
-Output is **SVG**, not PNG: an SVG carries real millimeter measurements,
-prints from any browser at "scale 100%", and stays dimensionally accurate.
-A PNG instead depends on the printer driver's DPI assumption -- exactly the
-error that comes back later as a constant distance offset.
+Die Ausgabe ist **SVG**, nicht PNG: Ein SVG traegt echte Millimetermasse,
+druckt aus jedem Browser mit "Skalierung 100 %" und bleibt massgenau. Ein PNG
+haengt dagegen von der DPI-Annahme des Druckertreibers ab -- genau der Fehler,
+der spaeter als konstanter Abstandsversatz wiederkommt.
 
-Every sheet carries a 100 mm scale bar, so a ruler after printing confirms
-the printer really didn't rescale anything.
+Jeder Bogen traegt einen Massstab von 100 mm, sodass ein Lineal nach dem
+Drucken bestaetigt, dass der Drucker wirklich nichts skaliert hat.
 
     python tools/make_tag_sheet.py --ids 0 1 2 3 7 12 --size-mm 100 --out tags.svg
     python tools/make_tag_sheet.py --charuco --cols 7 --rows 5 \
@@ -27,8 +27,8 @@ A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
 MARGIN_MM = 12.0
 LABEL_MM = 6.0
-#: Resolution of the embedded bitmap. Markers are rectangles; more pixels
-#: only add file size, too few create rounding artifacts.
+#: Aufloesung des eingebetteten Bitmaps. Marker sind Rechtecke; mehr Pixel
+#: vergroessern nur die Datei, zu wenige erzeugen Rundungsartefakte.
 PIXELS_PER_MM = 8
 
 
@@ -42,7 +42,7 @@ def _png_data_uri(image) -> str:
 
 
 def render_marker(dictionary, tag_id: int, size_mm: float):
-    """Render one marker as a bitmap at print resolution."""
+    """Rendert einen Marker als Bitmap in Druckaufloesung."""
     import cv2
 
     pixels = max(64, int(size_mm * PIXELS_PER_MM))
@@ -52,7 +52,7 @@ def render_marker(dictionary, tag_id: int, size_mm: float):
 
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
-    """Render a ChArUco board as a bitmap, plus its size in millimeters."""
+    """Rendert ein ChArUco-Board als Bitmap samt seiner Groesse in Millimetern."""
     from tagloc.boards import CHARUCO, BoardSpec, build_board
 
     width_mm = spec_cols * square_mm
@@ -73,7 +73,7 @@ def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: 
 
 
 def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
-    """Draw a scale bar for measuring after printing."""
+    """Zeichnet einen Massstab zum Nachmessen nach dem Drucken."""
     parts = [
         f'<line x1="{x_mm}mm" y1="{y_mm}mm" x2="{x_mm + length_mm}mm" y2="{y_mm}mm" '
         'stroke="black" stroke-width="0.4mm"/>'
@@ -93,10 +93,10 @@ def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
 
 
 def build_svg(items, title: str) -> str:
-    """Assemble the sheet. `items` are `(data_uri, x, y, w, h, label)` in mm.
+    """Setzt den Bogen zusammen. `items` sind `(data_uri, x, y, w, h, label)` in mm.
 
-    Pure string work, deliberately without OpenCV, so layout is testable
-    even without OpenCV installed.
+    Reine Zeichenkettenarbeit, bewusst ohne OpenCV, damit das Layout auch ohne
+    installiertes OpenCV testbar ist.
     """
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -123,7 +123,7 @@ def build_svg(items, title: str) -> str:
 
 
 def layout_tags(dictionary, ids, size_mm: float):
-    """Arrange markers in columns and rows on A4."""
+    """Ordnet Marker in Spalten und Zeilen auf A4 an."""
     cell = size_mm + LABEL_MM + 6.0
     columns = max(1, int((A4_WIDTH_MM - 2 * MARGIN_MM) / cell))
     items = []
