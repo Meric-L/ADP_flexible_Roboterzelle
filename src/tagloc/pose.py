@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 
 from .calibration import CameraCalibration
-from .geometry import Pose, from_rvec_tvec
+from .geometry import Pose, compose, from_rvec_tvec, rvec_from_rotation
 from .observations import TagObservation, TagPose
 
 _log = logging.getLogger(__name__)
@@ -298,8 +298,6 @@ def solve_camera_from_world_tags(
     """
     import cv2
 
-    from .geometry import compose, rvec_from_rotation
-
     used = [
         tag_pose
         for tag_pose in sorted(tag_poses, key=lambda item: item.tag_id)
@@ -308,36 +306,13 @@ def solve_camera_from_world_tags(
     if len(used) < 2:
         return None
 
-    object_points = []
-    image_points = []
-    for tag_pose in used:
-        corners_tag = tag_object_points(sizes_m[tag_pose.tag_id])
-        corners_world = [
-            compose(world_poses[tag_pose.tag_id], _translation(corner))[:3, 3]
-            for corner in corners_tag
-        ]
-        object_points.append(np.asarray(corners_world, dtype=np.float64))
-        image_points.append(undistort_corners(tag_pose.observation.corners, calibration))
+    object_points, image_points = _world_correspondences(used, world_poses, sizes_m, calibration)
     objects = np.concatenate(object_points).reshape(-1, 1, 3)
     images = np.concatenate(image_points).reshape(-1, 1, 2)
     camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     no_distortion = np.zeros(5, dtype=np.float64)
 
-    starts = []
-    if initial_pose_cam_world is not None:
-        start = np.asarray(initial_pose_cam_world, dtype=np.float64)
-        starts.append((rvec_from_rotation(start[:3, :3]).reshape(3, 1), start[:3, 3].reshape(3, 1)))
-    for name in ("SOLVEPNP_SQPNP", "SOLVEPNP_IPPE"):
-        flag = getattr(cv2, name, None)
-        if flag is None:
-            continue
-        try:
-            found, rvec, tvec = cv2.solvePnP(objects, images, camera_matrix, no_distortion, flags=flag)
-        except cv2.error:
-            continue
-        if found:
-            starts.append((rvec, tvec))
-            break
+    starts = _pnp_starts(objects, images, camera_matrix, no_distortion, initial_pose_cam_world)
     if not starts:
         return None
 
@@ -363,6 +338,58 @@ def solve_camera_from_world_tags(
         tag_errors_px=tag_errors,
         tag_ids=tuple(int(tag_pose.tag_id) for tag_pose in used),
     )
+
+
+def _world_correspondences(
+    used: Sequence[TagPose],
+    world_poses: dict[int, Pose],
+    sizes_m: dict[int, float],
+    calibration: CameraCalibration,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Je Tag die vier Ecken im Welt-KS und die entzerrten Bildecken, in gleicher Reihenfolge."""
+    object_points = []
+    image_points = []
+    for tag_pose in used:
+        corners_tag = tag_object_points(sizes_m[tag_pose.tag_id])
+        corners_world = [
+            compose(world_poses[tag_pose.tag_id], _translation(corner))[:3, 3]
+            for corner in corners_tag
+        ]
+        object_points.append(np.asarray(corners_world, dtype=np.float64))
+        image_points.append(undistort_corners(tag_pose.observation.corners, calibration))
+    return object_points, image_points
+
+
+def _pnp_starts(
+    objects: np.ndarray,
+    images: np.ndarray,
+    camera_matrix: np.ndarray,
+    no_distortion: np.ndarray,
+    initial_pose_cam_world: Pose | None,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Startwerte `(rvec, tvec)` fuer das gemeinsame PnP.
+
+    Zuerst die uebergebene Schaetzung, dann die erste Loesung von `SQPNP` bzw.
+    `IPPE`, die OpenCV liefert. Leer, wenn keine zustande kommt.
+    """
+    import cv2
+
+    starts = []
+    if initial_pose_cam_world is not None:
+        start = np.asarray(initial_pose_cam_world, dtype=np.float64)
+        starts.append((rvec_from_rotation(start[:3, :3]).reshape(3, 1), start[:3, 3].reshape(3, 1)))
+    for name in ("SOLVEPNP_SQPNP", "SOLVEPNP_IPPE"):
+        flag = getattr(cv2, name, None)
+        if flag is None:
+            continue
+        try:
+            found, rvec, tvec = cv2.solvePnP(objects, images, camera_matrix, no_distortion, flags=flag)
+        except cv2.error:
+            continue
+        if found:
+            starts.append((rvec, tvec))
+            break
+    return starts
 
 
 def _translation(point) -> Pose:
