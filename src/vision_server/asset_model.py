@@ -121,6 +121,8 @@ async def _ensure_folder(
     try:
         return await root.get_child(f"{amcm_idx}:{folder_name}")
     except Exception:
+        # Ordner fehlt noch: beim ersten Zugriff ist das der Normalfall.
+        _log.debug("Ordner '%s' nicht vorhanden, wird angelegt", folder_name)
         nodes = await instantiate(
             root,
             server.get_node(node_id(VISION_ITEM_FOLDER_TYPE, amcm_idx)),

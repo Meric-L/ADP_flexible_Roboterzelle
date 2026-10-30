@@ -206,6 +206,9 @@ class Program(ABC):
             try:
                 result: str | None = await func(*args)
             except Exception as e:
+                # Der Fehlertext geht als Ergebnis an den Zustandswechsel;
+                # zusaetzlich im Log festhalten, damit die Ursache nicht verloren geht.
+                logger.warning("Programmfunktion warf einen Fehler: %s", e, exc_info=True)
                 result = str(e)
             if result is not None:
                 if not isinstance(result, str):
