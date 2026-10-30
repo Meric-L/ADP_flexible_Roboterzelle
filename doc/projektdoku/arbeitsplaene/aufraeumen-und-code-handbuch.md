@@ -153,8 +153,9 @@ keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend sta
    wurden) mit lokalen Änderungen an `config/tagmap.json` und `doc/projektdoku/apriltag-referenz.md`: sichern,
    `fetch`, prüfen, dass sich `src tests tools` gegenüber `origin/apriltag` nicht unterscheiden, dann hart auf
    `origin/apriltag` zurücksetzen.
-3. **Vorher entscheiden: Welttag-Größe 0,2 oder 0,198.** Lokal auf dem Pi stand 0,2, auf `origin/apriltag` 0,198.
-   Gilt 0,2, zuerst `config/tagmap.json` auf `apriltag` ändern und pushen, dann Schritt 2.
+3. **Welttag-Größe entschieden: 0,2 m (20 cm).** Steht seit `09f4f1a` in `config/tagmap.json` auf `apriltag`;
+   nach Schritt 2 hat der Pi also automatisch 0,2. Den Frontend-Seed (0,198) zieht der Plan
+   [`welttags-eine-quelle.md`](welttags-eine-quelle.md), Schritt 0, nach.
 4. Tippfehler im Drop-in `/etc/systemd/system/opcua-server.service.d/override.conf` beheben:
    `VISION_APRILTAG_QUAD_DECICMATE` → `VISION_APRILTAG_QUAD_DECIMATE` (Wert 1.5). Wirkte bisher nie;
    danach wird die Erkennung schneller, kleine/ferne Tags eher übersehen — nach dem Neustart beobachten.
