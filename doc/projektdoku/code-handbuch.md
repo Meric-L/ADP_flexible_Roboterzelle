@@ -303,8 +303,8 @@ Der erste Entwurf für Kamerakalibrierung und Erkennung (`calibrate_camera.py`, 
 **Ablauf**: Die Zustandsmaschine (asyncua `FiniteStateMachine`) und die Methodenhandler `_start_method` bis `_reset_method` setzen die Übergänge um. Die Handler rufen die abstrakten Methoden der Unterklasse auf.
 
 **Konfiguration & Dateien**: Optionale String-NodeIds über `nodeid=` (laut Docstring stabile, ratbare Ids statt numerischer). Keine Dateien. Hinweis: Das Docstring verweist auf `betreuer/OPC_UA_Program.py`; den Ordner `betreuer/` gibt es in diesem Stand nicht.
+
 **Tests**: `tests/test_vision_program.py` fährt Start, Suspend, Resume, Halt und Reset über OPC UA an einem eigenen `DemoProgram` und an `VisionProgram` (mit Attrappen-Quelle, ohne Kamera).
-**Tests**: Kein Test importiert das Paket direkt.
 
 **Weiterlesen**: [part10-programm-schnittstelle.md](part10-programm-schnittstelle.md), [altlasten-abbau-part10-fassade.md](arbeitsplaene/altlasten-abbau-part10-fassade.md).
 
@@ -338,7 +338,7 @@ Die Messung sollte auch auf dem Pi laufen; dort zählen die Zahlen (so das Docst
 - `make_synthetic_scene.py`: `--out` (Pflicht), `--count` (20), `--mode {tags,chessboard}` (tags), `--calibration`, `--width` (1600), `--height` (1200), `--focal-px` (Standard: Bildbreite), `--frame-id` (cam_synth), `--family` (tag36h11), `--supersample` (2), `--cols` (9), `--rows` (6), `--square-size-m` (0.030), `--distance-m` (0.55), `--seed` (20260917).
 - `measure_nodeset_import.py`: keine Optionen. Die Nodesets liegen in `src/vision_server/nodesets/` (Bereich Vision-Server).
 
-**Tests**: `tests/test_tag_pipeline.py`, `tests/test_tagreference.py` und `tests/test_reference_edges.py` importieren aus `tools.make_synthetic_scene`. `make_tag_sheet.py` und `measure_nodeset_import.py` haben keine Tests.
+**Tests**: `tests/test_tag_pipeline.py`, `tests/test_tagreference.py` und `tests/test_reference_edges.py` importieren aus `tools.make_synthetic_scene`. `make_tag_sheet.py` und `measure_nodeset_import.py` haben nur Rauchtests in `tests/test_tool_imports.py` (Import, SVG-Ausgabe, Nodeset-Pfade).
 
 **Weiterlesen**: [apriltag-referenz.md](apriltag-referenz.md) (Abschnitt 9.5, Hilfswerkzeuge), [apriltag-e2e-test.md](apriltag-e2e-test.md) (Abschnitt 0.2 Tags drucken, 0.3 Kalibrierboard, 1.2 Werkzeuge von Hand), [apriltag-lokalisierung.md](apriltag-lokalisierung.md) (Abschnitt 7, End-to-End-Testbarkeit).
 
@@ -1177,7 +1177,7 @@ Optionen (Auszug):
 Stolpersteine:
 
 - `DEFAULT_COMBOS` stammt vom alten 7 × 9-Brett. Das aktuelle Brett hat 7 × 10 innere Ecken und fehlt in der Liste. Ohne `--combo` testet `diagnose_board.py` das aktuelle Brett deshalb nicht. Dann `--combo 7x10` angeben.
-- Die Tests im Ordner `tests/` nutzen `tools/make_synthetic_scene.py` aus dem Repo-Root, nicht dieses Paket. Kein Test importiert `src/vision_server/tools/`.
+- Die Tests im Ordner `tests/` nutzen `tools/make_synthetic_scene.py` aus dem Repo-Root, nicht dieses Paket. `tests/test_tool_imports.py` importiert sie nur als Rauchtest (jedes Modul hat `main`); dort steht auch der Test, dass `src/OPCUA/server.py` `vision_server.server.main` lädt.
 
 **Tests**
 - Keine eigenen Tests für dieses Verzeichnis.
