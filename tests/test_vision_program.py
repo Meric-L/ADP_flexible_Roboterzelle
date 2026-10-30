@@ -133,7 +133,7 @@ class MachineTestCase(CallMixin, unittest.IsolatedAsyncioTestCase):
         self.server = Server()
         await configure_server(self.server, self.config)
         with mock.patch(
-            "vision_server.runner.build_detection_sources",
+            "vision_server.runner.install.build_detection_sources",
             return_value={"fake": self.source},
         ):
             self.machine = await install_vision_machine(self.server, self.config)
