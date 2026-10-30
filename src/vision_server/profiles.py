@@ -36,6 +36,7 @@ class AprilTagProfileConfig:
     #: `None` = keine Hand-Auge-Kalibrierung. Dann wirkt nur der optische
     #: Pfad: ohne Welttag im Bild bleiben die Posen im Kamera-KS.
     hand_eye_path: Path | None = DEFAULT_HAND_EYE_PATH
+    #: Wie `tagloc.tagmap.DEFAULT_TAG_FAMILY` (hier als Literal: kein numpy-Import).
     tag_family: str = "tag36h11"
     tag_size_m: float = 0.05
     capture_timeout_s: float = 5.0

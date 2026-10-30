@@ -293,5 +293,13 @@ class CameraControlsEnvTest(unittest.TestCase):
             config_for("cam_ceiling", "picamera2", VISION_CAMERA_CONTROLS="[1]")
 
 
+class TagFamilyDefaultTest(unittest.TestCase):
+    def test_profil_und_tagloc_haben_dieselbe_standardfamilie(self):
+        from tagloc.tagmap import DEFAULT_TAG_FAMILY
+        from vision_server.profiles import AprilTagProfileConfig
+
+        self.assertEqual(AprilTagProfileConfig().tag_family, DEFAULT_TAG_FAMILY)
+
+
 if __name__ == "__main__":
     unittest.main()

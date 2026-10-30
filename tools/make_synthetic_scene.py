@@ -55,6 +55,7 @@ from tagloc.geometry import (  # noqa: E402
     to_rvec_tvec,
 )
 from tagloc.pose import tag_object_points  # noqa: E402
+from tagloc.tagmap import DEFAULT_TAG_FAMILY  # noqa: E402
 
 SCHEMA = "wsc.vision.synthetic/1"
 
@@ -313,7 +314,7 @@ def render_tags(
     calibration: CameraCalibration,
     *,
     image_size: tuple[int, int] | None = None,
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     marker_px: int = 320,
     quiet_px: int = 48,
     background: int = 235,
@@ -455,7 +456,7 @@ def render_reference_scene(
     *,
     tag_id: int = 7,
     tag_size_m: float = 0.08,
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     image_size: tuple[int, int] | None = None,
     groove_edges: dict[int, float] | None = None,
     background: int = 60,
@@ -748,7 +749,7 @@ def write_tag_scene(
     calibration: CameraCalibration,
     *,
     placements=None,
-    family: str = "tag36h11",
+    family: str = DEFAULT_TAG_FAMILY,
     supersample: int = 2,
     min_tags: int = 2,
 ) -> dict:
@@ -864,7 +865,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--focal-px", type=float, default=None, help="Brennweite in Pixeln (Standard: Bildbreite)"
     )
     parser.add_argument("--frame-id", default="cam_synth", help="Bezugsrahmen der Kalibrierung")
-    parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
     parser.add_argument(
         "--supersample", type=int, default=2, help="Ueberabtastung beim Rendern (1 = aus)"
     )

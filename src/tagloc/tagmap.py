@@ -122,13 +122,19 @@ class TagEntry:
         return self.role in MOVABLE_ROLES
 
 
+#: Standard-Tag-Familie der Zelle (Namensform wie in `detector.ARUCO_DICTIONARIES`).
+#: `vision_server/profiles.py` haelt denselben Wert als Literal, weil es ohne numpy
+#: importierbar bleiben muss; `tests/test_server_config.py` vergleicht beide.
+DEFAULT_TAG_FAMILY = "tag36h11"
+
+
 @dataclass(frozen=True)
 class TagMap:
     """All known tags of a cell, in one coordinate frame."""
 
     frame_id: str = "world"
     anchor_tag_id: int = 0
-    tag_family: str = "tag36h11"
+    tag_family: str = DEFAULT_TAG_FAMILY
     entries: Mapping[int, TagEntry] = field(default_factory=dict)
 
     def __contains__(self, tag_id: int) -> bool:
@@ -340,7 +346,7 @@ def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
     return TagMap(
         frame_id=str(data.get("frameId", "world")),
         anchor_tag_id=int(data.get("anchorTagId", 0)),
-        tag_family=str(data.get("tagFamily", "tag36h11")),
+        tag_family=str(data.get("tagFamily", DEFAULT_TAG_FAMILY)),
         entries=entries,
     )
 
