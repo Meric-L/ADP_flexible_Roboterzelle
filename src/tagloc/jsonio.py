@@ -1,10 +1,12 @@
-"""Zahlen fuer JSON: NaN und Unendlich abfangen, Rundung je Aufrufer.
+"""Kleine Helfer fuer JSON: Zahlen (NaN und Unendlich abfangen, Rundung je
+Aufrufer) und UTC-Zeitstempel in den Formaten der Dateien.
 
 Nur Standardbibliothek -- das Modul laesst sich ohne numpy und ohne OpenCV
 importieren, auch von `vision_server.detection.apriltag`.
 """
 
 import math
+from datetime import datetime, timezone
 
 
 def finite_or_none(value, digits: int | None = None) -> float | None:
@@ -28,4 +30,14 @@ def finite_or_none(value, digits: int | None = None) -> float | None:
     return number if digits is None else round(number, digits)
 
 
-__all__ = ["finite_or_none"]
+def utc_now_z() -> str:
+    """Jetzt in UTC auf die Sekunde, `2026-10-31T12:00:00Z` (Feld `createdAt`)."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def utc_stamp() -> str:
+    """Jetzt in UTC fuer Datei- und Ordnernamen, `20261031T120000Z`."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+__all__ = ["finite_or_none", "utc_now_z", "utc_stamp"]

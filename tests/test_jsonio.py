@@ -1,9 +1,10 @@
-"""`tagloc.jsonio.finite_or_none`: NaN/Unendlich auf `None`, Rundung je Aufrufer."""
+"""`tagloc.jsonio`: `finite_or_none` (NaN/Unendlich auf `None`, Rundung je Aufrufer) und die UTC-Zeitstempel."""
 
 import math
+import re
 import unittest
 
-from tagloc.jsonio import finite_or_none
+from tagloc.jsonio import finite_or_none, utc_now_z, utc_stamp
 
 
 class FiniteOrNoneTest(unittest.TestCase):
@@ -34,6 +35,13 @@ class FiniteOrNoneTest(unittest.TestCase):
             return
         self.assertEqual(finite_or_none(np.float32(0.5), 4), 0.5)
         self.assertIsNone(finite_or_none(np.float64("nan"), 4))
+
+
+class UtcStampTest(unittest.TestCase):
+    def test_formats_of_the_files(self):
+        self.assertRegex(utc_now_z(), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        self.assertRegex(utc_stamp(), r"^\d{8}T\d{6}Z$")
+        self.assertIsNone(re.search(r"\.", utc_now_z()))  # keine Bruchteile
 
 
 if __name__ == "__main__":

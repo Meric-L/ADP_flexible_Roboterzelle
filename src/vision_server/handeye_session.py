@@ -29,7 +29,6 @@ import math
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +63,7 @@ from tagloc.handeye import (
     save_hand_eye,
     solve_hand_eye_robust,
 )
-from tagloc.jsonio import finite_or_none
+from tagloc.jsonio import finite_or_none, utc_now_z, utc_stamp
 
 from .errors import VisionErrorCode
 from .layer2.plan import _load, _pose
@@ -263,7 +262,7 @@ def _write_session_dataset(
     calibration = state.calibration
     payload = {
         "schema": SESSION_SCHEMA,
-        "createdAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "createdAt": utc_now_z(),
         "outcome": outcome,
         "frameId": frame_id,
         "tagId": state.tag_id,
@@ -315,7 +314,7 @@ def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
     """
     backup = None
     if path.is_file():
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = utc_stamp()
         backup = path.with_name(f"{path.name}.{stamp}.bak")
         shutil.copy2(path, backup)
     save_hand_eye(path, hand_eye)
@@ -354,7 +353,7 @@ class HandEyeSession:
             tag_id=tag_id,
             tag_in_base=tag_in_base,
             board=board,
-            stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            stamp=utc_stamp(),
         )
         self._s.message = self._hint()
         _log.info("Hand-Auge-Kalibrierung gestartet, Ziel %s", self._target_label())

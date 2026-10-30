@@ -30,7 +30,6 @@ import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +47,7 @@ from .geometry import (
     rvec_from_rotation,
     translation_distance_m,
 )
-from .jsonio import finite_or_none
+from .jsonio import finite_or_none, utc_now_z
 
 SCHEMA = "wsc.vision.handeye/1"
 #: Stellen, auf die `save_hand_eye` die Kennzahlen in der Datei rundet.
@@ -827,7 +826,7 @@ def save_hand_eye(path, hand_eye: HandEye) -> None:
     """Write a hand-eye calibration as JSON."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    now = utc_now_z()
     payload = {
         "schema": SCHEMA,
         "frameId": hand_eye.frame_id,
