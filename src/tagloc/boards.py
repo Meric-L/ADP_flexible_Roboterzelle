@@ -1,6 +1,6 @@
 """Calibration boards: detect, cover, compute.
 
-Extracted from `src/apriltag/calibrate_camera.py`, whose calculation core was
+Extracted from `src/apriltag/calibrate_camera.py` (prototype, removed 2026-10-30), whose calculation core was
 trapped in the keyboard loop of `main()` -- there was no way to calibrate
 from a set of existing images. That's now possible, and is the precondition
 for testing the calibration path without a camera.

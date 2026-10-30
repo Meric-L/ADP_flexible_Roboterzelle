@@ -66,7 +66,7 @@ webskillcomposition: Einrichtung laut `docs/development.md` im webskill-Repo
 
 ## Inhalt
 
-- **Teil A1 — tagloc, CLI und Hilfsskripte:** `src/tagloc/`, `src/tagloc/cli/`, `src/apriltag/` (Prototyp), `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, Repo-Wurzel, Testübersicht
+- **Teil A1 — tagloc, CLI und Hilfsskripte:** `src/tagloc/`, `src/tagloc/cli/`, `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, Repo-Wurzel, Testübersicht
 - **Teil A2 — Vision-Server:** Start & Konfiguration, Adressraum, Jobs, Erkennungsquellen, Kamera & Livestream, Sitzungen, Discovery, Werkzeuge
 - **Teil B1 — Zellmodule, Modelle:** Koordinaten & Szenenmodell, Modulkatalog, Tag-Platzierung, Layer 1, Zellen-Überwachung, Layer 2, Einmessen, Hand-Auge, Kamera-1-Kalibrierung, Pick & Place, Freigaben, Kollisionsprüfung, Zustand
 - **Teil B2 — Zellmodule, Oberfläche:** die Bedienbereiche zu den Modellen aus B1
@@ -83,7 +83,7 @@ Roboter.
 
 ## Teil A1 — tagloc, CLI und Hilfsskripte
 
-Geltungsbereich: `src/tagloc/` mit `cli/`, die Prototypen in `src/apriltag/`, `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, die Befehle der Repo-Wurzel und die Testübersicht. `src/vision_server/` gehört zu einem anderen Teil; hier steht nur, wo `tagloc` dort benutzt wird. Stand: Branch `apriltag` (`d55df91`).
+Geltungsbereich: `src/tagloc/` mit `cli/`, `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, die Befehle der Repo-Wurzel und die Testübersicht. `src/vision_server/` gehört zu einem anderen Teil; hier steht nur, wo `tagloc` dort benutzt wird. Stand: Branch `apriltag` (`d55df91`).
 
 Begriffe: **KS** = Koordinatensystem. **T_a_b** = Pose von b, ausgedrückt in a (Meter, Radiant). **Welttag** = fester AprilTag am Zellenrand; er definiert das Weltkoordinatensystem. **Modultag** = Tag auf einem beweglichen Modul. **Roboter** = Modul mit Rolle `robot`; er wird wie jedes andere Modul gemessen.
 
@@ -238,27 +238,9 @@ Dateien (Konvention, nicht im Code erzwungen): Kalibrierung `data/calibration/<f
 - [apriltag-e2e-test.md](apriltag-e2e-test.md): Abschnitt 2 (Webcam), 3.3 (Kalibrieren mit der Pi-Kamera), 3.6 (Tag-Map), 3.6a (Hand-Auge).
 - [handeye-genauigkeit.md](arbeitsplaene/handeye-genauigkeit.md): beschreibt `--session` und die gemeinsame Verfeinerung. Status: in Arbeit.
 
-### `src/apriltag/` (Prototyp, abgelöst)
+### `src/apriltag/` (Prototyp, entfernt)
 
-**Zweck**: Erster Entwurf für Kamerakalibrierung und Erkennung mit Live-Ansicht. Er ist abgelöst durch `tagloc.cli.calibrate` und `tagloc.cli.detect`. Laut [altlasten-toter-code.md](altlasten-toter-code.md) (T1) gibt es weder Import noch Test. Der Ordner bleibt nur als Vergleich, bis die neue Kette an der Pi-Kamera abgenommen ist (`MANUAL_TEST.md`).
-
-**Einstieg**: `python src/apriltag/calibrate_camera.py` bzw. `python src/apriltag/detect_apriltags.py`. Die Erkennung braucht `calibration.yaml` im selben Ordner.
-
-**Dateien**
-
-| Datei | Aufgabe | Wichtigste Bausteine |
-| --- | --- | --- |
-| `src/apriltag/calibrate_camera.py` | Prototyp: Kamerakalibrierung mit Live-Ansicht, Schachbrett oder ChArUco (Schalter `USE_CHARUCO`). Schreibt OpenCV-YAML. | `create_charuco_board`, `detect_chessboard`, `detect_charuco`, `MIN_SAMPLES`, `OUTPUT_PATH` |
-| `src/apriltag/detect_apriltags.py` | Prototyp: Live-Erkennung mit `pupil_apriltags` und Pose-Overlay. Die Pose wird ohne Entzerrung berechnet (siehe Docstring `pose.py`). | `load_calibration`, `draw_tag`, `main`, `TAG_FAMILY`, `TAG_SIZE_M` |
-| `src/apriltag/MANUAL_TEST.md` | Tastenbelegung der Prototypen. Trägt den Hinweis „Abgelöst“ und nennt die Ersatzbefehle. | — |
-
-**Ablauf**: Kalibrierung: Muster erkennen, `SPACE` nimmt auf, `C` rechnet (ab 15 Aufnahmen, laut `MANUAL_TEST.md`), `S` speichert `calibration.yaml`, `Q` beendet. Erkennung: Graustufen, `pupil_apriltags` mit Pose, Zeichnen, `Q` beendet.
-
-**Konfiguration & Dateien**: Konstanten im Skript, keine Optionen: `CAMERA_SOURCE = 0`, `TAG_FAMILY = "tag36h11"`, `TAG_SIZE_M = 0.05`, `CHESSBOARD_SIZE = (9, 6)`, `CHARUCO_COLS = 7`, `CHARUCO_ROWS = 5`, `SQUARE_SIZE_M = 0.030`, `MARKER_SIZE_M = 0.022`. Die Kalibrierdatei ist OpenCV-YAML neben dem Skript, nicht das JSON-Format von `tagloc`.
-
-**Tests**: keine.
-
-**Weiterlesen**: [altlasten-toter-code.md](altlasten-toter-code.md) (T1, P2), [altlasten.md](altlasten.md), [apriltag-e2e-test.md](apriltag-e2e-test.md).
+Der erste Entwurf für Kamerakalibrierung und Erkennung (`calibrate_camera.py`, `detect_apriltags.py`, `MANUAL_TEST.md`) wurde am 30.10.2026 gelöscht (Fund T1 in [altlasten-zelle.md](altlasten-zelle.md)). Ersatz: `python -m tagloc.cli.calibrate` und `python -m tagloc.cli.detect`. Die Löschbedingung war erfüllt: Der Hand-Pi ist mit der neuen Kette real kalibriert (siehe [vision-server-interface.md](vision-server-interface.md)). In der Versionsgeschichte ist der Prototyp weiterhin einsehbar.
 
 ### `src/jobs/` (OPC-UA-Job, nur Prüfung)
 

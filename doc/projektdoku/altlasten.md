@@ -117,8 +117,7 @@ keine Altlasten:
   `calibration` bleiben sie Null, und das ist dort richtig.
 - ~~Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.~~
   **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
-  Prototyp `src/apriltag/detect_apriltags.py` steht noch, ist aber als abgelöst
-  gekennzeichnet.
+  Prototyp `src/apriltag/detect_apriltags.py` wurde am 30.10.2026 entfernt.
 - **Hand-Auge-Kalibrierung**: Rechnung, Dateiformat und Werkzeug stehen
   (`tagloc.handeye`, `python -m tagloc.cli.calibrate_handeye`). Offen ist die
   Durchführung an der echten Hardware — `T_flansch_cam` ist eine Konstante

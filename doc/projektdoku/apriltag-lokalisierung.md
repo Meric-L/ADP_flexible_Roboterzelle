@@ -457,7 +457,7 @@ Bildern reproduzierbar, ohne Pi und ohne Kamera.
 | `python -m tagloc.cli.transform` | Pose von KS A nach KS B rechnen, Tag-Map anwenden | ja, reine Rechnung |
 | `python -m tagloc.cli.build_tagmap` | Tags aus einer Bilderserie in ein gemeinsames KS platzieren | ja |
 
-Der wesentliche Unterschied zum heutigen Prototyp: `calibrate_camera.py` hat
+Der wesentliche Unterschied zum Prototyp (`src/apriltag/`, entfernt am 30.10.2026): `calibrate_camera.py` hatte
 **keinen** Weg, ohne GUI aus vorhandenen Bildern zu kalibrieren — der gesamte
 Zustand lebt in der Tastaturschleife. Der Kalibrierkern wird als
 `calibrate_from_samples(samples, image_size, board)` herausgelöst; die Live-UI
@@ -676,15 +676,15 @@ Die Schritte 1–7 und 9 sind umgesetzt, die Suite ist grün.
 | 5 | CLI-Skripte; Kalibrierkern aus `calibrate_camera.py` herausgelöst und parametrisiert | erledigt |
 | 6 | `detection/apriltag.py` + Registry + Rezept + Tests | erledigt |
 | 7 | QR-Ausbau nach Abschnitt 6 | erledigt |
-| 8 | `src/apriltag/` auflösen | **zurückgestellt** |
+| 8 | `src/apriltag/` auflösen | erledigt (30.10.2026) |
 | 9 | Konfiguration je Pi in `server.py`, Doku nachziehen | erledigt |
 
-Zu Schritt 8: Der Prototypordner bleibt vorerst stehen und ist in
-[`MANUAL_TEST.md`](../../src/apriltag/MANUAL_TEST.md) als abgelöst gekennzeichnet.
+Zu Schritt 8: Der Prototypordner blieb zunächst stehen und war in
+`MANUAL_TEST.md` als abgelöst gekennzeichnet.
 Ihn zu löschen, bevor die neue Kette einmal an der echten Pi-Kamera gelaufen
 ist, nähme die einzige Vergleichsmöglichkeit weg. `src/jobs/calibrate.py` ist
 dagegen bereits umgestellt — es ist jetzt eine Bereitschaftsprüfung statt eines
-Platzhalters.
+Platzhalters. **Prototyp `src/apriltag/` entfernt am 30.10.2026** (Löschbedingung erfüllt, siehe [`altlasten-zelle.md`](altlasten-zelle.md) T1).
 
 Dazu kamen zwei Dinge, die im ursprünglichen Plan fehlten:
 

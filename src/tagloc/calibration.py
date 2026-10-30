@@ -5,7 +5,7 @@ JSON instead of OpenCV FileStorage YAML, deliberately:
 * readable without `cv2` -- the vision server builds `configurationId`
   without loading OpenCV, and tests run everywhere
 * room for `rms`, image size and board geometry. The prototype
-  (`src/apriltag/calibrate_camera.py`) only printed `rms` to stdout and wrote
+  (`src/apriltag/calibrate_camera.py`, removed 2026-10-30) only printed `rms` to stdout and wrote
   `image_width`/`image_height` without ever reading them back
 * diffable and human-readable on error
 

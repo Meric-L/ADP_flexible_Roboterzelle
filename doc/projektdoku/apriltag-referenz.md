@@ -432,7 +432,7 @@ def estimate_tag_poses(observations: Sequence[TagObservation],
 
 Zwei Punkte, die der Prototyp heute falsch macht und die hier behoben sind:
 
-- **Die Ecken werden entzerrt.** `detect_apriltags.py` reicht `D` nur an
+- **Die Ecken werden entzerrt.** `detect_apriltags.py` (Prototyp, entfernt am 30.10.2026) reicht `D` nur an
   `drawFrameAxes` weiter und schätzt die Pose auf dem verzeichneten Bild
   ([`altlasten.md`](altlasten.md), „Was nicht hier steht").
 - **Mehrdeutigkeit wird gemeldet.** Ein flach gesehener quadratischer Marker hat

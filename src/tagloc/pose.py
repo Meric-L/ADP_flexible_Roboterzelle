@@ -1,6 +1,6 @@
 """From image corners to pose: `T_cam_tag` plus quality measures.
 
-The prototype (`src/apriltag/detect_apriltags.py`) does two things worse:
+The prototype (`src/apriltag/detect_apriltags.py`, removed 2026-10-30) does two things worse:
 
 1. No undistortion. `D` there only went to `drawFrameAxes`; the pose was
    computed on the distorted image (doc/projektdoku/altlasten.md, "Was nicht hier
