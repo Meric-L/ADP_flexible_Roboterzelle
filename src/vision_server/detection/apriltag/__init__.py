@@ -31,12 +31,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ..camera import SharedCamera
-from ..errors import VisionErrorCode, VisionJobError
+from ...camera import SharedCamera
+from ...errors import VisionErrorCode, VisionJobError
 from tagloc.jsonio import finite_or_none
 
-from ..profiles import AprilTagProfileConfig, CameraStreamConfig
-from .base import Detection, DetectionRequest, DetectionSource
+from ...profiles import AprilTagProfileConfig, CameraStreamConfig
+from ..base import Detection, DetectionRequest, DetectionSource
 
 _log = logging.getLogger(__name__)
 
@@ -472,7 +472,7 @@ class AprilTagDetectionSource(DetectionSource):
         """Woher die Intrinsik stammt: `calibration`, `realsense_factory`, `placeholder`."""
         from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
 
-        from ..camera import REALSENSE_FACTORY_CALIBRATION_ID
+        from ...camera import REALSENSE_FACTORY_CALIBRATION_ID
 
         calibration_id = getattr(self._calibration, "calibration_id", "")
         if calibration_id == PLACEHOLDER_CALIBRATION_ID:
@@ -491,7 +491,7 @@ class AprilTagDetectionSource(DetectionSource):
         """
         from datetime import datetime, timedelta, timezone
 
-        from ..measuretag import NO_FRAME, FrameMeasurement, SizeLookup, build_result
+        from ...measuretag import NO_FRAME, FrameMeasurement, SizeLookup, build_result
 
         sizes = SizeLookup(request.sizes_m, self._tag_map, self._config.tag_size_m)
         loop = asyncio.get_running_loop()
@@ -571,8 +571,8 @@ class AprilTagDetectionSource(DetectionSource):
 
         from tagloc.reference_edges import average_corrections
 
-        from ..measuretag import SizeLookup
-        from ..tagreference import (
+        from ...measuretag import SizeLookup
+        from ...tagreference import (
             NO_FRAME,
             TAG_NOT_SEEN,
             build_result,
@@ -663,7 +663,7 @@ class AprilTagDetectionSource(DetectionSource):
         )
         from tagloc.reference_overlay import draw_reference_debug
 
-        from ..tagreference import keep_guess_rotation
+        from ...tagreference import keep_guess_rotation
 
         guess = request.pose_module_tag_guess
         line_frames = []
@@ -716,8 +716,8 @@ class AprilTagDetectionSource(DetectionSource):
         """
         from tagloc.reference_edges import plan_reference_view
 
-        from ..measuretag import SizeLookup
-        from ..tagreference import build_view
+        from ...measuretag import SizeLookup
+        from ...tagreference import build_view
 
         sizes = SizeLookup(
             {request.tag_id: request.tag_size_m} if request.tag_size_m else {},
@@ -940,7 +940,7 @@ class AprilTagDetectionSource(DetectionSource):
         """
         from datetime import datetime, timedelta, timezone
 
-        from ..measureboard import NO_FRAME, build_result
+        from ...measureboard import NO_FRAME, build_result
 
         spec = request.board or self.default_board_spec()
         loop = asyncio.get_running_loop()
@@ -1006,7 +1006,7 @@ class AprilTagDetectionSource(DetectionSource):
             estimate_board_pose,
         )
 
-        from ..measureboard import FrameBoard
+        from ...measureboard import FrameBoard
 
         gray = frame_tools.to_gray(image)
         size = frame_tools.image_size(image)
