@@ -14,23 +14,23 @@ from typing import Any
 
 from asyncua import Node, Server, ua, uamethod
 
-from .address_space import VisionAddressSpace, attach_vision_system, configure_server
-from .asset_model import VisionAssetNodes, attach_asset_model
-from .calibration_session import CalibrationSession
-from .camera import exit_process
-from .camera_health import CameraHealthPublisher, HealthAlarms, write_device_health
-from .camera_stream import CameraStreamPublisher
-from .mjpeg_server import MjpegServer
-from .config import VisionServerConfig
-from .detection import DetectionSource, build_detection_sources
-from .errors import VisionErrorCode
-from .events import VisionEvents, create_event_generators
-from .job import JobRunner
-from .nodeset_ids import DeviceHealth
-from .profiles import _REPO_ROOT
-from .result_management import ResultStore
-from .state_machine import VisionStateMachines
-from .vision_program import VisionProgram, install_vision_program
+from ..address_space import VisionAddressSpace, attach_vision_system, configure_server
+from ..asset_model import VisionAssetNodes, attach_asset_model
+from ..calibration_session import CalibrationSession
+from ..camera import exit_process
+from ..camera_health import CameraHealthPublisher, HealthAlarms, write_device_health
+from ..camera_stream import CameraStreamPublisher
+from ..mjpeg_server import MjpegServer
+from ..config import VisionServerConfig
+from ..detection import DetectionSource, build_detection_sources
+from ..errors import VisionErrorCode
+from ..events import VisionEvents, create_event_generators
+from ..job import JobRunner
+from ..nodeset_ids import DeviceHealth
+from ..profiles import _REPO_ROOT
+from ..result_management import ResultStore
+from ..state_machine import VisionStateMachines
+from ..vision_program import VisionProgram, install_vision_program
 
 _log = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ def _build_annotator(source: DetectionSource):
 
     from tagloc.detector import build_detector
 
-    from .stream_overlay import AprilTagStreamAnnotator
+    from ..stream_overlay import AprilTagStreamAnnotator
 
     # Detektor-Parameter wie beim Job, sonst zeigt das Overlay andere Tags --
     # bis auf die Eckenverfeinerung: sie bleibt im Stream bewusst aus (siehe
@@ -230,7 +230,7 @@ def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
     wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
     haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
     """
-    from .profiles import CameraStreamConfig
+    from ..profiles import CameraStreamConfig
 
     return (
         getattr(source, "_camera_config", None)
@@ -1105,7 +1105,7 @@ async def _install_layer2_run(
     `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
     """
     # Erst hier: `layer2` braucht numpy, der Rest des Servers nicht.
-    from .layer2.run import Layer2Ports, Layer2Run
+    from ..layer2.run import Layer2Ports, Layer2Run
 
     async def publish(target: str, status: str) -> None:
         await space.layer2_target.write_value(ua.Variant(target, ua.VariantType.String))
@@ -1175,7 +1175,7 @@ async def _install_hand_eye_session(
     `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
     """
     # Erst hier: die Session braucht numpy, der Rest des Servers nicht.
-    from .handeye_session import HandEyePorts, HandEyeSession
+    from ..handeye_session import HandEyePorts, HandEyeSession
 
     async def publish(status: str) -> None:
         await space.hand_eye_status.write_value(ua.Variant(status, ua.VariantType.String))
@@ -1250,8 +1250,8 @@ async def _install_measure_board(
     erst nach der Messung, das Ergebnis kommt direkt zurueck.
     Siehe `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
     """
-    from .handeye_session import _parse_board
-    from .measureboard import RESULT_SCHEMA, dumps, parse_request
+    from ..handeye_session import _parse_board
+    from ..measureboard import RESULT_SCHEMA, dumps, parse_request
 
     def refusal(code: VisionErrorCode, message: str):
         result = {"schema": RESULT_SCHEMA, "found": False, "error": code.name, "message": message}
@@ -1320,7 +1320,7 @@ async def _install_measure_tags(
     `LastTagMeasurement` ist nur zur Anzeige. Siehe
     `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
     """
-    from .measuretag import RESULT_SCHEMA, dumps, parse_request
+    from ..measuretag import RESULT_SCHEMA, dumps, parse_request
 
     activity = activity if activity is not None else _Activity()
 
@@ -1407,8 +1407,8 @@ async def _install_tag_reference(
 
     Siehe `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
     """
-    from .tagreference import build_result, build_view, dumps, parse_request
-    from .tagreference_log import write_protocol
+    from ..tagreference import build_result, build_view, dumps, parse_request
+    from ..tagreference_log import write_protocol
 
     if annotator is not None and hasattr(annotator, "show_reference_debug"):
         # Die Messung zeigt dem Livestream ihre Kantensuche Bild fuer Bild.
@@ -1566,7 +1566,7 @@ async def _install_save_raw_image(
     den Job-Timeout nicht gefaehrden. Siehe
     `doc/projektdoku/arbeitsplaene/rohbild-speichern.md`.
     """
-    from .raw_image import save_raw_image
+    from ..raw_image import save_raw_image
 
     frame_id = (
         config.apriltag.frame_id if config.apriltag is not None else config.vision_system_name
@@ -1713,7 +1713,7 @@ async def _install_save_use_case_image(
     """
     from use_case_eval.live import load_sticker_offset, measure_for_save
 
-    from .use_case_image import save_use_case_image
+    from ..use_case_image import save_use_case_image
 
     frame_id = (
         config.apriltag.frame_id if config.apriltag is not None else config.vision_system_name
@@ -1808,7 +1808,7 @@ async def _install_cell_watch(
     # Erst hier: die Ueberwachung braucht numpy/OpenCV, der Rest des Servers nicht.
     from tagloc.detector import build_detector
 
-    from .cellwatch import CameraPoseKeeper, CellWatch, CellWatchPorts
+    from ..cellwatch import CameraPoseKeeper, CellWatch, CellWatchPorts
 
     apriltag = config.apriltag
     detector = build_detector(
