@@ -239,7 +239,9 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_without_fresh_frame_is_invalid_state(self):
         self.camera.latest_frame = self.frame(0.0)
-        with mock.patch("vision_server.runner.USE_CASE_FRESH_FRAME_TIMEOUT_S", 0.2):
+        with mock.patch(
+            "vision_server.runner.save_use_case_image.USE_CASE_FRESH_FRAME_TIMEOUT_S", 0.2
+        ):
             name, error = await self.call()
         self.assertEqual((name, error), ("", int(VisionErrorCode.INVALID_STATE)))
         self.assertFalse(self.base.exists())
