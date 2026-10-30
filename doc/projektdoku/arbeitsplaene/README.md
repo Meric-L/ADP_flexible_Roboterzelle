@@ -45,6 +45,8 @@ nicht gibt.
 | [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | fertig | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
 | [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | fertig | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
 | [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
+| [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
+| [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

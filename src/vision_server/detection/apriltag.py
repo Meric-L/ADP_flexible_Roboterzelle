@@ -473,6 +473,11 @@ class AprilTagDetectionSource(DetectionSource):
         )
 
     @property
+    def calibration(self) -> Any:
+        """Die gerade benutzte Kalibrierung (`CameraCalibration`) oder `None`."""
+        return self._calibration
+
+    @property
     def intrinsics_source(self) -> str:
         """Woher die Intrinsik stammt: `calibration`, `realsense_factory`, `placeholder`."""
         from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
