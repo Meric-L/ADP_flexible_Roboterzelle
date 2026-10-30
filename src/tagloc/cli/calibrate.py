@@ -1,6 +1,6 @@
 """Kamerakalibrierung -- interaktiv an der Kamera oder headless aus Bildern.
 
-    # interactive: SPACE = capture, C = compute, S = save, Q = quit
+    # interactive: SPACE = capture, C = compute + save, Q = quit
     python -m tagloc.cli.calibrate --source camera:0 --board charuco \
         --out data/calibration/cam_ceiling.json --frame-id cam_ceiling
 
@@ -10,6 +10,8 @@
 
 `--capture-to FOLDER` additionally saves camera images without computing,
 producing the image set a calibration can later be reproduced from on a PC.
+It works in the window mode and, with a camera source, also with `--no-gui`
+(there every accepted frame is saved); image folders are not copied.
 """
 
 import argparse
@@ -122,6 +124,13 @@ def main(argv=None) -> int:
                 if sample is not None:
                     samples.append(sample)
                     print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
+                    if args.capture_to is not None and is_camera_source(args.source):
+                        import cv2
+
+                        saved += 1
+                        cv2.imwrite(
+                            str(Path(args.capture_to) / f"kalib_{saved:03d}.png"), image
+                        )
                 else:
                     print("Board nicht erkannt, Bild uebersprungen")
                 continue
