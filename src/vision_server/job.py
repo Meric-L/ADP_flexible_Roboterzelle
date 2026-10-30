@@ -21,6 +21,9 @@ from .state_machine import VisionStateMachines
 
 _log = logging.getLogger(__name__)
 
+#: So lange wartet `cancel_running` auf das Ende des abgebrochenen Jobs.
+_CANCEL_WAIT_S = 2.0
+
 
 @dataclass(frozen=True)
 class JobRequest:
@@ -183,7 +186,7 @@ class JobRunner:
             except Exception:
                 _log.exception("Abschluss-Beobachter von Job %s fehlgeschlagen", job_id)
 
-    async def cancel_running(self, timeout: float = 2.0) -> None:
+    async def cancel_running(self) -> None:
         """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
 
         Best-Effort: Fehler beim Abbruch werden verschluckt, der Prozess
@@ -195,7 +198,7 @@ class JobRunner:
             return
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-            await asyncio.wait_for(task, timeout)
+            await asyncio.wait_for(task, _CANCEL_WAIT_S)
 
     async def stop(self, *, abort: bool = False) -> VisionErrorCode:
         """Bricht einen laufenden Job ab; OK, wenn gerade keiner laeuft.
