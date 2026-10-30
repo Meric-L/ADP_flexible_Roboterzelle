@@ -761,7 +761,7 @@ Eine Kamera, ein Capture-Loop, mehrere Leser. Der Watchdog eskaliert bis zum Pro
 | `src/vision_server/camera_stream.py` | Livestream-Publisher: Frame, optional Overlay, Base64-JPEG. Dazu Knoten für Modus, Fortschritt und Vorschau | `CameraStreamPublisher` (`start`, `stop`, `latest`, `viewer`, `next_frame`), `_encode_jpeg_base64()`, `_resize_for_stream()` |
 | `src/vision_server/stream_overlay.py` | Zeichnet auf eine Kopie des Bilds: Tags, Brettecken, entzerrtes Bild, Einmess-Vorschau | `AprilTagStreamAnnotator` (`annotate`, `apply_calibration`, `set_calibration_session`, `set_busy`, `set_overlay_paused`, `set_reference_preview`), `_scale_corners()` |
 | `src/vision_server/mjpeg_server.py` | MJPEG über HTTP mit asyncio, ohne Framework. Drei GET-Pfade, siehe [vision-server-interface.md](vision-server-interface.md) §10.2 | `MjpegServer` (`start`, `stop`, `port`) |
-| `src/vision_server/raw_image.py` | `SaveRawImage`: aktuelles Vollbild verlustfrei als PNG | `save_raw_image()` |
+| `src/vision_server/raw_image.py` | `SaveRawImage`: aktuelles Vollbild verlustfrei als PNG | `save_raw_image()`, `FILE_STAMP_FORMAT` (auch von `tagreference_log.py` benutzt) |
 
 **Ablauf**
 

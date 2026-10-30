@@ -4,6 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+#: Zeitstempel in Dateinamen (Rohbilder, Messprotokoll-Ordner): `YYYYmmdd-HHMMSS`.
+FILE_STAMP_FORMAT = "%Y%m%d-%H%M%S"
+
 
 def save_raw_image(
     image: Any, directory: Path, frame_id: str, now: datetime | None = None
@@ -18,7 +21,7 @@ def save_raw_image(
     import cv2
 
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    stamp = (now or datetime.now()).strftime(FILE_STAMP_FORMAT)
     path = directory / f"{frame_id}_{stamp}.png"
     counter = 2
     while path.exists():

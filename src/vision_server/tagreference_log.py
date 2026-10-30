@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .raw_image import FILE_STAMP_FORMAT
+
 #: So viele Protokollordner bleiben hoechstens liegen.
 MAX_FOLDERS = 50
 OVERLAY_NAME = "overlay.jpg"
@@ -37,7 +39,7 @@ def write_protocol(
     """
     import cv2
 
-    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    stamp = (now or datetime.now()).strftime(FILE_STAMP_FORMAT)
     base = f"{stamp}_tag{int(tag_id)}"
     folder = directory / base
     counter = 2
