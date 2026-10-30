@@ -16,6 +16,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._support import pose
+
 try:
     import numpy as np
 
@@ -54,10 +56,6 @@ UNMAPPED_POSITION = (1.4, 1.0, 0.70)
 #: The robot stands near the corner of world tag 2, the module near tag 1.
 ROBOT_BASE = (2.10, 1.55, 0.00)
 MODULE_POSITION = (2.05, 0.30, 0.90)
-
-
-def pose(translation, *, rvec=(0.0, 0.0, 0.0)):
-    return geometry.from_rvec_tvec(rvec, translation)
 
 
 def world_poses() -> dict:

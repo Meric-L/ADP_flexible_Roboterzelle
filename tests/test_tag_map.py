@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._support import pose
+
 try:
     import numpy as np
 
@@ -19,10 +21,6 @@ except Exception:  # numpy broken in this environment
     np = None
     geometry = None
     tagmap = None
-
-
-def pose(translation, *, rvec=(0.0, 0.0, 0.0)):
-    return geometry.from_rvec_tvec(rvec, translation)
 
 
 def truth_poses() -> dict:
