@@ -1,32 +1,33 @@
-"""Render synthetic scenes: images with **known** ground truth, no camera.
+"""Rendert synthetische Szenen: Bilder mit **bekannter** Grundwahrheit, ohne Kamera.
 
-This underlies `tests/test_tag_pipeline.py` and is the only way to check the
-whole chain (detector -> pose -> placement -> module pose) against reference
-values instead of itself: tag poses are prescribed here, projected with the
-real intrinsics, and then recovered by the library.
+Das ist die Grundlage von `tests/test_tag_pipeline.py` und die einzige
+Moeglichkeit, die ganze Kette (Detektor -> Pose -> Platzierung -> Modulpose)
+gegen Referenzwerte statt gegen sich selbst zu pruefen: Tag-Posen werden hier
+vorgegeben, mit den echten Intrinsiken projiziert und dann von der Bibliothek
+wiedergefunden.
 
-    # image series with tags plus matching calibration
+    # Bildserie mit Tags plus passender Kalibrierung
     python tools/make_synthetic_scene.py --out /tmp/szene --count 20 \
         --calibration /tmp/szene/kalibrierung.json
 
-    # chessboard views for the calibration path
+    # Schachbrettansichten fuer den Kalibrierpfad
     python tools/make_synthetic_scene.py --out /tmp/board --count 20 --mode chessboard
 
-The tools then run without hardware:
+Die Werkzeuge laufen dann ohne Hardware:
 
     PYTHONPATH=src python3 -m tagloc.cli.calibrate --source /tmp/board \
         --out /tmp/kalib.json
     PYTHONPATH=src python3 -m tagloc.cli.build_tagmap --source /tmp/szene \
         --calibration /tmp/szene/kalibrierung.json --anchor 0 --out /tmp/tagmap.json
 
-Rendered with `cv2.aruco.generateImageMarker` (fallback `drawMarker`) and
-`cv2.warpPerspective`; corner points come from `cv2.projectPoints` using
-exactly the intrinsics also written to the calibration file. That's what
-makes the image match the calibration, and only that makes the reference
-value a reference value.
+Gerendert mit `cv2.aruco.generateImageMarker` (Rueckfall `drawMarker`) und
+`cv2.warpPerspective`; die Eckpunkte stammen aus `cv2.projectPoints` mit genau
+den Intrinsiken, die auch in die Kalibrierdatei geschrieben werden. Das macht
+das Bild passend zur Kalibrierung, und nur das macht den Referenzwert zu einem
+Referenzwert.
 
-`cv2` is imported only inside functions -- `--help` and importing this
-module work without OpenCV.
+`cv2` wird nur innerhalb von Funktionen importiert -- `--help` und der Import
+dieses Moduls funktionieren ohne OpenCV.
 """
 
 import argparse
@@ -59,16 +60,16 @@ from tagloc.tagmap import DEFAULT_TAG_FAMILY  # noqa: E402
 
 SCHEMA = "wsc.vision.synthetic/1"
 
-#: Filename of the written views -- sortable, so `ImageFolderSource` delivers
-#: them in capture order. PNG because `.gitignore` swallows `*.jpg` and
-#: because JPEG artifacts would distort corner accuracy.
+#: Dateiname der geschriebenen Ansichten -- sortierbar, damit `ImageFolderSource`
+#: sie in Aufnahmereihenfolge liefert. PNG, weil `.gitignore` `*.jpg` verschluckt
+#: und weil JPEG-Artefakte die Eckengenauigkeit verfaelschen wuerden.
 IMAGE_PATTERN = "ansicht_{index:03d}.png"
 TRUTH_FILE = "wahrheit.json"
 
 
 @dataclass(frozen=True)
 class TagPlacement:
-    """A tag in the world: ID, pose, and edge length in meters."""
+    """Ein Tag in der Welt: ID, Pose und Kantenlaenge in Metern."""
 
     tag_id: int
     pose_world_tag: Pose
@@ -76,7 +77,7 @@ class TagPlacement:
 
 
 def _as_placement(item) -> TagPlacement:
-    """Accept a `TagPlacement` or the triple `(tag_id, T_world_tag, size_m)`."""
+    """Nimmt ein `TagPlacement` oder das Tripel `(tag_id, T_world_tag, size_m)` an."""
     if isinstance(item, TagPlacement):
         return item
     tag_id, pose, size_m = item
@@ -84,7 +85,7 @@ def _as_placement(item) -> TagPlacement:
 
 
 # --------------------------------------------------------------------------
-# Camera and poses
+# Kamera und Posen
 # --------------------------------------------------------------------------
 
 
@@ -94,11 +95,11 @@ def synthetic_calibration(
     focal_px: float | None = None,
     frame_id: str = "cam_synth",
 ) -> CameraCalibration:
-    """Ideal pinhole camera: principal point at image centre, zero distortion.
+    """Ideale Lochkamera: Hauptpunkt in der Bildmitte, keine Verzeichnung.
 
-    `focal_px` unset = image width, i.e. roughly 53 degrees horizontal FOV.
-    The result feeds both rendering and the calibration file, so image and
-    calibration can never drift apart.
+    `focal_px` nicht gesetzt = Bildbreite, also etwa 53 Grad horizontales
+    Sichtfeld. Das Ergebnis speist sowohl das Rendern als auch die
+    Kalibrierdatei, sodass Bild und Kalibrierung nie auseinanderlaufen koennen.
     """
     width, height = int(image_size[0]), int(image_size[1])
     focal = float(focal_px) if focal_px else float(width)
@@ -119,12 +120,12 @@ def synthetic_calibration(
 
 
 def _scaled_calibration(calibration: CameraCalibration, factor: int) -> CameraCalibration:
-    """Intrinsics for rendering on the supersampled grid.
+    """Intrinsiken fuer das Rendern auf dem uebersampelten Raster.
 
-    At factor `s`, target-image point `x` maps to `s*x + (s-1)/2` in the
-    large image -- exactly the mapping `cv2.resize` with `INTER_AREA` later
-    reverses. Without the `(s-1)/2` offset, the final image would sit half a
-    pixel off from the calibration.
+    Bei Faktor `s` wird der Zielbildpunkt `x` im grossen Bild auf
+    `s*x + (s-1)/2` abgebildet -- genau die Abbildung, die `cv2.resize` mit
+    `INTER_AREA` spaeter umkehrt. Ohne den Versatz `(s-1)/2` saesse das fertige
+    Bild einen halben Pixel neben der Kalibrierung.
     """
     if factor <= 1:
         return calibration
@@ -143,11 +144,11 @@ def _scaled_calibration(calibration: CameraCalibration, factor: int) -> CameraCa
 
 
 def look_at(eye, target, up=(0.0, 0.0, 1.0)) -> Pose:
-    """Return the camera pose `T_world_cam` looking from `eye` toward `target`.
+    """Liefert die Kamerapose `T_world_cam` mit Blick von `eye` auf `target`.
 
-    Result in the OpenCV optical frame: +Z along the view direction, +X
-    right, +Y down. `up` is only a hint for image orientation; if it's
-    parallel to the view direction, world axis +Y is used instead.
+    Ergebnis im optischen OpenCV-KS: +Z entlang der Blickrichtung, +X nach
+    rechts, +Y nach unten. `up` ist nur ein Hinweis fuer die Bildausrichtung;
+    liegt es parallel zur Blickrichtung, wird stattdessen die Weltachse +Y benutzt.
     """
     eye = np.asarray(eye, dtype=np.float64).reshape(3)
     target = np.asarray(target, dtype=np.float64).reshape(3)
@@ -166,17 +167,17 @@ def look_at(eye, target, up=(0.0, 0.0, 1.0)) -> Pose:
 
 
 def tag_pose(position, yaw_deg: float = 0.0, pitch_deg: float = 0.0) -> Pose:
-    """Tag pose in the world: lies flat (+Z up), rotated about Z then X."""
+    """Tag-Pose in der Welt: liegt flach (+Z oben), um Z, dann um X gedreht."""
     yaw = rotation_from_rvec([0.0, 0.0, math.radians(yaw_deg)])
     pitch = rotation_from_rvec([math.radians(pitch_deg), 0.0, 0.0])
     return from_rotation_translation(yaw @ pitch, position)
 
 
 def default_tag_layout() -> list[TagPlacement]:
-    """Return the example cell: four reference tags and one module tag.
+    """Liefert die Beispielzelle: vier Referenztags und einen Modul-Tag.
 
-    Sizes are deliberately different -- an assumed global tag size would
-    then stand out immediately instead of silently scaling the distance.
+    Die Groessen sind bewusst verschieden -- eine angenommene globale
+    Tag-Groesse wuerde dann sofort auffallen, statt den Abstand still zu skalieren.
     """
     return [
         TagPlacement(0, tag_pose((0.000, 0.000, 0.000), 0.0), 0.070),
@@ -196,11 +197,12 @@ def orbit_views(
     start_deg: float = -90.0,
     sweep_deg: float = 260.0,
 ) -> list[Pose]:
-    """Return camera poses on an arc above the scene.
+    """Liefert Kameraposen auf einem Bogen ueber der Szene.
 
-    The oblique view angle is deliberate: head-on to a square marker, tilt
-    is poorly determined (exactly the ambiguity `TagPose.ambiguity_ratio`
-    reports). At roughly 30 degrees off-axis, it isn't.
+    Der schraege Blickwinkel ist Absicht: Frontal auf einen quadratischen
+    Marker ist die Neigung schlecht bestimmt (genau die Mehrdeutigkeit, die
+    `TagPose.ambiguity_ratio` meldet). Bei etwa 30 Grad ausserhalb der Achse
+    ist sie es nicht.
     """
     center = np.asarray(center, dtype=np.float64).reshape(3)
     views = []
@@ -219,7 +221,7 @@ def orbit_views(
 
 
 def _project(object_points, pose_cam_object: Pose, calibration: CameraCalibration) -> np.ndarray:
-    """Project object points into the image using the real intrinsics."""
+    """Projiziert Objektpunkte mit den echten Intrinsiken ins Bild."""
     import cv2
 
     rvec, tvec = to_rvec_tvec(pose_cam_object)
@@ -234,12 +236,13 @@ def _project(object_points, pose_cam_object: Pose, calibration: CameraCalibratio
 
 
 def _paste(canvas, patch, source_quad, target_quad) -> None:
-    """Paste `patch` into the image perspectively: `source_quad` maps to `target_quad`.
+    """Fuegt `patch` perspektivisch ins Bild ein: `source_quad` wird auf `target_quad` abgebildet.
 
-    Computed only in the target's bounding rectangle rather than the whole
-    canvas -- with supersampling, that's the difference between seconds and
-    minutes. Edges are softly blended via a co-warped mask so the patch
-    border doesn't leave a visible step.
+    Gerechnet wird nur im umschliessenden Rechteck des Ziels statt auf der
+    ganzen Leinwand -- mit Supersampling ist das der Unterschied zwischen
+    Sekunden und Minuten. Die Kanten werden ueber eine mitverzerrte Maske
+    weich eingeblendet, damit der Rand des Ausschnitts keine sichtbare Stufe
+    hinterlaesst.
     """
     import cv2
 
@@ -272,12 +275,13 @@ def _paste(canvas, patch, source_quad, target_quad) -> None:
 
 
 def marker_patch(family: str, tag_id: int, marker_px: int, quiet_px: int):
-    """Return a marker image with a white quiet zone: `(image, marker corners)`.
+    """Liefert ein Markerbild mit weisser Ruhezone: `(Bild, Markerecken)`.
 
-    The quiet zone is required, not cosmetic: without a white border no
-    detector finds the black marker frame. Returned corners sit on the
-    **outer edge** of the black frame (hence the half pixels) -- that's the
-    edge `size_m` refers to and that the detector measures.
+    Die Ruhezone ist erforderlich, nicht kosmetisch: Ohne weissen Rand findet
+    kein Detektor den schwarzen Markerrahmen. Die zurueckgegebenen Ecken
+    liegen auf der **Aussenkante** des schwarzen Rahmens (daher die halben
+    Pixel) -- das ist die Kante, auf die sich `size_m` bezieht und die der
+    Detektor misst.
     """
     import cv2
 
@@ -320,16 +324,16 @@ def render_tags(
     background: int = 235,
     supersample: int = 2,
 ):
-    """Render one view of the scene and return its ground truth.
+    """Rendert eine Ansicht der Szene und liefert ihre Grundwahrheit.
 
-    Returns `(image in BGR, {tag_id: T_cam_tag})`. The truth dict only
-    contains tags fully visible in the image -- a test shouldn't fail on a
-    tag it couldn't possibly see.
+    Liefert `(Bild in BGR, {tag_id: T_cam_tag})`. Das Wahrheits-Dict enthaelt
+    nur Tags, die vollstaendig im Bild sichtbar sind -- ein Test soll nicht an
+    einem Tag scheitern, den er unmoeglich sehen konnte.
 
-    `supersample` renders on an integer-finer grid and downsamples with
-    `INTER_AREA` afterward. This substitutes for the edge smoothing a real
-    camera's optics provide; without it, marker edges alias and corners get
-    less accurate than the task requires.
+    `supersample` rendert auf einem ganzzahlig feineren Raster und verkleinert
+    danach mit `INTER_AREA`. Das ersetzt die Kantenglaettung, die die Optik
+    einer echten Kamera liefert; ohne sie haben die Markerkanten Treppen, und
+    die Ecken werden ungenauer, als die Aufgabe verlangt.
     """
     import cv2
 
@@ -342,15 +346,15 @@ def render_tags(
     pose_cam_world = invert(pose_world_cam)
 
     prepared = [_as_placement(item) for item in placements]
-    # Draw back to front so overlapping tags occlude correctly instead of
-    # by list order.
+    # Von hinten nach vorn zeichnen, damit sich ueberlappende Tags richtig
+    # verdecken statt nach Listenreihenfolge.
     prepared.sort(key=lambda item: -float(compose(pose_cam_world, item.pose_world_tag)[2, 3]))
 
     truth: dict[int, Pose] = {}
     for placement in prepared:
         pose_cam_tag = compose(pose_cam_world, placement.pose_world_tag)
         if float(pose_cam_tag[2, 3]) <= 1e-3:
-            continue  # behind or inside the camera
+            continue  # hinter oder innerhalb der Kamera
         corners = _project(tag_object_points(placement.size_m), pose_cam_tag, render_calibration)
         if not _inside(corners, render_calibration.image_size, margin=factor * 2.0):
             continue
@@ -365,11 +369,12 @@ def render_tags(
 
 
 def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibration:
-    """Adapt intrinsics to a different image size without scaling.
+    """Passt die Intrinsiken an eine andere Bildgroesse an, ohne zu skalieren.
 
-    If image size is given separately from calibration, the calibration is
-    authoritative and the size is just a crop. Anything else would be a
-    silent rescale -- exactly the error `check_resolution` warns about.
+    Wird die Bildgroesse getrennt von der Kalibrierung angegeben, ist die
+    Kalibrierung massgebend und die Groesse nur ein Ausschnitt. Alles andere
+    waere eine stille Neuskalierung -- genau der Fehler, vor dem
+    `check_resolution` warnt.
     """
     size = (int(image_size[0]), int(image_size[1]))
     if tuple(calibration.image_size) == size:
@@ -389,7 +394,7 @@ def synthetic_from(calibration: CameraCalibration, image_size) -> CameraCalibrat
 
 
 def _polygon_basis(points: np.ndarray):
-    """Return `(origin, e1, e2)`: an orthonormal basis of the polygon's plane."""
+    """Liefert `(Ursprung, e1, e2)`: eine Orthonormalbasis der Ebene des Polygons."""
     origin = points[0]
     first = points[1] - origin
     first = first / float(np.linalg.norm(first))
@@ -402,14 +407,15 @@ def _polygon_basis(points: np.ndarray):
 
 
 def _inset_polygon(points: np.ndarray, edge_widths: dict[int, float]) -> np.ndarray:
-    """Move the given edges of a convex polygon inwards by their width.
+    """Verschiebt die angegebenen Kanten eines konvexen Polygons um ihre Breite nach innen.
 
-    Clips the polygon against one half-plane per edge (Sutherland-Hodgman) in
-    the polygon's own plane; the returned 3D points lie in that plane.
+    Beschneidet das Polygon gegen je eine Halbebene pro Kante
+    (Sutherland-Hodgman) in der eigenen Ebene des Polygons; die
+    zurueckgegebenen 3D-Punkte liegen in dieser Ebene.
     """
     origin, first, second = _polygon_basis(points)
     flat = np.column_stack([(points - origin) @ first, (points - origin) @ second])
-    # Orientation: the inward normal of an edge points to the polygon centre.
+    # Orientierung: Die nach innen zeigende Normale einer Kante zeigt zur Polygonmitte.
     centre = flat.mean(axis=0)
     clipped = [tuple(point) for point in flat]
     for index, width in edge_widths.items():
@@ -441,7 +447,7 @@ def _inset_polygon(points: np.ndarray, edge_widths: dict[int, float]) -> np.ndar
 
 
 def _fill_polygon(canvas, pixels: np.ndarray, value: int) -> None:
-    """Fill a projected polygon with sub-pixel accurate vertices."""
+    """Fuellt ein projiziertes Polygon mit subpixelgenauen Eckpunkten."""
     import cv2
 
     fixed = np.round(np.asarray(pixels, dtype=np.float64) * 16.0).astype(np.int32)
@@ -469,32 +475,33 @@ def render_reference_scene(
     marker_px: int = 320,
     quiet_px: int = 40,
 ):
-    """Render a tag on a bright surface in front of a darker background.
+    """Rendert einen Tag auf einer hellen Flaeche vor dunklerem Hintergrund.
 
-    The surface borders are the reference edges. `surface_polygon` is a planar
-    polygon in the **module frame** (N x 3, in order); its edge `i` runs from
-    point `i` to point `i + 1` and is reported as edge `"E{i}"`. The tag sits
-    at `pose_module_tag` (`T_module_tag`), seen with `pose_cam_tag`
-    (`T_cam_tag`); the module pose follows from both. The polygon does not
-    have to lie in the tag plane -- an edge below the tag plane is how the
-    height handling gets tested.
+    Die Flaechenraender sind die Referenzkanten. `surface_polygon` ist ein
+    ebenes Polygon im **Modul-KS** (N x 3, in Reihenfolge); seine Kante `i`
+    laeuft von Punkt `i` nach Punkt `i + 1` und wird als Kante `"E{i}"`
+    gemeldet. Der Tag sitzt bei `pose_module_tag` (`T_module_tag`), gesehen
+    mit `pose_cam_tag` (`T_cam_tag`); die Modulpose folgt aus beiden. Das
+    Polygon muss nicht in der Tag-Ebene liegen -- eine Kante unterhalb der
+    Tag-Ebene ist die Art, wie die Hoehenbehandlung getestet wird.
 
-    `groove_edges` maps an edge index to a width in meters: a second, parallel
-    edge that distance inside the surface (an item groove), rendered as a strip
-    of `groove_gray` -- same polarity as the main edge, so a detector sees two
-    similar edges.
+    `groove_edges` bildet einen Kantenindex auf eine Breite in Metern ab: eine
+    zweite, parallele Kante in dieser Entfernung innerhalb der Flaeche (eine
+    Item-Nut), gerendert als Streifen in `groove_gray` -- gleiche Polaritaet
+    wie die Hauptkante, sodass ein Detektor zwei aehnliche Kanten sieht.
 
-    The tag is printed on the surface (its white cells and the quiet zone have
-    the surface gray), so the tag outline does not add a competing edge.
+    Der Tag ist auf die Flaeche gedruckt (seine weissen Zellen und die
+    Ruhezone haben das Grau der Flaeche), sodass der Tag-Umriss keine
+    konkurrierende Kante hinzufuegt.
 
-    Lens distortion of `calibration` is applied: the scene is rendered ideal
-    (with padding) and remapped through `tagloc.lens.undistort_points`, so any
-    lens model works. Afterwards: `blur_sigma_px` (optics), Gaussian noise
-    `noise_sigma` in gray levels.
+    Die Verzeichnung von `calibration` wird angewendet: Die Szene wird ideal
+    gerendert (mit Rand) und ueber `tagloc.lens.undistort_points` neu
+    abgebildet, sodass jedes Linsenmodell funktioniert. Danach:
+    `blur_sigma_px` (Optik), gaussches Rauschen `noise_sigma` in Graustufen.
 
-    Returns `(image in BGR, truth)`; truth is a dict with `pose_cam_tag`,
-    `pose_module_tag`, `pose_cam_module` and `edges`, a list of
-    `{"id", "start", "end"}` (module frame, meters).
+    Liefert `(Bild in BGR, Wahrheit)`; die Wahrheit ist ein dict mit
+    `pose_cam_tag`, `pose_module_tag`, `pose_cam_module` und `edges`, einer
+    Liste von `{"id", "start", "end"}` (Modul-KS, Meter).
     """
     import cv2
 
@@ -547,8 +554,8 @@ def render_reference_scene(
     _paste(canvas, patch, quad, tag_corners)
 
     if distorted:
-        # Distorted output pixel -> ideal coordinates, on the final grid, then
-        # interpolated up to the supersampled grid (the map is smooth).
+        # Verzeichneter Ausgabepixel -> ideale Koordinaten, auf dem endgueltigen Raster,
+        # dann auf das uebersampelte Raster hochinterpoliert (die Abbildung ist glatt).
         columns, rows = np.meshgrid(np.arange(width), np.arange(height))
         grid = np.column_stack([columns.reshape(-1), rows.reshape(-1)]).astype(np.float64)
         source = lens.undistort_points(grid, view).reshape(height, width, 2).astype(np.float32)
@@ -594,18 +601,18 @@ def render_reference_scene(
 
 
 def chessboard_object_points(spec: BoardSpec) -> np.ndarray:
-    """Return the inner corners in the board frame, same order as `boards.py`."""
+    """Liefert die inneren Ecken im Brett-KS, in derselben Reihenfolge wie `boards.py`."""
     grid = np.zeros((spec.cols * spec.rows, 3), dtype=np.float64)
     grid[:, :2] = np.mgrid[0 : spec.cols, 0 : spec.rows].T.reshape(-1, 2)
     return grid * float(spec.square_size_m)
 
 
 def _chessboard_patch(spec: BoardSpec, square_px: int, margin_squares: int):
-    """Return the board as an image: `(image, board area corners)`.
+    """Liefert das Brett als Bild: `(Bild, Eckpunkte der Brettflaeche)`.
 
-    A board with `cols` x `rows` **inner** corners has `cols+1` x `rows+1`
-    squares. The white border around it is required: `findChessboardCorners`
-    won't find a board cropped flush to its edge.
+    Ein Brett mit `cols` x `rows` **inneren** Ecken hat `cols+1` x `rows+1`
+    Felder. Der weisse Rand darum ist erforderlich: `findChessboardCorners`
+    findet kein Brett, das buendig an der Kante abgeschnitten ist.
     """
     across = spec.cols + 1
     down = spec.rows + 1
@@ -629,12 +636,12 @@ def _chessboard_patch(spec: BoardSpec, square_px: int, margin_squares: int):
 
 
 def _chessboard_outline(spec: BoardSpec, expand_squares: float = 0.0) -> np.ndarray:
-    """Return the four outer corners of the board area, in the board frame.
+    """Liefert die vier aeusseren Ecken der Brettflaeche im Brett-KS.
 
-    The origin sits on the first inner corner, one square width from the
-    edge -- as `boards._chessboard_object_points` assumes. `expand_squares`
-    grows the rectangle to include the white quiet zone, which must be in
-    the image or `findChessboardCorners` won't find the board.
+    Der Ursprung sitzt auf der ersten inneren Ecke, eine Feldbreite von der
+    Kante entfernt -- wie `boards._chessboard_object_points` es annimmt.
+    `expand_squares` vergroessert das Rechteck um die weisse Ruhezone, die im
+    Bild sein muss, sonst findet `findChessboardCorners` das Brett nicht.
     """
     square = float(spec.square_size_m)
     grow = float(expand_squares) * square
@@ -659,10 +666,10 @@ def render_chessboard(
     background: int = 235,
     supersample: int = 2,
 ):
-    """Render a chessboard view. Returns `(image in BGR, T_cam_board)`.
+    """Rendert eine Schachbrettansicht. Liefert `(Bild in BGR, T_cam_board)`.
 
-    The pose is the ground truth; returning it saves a test from having to
-    thread the input through again.
+    Die Pose ist die Grundwahrheit; sie zurueckzugeben erspart einem Test,
+    die Eingabe noch einmal durchzureichen.
     """
     import cv2
 
@@ -690,12 +697,12 @@ def chessboard_views(
     seed: int = 20260917,
     image_size: tuple[int, int] | None = None,
 ) -> list[Pose]:
-    """Return board poses for a calibration series: tilted, shifted, rotated.
+    """Liefert Brettposen fuer eine Kalibrierserie: gekippt, verschoben, gedreht.
 
-    Without tilt, calibration is underdetermined -- all views would carry
-    the same information, and focal length and distortion couldn't be
-    separated. Each pose is checked: if the board plus its white border
-    sticks out of frame, it's discarded and redrawn.
+    Ohne Kippung ist die Kalibrierung unterbestimmt -- alle Ansichten
+    truegen dieselbe Information, und Brennweite und Verzeichnung liessen sich
+    nicht trennen. Jede Pose wird geprueft: Ragt das Brett samt weissem Rand
+    aus dem Bild, wird sie verworfen und neu gezogen.
     """
     size = tuple(image_size or calibration.image_size)
     view_calibration = synthetic_from(calibration, size)
@@ -714,8 +721,8 @@ def chessboard_views(
             ]
         )
         depth = distance_m * generator.uniform(0.85, 1.25)
-        # Lateral offset out to the image edge: a calibration taken only from
-        # the centre gets a good RMS but useless distortion coefficients.
+        # Seitlicher Versatz bis zum Bildrand: Eine nur aus der Mitte
+        # aufgenommene Kalibrierung hat ein gutes RMS, aber unbrauchbare Verzeichnungskoeffizienten.
         target = np.array(
             [
                 depth * generator.uniform(-0.22, 0.22),
@@ -725,8 +732,8 @@ def chessboard_views(
             dtype=np.float64,
         )
         pose = from_rotation_translation(rotation, target - rotation @ centre)
-        # Check more than just the inner corners: a cropped board is only
-        # usable if its white border is still in frame too.
+        # Mehr als nur die inneren Ecken pruefen: Ein abgeschnittenes Brett ist
+        # nur brauchbar, wenn sein weisser Rand ebenfalls im Bild ist.
         outline = _project(_chessboard_outline(spec, 1.0), pose, view_calibration)
         if _inside(outline, size, margin=2.0):
             poses.append(pose)
