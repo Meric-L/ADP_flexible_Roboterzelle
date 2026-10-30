@@ -98,6 +98,14 @@ ihren eigenen Audit und ihren eigenen Handbuch-Teil**. Dadurch fassen sie nie di
 - `apriltag-refactoring` nicht mergen. Einzelne Commits per Cherry-pick (`-x`) nur, wenn sie ohne Konflikt
   passen und keine der obigen Dateien berühren; sonst Fund offen lassen.
 
+**Nachtrag 30.10.2026 (Entscheidung Nutzer):** `runner.py` und `detection/apriltag.py` werden doch zerlegt —
+auf Basis von `usecase-foto` (aktuellere Fassung, in `apriltag-aufraeumen` eingemergt, `2e6360e`). Die
+Hand-Auge-Dateien sind freigegeben (Stand aus `handeye-genauigkeit` liegt schon auf `apriltag`), mit
+Kompatibilitätsprüfung: Hand-Auge-Payload `wsc.vision.handeye.status/1`, `session.json` und die OPC-UA-Methoden
+müssen vorher/nachher gleich sein, gemessen an dem, was das Frontend liest. Reihenfolge, damit sich die Tests
+nicht überlagern: erst `detection/apriltag.py`, dann `runner.py`, dann Hand-Auge (D4, `finish()`, Übersetzung).
+Die übrigen heißen Dateien bleiben gesperrt.
+
 **Reihenfolge:**
 
 1. **T1** Prototyp `src/apriltag/` löschen, Verweise in Docstrings und Doku mitziehen.
