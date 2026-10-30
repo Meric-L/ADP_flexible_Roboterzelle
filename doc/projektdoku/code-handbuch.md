@@ -303,7 +303,7 @@ Der erste Entwurf für Kamerakalibrierung und Erkennung (`calibrate_camera.py`, 
 **Ablauf**: Die Zustandsmaschine (asyncua `FiniteStateMachine`) und die Methodenhandler `_start_method` bis `_reset_method` setzen die Übergänge um. Die Handler rufen die abstrakten Methoden der Unterklasse auf.
 
 **Konfiguration & Dateien**: Optionale String-NodeIds über `nodeid=` (laut Docstring stabile, ratbare Ids statt numerischer). Keine Dateien. Hinweis: Das Docstring verweist auf `betreuer/OPC_UA_Program.py`; den Ordner `betreuer/` gibt es in diesem Stand nicht.
-
+**Tests**: `tests/test_vision_program.py` fährt Start, Suspend, Resume, Halt und Reset über OPC UA an einem eigenen `DemoProgram` und an `VisionProgram` (mit Attrappen-Quelle, ohne Kamera).
 **Tests**: Kein Test importiert das Paket direkt.
 
 **Weiterlesen**: [part10-programm-schnittstelle.md](part10-programm-schnittstelle.md), [altlasten-abbau-part10-fassade.md](arbeitsplaene/altlasten-abbau-part10-fassade.md).
@@ -593,7 +593,7 @@ Baut den Adressraum auf: Nodesets (Part 1, optional Part 2), `VisionMachine` als
 | `src/vision_server/address_space.py` | Nodeset-Import, eigener Namespace, `VisionSystem`-Instanz, Variablenknoten. Livestream-Knoten nur bei aktivem Stream | `VisionAddressSpace`, `configure_server()`, `attach_vision_system()`, `_ensure_nodeset()`, `_ensure_amcm_nodesets()`, `_vision_parent()`, `_namespace_uri_for()` |
 | `src/vision_server/nodeset_ids.py` | Namespace-URIs und numerische IDs der Specs. `DeviceHealth` von Hand, weil das Nodeset beim Laden scheitert | `node_id()`, `mv`, `DeviceHealth`, `MACHINE_VISION_NAMESPACE_URI`, `AMCM_NAMESPACE_URI` |
 | `src/vision_server/asset_model.py` | Part 2 (AMCM): Anlagensicht mit Recheneinheit, Bildsensor und Objektiv, Identifikation, Health-Block und Alarme | `attach_asset_model()`, `VisionAssetNodes`, `_add_component()`, `_add_health()`, `_add_health_alarms()` |
-| `src/vision_server/vision_program.py` | Part 10: `VisionProgram` als zweite Bedienoberfläche auf demselben `JobRunner` | `VisionProgram` (`start`, `halt`, `reset`, `suspend`, `resume`), `install_vision_program()`, `PROGRAM_NAME` |
+| `src/vision_server/vision_program.py` | Part 10: `VisionProgram` als zweite Bedienoberfläche auf demselben `JobRunner` | `VisionProgram` (`start`, `halt`, `reset`, `suspend`, `resume`), `install_vision_program()`, `PROGRAM_NAME` (getestet in `tests/test_vision_program.py`) |
 
 **Ablauf**
 
