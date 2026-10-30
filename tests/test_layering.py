@@ -47,7 +47,7 @@ LAZY_CV2_MODULES = (
     "tagloc.frames",
 )
 
-STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes")
+STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes", "tagloc.jsonio")
 
 
 def imported_modules(target: str, candidates) -> list[str]:

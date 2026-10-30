@@ -33,12 +33,16 @@ from typing import Any
 
 from ..camera import SharedCamera
 from ..errors import VisionErrorCode, VisionJobError
+from tagloc.jsonio import finite_or_none
+
 from ..profiles import AprilTagProfileConfig, CameraStreamConfig
 from .base import Detection, DetectionRequest, DetectionSource
 
 _log = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 0.02
+#: Stellen, auf die Zahlen im Payload der Erkennung gerundet werden.
+PAYLOAD_DIGITS = 4
 #: `MeasureBoard` sucht das Brett auf einem Bild dieser laengsten Kante (siehe `_observe_board`).
 OBSERVE_MAX_SIDE = 640
 
@@ -102,20 +106,6 @@ def robot_pose_from_parameters(parameters) -> Any | None:
         _log.warning("Roboterpose im Job hat ein Quaternion der Laenge 0")
         return None
     return from_position_quaternion(values[:3], values[3:])
-
-
-def _finite_or_none(value: float | None) -> float | None:
-    """Map NaN and infinity to `None` before they reach the payload.
-
-    `payload._dumps` serialises with `allow_nan=False` and raises on NaN --
-    so a single outlier wouldn't just drop the attribute, it would end the
-    whole job as INTERNAL. `None` is the honest answer here: "this value
-    isn't available".
-    """
-    if value is None:
-        return None
-    number = float(value)
-    return None if math.isnan(number) or math.isinf(number) else round(number, 4)
 
 
 def _world_tag_errors(tag_poses, tag_map, pose_world_cam, calibration) -> dict:
@@ -198,9 +188,9 @@ def _localization_summary(localization) -> dict | None:
         "solver": "anchor" if anchored else localization.solver,
         "reprojectionErrorPx": None
         if anchored
-        else _finite_or_none(localization.reprojection_error_px),
-        "spreadM": _finite_or_none(localization.spread_m),
-        "spreadDeg": _finite_or_none(math.degrees(localization.spread_rad)),
+        else finite_or_none(localization.reprojection_error_px, PAYLOAD_DIGITS),
+        "spreadM": finite_or_none(localization.spread_m, PAYLOAD_DIGITS),
+        "spreadDeg": finite_or_none(math.degrees(localization.spread_rad), PAYLOAD_DIGITS),
         "worldTagIds": [int(tag_id) for tag_id in localization.world_tag_ids],
     }
     if not anchored and localization.solver == "joint":
@@ -211,7 +201,7 @@ def _localization_summary(localization) -> dict | None:
 
         summary["poseInWorld"] = pose_to_dict(localization.pose_world_cam)
         summary["tagErrorsPx"] = {
-            str(int(tag_id)): _finite_or_none(error)
+            str(int(tag_id)): finite_or_none(error, PAYLOAD_DIGITS)
             for tag_id, error in localization.tag_errors_px.items()
         }
     return summary
@@ -238,16 +228,16 @@ def _merge_world_tags(samples) -> tuple:
                 "tagId": int(tag_id),
                 "position": list(position),
                 "orientation": list(orientation),
-                "reprojectionErrorPx": _finite_or_none(sum(errors) / len(errors))
+                "reprojectionErrorPx": finite_or_none(sum(errors) / len(errors), PAYLOAD_DIGITS)
                 if errors
                 else None,
                 "ambiguous": any(observation[3] for observation in observations),
                 "sampleCount": len(observations),
             }
         if joint_errors:
-            entry["jointReprojectionErrorPx"] = _finite_or_none(
+            entry["jointReprojectionErrorPx"] = finite_or_none(
                 sum(joint_errors) / len(joint_errors)
-            )
+            , PAYLOAD_DIGITS)
         merged.append(entry)
     return tuple(merged)
 
@@ -1303,7 +1293,7 @@ class AprilTagDetectionSource(DetectionSource):
             position, orientation = to_position_quaternion(location.pose)
             attributes = {
                 "tagId": location.tag_id,
-                "reprojErrorPx": _finite_or_none(location.reprojection_error_px),
+                "reprojErrorPx": finite_or_none(location.reprojection_error_px, PAYLOAD_DIGITS),
                 "ambiguous": location.ambiguous,
                 "sampleCount": location.attributes.get("sampleCount", len(samples)),
                 "frameTimestamp": seen_timestamp,
@@ -1324,29 +1314,29 @@ class AprilTagDetectionSource(DetectionSource):
                 )
                 attributes["referencePosition"] = reference_position
                 attributes["referenceOrientation"] = reference_orientation
-                attributes["referenceDistanceM"] = _finite_or_none(
+                attributes["referenceDistanceM"] = finite_or_none(
                     math.dist(reference_position, (0.0, 0.0, 0.0))
-                )
+                , PAYLOAD_DIGITS)
             if localization is not None:
                 attributes["worldTagIds"] = list(localization.world_tag_ids)
-                attributes["cameraSpreadM"] = _finite_or_none(localization.spread_m)
-                attributes["cameraSpreadDeg"] = _finite_or_none(
+                attributes["cameraSpreadM"] = finite_or_none(localization.spread_m, PAYLOAD_DIGITS)
+                attributes["cameraSpreadDeg"] = finite_or_none(
                     math.degrees(localization.spread_rad)
-                )
+                , PAYLOAD_DIGITS)
                 # Ob die Kamerapose gemessen oder fortgeschrieben wurde, ist
                 # kein Detail: die beiden haben nicht dieselbe Genauigkeit.
                 attributes["cameraPoseOrigin"] = localization.origin
                 if localization.solver:
                     attributes["cameraPoseSolver"] = localization.solver
-                    attributes["cameraReprojectionErrorPx"] = _finite_or_none(
+                    attributes["cameraReprojectionErrorPx"] = finite_or_none(
                         localization.reprojection_error_px
-                    )
+                    , PAYLOAD_DIGITS)
             if self._anchor is not None:
                 attributes["anchorWorldTagId"] = self._anchor.world_tag_id
             if self._drift is not None:
                 drift_m, drift_rad = self._drift
-                attributes["anchorDriftM"] = _finite_or_none(drift_m)
-                attributes["anchorDriftDeg"] = _finite_or_none(math.degrees(drift_rad))
+                attributes["anchorDriftM"] = finite_or_none(drift_m, PAYLOAD_DIGITS)
+                attributes["anchorDriftDeg"] = finite_or_none(math.degrees(drift_rad), PAYLOAD_DIGITS)
             if missing:
                 attributes["missingModules"] = ", ".join(missing)
             detections.append(
@@ -1355,7 +1345,7 @@ class AprilTagDetectionSource(DetectionSource):
                     instance_id=location.instance_id,
                     position=position,
                     orientation=orientation,
-                    confidence=_finite_or_none(location.confidence) or 0.0,
+                    confidence=finite_or_none(location.confidence, PAYLOAD_DIGITS) or 0.0,
                     attributes=attributes,
                 )
             )
