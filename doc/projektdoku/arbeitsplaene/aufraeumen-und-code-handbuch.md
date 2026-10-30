@@ -113,9 +113,7 @@ Abschnitt 7 (erst nach Merge von `usecase-foto`; D4 nach `handeye-genauigkeit`).
 
 ### Sitzung B — webskill (`ungetestet-aufraeumen`)
 
-**Vorab:** Block 1 (T1–T16, T18–T20, B9, B12, B13) hat Sitzung A noch an einen Agenten vergeben. Sitzung B
-beginnt erst, wenn Sitzung A meldet, dass Block 1 committet ist, und macht nach dem letzten Commit auf
-`ungetestet-aufraeumen` weiter (Log `Ungetestet..ungetestet-aufraeumen`).
+**Vorab (Übergabe 30.10.2026):** Block 1 ist zum Teil umgesetzt — 12 Commits auf `ungetestet-aufraeumen` (T1–T16, T18–T20, Teile von B12), Gesamttests darauf noch **nicht** gelaufen. Offen und von Sitzung B zu übernehmen: **B13** ist in `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` halb bearbeitet und nicht committet (Diff ansehen, fertigstellen oder verwerfen), danach **B9** und der Rest von **B12** (u. a. `RobotRunConfirm` nach `opcua-server/components`). Erst dann alle Tests, dann Reihenfolge-Punkt 1.
 
 **Umgebung:** `frontend/node_modules` und die Inhalte von `frontend/public/urdf/` sind Symlinks aus dem
 Haupt-Checkout (Submodul, `info/exclude`) — nie committen, Dateien immer einzeln hinzufügen. 3D-Modelle sind
