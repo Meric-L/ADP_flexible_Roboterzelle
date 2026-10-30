@@ -1,6 +1,6 @@
-"""Golden values for the pose math in `tagloc.geometry`.
+"""Referenzwerte fuer die Posenmathematik in `tagloc.geometry`.
 
-Needs only numpy: no cv2, no camera, no files.
+Braucht nur numpy: kein cv2, keine Kamera, keine Dateien.
 """
 
 import math
@@ -10,7 +10,7 @@ try:
     import numpy as np
 
     from tagloc import geometry
-except Exception:  # numpy broken in this environment
+except Exception:  # numpy in dieser Umgebung defekt
     np = None
     geometry = None
 
@@ -18,7 +18,7 @@ SQRT_HALF = 0.7071067811865476
 
 
 def rotation_z(angle_rad: float):
-    """Return a rotation about the Z axis."""
+    """Liefert eine Rotation um die Z-Achse."""
     return geometry.rotation_from_rvec([0.0, 0.0, angle_rad])
 
 
@@ -48,8 +48,8 @@ class RvecRoundTripTest(unittest.TestCase):
 
         pose = geometry.from_rvec_tvec(rvec, [0.0, 0.0, 0.0])
 
-        # At such small angles the rotation matrix is indistinguishable from
-        # identity; the requirement is just that nothing divides by zero.
+        # Bei so kleinen Winkeln ist die Rotationsmatrix von der Identitaet
+        # nicht zu unterscheiden; verlangt wird nur, dass nichts durch null teilt.
         np.testing.assert_allclose(pose[:3, :3], np.eye(3), atol=1e-9)
         self.assertLess(float(np.linalg.norm(geometry.to_rvec_tvec(pose)[0])), 1e-8)
 
@@ -60,8 +60,8 @@ class RvecRoundTripTest(unittest.TestCase):
         pose = geometry.from_rvec_tvec(rvec, [0.0, 0.0, 0.0])
         back_rvec, _ = geometry.to_rvec_tvec(pose)
 
-        # At pi the axis sign is free -- so the reconstructed rotation
-        # matrix is compared, not the rotation vector.
+        # Bei pi ist das Achsenvorzeichen frei -- deshalb wird die
+        # rekonstruierte Rotationsmatrix verglichen, nicht der Rotationsvektor.
         np.testing.assert_allclose(
             geometry.rotation_from_rvec(back_rvec), pose[:3, :3], atol=1e-6
         )
@@ -132,7 +132,7 @@ class QuaternionTest(unittest.TestCase):
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class ComposeTest(unittest.TestCase):
     def test_maps_a_point_from_the_rightmost_frame_into_the_leftmost(self):
-        # b sits in a rotated 90 degrees and shifted by x=1; c sits in b at y=2.
+        # b sitzt in a um 90 Grad gedreht und um x=1 verschoben; c sitzt in b bei y=2.
         pose_a_b = pose_z(math.pi / 2.0, (1.0, 0.0, 0.0))
         pose_b_c = geometry.from_rotation_translation(np.eye(3), (0.0, 2.0, 0.0))
         point_c = np.array([3.0, 0.0, 0.0, 1.0])
@@ -140,8 +140,8 @@ class ComposeTest(unittest.TestCase):
         pose_a_c = geometry.compose(pose_a_b, pose_b_c)
         point_a = pose_a_c @ point_c
 
-        # Point in b: (3, 2, 0). In a: 90 degrees about z turns it into
-        # (-2, 3, 0), plus the origin offset (1, 0, 0).
+        # Punkt in b: (3, 2, 0). In a: 90 Grad um z drehen ihn zu
+        # (-2, 3, 0), plus der Ursprungsversatz (1, 0, 0).
         np.testing.assert_allclose(point_a[:3], [-1.0, 3.0, 0.0], atol=1e-14)
         np.testing.assert_allclose(point_a, pose_a_b @ (pose_b_c @ point_c), atol=1e-14)
 
@@ -173,7 +173,7 @@ class AveragePosesTest(unittest.TestCase):
         np.testing.assert_allclose(geometry.average_poses([pose] * 4), pose, atol=1e-13)
 
     def test_does_not_cancel_two_quaternions_of_opposite_sign(self):
-        """q and -q are the same rotation -- averaging must not cancel them."""
+        """q und -q sind dieselbe Rotation -- das Mitteln darf sie nicht ausloeschen."""
         quaternion = np.array([0.0, 0.0, SQRT_HALF, SQRT_HALF])
         first = geometry.from_position_quaternion([0.0, 0.0, 0.0], quaternion)
         second = geometry.from_position_quaternion([0.0, 0.0, 0.0], -quaternion)
@@ -184,7 +184,7 @@ class AveragePosesTest(unittest.TestCase):
         self.assertLess(geometry.rotation_distance_rad(averaged, first), 1e-9)
 
     def test_does_not_cancel_two_rotations_straddling_half_a_turn(self):
-        """The scalar part's sign flips here -- the critical case."""
+        """Das Vorzeichen des Skalaranteils kippt hier -- der kritische Fall."""
         first = pose_z(math.radians(179.0))
         second = pose_z(math.radians(181.0))
 
@@ -222,7 +222,7 @@ class DistanceTest(unittest.TestCase):
         first = geometry.from_rotation_translation(rotation_z(1.0), (0.0, 0.0, 0.0))
         second = geometry.from_rotation_translation(np.eye(3), (3.0, 4.0, 12.0))
 
-        # 3-4-12 is a Pythagorean quadruple: the length is exactly 13.
+        # 3-4-12 ist ein pythagoreisches Quadrupel: Die Laenge ist genau 13.
         self.assertAlmostEqual(geometry.translation_distance_m(first, second), 13.0, places=12)
         self.assertAlmostEqual(geometry.translation_distance_m(second, first), 13.0, places=12)
 

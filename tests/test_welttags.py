@@ -1,13 +1,14 @@
-"""The world-tag concept: what is fixed, what is measured, and who sees what.
+"""Das Welttag-Konzept: was feststeht, was gemessen wird und wer was sieht.
 
-Only the four world tags on the cell border stand still. Everything else --
-the modules and the robot alike -- is movable and gets measured. The ceiling
-camera is the only one that sees the robot and the world tags at the same
-time; the eye-in-hand camera localises itself against a single world tag.
+Nur die vier Welttags am Zellenrand stehen still. Alles andere -- Module und
+Roboter gleichermassen -- ist beweglich und wird gemessen. Die Deckenkamera
+ist die einzige, die den Roboter und die Welttags gleichzeitig sieht; die
+Handkamera lokalisiert sich gegen einen einzigen Welttag.
 
-Needs only numpy: no cv2, no camera, no files. Every camera view is built
-from known poses via `T_cam_tag = invert(T_world_cam) @ T_world_tag`, so the
-expected result is hand-verifiable instead of rendered.
+Braucht nur numpy: kein cv2, keine Kamera, keine Dateien. Jede Kameraansicht
+wird aus bekannten Posen ueber `T_cam_tag = invert(T_world_cam) @ T_world_tag`
+gebaut, sodass sich das erwartete Ergebnis von Hand nachpruefen laesst, statt
+gerendert zu werden.
 """
 
 import json
@@ -32,12 +33,12 @@ try:
         world_tag_for_robot,
     )
     from tagloc.observations import TagPose
-except Exception:  # pragma: no cover - numpy broken in this environment
+except Exception:  # pragma: no cover - numpy in dieser Umgebung defekt
     np = None
     geometry = None
     tagmap = None
 
-#: Cell 2.4 m x 1.8 m, world tags in the four corners.
+#: Zelle 2,4 m x 1,8 m, Welttags in den vier Ecken.
 WORLD_TAG_POSES = {
     0: (0.0, 0.0, 0.0),
     1: (2.4, 0.0, 0.0),
@@ -53,16 +54,16 @@ MODULE_TAG_ID = 7
 UNMAPPED_TAG_ID = 99
 UNMAPPED_POSITION = (1.4, 1.0, 0.70)
 
-#: The robot stands near the corner of world tag 2, the module near tag 1.
+#: Der Roboter steht nahe der Ecke von Welttag 2, das Modul nahe Tag 1.
 ROBOT_BASE = (2.10, 1.55, 0.00)
 MODULE_POSITION = (2.05, 0.30, 0.90)
 
 
 def world_poses() -> dict:
-    """Return the true world pose of every tag in the cell."""
+    """Liefert die wahre Weltpose jedes Tags in der Zelle."""
     poses = {tag_id: pose(position) for tag_id, position in WORLD_TAG_POSES.items()}
-    # Two tags on the robot, offset against each other. Both describe the
-    # same base, each through its own CAD offset.
+    # Zwei Tags am Roboter, gegeneinander versetzt. Beide beschreiben
+    # dieselbe Basis, jeder ueber seinen eigenen CAD-Versatz.
     poses[20] = pose((ROBOT_BASE[0], ROBOT_BASE[1], 0.12))
     poses[21] = pose((ROBOT_BASE[0] + 0.15, ROBOT_BASE[1], 0.12))
     poses[MODULE_TAG_ID] = pose(
@@ -74,7 +75,7 @@ def world_poses() -> dict:
 
 
 def cell_map() -> "tagmap.TagMap":
-    """Return the cell's tag map: four world tags, two robot tags, one module."""
+    """Liefert die Tag-Karte der Zelle: vier Welttags, zwei Robotertags, ein Modul."""
     truth = world_poses()
     entries = {
         tag_id: tagmap.TagEntry(
@@ -109,7 +110,7 @@ def map_with(entries) -> "tagmap.TagMap":
 
 
 def view(pose_world_cam, tag_ids, *, error_px=0.5) -> list:
-    """Return what a camera at `pose_world_cam` measures for these tags."""
+    """Liefert, was eine Kamera bei `pose_world_cam` fuer diese Tags misst."""
     truth = world_poses()
     inverse = geometry.invert(pose_world_cam)
     return [
@@ -123,18 +124,18 @@ def view(pose_world_cam, tag_ids, *, error_px=0.5) -> list:
 
 
 def ceiling_view():
-    """Camera 3 m above the middle of the cell -- it sees everything."""
+    """Kamera 3 m ueber der Zellenmitte -- sie sieht alles."""
     return pose((1.2, 0.9, 3.0))
 
 
 def flange_view():
-    """Camera 0.4 m next to world tag 2 -- it sees that tag and the module."""
+    """Kamera 0,4 m neben Welttag 2 -- sie sieht diesen Tag und das Modul."""
     return pose((2.2, 1.6, 0.4))
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class RollenTest(unittest.TestCase):
-    """Only the world tag is fixed; the robot is a module."""
+    """Nur der Welttag steht fest; der Roboter ist ein Modul."""
 
     def test_only_the_world_role_counts_as_a_reference(self):
         self.assertEqual(tagmap.REFERENCE_ROLES, frozenset({"world"}))
@@ -151,7 +152,7 @@ class RollenTest(unittest.TestCase):
         self.assertEqual(sorted(cell_map().reference_poses()), [0, 1, 2, 3])
 
     def test_an_unsurveyed_world_tag_is_no_anchor(self):
-        """A world tag without a pose is not measured yet -- guessing is worse."""
+        """Ein Welttag ohne Pose ist noch nicht eingemessen -- Raten waere schlechter."""
         entry = tagmap.TagEntry(tag_id=0, role="world", size_m=0.1)
 
         self.assertTrue(entry.is_world)
@@ -230,7 +231,7 @@ class KameraLokalisierungTest(unittest.TestCase):
         np.testing.assert_allclose(result.pose_world_cam, camera, atol=1e-9)
 
     def test_a_single_world_tag_is_enough_for_the_hand_camera(self):
-        """The eye-in-hand case: one world tag, and the camera knows where it is."""
+        """Der Fall der Handkamera: ein Welttag, und die Kamera weiss, wo sie steht."""
         camera = flange_view()
 
         result = localize_camera(view(camera, [2, MODULE_TAG_ID]), cell_map())
@@ -242,8 +243,8 @@ class KameraLokalisierungTest(unittest.TestCase):
     def test_names_the_world_tag_closest_to_the_camera(self):
         result = localize_camera(view(ceiling_view(), [0, 1, 2, 3]), cell_map())
 
-        # The camera sits above (1.2, 0.9); all four corners are equally far
-        # away, so the tie is broken by the lowest tag id.
+        # Die Kamera sitzt ueber (1.2, 0.9); alle vier Ecken sind gleich weit
+        # entfernt, also entscheidet die kleinste Tag-ID den Gleichstand.
         self.assertEqual(result.primary_tag_id, 0)
 
     def test_reports_no_spread_when_the_world_tags_agree(self):
@@ -253,7 +254,7 @@ class KameraLokalisierungTest(unittest.TestCase):
         self.assertLess(result.spread_rad, 1e-9)
 
     def test_reports_the_spread_of_a_mis_surveyed_world_tag(self):
-        """A tag entered 5 cm wrong must show up, not vanish into the average."""
+        """Ein um 5 cm falsch eingetragener Tag muss auffallen, nicht im Mittel verschwinden."""
         entries = dict(cell_map().entries)
         entries[3] = tagmap.TagEntry(
             tag_id=3, role="world", size_m=0.10, pose_in_world=pose((0.0, 1.85, 0.0))
@@ -264,7 +265,7 @@ class KameraLokalisierungTest(unittest.TestCase):
         self.assertGreater(result.spread_m, 0.01)
 
     def test_returns_none_without_any_world_tag(self):
-        """Between two world tags the hand camera stays in its own frame."""
+        """Zwischen zwei Welttags bleibt die Handkamera im eigenen KS."""
         self.assertIsNone(localize_camera(view(flange_view(), [MODULE_TAG_ID]), cell_map()))
 
 
@@ -298,7 +299,7 @@ class ModulBezugTest(unittest.TestCase):
         _, located = self._ceiling()
         module = next(item for item in located if item.tag_id == MODULE_TAG_ID)
 
-        # The module sits at (2.05, 0.30, 0.90), i.e. nearest to world tag 1.
+        # Das Modul sitzt bei (2.05, 0.30, 0.90), also am naechsten zu Welttag 1.
         self.assertEqual(module.reference_tag_id, 1)
         np.testing.assert_allclose(
             module.pose_in_reference_tag[:3, 3],
@@ -343,7 +344,7 @@ class RoboterTest(unittest.TestCase):
         )
 
     def test_both_robot_tags_describe_the_same_base(self):
-        """Each tag carries its own CAD offset, so both must land on one pose."""
+        """Jeder Tag traegt seinen eigenen CAD-Versatz, also muessen beide auf einer Pose landen."""
         _, located = self._ceiling_located()
         robots = [item for item in located if item.role == "robot"]
 
@@ -362,7 +363,7 @@ class RoboterTest(unittest.TestCase):
         np.testing.assert_allclose(robots[0].pose[:3, 3], ROBOT_BASE, atol=1e-9)
 
     def test_names_the_world_tag_the_robot_stands_closest_to(self):
-        """The question only the ceiling camera can answer."""
+        """Die Frage, die nur die Deckenkamera beantworten kann."""
         tag_map, located = self._ceiling_located()
 
         tag_id, distance = world_tag_for_robot(
@@ -381,7 +382,7 @@ class RoboterTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class ZusammenfuehrenTest(unittest.TestCase):
-    """Ceiling gives the overview, the hand camera the precise value."""
+    """Die Decke liefert die Uebersicht, die Handkamera den genauen Wert."""
 
     def _both(self):
         tag_map = cell_map()
@@ -395,7 +396,7 @@ class ZusammenfuehrenTest(unittest.TestCase):
             source=SOURCE_CEILING,
         )
 
-        # The hand camera has driven to world tag 2 and sees it with the module.
+        # Die Handkamera ist zu Welttag 2 gefahren und sieht ihn zusammen mit dem Modul.
         flange_poses = view(flange_view(), [2, MODULE_TAG_ID], error_px=0.1)
         flange = locate_modules(
             flange_poses,
@@ -424,7 +425,7 @@ class ZusammenfuehrenTest(unittest.TestCase):
         np.testing.assert_allclose(robot.pose[:3, 3], ROBOT_BASE, atol=1e-9)
 
     def test_both_cameras_agree_on_the_module(self):
-        """Different viewpoints, one world frame -- that is the whole point."""
+        """Verschiedene Blickpunkte, ein Weltsystem -- das ist der ganze Sinn."""
         _, ceiling, flange = self._both()
 
         from_ceiling = next(item for item in ceiling if item.tag_id == MODULE_TAG_ID)

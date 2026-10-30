@@ -1,17 +1,18 @@
-"""The dependency direction is a rule, so it's tested.
+"""Die Abhaengigkeitsrichtung ist eine Regel, also wird sie getestet.
 
-Three guarantees the rest builds on (doc/projektdoku/apriltag-lokalisierung.md 2.1):
+Drei Zusicherungen, auf denen der Rest aufbaut (doc/projektdoku/apriltag-lokalisierung.md 2.1):
 
-* `tagloc.identity` and `tagloc.modes` need **not even numpy** -- the server
-  builds `configurationId` and normalises the stream mode before anything
-  is loaded.
-* The math layer imports **no cv2**. Otherwise it would be tied to the
-  installed OpenCV version, which differs between laptop and Pi.
-* `tagloc` **never** imports from `vision_server`. The dependency runs one
-  way only.
+* `tagloc.identity` und `tagloc.modes` brauchen **nicht einmal numpy** -- der
+  Server baut die `configurationId` und normalisiert den Stream-Modus, bevor
+  irgendetwas geladen ist.
+* Die Mathematikschicht importiert **kein cv2**. Sonst waere sie an die
+  installierte OpenCV-Version gebunden, die sich zwischen Laptop und Pi
+  unterscheidet.
+* `tagloc` importiert **nie** aus `vision_server`. Die Abhaengigkeit laeuft
+  nur in eine Richtung.
 
-Measured in a subprocess against `sys.modules`, not the source text: an
-import sneaking in through three levels of indirection still shows up.
+Gemessen in einem Subprozess gegen `sys.modules`, nicht am Quelltext: Ein
+Import, der sich ueber drei Ebenen Umweg einschleicht, faellt trotzdem auf.
 """
 
 import subprocess
@@ -22,7 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 
-#: Modules without a cv2 dependency.
+#: Module ohne cv2-Abhaengigkeit.
 PURE_MODULES = (
     "tagloc.identity",
     "tagloc.modes",
@@ -37,7 +38,7 @@ PURE_MODULES = (
     "tagloc.handeye",
 )
 
-#: Modules that use cv2 -- but only inside functions, never at import time.
+#: Module, die cv2 benutzen -- aber nur innerhalb von Funktionen, nie beim Import.
 LAZY_CV2_MODULES = (
     "tagloc.detector",
     "tagloc.pose",
@@ -50,11 +51,12 @@ STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes")
 
 
 def imported_modules(target: str, candidates) -> list[str]:
-    """Return which of `candidates` end up in `sys.modules` after `import target`.
+    """Liefert, welche der `candidates` nach `import target` in `sys.modules` stehen.
 
-    If the module can't be imported at all, that's a broken environment, not
-    a violated layering rule -- so it's skipped. This happens in practice:
-    the shipped `.venv` is missing `numpy/__init__.py`.
+    Laesst sich das Modul gar nicht importieren, ist das eine kaputte
+    Umgebung, keine verletzte Schichtregel -- also wird uebersprungen. Das
+    kommt in der Praxis vor: In der mitgelieferten `.venv` fehlt
+    `numpy/__init__.py`.
     """
     code = (
         f"import sys; import {target}; "
@@ -79,10 +81,10 @@ class LayeringTest(unittest.TestCase):
                 self.assertEqual([], imported_modules(module, ["cv2"]))
 
     def test_cv2_modules_import_opencv_lazily(self):
-        """The drawing and detection modules don't pull in cv2 at import time either.
+        """Auch die Zeichen- und Erkennungsmodule ziehen cv2 nicht beim Import herein.
 
-        Otherwise OpenCV would sit on the cell server's import chain, and a
-        server without OpenCV wouldn't be able to start.
+        Sonst laege OpenCV auf der Importkette des Zellenservers, und ein
+        Server ohne OpenCV koennte nicht starten.
         """
         for module in LAZY_CV2_MODULES:
             with self.subTest(module=module):
@@ -100,10 +102,10 @@ class LayeringTest(unittest.TestCase):
 
 
 class ConfigurationTest(unittest.TestCase):
-    """The server configuration must stay hashable.
+    """Die Serverkonfiguration muss hashbar bleiben.
 
-    `build_detection_sources` puts it into a set/dict; a numpy matrix in
-    there would break server startup, not just a job.
+    `build_detection_sources` legt sie in ein set/dict; eine numpy-Matrix
+    darin wuerde den Serverstart brechen, nicht nur einen Job.
     """
 
     def test_server_configuration_stays_hashable(self):
