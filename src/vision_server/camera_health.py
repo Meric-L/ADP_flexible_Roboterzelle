@@ -31,6 +31,7 @@ from typing import Any
 from asyncua import Server, ua
 from asyncua.common.node import Node
 
+from .aio import cancel_and_wait
 from .camera import CameraStatus, SharedCamera
 from .nodeset_ids import DeviceHealth
 from .profiles import CameraStreamConfig
@@ -229,9 +230,7 @@ class CameraHealthPublisher:
 
     async def stop(self) -> None:
         if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            await cancel_and_wait(self._task)
             self._task = None
 
     async def publish_now(self) -> None:
