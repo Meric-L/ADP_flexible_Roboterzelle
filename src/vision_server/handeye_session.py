@@ -34,12 +34,7 @@ from typing import Any
 
 import numpy as np
 
-from tagloc.boards import (
-    CHESSBOARD,
-    BoardSpec,
-    chessboard_is_unambiguous,
-    chessboard_object_points,
-)
+from tagloc.boards import CHESSBOARD, BoardSpec, chessboard_is_unambiguous
 from tagloc.geometry import (
     Pose,
     average_poses,
@@ -50,18 +45,24 @@ from tagloc.geometry import (
 )
 from tagloc.handeye import (
     AXIS_THRESHOLD_DEG,
+    BOARD_SCALE_WARNING,
     MIN_SAMPLES,
+    SESSION_FILE,
+    STAGE_LEAVE_ONE_OUT,
+    STAGE_REFINEMENT,
+    BoardRefinement,
     HandEye,
-    HandEyeSolution,
-    leave_one_out_errors,
+    RefinementError,
+    SessionSample,
     load_hand_eye,
-    reconstruction_spread,
-    refine_hand_eye_robust,
+    refine_board_session,
     rotation_diversity,
     save_hand_eye,
+    session_json,
+    session_payload,
     solve_hand_eye_robust,
 )
-from tagloc.jsonio import finite_or_none, utc_now_z, utc_stamp
+from tagloc.jsonio import finite_or_none, utc_stamp
 
 from .errors import VisionErrorCode
 from .layer2.plan import _load, _pose
@@ -71,9 +72,6 @@ _log = logging.getLogger(__name__)
 START_SCHEMA = "wsc.vision.handeye.start/1"
 SAMPLE_SCHEMA = "wsc.vision.handeye.sample/1"
 STATUS_SCHEMA = "wsc.vision.handeye.status/1"
-#: Datensatz einer Sitzung (`data/handeye/sessions/<Zeit>/session.json`), den
-#: `tagloc.cli.calibrate_handeye --session` offline nachrechnen kann.
-SESSION_SCHEMA = "wsc.vision.handeye.session/1"
 
 IDLE = "idle"
 CAPTURING = "capturing"
@@ -88,7 +86,7 @@ RECOMMENDED_SAMPLES = 8
 REQUIRED_AXES = 3
 #: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass
 #: (0,3 %) gibt es einen Hinweis: Feldgroesse oder Intrinsik stimmen nicht.
-SCALE_WARNING = 0.003
+SCALE_WARNING = BOARD_SCALE_WARNING
 #: Werte von `intrinsicsSource`, bei denen die Intrinsik nicht von uns stammt.
 FACTORY_INTRINSICS = "realsense_factory"
 PLACEHOLDER_INTRINSICS = "placeholder"
@@ -180,57 +178,49 @@ def _intrinsics_warnings(source: str | None) -> list[str]:
     return []
 
 
+#: Meldung im Log je gescheitertem Schritt von `refine_board_session`.
+_REFINEMENT_FAILURES = {
+    STAGE_REFINEMENT: "Gemeinsame Verfeinerung fehlgeschlagen",
+    STAGE_LEAVE_ONE_OUT: "Leave-one-out fehlgeschlagen",
+}
+
+
 def _refine_board(
     spec: BoardSpec, calibration, samples: list[_Sample], flanges: list[Pose], tags: list[Pose]
-) -> dict | None:
-    """Verfeinerung mit Ausreisserpruefung in Pixeln, Leave-one-out ueber die
-    verbleibenden Aufnahmen. Liefert `{"refinement", "loo", "solution"}`
-    (`solution`: `HandEyeSolution` fuers verfeinerte X, Indizes wie die Eingabe)
-    oder `None`, wenn nicht moeglich (fehlende Ecken/Intrinsik, Rechenfehler).
-    `ValueError` (Posen zu aehnlich) geht an den Aufrufer. Thread-tauglich."""
-    from tagloc import lens
+) -> BoardRefinement | None:
+    """`tagloc.handeye.refine_board_session` ueber die angenommenen Aufnahmen.
 
+    Liefert `None`, wenn nicht moeglich (fehlende Ecken/Intrinsik, Rechenfehler;
+    der Fehler steht im Log). `ValueError` (Posen zu aehnlich) geht an den
+    Aufrufer. Thread-tauglich.
+    """
     if calibration is None or not samples or any(sample.corners_px is None for sample in samples):
         return None
     try:
-        points = chessboard_object_points(spec)
-        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
-        undistorted = [lens.undistort_points(sample.corners_px, calibration) for sample in samples]
-        refinement, rejected, _ = refine_hand_eye_robust(flanges, undistorted, tags, points, matrix)
-    except ValueError:
-        raise
-    except Exception:
-        _log.exception("Gemeinsame Verfeinerung fehlgeschlagen -- Park-Martin bleibt")
-        return None
-    try:
-        kept = [i for i in range(len(samples)) if i not in rejected]
-        loo = None
-        if len(kept) > MIN_SAMPLES:
-            loo = leave_one_out_errors(
-                [flanges[i] for i in kept],
-                [undistorted[i] for i in kept],
-                [tags[i] for i in kept],
-                points,
-                matrix,
-                refinement,
-            )
-        residuals, rms_m, rms_deg, max_m, max_deg = reconstruction_spread(
-            flanges, tags, refinement.pose_flange_cam, kept
+        return refine_board_session(
+            flanges, [sample.corners_px for sample in samples], tags, spec, calibration
         )
-    except Exception:
-        _log.exception("Leave-one-out fehlgeschlagen -- Park-Martin bleibt")
+    except RefinementError as error:
+        _log.exception("%s -- Park-Martin bleibt", _REFINEMENT_FAILURES[error.stage])
         return None
-    solution = HandEyeSolution(
-        pose_flange_cam=refinement.pose_flange_cam,
-        rms_position_m=rms_m,
-        rms_rotation_deg=rms_deg,
-        max_position_m=max_m,
-        max_rotation_deg=max_deg,
-        residuals=residuals,
-        rejected=rejected,
-        used_count=len(kept),
-    )
-    return {"refinement": refinement, "loo": loo, "solution": solution}
+
+
+def _write_sample_images(folder: Path, samples: list[_Sample]) -> dict[int, str]:
+    """Ein PNG je Aufnahme mit Bild; `{Index: Dateiname}`. Fehler nur ins Log."""
+    images: dict[int, str] = {}
+    try:
+        import cv2
+
+        for index, sample in enumerate(samples):
+            image = sample.image
+            if image is None:
+                continue
+            name = f"sample_{index:03d}.png"
+            if cv2.imwrite(str(folder / name), np.asarray(image)):
+                images[index] = name
+    except Exception:
+        _log.exception("Bilder des Hand-Auge-Datensatzes nicht geschrieben")
+    return images
 
 
 def _write_session_dataset(
@@ -241,68 +231,34 @@ def _write_session_dataset(
     Ein Ordner je Sitzung (Zeit des Starts); ein zweiter Versuch derselben
     Sitzung ueberschreibt ihn. Die Datei reicht, um mit
     `calibrate_handeye --session` neu zu rechnen: gemeldete Flanschposen,
-    gemessene Brettposen, Ecken, Intrinsik und Brettgeometrie.
+    gemessene Brettposen, Ecken, Intrinsik und Brettgeometrie. Format und
+    Leser: `tagloc.handeye.session_payload` / `load_session`.
     """
     folder.mkdir(parents=True, exist_ok=True)
-    images: dict[int, str] = {}
-    try:
-        import cv2
-
-        for index, sample in enumerate(state.samples):
-            image = sample.image
-            if image is None:
-                continue
-            name = f"sample_{index:03d}.png"
-            if cv2.imwrite(str(folder / name), np.asarray(image)):
-                images[index] = name
-    except Exception:
-        _log.exception("Bilder des Hand-Auge-Datensatzes nicht geschrieben")
-    calibration = state.calibration
-    payload = {
-        "schema": SESSION_SCHEMA,
-        "createdAt": utc_now_z(),
-        "outcome": outcome,
-        "frameId": frame_id,
-        "tagId": state.tag_id,
-        "tagInBase": pose_to_dict(state.tag_in_base) if state.tag_in_base is not None else None,
-        "board": state.board.as_dict() if state.board is not None else None,
-        "intrinsicsSource": intrinsics_source,
-        "intrinsics": (
-            {
-                "cameraMatrix": np.asarray(calibration.camera_matrix, dtype=np.float64).tolist(),
-                "distortionCoefficients": np.asarray(
-                    calibration.distortion, dtype=np.float64
-                ).reshape(-1).tolist(),
-                "distortionModel": calibration.model,
-                "imageSize": [int(calibration.image_size[0]), int(calibration.image_size[1])],
-                "calibrationId": calibration.calibration_id,
-                "frameId": calibration.frame_id,
-            }
-            if calibration is not None
-            else None
-        ),
-        "samples": [
-            {
-                "index": index,
-                "accepted": sample.accepted,
-                "detail": sample.detail,
-                "flangeInBase": pose_to_dict(sample.flange_in_base),
-                "camToTarget": (
-                    pose_to_dict(sample.cam_to_tag) if sample.cam_to_tag is not None else None
-                ),
-                "reprojectionErrorPx": sample.reprojection_error_px,
-                "cornersPx": (
-                    sample.corners_px.tolist() if sample.corners_px is not None else None
-                ),
-                "image": images.get(index),
-            }
+    images = _write_sample_images(folder, state.samples)
+    payload = session_payload(
+        outcome=outcome,
+        frame_id=frame_id,
+        tag_id=state.tag_id,
+        tag_in_base=state.tag_in_base,
+        board=state.board,
+        intrinsics_source=intrinsics_source,
+        calibration=state.calibration,
+        samples=[
+            SessionSample(
+                accepted=sample.accepted,
+                detail=sample.detail,
+                flange_in_base=sample.flange_in_base,
+                cam_to_target=sample.cam_to_tag,
+                reprojection_error_px=sample.reprojection_error_px,
+                corners_px=sample.corners_px,
+                image=images.get(index),
+            )
             for index, sample in enumerate(state.samples)
         ],
-        "result": state.result,
-    }
-    (folder / "session.json").write_text(
-        json.dumps(payload, indent=2, default=float) + "\n", encoding="utf-8"
+        result=state.result,
     )
+    (folder / SESSION_FILE).write_text(session_json(payload), encoding="utf-8")
 
 
 def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
@@ -431,14 +387,14 @@ class HandEyeSession:
         s.state = SOLVING
         s.message = f"Berechne aus {len(accepted)} Aufnahmen"
         await self._publish()
-        refined: dict | None = None
+        refined: BoardRefinement | None = None
         try:
             if s.board is not None:
                 refined = await asyncio.to_thread(
                     _refine_board, s.board, s.calibration, accepted, flanges, tags
                 )
             if refined is not None:
-                solution = refined["solution"]
+                solution = refined.solution
             else:
                 solution = await asyncio.to_thread(solve_hand_eye_robust, flanges, tags)
         except ValueError as error:
@@ -480,26 +436,18 @@ class HandEyeSession:
                 )
         if refined is not None:
             # Das verfeinerte X ersetzt Park-Martin (`solution` ist dafuer gerechnet).
-            if refined["loo"] is not None:
+            if refined.loo is not None:
                 for sample, error_px, error_m in zip(
-                    used_samples, refined["loo"].error_px, refined["loo"].error_m
+                    used_samples, refined.loo.error_px, refined.loo.error_m
                 ):
                     sample.loo_error_px, sample.loo_error_m = error_px, error_m
-            scale = refined["refinement"].board_scale
+            scale = refined.refinement.board_scale
             if abs(scale - 1.0) > SCALE_WARNING:
                 warnings.append(
                     f"Brettmassstab weicht {abs(scale - 1.0) * 100:.1f} % vom Nennmass ab "
                     "-- Brett nachmessen / Intrinsik pruefen."
                 )
-        extra: dict[str, Any] = {}
-        if refined is not None:
-            extra = {
-                "refined_reprojection_rms_px": refined["refinement"].reprojection_rms_px,
-                "board_scale": refined["refinement"].board_scale,
-            }
-            if refined["loo"] is not None:
-                extra["loo_error_rms_px"] = refined["loo"].rms_px
-                extra["loo_error_rms_m"] = refined["loo"].rms_m
+        extra = refined.hand_eye_fields() if refined is not None else {}
         hand_eye = HandEye(
             pose_flange_cam=pose_flange_cam,
             frame_id=self._ports.frame_id,
@@ -552,7 +500,7 @@ class HandEyeSession:
             #: Wo das Brett/der Tag im Basis-KS liegt (Mittel von F·X·C bzw.
             #: das verfeinerte `T_base_brett`), Position in m.
             "targetInBase": pose_to_dict(
-                refined["refinement"].pose_base_board
+                refined.refinement.pose_base_board
                 if refined is not None
                 else average_poses(
                     [compose(flange, pose_flange_cam, tag) for flange, tag in zip(flanges, tags)]
@@ -562,12 +510,12 @@ class HandEyeSession:
             "sessionPath": None,
         }
         if refined is not None:
-            s.result["refinedReprojectionRmsPx"] = refined["refinement"].reprojection_rms_px
-            s.result["boardScale"] = refined["refinement"].board_scale
-            s.result["refinementConverged"] = refined["refinement"].converged
-            if refined["loo"] is not None:
-                s.result["looErrorRmsPx"] = refined["loo"].rms_px
-                s.result["looErrorRmsM"] = refined["loo"].rms_m
+            s.result["refinedReprojectionRmsPx"] = refined.refinement.reprojection_rms_px
+            s.result["boardScale"] = refined.refinement.board_scale
+            s.result["refinementConverged"] = refined.refinement.converged
+            if refined.loo is not None:
+                s.result["looErrorRmsPx"] = refined.loo.rms_px
+                s.result["looErrorRmsM"] = refined.loo.rms_m
         if s.tag_in_base is not None:
             reconstructed = average_poses(
                 [compose(flange, pose_flange_cam, tag) for flange, tag in zip(flanges, tags)]
@@ -588,9 +536,9 @@ class HandEyeSession:
             f"ueber {solution.used_count} Posen{dropped}"
         )
         if refined is not None:
-            s.message += f", Reprojektion {refined['refinement'].reprojection_rms_px:.2f} px"
-            if refined["loo"] is not None:
-                s.message += f", Vorhersagefehler {refined['loo'].rms_m * 1000:.1f} mm"
+            s.message += f", Reprojektion {refined.refinement.reprojection_rms_px:.2f} px"
+            if refined.loo is not None:
+                s.message += f", Vorhersagefehler {refined.loo.rms_m * 1000:.1f} mm"
         _log.info("Hand-Auge-Kalibrierung: %s", s.message)
         s.result["sessionPath"] = await self._persist("finished")
         await self._publish()

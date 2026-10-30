@@ -34,6 +34,9 @@ from pathlib import Path
 
 import numpy as np
 
+from . import lens
+from .boards import BoardSpec, chessboard_object_points
+from .calibration import CameraCalibration
 from .geometry import (
     Pose,
     average_poses,
@@ -50,6 +53,11 @@ from .geometry import (
 from .jsonio import finite_or_none, utc_now_z
 
 SCHEMA = "wsc.vision.handeye/1"
+#: Datensatz einer Sitzung (`data/handeye/sessions/<Zeit>/session.json`), den
+#: `vision_server.handeye_session` schreibt und `tagloc.cli.calibrate_handeye
+#: --session` offline nachrechnet.
+SESSION_SCHEMA = "wsc.vision.handeye.session/1"
+SESSION_FILE = "session.json"
 #: Stellen, auf die `save_hand_eye` die Kennzahlen in der Datei rundet.
 FILE_DIGITS = 6
 
@@ -791,6 +799,307 @@ def reconstruction_spread(
     )
 
 
+# --- Verfeinerung einer Brett-Sitzung: eine Pipeline fuer Server und CLI ------------
+
+#: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass (0,3 %) gibt es
+#: einen Hinweis (Status des Hand-Pis, Ausgabe von `calibrate_handeye --session`):
+#: Feldgroesse oder Intrinsik stimmen nicht.
+BOARD_SCALE_WARNING = 0.003
+
+#: Schritte von `refine_board_session`, fuer `RefinementError.stage`.
+STAGE_REFINEMENT = "refinement"
+STAGE_LEAVE_ONE_OUT = "leave-one-out"
+
+
+class RefinementError(Exception):
+    """Ein Rechenschritt der Brett-Verfeinerung ist gescheitert (kein `ValueError`).
+
+    `stage` nennt den Schritt (`STAGE_REFINEMENT`, `STAGE_LEAVE_ONE_OUT`), die
+    Ursache haengt als `__cause__` daran. `ValueError` (Posen zu aehnlich, zu
+    wenige Aufnahmen) laeuft dagegen unveraendert durch -- er ist ein Befund
+    ueber die Daten, kein Rechenfehler.
+    """
+
+    def __init__(self, stage: str) -> None:
+        super().__init__(stage)
+        self.stage = stage
+
+
+@dataclass(frozen=True)
+class BoardRefinement:
+    """Ergebnis von `refine_board_session`."""
+
+    refinement: HandEyeRefinement
+    #: Park-Martin-Start der Verfeinerung (ohne Ausreisserpruefung).
+    closed_form: HandEyeSolution
+    #: Indizes der verbleibenden Eingabe-Aufnahmen (nach der Pixel-Ausreisserpruefung).
+    kept: tuple[int, ...]
+    #: Vorhersagefehler je verbleibender Aufnahme; `None` bei hoechstens `MIN_SAMPLES`.
+    loo: LeaveOneOutResult | None
+    #: Das verfeinerte `X` mit Streuung der Brettlage, Indizes wie die Eingabe.
+    solution: HandEyeSolution
+
+    def hand_eye_fields(self) -> dict[str, float]:
+        """Die Verfeinerungs-Kennzahlen als Schluesselwoerter fuer `HandEye`."""
+        fields = {
+            "refined_reprojection_rms_px": self.refinement.reprojection_rms_px,
+            "board_scale": self.refinement.board_scale,
+        }
+        if self.loo is not None:
+            fields["loo_error_rms_px"] = self.loo.rms_px
+            fields["loo_error_rms_m"] = self.loo.rms_m
+        return fields
+
+
+def refine_board_session(
+    poses_base_flange: Sequence[Pose],
+    corners_px: Sequence[np.ndarray],
+    poses_cam_board: Sequence[Pose],
+    spec: BoardSpec,
+    calibration: CameraCalibration,
+    *,
+    estimate_scale: bool = True,
+) -> BoardRefinement:
+    """Die Verfeinerung einer Brett-Sitzung, von den verzerrten Ecken bis zur Streuung.
+
+    Entzerren (`lens.undistort_points`) -> `refine_hand_eye_robust` (Ausreisser
+    in Pixeln) -> Leave-one-out ueber die verbleibenden Aufnahmen ->
+    `reconstruction_spread` fuer das verfeinerte `X`. Das ist der Rechenweg des
+    Hand-Pis (`FinishHandEyeCalibration`) und der Nachrechnung am Rechner
+    (`calibrate_handeye --session`); beide rufen diese Funktion.
+
+    `corners_px`: je Aufnahme die kanonischen Ecken `(N, 2)` im **verzerrten**
+    Bild. Thread-tauglich, ohne Seiteneffekte.
+
+    Raises:
+        ValueError: wie `refine_hand_eye_robust` (Posen drehen um zu wenige
+            Achsen, zu wenige Aufnahmen, Eckenzahl passt nicht zum Brett).
+        RefinementError: ein anderer Fehler beim Verfeinern oder im Leave-one-out.
+    """
+    flanges = list(poses_base_flange)
+    boards = list(poses_cam_board)
+    try:
+        points = chessboard_object_points(spec)
+        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+        undistorted = [lens.undistort_points(corners, calibration) for corners in corners_px]
+        refinement, rejected, closed_form = refine_hand_eye_robust(
+            flanges, undistorted, boards, points, matrix, estimate_scale=estimate_scale
+        )
+    except ValueError:
+        raise
+    except Exception as error:
+        raise RefinementError(STAGE_REFINEMENT) from error
+    try:
+        kept = [index for index in range(len(flanges)) if index not in rejected]
+        loo = None
+        if len(kept) > MIN_SAMPLES:
+            loo = leave_one_out_errors(
+                [flanges[i] for i in kept],
+                [undistorted[i] for i in kept],
+                [boards[i] for i in kept],
+                points,
+                matrix,
+                refinement,
+                estimate_scale=estimate_scale,
+            )
+        residuals, rms_m, rms_deg, max_m, max_deg = reconstruction_spread(
+            flanges, boards, refinement.pose_flange_cam, kept
+        )
+    except Exception as error:
+        raise RefinementError(STAGE_LEAVE_ONE_OUT) from error
+    solution = HandEyeSolution(
+        pose_flange_cam=refinement.pose_flange_cam,
+        rms_position_m=rms_m,
+        rms_rotation_deg=rms_deg,
+        max_position_m=max_m,
+        max_rotation_deg=max_deg,
+        residuals=residuals,
+        rejected=rejected,
+        used_count=len(kept),
+    )
+    return BoardRefinement(
+        refinement=refinement,
+        closed_form=closed_form,
+        kept=tuple(kept),
+        loo=loo,
+        solution=solution,
+    )
+
+
+# --- Datensatz einer Sitzung (`session.json`): Schreiber und Leser ----------------
+
+
+class UnknownSessionSchema(ValueError):
+    """Die Datei ist kein Datensatz dieser Version (`SESSION_SCHEMA`)."""
+
+
+@dataclass(frozen=True)
+class SessionSample:
+    """Eine Aufnahme, wie sie im Datensatz steht."""
+
+    accepted: bool
+    detail: str
+    flange_in_base: Pose
+    cam_to_target: Pose | None
+    reprojection_error_px: float | None
+    #: Kanonische Ecken `(N, 2)` im verzerrten Bild (Brett), sonst `None`.
+    corners_px: np.ndarray | None
+    #: Dateiname des Bildes neben der `session.json`, sonst `None`.
+    image: str | None
+
+
+def intrinsics_to_dict(calibration: CameraCalibration) -> dict:
+    """Die Intrinsik im Datensatz; Gegenstueck zu `intrinsics_from_dict`."""
+    return {
+        "cameraMatrix": np.asarray(calibration.camera_matrix, dtype=np.float64).tolist(),
+        "distortionCoefficients": np.asarray(calibration.distortion, dtype=np.float64)
+        .reshape(-1)
+        .tolist(),
+        "distortionModel": calibration.model,
+        "imageSize": [int(calibration.image_size[0]), int(calibration.image_size[1])],
+        "calibrationId": calibration.calibration_id,
+        "frameId": calibration.frame_id,
+    }
+
+
+def intrinsics_from_dict(data: dict) -> CameraCalibration:
+    """Liest die Intrinsik eines Datensatzes; Gegenstueck zu `intrinsics_to_dict`."""
+    size = data["imageSize"]
+    return CameraCalibration(
+        camera_matrix=np.asarray(data["cameraMatrix"], dtype=np.float64).reshape(3, 3),
+        distortion=np.asarray(data["distortionCoefficients"], dtype=np.float64),
+        image_size=(int(size[0]), int(size[1])),
+        frame_id=str(data.get("frameId", "")),
+        calibration_id=str(data.get("calibrationId", "")),
+        model=data.get("distortionModel", "pinhole"),
+    )
+
+
+def board_from_dict(data: dict) -> BoardSpec:
+    """Liest das Brett eines Datensatzes (`BoardSpec.as_dict` ist das Gegenstueck)."""
+    return BoardSpec(
+        type=data["type"],
+        cols=int(data["cols"]),
+        rows=int(data["rows"]),
+        square_size_m=float(data["squareSizeM"]),
+    )
+
+
+def session_payload(
+    *,
+    outcome: str,
+    frame_id: str,
+    tag_id: int,
+    tag_in_base: Pose | None,
+    board: BoardSpec | None,
+    intrinsics_source: str | None,
+    calibration: CameraCalibration | None,
+    samples: Sequence[SessionSample],
+    result: dict | None,
+) -> dict:
+    """Der Datensatz einer Sitzung als dict (`SESSION_SCHEMA`), Schluesselreihenfolge fest.
+
+    `outcome`: `finished`, `refused` oder `failed`. Gemeldete Flanschposen,
+    gemessene Brett- bzw. Tagposen, Ecken, Intrinsik und Brettgeometrie
+    genuegen, um mit `load_session` und `refine_board_session` neu zu rechnen.
+    """
+    return {
+        "schema": SESSION_SCHEMA,
+        "createdAt": utc_now_z(),
+        "outcome": outcome,
+        "frameId": frame_id,
+        "tagId": tag_id,
+        "tagInBase": pose_to_dict(tag_in_base) if tag_in_base is not None else None,
+        "board": board.as_dict() if board is not None else None,
+        "intrinsicsSource": intrinsics_source,
+        "intrinsics": intrinsics_to_dict(calibration) if calibration is not None else None,
+        "samples": [
+            {
+                "index": index,
+                "accepted": sample.accepted,
+                "detail": sample.detail,
+                "flangeInBase": pose_to_dict(sample.flange_in_base),
+                "camToTarget": (
+                    pose_to_dict(sample.cam_to_target) if sample.cam_to_target is not None else None
+                ),
+                "reprojectionErrorPx": sample.reprojection_error_px,
+                "cornersPx": sample.corners_px.tolist() if sample.corners_px is not None else None,
+                "image": sample.image,
+            }
+            for index, sample in enumerate(samples)
+        ],
+        "result": result,
+    }
+
+
+def session_json(payload: dict) -> str:
+    """Der Text der `session.json` zu `session_payload`."""
+    return json.dumps(payload, indent=2, default=float) + "\n"
+
+
+@dataclass(frozen=True)
+class SessionDataset:
+    """Ein gelesener Datensatz: nur die angenommenen Aufnahmen, Intrinsik und Brett roh."""
+
+    path: Path
+    frame_id: str
+    #: Wie im Datensatz (`None`, wenn unbekannt).
+    intrinsics_source: str | None
+    #: Zahl aller Aufnahmen im Datensatz, auch der abgelehnten.
+    total_count: int
+    flanges: list[Pose]
+    targets: list[Pose]
+    #: Je angenommene Aufnahme die Ecken (verschachtelte Listen) oder `None`.
+    corners_px: list
+    intrinsics: dict | None
+    board: dict | None
+
+    @property
+    def can_refine(self) -> bool:
+        """Brett-Sitzung mit Intrinsik und Ecken in jeder angenommenen Aufnahme."""
+        return bool(self.intrinsics and self.board and all(c is not None for c in self.corners_px))
+
+    def refine(self, *, estimate_scale: bool = True) -> BoardRefinement:
+        """`refine_board_session` ueber diesen Datensatz (nur wenn `can_refine`)."""
+        return refine_board_session(
+            self.flanges,
+            self.corners_px,
+            self.targets,
+            board_from_dict(self.board),
+            intrinsics_from_dict(self.intrinsics),
+            estimate_scale=estimate_scale,
+        )
+
+
+def load_session(path) -> SessionDataset:
+    """Liest einen Datensatz (Ordner oder `session.json`).
+
+    Raises:
+        UnknownSessionSchema: andere Version oder keine Sitzungsdatei.
+    """
+    path = Path(path)
+    if path.is_dir():
+        path = path / SESSION_FILE
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema") != SESSION_SCHEMA:
+        raise UnknownSessionSchema(
+            f"Unbekanntes Sitzungs-Schema '{data.get('schema')}' in {path} (erwartet {SESSION_SCHEMA})"
+        )
+    samples = data.get("samples", [])
+    accepted = [raw for raw in samples if raw.get("accepted")]
+    return SessionDataset(
+        path=path,
+        frame_id=str(data.get("frameId", "")),
+        intrinsics_source=data.get("intrinsicsSource"),
+        total_count=len(samples),
+        flanges=[pose_from_dict(raw["flangeInBase"]) for raw in accepted],
+        targets=[pose_from_dict(raw["camToTarget"]) for raw in accepted],
+        corners_px=[raw.get("cornersPx") for raw in accepted],
+        intrinsics=data.get("intrinsics"),
+        board=data.get("board"),
+    )
+
+
 def load_hand_eye(path) -> HandEye:
     """Read a hand-eye calibration from JSON."""
     path = Path(path)
@@ -860,25 +1169,42 @@ def _or_nan(value) -> float:
 
 __all__ = [
     "AXIS_THRESHOLD_DEG",
+    "BOARD_SCALE_WARNING",
     "MIN_AXES",
     "MIN_SAMPLES",
     "SCHEMA",
+    "SESSION_FILE",
+    "SESSION_SCHEMA",
     "HUBER_DELTA_PX",
+    "STAGE_LEAVE_ONE_OUT",
+    "STAGE_REFINEMENT",
+    "BoardRefinement",
     "HandEye",
     "HandEyeRefinement",
     "HandEyeSolution",
     "LeaveOneOutResult",
+    "RefinementError",
     "RobotAnchor",
+    "SessionDataset",
+    "SessionSample",
+    "UnknownSessionSchema",
     "anchor_world_base",
+    "board_from_dict",
     "camera_pose_from_robot",
     "estimate_base_board",
+    "intrinsics_from_dict",
+    "intrinsics_to_dict",
     "leave_one_out_errors",
     "load_hand_eye",
+    "load_session",
     "reconstruction_spread",
+    "refine_board_session",
     "refine_hand_eye",
     "refine_hand_eye_robust",
     "rotation_diversity",
     "save_hand_eye",
+    "session_json",
+    "session_payload",
     "solve_hand_eye",
     "solve_hand_eye_robust",
     "target_spread",
