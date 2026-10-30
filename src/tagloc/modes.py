@@ -1,15 +1,16 @@
-"""Overlay modes of the livestream. Stdlib only.
+"""Overlay-Modi des Livestreams. Nur Standardbibliothek.
 
-Split out because `vision_server.camera_stream` needs it without pulling in
-numpy or OpenCV: the livestream must keep running even without detection
-configured. `tagloc.overlay` re-exports both so drawing code finds them there.
+Ausgelagert, weil `vision_server.camera_stream` sie braucht, ohne numpy oder
+OpenCV mitzuziehen: Der Livestream muss auch ohne konfigurierte Erkennung
+weiterlaufen. `tagloc.overlay` exportiert beide erneut, damit Zeichencode sie
+dort findet.
 """
 
-#: Order = order of selection in the frontend.
+#: Reihenfolge = Reihenfolge der Auswahl im Frontend.
 OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted", "tagreference")
 DEFAULT_OVERLAY_MODE = "apriltag"
 
-#: Labels shown to the operator.
+#: Beschriftungen, die der Bediener sieht.
 OVERLAY_MODE_LABELS = {
     "off": "Rohbild",
     "apriltag": "AprilTags markieren",
@@ -18,16 +19,16 @@ OVERLAY_MODE_LABELS = {
     "tagreference": "Tag einmessen",
 }
 
-#: Shown in the image when "undistorted" has no real calibration to work with.
+#: Wird im Bild gezeigt, wenn "undistorted" keine echte Kalibrierung zur Verfuegung hat.
 NO_CALIBRATION_HINT = "Keine Kalibrierung -- Rohbild"
 
 
 def normalise_mode(mode) -> str:
-    """Map an externally set mode to a valid value.
+    """Bildet einen von aussen gesetzten Modus auf einen gueltigen Wert ab.
 
-    The value comes from a writable OPC-UA node, i.e. the frontend. An
-    unknown, empty or mistyped value must not stop the stream -- fall back
-    to the default mode instead.
+    Der Wert kommt aus einem beschreibbaren OPC-UA-Knoten, also vom Frontend.
+    Ein unbekannter, leerer oder falsch getippter Wert darf den Stream nicht
+    anhalten -- stattdessen auf den Standardmodus zurueckfallen.
     """
     if not mode:
         return DEFAULT_OVERLAY_MODE
