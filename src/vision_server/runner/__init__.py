@@ -5,185 +5,41 @@ import dataclasses
 import json
 import logging
 import socket
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from asyncua import Node, Server, ua, uamethod
 
 from ..address_space import VisionAddressSpace, attach_vision_system, configure_server
-from ..aio import cancel_and_wait, stop_event_on_signals
-from ..asset_model import VisionAssetNodes, attach_asset_model
+from ..aio import stop_event_on_signals
+from ..asset_model import attach_asset_model
 from ..calibration_session import CalibrationSession
-from ..camera import exit_process
-from ..camera_health import CameraHealthPublisher, HealthAlarms, write_device_health
-from ..camera_stream import CameraStreamPublisher
-from ..mjpeg_server import MjpegServer
 from ..config import VisionServerConfig
-from ..detection import DetectionSource, build_detection_sources
+from ..detection import build_detection_sources
 from ..errors import VisionErrorCode
-from ..events import VisionEvents, create_event_generators
+from ..events import create_event_generators
 from ..job import JobRunner
-from ..nodeset_ids import DeviceHealth
 from ..profiles import _REPO_ROOT
 from ..result_management import ResultStore
 from ..state_machine import VisionStateMachines
-from ..vision_program import VisionProgram, install_vision_program
+from ..vision_program import install_vision_program
+from .calibration import (
+    CALIBRATION_PROGRESS_INTERVAL_S,
+    _build_calibration_session,
+    _calibration_info_payload,  # noqa: F401  (Tests)
+    _write_calibration_info,
+)
+from .health import _start_camera_health
+from .livestream import (
+    _build_annotator,  # noqa: F401  (Tests)
+    _start_camera_stream,
+    _start_mjpeg_server,
+)
+from .machine import VisionMachine, _watch_loop_lag
+from .sources import _camera_owner, _open_source
 
 _log = logging.getLogger(__name__)
-
-LOOP_LAG_INTERVAL_S = 0.25
-LOOP_LAG_WARN_S = 0.75
-#: Takt, in dem `CalibrationProgress` waehrend der Hintergrund-Auswertung
-#: geschrieben wird, solange der Livestream pausiert ist (siehe
-#: `_pause_stream_during_processing`). Ein neu verbundener Client sieht
-#: `processing: true` damit spaetestens nach dieser Zeit.
-CALIBRATION_PROGRESS_INTERVAL_S = 1.0
-
-
-async def _watch_loop_lag(
-    interval: float = LOOP_LAG_INTERVAL_S, warn: float = LOOP_LAG_WARN_S
-) -> None:
-    """Loggt, wenn der Event-Loop blockiert war.
-
-    Vergisst eine Quelle `run_blocking`, sieht man es hier statt als
-    unerklaerlichen Verbindungsabbruch woanders. Ersetzt `RaspiDevice/Counter`
-    als Referenzsignal (doc/projektdoku/altlasten.md A3/A5).
-    """
-    loop = asyncio.get_running_loop()
-    while True:
-        before = loop.time()
-        await asyncio.sleep(interval)
-        elapsed = loop.time() - before
-        if elapsed > warn:
-            _log.warning(
-                "Event-Loop %d ms blockiert (erwartet %d ms)",
-                int(elapsed * 1000),
-                int(interval * 1000),
-            )
-
-
-def _camera_owner(
-    sources: Mapping[str, DetectionSource], opened: Mapping[str, bool]
-) -> DetectionSource | None:
-    """Return the first opened source holding a shared camera.
-
-    Deliberately via the `camera` attribute rather than a profile name:
-    this used to be `sources.get("image_recognition")`, and renaming or
-    removing that profile would have silently killed the livestream.
-    """
-    for profile in sorted(sources):
-        if not opened.get(profile):
-            continue
-        if getattr(sources[profile], "camera", None) is not None:
-            return sources[profile]
-    return None
-
-
-def _build_annotator(source: DetectionSource):
-    """Build the stream overlay for a source, if it can provide one.
-
-    Stream and job use the same loaded calibration and tag map -- if the
-    image shows something different from the job result, it's not because
-    of two configurations. Der Detektor ist bewusst NICHT derselbe: Job und
-    Stream liefen bis 2026-09-24 auf einer geteilten Instanz, beide mit
-    `subpixel_corner_refinement` aus der Config (aktuell `True` -- Layer 1
-    braucht das, siehe `AprilTagProfileConfig`). Live auf pi1 gemessen
-    (py-spy-Dump): der Job-Thread (`vision-apriltag_0`) und der
-    Overlay-Thread liefen dabei GLEICHZEITIG in `detector.detect()` mit
-    aktivem `CORNER_REFINE_APRILTAG` -- zusammen genug CPU-Konkurrenz, um
-    den 20s-Job-Timeout wieder reissen zu lassen. Der Stream braucht die
-    Verfeinerung nicht (Demo-Bild, kleinere Aufloesung als der Job) --
-    deshalb bekommt er eine EIGENE Detektor-Instanz mit der Verfeinerung
-    fest aus, unabhaengig vom Config-Wert fuer den Job-Pfad.
-
-    Seit 21.10.2026 zeichnet das Overlay die Tags aus der Erkennung in voller
-    Aufloesung (`source.latest_tags`) und erkennt nur noch selten selbst, im
-    Hintergrund und nicht waehrend eines Jobs (`set_busy`). Der eigene
-    Detektor bleibt dafuer -- ein Detektor ist nicht fuer zwei Threads gebaut.
-    """
-    job_detector = getattr(source, "_detector", None)
-    calibration = getattr(source, "_calibration", None)
-    config = getattr(source, "_config", None)
-    camera_config = getattr(source, "_camera_config", None)
-    if job_detector is None or calibration is None or config is None:
-        return None
-
-    from tagloc.detector import build_detector
-
-    from ..stream_overlay import AprilTagStreamAnnotator
-
-    # Detektor-Parameter wie beim Job, sonst zeigt das Overlay andere Tags --
-    # bis auf die Eckenverfeinerung: sie bleibt im Stream bewusst aus (siehe
-    # oben, CPU-Konkurrenz zum Job), auch wenn `cornerRefinementMethod`
-    # ausdruecklich in den Parametern steht.
-    stream_parameters = {
-        name: value
-        for name, value in config.detector_parameters.items()
-        if name != "cornerRefinementMethod"
-    }
-    stream_detector = build_detector(
-        config.tag_family,
-        config.detector_backend,
-        subpixel_corner_refinement=False,
-        detector_parameters=stream_parameters,
-    )
-
-    return AprilTagStreamAnnotator(
-        config,
-        detector=stream_detector,
-        calibration=calibration,
-        tag_map=getattr(source, "_tag_map", None),
-        interval_s=getattr(camera_config, "overlay_interval_s", 0.5),
-        detection_max_width=getattr(camera_config, "max_stream_width", None),
-        full_resolution_tags=lambda: getattr(source, "latest_tags", None),
-        detect_interval_s=getattr(camera_config, "overlay_detect_interval_s", 5.0),
-    )
-
-
-def _start_camera_stream(
-    space: VisionAddressSpace,
-    sources: Mapping[str, DetectionSource],
-    opened: Mapping[str, bool],
-) -> tuple[CameraStreamPublisher | None, Any]:
-    """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
-
-    Nutzt dieselbe `SharedCamera`, die auch die Erkennung offen haelt — eine
-    zweite Kamera lohnt sich hier nicht, siehe `camera.py`. Gibt den
-    Annotator zusaetzlich zurueck, damit `install_vision_machine` ihm spaeter
-    eine laufende `CalibrationSession` anhaengen kann (`set_calibration_session`).
-    """
-    if space.latest_camera_frame is None:
-        return None, None
-    source = _camera_owner(sources, opened)
-    if source is None:
-        _log.error(
-            "Livestream-Knoten konfiguriert, aber keine geoeffnete Quelle haelt eine "
-            "Kamera -- kein Stream"
-        )
-        return None, None
-    annotator = None
-    try:
-        annotator = _build_annotator(source)
-    except Exception:
-        _log.exception("Stream-Overlay nicht verfuegbar, Stream laeuft ohne Markierung")
-    stream = CameraStreamPublisher(
-        source.camera,
-        space.latest_camera_frame,
-        space.config.camera_stream,
-        annotator=annotator,
-        mode_node=space.camera_stream_mode,
-        progress_node=space.calibration_progress,
-        preview_status_node=space.tag_reference_preview_status,
-    )
-    stream.start()
-    _log.info(
-        "Livestream aus Profil '%s'%s",
-        source.profile_id,
-        " mit Overlay" if annotator is not None else " ohne Overlay",
-    )
-    return stream, annotator
 
 
 def _write_tag_map_file(path, text: str) -> None:
@@ -192,265 +48,10 @@ def _write_tag_map_file(path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-async def _start_mjpeg_server(
-    space: VisionAddressSpace, stream: CameraStreamPublisher
-) -> MjpegServer | None:
-    """Startet den MJPEG-Stream und nennt seinen Port im Adressraum.
-
-    Scheitert das Binden (Port belegt), laeuft der Server ohne weiter: der
-    Knoten bleibt auf 0 und das Frontend faellt auf `LatestCameraFrame`
-    zurueck. Der Livestream ist ein Debugwerkzeug, kein Grund fuer einen
-    Startabbruch.
-    """
-    config = space.config.camera_stream
-    if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:
-        return None
-    server = MjpegServer(
-        stream, config.http_port, tag_reference_dir=space.config.tag_reference_debug_dir
-    )
-    try:
-        await server.start()
-    except OSError:
-        _log.exception(
-            "MJPEG-Livestream auf Port %d nicht startbar -- nur der OPC-UA-Rueckfallweg",
-            config.http_port,
-        )
-        return None
-    await space.camera_stream_http_port.write_value(
-        ua.Variant(server.port, ua.VariantType.Int32)
-    )
-    return server
 
 
-def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
-    """Die Konfiguration der Kamera, die wirklich laeuft.
-
-    `space.config.camera_stream` kann `None` sein, waehrend die Quelle sehr
-    wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
-    haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
-    """
-    from ..profiles import CameraStreamConfig
-
-    return (
-        getattr(source, "_camera_config", None)
-        or space.config.camera_stream
-        or CameraStreamConfig()
-    )
 
 
-async def _start_camera_health(
-    space: VisionAddressSpace,
-    assets: VisionAssetNodes | None,
-    sources: Mapping[str, DetectionSource],
-    opened: Mapping[str, bool],
-) -> CameraHealthPublisher | None:
-    """Verbindet den Kamera-Watchdog mit `DeviceHealth` der Anlagensicht.
-
-    Der Watchdog in `camera.py` erkennt haengende Kameras, meldet das aber nur
-    ins Log. Hier wird daraus ein Wert, den ein generischer OPC-UA-Client
-    sieht -- ohne Kenntnis dieses Repos.
-
-    Bewusst nicht an `_start_camera_stream` gehaengt: der Livestream ist eine
-    Debughilfe und kann fehlen, waehrend die Job-Quelle eine Kamera haelt.
-    Ohne Part 2 oder ohne Zustandsknoten passiert nichts.
-    """
-    if assets is None or not assets.device_health:
-        return None
-    source = _camera_owner(sources, opened)
-    if source is None:
-        # Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort, und sie
-        # bleibt stehen -- es gibt nichts, was sie spaeter widerlegen koennte.
-        _log.warning(
-            "Zustandsknoten der Anlagensicht vorhanden, aber keine geoeffnete "
-            "Kamera -- DeviceHealth bleibt auf FAILURE"
-        )
-        await write_device_health(assets.device_health, DeviceHealth.FAILURE)
-        return None
-    # Der normkonforme Ereignisweg von Part 2. Emittiert wird von
-    # `VisionMachine`, weil Clients ohnehin genau diesen Knoten abonnieren;
-    # `SourceNode` nennt die Komponente, um die es geht -- den Bildsensor,
-    # falls sein Modell bekannt ist, sonst die Anlagenwurzel.
-    alarms = (
-        HealthAlarms(
-            space.server,
-            space.vision_system,
-            assets.health_alarms,
-            source=assets.image_sensor or assets.root,
-        )
-        if assets.health_alarms
-        else None
-    )
-    publisher = CameraHealthPublisher(
-        source.camera,
-        assets.device_health,
-        _camera_config_of(space, source),
-        alarms=alarms,
-    )
-    # Der Watchdog reisst den Prozess, wenn er aufgibt; vorher soll noch ein
-    # letztes FAILURE rausgehen.
-    source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
-    publisher.start()
-    _log.info(
-        "Kamerazustand (OPC 40100-2) aus Profil '%s' auf %d Knoten, %d Alarme",
-        source.profile_id,
-        len(assets.device_health),
-        len(assets.health_alarms),
-    )
-    return publisher
-
-
-def _build_calibration_session(
-    sources: Mapping[str, DetectionSource],
-    opened: Mapping[str, bool],
-    config: VisionServerConfig,
-) -> CalibrationSession | None:
-    """Baut die (wiederverwendbare) Kalibrier-Session, falls moeglich.
-
-    Nur wenn die `apriltag`-Quelle offen ist -- dieselbe `SharedCamera` wie
-    Job und Livestream, kein zweiter Kamera-Zugriff -- und `config.apriltag`
-    gesetzt ist (auf den echten Pis der Fall, siehe `vision_server/server.py`; lokale
-    Entwicklung/Tests ohne explizite Konfiguration lassen das Feature aus).
-    """
-    if config.apriltag is None:
-        return None
-    source = sources.get("apriltag")
-    if source is None or not opened.get("apriltag") or getattr(source, "camera", None) is None:
-        return None
-    return CalibrationSession(source.camera, config.apriltag)
-
-
-def _calibration_info_payload(calibration: Any, path: Any) -> dict:
-    """JSON-faehige Kurzfassung der gerade *aktiven* Kalibrierung.
-
-    Anders als `CalibrationSession.progress`/`last_result` (Fortschritt
-    *einer Session*) beschreibt das hier, was `AprilTagDetectionSource`
-    tatsaechlich fuer Posen benutzt -- direkt nach dem Laden beim Start und
-    nach jeder interaktiven Neu-Kalibrierung.
-
-    `calibrationId`/`createdAt` liest diese Funktion aus der Datei nach,
-    statt sie hier ein zweites Mal zu erzeugen: `CameraCalibration` selbst
-    kennt `createdAt` gar nicht, und `calibration_id` ist bei einem frisch
-    berechneten Objekt noch leer -- das Format entsteht erst beim Schreiben
-    in `tagloc.calibration.save_calibration`. Einzige Ausnahme: die
-    Platzhalter-Kalibrierung, zu der keine Datei existiert.
-    """
-    from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
-
-    is_placeholder = calibration.calibration_id == PLACEHOLDER_CALIBRATION_ID
-    info = {
-        "placeholder": is_placeholder,
-        "frameId": calibration.frame_id,
-        "rms": None if is_placeholder else round(calibration.rms_reprojection_error, 4),
-        "samples": calibration.sample_count,
-        "board": dict(calibration.board),
-        "model": calibration.model,
-        "calibrationId": calibration.calibration_id or None,
-        "createdAt": None,
-        "path": str(path),
-    }
-    if not is_placeholder:
-        try:
-            raw = json.loads(Path(path).read_text(encoding="utf-8"))
-            info["calibrationId"] = raw.get("calibrationId")
-            info["createdAt"] = raw.get("createdAt")
-        except OSError:
-            pass
-    return info
-
-
-async def _write_calibration_info(node: Node | None, calibration: Any, path: Any) -> None:
-    """Schreibt `_calibration_info_payload` in `ActiveCalibrationInfo`.
-
-    Fehler landen nur im Log -- ein nicht schreibbarer Info-Knoten darf
-    weder den Start noch eine gerade erfolgreich gespeicherte Kalibrierung
-    zu Fall bringen.
-    """
-    if node is None or calibration is None:
-        return
-    try:
-        await node.write_value(json.dumps(_calibration_info_payload(calibration, path)))
-    except Exception:
-        _log.exception("ActiveCalibrationInfo konnte nicht geschrieben werden")
-
-
-async def _open_source(source: DetectionSource) -> bool:
-    """Oeffnet eine Quelle; `False`, wenn sie nicht betriebsbereit ist."""
-    started = asyncio.get_running_loop().time()
-    try:
-        await source.open()
-    except Exception:
-        _log.exception(
-            "Erkennungsquelle '%s' konnte nicht geoeffnet werden", source.profile_id
-        )
-        return False
-    duration = asyncio.get_running_loop().time() - started
-    if duration > 0.5:
-        _log.info("Quelle '%s' in %.1f s bereit", source.profile_id, duration)
-    return True
-
-
-@dataclass(frozen=True)
-class VisionMachine:
-    """Das fertig verdrahtete Vision-System eines Servers."""
-
-    config: VisionServerConfig
-    states: VisionStateMachines
-    events: VisionEvents
-    results: ResultStore
-    sources: Mapping[str, DetectionSource]
-    jobs: JobRunner
-    lag_watchdog: asyncio.Task | None = None
-    camera_stream: CameraStreamPublisher | None = None
-    #: MJPEG livestream over HTTP; `None` when disabled or the port was taken.
-    camera_http: MjpegServer | None = None
-    #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
-    assets: VisionAssetNodes | None = None
-    #: Schreibt `DeviceHealth` der Anlagensicht; `None` ohne Part 2, ohne
-    #: Zustandsknoten oder ohne geoeffnete Kamera.
-    camera_health: CameraHealthPublisher | None = None
-    #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
-    program: VisionProgram | None = None
-    #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
-    #: `StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
-    #: `AbortCalibration`.
-    calibration_session: CalibrationSession | None = None
-    #: Layer-2-Lauf (`layer2/run.py`); `None` ausser auf dem Hand-Pi.
-    layer2_run: Any = None
-    #: Hand-Auge-Kalibrierung (`handeye_session.py`); `None` ausser auf dem Hand-Pi.
-    hand_eye_session: Any = None
-    #: Zellen-Ueberwachung (`cellwatch.py`); `None` ausser auf der Deckenkamera.
-    cell_watch: Any = None
-
-    async def aclose(self) -> None:
-        """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
-
-        Best-Effort und idempotent; braucht im Aufrufer einen Signal-Handler,
-        sonst laeuft es unter systemd nicht.
-        """
-        if self.calibration_session is not None and self.calibration_session.running:
-            await self.calibration_session.abort()
-        if self.layer2_run is not None:
-            await self.layer2_run.abort("Server faehrt herunter")
-        if self.hand_eye_session is not None and self.hand_eye_session.active:
-            await self.hand_eye_session.abort()
-        if self.cell_watch is not None:
-            await self.cell_watch.aclose()
-        # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
-        # sonst als Haenger durch, und der letzte Wert im Adressraum waere
-        # OFF_SPEC statt des letzten echten Zustands.
-        if self.camera_health is not None:
-            await self.camera_health.stop()
-        await cancel_and_wait(self.lag_watchdog)
-        if self.camera_http is not None:
-            await self.camera_http.stop()
-        if self.camera_stream is not None:
-            await self.camera_stream.stop()
-        await self.jobs.cancel_running()
-        for source in self.sources.values():
-            try:
-                await source.close()
-            except Exception:
-                _log.exception("Schliessen der Quelle '%s' fehlgeschlagen", source.profile_id)
 
 
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
