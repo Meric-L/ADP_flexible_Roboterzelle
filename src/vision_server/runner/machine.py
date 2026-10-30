@@ -63,9 +63,9 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
-    #: MJPEG livestream over HTTP; `None` when disabled or the port was taken.
+    #: MJPEG-Livestream ueber HTTP; `None`, wenn aus oder der Port belegt war.
     camera_http: MjpegServer | None = None
-    #: OPC 40100-2 asset view; `None` when Part 2 is not configured.
+    #: Anlagensicht nach OPC 40100-2; `None`, wenn Part 2 nicht konfiguriert ist.
     assets: VisionAssetNodes | None = None
     #: Schreibt `DeviceHealth` der Anlagensicht; `None` ohne Part 2, ohne
     #: Zustandsknoten oder ohne geoeffnete Kamera.

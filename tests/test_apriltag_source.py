@@ -190,7 +190,7 @@ class ConfigurationIdTest(unittest.TestCase):
 
 class ApplyCalibrationTest(unittest.TestCase):
     """`apply_calibration` -- der Hot-Reload-Pfad nach einer interaktiven
-    Kalibrierung (siehe `CalibrationSession`/`runner.py`), ohne Server-Neustart."""
+    Kalibrierung (siehe `CalibrationSession`/`runner/calibration.py`), ohne Server-Neustart."""
 
     def test_replaces_the_calibration_object(self):
         with tempfile.TemporaryDirectory() as folder:

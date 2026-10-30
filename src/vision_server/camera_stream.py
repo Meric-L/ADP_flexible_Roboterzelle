@@ -34,7 +34,7 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
     """Laeuft im Worker-Thread: JPEG-Encode plus Base64. `None` bei Encode-Fehler.
 
     Import bewusst hier drin statt auf Modulebene, damit ein Import dieses
-    Moduls (z. B. ueber `runner.py`) kein `cv2` braucht, solange kein Stream
+    Moduls (z. B. ueber `runner/`) kein `cv2` braucht, solange kein Stream
     laeuft.
     """
     import cv2
@@ -80,7 +80,7 @@ class CameraStreamPublisher:
 
     Oeffnet und schliesst die Kamera **nicht** selbst — die gehoert der
     Erkennungsquelle, die dieselbe `SharedCamera`-Instanz reicht (siehe
-    `runner.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
+    `runner/livestream.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
     Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
     sehen, keine Diff-Logik.
 

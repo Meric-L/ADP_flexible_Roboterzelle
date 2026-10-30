@@ -1,7 +1,7 @@
 """Kleine asyncio-Helfer, die mehrere Module gleich brauchen.
 
-Nur Standardbibliothek: auch die reinen OPC-UA-Clients unter `tools/`
-importieren von hier, ohne dabei Server-Code mitzuziehen.
+Nur Standardbibliothek: wer von hier importiert, zieht weder asyncua noch
+Server-Code mit.
 """
 
 import asyncio

@@ -22,7 +22,7 @@ Worker der Session dauerhaft blockiert (live gefunden 2026-09-28, siehe
 Auswertung (Ecken-Erkennung je Aufnahme + `calibrate_from_samples`) als
 Hintergrund-Aufgabe an und kehrt sofort zurueck; das Ergebnis erscheint in
 `progress["result"]`, sobald es fertig ist (`progress["processing"]` zeigt an,
-dass noch gerechnet wird). `runner.py` pausiert dafuer den Livestream, um dem
+dass noch gerechnet wird). `runner/calibration.py` pausiert dafuer den Livestream, um dem
 Pi die volle CPU zu geben.
 
 Preis dieser Entkopplung: waehrend der Aufnahme gibt es kein Live-Feedback
@@ -117,7 +117,7 @@ class CalibrationSession:
     """Sammelt Kamera-Frames, bis `finish()` sie im Hintergrund auswertet.
 
     Wiederverwendbar: `start()` setzt den internen Zustand vollstaendig
-    zurueck, `runner.py` haelt darum eine einzige Instanz ueber mehrere
+    zurueck, `runner/calibration.py` haelt darum eine einzige Instanz ueber mehrere
     Start/Finish-Zyklen.
 
     Die `tagloc`-Funktionen (`detect_board`, `build_board`,
@@ -166,7 +166,7 @@ class CalibrationSession:
         #: `asyncio.Task` ohne gehaltene Referenz vorzeitig einsammeln).
         self._pending_saves: set = set()
         #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
-        #: frisch berechneten `CameraCalibration`-Objekt -- `runner.py` setzt
+        #: frisch berechneten `CameraCalibration`-Objekt -- `runner/calibration.py` setzt
         #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
         #: Server-Neustart auf den neuen Stand zu bringen.
         self._on_calibrated = on_calibrated
@@ -191,7 +191,7 @@ class CalibrationSession:
         #: `finish()`) laeuft -- siehe `busy`/`wait_for_processing`.
         self._processing = False
         #: Gesetzt, sobald keine Hintergrund-Auswertung mehr laeuft (auch
-        #: initial). `runner.py` wartet darauf, um den pausierten Livestream
+        #: initial). `runner/calibration.py` wartet darauf, um den pausierten Livestream
         #: wieder freizugeben.
         self._processing_done = asyncio.Event()
         self._processing_done.set()
@@ -203,7 +203,7 @@ class CalibrationSession:
     def set_on_calibrated(self, callback: Callable[[Any], Any] | None) -> None:
         """Setzt/entfernt den `on_calibrated`-Callback nachtraeglich.
 
-        `runner.py` braucht dafuer sowohl die Erkennungsquelle als auch den
+        `runner/calibration.py` braucht dafuer sowohl die Erkennungsquelle als auch den
         Stream-Annotator, die beide erst nach der Session gebaut werden --
         ein Setter macht das moeglich, ohne die Bau-Reihenfolge umzustellen.
         """
@@ -310,7 +310,7 @@ class CalibrationSession:
     async def wait_for_processing(self) -> None:
         """Wartet, bis eine per `finish()` gestartete Hintergrund-Auswertung
         fertig ist (`progress["processing"]` wird wieder `False`).
-        `runner.py` nutzt das, um den waehrend der Auswertung pausierten
+        `runner/calibration.py` nutzt das, um den waehrend der Auswertung pausierten
         Livestream wieder freizugeben."""
         await self._processing_done.wait()
 
@@ -555,7 +555,7 @@ class CalibrationSession:
 
     async def abort(self) -> None:
         """Stoppt ohne zu speichern. Waehrend einer laufenden
-        Hintergrund-Auswertung nicht aufrufbar (siehe `busy`) -- `runner.py`
+        Hintergrund-Auswertung nicht aufrufbar (siehe `busy`) -- `runner/calibration.py`
         prueft das vor dem Aufruf."""
         await self._stop()
 

@@ -249,7 +249,7 @@ class ResourcesMixin:
     def apply_calibration(self, calibration: Any) -> None:
         """Ersetzt die aktive Kalibrierung ohne Neustart.
 
-        Aufgerufen aus `runner.py`, direkt nachdem eine interaktive
+        Aufgerufen aus `runner/calibration.py`, direkt nachdem eine interaktive
         `CalibrationSession` (`StartCalibration`/`CaptureCalibrationSample`/
         `FinishCalibration`) eine neue Kalibrierung berechnet und gespeichert
         hat. `_locate()` liest `self._calibration` bei jedem Job frisch --

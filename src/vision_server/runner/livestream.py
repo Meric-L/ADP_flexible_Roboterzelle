@@ -16,11 +16,11 @@ _log = logging.getLogger(__package__)
 
 
 def _build_annotator(source: DetectionSource):
-    """Build the stream overlay for a source, if it can provide one.
+    """Baut das Stream-Overlay zu einer Quelle, falls sie eines liefern kann.
 
-    Stream and job use the same loaded calibration and tag map -- if the
-    image shows something different from the job result, it's not because
-    of two configurations. Der Detektor ist bewusst NICHT derselbe: Job und
+    Stream und Job nutzen dieselbe geladene Kalibrierung und Tag-Map -- zeigt
+    das Bild etwas anderes als das Job-Ergebnis, liegt es nicht an zwei
+    Konfigurationen. Der Detektor ist bewusst NICHT derselbe: Job und
     Stream liefen bis 2026-09-24 auf einer geteilten Instanz, beide mit
     `subpixel_corner_refinement` aus der Config (aktuell `True` -- Layer 1
     braucht das, siehe `AprilTagProfileConfig`). Live auf pi1 gemessen

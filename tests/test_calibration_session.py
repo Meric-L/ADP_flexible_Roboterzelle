@@ -608,7 +608,7 @@ class DetectBoardHangTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class OnCalibratedTest(unittest.IsolatedAsyncioTestCase):
-    """`on_calibrated` -- `runner.py` haengt hier den Hot-Reload von
+    """`on_calibrated` -- `runner/calibration.py` haengt hier den Hot-Reload von
     Erkennung/Overlay ein (`AprilTagDetectionSource.apply_calibration` &
     Co.), ausgeloest direkt nach dem Speichern in der Hintergrund-Auswertung."""
 

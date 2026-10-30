@@ -12,11 +12,11 @@ _log = logging.getLogger(__package__)
 def _camera_owner(
     sources: Mapping[str, DetectionSource], opened: Mapping[str, bool]
 ) -> DetectionSource | None:
-    """Return the first opened source holding a shared camera.
+    """Gibt die erste geoeffnete Quelle zurueck, die eine geteilte Kamera haelt.
 
-    Deliberately via the `camera` attribute rather than a profile name:
-    this used to be `sources.get("image_recognition")`, and renaming or
-    removing that profile would have silently killed the livestream.
+    Bewusst ueber das Attribut `camera` statt ueber einen Profilnamen: frueher
+    war das `sources.get("image_recognition")`, und das Umbenennen oder
+    Entfernen dieses Profils haette den Livestream still abgeschaltet.
     """
     for profile in sorted(sources):
         if not opened.get(profile):

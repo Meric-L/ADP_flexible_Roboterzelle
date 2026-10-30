@@ -46,7 +46,7 @@ class VisionAddressSpace:
     #: ("off", "apriltag", "calibration"). `None` without a livestream.
     camera_stream_mode: Node | None = None
     #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
-    #: `runner.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
+    #: `runner/calibration.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
     calibration_progress: Node | None = None
     #: Die aktuell geladene Tag-Map als JSON. Nur lesen -- geschrieben wird
     #: ueber die Methode `SetTagMap`, damit eine ungueltige Karte abgelehnt
@@ -265,7 +265,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     tag_map_json: Node | None = None
     active_calibration_info: Node | None = None
     if config.apriltag is not None:
-        # Nur lesen: die laufende `CalibrationSession` in `runner.py` schreibt
+        # Nur lesen: die laufende `CalibrationSession` in `runner/calibration.py` schreibt
         # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
         # eine Kalibrier-Session ist auch ohne Livestream denkbar (z. B. lokale
         # Entwicklung), auch wenn sie in der Praxis immer zusammen laufen.
@@ -284,7 +284,7 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             "",
             ua.VariantType.String,
         )
-        # Leer, bis `runner.py` nach dem Oeffnen der Erkennungsquelle den
+        # Leer, bis `runner/calibration.py` nach dem Oeffnen der Erkennungsquelle den
         # ersten Wert schreibt (echte Datei oder Platzhalter) -- kein
         # sinnvoller Default vorher, ohne die Kalibrierdatei gelesen zu haben.
         active_calibration_info = await vision_system.add_variable(

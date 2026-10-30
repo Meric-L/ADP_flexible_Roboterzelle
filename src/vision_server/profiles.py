@@ -49,7 +49,7 @@ class AprilTagProfileConfig:
     #: `True` aktiviert `cv2.aruco.CORNER_REFINE_APRILTAG` (Subpixel-Ecken)
     #: im Job-Detektor (`AprilTagDetectionSource`). Betrifft seit dem
     #: Detektor-Split (Commit 3d91ee1) NUR noch den Job-Pfad -- der
-    #: Livestream-Overlay bekommt in `runner._build_annotator` eine eigene
+    #: Livestream-Overlay bekommt in `runner.livestream._build_annotator` eine eigene
     #: Instanz mit dieser Verfeinerung fest aus, unabhaengig von diesem Feld.
     #:
     #: Default `False`: live auf pi1 bestaetigt, dass Layer 1 ("Module
@@ -86,7 +86,7 @@ class AprilTagProfileConfig:
     #: Zellueberwachung nutzen dasselbe Mapping, sonst zeigt das Overlay
     #: andere Tags. Ein ausdrueckliches `cornerRefinementMethod` gewinnt
     #: gegen `subpixel_corner_refinement`, wird fuer das Overlay aber
-    #: entfernt (siehe `runner._build_annotator`). Preset und Override per
+    #: entfernt (siehe `runner.livestream._build_annotator`). Preset und Override per
     #: `VISION_APRILTAG_DETECTOR_PARAMS` siehe `server.apriltag_config`.
     #: `hash=False`: ein dict ist nicht hashbar, die Config soll es bleiben.
     detector_parameters: dict[str, Any] = field(default_factory=dict, hash=False)
@@ -159,7 +159,7 @@ class CameraStreamConfig:
 
     backend: str = "picamera2"
     #: `False` unterdrueckt nur die Stream-KNOTEN/den Publisher/den
-    #: MJPEG-Server (siehe `address_space.py`, `runner._start_camera_stream`)
+    #: MJPEG-Server (siehe `address_space.py`, `runner.livestream._start_camera_stream`)
     #: -- die uebrigen Felder hier (v. a. `resolution`) bleiben unveraendert
     #: in Kraft, weil `detection/apriltag.py` dieselbe `CameraStreamConfig`
     #: auch fuer die Job-Kamera (`SharedCamera`) nutzt. NICHT stattdessen das

@@ -102,7 +102,7 @@ class AprilTagDetectionSource(
         self._config = config
         self._camera_config = camera_config or CameraStreamConfig()
         #: Von aussen uebergeben, wenn `camera_stream.py` dasselbe Handle
-        #: braucht (siehe `runner.py`).
+        #: braucht (siehe `runner/livestream.py`).
         self.camera = camera if camera is not None else SharedCamera(self._camera_config)
         #: Einspeisbar, damit Tests ohne OpenCV und ohne Dateien laufen.
         self._detector = detector
@@ -123,7 +123,7 @@ class AprilTagDetectionSource(
         self._drift = None
         #: Welttags des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
         self._world_tag_sample: list = []
-        #: Laufende `MeasureTags`-Aufrufe (`runner.py`); das Stream-Overlay haelt
+        #: Laufende `MeasureTags`-Aufrufe (`runner/measure_tags.py`); das Stream-Overlay haelt
         #: solange an.
         self.measure_calls = 0
         #: Neuestes Ergebnis in voller Aufloesung, egal aus welchem Pfad

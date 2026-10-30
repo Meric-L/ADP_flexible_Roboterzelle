@@ -1,9 +1,9 @@
-"""Who feeds the livestream depends on an attribute, not a name.
+"""Wer den Livestream speist, haengt an einem Attribut, nicht an einem Namen.
 
-`runner._start_camera_stream` used to get the camera via
-`sources.get("image_recognition")`. Renaming or removing that profile would
-silently kill the livestream -- just a log line. These tests pin down that
-selection goes by the presence of an opened camera.
+`runner._start_camera_stream` holte die Kamera frueher ueber
+`sources.get("image_recognition")`. Das Umbenennen oder Entfernen dieses
+Profils haette den Livestream still abgeschaltet -- nur eine Log-Zeile. Diese
+Tests halten fest, dass die Auswahl an einer geoeffneten Kamera haengt.
 """
 
 import unittest
@@ -18,7 +18,7 @@ from vision_server.runner import _build_annotator, _camera_owner, _start_camera_
 
 
 class FakeCamera:
-    """Stands in for a source holding a camera."""
+    """Steht fuer eine Quelle, die eine Kamera haelt."""
 
 
 class CameralessSource(DetectionSource):
@@ -53,7 +53,7 @@ class CameraOwnerTest(unittest.TestCase):
         self.assertIsNone(_camera_owner(sources, {"a": True}))
 
     def test_does_not_depend_on_the_profile_name(self):
-        """The actual point: an arbitrarily named profile is still found."""
+        """Der eigentliche Punkt: ein beliebig benanntes Profil wird trotzdem gefunden."""
         source = CameraSource()
         source.profile_id = "voellig_anderer_name"
         self.assertIs(_camera_owner({"x": source}, {"x": True}), source)
