@@ -20,7 +20,7 @@ from asyncua import Client, ua
 
 _log = logging.getLogger("calibration-client")
 
-#: Fehlercodes aus doc/vision-server-interface.md ("Fehlercodes (Error)") --
+#: Fehlercodes aus doc/projektdoku/vision-server-interface.md ("Fehlercodes (Error)") --
 #: kein Import aus `vision_server`, dieses Skript bleibt ein reiner
 #: OPC-UA-Client, unabhaengig vom Server-Code.
 BUSY = 3

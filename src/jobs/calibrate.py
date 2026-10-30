@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 
 def _frame_id() -> str:
-    """Return this Pi's frame ID, as determined by `OPCUA/server.py`."""
+    """Rahmen-ID dieses Pi, wie `vision_server/server.py` sie je Pi festlegt."""
     import os
     import socket
 

@@ -130,7 +130,7 @@ class HealthAlarms:
 
     Emittiert wird vom uebergebenen `emitter` -- in der Praxis `VisionMachine`,
     weil Clients ohnehin genau diesen Knoten abonnieren (siehe
-    `doc/vision-server-interface.md` 7.2). `SourceNode` nennt trotzdem die
+    `doc/projektdoku/vision-server-interface.md` 7.2). `SourceNode` nennt trotzdem die
     Komponente, um die es geht.
 
     Wirft nie: ein fehlgeschlagener Alarm darf weder die Zustandsvariable noch

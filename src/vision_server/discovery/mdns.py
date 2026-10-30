@@ -1,6 +1,7 @@
 """mDNS-Ankuendigung eines OPC-UA-Servers im lokalen Netz.
 
-Setzt die Kurzanleitung des Betreuers um (`betreuer/OPC UA-mDNS-Kurzanleitung.md`):
+Setzt die Kurzanleitung des Betreuers um (die Datei liegt nicht im Repo,
+`betreuer/` wurde am 23.09.2026 entfernt):
 Dienst-Typ `_opcua-tcp._tcp.local.`, TXT-Eintraege `path` und `caps`,
 Anmeldung im laufenden Server, Abmeldung beim Beenden.
 

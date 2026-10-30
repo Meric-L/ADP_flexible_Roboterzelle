@@ -1,7 +1,8 @@
 """Rudimentaere Umsetzung von OPC-UA-Programmen (Spec Part 10).
 
-Uebernommen aus der Vorlage des Betreuers (`betreuer/OPC_UA_Program.py`,
-Robert Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024).
+Uebernommen aus der Vorlage des Betreuers (`OPC_UA_Program.py`, Robert
+Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024). Die Vorlage liegt nicht
+im Repo (`betreuer/` wurde am 23.09.2026 entfernt, die Datei war nie getrackt).
 
 Gegenueber der Vorlage geaendert -- jede Aenderung war noetig, damit sich das
 Framework ueberhaupt bzw. sauber einbauen laesst:
