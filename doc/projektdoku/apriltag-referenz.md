@@ -1165,6 +1165,11 @@ ohne Bezugskanten und ohne Layer 1. Der Pi bleibt unverändert: Es wird nur `Mea
   Über 3 mm bzw. 1° kommt eine Warnung („Hand-Auge-Kalibrierung prüfen“). Die Schwellen sind Annahmen
   und nicht an der Hardware gemessen.
 
+Ein Messversuch zum tatsächlichen Gewinn durch diese Mittelung ist in
+[`layer2-informationsgewinn.md`](layer2-informationsgewinn.md) beschrieben. Er vergleicht
+gepaarte Messungen aus gespeicherten Rohbildern; eine Aussage über Genauigkeit
+setzt eine unabhängig vermessene Tag-Pose voraus.
+
 **Datenformat**
 
 `ModuleTag.measurement` (`TagCameraMeasurement`) mit `method: "robot-fk"`. Der Wert `"camera-edges"` gilt

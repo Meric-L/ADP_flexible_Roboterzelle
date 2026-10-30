@@ -37,6 +37,7 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 | [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | Konzept: was AprilTags hier bedeuten, wie Layer 1 und Layer 2 dieselbe Funktionalität benutzen |
 | [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate, Payload |
 | [`doc/projektdoku/apriltag-e2e-test.md`](doc/projektdoku/apriltag-e2e-test.md) | **Wie man alles durchtestet** — vom PC bis zur Raspberry-Pi-Kamera |
+| [`doc/projektdoku/layer2-informationsgewinn.md`](doc/projektdoku/layer2-informationsgewinn.md) | Messversuch: Informationsgewinn durch mehrere Frames und Ansichten |
 | [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend (OPC 40100) |
 | [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche der Zelle und die Auffindbarkeit im Netz |
 | [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | Ist-Stand des Vision-Systems |

@@ -42,6 +42,7 @@ nicht gibt.
 | [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md) | vision | fertig | Meric, `Agent: Livestream-Tags aus voller Auflösung` | 21.10.2026 |
 | [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | fertig | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
 | [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md) | apriltag | fertig | Meric, `Agent: Live-Ansicht Tag-Einmessen` | 21.10.2026 |
+| [`layer2-informationsgewinn.md`](layer2-informationsgewinn.md) | apriltag | fertig (Hardwareaufnahme offen) | `Agent: Layer-2-Vergleichsversuch` | 30.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
