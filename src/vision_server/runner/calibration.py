@@ -13,7 +13,7 @@ from ..calibration_session import CalibrationSession
 from ..config import VisionServerConfig
 from ..detection import DetectionSource
 from ..errors import VisionErrorCode
-from .uamethods import code_reply
+from .uamethods import add_vision_method, code_reply
 from .wiring import Wiring
 
 _log = logging.getLogger(__package__)
@@ -332,10 +332,6 @@ async def install_calibration_methods(wiring: Wiring) -> None:
         ),
         ("AbortCalibration", _abort_calibration_method(wiring), [ua.VariantType.Int32]),
     ):
-        wiring.methods[name] = await space.vision_system.add_method(
-            ua.NodeId(f"{wiring.method_prefix}.{name}", space.own_idx),
-            ua.QualifiedName(name, space.own_idx),
-            handler,
-            [],
-            outputs,
+        await add_vision_method(
+            space, wiring.config, wiring.methods, name, handler, [], outputs
         )

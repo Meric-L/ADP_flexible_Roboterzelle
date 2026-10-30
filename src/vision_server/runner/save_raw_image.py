@@ -10,7 +10,7 @@ from asyncua import Node, ua, uamethod
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
 from ..errors import VisionErrorCode
-from ..profiles import _REPO_ROOT
+from .uamethods import add_vision_method, repo_relative, text_reply
 
 _log = logging.getLogger(__package__)
 
@@ -35,38 +35,26 @@ async def _install_save_raw_image(
     )
     directory = config.raw_image_dir
 
-    def reply(name: str, code: VisionErrorCode):
-        return (
-            ua.Variant(name, ua.VariantType.String),
-            ua.Variant(int(code), ua.VariantType.Int32),
-        )
-
     @uamethod
     async def save_raw_image_method(parent):
         if busy():
             _log.warning("SaveRawImage waehrend laufendem Job abgelehnt")
-            return reply("", VisionErrorCode.BUSY)
+            return text_reply("", VisionErrorCode.BUSY)
         frame = camera_source.camera.latest_frame
         if frame is None:
-            return reply("", VisionErrorCode.INVALID_STATE)
+            return text_reply("", VisionErrorCode.INVALID_STATE)
         try:
             path = await asyncio.to_thread(
                 save_raw_image, frame.image, directory, frame_id
             )
         except Exception:
             _log.exception("Rohbild konnte nicht gespeichert werden")
-            return reply("", VisionErrorCode.INTERNAL)
-        try:
-            name = path.relative_to(_REPO_ROOT).as_posix()
-        except ValueError:
-            name = path.as_posix()  # ausserhalb des Repos: absoluter Pfad
+            return text_reply("", VisionErrorCode.INTERNAL)
+        name = repo_relative(path)
         _log.info("Rohbild gespeichert: %s", name)
-        return reply(name, VisionErrorCode.OK)
+        return text_reply(name, VisionErrorCode.OK)
 
-    methods["SaveRawImage"] = await space.vision_system.add_method(
-        ua.NodeId(f"{config.vision_system_name}.SaveRawImage", space.own_idx),
-        ua.QualifiedName("SaveRawImage", space.own_idx),
-        save_raw_image_method,
-        [],
-        [ua.VariantType.String, ua.VariantType.Int32],
+    await add_vision_method(
+        space, config, methods, "SaveRawImage", save_raw_image_method,
+        [], [ua.VariantType.String, ua.VariantType.Int32],
     )

@@ -14,7 +14,7 @@ from asyncua import Node, ua, uamethod
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
 from ..errors import VisionErrorCode
-from ..profiles import _REPO_ROOT
+from .uamethods import add_vision_method, repo_relative
 
 _log = logging.getLogger(__package__)
 
@@ -22,12 +22,8 @@ _log = logging.getLogger(__package__)
 #: Ein Use-Case-Foto muss mindestens so viel juenger als der Methodenaufruf
 #: sein (Bewegungsunschaerfe/Nachschwingen der Hand abwarten).
 USE_CASE_MIN_FRAME_AGE_S = 0.3
-
-
 #: Nach so vielen Sekunden ohne frisches Bild gibt `SaveUseCaseImage` auf.
 USE_CASE_FRESH_FRAME_TIMEOUT_S = 5.0
-
-
 USE_CASE_POLL_INTERVAL_S = 0.05
 
 
@@ -108,6 +104,23 @@ def _build_use_case_pi_meta(
     return meta
 
 
+async def _wait_for_fresh_frame(camera_source: Any) -> Any:
+    """Wartet auf ein Bild, das mindestens `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand.
+
+    Gibt `None` zurueck, wenn nach `USE_CASE_FRESH_FRAME_TIMEOUT_S` keines kam.
+    """
+    loop = asyncio.get_running_loop()
+    t0 = loop.time()
+    deadline = t0 + USE_CASE_FRESH_FRAME_TIMEOUT_S
+    while True:
+        frame = camera_source.camera.latest_frame
+        if frame is not None and frame.timestamp >= t0 + USE_CASE_MIN_FRAME_AGE_S:
+            return frame
+        if loop.time() >= deadline:
+            return None
+        await asyncio.sleep(USE_CASE_POLL_INTERVAL_S)
+
+
 async def _install_save_use_case_image(
     space: VisionAddressSpace,
     config: VisionServerConfig,
@@ -148,23 +161,16 @@ async def _install_save_use_case_image(
         if series < 1:
             _log.warning("SaveUseCaseImage: ungueltige Reihe %s", series)
             return reply("", VisionErrorCode.INVALID_ARGUMENT)
-        loop = asyncio.get_running_loop()
-        t0 = loop.time()
-        deadline = t0 + USE_CASE_FRESH_FRAME_TIMEOUT_S
-        frame = None
-        while True:
-            frame = camera_source.camera.latest_frame
-            if frame is not None and frame.timestamp >= t0 + USE_CASE_MIN_FRAME_AGE_S:
-                break
-            if loop.time() >= deadline:
-                _log.warning("SaveUseCaseImage: kein frisches Kamerabild")
-                return reply("", VisionErrorCode.INVALID_STATE)
-            await asyncio.sleep(USE_CASE_POLL_INTERVAL_S)
+        frame = await _wait_for_fresh_frame(camera_source)
+        if frame is None:
+            _log.warning("SaveUseCaseImage: kein frisches Kamerabild")
+            return reply("", VisionErrorCode.INVALID_STATE)
         calibration = getattr(camera_source, "calibration", None)
         intrinsics_source = getattr(camera_source, "intrinsics_source", "calibration")
         try:
             pi_meta = _build_use_case_pi_meta(
-                config, frame, frame_id, loop.time(), calibration, intrinsics_source
+                config, frame, frame_id, asyncio.get_running_loop().time(),
+                calibration, intrinsics_source
             )
         except Exception:
             _log.exception("Use-Case-Metadaten unvollstaendig")
@@ -184,17 +190,12 @@ async def _install_save_use_case_image(
         except Exception:
             _log.exception("Use-Case-Bild konnte nicht gespeichert werden")
             return reply("", VisionErrorCode.INTERNAL)
-        try:
-            name = path.relative_to(_REPO_ROOT).as_posix()
-        except ValueError:
-            name = path.as_posix()  # ausserhalb des Repos: absoluter Pfad
+        name = repo_relative(path)
         _log.info("Use-Case-Bild gespeichert: %s", name)
         return reply(name, VisionErrorCode.OK, json.dumps(measurement, ensure_ascii=False))
 
-    methods["SaveUseCaseImage"] = await space.vision_system.add_method(
-        ua.NodeId(f"{config.vision_system_name}.SaveUseCaseImage", space.own_idx),
-        ua.QualifiedName("SaveUseCaseImage", space.own_idx),
-        save_use_case_image_method,
+    await add_vision_method(
+        space, config, methods, "SaveUseCaseImage", save_use_case_image_method,
         [ua.VariantType.Int32, ua.VariantType.String],
         [ua.VariantType.String, ua.VariantType.String, ua.VariantType.Int32],
     )

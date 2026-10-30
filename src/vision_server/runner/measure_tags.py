@@ -4,12 +4,13 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from asyncua import Node, ua, uamethod
+from asyncua import Node, ua
 
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
 from ..errors import VisionErrorCode
 from ..state_machine import VisionStateMachines
+from .uamethods import add_vision_method, json_method, text_reply
 
 _log = logging.getLogger(__package__)
 
@@ -48,24 +49,11 @@ async def _install_measure_tags(
 
     def refusal(code: VisionErrorCode, message: str):
         result = {"schema": RESULT_SCHEMA, "tags": [], "error": f"{code.name}: {message}"}
-        return (
-            ua.Variant(dumps(result), ua.VariantType.String),
-            ua.Variant(int(code), ua.VariantType.Int32),
-        )
+        return text_reply(dumps(result), code)
 
-    @uamethod
-    async def measure_tags(parent, request_json: str):
+    async def measure(request, request_json: str):
         """1:MeasureTags -- Tags messen, nur in Kamerakoordinaten."""
-        try:
-            request = parse_request(request_json or "")
-        except ValueError as error:
-            _log.warning("MeasureTags abgelehnt: %s", error)
-            return refusal(VisionErrorCode.INVALID_ARGUMENT, str(error))
-        if states.state_names()[0] != "Operational":
-            return refusal(VisionErrorCode.INVALID_STATE, "Vision-System nicht betriebsbereit")
-        if busy() or blocked_by():
-            return refusal(VisionErrorCode.BUSY, "Job, Kalibrierung oder Tag-Einmessung laeuft")
-        # Solange gemessen wird, haelt das Stream-Overlay an (siehe unten).
+        # Solange gemessen wird, haelt das Stream-Overlay an (`measure_calls`).
         apriltag_source.measure_calls += 1
         activity.active = True
         try:
@@ -81,15 +69,18 @@ async def _install_measure_tags(
         except Exception:
             _log.exception("LastTagMeasurement konnte nicht geschrieben werden")
         code = VisionErrorCode.DETECTION_FAILED if result["error"] else VisionErrorCode.OK
-        return (
-            ua.Variant(payload, ua.VariantType.String),
-            ua.Variant(int(code), ua.VariantType.Int32),
-        )
+        return text_reply(payload, code)
 
-    methods["MeasureTags"] = await space.vision_system.add_method(
-        ua.NodeId(f"{config.vision_system_name}.MeasureTags", space.own_idx),
-        ua.QualifiedName("MeasureTags", space.own_idx),
-        measure_tags,
-        [ua.VariantType.String],
-        [ua.VariantType.String, ua.VariantType.Int32],
+    handler = json_method(
+        "MeasureTags",
+        states,
+        parse=parse_request,
+        refuse=refusal,
+        run=measure,
+        busy=lambda: busy() or blocked_by(),
+        busy_message="Job, Kalibrierung oder Tag-Einmessung laeuft",
+    )
+    await add_vision_method(
+        space, config, methods, "MeasureTags", handler,
+        [ua.VariantType.String], [ua.VariantType.String, ua.VariantType.Int32],
     )

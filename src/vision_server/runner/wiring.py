@@ -55,16 +55,6 @@ class Wiring:
     #: Reihenfolge der Anlage.
     methods: dict[str, Node] = field(default_factory=dict)
 
-    @property
-    def method_prefix(self) -> str:
-        """Praefix der Methoden-NodeIds.
-
-        Explizit statt der laufenden Nummer, die `add_method(own_idx, ...)`
-        vergeben wuerde: die verschiebt sich, sobald jemand davor einen Knoten
-        einfuegt, und das Frontend spricht die Methoden ueber feste Adressen an.
-        """
-        return self.config.vision_system_name
-
     def calibration_busy(self) -> bool:
         """Laeuft eine Kalibrier-Session oder ihre Hintergrund-Auswertung?"""
         return self.calibration_session is not None and self.calibration_session.busy

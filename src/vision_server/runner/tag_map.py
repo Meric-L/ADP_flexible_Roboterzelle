@@ -6,7 +6,7 @@ import logging
 from asyncua import ua, uamethod
 
 from ..errors import VisionErrorCode
-from .uamethods import code_reply
+from .uamethods import add_vision_method, code_reply
 from .wiring import Wiring
 
 _log = logging.getLogger(__package__)
@@ -109,10 +109,7 @@ async def install_tag_map(wiring: Wiring) -> None:
     if wiring.apriltag_source is None or space.tag_map_json is None:
         return
     await _publish_tag_map(wiring)
-    wiring.methods["SetTagMap"] = await space.vision_system.add_method(
-        ua.NodeId(f"{wiring.method_prefix}.SetTagMap", space.own_idx),
-        ua.QualifiedName("SetTagMap", space.own_idx),
-        _set_tag_map_method(wiring),
-        [ua.VariantType.String],
-        [ua.VariantType.Int32],
+    await add_vision_method(
+        space, wiring.config, wiring.methods, "SetTagMap", _set_tag_map_method(wiring),
+        [ua.VariantType.String], [ua.VariantType.Int32],
     )

@@ -1,6 +1,5 @@
 """Hand-Auge-Kalibrierung (Hand-Pi): vier Methoden und die Session."""
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -8,8 +7,7 @@ from asyncua import Node, ua, uamethod
 
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
-
-_log = logging.getLogger(__package__)
+from .uamethods import add_vision_method, code_reply
 
 
 async def _install_hand_eye_session(
@@ -44,31 +42,25 @@ async def _install_hand_eye_session(
     )
     await session.publish_idle()
 
-    method_prefix = config.vision_system_name
-
     @uamethod
     async def start_hand_eye(parent, options_json: str):
         """1:StartHandEyeCalibration -- Tag waehlen, Sitzung oeffnen."""
-        error = await session.start(options_json or "")
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await session.start(options_json or ""))
 
     @uamethod
     async def capture_hand_eye(parent, sample_json: str):
         """1:CaptureHandEyeSample -- gemeldete Flanschpose, Tag messen."""
-        error = await session.capture(sample_json or "")
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await session.capture(sample_json or ""))
 
     @uamethod
     async def finish_hand_eye(parent):
         """1:FinishHandEyeCalibration -- rechnen, speichern, aktivieren."""
-        error = await session.finish()
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await session.finish())
 
     @uamethod
     async def abort_hand_eye(parent):
         """1:AbortHandEyeCalibration -- verwerfen, nichts speichern."""
-        error = await session.abort()
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await session.abort())
 
     for name, handler, inputs in (
         ("StartHandEyeCalibration", start_hand_eye, [ua.VariantType.String]),
@@ -76,11 +68,7 @@ async def _install_hand_eye_session(
         ("FinishHandEyeCalibration", finish_hand_eye, []),
         ("AbortHandEyeCalibration", abort_hand_eye, []),
     ):
-        methods[name] = await space.vision_system.add_method(
-            ua.NodeId(f"{method_prefix}.{name}", space.own_idx),
-            ua.QualifiedName(name, space.own_idx),
-            handler,
-            inputs,
-            [ua.VariantType.Int32],
+        await add_vision_method(
+            space, config, methods, name, handler, inputs, [ua.VariantType.Int32]
         )
     return session

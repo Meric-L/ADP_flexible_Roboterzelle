@@ -1,6 +1,5 @@
 """Layer-2-Lauf (Hand-Pi): `StartLayer2Run` und `ReportRobotPose`."""
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -11,8 +10,7 @@ from ..config import VisionServerConfig
 from ..errors import VisionErrorCode
 from ..job import JobRunner
 from ..result_management import ResultStore
-
-_log = logging.getLogger(__package__)
+from .uamethods import add_vision_method, code_reply
 
 
 async def _install_layer2_run(
@@ -58,32 +56,22 @@ async def _install_layer2_run(
     jobs.add_finish_listener(layer2_run.on_job_finished)
     await layer2_run.publish_idle()
 
-    method_prefix = config.vision_system_name
-
     @uamethod
     async def start_layer2_run(parent, run_json: str):
         """1:StartLayer2Run -- Lauf mit den groben Posen aus Layer 1 starten."""
-        error = await layer2_run.start(run_json or "")
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await layer2_run.start(run_json or ""))
 
     @uamethod
     async def report_robot_pose(parent, report_json: str):
         """1:ReportRobotPose -- erreichte Flanschpose melden, Messung starten."""
-        error = await layer2_run.report(report_json or "")
-        return (ua.Variant(int(error), ua.VariantType.Int32),)
+        return code_reply(await layer2_run.report(report_json or ""))
 
-    methods["StartLayer2Run"] = await space.vision_system.add_method(
-        ua.NodeId(f"{method_prefix}.StartLayer2Run", space.own_idx),
-        ua.QualifiedName("StartLayer2Run", space.own_idx),
-        start_layer2_run,
-        [ua.VariantType.String],
-        [ua.VariantType.Int32],
-    )
-    methods["ReportRobotPose"] = await space.vision_system.add_method(
-        ua.NodeId(f"{method_prefix}.ReportRobotPose", space.own_idx),
-        ua.QualifiedName("ReportRobotPose", space.own_idx),
-        report_robot_pose,
-        [ua.VariantType.String],
-        [ua.VariantType.Int32],
-    )
+    for name, handler in (
+        ("StartLayer2Run", start_layer2_run),
+        ("ReportRobotPose", report_robot_pose),
+    ):
+        await add_vision_method(
+            space, config, methods, name, handler,
+            [ua.VariantType.String], [ua.VariantType.Int32],
+        )
     return layer2_run
