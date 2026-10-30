@@ -702,7 +702,7 @@ Eine Erkennungsquelle liefert die Erkennungen für einen Job und kennt kein OPC 
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/vision_server/detection/__init__.py` | Registry von Profilname zu Fabrik. Die Fabriken importieren ihr Modul erst beim Aufruf | `DETECTION_SOURCES`, `build_detection_sources()`, `build_detection_source()`, `JOBS_DIR` |
+| `src/vision_server/detection/__init__.py` | Registry von Profilname zu Fabrik. Die Fabriken importieren ihr Modul erst beim Aufruf | `DETECTION_SOURCES`, `build_detection_sources()`, `JOBS_DIR` |
 | `src/vision_server/detection/base.py` | Schnittstelle `DetectionSource` (ABC) mit Datenklassen und einem eigenen Ein-Thread-Executor für blockierende Arbeit | `DetectionSource` (`acquire_and_detect`, `open`, `close`, `run_blocking`), `Detection`, `DetectionRequest` |
 | `src/vision_server/detection/apriltag.py` | Profil `apriltag`: Kamera öffnen, Kalibrierung und Tag-Map laden, Bilder auswerten, Modulposen liefern, Messungen für andere Sitzungen. Zweitgrößte Datei des Pakets | `AprilTagDetectionSource` (`open`, `acquire_and_detect`, `measure_tags`, `measure_tag`, `measure_board`, `measure_board_view`, `measure_tag_reference`, `plan_tag_reference_view`, `observe_cell`, `apply_calibration`, `apply_tag_map`, `apply_hand_eye`), `TagSnapshot`, `robot_pose_from_parameters()` |
 | `src/vision_server/detection/script_runner.py` | Profil `calibration`: startet `src/jobs/calibrate.py` als Subprozess. Dessen stdout wird die Nachricht des Ergebnisses | `ScriptDetectionSource`, `TERMINATE_GRACE_S` |

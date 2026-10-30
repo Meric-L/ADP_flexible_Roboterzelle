@@ -226,24 +226,6 @@ def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -
     return {"schema": CLI_SCHEMA, "frameId": frame_id, "poses": entries}
 
 
-def poses_to_json(pairs, frame_id: str) -> dict:
-    """Same, for plain `(tag_id, Pose)` pairs -- the output of `transform`."""
-    return {
-        "schema": CLI_SCHEMA,
-        "frameId": frame_id,
-        "poses": [
-            {
-                "tagId": int(tag_id),
-                "moduleId": "",
-                "pose": pose_to_dict(pose),
-                "reprojErrorPx": 0.0,
-                "ambiguous": False,
-            }
-            for tag_id, pose in pairs
-        ],
-    }
-
-
 def poses_from_json(path: Path) -> tuple[str, list[tuple[int, Pose]]]:
     """Read a file written by `detect --json`."""
     path = Path(path)

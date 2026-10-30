@@ -160,9 +160,6 @@ class Program(ABC):
     @abstractmethod
     def resume_inputs(self) -> list: ...
 
-    def get_current_state(self) -> State:
-        return self.state_machine._current_state
-
     async def running_to_halted(self, message=None):
         """Haelt das laufende Programm an (z. B. im Fehlerfall)."""
         if not self.state_machine._current_state.number == 13:
