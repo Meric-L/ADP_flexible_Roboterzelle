@@ -1,19 +1,20 @@
-"""OPC 40100-2 (AMCM): what this vision system is made of, and how it is doing.
+"""OPC 40100-2 (AMCM): woraus dieses Vision-System besteht und wie es ihm geht.
 
-Part 1 answers "how do I operate the system"; Part 2 answers "what is it built
-from and what is its condition" -- computing device, image sensor, lens, with
-identification per component, plus a `Health` block carrying `DeviceHealth`.
-Written into that block is what `camera_health.py` derives from the camera
-watchdog; this module only builds the nodes. It carries no runtime coupling to
-the job path: nothing here can fail a job, and a job cannot change anything
-here.
+Teil 1 beantwortet "wie bediene ich das System", Teil 2 "woraus ist es gebaut
+und in welchem Zustand" -- Recheneinheit, Bildsensor, Objektiv, mit
+Identifikation je Komponente, dazu ein `Health`-Block mit `DeviceHealth`. In
+diesen Block schreibt `camera_health.py`, was es aus dem Kamera-Watchdog
+ableitet; dieses Modul baut nur die Knoten. Es hat keine Laufzeitkopplung an
+den Job-Pfad: nichts hier kann einen Job scheitern lassen, und ein Job kann
+hier nichts veraendern.
 
-Only the folders we actually fill are created. Instantiating the type with all
-its optional folders would also materialise their `<Placeholder>` templates as
-real nodes -- a node literally named `<ComputingDevice>` is wrong, and removing
-them afterwards measured 9 s for 26 deletions, because asyncua's recursive
-delete is pathologically slow. Building up instead of tearing down leaves ~50
-nodes rather than ~700 and runs in well under a second.
+Angelegt werden nur die Ordner, die wir tatsaechlich fuellen. Den Typ mit
+allen optionalen Ordnern zu instanziieren, machte auch deren
+`<Placeholder>`-Vorlagen zu echten Knoten -- ein Knoten, der woertlich
+`<ComputingDevice>` heisst, ist falsch, und sie nachtraeglich zu entfernen
+dauerte gemessen 9 s fuer 26 Loeschungen, weil asyncuas rekursives Loeschen
+krankhaft langsam ist. Aufbauen statt Abreissen hinterlaesst rund 50 statt
+rund 700 Knoten und laeuft in deutlich unter einer Sekunde.
 """
 
 import logging
@@ -44,20 +45,20 @@ from .profiles import AssetConfig
 
 _log = logging.getLogger(__name__)
 
-#: DI Identification fields we can fill honestly. What we do not know stays
-#: empty -- an invented serial number is worse than a blank one.
+#: Felder der DI-Identification, die wir ehrlich fuellen koennen. Was wir nicht
+#: wissen, bleibt leer -- eine erfundene Seriennummer ist schlimmer als eine leere.
 _IDENTIFICATION_FIELDS = ("Manufacturer", "Model", "SerialNumber", "SoftwareRevision")
 
-#: Fields the spec types as LocalizedText rather than String.
+#: Felder, die die Spezifikation als LocalizedText statt als String typisiert.
 _LOCALIZED_FIELDS = frozenset({"Manufacturer", "Model"})
 
-#: Mandatory in DI's Identification, so instantiation always creates them.
+#: In DIs Identification Pflicht, die Instanziierung legt sie also immer an.
 _MANDATORY_FIELDS = frozenset({"Manufacturer", "SerialNumber", "ProductInstanceUri"})
 
 
 @dataclass(frozen=True)
 class VisionAssetNodes:
-    """The asset view's nodes, as far as anything else needs them."""
+    """Die Knoten der Asset-Sicht, soweit etwas anderes sie braucht."""
 
     root: Node
     computing_device: Node | None = None
@@ -82,13 +83,13 @@ class VisionAssetNodes:
 async def _write_identification(
     node: Node, di_idx: int, own_idx: int, values: dict[str, str]
 ) -> None:
-    """Fill DI's Identification, adding the optional fields we can answer.
+    """Fuellt DIs Identification und ergaenzt die optionalen Felder, die wir beantworten koennen.
 
-    The type is instantiated without optional children, so only Manufacturer,
-    SerialNumber and ProductInstanceUri exist up front. Model and
-    SoftwareRevision are optional in DI -- a server publishes them when it
-    supports them, which is exactly what adding them here means. Fields we have
-    no value for stay absent rather than empty.
+    Der Typ wird ohne optionale Kinder instanziiert, daher existieren zunaechst
+    nur Manufacturer, SerialNumber und ProductInstanceUri. Model und
+    SoftwareRevision sind in DI optional -- ein Server veroeffentlicht sie,
+    wenn er sie unterstuetzt, und genau das heisst, sie hier hinzuzufuegen.
+    Felder ohne Wert fehlen, statt leer zu sein.
     """
     try:
         identification = await node.get_child(f"{di_idx}:Identification")
@@ -117,7 +118,7 @@ async def _write_identification(
 async def _ensure_folder(
     server: Server, root: Node, amcm_idx: int, own_idx: int, folder_name: str, root_id: str
 ) -> Node:
-    """The component folder, created on first use."""
+    """Der Komponentenordner, beim ersten Gebrauch angelegt."""
     try:
         return await root.get_child(f"{amcm_idx}:{folder_name}")
     except Exception:
@@ -154,7 +155,7 @@ async def _add_component(
     values: dict[str, str],
     root_id: str,
 ) -> Node | None:
-    """Instantiate one component into its folder and identify it."""
+    """Instanziiert eine Komponente in ihren Ordner und identifiziert sie."""
     try:
         nodes = await instantiate(
             folder,
@@ -292,11 +293,11 @@ async def _add_health_alarms(
 async def attach_asset_model(
     space: VisionAddressSpace, config: AssetConfig
 ) -> VisionAssetNodes | None:
-    """Build the Part 2 asset view under the vision system.
+    """Baut die Asset-Sicht von Teil 2 unter dem Vision-System.
 
-    Returns `None` when Part 2 is not loaded. Never raises: the asset view is a
-    service and maintenance aid, and losing it must not keep the server from
-    running the job path.
+    Liefert `None`, wenn Teil 2 nicht geladen ist. Wirft nie: die Asset-Sicht
+    ist eine Service- und Wartungshilfe, und ihr Verlust darf den Server nicht
+    daran hindern, den Job-Pfad auszufuehren.
     """
     if space.amcm_idx is None:
         return None
