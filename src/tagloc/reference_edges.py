@@ -1234,4 +1234,5 @@ __all__ = [
     "fit_in_plane_correction",
     "measure_reference_lines",
     "plan_reference_view",
+    "tag_outline_px",
 ]
