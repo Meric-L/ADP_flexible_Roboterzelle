@@ -5,6 +5,11 @@ hardware/
 *.txt
 *.bat
 *.sh
+# Ausnahmen: diese Dateien sind versioniert (neue Dateien dieser Typen
+# bleiben sonst fuer `git add` unsichtbar)
+!requirements.txt
+!/setup.sh
+!/setup.bat
 .venv/
 .venv*/
 __pycache__/
