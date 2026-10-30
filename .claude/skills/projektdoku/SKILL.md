@@ -32,7 +32,7 @@ Nach `main` kommen nur fertige, funktionierende Features.
 | AprilTag: Konzept, Tag-Familien, Pose | `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/apriltag-referenz.md` |
 | AprilTag testen | `doc/projektdoku/apriltag-e2e-test.md` |
 | Unerwartetes Verhalten, historische Eigenheiten | `doc/projektdoku/altlasten.md` |
-| Präsentation / Betreuung | `doc/projektdoku/praesentation.md`, `betreuer/` |
+| Präsentation / Betreuung | `doc/projektdoku/praesentation.md` |
 
 Steht die Antwort in einer dieser Dateien, wird sie gelesen statt erfragt.
 Fehlt sie dort, ist das selbst eine Erkenntnis — nach der Klärung kommt sie rein.

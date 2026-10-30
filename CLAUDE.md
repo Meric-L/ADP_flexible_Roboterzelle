@@ -86,8 +86,6 @@ committet selbstständig, ohne zu pushen.
   Feature-Branches, aktuell `feature/vision-server`.
 - `doc/*.tex` ist die schriftliche Ausarbeitung. Nur anfassen, wenn die Aufgabe
   ausdrücklich die Ausarbeitung betrifft.
-- `betreuer/` enthält Vorgaben und Beispielcode der Betreuung — lesen, nicht
-  überschreiben.
 
 ## Orientierung im Repo
 
@@ -99,7 +97,6 @@ committet selbstständig, ohne zu pushen.
 | `src/` | Implementierung: OPC-UA-Server, Vision, Sensorik |
 | `tests/` | Pytest-Tests |
 | `tools/` | Hilfsskripte |
-| `betreuer/` | Vorgaben der Betreuung |
 
 ## Technische Durchsetzung
 

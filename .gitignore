@@ -1,7 +1,5 @@
-concept/
 data/*
 !data/rohbilder/
-hardware/
 *.txt
 *.bat
 *.sh
