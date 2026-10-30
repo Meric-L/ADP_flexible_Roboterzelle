@@ -35,7 +35,6 @@ try:
     )
     from tagloc.pose import estimate_tag_pose
     from tagloc.reference_edges import (
-        InPlaneCorrection,
         LineMeasurement,
         ReferenceLine,
         average_corrections,

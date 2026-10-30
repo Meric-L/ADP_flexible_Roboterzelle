@@ -26,7 +26,6 @@ from asyncua.common.node import Node
 from .address_space import VisionAddressSpace
 from .nodeset_ids import (
     DI_CHECK_FUNCTION_ALARM_TYPE,
-    DI_DEVICE_HEALTH_ALARMS,
     DI_DEVICE_HEALTH_ENUMERATION,
     DI_DEVICE_HEALTH_INTERFACE,
     DI_FAILURE_ALARM_TYPE,

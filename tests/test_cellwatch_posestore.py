@@ -5,18 +5,16 @@ gleichzeitig zu sehen waren -- und das war oft nicht der Fall.
 """
 
 import json
-import math
 import tempfile
 import types
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
 
 try:
     import numpy as np
 
     from tagloc import geometry
-    from tests.test_cellwatch import FakeClock, WALL, sighting
+    from tests.test_cellwatch import FakeClock, WALL
     from tests.test_cellwatch_storedpose import SceneTest, localization, location, tag_map
     from vision_server.cellwatch import (
         CameraPoseKeeper,

@@ -30,7 +30,6 @@ except Exception:  # numpy broken in this environment
     np = None
 
 from vision_server.calibration_session import (
-    MIN_SAMPLES_FOR_CALIBRATION,
     RMS_WARNING_PX,
     CalibrationSession,
 )

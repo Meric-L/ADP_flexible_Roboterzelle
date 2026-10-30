@@ -6,7 +6,6 @@ werden die Tests uebersprungen.
 """
 
 import asyncio
-import base64
 import dataclasses
 import json
 import os
@@ -19,7 +18,6 @@ from pathlib import Path
 try:
     import cv2
     import numpy as np
-    from asyncua import ua
 
     _ = (cv2.imread, np.ndarray)
 

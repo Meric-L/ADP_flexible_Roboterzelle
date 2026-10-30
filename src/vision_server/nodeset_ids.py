@@ -54,7 +54,6 @@ DI_DEVICE_HEALTH_INTERFACE = 15051
 #: alle abgeleitet von `AlarmConditionType`. Erst damit bekommt ein Client
 #: ein Ereignis mit Zeitstempel, Quelle und Schweregrad statt einer Zahl,
 #: die er abfragen muss.
-DI_DEVICE_HEALTH_ALARMS = 15053
 DI_FAILURE_ALARM_TYPE = 15292
 DI_CHECK_FUNCTION_ALARM_TYPE = 15441
 DI_OFF_SPEC_ALARM_TYPE = 15590
