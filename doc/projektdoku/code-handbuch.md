@@ -1251,6 +1251,8 @@ Stolpersteine:
 Alle Pfade in Teil B sind relativ zur Wurzel des webskill-Repos. Grundlage ist der Vergleich
 `origin/dev..Ungetestet` (Abzweig `d824975`, Stand `5812275`).
 
+**Aufräumen:** Auf Branch `ungetestet-aufraeumen` sind die Funde umgesetzt, die [`altlasten-wsc.md`](altlasten-wsc.md) in Abschnitt 11 nennt. Betroffene Stellen sind unten mit „auf `ungetestet-aufraeumen` …“ markiert; bis zum Merge beschreibt der Text den Stand von `Ungetestet`.
+
 ## Teil B1 — Zellmodule: Modelle (frontend/src/features/cell-modules/model)
 
 Die Zellmodule bilden die Roboterzelle als 3D-Szene in der App ab. Auf den Modulen (Tische, Feeder, Roboter) kleben AprilTags. Die Deckenkamera (Pi 1, „Kamera 1“, Layer 1) und die Hand-Kamera des Roboters (Pi 2, „Hand-Pi“, Layer 2) erkennen diese Tags und liefern Posen. Die Dateien in `model/` rechnen daraus: Koordinaten, Modulkatalog, Flächen der 3D-Modelle, Mess- und Fahrpläne, Kollisionsprüfung und Zustand. Sie zeichnen nichts; die Darstellung liegt in `frontend/src/features/cell-modules/components/` (anderer Abschnitt). Die meisten Dateien sind reine Mathematik und Logik und lassen sich ohne Browser testen. Einige sind React-Hooks (`use…`), eine ist ein Web Worker (`planeWorker.ts`).
@@ -1367,8 +1369,8 @@ Benutzt von: `AutolocateLayer1Window.tsx`, `AutolocateActions.tsx`, `WatchTiming
 | `frontend/src/features/cell-modules/model/layer1Import.ts` | Berechnet vor der Übernahme, was ein Scan bringt: Module, Roboter (mit Robotermodell und Platzierung) und die Welttag-Prüfung. Verändert nichts. | `planLayer1Import`, `describeLayer1Import`, `DetectedRobot`, `Layer1Import` |
 | `frontend/src/features/cell-modules/model/worldTagCheck.ts` | Vergleicht die gesehenen Welttags mit ihrer eingemessenen Pose: Abweichung je Tag, Abstandsfehler je Tagpaar. | `checkWorldTags`, `pairWorldTags`, `rateDeviation`, `describeWorldTagCheck`, `WorldTagCheck`, `WORLD_TAG_WARN_M`, `WORLD_TAG_BAD_M` |
 | `frontend/src/features/cell-modules/model/usePlaceRobots.ts` | Hook: setzt gefundene Roboter dorthin, wo ihre Tags sagen. Hat der Roboter eine OPC-UA-Adresse und ist sein Server noch nicht verbunden, wird er verbunden. Sonst entsteht nur ein Zwilling. | `usePlaceRobots` |
-| `frontend/src/features/cell-modules/model/moduleTracking.ts` | „Verfolgen“: Eine Abweichung zählt erst als Verschiebung, wenn sie lange genug hält und mehrfach gemessen wurde. | `trackObservation`, `trackingObservation`, `trackingReferences`, `movedEntries`, `referencesSignature`, `DEFAULT_TRACKING_THRESHOLDS` |
-| `frontend/src/features/cell-modules/model/moveTracker.ts` | `applyModuleMoves` setzt bestätigte Verschiebungen in die Szene (Nachziehen). `trackModuleMoves` (drei gleiche Scans in Folge) wird nur in Tests benutzt. | `applyModuleMoves`, `trackModuleMoves`, `DEFAULT_MOVE_TRACKER` |
+| `frontend/src/features/cell-modules/model/moduleTracking.ts` | „Verfolgen“: Eine Abweichung zählt erst als Verschiebung, wenn sie lange genug hält und mehrfach gemessen wurde. Auf `ungetestet-aufraeumen` seit B13 ohne Produktivverwender (nur noch der Test). | `trackObservation`, `trackingObservation`, `trackingReferences`, `movedEntries`, `referencesSignature`, `DEFAULT_TRACKING_THRESHOLDS` |
+| `frontend/src/features/cell-modules/model/moveTracker.ts` | `applyModuleMoves` setzt bestätigte Verschiebungen in die Szene (Nachziehen). `trackModuleMoves` (drei gleiche Scans in Folge) wird nur in Tests benutzt. Auf `ungetestet-aufraeumen` entfernt (T7, `320033a`). | `applyModuleMoves`, `trackModuleMoves`, `DEFAULT_MOVE_TRACKER` |
 | `frontend/src/features/cell-modules/model/autolocateUi.ts` | Store: Prüfintervall und Meldezeit der Zellüberwachung (im Browser gespeichert). Außerdem, ob das Fenster „Tags einmessen“ offen ist (nicht gespeichert). | `autolocateUi`, `useAutolocateUi`, `AutolocateUiState`, `DEFAULT_WATCH_INTERVAL_S`, `DEFAULT_WATCH_CHANGE_S` |
 | `frontend/src/features/cell-modules/model/useCameraOverlay.ts` | Hook: setzt den Overlay-Modus einer Kamera (`apriltag` oder `off`) im Viewport und am Pi, damit das Bild die Tags zeigt. | `useCameraOverlay` |
 
@@ -1376,8 +1378,8 @@ Benutzt von: `AutolocateLayer1Window.tsx`, `AutolocateActions.tsx`, `WatchTiming
 
 **Konstanten/Konfiguration**
 
-- Verfolgen (`DEFAULT_TRACKING_THRESHOLDS`): Abstand 10 cm, Winkel 10°, 5 s Dauer, mindestens zwei Messungen, Lücken bis 15 s überbrückt. Einstellbar im Fenster und gespeichert unter `wsc.autolocate.layer1.trackingThresholds` (`AutolocateLayer1Window.tsx`).
-- `DEFAULT_MOVE_TRACKER` (nur Tests): 10 cm, 10°, drei Scans.
+- Verfolgen (`DEFAULT_TRACKING_THRESHOLDS`): Abstand 10 cm, Winkel 10°, 5 s Dauer, mindestens zwei Messungen, Lücken bis 15 s überbrückt. Einstellbar im Fenster und gespeichert unter `wsc.autolocate.layer1.trackingThresholds` (`AutolocateLayer1Window.tsx`). Auf `ungetestet-aufraeumen` entfallen Regler und Schlüssel mit dem unerreichbaren Fensterzweig (B13).
+- `DEFAULT_MOVE_TRACKER` (nur Tests): 10 cm, 10°, drei Scans. Auf `ungetestet-aufraeumen` entfernt (T7).
 - Welttag-Prüfung: Warnung ab 2 cm (`WORLD_TAG_WARN_M`), schlecht ab 5 cm (`WORLD_TAG_BAD_M`).
 - Zellüberwachung: `DEFAULT_WATCH_INTERVAL_S = 3` (Prüfintervall), `DEFAULT_WATCH_CHANGE_S = 8` (Meldezeit). Gespeichert unter `wsc.cellWatch.timing`.
 
@@ -1395,7 +1397,7 @@ Benutzt von: `useCellWatch.ts` (Start und Status, opcua-server), `AutolocateActi
 
 | Datei | Aufgabe | wichtigste Exporte |
 |---|---|---|
-| `frontend/src/features/cell-modules/model/cellWatch.ts` | Liest den Status des Pi (`wsc.vision.cellwatch.status/1`), filtert Welttags und Roboter-Änderungen heraus und bildet den Schlüssel für quittierte Alarme. | `parseCellWatchStatus`, `cellWatchStartJson`, `onlyModuleTags`, `withoutChangesDuringOperation`, `cellChangeKey`, `worldTagIds`, `CellWatchStatus`, `CellChange`; `describeCellChange` nur in Tests |
+| `frontend/src/features/cell-modules/model/cellWatch.ts` | Liest den Status des Pi (`wsc.vision.cellwatch.status/1`), filtert Welttags und Roboter-Änderungen heraus und bildet den Schlüssel für quittierte Alarme. | `parseCellWatchStatus`, `cellWatchStartJson`, `onlyModuleTags`, `withoutChangesDuringOperation`, `cellChangeKey`, `worldTagIds`, `CellWatchStatus`, `CellChange`; `describeCellChange` nur in Tests (auf `ungetestet-aufraeumen` entfernt; `cellChangeModuleName` und `cellChangeMoveDetail` kamen aus `CellChangeAlert` hierher, T9) |
 | `frontend/src/features/cell-modules/model/cellWatchSwitch.ts` | Ereignis: „Job abbrechen“ schaltet den Überwachungsschalter in der App mit aus. | `requestCellWatchOff`, `onCellWatchOffRequest` |
 | `frontend/src/features/cell-modules/model/tagSightings.ts` | Merkt sich für jeden Tag, was die letzten zehn Prüfungen sahen. „Nicht im Bild“ erst nach drei Prüfungen in Folge. | `addSighting`, `tagSighting`, `recentlySeenTagIds`, `SightingHistory`, `TagSighting`, `SIGHTING_WINDOW`, `MISSING_CHECKS` |
 
@@ -1425,7 +1427,7 @@ Benutzt von: `ApproachPlanPanel.tsx` (Hauptnutzer), `HandEyeCalibrationWindow.ts
 | `frontend/src/features/cell-modules/model/approachPlan.ts` | Plant je Tag eine Kamerapose per IK: Anker zuerst, dann die nächsten Tags. Probiert weiter weg und schräger, prüft den Freiraum und zeichnet den Weg. | `planApproach`, `approachTags`, `anchorCandidates`, `approachTrajectory`, `cameraPoseFacing`, `lookDownHomeAngles`, `ApproachStop`, `DEFAULT_APPROACH_STANDOFF_M`, `DEFAULT_ANCHOR_STANDOFF_M` |
 | `frontend/src/features/cell-modules/model/layer2.ts` | Roboterbasis aus Layer 1 oder aus dem Zwilling. Umrechnung zwischen Basis-Pose und Ursprung des Roboters in der Szene. Prüfung, ob der Roboter noch steht. | `RobotBase`, `poseOf`, `robotBaseFrom`, `robotBaseFromOrigin`, `robotOriginFromBase`, `robotBaseHeading`, `robotStayedPut` |
 | `frontend/src/features/cell-modules/model/layer2Gate.ts` | Vorbedingungen: Ein Layer-1-Scan ist übernommen, der Roboter steht in der Szene, und zum Fahren ist er verbunden. | `layer2Gate`, `Layer2Gate` |
-| `frontend/src/features/cell-modules/model/layer2Run.ts` | Typen für Ziel und Status, wie sie der frühere Pi-Lauf verwendete. Die Parser stehen in der App nicht in Benutzung (nur Tests). | `Layer2Target`, `Layer2Pose`, `Layer2Status`, `Layer2Purpose`, `LAYER2_PURPOSE_LABELS`, `parseLayer2Target`, `parseLayer2Status`, `layer2Report` |
+| `frontend/src/features/cell-modules/model/layer2Run.ts` | Typen für Ziel und Status, wie sie der frühere Pi-Lauf verwendete. Die Parser stehen in der App nicht in Benutzung (nur Tests). Auf `ungetestet-aufraeumen` gelöscht (T3, `ef4532c`); `Layer2Pose` steht dort in `robotDrive.ts`. | `Layer2Target`, `Layer2Pose`, `Layer2Status`, `Layer2Purpose`, `LAYER2_PURPOSE_LABELS`, `parseLayer2Target`, `parseLayer2Status`, `layer2Report` |
 | `frontend/src/features/cell-modules/model/routeProgress.ts` | Neue Position eines Moduls aus der Hand-Messung (gemessen statt geplant, als „präzise“ markiert). Status je Schritt der Route. | `measuredModule`, `describeModulePosition`, `RouteProgress`, `RouteStatus` |
 | `frontend/src/features/cell-modules/model/tagServo.ts` | Ein Nachregel-Schritt: Kamera so verschieben, dass der Tag auf der optischen Achse liegt (höchstens 5 cm). Basiskorrektur am Welttag. Auswertung der Antwort von `MeasureTags`. | `servoStep`, `baseCorrection`, `tagInBaseFrom`, `parseMeasureTagsResult`, `measureTagsRequestJson`, `ServoStep`, `BaseCorrection` |
 | `frontend/src/features/cell-modules/model/measureTagsCall.ts` | Ruft `MeasureTags` am Hand-Pi und wartet auf die Antwort. | `measureTags`, `MeasureOutcome` |
@@ -1437,14 +1439,14 @@ Benutzt von: `ApproachPlanPanel.tsx` (Hauptnutzer), `HandEyeCalibrationWindow.ts
 
 - Abstand zum Tag: 0,35 m für Modul-Tags (`DEFAULT_APPROACH_STANDOFF_M`), 1,0 m für den Welttag (`DEFAULT_ANCHOR_STANDOFF_M`).
 - Suche nach einer Pose: Neigungen 0, 15, 30, 45 und 60°. Ist das nicht erreichbar, weiter weg (1,3-, 1,6- und 2-fach) und bis 75° geneigt. Drehungen 0, 90, −90 und 180°. `IN_VIEW_DEG = 20`: Der Tag gilt als im Bild, solange er höchstens 20° neben der optischen Achse liegt.
-- `DEFAULT_LAYER2_OPTIONS` (0,3 m zum Messen, 0,6 m Annäherung, bis 60° geneigt) gehört zur Pi-Anfrage `buildLayer2Request`, die die App nicht stellt.
+- `DEFAULT_LAYER2_OPTIONS` (0,3 m zum Messen, 0,6 m Annäherung, bis 60° geneigt) gehört zur Pi-Anfrage `buildLayer2Request`, die die App nicht stellt. Auf `ungetestet-aufraeumen` entfernt (T3).
 - Roboter gilt als still bei höchstens 5 cm (`ROBOT_STILL_DISTANCE_M`) und 5° (`ROBOT_STILL_YAW_RAD`).
 - Nachregeln: zentriert, wenn der Tag bis 5 mm seitlich und 1 cm im Abstand liegt (`CENTRED_LATERAL_M`, `CENTRED_DISTANCE_M`). Höchstens 5 cm je Schritt (`MAX_STEP_M`).
 - Zeitlimit `MeasureTags`: 20 s.
 
-**Hinweis**: Der Kopfkommentar von `layer2.ts` beschreibt noch den älteren Stand, in dem der Hand-Pi den ganzen Lauf fährt. Maßgeblich ist `arbeitsplaene/layer2-measuretags.md`: Die Steuerung plant und fährt, der Pi misst.
+**Hinweis**: Der Kopfkommentar von `layer2.ts` beschreibt noch den älteren Stand, in dem der Hand-Pi den ganzen Lauf fährt. Maßgeblich ist `arbeitsplaene/layer2-measuretags.md`: Die Steuerung plant und fährt, der Pi misst. Auf `ungetestet-aufraeumen` ist der Kommentar berichtigt (B12, `ef4532c`).
 
-**Tests**: `approachPlan.test.ts`, `layer2.test.ts`, `layer2Gate.test.ts`, `layer2Run.test.ts`, `routeProgress.test.ts`, `tagServo.test.ts`, `centreOnTag.test.ts`. `measureTagsCall.ts` hat keinen Test.
+**Tests**: `approachPlan.test.ts`, `layer2.test.ts`, `layer2Gate.test.ts`, `layer2Run.test.ts`, `routeProgress.test.ts`, `tagServo.test.ts`, `centreOnTag.test.ts`. `measureTagsCall.ts` hat keinen Test. `layer2Run.test.ts` ist auf `ungetestet-aufraeumen` mit T3 gelöscht.
 
 **Weiterlesen**: [arbeitsplaene/layer2-measuretags.md](arbeitsplaene/layer2-measuretags.md), [arbeitsplaene/layer2-annaeherung.md](arbeitsplaene/layer2-annaeherung.md) (auch „Nachtrag 27.10.2026: Jeden Tag aus 3 Ansichten messen und vereinen“), [arbeitsplaene/layer2-schraege-ansicht.md](arbeitsplaene/layer2-schraege-ansicht.md), [arbeitsplaene/layer2-lauf-hand-pi.md](arbeitsplaene/layer2-lauf-hand-pi.md), [arbeitsplaene/apriltag-hand-auge-ankern.md](arbeitsplaene/apriltag-hand-auge-ankern.md), [vision-server-interface.md](vision-server-interface.md) (Abschnitte 14 und 17).
 
@@ -1514,7 +1516,7 @@ Benutzt von: `HandEyeAutoPanel.tsx` und `HandEyeCalibrationWindow.tsx` (Fenster 
 **Konstanten/Konfiguration**
 
 - `HAND_EYE_DEFAULT_BOARD`: 7 × 10 Innenecken, Feld 23 mm (Standard im Code). Feldgröße 5 bis 100 mm. Das Brett muss eindeutig sein: Summe von Spalten und Zeilen ungerade.
-- `HAND_EYE_MIN_SAMPLES = 3`, `HAND_EYE_GOOD_SAMPLES = 10`.
+- `HAND_EYE_MIN_SAMPLES = 3`, `HAND_EYE_GOOD_SAMPLES = 10`. `HAND_EYE_GOOD_SAMPLES` ist auf `ungetestet-aufraeumen` mit dem tag-basierten Start entfernt (T6, `a33ba29`).
 - `FAR_DISTANCE_SCALE = 1.3`: weiter entfernte Ansichten.
 - `HAND_CAMERA_HFOV_DEG = 69` (Blickwinkel der Hand-Kamera), `BOARD_CENTRED_SHARE = 0.08` (zentriert, wenn der Brettmittelpunkt höchstens 8 % der Bildbreite vom Bildmittelpunkt liegt), `MAX_CENTRING_STEP_M = 0.08`.
 - `JOINT_SETTLE_TOLERANCE_RAD = 0.0002`.
@@ -1581,7 +1583,7 @@ Benutzt von: `PickPlacePanel.tsx` (Oberfläche, eingebunden in `AutolocateAction
 - `MEASURED_PLACE_TARGET` (Ecke und Abstände am Kalibrierblatt auf dem Tisch „Tisch leer“, Tag 3) dient nur als Standardecke für die Maßband-Anzeige.
 - localStorage: `wsc.pickPlace.pick` (Aufnahmestelle), `wsc.pickPlace.placed` (Ablageort).
 
-**Hinweis**: Der Kommentar am Hook `usePickPlaceRun` nennt 5 cm Ablagehöhe und einen gemessenen Ablagepunkt. Im Code gelten 0 mm (`DEFAULT_DROP_HEIGHT_M`) und die Tischmitte, denn die App übergibt `placeAt` nicht. Ein Ablegen am gemessenen Punkt (`placeTargetWorldPose`, `storedPlaceTargetFromString`) ist nur im Modell vorbereitet und wird in Tests geprüft.
+**Hinweis**: Der Kommentar am Hook `usePickPlaceRun` nennt 5 cm Ablagehöhe und einen gemessenen Ablagepunkt. Im Code gelten 0 mm (`DEFAULT_DROP_HEIGHT_M`) und die Tischmitte, denn die App übergibt `placeAt` nicht. Ein Ablegen am gemessenen Punkt (`placeTargetWorldPose`, `storedPlaceTargetFromString`) ist nur im Modell vorbereitet und wird in Tests geprüft. Auf `ungetestet-aufraeumen` ist diese Kette entfernt (T8, `9463ec2`).
 
 **Tests**: `pickPlace.test.ts`, `pickPlaceFrame.test.ts`, `pickPlaceReturn.test.ts`, `pickPlaceRoute.test.ts`.
 
@@ -1597,7 +1599,7 @@ Benutzt von: `ApproachPlanPanel.tsx`, `TagReferencePanel.tsx`, `HandEyeAutoPanel
 
 | Datei | Aufgabe | wichtigste Exporte |
 |---|---|---|
-| `frontend/src/features/cell-modules/model/robotDrive.ts` | Ein `go_to` mit Gelenkwinkeln, dann Warten, bis der Roboter steht. Zeitlimits. Setzt den `go_to`-Skill zurück, wenn er im Zustand Halted hängt. Die Flanschpose wird aus den gemeldeten Gelenken berechnet, nicht aus dem Ziel. | `driveJoints`, `createRobotDriver`, `planMove`, `hasArrived`, `RobotDriver`, `RobotDriveDeps`, `DriveOutcome`, `JointsTimeoutError` |
+| `frontend/src/features/cell-modules/model/robotDrive.ts` | Ein `go_to` mit Gelenkwinkeln, dann Warten, bis der Roboter steht. Zeitlimits. Setzt den `go_to`-Skill zurück, wenn er im Zustand Halted hängt. Die Flanschpose wird aus den gemeldeten Gelenken berechnet, nicht aus dem Ziel. Auf `ungetestet-aufraeumen` ohne die Attrappen `DISCONNECTED_DRIVER`/`PRETEND_DRIVER` (T10), dafür mit dem Typ `Layer2Pose` (T3). | `driveJoints`, `createRobotDriver`, `planMove`, `hasArrived`, `RobotDriver`, `RobotDriveDeps`, `DriveOutcome`, `JointsTimeoutError` |
 | `frontend/src/features/cell-modules/model/robotHold.ts` | Nimmt Take Control und Sync nacheinander. Gibt beim Loslassen nur zurück, was es selbst eingeschaltet hat. Gemeinsame Haltung für alle Panels. | `holdRobot`, `createSharedRobotHolds`, `sharedRobotHolds`, `RobotHoldApi`, `RobotHold`, `AUTO_DRIVE_MAX_SPEED` |
 | `frontend/src/features/cell-modules/model/useRobotHold.ts` | Hook: hält den Roboter, solange das Panel offen ist. Meldet, wenn Take Control oder Sync von Hand ausgeschaltet wurden. | `useRobotHold`, `RobotHoldState`, `RobotHoldStatus` |
 | `frontend/src/features/cell-modules/model/robotOperation.ts` | Store: „der Roboter fährt selbst“, mit dem Zeitpunkt, an dem der letzte Lauf endete. | `beginRobotOperation`, `endRobotOperation`, `useRobotOperation`, `RobotOperation` |
@@ -1657,7 +1659,7 @@ Benutzt von: `approachPlan.ts`, `tagReferenceRun.ts`, `centreOnTag.ts`, `pickPla
 | `wsc.cellModules.catalog.cache` | `frontend/src/features/cell-modules/model/catalogStore.ts` | letzte Katalogfassung vom Backend (Anzeige bei Ausfall) |
 | `wsc.cellModules.catalog` | `frontend/src/features/cell-modules/model/catalogStore.ts` | altes Katalogformat; wird einmal ins Backend übernommen |
 | `wsc.cellWatch.timing` | `frontend/src/features/cell-modules/model/autolocateUi.ts` | Prüfintervall und Meldezeit der Zellüberwachung |
-| `wsc.autolocate.layer1.trackingThresholds` | `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` (Komponente) | Schwellen für „Verfolgen“ |
+| `wsc.autolocate.layer1.trackingThresholds` | `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` (Komponente) | Schwellen für „Verfolgen“; auf `ungetestet-aufraeumen` entfallen (B13) |
 | `wsc.tagReference.settings` | `frontend/src/features/cell-modules/model/tagReferenceSettings.ts` | Einstellungen des Fensters „Tags einmessen“ |
 | `wsc.handEye.board/1` | `frontend/src/features/cell-modules/model/handEyeBoard.ts` | Brettmaße der Hand-Auge-Kalibrierung |
 | `wsc.cameraCalibration.camera1Positions` | `frontend/src/features/cell-modules/model/useBoardCalibrationRun.ts` | eingelernte Positionen der Kamera-1-Kalibrierung |
@@ -1697,7 +1699,7 @@ frontend/src/app/layout/DesktopLayout.tsx
 └── rechte Spalte (Panel ab Zeile 211)
     ├── CellWatchPanel                      (features/opcua-server/components)
     │   └── AutolocateActions               (features/opcua-server/components)
-    │       Knopf "Level 1 Positionierung ausführen" -> Fenster "Zelle scannen" (AutolocateLayer1Window, compact)
+    │       Knopf "Level 1 Positionierung ausführen" -> Fenster "Zelle scannen" (AutolocateLayer1Window; compact entfällt auf ungetestet-aufraeumen, B13)
     │       Knopf "Tag-Positionen anzeigen"  -> TagPositionsWindow
     │       nur bei laufender Überwachung:
     │         ApproachPlanPanel (compact)   -> RouteList, Layer2CameraWindow
@@ -1717,7 +1719,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 | Datei | Was der Nutzer sieht/tut | Benutzte Modelle/Hooks |
 |---|---|---|
 | `frontend/src/features/cell-modules/components/ModuleCatalogModal.tsx` | Dialog "Module catalog" aus dem Knopf "Modulkatalog". Liste mit Vorschaubild je Eintrag, Knöpfe "Edit", "Delete", "+ New module", "+ New world tag", "Export JSON", "Import JSON", "Reset to defaults". Editor mit Feldern Name, Module ID, Type (Module / Robot / World tag), Robot-OPC-UA-Adresse und Robot model (nur bei Robot), Bounding-Box in cm (ohne Modell), 3D model (Auswahl oder "Other URL…"), AprilTags des Moduls ("+ Another tag", "Remove tag", "Place on model", Drehknöpfe). Unten "Cancel" und "Save". | `useModuleCatalog`, `useModuleCatalogSync`, `saveModuleCatalog`, `resetModuleCatalog` (`model/catalogStore`); `validateModule` (`model/catalogValidation`); `invalidateChangedMeasurements` (`model/tagMeasurementState`); `placementFromCorner`, `placementFromEdges`, `tagPoseFromPlacement`, `turnPlacement` (`model/tagPlacement`); `ROBOT_MODEL_OPTIONS` (`robot-control/model/robotModels`); `KNOWN_ROBOT_SERVER_URLS` (`opcua-server/config/robotServers`); `modelFiles` (virtuelles Modul) |
-| `frontend/src/features/cell-modules/components/ModuleCatalogButton.tsx` | Ein Knopf "Module catalog", der den Dialog öffnet. Die Komponente wird im App-Code nirgends eingebunden (siehe Auffälligkeiten). | `ModuleCatalogModal` |
+| `frontend/src/features/cell-modules/components/ModuleCatalogButton.tsx` | Ein Knopf "Module catalog", der den Dialog öffnet. Die Komponente wird im App-Code nirgends eingebunden (siehe Auffälligkeiten). Auf `ungetestet-aufraeumen` gelöscht (T1, `ebc3d05`). | `ModuleCatalogModal` |
 | `frontend/src/features/cell-modules/components/ModulePreview.tsx` | Vorschau eines Moduls im Dialog (Miniatur je Eintrag und große Ansicht im Editor): Box, Modell, Tags mit Achsen. Fährt man über eine Modellkante, wird sie hervorgehoben; ein Klick greift Kante, Fläche oder Ecke für die Platzierung. Kamera per Maus drehen und verschieben. | `CellModuleModel`, `ModelErrorBoundary`, `geometryEdges`, `HighlightedEdge`, `MeshEdgeLines` (`ModelEdges`), `PlaneOverlay`, `PlacementMeasure`, `snapToSegments`, `useModelPlanes` (`ModelPlanes`), `pickOnEdge`, `closestPointOnSegment` (`model/modelEdges`), `placementMatches` (`model/tagPlacement`), `AprilTagPlane` (`WorldTagMarkers`) |
 | `frontend/src/features/cell-modules/components/ModelPlanes.tsx` | Nach "Place on model" werden die großen ebenen Flächen des Modells farbig gezeigt. Klick auf eine Fläche, dann "a corner" oder "two edges", dann eine Kante ("along the edge"). Dazu Messlinien vom Ursprung. Hinweis "Bridge gaps up to (mm)": Teile einer Ebene bis zu diesem Abstand gelten als eine Fläche. | `useModelPlanes` (startet `model/planeWorker.ts` als Web Worker, ohne Worker synchron über `findPlanes`), `DEFAULT_PLANE_OPTIONS`, `ModelPlane` (`model/modelPlanes`), `placementFootPoint`, `placementPosition` (`model/tagPlacement`), `SurfaceLines` (`ModelEdges`) |
 | `frontend/src/features/cell-modules/components/ModelEdges.tsx` | Zeichnet Modellkanten nur dort, wo sie sichtbar sind, und nur im Platzierungsmodus. Die Kanten eines Netzes werden erst beim ersten Hovern berechnet und gecacht. | `THREE.EdgesGeometry`, `LineSegments2` (three.js), `Vec3` (`config/moduleCatalog.ts`) |
@@ -1767,7 +1769,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 
 | Datei | Was der Nutzer sieht/tut | Benutzte Modelle/Hooks |
 |---|---|---|
-| `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` | Fenster "Zelle scannen" (mittig, 1000 × 580) mit dem Bild von Kamera 1 und den markierten Tags. Während des Scans "Deckenkamera erkennt die Module…". Danach "Erkannte Module" (Liste) oder "Kein Modul erkannt — nur Welt-Tags im Bild". Knöpfe "Module laden", "Ohne Module überwachen", "Abbrechen". "Module laden" ist nur möglich, wenn die Kamera über die Welt-Tags verortet ist. | `useVisionJob` (Scan-Job auf Pi 1), `useContinuousVisionJob` (nur im ungenutzten Zweig), `useCameraHealth`, `useCameraOverlay`, `usePlaceRobots`, `useModuleCatalog`, `useAppFeedback`; `planLayer1Import`, `describeLayer1Import` (`model/layer1Import`); `trackingObservation`, `trackingReferences` (`model/moduleTracking`); `CameraView`, `CameraHealthBadge` (opcua-server) |
+| `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` | Fenster "Zelle scannen" (mittig, 1000 × 580) mit dem Bild von Kamera 1 und den markierten Tags. Während des Scans "Deckenkamera erkennt die Module…". Danach "Erkannte Module" (Liste) oder "Kein Modul erkannt — nur Welt-Tags im Bild". Knöpfe "Module laden", "Ohne Module überwachen", "Abbrechen". "Module laden" ist nur möglich, wenn die Kamera über die Welt-Tags verortet ist. Auf `ungetestet-aufraeumen` ist der unerreichbare Zweig samt Tracking (`useContinuousVisionJob`, `model/moduleTracking`) entfernt (B13, `0bd4841`; 465 statt 874 Zeilen). | `useVisionJob` (Scan-Job auf Pi 1), `useContinuousVisionJob` (nur im ungenutzten Zweig), `useCameraHealth`, `useCameraOverlay`, `usePlaceRobots`, `useModuleCatalog`, `useAppFeedback`; `planLayer1Import`, `describeLayer1Import` (`model/layer1Import`); `trackingObservation`, `trackingReferences` (`model/moduleTracking`); `CameraView`, `CameraHealthBadge` (opcua-server) |
 | `frontend/src/features/cell-modules/components/TagPositionsWindow.tsx` | Fenster "Tag-Positionen · vom Ursprung 0 / 0 / 0" (mittig) mit einer Tabelle aller Tags: Tag, Name, x, y, z in mm, Drehung, Quelle ("Katalog", "gesehen" oder "berechnet", mit "· Layer 2" bei genauer Messung). Der Knopf "Kopieren" legt die Tabelle für eine Tabellenkalkulation in die Zwischenablage. | `useModuleCatalog` (`model/catalogStore`), `listTagPositions`, `tagPositionsText` (`model/tagPositions`), `FloatingWindow` |
 
 **Ablauf**
@@ -1776,13 +1778,13 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 2. Das Fenster startet den Scan-Job auf Pi 1 (`useVisionJob`). `planLayer1Import` macht daraus einen Plan: Module als Boxen (grob, orange im Viewport), Roboter als Zwilling und Welt-Tags.
 3. "Module laden" übernimmt den Scan in die Szene (`onImported`) und schließt das Fenster (`onClose`). Der Scan wird dann die neue Referenz der Überwachung. "Ohne Module überwachen" setzt die leere Zelle als Referenz (`onWatchWithoutModules`). "Abbrechen" beendet ohne Laden (`onCancel`).
 4. Für die Nachverfolgung nach einer Verschiebung läuft derselbe Scan ohne Fenster (`headless`, mit `followTagIds`). Das Ergebnis wird nur als Vorschlag gemeldet (`onProposal`). Die Szene ändert sich dabei nicht von selbst.
-5. Im App-Code wird das Fenster nur mit `compact` gerendert. Der Zweig ohne `compact` (Fenster "Autolocate Layer 1 · Kamera 1" mit "Tags erkennen", "In Viewport übernehmen", Tracking-Schalter) ist daher nicht erreichbar, siehe Auffälligkeiten.
+5. Im App-Code wird das Fenster nur mit `compact` gerendert. Der Zweig ohne `compact` (Fenster "Autolocate Layer 1 · Kamera 1" mit "Tags erkennen", "In Viewport übernehmen", Tracking-Schalter) ist daher nicht erreichbar, siehe Auffälligkeiten. Auf `ungetestet-aufraeumen` ist er entfernt, die Prop `compact` gibt es dort nicht mehr (B13).
 
 **Konfiguration**
 
 - `AUTO_RESCAN_MS = 1500` in `AutolocateLayer1Window.tsx`: Abstand bis zum nächsten Scan der Zellüberwachung (laut Kommentar).
-- Fenstertitel über `LAYER_LABELS[PI_1_SERVER_URL]` (`opcua-server/config/piServers.ts`): "First Layer".
-- Nur im ungenutzten Zweig: `CONFIRM_S_RANGE` (1 bis 30 s), `DISTANCE_CM_RANGE` (1 bis 50 cm), Browser-Speicher unter `wsc.autolocate.layer1.trackingThresholds`, `DEFAULT_TRACKING_THRESHOLDS` (`model/moduleTracking`).
+- Fenstertitel über `LAYER_LABELS[PI_1_SERVER_URL]` (`opcua-server/config/piServers.ts`): "First Layer". Galt nur für den Zweig ohne `compact`; das erreichbare Fenster heißt „Zelle scannen“ (auf `ungetestet-aufraeumen` ist der Zweig entfernt, B13).
+- Nur im ungenutzten Zweig: `CONFIRM_S_RANGE` (1 bis 30 s), `DISTANCE_CM_RANGE` (1 bis 50 cm), Browser-Speicher unter `wsc.autolocate.layer1.trackingThresholds`, `DEFAULT_TRACKING_THRESHOLDS` (`model/moduleTracking`). Auf `ungetestet-aufraeumen` entfernt (B13).
 
 **Tests**
 
@@ -1946,7 +1948,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 | Datei | Was der Nutzer sieht/tut | Benutzte Modelle/Hooks |
 |---|---|---|
 | `frontend/src/features/cell-modules/components/BoardCalibrationRobot.tsx` | Drei Abschnitte im Kalibrierdialog der Kamera 1 (`CameraCalibrationModal`, opcua-server). `BoardRobotSetup`: "Positionen auswählen" oder "Neue Positionen", "Position übernehmen (n/N)" (der Arm wird von Hand gebracht), "Letzte verwerfen", "Abbrechen", Blättern mit den Knöpfen ◀ und ▶ samt Gelenkwinkeln. `BoardRobotStatus`: "Roboterfahrt starten", "Zange zugreifen", "Kalibrierfahrt starten", "Halt", "Weiter", dazu "Schritt n/N" und "n/N Bilder". `BoardRobotAfterRun`: Rückfahrt in die Neutralstellung und "Zange öffnen". | `useBoardCalibrationRun` (`model/useBoardCalibrationRun`, Typ `BoardCalibrationRun`); `CALIBRATION_POSITION_COUNT` (`model/boardCalibrationPoses`); `TARGET_PICTURES` (`model/boardCalibrationRunner`) |
-| `frontend/src/features/cell-modules/components/RobotRunConfirm.tsx` | Bestätigungsdialog "Roboterfahrt starten" über dem Rest der Oberfläche. Er nennt, was passiert: Take Control und Sync werden automatisch ein- und danach ausgeschaltet, `go_to` mit `max_speed` 0,1, Bereich um den Roboter freihalten, Not-Halt bereit. Nur die Knöpfe "Abbrechen" und "Roboterfahrt starten" schließen ihn, ein Klick daneben nicht. Im Code wird er nur von `CameraCalibrationModal` benutzt. | `AUTO_DRIVE_MAX_SPEED` (`model/robotHold`), über `maxSpeed` mit `BOARD_DRIVE_MAX_SPEED` belegt |
+| `frontend/src/features/cell-modules/components/RobotRunConfirm.tsx` | Bestätigungsdialog "Roboterfahrt starten" über dem Rest der Oberfläche. Er nennt, was passiert: Take Control und Sync werden automatisch ein- und danach ausgeschaltet, `go_to` mit `max_speed` 0,1, Bereich um den Roboter freihalten, Not-Halt bereit. Nur die Knöpfe "Abbrechen" und "Roboterfahrt starten" schließen ihn, ein Klick daneben nicht. Im Code wird er nur von `CameraCalibrationModal` benutzt. Auf `ungetestet-aufraeumen` liegt die Datei in `frontend/src/features/opcua-server/components/` neben ihrem Verwender (B12, `d129912`). | `AUTO_DRIVE_MAX_SPEED` (`model/robotHold`), über `maxSpeed` mit `BOARD_DRIVE_MAX_SPEED` belegt |
 
 **Ablauf**
 
@@ -2068,7 +2070,7 @@ Browser (React, three.js)
 **Einstieg.**
 - Rechte Spalte des Desktop-Layouts (`frontend/src/app/layout/DesktopLayout.tsx`): `ServerManager` (Liste der Roboter-Server) unter dem `CellWatchPanel`.
 - Der „+“-Knopf im `ServerManager` öffnet `ConnectOpcUa`.
-- Verbindungsstatus der Pis: `PiStatus` in der Kopfleiste der Ansicht (`ViewportHeaderControls`, Kamera-Abschnitt) und in `PiStatusList`.
+- Verbindungsstatus der Pis: `PiStatus` in der Kopfleiste der Ansicht (`ViewportHeaderControls`, Kamera-Abschnitt) und in `PiStatusList` (auf `ungetestet-aufraeumen` entfernt, T2).
 
 **Dateien.**
 
@@ -2083,7 +2085,7 @@ Browser (React, three.js)
 | `frontend/src/features/opcua-server/model/useConnectServerWithFeedback.ts` (A) | Verbinden plus Discovery mit Lade- und Fehlermeldungen. Benutzt vom „+“-Dialog und vom Zellen-Schalter. | `useConnectServerWithFeedback` |
 | `frontend/src/features/opcua-server/components/ConnectOpcUa.tsx` (M) | aus dev, ergänzt um: Vorschläge aus `KNOWN_ROBOT_SERVER_URLS`; die Ereignisbehandlung für Lade-Meldungen (rund 110 Zeilen) wurde nach `useConnectServerWithFeedback` ausgelagert. | `ConnectOpcUa` |
 | `frontend/src/features/opcua-server/components/ServerManager.tsx` (M) | aus dev, ergänzt um: verbindet Pi 1 und Pi 2 beim ersten Mount, blendet beide aus der Serverliste aus, trennt Roboter-Server über `disconnectServerCleanly`, Panel füllt die Höhe. | `ServerManager`, `PI_URLS`, `hasAutoConnectedRef` |
-| `frontend/src/features/opcua-server/components/PiStatusList.tsx` (A) | Verbindungsstatus eines Pi (grün oder rot) und seine Belegung. | `PiStatus`, `PiStatusList`, `isPiConnected` |
+| `frontend/src/features/opcua-server/components/PiStatusList.tsx` (A) | Verbindungsstatus eines Pi (grün oder rot) und seine Belegung. Auf `ungetestet-aufraeumen` nur noch `PiStatus`; `PiStatusList` entfernt, `isPiConnected` in `opcua-server/model/piConnection.ts` (T2, `ebc3d05`). | `PiStatus`, `PiStatusList`, `isPiConnected` |
 | `frontend/src/features/opcua-server/components/PiActivity.tsx` (A) | Belegungstext je Pi und der Knopf „Job abbrechen“ für beide Pis. | `PiActivityLine`, `ResetPisButton`, `stateText` |
 | `frontend/src/features/opcua-server/components/MessageLog.tsx` (M) | aus dev, ergänzt um: Entfernen der Protokollzeilen für Nachrichten, die es nicht mehr gibt (Not-Halt-Abo, `readAddressSpaceSubtree`, `robotEmergencyStopChanged`). | `MessageLog` |
 | `frontend/src/features/opcua-server/components/index.ts` (M) | aus dev, ergänzt um die Exporte `CameraStreamPanel` und `CellWatchPanel`. | Barrel-Datei |
@@ -2173,8 +2175,8 @@ Browser (React, three.js)
 | Datei | Aufgabe | Wichtigste Bausteine |
 |---|---|---|
 | `frontend/src/features/opcua-server/model/useVisionJob.ts` (A) | Einzel-Job: `StartSingleJob` starten, das Ergebnis aus den Ereignissen holen, stoppen. | `useVisionJob`, `VisionJobState`, `VisionJobOptions`, `VisionJobStatus` |
-| `frontend/src/features/opcua-server/model/useContinuousVisionJob.ts` (A) | Dauerbetrieb über `StartContinuous`. Jeder Zyklus liefert ein Ergebnis. Endet der Lauf, startet der Hook neu, solange er aktiv ist. | `useContinuousVisionJob`, `RESTART_DELAY_MS`, `RETRY_DELAY_MS`, `STALL_TIMEOUT_MS` |
-| `frontend/src/features/opcua-server/model/visionResult.ts` (A) | Parser für das JSON-Ergebnis eines Jobs: Erkennungen, Welt-Tags, Kameraposition. | `parseVisionResult`, `VisionDetection`, `VisionWorldTag`, `VisionCameraLocalization` |
+| `frontend/src/features/opcua-server/model/useContinuousVisionJob.ts` (A) | Dauerbetrieb über `StartContinuous`. Jeder Zyklus liefert ein Ergebnis. Endet der Lauf, startet der Hook neu, solange er aktiv ist. Auf `ungetestet-aufraeumen` seit B13 ohne Verwender (Folgefund, `altlasten-wsc.md` Abschnitt 11). | `useContinuousVisionJob`, `RESTART_DELAY_MS`, `RETRY_DELAY_MS`, `STALL_TIMEOUT_MS` |
+| `frontend/src/features/opcua-server/model/visionResult.ts` (A) | Parser für das JSON-Ergebnis eines Jobs: Erkennungen, Welt-Tags, Kameraposition. Auf `ungetestet-aufraeumen` ohne den Zweig des alten Demo-Schemas `wsc.vision.test/1` (B9, `3b5652b`). | `parseVisionResult`, `VisionDetection`, `VisionWorldTag`, `VisionCameraLocalization` |
 | `frontend/src/features/opcua-server/model/cameraCalibration.ts` (A) | Typen und reine Logik der Kalibrierung: Fortschritt lesen, Phase ableiten, Schwellen. | `CalibrationProgress`, `deriveCalibrationPhase`, `parseCalibrationProgress`, `parseActiveCalibrationInfo`, `RMS_WARNING_THRESHOLD_PX`, `MIN_FINISH_SAMPLES` |
 | `frontend/src/features/opcua-server/model/useCameraCalibration.ts` (A) | Kalibriersitzung am Pi mit den Befehlen `start`, `capture`, `finish`, `abort`. Liest den Fortschritt. | `useCameraCalibration`, `CalibrationCommand`, `COMMAND_TIMEOUT_MS` |
 | `frontend/src/features/opcua-server/model/useHandEyeCalibration.ts` (A) | Hand-Auge-Kalibrierung am Hand-Pi (gleiche Befehle, Status `HandEyeStatus`). Der Hook löst nichts selbst. | `useHandEyeCalibration`, `HandEyeCommand` |
@@ -2196,7 +2198,7 @@ Browser (React, three.js)
 8. Methodenaufrufe ohne eigenen Hook (etwa der Reset beider Pis) laufen über `callPiMethod`. Der Aufruf wird leise verfolgt. Kommt 15 s lang keine Antwort, meldet er „keine Antwort vom Pi“.
 
 **Konfiguration.**
-- `VISION_RECIPES` in `piServers.ts`: `apriltag` („Module lokalisieren“) und `calibration` („Messbereitschaft prüfen“). Die Liste muss zu `DEFAULT_RECIPE_PROFILES` im Zellen-Repo passen. Unbekannte Rezepte lehnt der Pi mit Fehler 4 ab.
+- `VISION_RECIPES` in `piServers.ts`: `apriltag` („Module lokalisieren“) und `calibration` („Messbereitschaft prüfen“). Die Liste muss zu `DEFAULT_RECIPE_PROFILES` im Zellen-Repo passen. Unbekannte Rezepte lehnt der Pi mit Fehler 4 ab. Auf `ungetestet-aufraeumen` ist `VISION_RECIPES` entfernt (T13); nur ein Test benutzte die Liste.
 - Ereignistyp-Knoten im MachineVision-Namespace: `ResultReady` (1024), `JobStarted` (1013), `AcquisitionDone` (1025), `Ready` (1023), `StateChanged` (1018), jeweils als `RESULT_READY_EVENT_TYPE_IDENTIFIER` und Verwandte in `piServers.ts`.
 - Zeitlimits und Intervalle: `COMMAND_TIMEOUT_MS = 330000` (`useCameraCalibration.ts`), `TIMEOUT_MS = 15_000` und `POLL_MS = 100` (`piMethodCall.ts`), `RESTART_DELAY_MS = 2000`, `RETRY_DELAY_MS = 5000`, `STALL_TIMEOUT_MS = 60000` (`useContinuousVisionJob.ts`), `MAX_REARMS = 3` und `REARM_GAP_MS = 10_000` (`AutolocateActions.tsx`).
 - `RMS_WARNING_THRESHOLD_PX = 0.5` und `MIN_FINISH_SAMPLES = 3` (`cameraCalibration.ts`).
@@ -2238,7 +2240,7 @@ Browser (React, three.js)
 | `frontend/src/tag-tool/model/pose.ts` (A) | Starre Transformationen aus Position und Quaternion, Matrizen, RPY-Winkel. | `Pose`, `composePoses`, `invertPose`, `quaternionFromRpy`, `rpyFromQuaternion`, `frameAxes` |
 | `frontend/src/tag-tool/model/tag36h11.ts` (A) | Codes der Familie tag36h11 und das 10×10-Raster eines Tags. | `TAG36H11_CODES`, `TAG36H11_MAX_ID`, `tag36h11Cells` |
 | `frontend/src/tag-tool/model/tagFrame.ts` (A) | Tag-Koordinatensystem (AprilTag-Konvention und OpenCV des Pi), Kantenmaße. | `DEFAULT_TAG_SIZE_M`, `printedTagSizeM`, `toPiTagFrame`, `APRILTAG_TO_PI_TAG_FRAME` |
-| `frontend/src/tag-tool/model/units.ts` (A) | Umrechnung m/mm und rad/deg. `snapToStep` hat keinen Aufrufer. | `mToMm`, `mmToM`, `radToDeg`, `degToRad`, `snapToStep` |
+| `frontend/src/tag-tool/model/units.ts` (A) | Umrechnung m/mm und rad/deg. `snapToStep` hat keinen Aufrufer. Auf `ungetestet-aufraeumen` entfernt (T14). | `mToMm`, `mmToM`, `radToDeg`, `degToRad`, `snapToStep` |
 | `frontend/src/tag-tool/model/uploadedFiles.ts` (A) | Auflösung von Pfaden aus einem gewählten Ordner über `upload://` und `upload-package://`. | `UPLOAD_SCHEME`, `UPLOAD_PACKAGE_SCHEME`, `resolveUploadedPath`, `normalizePath` |
 | `frontend/src/tag-tool/model/urdfTree.ts` (A) | URDF-Baum: Ursprungs-Link, bewegliche Gelenke zwischen Links, Link-Pose. | `defaultOriginLink`, `linkPoseInRoot`, `movableJointsBetween`, `owningLink` |
 
@@ -2448,9 +2450,9 @@ Gelöscht (Tests): `frontend/src/entities/server/model/store.test.ts` wurde im Z
 | `frontend/vite.config.ts` (M) | aus dev, ergänzt um: Plugin `cellModuleFiles()`, Proxy `/api` auf das Backend, zwei Build-Eingänge (`main`, `tagTool`). | `cellModuleFiles`, `virtual:cell-module-files`, `server.proxy`, `build.rollupOptions.input` |
 | `frontend/package.json` (M) | aus dev, `vite` ersetzt durch den npm-Alias `npm:rolldown-vite@7.2.5` (vorher `7.3.6`). Eine Begründung steht weder hier noch in `vite.config.ts`. | Abhängigkeiten |
 | `frontend/package-lock.json` (M) | aus dev. Folge des Vite-Wechsels: `rolldown` und `@rolldown/pluginutils` kommen hinzu. Insgesamt 23 `node_modules`-Einträge neu, 59 entfallen (teils durch Versionswechsel). | Lockfile |
-| `frontend/src/index.css` (M) | aus dev, ergänzt um `.select` (Stil für native Auswahlfelder mit eigenem Hintergrund) und `step-attention` (Puls für `StepButton`). Bei `.input-ghost` wurde die feste Höhe `h-6` entfernt. `.select` hat in `src/` derzeit keine Verwendung. | `.select`, `step-attention`, `.input-ghost` |
+| `frontend/src/index.css` (M) | aus dev, ergänzt um `.select` (Stil für native Auswahlfelder mit eigenem Hintergrund) und `step-attention` (Puls für `StepButton`). Bei `.input-ghost` wurde die feste Höhe `h-6` entfernt. `.select` hat in `src/` derzeit keine Verwendung. Auf `ungetestet-aufraeumen` entfernt (T20). | `.select`, `step-attention`, `.input-ghost` |
 | `frontend/src/test/vitest.d.ts` (M) | aus dev, Typdeklaration für die Teile von `vitest`, die das Projekt nutzt. Ergänzt um `it.each`, `vi.useFakeTimers` und weitere Matcher. | `declare module 'vitest'` |
-| `frontend/tsconfig.tsbuildinfo` (A) | Build-Artefakt des TypeScript-Compilers. Der Ordner `frontend/.gitignore` schließt es nicht aus. Die Datei nennt Pfade, die es nicht gibt (z. B. `./src/app.tsx`, die Datei heißt `App.tsx`). Empfehlung: aus dem Repo entfernen und `*.tsbuildinfo` ignorieren. | – |
+| `frontend/tsconfig.tsbuildinfo` (A) | Build-Artefakt des TypeScript-Compilers. Der Ordner `frontend/.gitignore` schließt es nicht aus. Die Datei nennt Pfade, die es nicht gibt (z. B. `./src/app.tsx`, die Datei heißt `App.tsx`). Empfehlung: aus dem Repo entfernen und `*.tsbuildinfo` ignorieren. Auf `ungetestet-aufraeumen` umgesetzt (T19, `e635210`). | – |
 
 **Ablauf.** Beim Dev-Start liest das Plugin `cellModuleFiles` alle Modelldateien unter `public/models` und die URDFs unter `public/urdf` (ohne `meshes`-Ordner). Die Liste steht im virtuellen Modul `virtual:cell-module-files`, das `cell-modules/components/ModuleCatalogModal.tsx` importiert. Werden Dateien dort hinzugefügt oder entfernt, lädt der Dev-Server neu (`configureServer`). Der Proxy leitet `/api` an `http://127.0.0.1:8000`.
 
@@ -2486,7 +2488,7 @@ Gelöscht (Tests): `frontend/src/entities/server/model/store.test.ts` wurde im Z
 | `backend/src/backend/websocket/router.py` (M) | aus dev, ergänzt um einen `ClientHub` je Anwendung und einen `LiveEmitter` je Seite. Ereignisse ohne `requestId` gehen an alle Seiten, Antworten nur an die Seite, die gefragt hat. | `websocket_endpoint`, `get_client_hub`, `get_registry`, `send_event` |
 | `backend/src/backend/websocket/client_hub.py` (A) | Verwaltung der verbundenen Seiten und ihrer Zustellwege. Abos bleiben bestehen, auch wenn eine Seite neu lädt. | `ClientHub`, `LiveEmitter`, `broadcast`, `live_emitter` |
 | `backend/src/backend/models/messages.py` (M) | aus dev, ergänzt um `event_type_node_ids` im Befehl `SubscribeEventCommand`. Entfernt: die Befehle `SubscribeRobotEmergencyStopCommand`, `UnsubscribeRobotEmergencyStopCommand`, `ReadAddressSpaceSubtreeCommand` und das Ereignis `RobotEmergencyStopChangedEvent`. | `ClientMessage`, `ServerMessage`, `SubscribeEventCommand` |
-| `backend/src/backend/config/__init__.py` (A) | Leeres Paketmarker-Modul. Die Konfiguration steht in den Modulen selbst (siehe unten). | – |
+| `backend/src/backend/config/__init__.py` (A) | Leeres Paketmarker-Modul. Die Konfiguration steht in den Modulen selbst (siehe unten). Auf `ungetestet-aufraeumen` entfernt (T18, `95bf8e0`). | – |
 | `backend/.gitignore` (M) | aus dev, ergänzt um `data/` (Kommentar: Modulkatalog zur Laufzeit gespeichert). Der Standardpfad des Katalogs liegt unter `backend/catalog/`, nicht in `data/`. Die Regel greift nur, wenn `WSC_DATA_DIR` auf ein Verzeichnis namens `data` zeigt. | – |
 
 **Ablauf.**

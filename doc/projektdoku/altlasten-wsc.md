@@ -393,8 +393,47 @@ Wirkung: Distanz T_cam_tag ∝ `size_assumed/size_true`; 0,198 statt 0,20 bedeut
 
 ## 11. Umsetzungsstand
 
-Branch `ungetestet-aufraeumen` (webskillcomposition). Wird beim Aufräumen fortgeschrieben.
+Branch `ungetestet-aufraeumen` (webskillcomposition, Basis `Ungetestet` `5812275`, ungemergt). Wird beim Aufräumen fortgeschrieben. Die Commits bis `20bbf7f` liegen auf `origin/ungetestet-aufraeumen`; die Commits ab `3b5652b` (Sitzung B) sind bisher nur lokal und noch nicht gepusht.
 
 | IDs | Stand | Commit |
 | --- | --- | --- |
-| — | noch nichts umgesetzt | — |
+| T1, T2 | erledigt: `ModuleCatalogButton.tsx` gelöscht; Komponente `PiStatusList` entfernt, `isPiConnected` nach `opcua-server/model/piConnection.ts` | `ebc3d05` |
+| T18 | erledigt: leeres Paket `backend/src/backend/config/` entfernt | `95bf8e0` |
+| T19 | erledigt: `frontend/tsconfig.tsbuildinfo` nicht mehr getrackt, `*.tsbuildinfo` in `frontend/.gitignore` | `e635210` |
+| T11, T14, T15, T16, T20 | erledigt: `shiftBounds`, `snapToStep`, Feld `resultNodeId`, ungenutzte Importe und Variablen (auch `ServerStatus` im Backend), CSS-Klasse `.select` | `08f5dfd` |
+| T4 | erledigt: Zustand `layer2Target`/`setLayer2Target` aus `sceneState.ts` | `cd4b407` |
+| T3, B12 (Teil) | erledigt: Rest des alten Layer-2-Laufs (`layer2Run.ts` samt Test gelöscht, Request-Bau aus `layer2.ts`, `Layer2Pose` nach `robotDrive.ts`); Kopfkommentare von `layer2.ts` und `robotDrive.ts` berichtigt | `ef4532c` |
+| T10, T12, T13 | erledigt: Treiber-Attrappen, Alias-Konstanten in `robotTagRun.ts`, `VISION_RECIPES` | `d322927` |
+| T6 | erledigt: tag-basierter Hand-Auge-Start (`handEyeStartJson`, `HAND_EYE_GOOD_SAMPLES` u. a.) | `a33ba29` |
+| T7 | erledigt: `trackModuleMoves` samt Helfern; `applyModuleMoves` bleibt | `320033a` |
+| T8 | erledigt: Kette des gemessenen Ablagepunkts; `MEASURED_PLACE_TARGET`, `TableCorner` und `modulePointInBase` bleiben (Standardecke, `measurePlaceFromCorner`) | `9463ec2` |
+| T9, D12 | erledigt: `describeCellChange`/`KIND_LABELS` entfernt; Namens- und Detailhelfer von `CellChangeAlert` als `cellChangeModuleName`/`cellChangeMoveDetail` nach `cellWatch.ts` (mit Tests) | `b03dec6` |
+| T5 | erledigt: `Layer2Binding` auf `statusNodeId` reduziert; Pi-Vertrag `wsc.vision.layer2.*` unverändert | `20bbf7f` |
+| B9 | erledigt: Zweig des Demo-Schemas `wsc.vision.test/1` in `parseVisionResult` samt Feldern `message`/`time` und Test; kein Pi sendet das Schema noch (ADP `src`, `tests`, `config` ohne Treffer) | `3b5652b` |
+| B12 (Rest) | erledigt: `RobotRunConfirm.tsx` nach `opcua-server/components` (neben `CameraCalibrationModal`); Kommentare in `RobotRunConfirm`, `moduleCatalog.ts` (Katalog liegt im Backend), `controllerRobotDrive.ts` sowie Spin-Test-Reste in `FlangeTrajectoryMarker.tsx` und `robotHold.ts`. Die Stelle `AutolocateActions.tsx:64-65` gibt es nicht mehr | `d129912` |
+| B13 | erledigt: unerreichbarer Nicht-compact-Zweig samt Tracking und Prop `compact` aus `AutolocateLayer1Window.tsx` (874 → 465 Zeilen); das Scan-Fenster der Zellüberwachung ist unverändert | `0bd4841` |
+
+**Tests**
+
+- Übernahmestand (`20bbf7f`): `tsc --noEmit` fehlerfrei; `vitest run` 78 Dateien / 812 Tests (gegenüber 79 / 836 entfallen `layer2Run.test.ts` und 24 Tests zu gelöschtem totem Code); Backend `pytest -q` 81 bestanden, 1 übersprungen.
+- Nach B9, B12, B13 (`0bd4841`): `tsc` fehlerfrei; `vitest` 78 Dateien / 811 Tests (−1: Test des Demo-Schemas, B9); Backend 81 bestanden, 1 übersprungen.
+
+**Folgefunde** (beim Umsetzen entdeckt; laut Nutzer am 30.10. nur vermerken, nicht löschen)
+
+| Was | Wo | Beleg |
+| --- | --- | --- |
+| Hook für Dauerjobs ohne Verwender (seit B13) | `frontend/src/features/opcua-server/model/useContinuousVisionJob.ts` (310 Zeilen, ohne Test) | `grep -rn useContinuousVisionJob frontend/src`: nur die Datei selbst |
+| Verfolgen-Logik nur noch aus Tests erreichbar (seit B13) | `cell-modules/model/moduleTracking.ts` | einziger Importer `moduleTracking.test.ts` |
+| `describeLayer1Import` nur noch aus Tests erreichbar (seit B13) | `cell-modules/model/layer1Import.ts:128` | nur `layer1Import.test.ts` |
+| `clearCellModules` ohne Aufrufer (seit B13) | `viewport/model/sceneState.ts:149, 241` | grep |
+| Feld ohne Erzeuger, Rest des Spin-Tests | `FlangeTrajectory.centre` (`cell-modules/model/flangeTrajectory.ts:23`) und sein Zeichenzweig in `FlangeTrajectoryMarker.tsx:91-96` | kein Planer setzt `centre` |
+| Unerreichbare Wege, bewusst belassen | `AutolocateLayer1Window.tsx`: Folge-Scan ohne `onProposal` (zieht Module direkt nach), Zweig `worldTagsOnly` in `importIntoViewport`, Text „Erkannte Module“ bei `following` | der einzige Aufrufer setzt `onProposal` und `headless` genau bei `followTagIds !== null` |
+| Alter Browser-Schlüssel | localStorage `wsc.autolocate.layer1.trackingThresholds` wird nicht mehr gelesen oder geschrieben und kann in Browsern liegen bleiben | B13 |
+
+**Entscheidungen**
+
+- **D18** (Nutzer, 30.10.): statt einer festen Konstante **eine im Frontend einstellbare Geschwindigkeit** — Obergrenze für jedes `go_to` und Wert aller automatischen Läufe; das langsame Absetzen bei Pick & Place fährt ein Drittel davon. Grund: Auf `Ungetestet` setzt `a954fb0` (nach der Basis `5812275`) die Obergrenze und die Kalibrierfahrt auf 0,2, die übrigen Läufe bleiben bei 0,1 — die Annahme „überall 0,1“ trifft nicht mehr zu. Umsetzung nach D10, dessen Store sie nutzt.
+
+**Hinweis zum späteren Merge**
+
+`origin/Ungetestet` ist seit der Basis `5812275` weitergelaufen: `8584209` (Tag-Map-Sync, NobbisCode), `a954fb0` (Ablagehöhe, Geschwindigkeit 0,2, Roboter-Log, Höhen aus CAD), `3f4dd21` (Merge). Beim Zusammenführen sind Konflikte absehbar, u. a. in `PiStatusList.tsx` (hier entschlackt, dort ergänzt), `piServers.ts`, `visionResult.test.ts`, `cellWatch.ts`, `moduleCatalog.ts`, `AutolocateActions.tsx`, `applicationController.ts`, `useBoardCalibrationRun.ts` und `usePickPlaceRun.ts`.
