@@ -1,14 +1,16 @@
-"""From image corners to pose: `T_cam_tag` plus quality measures.
+"""Von den Bildecken zur Pose: `T_cam_tag` samt Guetemassen.
 
-The prototype (`src/apriltag/detect_apriltags.py`, removed 2026-10-30) does two things worse:
+Der Prototyp (`src/apriltag/detect_apriltags.py`, am 2026-10-30 entfernt) macht
+zwei Dinge schlechter:
 
-1. No undistortion. `D` there only went to `drawFrameAxes`; the pose was
-   computed on the distorted image (doc/projektdoku/altlasten.md, "Was nicht hier
-   steht"). Here, corners are undistorted first, then solved with an ideal
-   pinhole model.
-2. No ambiguity reporting. A square marker seen at a shallow angle has two
-   nearly equally good solutions; `solvePnPGeneric` returns both, and the
-   ratio of their residual errors is the most honest warning available.
+1. Keine Entzerrung. `D` ging dort nur an `drawFrameAxes`; die Pose wurde am
+   verzerrten Bild gerechnet (doc/projektdoku/altlasten.md, "Was nicht hier
+   steht"). Hier werden die Ecken zuerst entzerrt und dann mit einem idealen
+   Pinhole-Modell geloest.
+2. Keine Angabe der Mehrdeutigkeit. Ein quadratischer Marker, unter flachem
+   Winkel gesehen, hat zwei fast gleich gute Loesungen; `solvePnPGeneric`
+   liefert beide, und das Verhaeltnis ihrer Restfehler ist die ehrlichste
+   Warnung, die es gibt.
 """
 
 import logging
@@ -26,11 +28,11 @@ _log = logging.getLogger(__name__)
 
 
 def tag_object_points(size_m: float) -> np.ndarray:
-    """Return the four tag corners in the tag frame, in meters.
+    """Liefert die vier Tag-Ecken im Tag-KS, in Metern.
 
-    Order matches `TagObservation.corners` (clockwise from top-left) and
-    what `SOLVEPNP_IPPE_SQUARE` expects. The tag origin is at the centre,
-    +Z points out of the tag.
+    Die Reihenfolge passt zu `TagObservation.corners` (im Uhrzeigersinn, oben
+    links zuerst) und zu dem, was `SOLVEPNP_IPPE_SQUARE` erwartet. Der
+    Tag-Ursprung liegt in der Mitte, +Z zeigt aus dem Tag heraus.
     """
     half = float(size_m) / 2.0
     return np.array(
@@ -45,11 +47,11 @@ def tag_object_points(size_m: float) -> np.ndarray:
 
 
 def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
-    """Undistort image corners onto the ideal pinhole model.
+    """Entzerrt Bildecken auf das ideale Pinhole-Modell.
 
-    `P=K` puts the result back into pixels so it can be solved with zero
-    distortion afterwards -- regardless of the calibration's lens model
-    (pinhole or fisheye, see `tagloc.lens`).
+    `P=K` bringt das Ergebnis zurueck in Pixel, sodass danach mit
+    Verzeichnung null geloest werden kann -- unabhaengig vom Linsenmodell der
+    Kalibrierung (Pinhole oder Fisheye, siehe `tagloc.lens`).
     """
     from . import lens
 
@@ -57,7 +59,7 @@ def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
 
 
 def _reprojection_error_px(object_points, image_points, rvec, tvec, camera_matrix) -> float:
-    """Return the RMS distance between measured and reprojected corners."""
+    """Liefert den RMS-Abstand zwischen gemessenen und reprojizierten Ecken."""
     import cv2
 
     projected, _ = cv2.projectPoints(
@@ -119,20 +121,21 @@ def _solve_tag_pose(
             # eindeutige Tags. Die Schwelle ist am rohen Verhaeltnis gemessen.
             best = float(np.asarray(errors).reshape(-1)[0])
             second = float(np.asarray(errors).reshape(-1)[1])
-            # In (0, 1]: near 1 means both solutions explain the image
-            # equally well. A second error of 0 can't occur unless the first
-            # is too -- that would mean a degenerate configuration.
+            # In (0, 1]: nahe 1 heisst, beide Loesungen erklaeren das Bild
+            # gleich gut. Ein zweiter Fehler von 0 kommt nur vor, wenn auch der
+            # erste 0 ist -- das waere eine entartete Anordnung.
             ambiguity = best / second if second > 1e-12 else 1.0
-    else:  # pragma: no cover - very old OpenCV version
+    else:  # pragma: no cover - sehr alte OpenCV-Version
         _log.debug("SOLVEPNP_IPPE_SQUARE nicht verfuegbar, weiche auf ITERATIVE aus")
         ok, rvec, tvec = cv2.solvePnP(
             object_points, image_points, camera_matrix, no_distortion
         )
         if not ok:
             raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
-        # This path yields only one solution, so ambiguity is unknown. Report
-        # ambiguous rather than unique as the safer default: a falsely
-        # flagged tag costs a check, a falsely unique one costs a bad move.
+        # Dieser Pfad liefert nur eine Loesung, die Mehrdeutigkeit ist also
+        # unbekannt. Als sicherer Standard gilt "mehrdeutig" statt "eindeutig":
+        # ein faelschlich markierter Tag kostet eine Pruefung, ein faelschlich
+        # eindeutiger eine falsche Fahrt.
         ambiguity = 1.0
 
     error_px = _reprojection_error_px(
@@ -151,7 +154,7 @@ def _solve_tag_pose(
 def estimate_tag_pose(
     observation: TagObservation, size_m: float, calibration: CameraCalibration
 ) -> TagPose:
-    """Estimate `T_cam_tag` for a single tag."""
+    """Schaetzt `T_cam_tag` fuer einen einzelnen Tag."""
     return _solve_tag_pose(
         observation,
         tag_object_points(size_m),
@@ -169,14 +172,14 @@ def estimate_tag_poses(
     default_size_m: float = 0.05,
     max_reprojection_error_px: float | None = None,
 ) -> list[TagPose]:
-    """Estimate poses for all found tags.
+    """Schaetzt die Posen aller gefundenen Tags.
 
-    Tag size comes **per tag from the map**, not a global constant: world
-    board and module tags differ in size, and a wrong size scales distance
-    linearly without otherwise standing out.
+    Die Tag-Groesse kommt **je Tag aus der Karte**, nicht als globale
+    Konstante: Welttafel- und Modul-Tags sind verschieden gross, und eine
+    falsche Groesse skaliert den Abstand linear, ohne sonst aufzufallen.
 
-    Tags above `max_reprojection_error_px` are dropped and logged, not
-    passed through silently.
+    Tags ueber `max_reprojection_error_px` werden verworfen und protokolliert,
+    nicht stumm durchgereicht.
     """
     import cv2
 
@@ -243,11 +246,11 @@ def estimate_tag_poses(
 
 
 def _solver_exceptions() -> tuple[type[BaseException], ...]:
-    """Return the exceptions a single observation can plausibly raise.
+    """Liefert die Ausnahmen, die eine einzelne Beobachtung plausibel ausloesen kann.
 
-    Deliberately narrow: an `AttributeError` or `TypeError` would be a bug
-    and would recur for every tag in every frame -- a repeated log line
-    instead of a clear crash. Such errors should propagate.
+    Bewusst eng: ein `AttributeError` oder `TypeError` waere ein Fehler im
+    Code und kaehme fuer jeden Tag in jedem Bild wieder -- eine wiederholte
+    Logzeile statt eines klaren Absturzes. Solche Fehler sollen durchlaufen.
     """
     try:
         import cv2
@@ -399,7 +402,7 @@ def _translation(point) -> Pose:
 
 
 def poses_by_tag(tag_poses: Sequence[TagPose]) -> dict[int, Pose]:
-    """Return `{tag_id: T_cam_tag}`, the input format of `tagmap.place_tags`."""
+    """Liefert `{tag_id: T_cam_tag}`, das Eingabeformat von `tagmap.place_tags`."""
     return {tag_pose.tag_id: tag_pose.pose_cam_tag for tag_pose in tag_poses}
 
 

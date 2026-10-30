@@ -1,16 +1,17 @@
-"""Camera calibration as data: read, write, check. No OpenCV.
+"""Kamerakalibrierung als Daten: lesen, schreiben, pruefen. Ohne OpenCV.
 
-JSON instead of OpenCV FileStorage YAML, deliberately:
+Bewusst JSON statt OpenCV-FileStorage-YAML:
 
-* readable without `cv2` -- the vision server builds `configurationId`
-  without loading OpenCV, and tests run everywhere
-* room for `rms`, image size and board geometry. The prototype
-  (`src/apriltag/calibrate_camera.py`, removed 2026-10-30) only printed `rms` to stdout and wrote
-  `image_width`/`image_height` without ever reading them back
-* diffable and human-readable on error
+* ohne `cv2` lesbar -- der Vision-Server baut die `configurationId`, ohne
+  OpenCV zu laden, und die Tests laufen ueberall
+* Platz fuer `rms`, Bildgroesse und Brettgeometrie. Der Prototyp
+  (`src/apriltag/calibrate_camera.py`, am 2026-10-30 entfernt) gab `rms` nur
+  auf stdout aus und schrieb `image_width`/`image_height`, ohne sie je wieder
+  zu lesen
+* vergleichbar (diff) und im Fehlerfall von Hand lesbar
 
-The file belongs to **one physical camera**, not the repo. Stored under
-`data/`, excluded by `.gitignore` -- each Pi generates its own.
+Die Datei gehoert zu **einer physischen Kamera**, nicht ins Repo. Sie liegt
+unter `data/`, per `.gitignore` ausgeschlossen -- jeder Pi erzeugt seine eigene.
 """
 
 import json
@@ -46,7 +47,7 @@ PLACEHOLDER_CALIBRATION_ID = "placeholder-unkalibriert"
 
 @dataclass(frozen=True)
 class CameraCalibration:
-    """Intrinsics and distortion of a camera, with provenance."""
+    """Intrinsik und Verzeichnung einer Kamera, mit Herkunft."""
 
     camera_matrix: np.ndarray
     distortion: np.ndarray
@@ -64,7 +65,7 @@ class CameraCalibration:
 
     @property
     def camera_params(self) -> tuple[float, float, float, float]:
-        """Return `(fx, fy, cx, cy)`, the format tag detectors expect."""
+        """Liefert `(fx, fy, cx, cy)`, das Format, das Tag-Detektoren erwarten."""
         matrix = np.asarray(self.camera_matrix, dtype=np.float64)
         return (
             float(matrix[0, 0]),
@@ -75,7 +76,7 @@ class CameraCalibration:
 
 
 def save_calibration(path: Path, calibration: CameraCalibration) -> None:
-    """Write the calibration as JSON, creating missing directories."""
+    """Schreibt die Kalibrierung als JSON und legt fehlende Ordner an."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -98,7 +99,7 @@ def save_calibration(path: Path, calibration: CameraCalibration) -> None:
 
 
 def load_calibration(path: Path) -> CameraCalibration:
-    """Read a calibration file. Raises with the path if something is missing."""
+    """Liest eine Kalibrierdatei. Fehlt etwas, meldet die Ausnahme den Pfad."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Kalibrierung nicht gefunden: {path}")
@@ -178,12 +179,12 @@ def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> Came
 
 
 def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]) -> None:
-    """Raise if the calibration belongs to a different resolution.
+    """Wirft, wenn die Kalibrierung zu einer anderen Aufloesung gehoert.
 
-    Without this check, every pose is off by the scale factor -- plausibly
-    off, so it goes unnoticed. This happens in practice:
-    `AprilTagProfileConfig.resolution` is 2028x1520, while a calibration via
-    `cv2.VideoCapture(0)` easily ends up at 640x480.
+    Ohne diese Pruefung ist jede Pose um den Skalierungsfaktor daneben --
+    plausibel daneben, also unbemerkt. Das kommt in der Praxis vor:
+    `AprilTagProfileConfig.resolution` ist 2028x1520, eine Kalibrierung ueber
+    `cv2.VideoCapture(0)` endet leicht bei 640x480.
     """
     expected = (int(calibration.image_size[0]), int(calibration.image_size[1]))
     actual = (int(image_size[0]), int(image_size[1]))
@@ -197,12 +198,13 @@ def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]
 def scale_to_resolution(
     calibration: CameraCalibration, image_size: tuple[int, int]
 ) -> CameraCalibration:
-    """Scale the intrinsics to a different resolution.
+    """Skaliert die Intrinsik auf eine andere Aufloesung.
 
-    Only valid for the same framing and aspect ratio (pure downscaling, not
-    cropping). Distortion coefficients are relative to normalised
-    coordinates and stay unchanged -- for the pinhole and the fisheye
-    model alike, so `model` is carried over as is.
+    Nur fuer denselben Bildausschnitt und dasselbe Seitenverhaeltnis gueltig
+    (reines Verkleinern, kein Zuschneiden). Die Verzeichnungskoeffizienten
+    beziehen sich auf normierte Koordinaten und bleiben unveraendert -- fuer
+    das Pinhole- wie das Fisheye-Modell, daher wird `model` unveraendert
+    uebernommen.
     """
     source = (int(calibration.image_size[0]), int(calibration.image_size[1]))
     target = (int(image_size[0]), int(image_size[1]))
@@ -229,9 +231,9 @@ def scale_to_resolution(
     )
 
 
-#: `calibration_identity` is re-exported here so callers don't need to look
-#: in a second module. It lives in `identity` because that module must work
-#: without numpy.
+#: `calibration_identity` wird hier erneut ausgegeben, damit Aufrufer nicht in
+#: einem zweiten Modul suchen muessen. Es steht in `identity`, weil jenes
+#: Modul ohne numpy funktionieren muss.
 __all__ = [
     "DISTORTION_MODELS",
     "FISHEYE",
