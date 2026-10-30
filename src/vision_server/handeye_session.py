@@ -44,10 +44,8 @@ from tagloc.geometry import (
     Pose,
     average_poses,
     compose,
-    invert,
     pose_to_dict,
     rotation_distance_rad,
-    rvec_from_rotation,
     translation_distance_m,
 )
 from tagloc.handeye import (
@@ -627,7 +625,8 @@ class HandEyeSession:
         if self._ports.intrinsics_source is not None:
             try:
                 source = self._ports.intrinsics_source()
-            except Exception:
+            except Exception as error:
+                _log.debug("Herkunft der Intrinsik nicht lesbar: %s", error)
                 source = None
             if source:
                 return str(source)
@@ -686,7 +685,8 @@ class HandEyeSession:
         die Kamera am Flansch zeigen. `None` ohne (lesbare) Datei."""
         try:
             hand_eye = load_hand_eye(self._ports.path)
-        except Exception:
+        except Exception as error:
+            _log.debug("Keine lesbare Hand-Auge-Datei %s: %s", self._ports.path, error)
             return None
         return {
             "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
