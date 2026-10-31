@@ -1281,7 +1281,8 @@ Benutzt von: `sceneState.ts` (Szene), `AutolocateLayer1Window.tsx`, `TagPosition
 |---|---|---|
 | `frontend/src/features/cell-modules/model/cellModules.ts` | Wandelt die Erkennungen der Deckenkamera in Module der Szene um (nur im Welt-KS; Tags eines Moduls werden zu einem Modul gemittelt). Fügt Scan und Layer-2-Ergebnis in die Szene ein. | `PlacedCellModule`, `PlacedWorldTag`, `PlacementResult`, `placeLayer1Detections`, `placeWorldTags`, `mergeLayer1Scan`, `mergeLayer2Result`, `worldToScenePosition`, `levelModulePose` |
 | `frontend/src/features/cell-modules/model/tagGeometry.ts` | Quaternionen und Posen; Roll/Pitch/Yaw nach der URDF-Konvention (Grad). Enthält die letzte Stufe der Kette: Modul-Pose = Welt-Tag-Pose · Tag-in-Modul. | `Pose`, `IDENTITY_POSE`, `composePoses`, `invertPose`, `multiplyQuaternions`, `rotateVector`, `quaternionFromRpyDeg`, `rpyDegFromQuaternion`, `moduleWorldPose`, `tagWorldPose`, `turnRotationDegAboutTagZ` |
-| `frontend/src/features/cell-modules/model/format.ts` | Formatiert Weltkoordinaten als Text in Millimetern. | `formatWorldMm` |
+| `frontend/src/features/cell-modules/model/format.ts` | Formatiert Weltkoordinaten als Text in Millimetern. Auf `ungetestet-aufraeumen` nach `frontend/src/shared/format.ts` verschoben, die Datei entfällt (D9). | `formatWorldMm` |
+| `frontend/src/features/cell-modules/model/vec3.ts` | Nur auf `ungetestet-aufraeumen` (D6): kleine Helfer für `Vec3`-Tupel, die vorher in neun Dateien einzeln standen. | `add`, `subtract`, `scale`, `dot`, `cross`, `length`, `distance`, `normalise` |
 | `frontend/src/features/cell-modules/model/tagPositions.ts` | Liste aller Tags der Zelle im Welt-KS (Katalog, gesehen, berechnet), als Tabelle zum Kopieren. | `TagPositionRow`, `listTagPositions`, `tagPositionsText` |
 
 **Ablauf**: Pi 1 liefert `VisionDetection` mit `position` und `orientation` im `frameId` → nur bei `frameId === "world"` (sonst übersprungen) → `levelModulePose` (Höhe kommt vom Boden, übernommen wird nur die Drehung um Z) → Mittel je Modul, Drehung vom sichersten Tag → `PlacedCellModule` im Welt-KS → `worldToScenePosition` (Szene: `[x, z, −y]`) → Szene (`sceneState.ts`).
@@ -1294,7 +1295,7 @@ Benutzt von: `sceneState.ts` (Szene), `AutolocateLayer1Window.tsx`, `TagPosition
 - Der Boden ist die mittlere Höhe der Welttags aus dem Katalog (`floorHeightM`, 0 ohne Welttags).
 - Einheiten: Positionen in Metern. Winkel im Katalog in Grad, in der Szene (`yaw`) in Radiant.
 
-**Tests**: `cellModules.test.ts`, `tagGeometry.test.ts`, `tagPositions.test.ts`. `format.ts` hat keinen Test.
+**Tests**: `cellModules.test.ts`, `tagGeometry.test.ts`, `tagPositions.test.ts`. `format.ts` hat keinen Test. Auf `ungetestet-aufraeumen`: `vec3.test.ts`; `formatWorldMm` prüft `frontend/src/shared/format.test.ts`.
 
 **Weiterlesen**: [apriltag-lokalisierung.md](apriltag-lokalisierung.md) (Abschnitt 1.1 „Drei Rollen von Tags“ und 1.2 „Die Kette“), [apriltag-referenz.md](apriltag-referenz.md) (Abschnitt 1 „Begriffe und Konventionen“), [vision-system-integration.md](vision-system-integration.md).
 
@@ -1541,7 +1542,7 @@ Benutzt von: `CameraCalibrationModal.tsx` (Fenster der Kamera-Kalibrierung, opcu
 |---|---|---|
 | `frontend/src/features/cell-modules/model/boardCalibrationPoses.ts` | Eingelernte Positionen (Gelenkwinkel) speichern. Reihenfolge hin und zurück über mehrere Durchgänge. Handgelenk-Variante ab dem zweiten Durchgang. „Neuer Winkel“ dreht den Greifer um seine Werkzeugspitze. | `taughtPositionsFromStorage`, `taughtPositionsForStorage`, `stopsFromPositions`, `stopAtStep`, `angleVariant`, `boardRunTrajectory`, `BOARD_ROBOT_TAG_ID`, `CALIBRATION_POSITION_COUNT` |
 | `frontend/src/features/cell-modules/model/boardCalibrationRunner.ts` | Ablaufsteuerung als Zustandsmaschine: halten, Sitzung, Neutralstellung, anfahren, prüfen, aufnehmen, auswerten, anhalten. Ohne React; Abhängigkeiten sind Funktionen. | `BoardRunner`, `BoardRunState`, `BoardRunDeps`, `BoardRunStatus`, `stepsForPasses`, `TARGET_PICTURES`, `MIN_PICTURES` |
-| `frontend/src/features/cell-modules/model/useBoardCalibrationRun.ts` | Hook: verbindet Runner, Roboter (Take Control, Sync), Pi-Sitzung (Start, Aufnahme, Auswerten) und die gespeicherten Positionen. | `useBoardCalibrationRun`, `BoardCalibrationRun`, `BOARD_DRIVE_MAX_SPEED` |
+| `frontend/src/features/cell-modules/model/useBoardCalibrationRun.ts` | Hook: verbindet Runner, Roboter (Take Control, Sync), Pi-Sitzung (Start, Aufnahme, Auswerten) und die gespeicherten Positionen. `BOARD_DRIVE_MAX_SPEED` entfällt auf `ungetestet-aufraeumen` (D18). | `useBoardCalibrationRun`, `BoardCalibrationRun`, `BOARD_DRIVE_MAX_SPEED` |
 
 **Ablauf**: Positionen einlernen (Arm von Hand führen, jede Stellung übernehmen; das liest die Gelenkwinkel) → Start: Roboter halten (`sharedRobotHolds`), Kalibriersitzung am Pi starten (`StartCalibration`) → Neutralstellung anfahren, Brett in die Zange nehmen („Zange zugreifen“), dann „Kalibrierfahrt starten“ → je Position: `drive`, dann `measureBoard` am Pi 1 → ganzes Brett im Bild: Aufnahme (`CaptureCalibrationSample`), sonst bis zu zwei neue Winkel (`angleVariant`) → nach 20 Bildern oder zwei Durchgängen: Auswertung (`FinishCalibration`) → zurück in die Neutralstellung.
 
@@ -1551,7 +1552,7 @@ Benutzt von: `CameraCalibrationModal.tsx` (Fenster der Kamera-Kalibrierung, opcu
 - `SETTLE_MS = 1000`: Wartezeit, bis das Brett nach der Fahrt nicht mehr schwingt.
 - `TOOL_POINT_M = 0.1034`. Greiferdrehungen (`ANGLE_CHANGES`): ±20° um X und Y, ±45° um Z. `MAX_ANGLE_STEP_RAD = 1.2`, `JOINT_LIMIT_MARGIN_RAD = 0.05`.
 - `BOARD_ROBOT_TAG_ID = 1`: der Roboter (Franka), dessen Katalogeintrag diesen Tag trägt.
-- Fahrt mit `AUTO_DRIVE_MAX_SPEED` (0,1).
+- Fahrt mit `AUTO_DRIVE_MAX_SPEED` (0,1). Auf `ungetestet-aufraeumen` mit der eingestellten Geschwindigkeit (D18).
 - localStorage: `wsc.cameraCalibration.camera1Positions`.
 
 **Tests**: `boardCalibrationPoses.test.ts`, `boardCalibrationRunner.test.ts`.
@@ -1579,7 +1580,7 @@ Benutzt von: `PickPlacePanel.tsx` (Oberfläche, eingebunden in `AutolocateAction
 - `CUBE_SIZE_M = 0.02`. `DEFAULT_LIFT_M = 0.1`: Anheben und Absetzen 10 cm über der Fläche. `CARRY_CLEARANCE_M = 0.02`: Abstand des Würfels zur Tischplatte beim Tragen. `EDGE_MARGIN_M = 0.05`: Weg über die Tischkante. `DEFAULT_GRASP_MARGIN_M = 0.003`: beim Greifen 3 mm höher.
 - `DEFAULT_DROP_HEIGHT_M = 0`: Der Würfel wird auf die Tischplatte gesetzt. Im Hook einstellbar.
 - `GRIPPER_OPEN_HALF_M = 0.04`: Finger offen, je Seite. Greifer-Zeitlimit 15 s, Wartezeit nach dem Greifen 1,5 s.
-- Geschwindigkeit: `AUTO_DRIVE_MAX_SPEED` (0,1) für Fahrten, ein Drittel davon für das langsame Ablegen und Aufnehmen.
+- Geschwindigkeit: `AUTO_DRIVE_MAX_SPEED` (0,1) für Fahrten, ein Drittel davon für das langsame Ablegen und Aufnehmen. Auf `ungetestet-aufraeumen`: die eingestellte Geschwindigkeit, ein Drittel davon beim Ablegen und Aufnehmen (D18).
 - `MEASURED_PLACE_TARGET` (Ecke und Abstände am Kalibrierblatt auf dem Tisch „Tisch leer“, Tag 3) dient nur als Standardecke für die Maßband-Anzeige.
 - localStorage: `wsc.pickPlace.pick` (Aufnahmestelle), `wsc.pickPlace.placed` (Ablageort).
 
@@ -1600,7 +1601,7 @@ Benutzt von: `ApproachPlanPanel.tsx`, `TagReferencePanel.tsx`, `HandEyeAutoPanel
 | Datei | Aufgabe | wichtigste Exporte |
 |---|---|---|
 | `frontend/src/features/cell-modules/model/robotDrive.ts` | Ein `go_to` mit Gelenkwinkeln, dann Warten, bis der Roboter steht. Zeitlimits. Setzt den `go_to`-Skill zurück, wenn er im Zustand Halted hängt. Die Flanschpose wird aus den gemeldeten Gelenken berechnet, nicht aus dem Ziel. Auf `ungetestet-aufraeumen` ohne die Attrappen `DISCONNECTED_DRIVER`/`PRETEND_DRIVER` (T10), dafür mit dem Typ `Layer2Pose` (T3). | `driveJoints`, `createRobotDriver`, `planMove`, `hasArrived`, `RobotDriver`, `RobotDriveDeps`, `DriveOutcome`, `JointsTimeoutError` |
-| `frontend/src/features/cell-modules/model/robotHold.ts` | Nimmt Take Control und Sync nacheinander. Gibt beim Loslassen nur zurück, was es selbst eingeschaltet hat. Gemeinsame Haltung für alle Panels. | `holdRobot`, `createSharedRobotHolds`, `sharedRobotHolds`, `RobotHoldApi`, `RobotHold`, `AUTO_DRIVE_MAX_SPEED` |
+| `frontend/src/features/cell-modules/model/robotHold.ts` | Nimmt Take Control und Sync nacheinander. Gibt beim Loslassen nur zurück, was es selbst eingeschaltet hat. Gemeinsame Haltung für alle Panels. Auf `ungetestet-aufraeumen` ohne `AUTO_DRIVE_MAX_SPEED`; die Geschwindigkeit steht in `frontend/src/entities/robot/model/maxSpeed.ts` (D18). | `holdRobot`, `createSharedRobotHolds`, `sharedRobotHolds`, `RobotHoldApi`, `RobotHold`, `AUTO_DRIVE_MAX_SPEED` |
 | `frontend/src/features/cell-modules/model/useRobotHold.ts` | Hook: hält den Roboter, solange das Panel offen ist. Meldet, wenn Take Control oder Sync von Hand ausgeschaltet wurden. | `useRobotHold`, `RobotHoldState`, `RobotHoldStatus` |
 | `frontend/src/features/cell-modules/model/robotOperation.ts` | Store: „der Roboter fährt selbst“, mit dem Zeitpunkt, an dem der letzte Lauf endete. | `beginRobotOperation`, `endRobotOperation`, `useRobotOperation`, `RobotOperation` |
 | `frontend/src/features/cell-modules/model/useRobotMotionWatch.ts` | Hook: erkennt jede Bewegung synchronisierter Roboter (alle 0,5 s) und meldet sie als Roboterbetrieb. | `useRobotMotionWatch` |
@@ -1612,7 +1613,7 @@ Benutzt von: `ApproachPlanPanel.tsx`, `TagReferencePanel.tsx`, `HandEyeAutoPanel
 
 **Konstanten/Konfiguration**
 
-- `AUTO_DRIVE_MAX_SPEED = 0.1`: `max_speed` für alle Fahrten der App. Die Server veröffentlichen keine Einheit.
+- `AUTO_DRIVE_MAX_SPEED = 0.1`: `max_speed` für alle Fahrten der App. Die Server veröffentlichen keine Einheit. Auf `ungetestet-aufraeumen` ersetzt durch eine Einstellung im Frontend (Settings → Zellüberwachung → Roboter, 0,01 bis 0,5, Standard 0,1, je Browser unter `wsc.robot.maxSpeed`); sie ist zugleich die Obergrenze jedes `go_to` (D18).
 - `DRIVE_TIMEOUT_MS = 120000`: nach zwei Minuten gilt eine Fahrt als gescheitert. Gelenke werden alle 250 ms gelesen. `ARRIVED_RAD = 0.005`, `STILL_RAD = 0.0005`, `START_GRACE_MS = 3000`, `NO_ANSWER_MS = 60000`. Acht fehlgeschlagene Lesungen in Folge brechen ab (`MAX_FAILED_READS`).
 - `SYNC_START_TIMEOUT_MS = 5000`, `READ_JOINTS_TIMEOUT_MS = 3000`.
 - Bewegungswächter: alle 500 ms prüfen, Bewegung ab 0,003 rad, nach 3 s Ruhe gilt der Roboter als still (`useRobotMotionWatch`).
@@ -1650,7 +1651,7 @@ Benutzt von: `approachPlan.ts`, `tagReferenceRun.ts`, `centreOnTag.ts`, `pickPla
 
 ### Zustand und Speicher (Übersicht)
 
-**Zweck**: Die Dateien halten Zustand entweder im Browser (localStorage) oder nur im Speicher der Seite. Gespeichertes gilt pro Browser. Gemeinsam für alle ist nur der Modulkatalog, und der liegt am Backend. Die Zugriffe auf den localStorage sind mit try/catch abgesichert. Der Zustand der Szene selbst (`cellModules`, Vorschläge, Pfade) liegt in `frontend/src/features/viewport/model/sceneState.ts` und ist nicht Teil dieses Abschnitts.
+**Zweck**: Die Dateien halten Zustand entweder im Browser (localStorage) oder nur im Speicher der Seite. Gespeichertes gilt pro Browser. Gemeinsam für alle ist nur der Modulkatalog, und der liegt am Backend. Die Zugriffe auf den localStorage sind mit try/catch abgesichert. Auf `ungetestet-aufraeumen` laufen sie für `autolocateUi.ts`, `tagReferenceSettings.ts` und die Geschwindigkeit über `frontend/src/shared/storage.ts`, die Stores über `frontend/src/shared/createStore.ts` (D10, D18). Der Zustand der Szene selbst (`cellModules`, Vorschläge, Pfade) liegt in `frontend/src/features/viewport/model/sceneState.ts` und ist nicht Teil dieses Abschnitts.
 
 **Dateien und Schlüssel**
 
@@ -1665,6 +1666,7 @@ Benutzt von: `approachPlan.ts`, `tagReferenceRun.ts`, `centreOnTag.ts`, `pickPla
 | `wsc.cameraCalibration.camera1Positions` | `frontend/src/features/cell-modules/model/useBoardCalibrationRun.ts` | eingelernte Positionen der Kamera-1-Kalibrierung |
 | `wsc.pickPlace.pick` | `frontend/src/features/cell-modules/model/usePickPlaceRun.ts` (Format in `pickPlaceRoute.ts`) | eingelernte Aufnahmestelle |
 | `wsc.pickPlace.placed` | `frontend/src/features/cell-modules/model/usePickPlaceRun.ts` (Format in `pickPlace.ts`) | Ablageort des Würfels |
+| `wsc.robot.maxSpeed` | `frontend/src/entities/robot/model/maxSpeed.ts` (nur auf `ungetestet-aufraeumen`, D18) | eingestellte Roboter-Geschwindigkeit (`go_to` `max_speed`) |
 
 Nur im Speicher der Seite liegen: `robotOperation.ts` (Roboterbetrieb), `cellWatchSwitch.ts` (Listener), `autolocateUi.ts` (ob das Fenster „Tags einmessen“ offen ist), `sharedRobotHolds` in `robotHold.ts` (gemeinsame Haltung) und der aktuelle Katalog im `catalogStore.ts`.
 
@@ -1806,6 +1808,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 |---|---|---|
 | `frontend/src/features/cell-modules/components/CellChangeAlert.tsx` | Alarmkasten oben mittig mit der Überschrift "Zelle verändert" und "N Änderungen erkannt". Je Änderung ein Eintrag: "Verschoben" (gelb, mit Abstand und Drehung), "Neu" (grün) oder "Entfernt" (rot). Knöpfe "Übernehmen" (entfernte Module herausnehmen, neue und verschobene dort platzieren), "Ignorieren" (der jetzige Zustand wird die Referenz) und das Kreuz oben rechts zum Schließen, ohne etwas zu ändern. Während die Deckenkamera misst, ist "Übernehmen" gesperrt. | `CellChange` (`model/cellWatch`), `findModuleByTag` (`config/moduleCatalog.ts`), `createPortal` (in `document.body`) |
 | `frontend/src/features/cell-modules/components/WatchTimingFields.tsx` | Im Menü "Settings" unter "Zellüberwachung", Bereich "Überwachung": Felder "Prüfen alle (s)" und "Änderung melden nach (s)". Leer heißt Standardwert, grau dargestellt. | `useAutolocateUi`, `autolocateUi.setTiming` (`model/autolocateUi`), `SecondsField` (`shared/ui`) |
+| `frontend/src/features/cell-modules/components/RobotSpeedField.tsx` (nur auf `ungetestet-aufraeumen`, D18) | Im Menü "Settings" unter "Zellüberwachung", Bereich "Roboter": Schieberegler "Max. Geschwindigkeit (max_speed)" von 0,01 bis 0,5 und Knopf "Standard", solange nicht 0,1 eingestellt ist. | `useMaxSpeed`, `setMaxSpeed`, `MAX_SPEED_RANGE` (`entities/robot/model/maxSpeed`), `comma` (`shared/format`) |
 
 **Ablauf**
 
@@ -1848,7 +1851,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 
 **Konfiguration**
 
-- `LAYER2_DRIVE_MAX_SPEED = AUTO_DRIVE_MAX_SPEED` = 0,1 (`model/robotHold.ts`): Fahrten mit `go_to` und `max_speed` 0,1.
+- `LAYER2_DRIVE_MAX_SPEED = AUTO_DRIVE_MAX_SPEED` = 0,1 (`model/robotHold.ts`): Fahrten mit `go_to` und `max_speed` 0,1. Auf `ungetestet-aufraeumen` die eingestellte Geschwindigkeit (D18).
 - `AT_HOME_RAD = 0.01`: Toleranz je Gelenk, ab der der Arm als in der Ausgangsstellung gilt.
 - `DEFAULT_APPROACH_STANDOFF_M`, `DEFAULT_ANCHOR_STANDOFF_M` (`model/approachPlan`); `LAYER2_HEADING_MAX_SPREAD_DEG`, `MIN_TAG_MEASUREMENTS`, `MODULE_VIEW_SPARE_TURNS` (`model/tagViews`).
 - Eingabegrenzen: 10 bis 100 cm für den Modul-Tag, 10 bis 200 cm für den Welt-Tag.
@@ -1948,7 +1951,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 | Datei | Was der Nutzer sieht/tut | Benutzte Modelle/Hooks |
 |---|---|---|
 | `frontend/src/features/cell-modules/components/BoardCalibrationRobot.tsx` | Drei Abschnitte im Kalibrierdialog der Kamera 1 (`CameraCalibrationModal`, opcua-server). `BoardRobotSetup`: "Positionen auswählen" oder "Neue Positionen", "Position übernehmen (n/N)" (der Arm wird von Hand gebracht), "Letzte verwerfen", "Abbrechen", Blättern mit den Knöpfen ◀ und ▶ samt Gelenkwinkeln. `BoardRobotStatus`: "Roboterfahrt starten", "Zange zugreifen", "Kalibrierfahrt starten", "Halt", "Weiter", dazu "Schritt n/N" und "n/N Bilder". `BoardRobotAfterRun`: Rückfahrt in die Neutralstellung und "Zange öffnen". | `useBoardCalibrationRun` (`model/useBoardCalibrationRun`, Typ `BoardCalibrationRun`); `CALIBRATION_POSITION_COUNT` (`model/boardCalibrationPoses`); `TARGET_PICTURES` (`model/boardCalibrationRunner`) |
-| `frontend/src/features/cell-modules/components/RobotRunConfirm.tsx` | Bestätigungsdialog "Roboterfahrt starten" über dem Rest der Oberfläche. Er nennt, was passiert: Take Control und Sync werden automatisch ein- und danach ausgeschaltet, `go_to` mit `max_speed` 0,1, Bereich um den Roboter freihalten, Not-Halt bereit. Nur die Knöpfe "Abbrechen" und "Roboterfahrt starten" schließen ihn, ein Klick daneben nicht. Im Code wird er nur von `CameraCalibrationModal` benutzt. Auf `ungetestet-aufraeumen` liegt die Datei in `frontend/src/features/opcua-server/components/` neben ihrem Verwender (B12, `d129912`). | `AUTO_DRIVE_MAX_SPEED` (`model/robotHold`), über `maxSpeed` mit `BOARD_DRIVE_MAX_SPEED` belegt |
+| `frontend/src/features/cell-modules/components/RobotRunConfirm.tsx` | Bestätigungsdialog "Roboterfahrt starten" über dem Rest der Oberfläche. Er nennt, was passiert: Take Control und Sync werden automatisch ein- und danach ausgeschaltet, `go_to` mit `max_speed` 0,1, Bereich um den Roboter freihalten, Not-Halt bereit. Nur die Knöpfe "Abbrechen" und "Roboterfahrt starten" schließen ihn, ein Klick daneben nicht. Im Code wird er nur von `CameraCalibrationModal` benutzt. Auf `ungetestet-aufraeumen` liegt die Datei in `frontend/src/features/opcua-server/components/` neben ihrem Verwender (B12, `d129912`). | `AUTO_DRIVE_MAX_SPEED` (`model/robotHold`), über `maxSpeed` mit `BOARD_DRIVE_MAX_SPEED` belegt; auf `ungetestet-aufraeumen` zeigt er die eingestellte Geschwindigkeit (`useMaxSpeed`, D18) |
 
 **Ablauf**
 
@@ -1959,7 +1962,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 
 **Konfiguration**
 
-- `BOARD_DRIVE_MAX_SPEED = AUTO_DRIVE_MAX_SPEED` = 0,1 (`model/useBoardCalibrationRun.ts`).
+- `BOARD_DRIVE_MAX_SPEED = AUTO_DRIVE_MAX_SPEED` = 0,1 (`model/useBoardCalibrationRun.ts`). Auf `ungetestet-aufraeumen` entfällt die Konstante, es gilt die eingestellte Geschwindigkeit (D18).
 - `CALIBRATION_POSITION_COUNT` (`model/boardCalibrationPoses.ts`) und `TARGET_PICTURES` (`model/boardCalibrationRunner.ts`) legen Anzahl der Positionen und der Bilder fest.
 
 **Tests**
@@ -2093,7 +2096,7 @@ Browser (React, three.js)
 **Ablauf.**
 1. **Pis:** Beim ersten Mount von `ServerManager` ruft die App `connectServer` für Pi 1 und Pi 2 auf (`hasAutoConnectedRef`). Das Backend verbindet (`AsyncUaServerConnection.connect`, Zeitlimit 120 s), liest das Namespace-Array (`_read_namespace_uris`), markiert den Server als verbunden und startet die Überwachung. Für Pis läuft **keine** Roboter-Discovery (`is_robotics_server=False`).
 2. **Roboter-Server:** Das „+“ ruft `useConnectServerWithFeedback` auf: erst `connectServer`, dann `discoverRobots`. Die Discovery (Zeitlimit 600 s) liest Motion Devices, Achsen, Methoden und Skills (`discover_connected_server` in `backend/src/backend/opcua/asyncua_discovery.py`).
-3. **Knoten-IDs der Pis** stehen nicht fest im Code. `resolveVisionBinding` liest sie aus dem Namespace-Array: Die URI `http://launch-rm.de/vision` liefert den Index, und daraus entstehen die Knoten `ns=<Index>;s=VisionMachine.<Methode>`. Fehlt das Array oder die URI, ist das Ergebnis `kind: "unknown"`, und die Aufrufer starten nichts. Der Index des MachineVision-Namespace (für die Ereignistypen) fällt nur dann auf 2 zurück, wenn das Array vorhanden ist, die URI darin aber fehlt. Der Kommentar begründet das damit, dass sich der Index schon zweimal verschoben hat.
+3. **Knoten-IDs der Pis** stehen nicht fest im Code. `resolveVisionBinding` liest sie aus dem Namespace-Array: Die URI `http://launch-rm.de/vision` liefert den Index, und daraus entstehen die Knoten `ns=<Index>;s=VisionMachine.<Methode>`. Fehlt das Array oder die URI, ist das Ergebnis `kind: "unknown"`, und die Aufrufer starten nichts. Der Index des MachineVision-Namespace (für die Ereignistypen) fällt nur dann auf 2 zurück, wenn das Array vorhanden ist, die URI darin aber fehlt. Der Kommentar begründet das damit, dass sich der Index schon zweimal verschoben hat. Auf `ungetestet-aufraeumen` kommen beide „unknown“-Fälle aus einem Helfer `unknownBinding` (D17).
 4. **Überwachung (Liveness):** `_watch_server_liveness` prüft alle 5 s (`LIVENESS_POLL_INTERVAL_S`) mit `check_alive`. Dazu liest es den Standardknoten `i=2258` (Serverzeit) mit 30 s Zeitlimit. Eine Verbindung gilt auch dann als tot, wenn ein Keepalive-Task von asyncua beendet ist (`_keepalive_running`). Bei Ausfall: Server als getrennt markiert, `serverDisconnected` an alle verbundenen Seiten, dann Wiederverbindung im 5-s-Takt. Nach Erfolg: `serverConnected`, Wiederherstellung der Abos (`restore_subscriptions`) und der Gelenk-Abos (`_resubscribe_robot_joints`).
 5. **Trennen:** Bei Roboter-Servern gibt `disconnectServerCleanly` zuerst Sync und Take Control jedes Roboters zurück und ruft danach `disconnectServer` auf. Scheitert die Rückgabe, wird nur gewarnt, und das Trennen geht weiter. Pis lassen sich nicht manuell trennen, weil sie aus der Liste ausgeblendet sind.
 6. **Belegung:** Läuft auf einem Pi ein Job oder eine Kalibrierung, meldet das Fenster das über `usePiActivity`. Andere Fenster sehen es über `usePiBlocker` und deaktivieren ihren Knopf, statt auf die BUSY-Antwort des Pi zu warten. `ResetPisButton` beendet auf beiden Pis laufende Jobs, Kalibrierungen und die Zellen-Überwachung und setzt hängende Zustände zurück.
@@ -2285,6 +2288,11 @@ Browser (React, three.js)
 | `frontend/src/shared/ui/floatingWindowGeometry.ts` (A) | Reine Geometrie: Startposition, Begrenzung auf den Bildschirm, Kaskade und Kacheln. | `initialWindowRect`, `clampMove`, `clampResize`, `MIN_VISIBLE_PX`, `TITLE_BAR_PX`, `EDGE_MARGIN_PX`, `CASCADE_STEP_PX`, `TILE_GAP_PX` |
 | `frontend/src/shared/ui/SecondsField.tsx` (A) | Eingabe von Sekunden. Übernahme bei Enter oder Verlassen, leer heißt Standardwert. | `SecondsField` |
 | `frontend/src/shared/ui/StepButton.tsx` (A) | Hauptaktion eines Schritts: Nummer, Bezeichnung, optionale Zeile, Pfeil. Mit `highlight` pulsiert der Knopf. | `StepButton`, CSS-Klasse `step-attention` |
+| `frontend/src/shared/createStore.ts` (nur auf `ungetestet-aufraeumen`, D10) | Kleiner Store außerhalb von React: Zustand, Listener und `useStore` über `useSyncExternalStore`. | `createStore`, `useStore`, `Store` |
+| `frontend/src/shared/storage.ts` (nur auf `ungetestet-aufraeumen`, D10) | JSON im localStorage lesen und schreiben; jeder Fehler liefert den Rückfallwert bzw. wird ignoriert. | `readStored`, `writeStored` |
+| `frontend/src/shared/format.ts` (nur auf `ungetestet-aufraeumen`, D9) | Zahlen und Fehler als Text: Dezimalkomma, Millimeter, Weltkoordinaten. | `comma`, `roundedMm`, `formatMm`, `formatWorldMm`, `errorText` |
+| `frontend/src/shared/parse.ts` (nur auf `ungetestet-aufraeumen`, D9) | Prüfungen für Werte aus Pi-JSON: endliche Zahlen und Vektoren. | `finiteOrNull`, `isFiniteVector` |
+| `frontend/src/shared/math/angles.ts` (nur auf `ungetestet-aufraeumen`, D7) | Grad und Radiant. | `DEG`, `degToRad`, `radToDeg` |
 | `frontend/src/shared/api/messages.ts` (M) | aus dev, ergänzt um `eventTypeNodeIds` bei `subscribeEvent`; entfernt: `subscribeRobotEmergencyStop`, `unsubscribeRobotEmergencyStop`, `robotEmergencyStopChanged`, `readAddressSpaceSubtree`. Die Typen spiegeln das Backend-Protokoll (`backend/src/backend/models/messages.py`). | Nachrichtentypen `ClientMessage` und `ServerMessage` |
 | `frontend/src/shared/api/websocketClient.ts` (M) | aus dev, ergänzt um den optionalen Parameter `eventTypeNodeIds` bei `subscribeEvent`; entfernt: `subscribeRobotEmergencyStop`, `unsubscribeRobotEmergencyStop`, `readAddressSpaceSubtree`. | `WscWebSocketClient`, `subscribeEvent` |
 
@@ -2377,14 +2385,14 @@ Gelöscht (D): `frontend/src/features/viewport/model/robotIkPose.test.ts`.
 **Ablauf.**
 1. **Gleichlauf:** Der Zwilling folgt den Gelenkwinkeln, die das Backend als `robotJointState` meldet. `robotJointRuntime` führt je Roboter eine Sync-Sitzung. Eigene Bewegungen (Ziehen, IK-Schritte, Animation) haben Vorrang (`isManipulating`). `healSync` repariert die Sitzung nach Zustandswechseln: Haben sich die Modellgelenke geändert, startet der Sync neu. Eine Manipulation, die länger als 15 s dauert, wird beendet. Eine angehaltene Sitzung wird fortgesetzt.
 2. **Take Control:** Die App übernimmt die Steuerung über die Aktion `take_control` (Namen `take_control` oder `takeControl`) und hält sie mit Keepalive-Aufrufen. Je nach Angebot des Servers sind das `renew_session` oder `renew_lock`, alle 20 s. Jeder Aufruf hat 15 s Zeitlimit. Schlägt er fehl, folgen bis zu drei Versuche mit 2 s Pause. Die Aufrufe je Roboter laufen nacheinander. Die Freigabe ist `release_control`.
-3. **Geschwindigkeitsgrenze:** `capGotoSpeed` begrenzt `max_speed` bei `go_to` auf höchstens 0,1 (`MAX_GOTO_SPEED`). Ist der Wert größer oder ungültig, etwa der Serverstandard −1, wird 0,1 gesendet. Fehlt der Schlüssel, bleibt der Aufruf unverändert.
+3. **Geschwindigkeitsgrenze:** `capGotoSpeed` begrenzt `max_speed` bei `go_to` auf höchstens 0,1 (`MAX_GOTO_SPEED`). Ist der Wert größer oder ungültig, etwa der Serverstandard −1, wird 0,1 gesendet. Fehlt der Schlüssel, bleibt der Aufruf unverändert. Auf `ungetestet-aufraeumen` ist die Grenze die im Frontend eingestellte Geschwindigkeit (`capGotoSpeed(inputs, cap = getMaxSpeed())`, D18).
 4. **Trennen:** `disconnectServerCleanly` gibt bei jedem Roboter des Servers zuerst Sync und Take Control zurück und trennt dann (siehe Abschnitt zur OPC-UA-Verbindung).
 5. **Greifer:** `findEndEffectorActions` und `findToggleEndEffectorKey` finden die Aktionen anhand des Namens. Verglichen wird ohne Groß- und Kleinschreibung und ohne Trennzeichen, sodass etwa `open_end_eff`, `closeEndEffector` und `toggle_end_eff` passen. Das Setzen eines Zustands (öffnen oder schließen) wird dem Umschalten vorgezogen. Benutzt von `applicationController.ts` und von cell-modules.
 6. **Layer 2 und Hand-Auge:** `RobotPosePreview` zeigt die Gelenkwinkel des nächsten Ziels als Geister-Roboter. Die IK löst auf den Flansch-Link (`flangeLink`). Die Hand-Auge-Aufnahmen und die Vorwärts- und Rückwärtskinematik nutzen laut Kommentar in `robotModels.ts` denselben Link.
 
 **Konfiguration.**
 - `ROBOT_MODEL_OPTIONS` (`robotModels.ts`): `eva` (`flangeLink` `model_6`), `fr3` (`eef_attach_point`, `lookDownAngles` gesetzt), `fr3_wagon` (`eef_attach_point`, `lookDownAngles` gesetzt), `ur5e` (`flange`), `demo1` (`model_6`, gleiches Modell wie `eva` unter eigenem Namen für den Modulkatalog).
-- Take Control und Gelenkwerte in `applicationController.ts`: `MAX_GOTO_SPEED = 0.1`; `TAKE_CONTROL_KEEPALIVE_INTERVAL_MS = 20_000` (vorher 60 000); `TAKE_CONTROL_CALL_TIMEOUT_MS = 15_000`; `TAKE_CONTROL_KEEPALIVE_ATTEMPTS = 3`; `TAKE_CONTROL_KEEPALIVE_ATTEMPT_TIMEOUT_MS = 15_000`; `TAKE_CONTROL_KEEPALIVE_RETRY_GAP_MS = 2_000`; `JOINT_REFRESH_MS = 2000`; `JOINT_REFRESH_TIMEOUT_MS = 5000`; `STANDING_AXIS_DELTA = 0.002`; `TWIN_BEHIND_RAD = 0.01`.
+- Take Control und Gelenkwerte in `applicationController.ts`: `MAX_GOTO_SPEED = 0.1` (auf `ungetestet-aufraeumen` durch die Einstellung ersetzt, D18); `TAKE_CONTROL_KEEPALIVE_INTERVAL_MS = 20_000` (vorher 60 000); `TAKE_CONTROL_CALL_TIMEOUT_MS = 15_000`; `TAKE_CONTROL_KEEPALIVE_ATTEMPTS = 3`; `TAKE_CONTROL_KEEPALIVE_ATTEMPT_TIMEOUT_MS = 15_000`; `TAKE_CONTROL_KEEPALIVE_RETRY_GAP_MS = 2_000`; `JOINT_REFRESH_MS = 2000`; `JOINT_REFRESH_TIMEOUT_MS = 5000`; `STANDING_AXIS_DELTA = 0.002`; `TWIN_BEHIND_RAD = 0.01`.
 - `staleManipulationMs = 15000` (`robotJointRuntime.ts`); `IK_TRANSLATION_TOLERANCE_M = 0.002` (2 mm) und `IK_ROTATION_TOLERANCE_RAD` (1°) in `flangeKinematics.ts`.
 - `CELL_WATCH_CLOSED = "44px"` und `CELL_WATCH_OPEN = "70%"` (`DesktopLayout.tsx`).
 - Keine Umgebungsvariablen.
@@ -2416,6 +2424,7 @@ Gelöscht (D): `frontend/src/features/viewport/model/robotIkPose.test.ts`.
 | `frontend/src/app/layout/DesktopLayout.tsx` (M) | aus dev, ergänzt um: Panels mit `react-resizable-panels`, Zellen-Panel oben rechts (eingeklappt 44 px, offen 70 %), Kamera-Fenster, Task-Panel unter dem Viewport, `PiActivityProvider` und `TaskEditorProvider`. | `DesktopLayout`, `CELL_WATCH_CLOSED`, `CELL_WATCH_OPEN` |
 | `frontend/src/app/model/applicationController.ts` (M) | aus dev, ergänzt um: Take Control mit Keepalive, sauberes Trennen (`disconnectServerCleanly`), Geschwindigkeitsgrenze für `go_to` (`capGotoSpeed`), Platzierung der Roboter je Server (`placeServerRobots`, `ServerRobotPlacement`), Zähler für Abonnements (`addHolder`, `removeHolder`), Greifer-Schalter. Entfernt: das Not-Halt-Abo, die `…AndWait`-Methoden. `isGotoStateReady` ist jetzt exportiert. | `ApplicationController`, `capGotoSpeed`, `MAX_GOTO_SPEED`, `setRobotTakeControl`, `disconnectServerCleanly`, `placeServerRobots` |
 | `frontend/src/entities/robot/model/endEffector.ts` (A) | Findet die Greifer-Aktionen unter den Namen, die ein Roboter anbietet. | `findToggleEndEffectorKey`, `findEndEffectorActions`, `EndEffectorActions` |
+| `frontend/src/entities/robot/model/maxSpeed.ts` (nur auf `ungetestet-aufraeumen`, D18) | Die eine Roboter-Geschwindigkeit (`go_to` `max_speed`), im Frontend einstellbar und je Browser gespeichert; Obergrenze jedes `go_to` und Wert aller automatischen Läufe. | `getMaxSpeed`, `setMaxSpeed`, `useMaxSpeed`, `MAX_SPEED_RANGE`, `DEFAULT_MAX_SPEED` |
 | `frontend/src/entities/robot/model/store.ts` (M) | aus dev, angepasst: Der Not-Halt-Zustand entfällt (`robotEmergencyStopChanged`). Bei Verbindungsabbruch bleiben die Roboter erhalten und werden als `disconnected` markiert, statt gelöscht zu werden. | `applyRobotMessage`, `initialRobotStoreState`, `RobotStoreState` |
 | `frontend/src/entities/robot/model/types.ts` (M) | aus dev, `emergencyStopActive` und `resultTypes` entfernt; `editorVisible` und `discoveryPath` ergänzt. | Robot-Typen |
 | `frontend/src/entities/server/model/store.ts` (M) | aus dev, angepasst: Methodenstatus wird nur für Aufrufe aufgelöst, die mit `trackMethodCallRequest` registriert wurden. Sonst entstanden Meldungen für Hintergrundaufrufe wie `subscribeNode`. Das Flag `quiet` ist neu, `latestChildRequestIdByNodeId` entfällt. | `trackMethodCallRequest`, `markNodeSubscription`, `getNodeLiveValue`, `selectActiveServer` |
