@@ -393,7 +393,7 @@ Wirkung: Distanz T_cam_tag ∝ `size_assumed/size_true`; 0,198 statt 0,20 bedeut
 
 ## 11. Umsetzungsstand
 
-Branch `ungetestet-aufraeumen` (webskillcomposition, Basis `Ungetestet` `5812275`, ungemergt). Wird beim Aufräumen fortgeschrieben. Die Commits bis `20bbf7f` liegen auf `origin/ungetestet-aufraeumen`; die Commits ab `3b5652b` (Sitzung B) sind bisher nur lokal und noch nicht gepusht.
+Branch `ungetestet-aufraeumen` (webskillcomposition, Basis `Ungetestet` `5812275`, ungemergt). Wird beim Aufräumen fortgeschrieben. Alle Commits bis `86313ca` liegen auf `origin/ungetestet-aufraeumen` (die ab `3b5652b` von Sitzung B, gepusht am 31.10.).
 
 | IDs | Stand | Commit |
 | --- | --- | --- |
