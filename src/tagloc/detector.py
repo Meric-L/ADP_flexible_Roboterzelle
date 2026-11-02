@@ -57,9 +57,9 @@ def _as_corner_tuple(corners) -> tuple[tuple[float, float], ...]:
 def predefined_dictionary(name: str):
     """Loest einen `DICT_*`-Namen zum cv2-Dictionary-Objekt auf.
 
-    Ueberbrueckt die neue (`getPredefinedDictionary`) und die alte
-    (`Dictionary_get`) API. Auch ausserhalb des Detektors noetig, fuer alles,
-    was Marker **erzeugt**, z. B. `tools/make_synthetic_scene.py`.
+    Setzt OpenCV >= 4.8 voraus (`getPredefinedDictionary`). Auch ausserhalb
+    des Detektors noetig, fuer alles, was Marker **erzeugt**, z. B.
+    `tools/make_synthetic_scene.py`.
     """
     import cv2
 
@@ -70,9 +70,7 @@ def predefined_dictionary(name: str):
             "-- opencv-contrib-python installieren oder eine andere Familie waehlen"
         )
     dictionary_id = getattr(aruco, name)
-    if hasattr(aruco, "getPredefinedDictionary"):
-        return aruco.getPredefinedDictionary(dictionary_id)
-    return aruco.Dictionary_get(dictionary_id)  # pragma: no cover - OpenCV < 4.7
+    return aruco.getPredefinedDictionary(dictionary_id)
 
 
 def aruco_dictionary(family: str = DEFAULT_TAG_FAMILY):
@@ -149,11 +147,8 @@ _CORNER_REFINE_CONSTANTS = {
 class ArucoTagDetector:
     """Erkennung ueber `cv2.aruco`. Der Standardweg.
 
-    Ueberbrueckt die neue API (OpenCV >= 4.7: `ArucoDetector`,
-    `getPredefinedDictionary`) und die alte (`Dictionary_get`, `detectMarkers`
-    als freie Funktion). Das ist kein Luxus: laut doc/projektdoku/altlasten.md
-    D2 laeuft lokal OpenCV 5.x, auf dem Pi 4.x -- ohne die Bruecke
-    funktionierte der Code nur auf einem von beiden.
+    Setzt OpenCV >= 4.8 voraus (`ArucoDetector`, `getPredefinedDictionary`);
+    beide Pis und der Entwicklungsrechner laufen mit OpenCV 5.0.
     """
 
     def __init__(
@@ -188,10 +183,8 @@ class ArucoTagDetector:
 
         if parameters is not None:
             self._parameters = parameters
-        elif hasattr(aruco, "DetectorParameters"):
+        else:
             self._parameters = aruco.DetectorParameters()
-        else:  # OpenCV < 4.7
-            self._parameters = aruco.DetectorParameters_create()
 
         # Subpixel-accurate corners: kann die Pose-Qualitaet auf Distanz
         # verbessern, kostet aber messbar CPU-Zeit (py-spy auf pi1: ~46% des
@@ -228,18 +221,10 @@ class ArucoTagDetector:
             self._parameters, detector_parameters
         )
 
-        self._detector = None
-        if hasattr(aruco, "ArucoDetector"):
-            self._detector = aruco.ArucoDetector(self._dictionary, self._parameters)
-        self._aruco = aruco
+        self._detector = aruco.ArucoDetector(self._dictionary, self._parameters)
 
     def detect(self, gray: Any) -> list[TagObservation]:
-        if self._detector is not None:
-            corners, ids, _ = self._detector.detectMarkers(gray)
-        else:  # pragma: no cover - alte OpenCV-Version
-            corners, ids, _ = self._aruco.detectMarkers(
-                gray, self._dictionary, parameters=self._parameters
-            )
+        corners, ids, _ = self._detector.detectMarkers(gray)
         if ids is None or len(ids) == 0:
             return []
         found = []

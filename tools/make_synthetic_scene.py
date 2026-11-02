@@ -20,7 +20,7 @@ Die Werkzeuge laufen dann ohne Hardware:
     PYTHONPATH=src python3 -m tagloc.cli.build_tagmap --source /tmp/szene \
         --calibration /tmp/szene/kalibrierung.json --anchor 0 --out /tmp/tagmap.json
 
-Gerendert mit `cv2.aruco.generateImageMarker` (Rueckfall `drawMarker`) und
+Gerendert mit `cv2.aruco.generateImageMarker` und
 `cv2.warpPerspective`; die Eckpunkte stammen aus `cv2.projectPoints` mit genau
 den Intrinsiken, die auch in die Kalibrierdatei geschrieben werden. Das macht
 das Bild passend zur Kalibrierung, und nur das macht den Referenzwert zu einem
@@ -289,10 +289,7 @@ def marker_patch(family: str, tag_id: int, marker_px: int, quiet_px: int):
 
     dictionary = aruco_dictionary(family)
     marker_px = int(marker_px)
-    if hasattr(cv2.aruco, "generateImageMarker"):
-        marker = cv2.aruco.generateImageMarker(dictionary, int(tag_id), marker_px)
-    else:  # OpenCV < 4.7
-        marker = cv2.aruco.drawMarker(dictionary, int(tag_id), marker_px)
+    marker = cv2.aruco.generateImageMarker(dictionary, int(tag_id), marker_px)
     quiet_px = int(quiet_px)
     patch = np.full((marker_px + 2 * quiet_px, marker_px + 2 * quiet_px), 255, dtype=np.uint8)
     patch[quiet_px : quiet_px + marker_px, quiet_px : quiet_px + marker_px] = marker

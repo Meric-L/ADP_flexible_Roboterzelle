@@ -46,9 +46,7 @@ def render_marker(dictionary, tag_id: int, size_mm: float):
     import cv2
 
     pixels = max(64, int(size_mm * PIXELS_PER_MM))
-    if hasattr(cv2.aruco, "generateImageMarker"):
-        return cv2.aruco.generateImageMarker(dictionary, tag_id, pixels)
-    return cv2.aruco.drawMarker(dictionary, tag_id, pixels)
+    return cv2.aruco.generateImageMarker(dictionary, tag_id, pixels)
 
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
@@ -68,7 +66,7 @@ def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: 
             dictionary=name,
         )
     )
-    image = board.generateImage(size_px) if hasattr(board, "generateImage") else board.draw(size_px)
+    image = board.generateImage(size_px)
     return image, width_mm, height_mm
 
 

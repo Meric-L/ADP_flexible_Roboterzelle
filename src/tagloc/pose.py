@@ -79,64 +79,50 @@ def _solve_tag_pose(
     """Löst eine Tag-Pose aus bereits vorbereiteten Punkten und Kameradaten."""
     import cv2
 
-    flags = getattr(cv2, "SOLVEPNP_IPPE_SQUARE", None)
-    if flags is not None and hasattr(cv2, "solvePnPGeneric"):
-        found, rvecs, tvecs, errors = cv2.solvePnPGeneric(
-            object_points, image_points, camera_matrix, no_distortion, flags=flags
+    flags = cv2.SOLVEPNP_IPPE_SQUARE
+    found, rvecs, tvecs, errors = cv2.solvePnPGeneric(
+        object_points, image_points, camera_matrix, no_distortion, flags=flags
+    )
+    if not found:
+        raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
+    # IPPE liefert beide Kandidaten ohne Nachschaerfung. Beide mit
+    # Levenberg-Marquardt verfeinern und den mit der kleineren
+    # Reprojektion nehmen -- wie `boards.estimate_board_pose`.
+    candidates = []
+    for candidate_rvec, candidate_tvec in zip(rvecs, tvecs):
+        candidate_rvec = np.array(candidate_rvec, dtype=np.float64)
+        candidate_tvec = np.array(candidate_tvec, dtype=np.float64)
+        candidate_rvec, candidate_tvec = cv2.solvePnPRefineLM(
+            object_points,
+            image_points,
+            camera_matrix,
+            no_distortion,
+            candidate_rvec,
+            candidate_tvec,
         )
-        if not found:
-            raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
-        # IPPE liefert beide Kandidaten ohne Nachschaerfung. Beide mit
-        # Levenberg-Marquardt verfeinern und den mit der kleineren
-        # Reprojektion nehmen -- wie `boards.estimate_board_pose`.
-        candidates = []
-        for candidate_rvec, candidate_tvec in zip(rvecs, tvecs):
-            candidate_rvec = np.array(candidate_rvec, dtype=np.float64)
-            candidate_tvec = np.array(candidate_tvec, dtype=np.float64)
-            if hasattr(cv2, "solvePnPRefineLM"):
-                candidate_rvec, candidate_tvec = cv2.solvePnPRefineLM(
-                    object_points,
-                    image_points,
-                    camera_matrix,
-                    no_distortion,
-                    candidate_rvec,
-                    candidate_tvec,
-                )
-            candidates.append(
-                (
-                    _reprojection_error_px(
-                        object_points, image_points, candidate_rvec, candidate_tvec, camera_matrix
-                    ),
-                    candidate_rvec,
-                    candidate_tvec,
-                )
+        candidates.append(
+            (
+                _reprojection_error_px(
+                    object_points, image_points, candidate_rvec, candidate_tvec, camera_matrix
+                ),
+                candidate_rvec,
+                candidate_tvec,
             )
-        _, rvec, tvec = min(candidates, key=lambda candidate: candidate[0])
-        ambiguity = 0.0
-        if errors is not None and len(errors) >= 2:
-            # Das Verhaeltnis kommt bewusst aus den **rohen** IPPE-Fehlern, nicht
-            # aus den verfeinerten: Nach der Verfeinerung erklaeren beide Loesungen
-            # ein Tag mit nur vier Ecken fast gleich gut, das Verhaeltnis stiege
-            # ueber `AMBIGUITY_THRESHOLD` (0,6), und `measure_tag` verwuerfe
-            # eindeutige Tags. Die Schwelle ist am rohen Verhaeltnis gemessen.
-            best = float(np.asarray(errors).reshape(-1)[0])
-            second = float(np.asarray(errors).reshape(-1)[1])
-            # In (0, 1]: nahe 1 heisst, beide Loesungen erklaeren das Bild
-            # gleich gut. Ein zweiter Fehler von 0 kommt nur vor, wenn auch der
-            # erste 0 ist -- das waere eine entartete Anordnung.
-            ambiguity = best / second if second > 1e-12 else 1.0
-    else:  # pragma: no cover - sehr alte OpenCV-Version
-        _log.debug("SOLVEPNP_IPPE_SQUARE nicht verfuegbar, weiche auf ITERATIVE aus")
-        ok, rvec, tvec = cv2.solvePnP(
-            object_points, image_points, camera_matrix, no_distortion
         )
-        if not ok:
-            raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
-        # Dieser Pfad liefert nur eine Loesung, die Mehrdeutigkeit ist also
-        # unbekannt. Als sicherer Standard gilt "mehrdeutig" statt "eindeutig":
-        # ein faelschlich markierter Tag kostet eine Pruefung, ein faelschlich
-        # eindeutiger eine falsche Fahrt.
-        ambiguity = 1.0
+    _, rvec, tvec = min(candidates, key=lambda candidate: candidate[0])
+    ambiguity = 0.0
+    if errors is not None and len(errors) >= 2:
+        # Das Verhaeltnis kommt bewusst aus den **rohen** IPPE-Fehlern, nicht
+        # aus den verfeinerten: Nach der Verfeinerung erklaeren beide Loesungen
+        # ein Tag mit nur vier Ecken fast gleich gut, das Verhaeltnis stiege
+        # ueber `AMBIGUITY_THRESHOLD` (0,6), und `measure_tag` verwuerfe
+        # eindeutige Tags. Die Schwelle ist am rohen Verhaeltnis gemessen.
+        best = float(np.asarray(errors).reshape(-1)[0])
+        second = float(np.asarray(errors).reshape(-1)[1])
+        # In (0, 1]: nahe 1 heisst, beide Loesungen erklaeren das Bild
+        # gleich gut. Ein zweiter Fehler von 0 kommt nur vor, wenn auch der
+        # erste 0 ist -- das waere eine entartete Anordnung.
+        ambiguity = best / second if second > 1e-12 else 1.0
 
     error_px = _reprojection_error_px(
         object_points, image_points, rvec, tvec, camera_matrix

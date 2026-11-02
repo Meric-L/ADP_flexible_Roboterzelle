@@ -73,17 +73,8 @@ def build_board(spec: BoardSpec) -> Any:
 
     aruco = cv2.aruco
     dictionary = predefined_dictionary(spec.dictionary)
-    if hasattr(aruco, "CharucoBoard"):
-        try:
-            return aruco.CharucoBoard(
-                (spec.cols, spec.rows), spec.square_size_m, spec.marker_size_m, dictionary
-            )
-        except TypeError:  # pragma: no cover - older signature
-            return aruco.CharucoBoard_create(
-                spec.cols, spec.rows, spec.square_size_m, spec.marker_size_m, dictionary
-            )
-    return aruco.CharucoBoard_create(  # pragma: no cover
-        spec.cols, spec.rows, spec.square_size_m, spec.marker_size_m, dictionary
+    return aruco.CharucoBoard(
+        (spec.cols, spec.rows), spec.square_size_m, spec.marker_size_m, dictionary
     )
 
 
@@ -102,16 +93,8 @@ def detect_board(
 
     if spec.type == CHARUCO:
         board = board if board is not None else build_board(spec)
-        if hasattr(cv2.aruco, "CharucoDetector"):
-            detector = cv2.aruco.CharucoDetector(board)
-            corners, ids, _, _ = detector.detectBoard(gray)
-        else:  # pragma: no cover - older OpenCV version
-            marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(gray, board.dictionary)
-            if marker_ids is None or len(marker_ids) == 0:
-                return None
-            _, corners, ids = cv2.aruco.interpolateCornersCharuco(
-                marker_corners, marker_ids, gray, board
-            )
+        detector = cv2.aruco.CharucoDetector(board)
+        corners, ids, _, _ = detector.detectBoard(gray)
         if corners is None or ids is None or len(corners) < 4:
             return None
         return BoardSample(corners=np.asarray(corners), ids=np.asarray(ids))
@@ -144,36 +127,35 @@ def _detect_chessboard(gray, spec: BoardSpec) -> BoardSample | None:
     """Ein Detektionsdurchgang fuer ein Schachbrett: SB, dann klassisch."""
     import cv2
 
-    if hasattr(cv2, "findChessboardCornersSB"):
-        # Der neuere "Sector-Based"-Detektor: robuster bei schlechtem Licht,
-        # Unschaerfe und starker Neigung als die klassische Methode, und
-        # liefert die Ecken bereits subpixelgenau -- ein zusaetzliches
-        # cornerSubPix() ist hier nicht mehr noetig.
-        #
-        # Achtung, nicht offensichtlich: SB liefert die Ecken in **exakt
-        # umgekehrter Reihenfolge** gegenueber `findChessboardCorners`
-        # (empirisch mit einem synthetischen Testbild geprueft, 2026-09-23:
-        # nach Umkehren stimmen die Positionen auf < 0.1 px). Ungefiltert
-        # uebernommen wuerde das die Bild-zu-Weltpunkt-Zuordnung in
-        # `_chessboard_object_points` lautlos vertauschen -- die Kalibrierung
-        # liefe zwar durch, aber mit falschem Ergebnis statt eines Fehlers.
-        # BEWUSST OHNE CALIB_CB_ACCURACY: der Flag ist laut OpenCV-Doku ein
-        # "eigener, langsamerer Algorithmus" -- gemessen bei ~4000 px Breite
-        # (Deckenkamera-Format) 4,45 s gegen 0,87 s ohne (Faktor 5) bzw.
-        # 0,06 s bei der klassischen Methode (Faktor 73). Die Kalibrier-
-        # Aufnahme laeuft immer auf dem VOLLEN Kamera-Frame (12 MP an der
-        # Deckenkamera) -- mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in
-        # den Timeout ("Failed to send request"), live gefunden 2026-09-23.
-        found, corners = cv2.findChessboardCornersSB(
-            gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE
-        )
-        if found:
-            return BoardSample(corners=np.asarray(corners)[::-1], ids=None)
+    # Der neuere "Sector-Based"-Detektor: robuster bei schlechtem Licht,
+    # Unschaerfe und starker Neigung als die klassische Methode, und
+    # liefert die Ecken bereits subpixelgenau -- ein zusaetzliches
+    # cornerSubPix() ist hier nicht mehr noetig.
+    #
+    # Achtung, nicht offensichtlich: SB liefert die Ecken in **exakt
+    # umgekehrter Reihenfolge** gegenueber `findChessboardCorners`
+    # (empirisch mit einem synthetischen Testbild geprueft, 2026-09-23:
+    # nach Umkehren stimmen die Positionen auf < 0.1 px). Ungefiltert
+    # uebernommen wuerde das die Bild-zu-Weltpunkt-Zuordnung in
+    # `_chessboard_object_points` lautlos vertauschen -- die Kalibrierung
+    # liefe zwar durch, aber mit falschem Ergebnis statt eines Fehlers.
+    # BEWUSST OHNE CALIB_CB_ACCURACY: der Flag ist laut OpenCV-Doku ein
+    # "eigener, langsamerer Algorithmus" -- gemessen bei ~4000 px Breite
+    # (Deckenkamera-Format) 4,45 s gegen 0,87 s ohne (Faktor 5) bzw.
+    # 0,06 s bei der klassischen Methode (Faktor 73). Die Kalibrier-
+    # Aufnahme laeuft immer auf dem VOLLEN Kamera-Frame (12 MP an der
+    # Deckenkamera) -- mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in
+    # den Timeout ("Failed to send request"), live gefunden 2026-09-23.
+    found, corners = cv2.findChessboardCornersSB(
+        gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE
+    )
+    if found:
+        return BoardSample(corners=np.asarray(corners)[::-1], ids=None)
 
-    # Rueckfall: aeltere OpenCV-Version ohne SB, oder SB hat das Board in
-    # diesem Frame nicht gefunden -- die klassische Methode findet manchmal
-    # Boards, die SB verpasst (und umgekehrt), ein zweiter Versuch kostet nur
-    # bei einem Fehlschlag von SB etwas.
+    # Rueckfall: SB hat das Board in diesem Frame nicht gefunden -- die
+    # klassische Methode findet manchmal Boards, die SB verpasst (und
+    # umgekehrt), ein zweiter Versuch kostet nur bei einem Fehlschlag von SB
+    # etwas.
     found, corners = cv2.findChessboardCorners(
         gray,
         (spec.cols, spec.rows),
@@ -243,7 +225,7 @@ def diagnose_board(gray, spec: BoardSpec) -> dict:
         "largestGrid": None,
         "tried": [],
     }
-    if spec.type != CHESSBOARD or not hasattr(cv2, "findChessboardCornersSB"):
+    if spec.type != CHESSBOARD:
         return result
 
     def sb(cols, rows) -> bool:
@@ -387,12 +369,11 @@ def estimate_board_pose(
     # gekippt (am gerenderten Brett: 2,5 Grad, 2 mm). Deshalb den besseren
     # nehmen und mit Levenberg-Marquardt ueber alle Ecken nachschaerfen.
     candidates = []
-    if hasattr(cv2, "solvePnPGeneric") and hasattr(cv2, "SOLVEPNP_IPPE"):
-        found, rvecs, tvecs, _ = cv2.solvePnPGeneric(
-            object_points, image_points, camera_matrix, no_distortion, flags=cv2.SOLVEPNP_IPPE
-        )
-        if found:
-            candidates = list(zip(rvecs, tvecs))
+    found, rvecs, tvecs, _ = cv2.solvePnPGeneric(
+        object_points, image_points, camera_matrix, no_distortion, flags=cv2.SOLVEPNP_IPPE
+    )
+    if found:
+        candidates = list(zip(rvecs, tvecs))
     if not candidates:
         ok, rvec, tvec = cv2.solvePnP(object_points, image_points, camera_matrix, no_distortion)
         if not ok:
@@ -401,10 +382,9 @@ def estimate_board_pose(
     refined = []
     for rvec, tvec in candidates:
         rvec, tvec = np.array(rvec, dtype=np.float64), np.array(tvec, dtype=np.float64)
-        if hasattr(cv2, "solvePnPRefineLM"):
-            rvec, tvec = cv2.solvePnPRefineLM(
-                object_points, image_points, camera_matrix, no_distortion, rvec, tvec
-            )
+        rvec, tvec = cv2.solvePnPRefineLM(
+            object_points, image_points, camera_matrix, no_distortion, rvec, tvec
+        )
         refined.append((reprojection_px(rvec, tvec), rvec, tvec))
     error_px, rvec, tvec = min(refined, key=lambda candidate: candidate[0])
     return from_rvec_tvec(rvec, tvec), error_px
