@@ -49,7 +49,7 @@ Signatur: `SaveUseCaseImage(Series: Int32, MetadataJson: String) -> (FileName: S
 - `Series`: Versuchsreihe aus der Web-App, muss `>= 1` sein.
 - `MetadataJson`: JSON-Text des Web-Clients. Der Server prüft den Inhalt nicht.
 - `FileName`: PNG-Pfad relativ zur Repo-Wurzel mit `/`, z. B.
-  `data/use_case/reihe_003/versuch_012.png`. Liegt das Ziel außerhalb der
+  `data/use-case/reihe_003/versuch_012.png`. Liegt das Ziel außerhalb der
   Repo-Wurzel, der absolute Pfad. Bei Fehler `""`.
 - `ResultJson`: Bildmessung des Versuchs als JSON-Text (Felder und Bedeutung
   siehe `use-case-messung.md`). Bei Fehler-Codes `""`. Ein Messfehler ist
@@ -93,14 +93,14 @@ def measure_for_save(image, calibration, sticker_offset_mm=(0.0, 0.0)) -> tuple[
 ```
 
 Konfiguration: `VisionServerConfig.use_case_dir: Path | None`, Default
-`<Repo>/data/use_case`. `None` = Methode wird nicht angelegt. Die Methode
+`<Repo>/data/use-case`. `None` = Methode wird nicht angelegt. Die Methode
 entsteht in `install_vision_machine`, wenn eine Kamera-Quelle vorhanden und
 `use_case_dir` nicht `None` ist.
 
 ### Daten: Ablage
 
 ```
-data/use_case/
+data/use-case/
 └── reihe_003/
     ├── versuch_001.png
     ├── versuch_001.json
@@ -108,7 +108,7 @@ data/use_case/
     └── versuch_002.png
 ```
 
-Außerdem liegt `data/use_case/aufkleber_versatz.json` (eine Datei je
+Außerdem liegt `data/use-case/aufkleber_versatz.json` (eine Datei je
 Use-Case-Ordner, nicht je Reihe) mit dem Aufkleber-Versatz, falls kalibriert.
 
 - Ordner `reihe_NNN` und Dateien `versuch_NNN` dreistellig, bei mehr als 999
@@ -220,7 +220,7 @@ Stand des Worktrees: beide Module zusammen 45 Tests, alle grün (rund 100 s,
 ein Teil davon sind synthetische Messungen).
 
 Manuell am Pi: Methode zweimal mit derselben Reihe aufrufen, dann
-`data/use_case/reihe_NNN/` prüfen: zwei PNG, zwei JSON, Nummern fortlaufend.
+`data/use-case/reihe_NNN/` prüfen: zwei PNG, zwei JSON, Nummern fortlaufend.
 
 ## Offene Fragen
 

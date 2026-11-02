@@ -1,14 +1,14 @@
 """Auswertung einer Use-Case-Versuchsreihe: Bildmessung und Kennzahlen (ISO 9283 angelehnt).
 
-Liest `versuch_NNN.png/.json` aus einem Reihenordner (`data/use_case/reihe_NNN`),
+Liest `versuch_NNN.png/.json` aus einem Reihenordner (`data/use-case/reihe_NNN`),
 nimmt die live gespeicherte Messung aus der JSON (oder misst neu), schreibt
 `auswertung.csv` und `auswertung.json` in den Reihenordner und druckt eine Kurzfassung.
 Intrinsik: `pi.intrinsics` der Versuchs-JSON, sonst `--intrinsik <Kalibrierdatei>`.
 
-    python tools/use_case_auswertung.py data/use_case/reihe_001
-    python tools/use_case_auswertung.py data/use_case/reihe_001 --neu-messen --bilder
+    python tools/use_case_auswertung.py data/use-case/reihe_001
+    python tools/use_case_auswertung.py data/use-case/reihe_001 --neu-messen --bilder
     # Aufkleber-Versatz: Wuerfel messen, von Hand um 180 Grad drehen, erneut messen
-    python tools/use_case_auswertung.py data/use_case/reihe_001 --aufkleber-kalibrieren 1 2
+    python tools/use_case_auswertung.py data/use-case/reihe_001 --aufkleber-kalibrieren 1 2
 """
 
 import argparse
@@ -197,7 +197,7 @@ def evaluate(folder: Path, remeasure: bool, images: bool, fallback) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("reihenordner", type=Path, help="Ordner einer Versuchsreihe, z. B. data/use_case/reihe_001")
+    parser.add_argument("reihenordner", type=Path, help="Ordner einer Versuchsreihe, z. B. data/use-case/reihe_001")
     parser.add_argument("--neu-messen", action="store_true",
                         help="alle Bilder neu messen (mit aktuellem Aufkleber-Versatz) und die JSON aktualisieren")
     parser.add_argument("--bilder", action="store_true",

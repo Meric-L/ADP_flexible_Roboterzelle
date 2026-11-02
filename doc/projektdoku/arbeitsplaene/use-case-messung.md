@@ -50,7 +50,7 @@ sichtbar bewertet werden kann.
 - `src/vision_server/runner.py`: `_install_save_use_case_image` misst vor dem Speichern
 - `src/vision_server/use_case_image.py`: Feld `messung`, Kontrollbild
 - `tests/test_use_case_eval.py` (neu), `tests/test_use_case_image.py`
-- `data/use_case_target/` (generiert), `data/use_case/` (Versuche, nicht im Git)
+- `data/use_case_target/` (generiert), `data/use-case/` (Versuche, nicht im Git)
 - `doc/projektdoku/vision-server-interface.md` (Abschnitt 18a)
 
 ## Zielscheibe v2
@@ -113,9 +113,9 @@ Aufkleber auf Seite 2 (Standard 12), `--out DIR` für einen anderen Ordner.
   2. Würfel von Hand um 180° drehen, am selben Punkt ablegen und messen (Versuch N2).
   3. Ausführen:
      ```bash
-     python3 tools/use_case_auswertung.py data/use_case/reihe_NNN --aufkleber-kalibrieren N1 N2
+     python3 tools/use_case_auswertung.py data/use-case/reihe_NNN --aufkleber-kalibrieren N1 N2
      ```
-     Das schreibt `data/use_case/aufkleber_versatz.json`. Die Argumente sind
+     Das schreibt `data/use-case/aufkleber_versatz.json`. Die Argumente sind
      Versuchsnummern oder Bilddateien der Reihe.
   Für bestehende Reihen danach mit `--neu-messen` neu auswerten.
 
@@ -294,18 +294,18 @@ def render_trial(calibration, camera_pose_in_sheet, cube_dx_mm, cube_dy_mm, cube
 
 ### Daten: Ablage und JSON
 
-- `data/use_case/reihe_NNN/versuch_NNN.png` und `.json` (Schema `adp.usecase.trial/1`).
+- `data/use-case/reihe_NNN/versuch_NNN.png` und `.json` (Schema `adp.usecase.trial/1`).
   Die Messung steht im Feld `messung` (siehe `TrialMeasurement`).
-- `data/use_case/reihe_NNN/versuch_NNN_messung.png`: Kontrollbild.
-- `data/use_case/aufkleber_versatz.json`: `{"x_mm": ..., "y_mm": ...}`, gilt für alle Reihen
-  im Ordner `data/use_case`.
+- `data/use-case/reihe_NNN/versuch_NNN_messung.png`: Kontrollbild.
+- `data/use-case/aufkleber_versatz.json`: `{"x_mm": ..., "y_mm": ...}`, gilt für alle Reihen
+  im Ordner `data/use-case`.
 - `pi.intrinsics` in der Versuchs-JSON: Kameramatrix und Verzeichnung samt Quelle.
   Die Offline-Auswertung nimmt diese Intrinsik, sonst `--intrinsik <Kalibrierdatei>`.
 
 ### Offline-Auswertung
 
 ```bash
-python3 tools/use_case_auswertung.py data/use_case/reihe_NNN [--neu-messen] [--bilder] \
+python3 tools/use_case_auswertung.py data/use-case/reihe_NNN [--neu-messen] [--bilder] \
     [--aufkleber-kalibrieren VOR NACH] [--intrinsik KALIBRIERDATEI]
 ```
 
@@ -315,7 +315,7 @@ python3 tools/use_case_auswertung.py data/use_case/reihe_NNN [--neu-messen] [--b
   JSON aktualisieren.
 - `--bilder`: Kontrollbilder `versuch_NNN_messung.png` schreiben (misst neu).
 - `--aufkleber-kalibrieren VOR NACH`: Versatz aus zwei Versuchen (Bilddatei oder
-  Versuchsnummer) bestimmen und nach `data/use_case/aufkleber_versatz.json`
+  Versuchsnummer) bestimmen und nach `data/use-case/aufkleber_versatz.json`
   schreiben.
 - `--intrinsik`: Kalibrierdatei, falls die JSON keine Intrinsik enthält.
 
@@ -377,11 +377,11 @@ Die Schritte sind aus der Verifikation übernommen:
    zur Tisch-x-Kante).
 3. Aufkleber auf den Würfel kleben, Versatz höchstens etwa 1 mm.
 4. Aufkleber-Versatz einmal kalibrieren: zwei Ablagen mit 180°-Drehung, dann
-   `tools/use_case_auswertung.py data/use_case/reihe_001 --aufkleber-kalibrieren N1 N2`.
+   `tools/use_case_auswertung.py data/use-case/reihe_001 --aufkleber-kalibrieren N1 N2`.
 5. Reihe 1 mit etwa 10 Ablagen fahren.
 6. Prüfen:
    - Die App zeigt live Δx, Δy, Δθ und die Zone.
-   - `tools/use_case_auswertung.py data/use_case/reihe_001` liefert
+   - `tools/use_case_auswertung.py data/use-case/reihe_001` liefert
      `auswertung.csv` und `auswertung.json`.
 7. Plausibilität: Den Würfel von Hand um etwa 2 mm versetzt hinlegen. Die Messung
    soll etwa 2 mm zeigen.
