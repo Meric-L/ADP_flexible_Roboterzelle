@@ -1,0 +1,42 @@
+{
+  "schema": "wsc.vision.calibration/2",
+  "calibrationId": "cam_ceiling@2026-10-28T16:54:58.242773+00:00",
+  "frameId": "cam_ceiling",
+  "distortionModel": "fisheye",
+  "imageSize": [
+    4056,
+    3040
+  ],
+  "cameraMatrix": [
+    [
+      1711.5941258216144,
+      0.0,
+      2053.8159131377124
+    ],
+    [
+      0.0,
+      1710.9208041533784,
+      1577.3298587055674
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortionCoefficients": [
+    -0.012668841340659107,
+    -0.02877951781359132,
+    0.023786649283019195,
+    -0.009703831793371835
+  ],
+  "rmsReprojectionError": 0.5666821369206483,
+  "sampleCount": 20,
+  "board": {
+    "type": "chessboard",
+    "cols": 7,
+    "rows": 10,
+    "squareSizeM": 0.023
+  },
+  "createdAt": "2026-10-28T16:54:58.242862+00:00"
+}
