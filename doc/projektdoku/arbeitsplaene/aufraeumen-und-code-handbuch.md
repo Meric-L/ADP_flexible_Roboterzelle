@@ -206,12 +206,12 @@ keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend sta
    `Environment=PYTHONPATH=<Repo>/src`. Sicherung `/etc/systemd/system/opcua-server.service.bak-20261102`.
    `daemon-reload`, Neustart 02.11. 10:42: aktiv, Ports 4840 und 8080 lauschen, kein Traceback, mDNS
    `vision-flange-01.local` und LDS-Anmeldung ok.
-3. **Abweichung:** Das Repo steht **nicht** auf `origin/apriltag`, sondern bleibt auf `apriltag-aufraeumen`
-   (Entscheidung Meric, 02.11.): `origin/apriltag` enthält weder die Use-Case-Funktionen
-   (`SaveUseCaseImage`, Würfel-Bildmessung) noch die Aufräum-Commits. Die Tag-Map ist byte-gleich zu
-   `origin/apriltag:config/tagmap.json` (sha256 `dcdd85b0…ed81138`, Welttags 583–586 mit 0,2 m); als lokale
-   Änderung gegenüber `apriltag-aufraeumen` (dort noch 0,198) nicht committet. Das lokale `apriltag` ist auf
-   `origin/apriltag` gesetzt, `6ebab91` liegt als lokaler Branch `sicherung/apriltag-6ebab91`.
+3. Repo auf `apriltag` (= `origin/apriltag` plus dieser Doku-Commit), Neustart 02.11. 10:49, geprüft wie in 2.
+   **Folge:** Use-Case-Foto und -Messung (`SaveUseCaseImage`, Würfel-Bildmessung) und die Aufräum-Commits
+   laufen auf dem Hand-Pi nicht mehr; sie liegen auf `usecase-foto` bzw. `apriltag-aufraeumen`.
+   Tag-Map: sha256 `dcdd85b01a5f53355a5a6eb54bfdcd1d509fce949a037c6e75ff2d0a0ed81138` (Welttags 583–586 mit
+   0,2 m) — diesen Wert muss der Decken-Pi nach seinem Reset auch haben. Das lokale `apriltag` trug die
+   zurückgenommenen Commits bis `6ebab91`; sie liegen als lokaler Branch `sicherung/apriltag-6ebab91`.
    Sicherungen: `~/pi-sicherung-20261102/` (tagmap, Patch der lokalen Änderungen, alte Unit).
 4. Tippfehler `DECICMATE` und `VISION_ALLOW_PLACEHOLDER_CALIBRATION`: entfallen, kein Drop-in.
    **OpenCV: kein Konflikt im venv.** „opencv 4.10.0“ ist das Debian-Paket `python3-opencv` unter
