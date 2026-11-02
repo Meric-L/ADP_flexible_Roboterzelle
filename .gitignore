@@ -28,3 +28,8 @@ __pycache__/
 data/calibration/**
 !data/calibration/**/
 !data/calibration/**/*.json
+
+# Hand-Auge-Sitzungen und Tag-Referenzaufnahmen: Backups und Bilder nicht versionieren
+data/handeye/**/*.bak
+data/handeye/**/*.png
+data/tagreference/**/*.png
