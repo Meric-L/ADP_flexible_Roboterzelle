@@ -66,7 +66,7 @@ webskillcomposition: Einrichtung laut `docs/development.md` im webskill-Repo
 
 ## Inhalt
 
-- **Teil A1 — tagloc, CLI und Hilfsskripte:** `src/tagloc/`, `src/tagloc/cli/`, `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, Repo-Wurzel, Testübersicht
+- **Teil A1 — tagloc, CLI und Hilfsskripte:** `src/tagloc/`, `src/tagloc/cli/`, `src/jobs/`, `src/ua_program/`, `deploy/`, `tools/`, `config/`, `data/`, Repo-Wurzel, Testübersicht
 - **Teil A2 — Vision-Server:** Start & Konfiguration, Adressraum, Jobs, Erkennungsquellen, Kamera & Livestream, Sitzungen, Discovery, Werkzeuge
 - **Teil B1 — Zellmodule, Modelle:** Koordinaten & Szenenmodell, Modulkatalog, Tag-Platzierung, Layer 1, Zellen-Überwachung, Layer 2, Einmessen, Hand-Auge, Kamera-1-Kalibrierung, Pick & Place, Freigaben, Kollisionsprüfung, Zustand
 - **Teil B2 — Zellmodule, Oberfläche:** die Bedienbereiche zu den Modellen aus B1
@@ -83,7 +83,7 @@ Roboter.
 
 ## Teil A1 — tagloc, CLI und Hilfsskripte
 
-Geltungsbereich: `src/tagloc/` mit `cli/`, `src/jobs/`, `src/OPCUA/`, `src/ua_program/`, `tools/`, `config/`, `data/`, die Befehle der Repo-Wurzel und die Testübersicht. `src/vision_server/` gehört zu einem anderen Teil; hier steht nur, wo `tagloc` dort benutzt wird. Stand: Branch `apriltag` (`d55df91`).
+Geltungsbereich: `src/tagloc/` mit `cli/`, `src/jobs/`, `src/ua_program/`, `deploy/`, `tools/`, `config/`, `data/`, die Befehle der Repo-Wurzel und die Testübersicht. `src/vision_server/` gehört zu einem anderen Teil; hier steht nur, wo `tagloc` dort benutzt wird. Stand: Branch `apriltag` (`d55df91`).
 
 Begriffe: **KS** = Koordinatensystem. **T_a_b** = Pose von b, ausgedrückt in a (Meter, Radiant). **Welttag** = fester AprilTag am Zellenrand; er definiert das Weltkoordinatensystem. **Modultag** = Tag auf einem beweglichen Modul. **Roboter** = Modul mit Rolle `robot`; er wird wie jedes andere Modul gemessen.
 
@@ -268,25 +268,26 @@ Der erste Entwurf für Kamerakalibrierung und Erkennung (`calibrate_camera.py`, 
 
 **Weiterlesen**: [vision-server-interface.md](vision-server-interface.md) (Job `calibration`).
 
-### `src/OPCUA/` (Startskript)
+### `deploy/` (systemd-Unit der Pis)
 
-**Zweck**: `server.py` startet den Vision-Server auf den Pis. Die Datei enthält keine Logik; sie existiert, damit die systemd-Unit `opcua-server.service` unverändert weiterläuft. Die Unit selbst liegt nicht im Repo (siehe [altlasten.md](altlasten.md), D5).
+**Zweck**: Vorlage der systemd-Unit `opcua-server.service`, die den Vision-Server auf beiden Pis startet, samt Anleitung zum Einspielen. Sie ersetzt den früheren Starter `src/OPCUA/server.py` (Altlast B13).
 
-**Einstieg**: Die Unit ruft `python src/OPCUA/server.py` auf. Direkt geht es laut Docstring über den Modulweg: `PYTHONPATH=src python3 -m vision_server.server`.
+**Einstieg**: Die Unit startet `<Repo>/.venv/bin/python -m vision_server.server` mit `PYTHONPATH=<Repo>/src` und `WorkingDirectory=<Repo>`. Direkt von Hand: `PYTHONPATH=src python3 -m vision_server.server`.
 
 **Dateien**
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/OPCUA/server.py` | Ergänzt `sys.path` um `src` und startet `vision_server.server.main` mit `asyncio.run` | `main` (aus `vision_server.server`) |
+| `deploy/opcua-server.service` | Vorlage mit den Platzhaltern `@USER@` (Benutzer und Gruppe) und `@REPO@` (Repo-Pfad) | `ExecStart`, `Environment=PYTHONPATH`, `Restart=always`, `RestartSec=5`, `NoNewPrivileges`, `PrivateTmp` |
+| `deploy/README.md` | Werte je Pi, Drop-in des Decken-Pi, Einspielen, Prüfen, Rückweg | Tabelle je Pi, `sed`-Aufruf, Sicherung `.bak-<Datum>` |
 
-**Ablauf**: Unit → `server.py` → `sys.path` → `asyncio.run(main())`.
+**Ablauf**: Unit → `python -m vision_server.server` → `main()`.
 
-**Konfiguration & Dateien**: keine eigene. Der Repo-Pfad auf dem Pi steht nur in der Unit.
+**Konfiguration & Dateien**: Hostspezifische `VISION_*`-Variablen stehen nicht in der Vorlage, sondern im Drop-in `opcua-server.service.d/override.conf` (nur der Decken-Pi hat eines). `Description`, `After`, `Wants` und `WantedBy` der Vorlage wurden auf den Pis nicht erhoben.
 
-**Tests**: keine.
+**Tests**: `tests/test_tool_imports.py` (`SystemdEinstiegTest`: Vorlage startet `-m vision_server.server` und setzt `PYTHONPATH=…/src`; `vision_server.server.main` ist importierbar).
 
-**Weiterlesen**: [altlasten.md](altlasten.md) (D5), [vision-server-interface.md](vision-server-interface.md).
+**Weiterlesen**: [`deploy/README.md`](../../deploy/README.md), [vision-system.md](vision-system.md) (Zwei Wege auf denselben Server).
 
 ### `src/ua_program/` (Part-10-Gerüst)
 
@@ -1202,7 +1203,7 @@ Optionen (Auszug):
 Stolpersteine:
 
 - `DEFAULT_COMBOS` stammt vom alten 7 × 9-Brett. Das aktuelle Brett hat 7 × 10 innere Ecken und fehlt in der Liste. Ohne `--combo` testet `diagnose_board.py` das aktuelle Brett deshalb nicht. Dann `--combo 7x10` angeben.
-- Die Tests im Ordner `tests/` nutzen `tools/make_synthetic_scene.py` aus dem Repo-Root, nicht dieses Paket. `tests/test_tool_imports.py` importiert sie nur als Rauchtest (jedes Modul hat `main`); dort steht auch der Test, dass `src/OPCUA/server.py` `vision_server.server.main` lädt.
+- Die Tests im Ordner `tests/` nutzen `tools/make_synthetic_scene.py` aus dem Repo-Root, nicht dieses Paket. `tests/test_tool_imports.py` importiert sie nur als Rauchtest (jedes Modul hat `main`); dort steht auch der Test zur systemd-Vorlage `deploy/opcua-server.service`.
 
 **Tests**
 - Keine eigenen Tests für dieses Verzeichnis.

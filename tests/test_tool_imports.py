@@ -3,8 +3,9 @@
 Geprueft wird nur, dass sie sich importieren lassen und ihren Einstieg
 (`main`) haben -- ein umbenannter Import oder ein verschobenes Modul faellt
 sonst erst auf, wenn jemand das Werkzeug auf dem Pi braucht. Dazu der Einstieg
-der nicht versionierten systemd-Unit: `src/OPCUA/server.py` muss
-`vision_server.server.main` laden.
+der systemd-Unit: die Vorlage `deploy/opcua-server.service` muss den Server per
+`-m vision_server.server` starten, und `vision_server.server.main` muss
+importierbar sein.
 """
 
 import importlib
@@ -98,18 +99,33 @@ class RepoToolsTest(unittest.TestCase):
 
 
 class SystemdEinstiegTest(unittest.TestCase):
-    def test_opcua_server_py_laedt_vision_server_main(self):
-        """Die systemd-Unit startet `src/OPCUA/server.py`; die Datei hat keine
-        Logik, nur diesen Import. Bricht er, startet auf den Pis nichts."""
+    UNIT = REPO_ROOT / "deploy" / "opcua-server.service"
+
+    def _service_zeilen(self) -> dict[str, list[str]]:
+        werte: dict[str, list[str]] = {}
+        for zeile in self.UNIT.read_text(encoding="utf-8").splitlines():
+            zeile = zeile.strip()
+            if not zeile or zeile.startswith("#") or zeile.startswith("["):
+                continue
+            schluessel, _, wert = zeile.partition("=")
+            werte.setdefault(schluessel, []).append(wert)
+        return werte
+
+    def test_unit_startet_den_server_als_modul(self):
+        """Die Vorlage startet `-m vision_server.server` und legt `src/` auf
+        den Pfad. Weicht sie ab, startet auf den Pis nichts."""
+        werte = self._service_zeilen()
+        self.assertEqual(len(werte["ExecStart"]), 1)
+        self.assertTrue(
+            werte["ExecStart"][0].endswith("-m vision_server.server"),
+            werte["ExecStart"][0],
+        )
+        self.assertIn("PYTHONPATH=@REPO@/src", werte["Environment"])
+
+    def test_server_main_ist_importierbar(self):
         from vision_server import server as vision_server_module
 
-        saved_path = list(sys.path)
-        try:
-            module = load_from_path("opcua_server_einstieg", SRC / "OPCUA" / "server.py")
-        finally:
-            sys.path[:] = saved_path
-        self.assertIs(module.main, vision_server_module.main)
-        self.assertTrue(callable(module.main))
+        self.assertTrue(callable(vision_server_module.main))
 
 
 if __name__ == "__main__":

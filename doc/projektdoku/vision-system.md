@@ -190,21 +190,11 @@ Zwei Umschalter verändern den Adressraum bzw. das Verhalten:
 | Weg | Wofür |
 | --- | --- |
 | `python3 -m vision_server.server` | Entwicklung und Handarbeit. Braucht `PYTHONPATH=src` oder `WorkingDirectory=…/src`. |
-| `python3 src/OPCUA/server.py` | **Die systemd-Unit auf den Pis.** Ein 15-Zeilen-Starter ohne Logik, der `src/` auf den Pfad legt und `vision_server.server.main()` aufruft. |
-
-`src/OPCUA/server.py` existiert **nur** deshalb: die Unit zeigt seit jeher auf
-diesen Pfad, sie ist in keinem Repo versioniert (Altlast D5), und sie auf zwei
-Pis von Hand nachzuziehen wäre eine Fehlerquelle bei jedem Neuaufsetzen. Sie
-kann wegfallen, sobald die Unit versioniert ist und mit ausgerollt wird.
-
-Beim Umzug ins Paket war diese Datei kurzzeitig gelöscht — der Dienst startete
-nach einem Reboot nicht mehr. Der Starter ist die Lehre daraus: **an einem
-Einstiegspunkt, den ein nicht versioniertes Deployment festhält, wird nicht
-ohne Ersatz gezogen.**
+| `<Repo>/.venv/bin/python -m vision_server.server` | **Die systemd-Unit auf den Pis** (`PYTHONPATH=<Repo>/src`). Vorlage und Einspielanleitung: [`deploy/`](../../deploy/README.md). |
 
 Auf dem Pi läuft der Server produktiv als systemd-Service `opcua-server.service`
-(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service` —
-nicht in diesem Repo versioniert). **Wichtig beim Testen auf dem Pi:** Kein
+(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service`,
+Vorlage in `deploy/`). **Wichtig beim Testen auf dem Pi:** Kein
 Vordergrundstart, das kollidiert mit dem Service (Port 4840 belegt) —
 stattdessen `systemctl restart opcua-server.service` und mit einem separaten
 Client dagegen testen.

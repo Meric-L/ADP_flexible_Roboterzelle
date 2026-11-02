@@ -25,7 +25,7 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
   vendorierten Nodesets (`nodesets/`).
 * `/src/ua_program` - Rudimentäre Umsetzung von OPC-UA-Programmen (Spec Teil 10).
 * `/src/jobs` - Prüfauftrag `calibrate.py`, den der Vision-Server als Unterprozess startet.
-* `/src/OPCUA` - Nur der Einstiegspunkt `server.py` für die systemd-Unit; die Logik liegt in `vision_server`.
+* `/deploy` - Vorlage der systemd-Unit `opcua-server.service` für die Pis samt Einspielanleitung.
 * `/tools` - Druckbogen für Tags und Boards, synthetische Testszenen.
 * `/config` - Tag-Map (Zellenlayout), versioniert.
 * `/hardware` - CAD-Dateien, Schaltpläne oder 3D-Druck-Modelle für die Sensorhalterungen.
