@@ -1,6 +1,6 @@
 # Module am Boden: die gemessene Tag-Höhe aus der Lage heraushalten
 
-**Status:** in Arbeit — 02.11.2026
+**Status:** fertig — 02.11.2026
 **Verantwortlich:** Meric, `Agent: Module am Boden ohne Höhe`
 **Thema:** apriltag
 **Branch:** dieses Repo: `apriltag-aufraeumen` (Punkt 2 und 4, Pi-Teil); webskillcomposition: `ungetestet-aufraeumen` (Punkt 1, 3, 4 Frontend-Teil und 5)
@@ -175,7 +175,16 @@ Haiku zieht die Fach-MDs nach.
 
 ## Abweichungen vom Plan
 
-—
+- Frontend: `Layer1Import` hat ein zusätzliches Feld `cameraPositionInWorld: Vec3 | null`, damit `importIntoViewport` (AutolocateLayer1Window) die Kameraposition an `sceneState.applyLayer1Detections(detections, frameId, seenWorldTags, cameraPositionInWorld)` weiterreichen kann; `sceneState.applyLayer2Detections` hat einen optionalen dritten Parameter, aber noch keinen Produktionsaufrufer.
+- Pi: `_camera_position(localization)` liest `pose_world_cam` per `getattr`; ohne Pose (Test-Attrappen) läuft die Überwachung ohne Projektion wie bisher.
+- Pi: Die Referenz der Überwachung wird nicht projiziert und trägt ihre gemessene Höhe (wie unter „Offene Fragen“ vorgesehen).
+- `describeBaseCorrection` lautet jetzt z. B. „22 mm (x +20, y −10 mm), 1,1° gedreht · Höhe nicht übernommen: gemessen +30 mm“.
+
+## Umsetzung
+
+- ADP, Branch `apriltag-aufraeumen`, Commit `e72c47b` (Pi: Punkt 2, 4; 1005 Tests grün).
+- webskillcomposition, Branch `ungetestet-aufraeumen`, Commit `6f96123` (Frontend: Punkt 1, 3, 4, 5; 884 Tests grün, Typecheck sauber).
+- Noch offen: Abnahme an der Zelle (Vorgehen Schritt 7) und Nachmessen der Wagenhöhe im Katalog.
 
 ## Nach Abschluss
 
