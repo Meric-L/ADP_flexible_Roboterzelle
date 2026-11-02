@@ -3,7 +3,7 @@
 **Status:** in Arbeit — 02.11.2026
 **Verantwortlich:** Meric, `Agent: Module am Boden ohne Höhe`
 **Thema:** apriltag
-**Branch:** dieses Repo: `apriltag-aufraeumen` (Schritt 2 und 4a); webskillcomposition: `ungetestet-aufraeumen` (Schritt 1, 3 und 4b)
+**Branch:** dieses Repo: `apriltag-aufraeumen` (Punkt 2 und 4, Pi-Teil); webskillcomposition: `ungetestet-aufraeumen` (Punkt 1, 3, 4 Frontend-Teil und 5)
 
 ## Ziel
 
@@ -20,6 +20,12 @@ vier Stellen trotzdem:
    des Sehstrahls. Ein Tag, der nicht direkt unter der Kamera liegt, wird schräg gesehen; jeder Zentimeter
    Tiefenfehler wird dort zu einem Versatz in x/y (bei 45° etwa 1:1). z wegzuwerfen hilft dagegen nicht,
    der Fehler steckt schon in x/y.
+5. **Basiskorrektur am Welttag übernimmt die gemessene Höhe** (`baseCorrection` in `tagServo.ts`). Die Basis
+   wird aus `tagInWorld − R·tagInBase` gerechnet, auch in z. `tagInBase` misst die Handkamera über die
+   Hand-Auge-Kalibrierung; deren Fehler entlang der Blickrichtung (beim Blick nach unten: z) und der
+   Tiefenfehler des Tags landen 1:1 in der Höhe der Basis. Übernimmt man den Vorschlag, steht der Zwilling
+   höher oder tiefer, und jede Ablage beim Pick & Place (Würfel, Use Case) kommt um denselben Betrag zu hoch
+   oder zu tief: „der Roboter kommt auf die Modulebene oder deutlich drüber, wir spielen mit z“.
 
 Hinterher: Keine Höhenstreuung schlägt mehr auf die Lage am Boden, auf die Überwachung oder auf die Warnungen
 durch. Für 4 wird der Tag nicht mehr aus der geschätzten Tiefe platziert, sondern als Schnitt des Sehstrahls
@@ -119,6 +125,14 @@ export function pointOnRayAtHeight(camera: Vec3, through: Vec3, heightM: number,
 - `placeModule`: `tagSpreadM` wird waagrecht gemessen (nur x, y).
 - `measuredModule` (Zweig ohne `heading`): der Weltversatz bekommt `shiftM[2] = 0`; die Höhe des Moduls bleibt.
   `describeModulePosition` zeigt dann Δz = 0.
+- `baseCorrection` (`tagServo.ts`): `baseInWorld.position[2] = plannedBaseInWorld.position[2]`, also die Höhe
+  aus Layer 1 (Boden minus Unterkante des Roboter-Moduls laut Katalog). `shiftM[2]` ist damit 0,
+  `distanceM` waagrecht. Die gemessene Höhendifferenz wird als Diagnose behalten:
+  `BaseCorrection.measuredHeightOffsetM: number` (gemessene minus geplante Basishöhe), und
+  `describeBaseCorrection` nennt sie („Höhe nicht übernommen: gemessen +12 mm“).
+  Folge: Die Ablagehöhe hängt nur noch an Katalog-Höhen (Tischplatte des Zielmoduls, Unterkante des
+  Roboter-Moduls) und ist reproduzierbar. Stimmen diese nicht, ist der Fehler konstant und wird einmal im
+  Katalog korrigiert statt bei jedem Lauf.
 
 Annahme, im Code zu prüfen: `detection.position` ist die Tag-Mitte im Welt-KS. Das gilt, solange die Tag-Map
 für Modul-Tags kein `tagToModule` setzt (heute nirgends gesetzt; die Versätze stehen im Frontend-Katalog).
@@ -139,6 +153,7 @@ Haiku zieht die Fach-MDs nach.
 3. **Pi, Punkt 4a** (Sonnet): `point_on_ray_at_height`, `cameraPositionInWorld` im Payload, Projektion der
    Sichtungen in der Zellen-Überwachung.
 4. **Frontend, Punkt 4b** (Sonnet): Typ, Durchreichen der Kameraposition, Strahl-Schnitt in `placeDetections`.
+4a. **Frontend, Punkt 5** (Sonnet): Basishöhe in `baseCorrection` nicht aus der Messung.
 5. **Tests** (Opus): Helfer in beiden Sprachen (senkrecht, schräg, flach, hinter der Kamera), Tracker (Höhen-
    streuung löst kein „verschoben“ aus, echte 6-cm-Verschiebung schon), Payload-Feld, Platzierung mit und ohne
    Kameraposition, `measuredModule` ohne Kurs. Beide Suiten komplett.
@@ -151,6 +166,9 @@ Haiku zieht die Fach-MDs nach.
 
 - Reicht `min_slope = 0.2` (Strahl höchstens ~78° gegen die Senkrechte)? Die Deckenkamera sieht die Zelle aus
   ~2,8 m; ein Tag am Rand liegt bei ~45–60°. Bei der Abnahme die Zahl der Fälle mit `None` ansehen.
+- Punkt 5: Stimmt die Unterkante des Roboter-Moduls (Wagenhöhe) im Katalog? Bei der Abnahme einmal mit dem
+  Zollstock nachmessen; `measuredHeightOffsetM` über mehrere Anker zeigt, ob die Messung konstant daneben liegt
+  (Katalog falsch) oder streut (Hand-Auge).
 - Die Referenz der Zellen-Überwachung trägt selbst eine gemessene Höhe. Projiziert wird auf diese Höhe, also auf
   eine feste, aber nicht exakte Ebene; für den Vergleich mit der Referenz genügt das. Falls nötig, später die
   Katalog-Höhe vom Frontend mitgeben.
