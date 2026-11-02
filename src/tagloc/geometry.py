@@ -213,6 +213,39 @@ def translation_distance_m(first: Pose, second: Pose) -> float:
     return float(np.linalg.norm(first[:3, 3] - second[:3, 3]))
 
 
+def point_on_ray_at_height(
+    origin: Sequence[float],
+    through: Sequence[float],
+    height_m: float,
+    *,
+    min_slope: float = 0.2,
+) -> tuple[float, float, float] | None:
+    """Schnitt des Strahls `origin -> through` mit der Ebene `z = height_m`.
+
+    `origin` ist die Kameraposition, `through` der gemessene Punkt (Tag-Mitte),
+    beide im Welt-KS in Metern. Liefert `None`, wenn der Strahl zu flach
+    verlaeuft (`|dz| / |d| < min_slope`, z. B. ein Tag fast auf Kamerahoehe),
+    die Ebene hinter der Kamera liegt (`t <= 0`) oder die Richtung null ist.
+    Wirft nicht.
+    """
+    try:
+        start = np.asarray(origin, dtype=np.float64).reshape(3)
+        direction = np.asarray(through, dtype=np.float64).reshape(3) - start
+        length = float(np.linalg.norm(direction))
+        if not math.isfinite(length) or length == 0.0:
+            return None
+        dz = float(direction[2])
+        if abs(dz) / length < min_slope:
+            return None
+        t = (float(height_m) - float(start[2])) / dz
+        if not math.isfinite(t) or t <= 0.0:
+            return None
+        hit = start + t * direction
+    except (TypeError, ValueError):
+        return None
+    return (float(hit[0]), float(hit[1]), float(hit[2]))
+
+
 def rotation_distance_rad(first: Pose, second: Pose) -> float:
     """Liefert den verbleibenden Drehwinkel zwischen zwei Posen in Radiant."""
     first = np.asarray(first, dtype=np.float64)

@@ -92,6 +92,49 @@ class TrackerTest(unittest.TestCase):
         self.run_frames(tracker, [{7: sighting(1.005, 1.0)}] * 15, start=t)
         self.assertEqual(tracker.changes, [])
 
+    def test_a_range_error_along_a_slanted_ray_is_no_move(self):
+        # Deckenkamera bei (0, 0, 3), Tag bei (1.5, 1.0, 0): 4 % zu weit auf dem
+        # Sehstrahl geschaetzt -- 6 cm tiefer, und waagrecht 7 cm daneben.
+        camera = (0.0, 0.0, 3.0)
+        true = np.array((1.5, 1.0, 0.0))
+        measured = tuple(np.asarray(camera) + 1.04 * (true - np.asarray(camera)))
+        frames = [{7: TagSighting(measured, 0.0, False, "MOD-A", camera_position=camera)}] * 20
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
+        self.run_frames(tracker, frames)
+        self.assertEqual(tracker.changes, [])
+        # Ohne Kameraposition (alter Stand) waere das ein Alarm gewesen.
+        blind = [{7: TagSighting(measured, 0.0, False, "MOD-A")}] * 20
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
+        self.run_frames(tracker, blind)
+        self.assertEqual([change["kind"] for change in tracker.changes], [MOVED])
+
+    def test_a_real_move_still_counts_and_only_horizontally(self):
+        camera = (0.0, 0.0, 3.0)
+        moved = np.array((1.6, 1.0, 0.0))
+        measured = tuple(np.asarray(camera) + 1.04 * (moved - np.asarray(camera)))
+        frames = [{7: TagSighting(measured, 0.0, False, "MOD-A", camera_position=camera)}] * 20
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
+        self.run_frames(tracker, frames)
+        [change] = tracker.changes
+        self.assertEqual(change["kind"], MOVED)
+        self.assertAlmostEqual(change["distanceM"], 0.1, places=6)
+        # Ohne Kameraposition zaehlt nur noch waagrecht: 3 cm Hoehe allein sind keine Bewegung.
+        tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
+        self.run_frames(tracker, [{7: TagSighting((1.5, 1.0, 0.03), 0.0, False, "MOD-A")}] * 20)
+        self.assertEqual(tracker.changes, [])
+
+    def test_the_sightings_carry_the_camera_position(self):
+        location = types.SimpleNamespace(
+            tag_id=7, pose=geometry.identity(), ambiguous=False, module_id="MOD-A"
+        )
+        joint = types.SimpleNamespace(
+            solver="joint",
+            reprojection_error_px=0.7,
+            pose_world_cam=geometry.from_rvec_tvec((0, 0, 0), (1.0, 2.0, 3.0)),
+        )
+        sightings, _ = sightings_from_locations([location], joint, OPTIONS)
+        self.assertEqual(sightings[7].camera_position, (1.0, 2.0, 3.0))
+
     def test_rotation_about_the_vertical_counts_but_not_for_ambiguous_tags(self):
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
         self.run_frames(tracker, [{7: sighting(1.0, 1.0, yaw=25.0, ambiguous=True)}] * 20)

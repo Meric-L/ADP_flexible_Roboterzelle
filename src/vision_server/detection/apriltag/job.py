@@ -107,6 +107,7 @@ def _localization_summary(localization) -> dict | None:
     """
     if localization is None:
         return None
+    import numpy as np
     from tagloc.localize import ORIGIN_ROBOT_POSE
 
     anchored = localization.origin == ORIGIN_ROBOT_POSE
@@ -118,6 +119,12 @@ def _localization_summary(localization) -> dict | None:
         "spreadM": finite_or_none(localization.spread_m, PAYLOAD_DIGITS),
         "spreadDeg": finite_or_none(math.degrees(localization.spread_rad), PAYLOAD_DIGITS),
         "worldTagIds": [int(tag_id) for tag_id in localization.world_tag_ids],
+        # Fuer jeden Solver: das Frontend schneidet damit den Sehstrahl zum Tag
+        # mit der bekannten Tag-Hoehe, statt der geschaetzten Tiefe zu trauen.
+        "cameraPositionInWorld": [
+            finite_or_none(float(v), PAYLOAD_DIGITS)
+            for v in np.asarray(localization.pose_world_cam)[:3, 3]
+        ],
     }
     if not anchored and localization.solver == "joint":
         # Die Pose selbst, nur wenn sie aus >= 2 Welttags gemeinsam geschaetzt

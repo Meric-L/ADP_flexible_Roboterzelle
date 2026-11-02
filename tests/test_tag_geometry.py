@@ -266,5 +266,25 @@ class PoseDictTest(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class RayAtHeightTest(unittest.TestCase):
+    """`point_on_ray_at_height`: der Sehstrahl zum Tag, geschnitten mit seiner bekannten Hoehe."""
+
+    def test_straight_down_gives_the_point_below_the_camera(self):
+        hit = geometry.point_on_ray_at_height((1.0, 2.0, 3.0), (1.0, 2.0, 0.5), 0.2)
+        np.testing.assert_allclose(hit, (1.0, 2.0, 0.2), atol=1e-12)
+
+    def test_a_measurement_too_far_along_a_slanted_ray_lands_on_the_true_point(self):
+        # 5 % zu weit auf dem Strahl von (0, 0, 3) zum wahren Punkt (2, 1, 0.2).
+        hit = geometry.point_on_ray_at_height((0.0, 0.0, 3.0), (2.1, 1.05, 0.06), 0.2)
+        np.testing.assert_allclose(hit, (2.0, 1.0, 0.2), atol=1e-12)
+
+    def test_no_point_for_a_flat_ray_a_plane_behind_the_camera_or_no_ray(self):
+        self.assertIsNone(geometry.point_on_ray_at_height((0, 0, 0.25), (2, 1, 0.2), 0.2))
+        self.assertIsNone(geometry.point_on_ray_at_height((0, 0, 3), (1, 0, 2), 3.5))
+        self.assertIsNone(geometry.point_on_ray_at_height((0, 0, 3), (0, 0, 3), 0.0))
+        self.assertIsNone(geometry.point_on_ray_at_height((0, 0, float("nan")), (0, 0, 1), 0.0))
+
+
 if __name__ == "__main__":
     unittest.main()

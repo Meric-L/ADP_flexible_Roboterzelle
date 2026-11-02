@@ -480,6 +480,21 @@ class WorldTagsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(summary["reprojectionErrorPx"])
         self.assertEqual(summary["spreadM"], 0.002)
         self.assertEqual(summary["worldTagIds"], [])
+        # Die Kameraposition gibt es fuer jeden Solver, auch fortgeschrieben.
+        self.assertEqual(summary["cameraPositionInWorld"], [0.0, 0.0, 0.0])
+        self.assertNotIn("poseInWorld", summary)
+
+    def test_the_camera_position_is_the_translation_of_the_camera_pose(self):
+        from tagloc.localize import CameraLocalization
+
+        from vision_server.detection.apriltag import _localization_summary
+
+        pose = geometry.from_rvec_tvec((0.1, 0.0, 0.0), (1.25, 2.5, 2.8))
+        summary = _localization_summary(
+            CameraLocalization(pose_world_cam=pose, world_tag_ids=(583,), primary_tag_id=583, spread_m=0.0)
+        )
+        self.assertEqual(summary["cameraPositionInWorld"], [1.25, 2.5, 2.8])
+        json.dumps(summary, allow_nan=False)
 
     def test_the_joint_corner_error_is_averaged_per_tag(self):
         from vision_server.detection.apriltag import _merge_world_tags

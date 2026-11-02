@@ -43,7 +43,7 @@ import os
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -186,6 +186,9 @@ class TagSighting:
     module_id: str = ""
     #: Flach liegend: dann zaehlt der Gierwinkel auch bei `ambiguous`.
     flat: bool = False
+    #: Kameraposition im Welt-KS: damit laesst sich der Sehstrahl zum Tag
+    #: auf eine feste Hoehe schneiden (die geschaetzte Tiefe streut).
+    camera_position: tuple[float, float, float] | None = None
 
     @property
     def has_yaw(self) -> bool:
@@ -437,8 +440,13 @@ class CellWatchTracker:
         if not seen:
             return
 
+        # Die Hoehe streut (Tiefenfehler entlang des Sehstrahls): jede Sichtung
+        # auf die Referenzhoehe projizieren, den Abstand nur waagrecht messen.
+        seen = [_on_height(s, reference.position[2]) for s in seen]
         position, yaw, has_yaw = _median(seen)
-        distance = float(np.linalg.norm(np.subtract(position, reference.position)))
+        distance = math.hypot(
+            position[0] - reference.position[0], position[1] - reference.position[1]
+        )
         rotation = (
             abs(_wrap_deg(yaw - reference.yaw_deg)) if has_yaw and reference.has_yaw else None
         )
@@ -498,6 +506,17 @@ class CellWatchTracker:
         ):
             position, _, _ = _median(seen)
             state.change = _change(tag_id, APPEARED, None, position, None, None, wall, seen[-1].module_id)
+
+
+def _on_height(sighting: TagSighting, height_m: float) -> TagSighting:
+    """Die Sichtung auf der Ebene `z = height_m`; ohne Kameraposition oder bei
+    zu flachem Strahl bleibt die gemessene Position."""
+    if sighting.camera_position is None:
+        return sighting
+    from tagloc.geometry import point_on_ray_at_height
+
+    hit = point_on_ray_at_height(sighting.camera_position, sighting.position, height_m)
+    return sighting if hit is None else replace(sighting, position=hit)
 
 
 def _median(seen: list[TagSighting]) -> tuple[tuple[float, float, float], float | None, bool]:
@@ -640,7 +659,7 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
     error = localization.reprojection_error_px
     if not math.isfinite(error) or error > options.max_camera_error_px:
         return None, f"Kamerapose unplausibel (RMS {error:.1f} px){_worst_tag(localization)}"
-    return _sightings(locations), ""
+    return _sightings(locations, _camera_position(localization)), ""
 
 
 #: Pausengrund ohne Welttag im Bild. Alle Gruende, die an der Verortung
@@ -648,7 +667,15 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
 NO_WORLD_TAG = "kein Welt-Tag im Bild -- keine Verortung"
 
 
-def _sightings(locations) -> dict:
+def _camera_position(localization) -> tuple[float, float, float] | None:
+    """Translation von `pose_world_cam`, oder `None` ohne Verortung."""
+    pose = getattr(localization, "pose_world_cam", None)
+    if pose is None:
+        return None
+    return tuple(float(v) for v in np.asarray(pose)[:3, 3])
+
+
+def _sightings(locations, camera_position=None) -> dict:
     sightings = {}
     for location in locations:
         sightings[int(location.tag_id)] = TagSighting(
@@ -657,6 +684,7 @@ def _sightings(locations) -> dict:
             ambiguous=bool(location.ambiguous),
             module_id=location.module_id,
             flat=is_flat(location.pose),
+            camera_position=camera_position,
         )
     return sightings
 
@@ -902,7 +930,7 @@ class CameraPoseKeeper:
                 f"(+{excess[worst]:.1f} px) -- Kamera bewegt?"
             )
         self._bad_frames = 0
-        return _sightings(locations), ""
+        return _sightings(locations, _camera_position(localization)), ""
 
     def _mean_baseline(self) -> float:
         return sum(self._baseline.values()) / len(self._baseline) if self._baseline else 0.0
