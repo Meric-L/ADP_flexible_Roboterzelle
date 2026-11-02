@@ -112,10 +112,10 @@ class CalibrationStreamOverlayTest(unittest.TestCase):
             annotator("cam_flange@2026-09-23T15:25:06.698737+00:00").annotate(
                 grey.copy(), "calibration"
             )
-        captions = [t for t in calls if "Hand-Auge" in t]
+        captions = [t for t in calls if "Kalibrierung" in t]
         self.assertEqual(
             set(captions),
-            {"Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: 23.09.2026, 17:25 Uhr"},
+            {"Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: 23.09.2026, 17:25 Uhr"},
         )
         for text in calls:
             for forbidden in ("Modus", "Board:", "chessboard", "cam_flange", "698737", "T15"):
@@ -167,7 +167,7 @@ class CalibrationStampTest(unittest.TestCase):
 
         self.assertEqual(
             CALIBRATION_CAPTION_PREFIX + self.fmt("unkalibriert"),
-            "Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: \u2013",
+            "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: \u2013",
         )
 
 

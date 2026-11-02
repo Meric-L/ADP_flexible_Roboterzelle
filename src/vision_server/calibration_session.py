@@ -35,11 +35,13 @@ darueber aus, welche Aufnahmen tatsaechlich uebernommen wurden.
 """
 
 import asyncio
+import dataclasses
 import importlib
 import inspect
 import logging
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .camera import SharedCamera
@@ -520,6 +522,16 @@ class CalibrationSession:
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
+        # Die ID mit Zeitstempel schon hier vergeben, nicht erst beim Schreiben:
+        # sonst bekamen Erkennung und Livestream-Overlay das Objekt mit leerer
+        # ID, und das Overlay zeigte bis zum Neustart kein Datum der neuen
+        # Kalibrierung. Datei und laufender Server tragen so dieselbe ID.
+        if dataclasses.is_dataclass(calibration) and not getattr(calibration, "calibration_id", ""):
+            stamp = datetime.now(timezone.utc).isoformat()
+            calibration = dataclasses.replace(
+                calibration,
+                calibration_id=f"{calibration.frame_id or self._out_path.stem}@{stamp}",
+            )
         await self._run_blocking(self._save_calibration, self._out_path, calibration)
         if self._on_calibrated is not None:
             outcome = self._on_calibrated(calibration)

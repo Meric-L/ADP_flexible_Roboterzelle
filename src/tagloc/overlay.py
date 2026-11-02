@@ -283,7 +283,7 @@ def draw_board_overlay(
 _DISPLAY_TIMEZONE = "Europe/Berlin"
 #: Steht statt des Datums, wenn es keine (lesbare) Kalibrierung gibt.
 NO_CALIBRATION_STAMP = "\u2013"
-CALIBRATION_CAPTION_PREFIX = "Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: "
+CALIBRATION_CAPTION_PREFIX = "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: "
 
 
 def format_calibration_stamp(calibration_id: str | None) -> str:
@@ -312,7 +312,11 @@ def format_calibration_stamp(calibration_id: str | None) -> str:
 
 
 def draw_calibration_caption(image, calibration_id: str | None) -> Any:
-    """Eine Zeile unten links: "Hand-Auge-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
+    """Eine Zeile unten links: "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
+
+    Das Datum ist das der Kamera-Kalibrierung (Intrinsik), nicht das der
+    Hand-Auge-Kalibrierung -- bis 02.11.2026 stand hier faelschlich
+    "Hand-Auge-Kalibrierung".
 
     Rein weisse Schrift mit genau 1 px schwarzem Rand, ohne Balken, Schatten
     oder Transparenz. Position und Schriftgroesse wie bei `draw_status_bar`.
