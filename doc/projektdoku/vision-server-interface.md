@@ -1358,7 +1358,8 @@ PNG, hier bewusst JPEG, siehe unten). Der Zähler setzt bei jedem
 `StartCalibration` neu bei 1 an; da `capture()` seit der Entkopplung von
 Aufnahme und Auswertung nicht mehr prüft, ob das Board sichtbar ist, wird
 jetzt jede Aufnahme mitgezählt und archiviert, nicht nur die später
-tatsächlich verwertbaren. `data/` ist gitignored, es gibt keinen
+tatsächlich verwertbaren. `data/` wird seit 02.11.2026 versioniert (`3535115`): die Aufnahmen
+tauchen in `git status` auf, nur bewusst committen. Es gibt keinen
 automatischen Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz
 auf dem Pi knapp wird.
 
@@ -1806,7 +1807,7 @@ Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem
 - **Ablage:** `data/rohbilder/<frame_id>_<YYYYmmdd-HHMMSS>.png`. Existiert der Name schon, hängt der Server `_2`, `_3`, … an, eine Datei wird nie überschrieben. `frame_id` ist die des AprilTag-Profils, sonst der Name des Vision-Systems.
 - **`FileName`:** Pfad relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
 - **`Error`:** `0` gespeichert, `1` noch kein Kamerabild, `3` ein Job läuft (das PNG-Encoding eines 12-MP-Bilds soll den Job-Timeout nicht gefährden), `6` Schreiben fehlgeschlagen.
-- **Konfiguration:** `VisionServerConfig.raw_image_dir`, `None` legt die Methode nicht an. Der Ordner liegt unter `data/` und ist in `.gitignore` ausgenommen, die PNGs tauchen also in `git status` auf. Große Rohbilder nur bewusst committen.
+- **Konfiguration:** `VisionServerConfig.raw_image_dir`, `None` legt die Methode nicht an. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird; die PNGs tauchen also in `git status` auf. Große Rohbilder nur bewusst committen.
 
 ## 18a. SaveUseCaseImage: Use-Case-Foto je Versuch
 
@@ -1827,7 +1828,7 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 - **JSON-Datei:** Schema `adp.usecase.trial/1`. Felder: `reihe`, `versuch`, `bild` (Dateiname des PNG), `gespeichert` (lokale Zeit, ISO 8601, Sekunden genau), `pi` (Pi-Metadaten: `frame_timestamp`, `frame_age_s`, `image_shape`, `frame_id`, `vision_system_name`, `vision_system_id`, `hostname`, `endpoint`, `camera_stream`, `apriltag`, `calibration`, `hand_eye`; Felder, die nicht ermittelt werden können, fehlen), dazu `messung` (Bildmessung, s. `ResultJson`; bei neuen Versuchen immer vorhanden, auch als `{"ok": false, "grund": ...}`), `client` (geparstes Objekt) oder `client_raw` (Text). Die vollständige Beschreibung der Felder steht im Arbeitsplan.
 
 - **`pi.intrinsics`** (nur bei geladener Kalibrierung): die tatsächlich benutzte Kameramatrix und Verzeichnung, damit die Offline-Auswertung dieselbe Intrinsik nimmt. Felder: `source` (`calibration` = Kalibrierdatei, `realsense_factory` = Werks-Intrinsik der Kamera, `placeholder` = Platzhalter), `calibrationId`, `imageSize` (`[Breite, Höhe]` in px), `cameraMatrix` (3x3), `distortionCoefficients`, `distortionModel` (`pinhole` oder `fisheye`). `source` ist dieselbe Herkunft wie in der Handauge-Session (`intrinsicsSource`).
-- **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/` und ist von `.gitignore` (`data/*`) erfasst, die Bilder tauchen also nicht in `git status` auf.
+- **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird (`3535115`); die Bilder tauchen also in `git status` auf und werden nur bewusst committet.
 
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
 

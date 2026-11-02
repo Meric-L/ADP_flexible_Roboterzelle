@@ -50,7 +50,7 @@ sichtbar bewertet werden kann.
 - `src/vision_server/runner.py`: `_install_save_use_case_image` misst vor dem Speichern
 - `src/vision_server/use_case_image.py`: Feld `messung`, Kontrollbild
 - `tests/test_use_case_eval.py` (neu), `tests/test_use_case_image.py`
-- `data/use_case_target/` (generiert), `data/use-case/` (Versuche, nicht im Git)
+- `data/use_case_target/` (generiert), `data/use-case/` (Versuche; `data/` wird seit 02.11.2026 versioniert, nur bewusst committen)
 - `doc/projektdoku/vision-server-interface.md` (Abschnitt 18a)
 
 ## Zielscheibe v2
