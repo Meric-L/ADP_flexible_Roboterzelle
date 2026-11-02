@@ -24,12 +24,11 @@ __pycache__/
 .claude/settings.local.json
 .claude/worktrees/
 
-# Kalibrierdaten: nur die JSON-Ergebnisse versionieren, Aufnahmen (Bilder) nicht
+# Kalibrierdaten: nur cam_flange.json versionieren, der Rest (Aufnahmen, Backups,
+# weitere JSONs) bleibt lokal. Bereits getrackte Dateien bleiben davon unberuehrt.
 data/calibration/**
-!data/calibration/**/
-!data/calibration/**/*.json
+!data/calibration/cam_flange.json
 
-# Hand-Auge-Sitzungen und Tag-Referenzaufnahmen: Backups und Bilder nicht versionieren
-data/handeye/**/*.bak
-data/handeye/**/*.png
-data/tagreference/**/*.png
+# Hand-Auge-Sitzungen und Tag-Referenzaufnahmen: lokal, nicht versionieren
+data/handeye/
+data/tagreference/
