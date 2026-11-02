@@ -182,6 +182,43 @@ keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend sta
   `pupil-apriltags` (T13): auf dem Decken-Pi installiert, im Betrieb ungenutzt (Backend `aruco`).
 - Befunde in `altlasten-zelle.md` und in den Welttag-Abschnitt von `altlasten-wsc.md` eintragen.
 
+### Umsetzungsstand Pis (02.11.2026)
+
+**Decken-Pi: nicht bearbeitet.** Vom Hand-Pi aus kein Zugang (`ssh adp-roboter@10.10.38.104`:
+`Permission denied (publickey,password)`). Schritte 1–7 bleiben offen. Hinweis zu Schritt 6 siehe unten
+(„opencv 4.10.0“ ist vermutlich auch dort das Debian-Paket, nicht ein pip-Paket im venv).
+
+**Hand-Pi `ADP-HandInEye-Kamera-Pi`** (Repo `/home/adp-kamera-in-hand/Desktop/opcua-server`):
+
+1. Bestandsaufnahme:
+   - Unit `/etc/systemd/system/opcua-server.service`, **keine Drop-ins** (`opcua-server.service.d/` existiert
+     nicht); daneben eine ältere `opcua-server.service.save` (nur root lesbar, unverändert gelassen).
+     Keine `VISION_*`-Variablen in Unit oder Prozessumgebung.
+   - venv Python 3.13.5, `include-system-site-packages = true`; asyncua 2.0.1, numpy 2.5.3,
+     `opencv-contrib-python` 5.0.0.93, `pupil_apriltags` 1.0.4.post11.
+   - Laufender Server (seit 30.10. 17:20) stammte von `usecase-foto`; ausgecheckt war am 02.11.
+     `apriltag-aufraeumen` (`bc89457`, gleich origin) mit lokal geänderter `config/tagmap.json`
+     (Welttags 0,2 m, nur anders formatiert, inhaltlich gleich `origin/apriltag`).
+   - Das lokale `apriltag` trug die drei zurückgenommenen Commits bis `6ebab91`.
+   - `data/calibration/cam_flange.json` (23.09.), `data/handeye/cam_flange.json` (29.10., Streuung
+     3,10 mm / 0,77° über 15 Posen) samt `.bak`-Ständen und `sessions/` (letzte 29.10.).
+2. Unit umgestellt: `ExecStart=<Repo>/.venv/bin/python -m vision_server.server`,
+   `Environment=PYTHONPATH=<Repo>/src`. Sicherung `/etc/systemd/system/opcua-server.service.bak-20261102`.
+   `daemon-reload`, Neustart 02.11. 10:42: aktiv, Ports 4840 und 8080 lauschen, kein Traceback, mDNS
+   `vision-flange-01.local` und LDS-Anmeldung ok.
+3. **Abweichung:** Das Repo steht **nicht** auf `origin/apriltag`, sondern bleibt auf `apriltag-aufraeumen`
+   (Entscheidung Meric, 02.11.): `origin/apriltag` enthält weder die Use-Case-Funktionen
+   (`SaveUseCaseImage`, Würfel-Bildmessung) noch die Aufräum-Commits. Die Tag-Map ist byte-gleich zu
+   `origin/apriltag:config/tagmap.json` (sha256 `dcdd85b0…ed81138`, Welttags 583–586 mit 0,2 m); als lokale
+   Änderung gegenüber `apriltag-aufraeumen` (dort noch 0,198) nicht committet. Das lokale `apriltag` ist auf
+   `origin/apriltag` gesetzt, `6ebab91` liegt als lokaler Branch `sicherung/apriltag-6ebab91`.
+   Sicherungen: `~/pi-sicherung-20261102/` (tagmap, Patch der lokalen Änderungen, alte Unit).
+4. Tippfehler `DECICMATE` und `VISION_ALLOW_PLACEHOLDER_CALIBRATION`: entfallen, kein Drop-in.
+   **OpenCV: kein Konflikt im venv.** „opencv 4.10.0“ ist das Debian-Paket `python3-opencv` unter
+   `/usr/lib/python3/dist-packages`, das `pip list` nur wegen `include-system-site-packages` zeigt.
+   `import cv2` lädt 5.0.0 aus dem venv, `cv2.aruco.ArucoDetector` vorhanden. Nicht entfernt (Entscheidung
+   Meric); kein installiertes Paket hängt davon ab.
+
 ## Offene Fragen
 
 - Unklare Werkzeuge (z. B. `src/vision_server/tools/pi_load_profiler.py`) werden nicht gelöscht,
