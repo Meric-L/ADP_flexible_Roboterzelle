@@ -564,7 +564,12 @@ class SharedCamera:
             color_frame = frames.get_color_frame()
             if not color_frame:
                 raise RuntimeError("RealSense-Pipeline lieferte keinen Farbframe")
-            return np.asanyarray(color_frame.get_data())
+            # Kopieren, nicht nur ansehen: `asanyarray(get_data())` haelt den
+            # Puffer von librealsense fest, solange das Array lebt. Die
+            # Hand-Auge-Sitzung hebt je Aufnahme ein Bild auf -- ohne Kopie
+            # gehen der RealSense die Puffer aus, `wait_for_frames()` haengt
+            # und der Livestream steht. 640x480 kostet die Kopie praktisch nichts.
+            return np.array(color_frame.get_data())
         ok, frame = self._camera.read()
         if not ok:
             raise RuntimeError("Kamera lieferte kein Bild")
