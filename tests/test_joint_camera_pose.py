@@ -22,7 +22,7 @@ try:
 except Exception:  # cv2/numpy nicht verfuegbar
     cv2 = None
 
-TAG_SIZE_M = 0.198
+TAG_SIZE_M = 0.2
 #: Die Welttags der Zelle (config/tagmap.json).
 WORLD_TAGS = {583: (0.0, 0.0), 584: (1.593, -0.052), 585: (1.593, 1.618), 586: (0.0, 1.618)}
 IMAGE_SIZE = (2028, 1520)

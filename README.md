@@ -40,5 +40,8 @@ Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
 | [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend (OPC 40100) |
 | [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche der Zelle und die Auffindbarkeit im Netz |
 | [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | Ist-Stand des Vision-Systems |
+| [`doc/projektdoku/code-handbuch.md`](doc/projektdoku/code-handbuch.md) | **Code-Handbuch**: jede Datei unseres Codes (dieses Repo und unser Anteil an webskillcomposition) mit Zweck, Einstieg und Verweisen |
+| [`doc/projektdoku/altlasten-zelle.md`](doc/projektdoku/altlasten-zelle.md) | Aufräum-Audit dieses Repos: toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken |
+| [`doc/projektdoku/altlasten-wsc.md`](doc/projektdoku/altlasten-wsc.md) | Aufräum-Audit unseres Anteils an webskillcomposition, dazu die Welttag-Kette über beide Repos |
 | [`doc/projektdoku/altlasten.md`](doc/projektdoku/altlasten.md) | Was warum noch drin ist und wann es rausfliegt |
 | [`concept/offene_punkte.md`](concept/offene_punkte.md) | Offene Konzeptfragen der Lokalisierung |
