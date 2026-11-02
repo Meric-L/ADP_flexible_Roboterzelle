@@ -23,3 +23,8 @@ __pycache__/
 # und Worktrees bleiben draussen.
 .claude/settings.local.json
 .claude/worktrees/
+
+# Kalibrierdaten: nur die JSON-Ergebnisse versionieren, Aufnahmen (Bilder) nicht
+data/calibration/**
+!data/calibration/**/
+!data/calibration/**/*.json
