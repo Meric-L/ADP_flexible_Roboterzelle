@@ -184,9 +184,24 @@ keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend sta
 
 ### Umsetzungsstand Pis (02.11.2026)
 
-**Decken-Pi: nicht bearbeitet.** Vom Hand-Pi aus kein Zugang (`ssh adp-roboter@10.10.38.104`:
-`Permission denied (publickey,password)`). Schritte 1–7 bleiben offen. Hinweis zu Schritt 6 siehe unten
-(„opencv 4.10.0“ ist vermutlich auch dort das Debian-Paket, nicht ein pip-Paket im venv).
+**Decken-Pi `ADP-Roboter-Lokalisierung`: erledigt (eigene Sitzung auf dem Pi, 02.11.2026).**
+
+1. Die Unit stand entgegen der Annahme vom 30.10. noch auf `src/OPCUA/server.py` (keine Sicherung `.bak-20261030`).
+   Jetzt `ExecStart=<Repo>/.venv/bin/python -m vision_server.server`, `Environment=PYTHONPATH=<Repo>/src`;
+   Sicherung `/etc/systemd/system/opcua-server.service.bak-20261102`.
+2. Sicherungen in `~/pi-backup-20261102/` (tagmap, `apriltag-referenz.md`, Patch, `override.conf`, alte Unit).
+3. Repo per `reset --hard` auf `origin/apriltag` (`a3a3feb`), Arbeitsbaum sauber. Der einzige Unterschied in
+   `src tests tools` war `tests/test_joint_camera_pose.py` (Taggröße 0,2, gewollt). Tag-Map 0,2 m, sha256
+   `dcdd85b0…ed81138` = Hand-Pi.
+4. Drop-in: `VISION_APRILTAG_QUAD_DECIMATE=1.5` (Tippfehler behoben, wirkt jetzt zum ersten Mal — Erkennung
+   kleiner/ferner Tags beobachten; bei Verlusten 1.0 oder Zeile löschen).
+5. `VISION_ALLOW_PLACEHOLDER_CALIBRATION` entfernt; `data/calibration/cam_ceiling.json` vorhanden.
+6. OpenCV: kein pip-Konflikt. 4.10.0 ist das apt-Paket `python3-opencv`, in der venv überdeckt von
+   `opencv-contrib-python` 5.0.0 (neu aus dem Wheel installiert). apt-Paket bleibt (Entscheidung Meric).
+7. Neustart: aktiv, Ports 4840 und 8080, Kamerazustand NORMAL, mDNS `vision-ceiling-01.local`, LDS ok, kein Traceback.
+
+**Damit:** beide Units auf `-m vision_server.server` → `src/OPCUA/` ist auf `apriltag-aufraeumen` gelöscht,
+Vorlage in `deploy/` (B13). Beide Pis OpenCV 5.0 → Rückfallzweige für OpenCV < 4.7 entfernt (T12).
 
 **Hand-Pi `ADP-HandInEye-Kamera-Pi`** (Repo `/home/adp-kamera-in-hand/Desktop/opcua-server`):
 
@@ -218,6 +233,40 @@ keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend sta
    `/usr/lib/python3/dist-packages`, das `pip list` nur wegen `include-system-site-packages` zeigt.
    `import cv2` lädt 5.0.0 aus dem venv, `cv2.aruco.ArucoDetector` vorhanden. Nicht entfernt (Entscheidung
    Meric); kein installiertes Paket hängt davon ab.
+
+## Abnahmetest an der Hardware (vor dem Merge)
+
+Erst prüfen, ob die aufgeräumten Branches an der echten Zelle funktionieren; Use-Case-Foto steht danach an.
+Immer nur **eine** Seite wechseln, damit ein Fehler eindeutig zuzuordnen ist:
+
+| Runde | Pis (dieses Repo) | Frontend/Backend (webskillcomposition) | prüft |
+| --- | --- | --- | --- |
+| 1 | `apriltag` | `ungetestet-aufraeumen` | nur das aufgeräumte Frontend |
+| 2 | `apriltag-aufraeumen` | `Ungetestet` | nur den aufgeräumten Pi-Code |
+| 3 | `apriltag-aufraeumen` | `ungetestet-aufraeumen` | beides, Stand für den Merge |
+
+Pi umschalten (Unit startet seit 02.11. das Modul, nichts weiter nötig) und zurück:
+`git fetch origin && git switch apriltag-aufraeumen && sudo systemctl restart opcua-server` bzw.
+`git switch apriltag && sudo systemctl restart opcua-server`.
+
+**Pi-Seite** (umgebaut: `runner/`, `detection/apriltag/`, Hand-Auge, OpenCV-Altzweige):
+
+1. Start: Dienst aktiv, Ports 4840/8080, mDNS und LDS, Zustand Operational.
+2. Layer-1-Job aus dem Frontend: gleiche Tags und Modulposen wie vorher bei gleicher Szene.
+3. Livestream mit Overlay.
+4. Kamera-Kalibrierung: Start, Aufnahmen, Fertig.
+5. MeasureBoard, MeasureTags, Tag einmessen.
+6. Zellen-Überwachung starten, stoppen, Alarm.
+7. Hand-Pi: komplette Hand-Auge-Kalibrierung (Vergleich mit `data/handeye/cam_flange.json` vom 29.10.: 3,10 mm /
+   0,77° über 15 Posen), danach eine Layer-2-Annäherung.
+8. Rezept `calibration`: meldet `cam_ceiling` bzw. `cam_flange` statt „keine Kalibrierung“ (Hostnamen-Fix D11).
+9. Rohbild speichern.
+
+**Frontend-Seite** (umgebaut u. a. Mathe-Helfer, Pi-Aufrufe, Pi-Liste, große Komponenten): Verbindung und Status
+beider Pis, Modulkatalog, Autolocate Layer 1 und 2, Tags einmessen, Hand-Auge-Fenster, Pick & Place
+(Geschwindigkeit höchstens 0,1), Kamera-Stream und Kalibrier-Fenster.
+
+Ergebnis je Runde hier eintragen (Datum, wer, was lief, was nicht).
 
 ## Offene Fragen
 
