@@ -48,6 +48,7 @@ nicht gibt.
 | [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
 | [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
 | [`messkette-protokoll.md`](messkette-protokoll.md) | vision | fertig | Meric, `Agent: Messkette im Versuchs-JSON protokollieren` | 03.11.2026 |
+| [`hoehentest-hand-auge.md`](hoehentest-hand-auge.md) | vision | in Arbeit | Meric, `Agent: Höhentest Hand-Auge` | 03.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
