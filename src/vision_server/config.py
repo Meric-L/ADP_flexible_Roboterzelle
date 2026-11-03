@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .profiles import AprilTagProfileConfig, AssetConfig, CameraStreamConfig
+from .profiles import _REPO_ROOT, AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
 #: Die Nodesets liegen im Paket, das sie braucht -- frueher lagen sie unter
 #: `src/OPCUA/`, weil das Verzeichnis aelter war als `vision_server/`
@@ -23,9 +23,9 @@ DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
 #: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
 #: dataclass-Default verboten ist und ein Mapping die frozen dataclass
 #: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
+#: Bewusst ohne Eintrag fuer `""`: ein Start ohne gewaehlten Job wird mit
+#: UNKNOWN_RECIPE abgelehnt, statt stillschweigend irgendetwas zu fahren.
 DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
-    ("", "hello_world"),
-    ("hello-world", "hello_world"),
     ("calibration", "calibration"),
     ("apriltag", "apriltag"),
 )
@@ -42,7 +42,6 @@ class VisionServerConfig:
     vision_system_name: str = "VisionMachine"
     vision_system_id: str = "vision-hello-01"
     configuration_id: str = "hello-world-config"
-    detection_latency: float = 0.25
     nodeset_path: Path = DEFAULT_NODESET_PATH
     recipe_profiles: tuple[tuple[str, str], ...] = DEFAULT_RECIPE_PROFILES
     max_id_length: int = 128
@@ -75,6 +74,15 @@ class VisionServerConfig:
     #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
     #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `vision_server/server.py` sie.
     camera_stream: CameraStreamConfig | None = None
+    #: Ablage fuer `SaveRawImage` (verlustfreie PNG-Vollbilder). `None` = die
+    #: Methode nicht anlegen.
+    raw_image_dir: Path | None = _REPO_ROOT / "data" / "rohbilder"
+    #: Ablage fuer `SaveUseCaseImage` (PNG + Metadaten-JSON je Versuch unter
+    #: `reihe_NNN/versuch_NNN.*`). `None` = die Methode nicht anlegen.
+    use_case_dir: Path | None = _REPO_ROOT / "data" / "use-case"
+    #: Mess-Protokoll von `MeasureTagReference` (siehe `tagreference_log.py`).
+    #: `None` = nichts schreiben; `GET /tagreference.jpg` liefert dann 404.
+    tag_reference_debug_dir: Path | None = _REPO_ROOT / "data" / "tagreference"
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:

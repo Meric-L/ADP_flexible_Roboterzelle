@@ -1,13 +1,14 @@
-"""Measure what importing the companion-spec nodesets costs.
+"""Misst, was der Import der Companion-Spec-Nodesets kostet.
 
-Phase A of the AMCM plan: OPC 40100-2 pulls in DI, IA and Machinery on top of
-Part 1, and the vision server runs on a Raspberry Pi that also drives the
-camera. doc/projektdoku/altlasten.md records ~110 MB RSS per process for Part 1 alone, so
-the question is whether four more nodesets still fit -- measured, not guessed.
+Phase A des AMCM-Plans: OPC 40100-2 zieht DI, IA und Machinery zusaetzlich zu
+Teil 1 herein, und der Vision-Server laeuft auf einem Raspberry Pi, der auch
+die Kamera bedient. doc/projektdoku/altlasten.md haelt ~110 MB RSS je Prozess
+allein fuer Teil 1 fest, also ist die Frage, ob vier weitere Nodesets noch
+hineinpassen -- gemessen, nicht geraten.
 
     PYTHONPATH=src python3 tools/measure_nodeset_import.py
 
-Run it on the Pi too; the numbers there are the ones that decide.
+Auch auf dem Pi ausfuehren; die Zahlen dort sind die, die entscheiden.
 """
 
 import asyncio
@@ -23,10 +24,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: damit nicht mehr lief.
 NODESETS = REPO_ROOT / "src" / "vision_server" / "nodesets"
 
-#: Dependency order, with versions pinned to what AMCM 1.00.0 actually requires:
-#: DI 1.04.0 and Machinery 1.03.0. The newest Machinery (1.04.1) would drag in
-#: IA as well, and the newest DI (1.05.0) fails to import against asyncua's base
-#: address space with BadParentNodeIdInvalid -- so pinning is not pedantry.
+#: Importreihenfolge nach Abhaengigkeit, Versionen auf das festgelegt, was AMCM
+#: 1.00.0 tatsaechlich verlangt: DI 1.04.0 und Machinery 1.03.0. Das neueste
+#: Machinery (1.04.1) zoege auch IA herein, und das neueste DI (1.05.0) scheitert
+#: beim Import gegen den Basisadressraum von asyncua mit BadParentNodeIdInvalid --
+#: Festlegen ist also keine Pedanterie.
 IMPORT_ORDER = [
     ("Part 1  MachineVision", NODESETS / "Opc.Ua.MachineVision.NodeSet2.xml"),
     ("        DI 1.04.0", NODESETS / "Opc.Ua.Di.NodeSet2.xml"),
@@ -36,7 +38,7 @@ IMPORT_ORDER = [
 
 
 def rss_mb() -> float:
-    """Resident set size in MB, without pulling in psutil."""
+    """Resident Set Size in MB, ohne psutil hereinzuziehen."""
     for line in Path("/proc/self/status").read_text().splitlines():
         if line.startswith("VmRSS:"):
             return int(line.split()[1]) / 1024.0

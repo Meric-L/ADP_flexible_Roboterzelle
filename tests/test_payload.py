@@ -113,6 +113,43 @@ class FrameIdTest(unittest.TestCase):
         self.assertEqual(payload["frameConvention"], "z_forward_x_right_y_down")
         self.assertEqual(payload["configurationId"], "tag36h11@ceiling#1757500000")
 
+    def test_world_tags_only_when_observed(self):
+        self.assertNotIn("worldTags", result())
+        tag = {"tagId": 583, "position": [0.0, 0.0, 0.0], "orientation": [0, 0, 0, 1]}
+        self.assertEqual(result(world_tags=(tag,))["worldTags"], [tag])
+        error = json.loads(
+            build_error_payload(
+                vision_system_id="vision-test",
+                result_id="res-job-000001",
+                job_id="job-000001",
+                creation_time=NOW,
+                code=VisionErrorCode.DETECTION_FAILED,
+                message="nur Welttags",
+                world_tags=(tag,),
+            )
+        )
+        # Ein Bild nur mit Welttags: kein Modul, aber die Welttags kommen mit.
+        self.assertEqual(error["worldTags"], [tag])
+        self.assertEqual(error["detections"], [])
+
+    def test_camera_localization_only_with_a_camera_pose(self):
+        self.assertNotIn("cameraLocalization", result())
+        summary = {"solver": "joint", "reprojectionErrorPx": 0.6, "spreadM": 0.012,
+                   "spreadDeg": 0.3, "worldTagIds": [583, 584, 585, 586]}
+        self.assertEqual(result(camera_localization=summary)["cameraLocalization"], summary)
+        error = json.loads(
+            build_error_payload(
+                vision_system_id="vision-test",
+                result_id="res-job-000001",
+                job_id="job-000001",
+                creation_time=NOW,
+                code=VisionErrorCode.DETECTION_FAILED,
+                message="nur Welttags",
+                camera_localization=summary,
+            )
+        )
+        self.assertEqual(error["cameraLocalization"], summary)
+
 
 class JsonSafetyTest(unittest.TestCase):
     def test_numpy_like_scalars_in_attributes(self):

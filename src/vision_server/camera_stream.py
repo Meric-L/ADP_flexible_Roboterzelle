@@ -7,7 +7,7 @@ WebSocket- oder Backend-Details.
 
 The stream can be annotated: an `annotator` draws detected AprilTags or
 board corners onto the image, and a second, **writable** node selects the
-mode ("off", "apriltag", "calibration"). The publisher itself knows neither
+mode ("off", "apriltag", "calibration", "undistorted"). The publisher itself knows neither
 OpenCV nor detection -- it only passes mode and image along.
 """
 
@@ -23,6 +23,7 @@ from asyncua.common.node import Node
 
 from tagloc.modes import normalise_mode
 
+from .aio import cancel_and_wait
 from .camera import SharedCamera
 from .profiles import CameraStreamConfig
 
@@ -33,7 +34,7 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
     """Laeuft im Worker-Thread: JPEG-Encode plus Base64. `None` bei Encode-Fehler.
 
     Import bewusst hier drin statt auf Modulebene, damit ein Import dieses
-    Moduls (z. B. ueber `runner.py`) kein `cv2` braucht, solange kein Stream
+    Moduls (z. B. ueber `runner/`) kein `cv2` braucht, solange kein Stream
     laeuft.
     """
     import cv2
@@ -42,6 +43,19 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
     if not ok:
         return None
     return base64.b64encode(buffer).decode("ascii")
+
+
+def _no_calibration_hint(image):
+    """Rohbild mit Hinweis, fuer "undistorted" ohne Annotator.
+
+    Ohne Annotator gibt es keine geladene Kalibrierung -- die AprilTag-Quelle
+    ist nicht aufgegangen oder gar nicht konfiguriert. Kein Fehler, kein
+    Abbruch: das Bild geht raus, nur eben sichtbar unentzerrt.
+    """
+    from tagloc.modes import NO_CALIBRATION_HINT
+    from tagloc.overlay import draw_status_bar
+
+    return draw_status_bar(image.copy(), [NO_CALIBRATION_HINT])
 
 
 def _resize_for_stream(image, max_width: int):
@@ -66,7 +80,7 @@ class CameraStreamPublisher:
 
     Oeffnet und schliesst die Kamera **nicht** selbst — die gehoert der
     Erkennungsquelle, die dieselbe `SharedCamera`-Instanz reicht (siehe
-    `runner.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
+    `runner/livestream.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
     Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
     sehen, keine Diff-Logik.
 
@@ -89,6 +103,7 @@ class CameraStreamPublisher:
         annotator: Any = None,
         mode_node: Node | None = None,
         progress_node: Node | None = None,
+        preview_status_node: Node | None = None,
     ) -> None:
         self._camera = camera
         self._node = node
@@ -103,6 +118,10 @@ class CameraStreamPublisher:
         #: gerade eine `CalibrationSession` haengen hat (siehe
         #: `AprilTagStreamAnnotator.calibration_progress`).
         self._progress_node = progress_node
+        #: `TagReferencePreviewStatus`-Knoten; geschrieben wird nur, wenn der
+        #: Annotator einen neuen Stand hat (`reference_preview_status`).
+        self._preview_status_node = preview_status_node
+        self._preview_status_written: Any = None
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
         #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
@@ -223,14 +242,13 @@ class CameraStreamPublisher:
             return self._latest
         # "apriltag" und "off" gehen vom vollen Frame aus, nicht von der
         # kleinen ISP-Vorschau:
-        # - "apriltag" bekommt den vollen Frame als Eingabe, verkleinert ihn
-        #   aber selbst als ERSTEN Schritt in `AprilTagStreamAnnotator.
-        #   annotate()` auf `detection_max_width` -- Erkennung UND Zeichnen
-        #   laufen auf dieser kleineren Leinwand (siehe Kommentar dort:
-        #   Job-Erkennung und Kalibrierung bleiben unveraendert auf voller
-        #   Aufloesung, nur der Demo-Livestream ist guenstiger). Frueher lief
-        #   die Erkennung hier zusaetzlich auf dem vollen Frame -- auf pi1
-        #   laut py-spy ~102% einer Core und Ursache fuer Job-Timeouts.
+        # - "apriltag" bekommt den vollen Frame als Eingabe und zeichnet auf
+        #   eine auf `detection_max_width` verkleinerte Leinwand. Die Tags
+        #   stammen aus einer Erkennung in voller Aufloesung -- meist der
+        #   des Jobs oder der Zellen-Ueberwachung, sonst einer seltenen
+        #   eigenen im Hintergrund (seit 21.10.2026, siehe stream_overlay.py).
+        #   Im Stream-Takt auf dem vollen Frame zu erkennen kostete auf pi1
+        #   laut py-spy ~102% einer Core und liess Jobs in den Timeout laufen.
         # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
         #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
         #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
@@ -238,7 +256,9 @@ class CameraStreamPublisher:
         # "calibration" bleibt beim kleinen Vorschaubild: dort geht es nicht
         # um Erkennungstreue, und die Session hat ohnehin ein eigenes, separat
         # getuntes Downscale vor `detect_board` (`detection_max_width`).
-        if mode in ("apriltag", "off"):
+        # "undistorted" ebenfalls vom vollen Frame: die Kalibrierung gehoert
+        # zum Sensorbild, nicht zur ISP-Vorschau mit eigenem Ausschnitt.
+        if mode in ("apriltag", "off", "undistorted", "tagreference"):
             source = frame.image
         else:
             source = getattr(frame, "preview", None)
@@ -247,6 +267,8 @@ class CameraStreamPublisher:
         image, complete = source, True
         if mode != "off" and self._annotator is not None:
             image, complete = await self._annotate(loop, source, mode)
+        elif mode == "undistorted":
+            image = await loop.run_in_executor(None, _no_calibration_hint, source)
         if self._config.max_stream_width is not None:
             # Nach dem Overlay und nur fuers Publizieren -- beide Wege
             # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im
@@ -282,10 +304,30 @@ class CameraStreamPublisher:
         try:
             progress = self._annotator.calibration_progress
             await self._progress_node.write_value(
-                json.dumps(progress if progress is not None else {"running": False})
+                json.dumps(
+                    progress
+                    if progress is not None
+                    else {"running": False, "processing": False}
+                )
             )
         except Exception:
             _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
+
+    async def _publish_preview_status(self) -> None:
+        """Schreibt den Stand der Einmess-Vorschau, wenn er neu ist (im Event-Loop)."""
+        if self._preview_status_node is None or self._annotator is None:
+            return
+        expire = getattr(self._annotator, "expire_reference_preview", None)
+        if expire is not None:
+            expire()
+        status = getattr(self._annotator, "reference_preview_status", None)
+        if status is None or status is self._preview_status_written:
+            return
+        self._preview_status_written = status
+        try:
+            await self._preview_status_node.write_value(json.dumps(status))
+        except Exception:
+            _log.exception("TagReferencePreviewStatus konnte nicht geschrieben werden")
 
     async def _publish_loop(self) -> None:
         """Tickt mit `http_fps`, solange MJPEG-Zuschauer da sind, sonst mit `stream_fps`.
@@ -299,6 +341,7 @@ class CameraStreamPublisher:
         while True:
             started = loop.time()
             node_due = started >= self._next_node_write
+            await self._publish_preview_status()
             frame = self._camera.latest_frame
             if frame is not None:
                 try:
@@ -318,7 +361,9 @@ class CameraStreamPublisher:
 
     async def stop(self) -> None:
         if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            await cancel_and_wait(self._task)
             self._task = None
+        # Der Annotator haelt einen eigenen Erkennungs-Thread (stream_overlay.py).
+        close = getattr(self._annotator, "close", None)
+        if close is not None:
+            close()

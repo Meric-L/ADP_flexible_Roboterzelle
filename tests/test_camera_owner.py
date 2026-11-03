@@ -1,9 +1,9 @@
-"""Who feeds the livestream depends on an attribute, not a name.
+"""Wer den Livestream speist, haengt an einem Attribut, nicht an einem Namen.
 
-`runner._start_camera_stream` used to get the camera via
-`sources.get("image_recognition")`. Renaming or removing that profile would
-silently kill the livestream -- just a log line. These tests pin down that
-selection goes by the presence of an opened camera.
+`runner._start_camera_stream` holte die Kamera frueher ueber
+`sources.get("image_recognition")`. Das Umbenennen oder Entfernen dieses
+Profils haette den Livestream still abgeschaltet -- nur eine Log-Zeile. Diese
+Tests halten fest, dass die Auswahl an einer geoeffneten Kamera haengt.
 """
 
 import unittest
@@ -18,7 +18,7 @@ from vision_server.runner import _build_annotator, _camera_owner, _start_camera_
 
 
 class FakeCamera:
-    """Stands in for a source holding a camera."""
+    """Steht fuer eine Quelle, die eine Kamera haelt."""
 
 
 class CameralessSource(DetectionSource):
@@ -53,7 +53,7 @@ class CameraOwnerTest(unittest.TestCase):
         self.assertIsNone(_camera_owner(sources, {"a": True}))
 
     def test_does_not_depend_on_the_profile_name(self):
-        """The actual point: an arbitrarily named profile is still found."""
+        """Der eigentliche Punkt: ein beliebig benanntes Profil wird trotzdem gefunden."""
         source = CameraSource()
         source.profile_id = "voellig_anderer_name"
         self.assertIs(_camera_owner({"x": source}, {"x": True}), source)
@@ -72,6 +72,56 @@ class BuildAnnotatorTest(unittest.TestCase):
         source = CameraSource()
         source._detector = object()
         self.assertIsNone(_build_annotator(source))
+
+    def test_the_stream_detector_uses_the_detector_parameters_of_the_job(self):
+        from unittest.mock import patch
+
+        from vision_server.profiles import AprilTagProfileConfig
+
+        source = CameraSource()
+        source._detector = object()
+        source._calibration = object()
+        source._config = AprilTagProfileConfig(
+            detector_parameters={"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}
+        )
+
+        with patch("tagloc.detector.build_detector") as build_detector, patch(
+            "vision_server.stream_overlay.AprilTagStreamAnnotator"
+        ):
+            _build_annotator(source)
+
+        keywords = build_detector.call_args.kwargs
+        self.assertEqual(
+            keywords["detector_parameters"],
+            {"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33},
+        )
+        self.assertFalse(keywords["subpixel_corner_refinement"])
+
+    def test_the_stream_detector_drops_corner_refinement_from_the_parameters(self):
+        """Subpixel bleibt im Stream aus (CPU-Konkurrenz zum Job), auch wenn
+        `cornerRefinementMethod` ausdruecklich in den Parametern steht."""
+        from unittest.mock import patch
+
+        from vision_server.profiles import AprilTagProfileConfig
+
+        source = CameraSource()
+        source._detector = object()
+        source._calibration = object()
+        source._config = AprilTagProfileConfig(
+            detector_parameters={"errorCorrectionRate": 0.8, "cornerRefinementMethod": 3}
+        )
+
+        with patch("tagloc.detector.build_detector") as build_detector, patch(
+            "vision_server.stream_overlay.AprilTagStreamAnnotator"
+        ):
+            _build_annotator(source)
+
+        self.assertEqual(
+            build_detector.call_args.kwargs["detector_parameters"],
+            {"errorCorrectionRate": 0.8},
+        )
+        # Das Config-Mapping des Jobs bleibt unveraendert.
+        self.assertIn("cornerRefinementMethod", source._config.detector_parameters)
 
     def test_the_stream_gets_its_own_detector_without_subpixel_refinement(self):
         """Regression: Job und Stream teilten sich bis 2026-09-24 EINE
@@ -100,6 +150,7 @@ class BuildAnnotatorTest(unittest.TestCase):
             source._config.tag_family,
             source._config.detector_backend,
             subpixel_corner_refinement=False,
+            detector_parameters={},
         )
         self.assertIs(annotator_cls.call_args.kwargs["detector"], stream_detector)
         self.assertIsNot(annotator_cls.call_args.kwargs["detector"], source._detector)

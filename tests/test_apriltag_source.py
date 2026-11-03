@@ -1,10 +1,12 @@
-"""Tests for the AprilTag detection source (level 3: server without a camera).
+"""Tests der AprilTag-Erkennungsquelle (Stufe 3: Server ohne Kamera).
 
-The source is never `open()`ed; detector, calibration and tag map are set
-directly. So no test needs hardware, OpenCV or a calibration file.
+Die Quelle wird nie mit `open()` geoeffnet; Detektor, Kalibrierung und Tag-Map
+werden direkt gesetzt. So braucht kein Test Hardware, OpenCV oder eine
+Kalibrierdatei.
 """
 
 import json
+import math
 import tempfile
 import unittest
 from collections import deque
@@ -33,11 +35,12 @@ SQUARE = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0))
 
 
 class FakeCamera:
-    """Provide prepared images via `latest_frame`, without hardware.
+    """Liefert vorbereitete Bilder ueber `latest_frame`, ohne Hardware.
 
-    Each call returns the next queued image with a new timestamp -- exactly
-    what `_next_frame` waits for. Once nothing is left, the last frame stays
-    and the source runs into its capture timeout.
+    Jeder Zugriff gibt das naechste Bild der Warteschlange mit neuem
+    Zeitstempel zurueck -- genau das, worauf `_next_frame` wartet. Ist nichts
+    mehr uebrig, bleibt das letzte Bild stehen, und die Quelle laeuft in ihren
+    Aufnahme-Timeout.
     """
 
     def __init__(self) -> None:
@@ -66,10 +69,10 @@ class FakeCamera:
 
 
 class FakeDetector:
-    """Provide a fixed list of observations with their associated poses.
+    """Liefert eine feste Liste von Beobachtungen mit den zugehoerigen Posen.
 
-    Runs in `run_blocking`'s worker thread; both methods just return
-    pre-determined values and need no locking.
+    Laeuft im Worker-Thread von `run_blocking`; beide Methoden geben nur
+    vorgegebene Werte zurueck und brauchen keine Sperre.
     """
 
     def __init__(self, tag_poses=()) -> None:
@@ -85,12 +88,12 @@ class FakeDetector:
 
 
 class FakeSolverSource(AprilTagDetectionSource):
-    """Replace, in `_locate`, only the step that needs OpenCV.
+    """Ersetzt in `_locate` nur den Schritt, der OpenCV braucht.
 
-    `tagloc.pose.estimate_tag_pose` solves the pose via `cv2.solvePnPGeneric`;
-    the fake detector already knows it instead. Everything after -- camera
-    pose from the world tags, module chaining, frame selection -- is still
-    production code.
+    `tagloc.pose.estimate_tag_pose` loest die Pose ueber `cv2.solvePnPGeneric`;
+    der Fake-Detektor kennt sie stattdessen schon. Alles danach -- Kamerapose
+    aus den Welttags, Verkettung der Module, Wahl des Rahmens -- ist weiter
+    Produktionscode.
     """
 
     def _locate(self, image, pose_base_flange=None):
@@ -105,6 +108,9 @@ class FakeSolverSource(AprilTagDetectionSource):
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
         self._localization = localization
+        from vision_server.detection.apriltag import _observed_world_tags
+
+        self._world_tag_sample = _observed_world_tags(tag_poses, self._tag_map, localization)
         frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
         return locate_modules(
             tag_poses,
@@ -137,7 +143,7 @@ def tag_pose(tag_id: int, translation, *, error_px: float = 0.5, ambiguity: floa
 
 
 def make_source(folder: Path, *, tag_poses=(), tag_map=None, **overrides):
-    """Build a source with a fake camera and fake detector; never `open()`ed."""
+    """Baut eine Quelle mit Fake-Kamera und Fake-Detektor; nie mit `open()` geoeffnet."""
     camera = FakeCamera()
     detector = FakeDetector(tag_poses)
     source = FakeSolverSource(profile_config(folder, **overrides), camera=camera)
@@ -148,7 +154,7 @@ def make_source(folder: Path, *, tag_poses=(), tag_map=None, **overrides):
 
 
 class ConfigurationIdTest(unittest.TestCase):
-    """The `configurationId` must be set before anything is loaded."""
+    """Die `configurationId` muss gesetzt sein, bevor irgendetwas geladen ist."""
 
     def test_names_family_calibration_and_tag_map_before_open(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -184,7 +190,7 @@ class ConfigurationIdTest(unittest.TestCase):
 
 class ApplyCalibrationTest(unittest.TestCase):
     """`apply_calibration` -- der Hot-Reload-Pfad nach einer interaktiven
-    Kalibrierung (siehe `CalibrationSession`/`runner.py`), ohne Server-Neustart."""
+    Kalibrierung (siehe `CalibrationSession`/`runner/calibration.py`), ohne Server-Neustart."""
 
     def test_replaces_the_calibration_object(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -374,7 +380,7 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "world")
         self.assertEqual(detection.module_id, "MOD-A")
-        # T_world_cam comes from tag 0; tag 5 sits 0.3 m to the side.
+        # T_world_cam kommt von Tag 0; Tag 5 sitzt 0,3 m daneben.
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 0.0), atol=1e-12)
 
     async def test_stays_in_the_camera_frame_without_a_reference_tag(self):
@@ -393,6 +399,124 @@ class FrameOfReferenceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(source.frame_id, "cam_ceiling")
         np.testing.assert_allclose(detection.position, (0.3, 0.0, 2.0), atol=1e-12)
+        # Ohne Welt-KS keine Welttags und keine Kamerapose im Payload.
+        self.assertEqual(source.world_tags, ())
+        self.assertIsNone(source.camera_localization)
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class WorldTagsTest(unittest.IsolatedAsyncioTestCase):
+    """`worldTags`: wo das Bild die Welttags sieht -- gegen die Karte pruefbar."""
+
+    def _map(self):
+        return tagmap.TagMap(
+            frame_id="world",
+            entries={
+                0: tagmap.TagEntry(tag_id=0, role="world", size_m=0.1, pose_in_world=geometry.identity()),
+                1: tagmap.TagEntry(
+                    tag_id=1,
+                    role="world",
+                    size_m=0.1,
+                    pose_in_world=geometry.from_rvec_tvec((0, 0, 0), (1.0, 0.0, 0.0)),
+                ),
+                5: tagmap.TagEntry(tag_id=5, role="module", size_m=0.04, module_id="MOD-A"),
+            },
+        )
+
+    async def run_job(self, folder, tag_poses):
+        source, camera, _ = make_source(Path(folder), tag_poses=tag_poses, tag_map=self._map())
+        for index in range(3):
+            camera.push_frame(f"bild-{index}")
+        try:
+            return source, await source.acquire_and_detect(DetectionRequest(job_id="job-1"))
+        except VisionJobError as error:
+            return source, error
+
+    async def test_the_observed_world_poses_are_reported_beside_the_modules(self):
+        with tempfile.TemporaryDirectory() as folder:
+            # Die Kamera sieht Tag 1 zwei Zentimeter weiter weg als die Karte sagt.
+            source, detections = await self.run_job(
+                folder,
+                [tag_pose(0, (0, 0, 2)), tag_pose(1, (1.02, 0, 2)), tag_pose(5, (0.3, 0, 2))],
+            )
+        self.assertEqual([d.module_id for d in detections], ["MOD-A"])  # unveraendert
+        world = {tag["tagId"]: tag for tag in source.world_tags}
+        self.assertEqual(sorted(world), [0, 1])
+        distance = math.dist(world[0]["position"], world[1]["position"])
+        self.assertAlmostEqual(distance, 1.02, places=9)  # gesehen, nicht eingemessen
+        self.assertEqual(world[0]["sampleCount"], 3)
+        self.assertFalse(world[0]["ambiguous"])
+        self.assertAlmostEqual(world[0]["reprojectionErrorPx"], 0.5)
+        json.dumps(source.world_tags, allow_nan=False)
+
+    async def test_an_image_with_only_world_tags_fails_but_still_reports_them(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, error = await self.run_job(folder, [tag_pose(0, (0, 0, 2)), tag_pose(1, (1, 0, 2))])
+        self.assertIsInstance(error, VisionJobError)
+        self.assertEqual(error.code, VisionErrorCode.DETECTION_FAILED)
+        self.assertEqual([tag["tagId"] for tag in source.world_tags], [0, 1])
+        # Auch ohne Detektion: wie die Kamerapose zustande kam.
+        summary = source.camera_localization
+        self.assertEqual(summary["worldTagIds"], [0, 1])
+        self.assertEqual(summary["solver"], "average")  # Fake ohne Kalibrierung
+        json.dumps(summary, allow_nan=False)
+
+    def test_an_anchored_pose_is_reported_as_anchor_without_an_error(self):
+        from tagloc.localize import ORIGIN_ROBOT_POSE, CameraLocalization
+
+        from vision_server.detection.apriltag import _localization_summary
+
+        self.assertIsNone(_localization_summary(None))
+        summary = _localization_summary(
+            CameraLocalization(
+                pose_world_cam=geometry.identity(),
+                world_tag_ids=(),
+                primary_tag_id=583,
+                spread_m=0.002,
+                origin=ORIGIN_ROBOT_POSE,
+            )
+        )
+        self.assertEqual(summary["solver"], "anchor")
+        self.assertIsNone(summary["reprojectionErrorPx"])
+        self.assertEqual(summary["spreadM"], 0.002)
+        self.assertEqual(summary["worldTagIds"], [])
+        # Die Kameraposition gibt es fuer jeden Solver, auch fortgeschrieben.
+        self.assertEqual(summary["cameraPositionInWorld"], [0.0, 0.0, 0.0])
+        self.assertNotIn("poseInWorld", summary)
+
+    def test_the_camera_position_is_the_translation_of_the_camera_pose(self):
+        from tagloc.localize import CameraLocalization
+
+        from vision_server.detection.apriltag import _localization_summary
+
+        pose = geometry.from_rvec_tvec((0.1, 0.0, 0.0), (1.25, 2.5, 2.8))
+        summary = _localization_summary(
+            CameraLocalization(pose_world_cam=pose, world_tag_ids=(583,), primary_tag_id=583, spread_m=0.0)
+        )
+        self.assertEqual(summary["cameraPositionInWorld"], [1.25, 2.5, 2.8])
+        json.dumps(summary, allow_nan=False)
+
+    def test_the_joint_corner_error_is_averaged_per_tag(self):
+        from vision_server.detection.apriltag import _merge_world_tags
+
+        pose = geometry.identity()
+        merged = _merge_world_tags(
+            [[(583, pose, 0.4, False, 0.6)], [(583, pose, 0.6, False, 1.0)], [(584, pose, 0.5, False, None)]]
+        )
+        by_id = {tag["tagId"]: tag for tag in merged}
+        self.assertAlmostEqual(by_id[583]["jointReprojectionErrorPx"], 0.8)
+        self.assertAlmostEqual(by_id[583]["reprojectionErrorPx"], 0.5)
+        # Ohne gemeinsame Pose (ein Welttag allein) fehlt das Feld.
+        self.assertNotIn("jointReprojectionErrorPx", by_id[584])
+
+    async def test_a_new_job_does_not_report_the_old_world_tags(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = await self.run_job(folder, [tag_pose(0, (0, 0, 2)), tag_pose(5, (0.3, 0, 2))])
+            self.assertEqual(len(source.world_tags), 1)
+            # Kein Bild mehr: der Job scheitert an der Kamera.
+            with self.assertRaises(VisionJobError):
+                await source.acquire_and_detect(DetectionRequest(job_id="job-2"))
+        self.assertEqual(source.world_tags, ())
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
@@ -508,6 +632,115 @@ class CloseTest(unittest.IsolatedAsyncioTestCase):
             await source.close()
 
         self.assertEqual(camera.closed, 2)
+
+
+class FakeMeasureSource(AprilTagDetectionSource):
+    """Wie `FakeSolverSource`, nur fuer `measure_tag`: die Pose kennt der
+    Fake-Detektor, alles andere ist Produktionscode."""
+
+    def _measure_tag(self, image, tag_id):
+        tag_poses = self._detector.estimate(self._detector.detect(image))
+        return next((pose for pose in tag_poses if pose.tag_id == tag_id), None)
+
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class MeasureTagTest(unittest.IsolatedAsyncioTestCase):
+    """`measure_tag` fuer die Hand-Auge-Kalibrierung: Kamera-KS, ohne Karte."""
+
+    def source(self, folder, tag_poses):
+        camera = FakeCamera()
+        source = FakeMeasureSource(profile_config(Path(folder)), camera=camera)
+        source._detector = FakeDetector(tag_poses)
+        source._tag_map = tagmap.empty_tag_map()
+        # Ein Bild aus der Zeit VOR dem Aufruf plus drei neue: Gemessen wird nur
+        # auf den neuen, das schon vorhandene wird uebersprungen.
+        for _ in range(4):
+            camera.push_frame(object())
+        return source, camera
+
+    async def test_the_tag_pose_is_averaged_over_the_job_samples(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, camera = self.source(folder, [tag_pose(12, (0.1, 0.0, 0.5)), tag_pose(3, (0, 0, 1))])
+            pose, reason, _ = await source.measure_tag(12)
+        self.assertEqual(reason, "")
+        np.testing.assert_allclose(pose[:3, 3], [0.1, 0.0, 0.5])
+        self.assertEqual(len(camera.consumed), 4)  # eins davon nur zum Merken des Zeitstempels
+
+    async def test_missing_and_ambiguous_tags_give_a_reason(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = self.source(folder, [tag_pose(3, (0, 0, 1))])
+            pose, reason, _ = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("nicht gesehen", reason)
+
+        with tempfile.TemporaryDirectory() as folder:
+            source, _ = self.source(folder, [tag_pose(12, (0, 0, 1), ambiguity=0.95)])
+            pose, reason, _ = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("mehrdeutig", reason)
+
+    async def test_no_camera_frame_is_a_reason_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = FakeMeasureSource(profile_config(Path(folder)), camera=FakeCamera())
+            source._detector = FakeDetector()
+            pose, reason, _ = await source.measure_tag(12)
+        self.assertIsNone(pose)
+        self.assertIn("Kamerabild", reason)
+
+    def test_a_new_hand_eye_drops_the_anchor(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, _, _ = make_source(Path(folder))
+        source._anchor = object()
+        source.apply_hand_eye("neu")
+        self.assertEqual(source._hand_eye, "neu")
+        self.assertIsNone(source._anchor)
+
+
+@unittest.skipUnless(np is not None, "numpy fehlt")
+class LatestTagsTest(unittest.TestCase):
+    """`latest_tags`: das neueste Ergebnis in voller Aufloesung fuers
+    Livestream-Overlay, aus jedem Pfad, der ohnehin erkennt."""
+
+    def source(self, folder):
+        from tagloc.calibration import default_calibration
+
+        source = AprilTagDetectionSource(profile_config(Path(folder)), camera=FakeCamera())
+        source._detector = FakeDetector([tag_pose(5, (0, 0, 1))])
+        source._calibration = default_calibration((400, 300))
+        source._tag_map = tagmap.empty_tag_map()
+        return source
+
+    def _run(self, call):
+        from unittest.mock import patch
+
+        image = np.zeros((300, 400, 3), dtype=np.uint8)
+        with patch("tagloc.pose.estimate_tag_poses", return_value=[tag_pose(5, (0, 0, 1))]):
+            call(image)
+
+    def test_is_empty_before_the_first_image(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(self.source(folder).latest_tags)
+
+    def test_a_job_image_is_remembered_with_its_size(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(source._locate)
+        snapshot = source.latest_tags
+        self.assertEqual(snapshot.origin, "job")
+        self.assertEqual(snapshot.image_size, (400, 300))
+        self.assertEqual([pose.tag_id for pose in snapshot.tag_poses], [5])
+
+    def test_the_cell_watch_image_is_remembered(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(lambda image: source.observe_cell(image, source._detector))
+        self.assertEqual(source.latest_tags.origin, "cellwatch")
+
+    def test_a_measurement_is_remembered(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = self.source(folder)
+            self._run(lambda image: source._measure_tag(image, 5))
+        self.assertEqual(source.latest_tags.origin, "measure")
 
 
 if __name__ == "__main__":

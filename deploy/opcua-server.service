@@ -1,0 +1,32 @@
+# Vorlage der systemd-Unit `opcua-server.service` fuer die Pis (Altlast B13).
+#
+# Platzhalter, vor dem Einspielen zu ersetzen (siehe deploy/README.md):
+#   @USER@  Benutzer (und Gruppe), unter dem der Server laeuft
+#   @REPO@  absoluter Pfad des Repos auf dem Pi
+#
+# Stand: wie auf beiden Pis am 02.11.2026 erhoben. Die Eintraege `Description`,
+# `After`, `Wants` (alle [Unit]) und `WantedBy` ([Install]) wurden auf den Pis
+# NICHT erhoben, sondern hier gaengig angesetzt -- vor dem Einspielen mit
+# `systemctl cat opcua-server.service` abgleichen.
+#
+# Hostspezifische Umgebungsvariablen (`VISION_*`) gehoeren nicht hierher,
+# sondern in ein Drop-in `opcua-server.service.d/override.conf`.
+
+[Unit]
+Description=OPC-UA-Vision-Server (vision_server.server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+Group=@USER@
+WorkingDirectory=@REPO@
+Environment=PYTHONPATH=@REPO@/src
+ExecStart=@REPO@/.venv/bin/python -m vision_server.server
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

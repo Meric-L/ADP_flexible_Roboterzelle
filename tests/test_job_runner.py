@@ -79,7 +79,7 @@ class FakeResults:
 
 
 class ScriptedSource(DetectionSource):
-    profile_id = "hello_world"
+    profile_id = "fake"
 
     def __init__(self, *, delay: float = 0.0, error: Exception | None = None) -> None:
         self._delay = delay
@@ -102,7 +102,14 @@ class ScriptedSource(DetectionSource):
 
 
 def make_runner(source: DetectionSource, **config_overrides):
-    """Die Attrappe bedient jedes Profil, damit jedes Rezept sie trifft."""
+    """Die Attrappe bedient jedes Profil, damit jedes Rezept sie trifft.
+
+    Die Tests fahren das Attrappen-Rezept `test`; seit das leere Rezept
+    abgelehnt wird, gibt es keinen kamerafreien Standardjob mehr.
+    """
+    config_overrides.setdefault(
+        "recipe_profiles", (("test", "fake"), *VisionServerConfig().recipe_profiles)
+    )
     config = replace(VisionServerConfig(), **config_overrides)
     states = FakeStates()
     events = FakeEvents()
@@ -112,7 +119,7 @@ def make_runner(source: DetectionSource, **config_overrides):
     return runner, states, events, results
 
 
-async def run_to_completion(runner: JobRunner, recipe_id: str = "") -> tuple[str, VisionErrorCode]:
+async def run_to_completion(runner: JobRunner, recipe_id: str = "test") -> tuple[str, VisionErrorCode]:
     job_id, code = runner.start_single_job(None, None, recipe_id, None, [])
     if runner._task is not None:
         await runner._task
@@ -143,8 +150,8 @@ class HappyPathTest(unittest.IsolatedAsyncioTestCase):
 class AdmissionTest(unittest.IsolatedAsyncioTestCase):
     async def test_second_call_before_any_await_is_busy(self):
         runner, _, _, _ = make_runner(ScriptedSource(delay=0.05))
-        first, first_code = runner.start_single_job(None, None, "", None, [])
-        _, second_code = runner.start_single_job(None, None, "", None, [])
+        first, first_code = runner.start_single_job(None, None, "test", None, [])
+        _, second_code = runner.start_single_job(None, None, "test", None, [])
         self.assertEqual(first_code, VisionErrorCode.OK)
         self.assertEqual(second_code, VisionErrorCode.BUSY)
         self.assertTrue(first)
@@ -160,7 +167,7 @@ class AdmissionTest(unittest.IsolatedAsyncioTestCase):
     async def test_not_ready_is_rejected(self):
         runner, states, _, _ = make_runner(ScriptedSource())
         states.ready = False
-        _, code = runner.start_single_job(None, None, "", None, [])
+        _, code = runner.start_single_job(None, None, "test", None, [])
         self.assertEqual(code, VisionErrorCode.INVALID_STATE)
 
 
@@ -225,7 +232,7 @@ class ResultTruthTest(unittest.IsolatedAsyncioTestCase):
 class SlowToCancelSource(DetectionSource):
     """Verschluckt die erste Cancellation, um `stop()`s Timeout-Pfad zu testen."""
 
-    profile_id = "hello_world"
+    profile_id = "fake"
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
         with contextlib.suppress(asyncio.CancelledError):
@@ -248,7 +255,7 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancels_a_running_job_and_resets_the_state(self):
         runner, states, events, results = make_runner(ScriptedSource(delay=5.0))
-        runner.start_single_job(None, None, "", None, [])
+        runner.start_single_job(None, None, "test", None, [])
         await asyncio.sleep(0)  # Task muss erst anlaufen (single_execution etc.)
 
         code = await runner.stop()
@@ -264,7 +271,7 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_accepts_a_new_job_immediately_after_stop(self):
         runner, _, _, _ = make_runner(ScriptedSource(delay=5.0))
-        runner.start_single_job(None, None, "", None, [])
+        runner.start_single_job(None, None, "test", None, [])
         await asyncio.sleep(0)
         await runner.stop()
 
@@ -275,7 +282,7 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reports_internal_error_when_the_job_will_not_cancel_in_time(self):
         runner, _, _, _ = make_runner(SlowToCancelSource(), stop_timeout=0.01)
-        runner.start_single_job(None, None, "", None, [])
+        runner.start_single_job(None, None, "test", None, [])
         await asyncio.sleep(0)
 
         code = await runner.stop()
@@ -303,7 +310,7 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
         runner, states, events, results = make_runner(
             source, continuous_interval_s=0.0, **overrides
         )
-        job_id, code = runner.start_continuous(None, None, "", None, [])
+        job_id, code = runner.start_continuous(None, None, "test", None, [])
         self.assertEqual(VisionErrorCode.OK, code)
         for _ in range(200):
             await asyncio.sleep(0)
@@ -338,9 +345,9 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_refuses_a_second_job_while_running(self):
         runner, _, _, _, _ = await self._run_briefly()
-        _, code = runner.start_continuous(None, None, "", None, [])
+        _, code = runner.start_continuous(None, None, "test", None, [])
         self.assertEqual(VisionErrorCode.BUSY, code)
-        _, single = runner.start_single_job(None, None, "", None, [])
+        _, single = runner.start_single_job(None, None, "test", None, [])
         self.assertEqual(VisionErrorCode.BUSY, single)
         await runner.stop()
 
@@ -348,7 +355,7 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
         source = ScriptedSource()
         runner, states, _, _ = make_runner(source)
         states.ready = False
-        _, code = runner.start_continuous(None, None, "", None, [])
+        _, code = runner.start_continuous(None, None, "test", None, [])
         self.assertEqual(VisionErrorCode.INVALID_STATE, code)
 
     async def test_a_failing_cycle_ends_the_run(self):
@@ -357,7 +364,7 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
             VisionErrorCode.DETECTION_FAILED, "kaputt"
         ))
         runner, states, _, results = make_runner(source, continuous_interval_s=0.0)
-        runner.start_continuous(None, None, "", None, [])
+        runner.start_continuous(None, None, "test", None, [])
         with contextlib.suppress(asyncio.CancelledError):
             await runner._task
         self.assertEqual(int(VisionErrorCode.DETECTION_FAILED), results.published[-1].result_state)

@@ -1,9 +1,12 @@
-concept/
-data/
-hardware/
+!data/rohbilder/
 *.txt
 *.bat
 *.sh
+# Ausnahmen: diese Dateien sind versioniert (neue Dateien dieser Typen
+# bleiben sonst fuer `git add` unsichtbar)
+!requirements.txt
+!/setup.sh
+!/setup.bat
 .venv/
 .venv*/
 __pycache__/
@@ -20,3 +23,13 @@ __pycache__/
 # und Worktrees bleiben draussen.
 .claude/settings.local.json
 .claude/worktrees/
+
+# Kalibrierdaten: nur die beiden cam_flange.json versionieren, der Rest (Aufnahmen, Backups,
+# weitere JSONs) bleibt lokal. Bereits getrackte Dateien bleiben davon unberuehrt.
+data/calibration/**
+!data/calibration/cam_flange.json
+
+# Hand-Auge-Sitzungen und Tag-Referenzaufnahmen: lokal, nicht versionieren
+data/handeye/**
+!data/handeye/cam_flange.json
+data/tagreference/

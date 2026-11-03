@@ -93,6 +93,74 @@ class CalibrationFileTest(unittest.TestCase):
         self.assertEqual(data["imageSize"], [640, 480])
         self.assertIn("createdAt", data)
 
+    def test_round_trips_the_fisheye_model(self):
+        from dataclasses import replace
+
+        original = replace(
+            sample_calibration(),
+            distortion=np.array([0.05, -0.01, 0.002, -0.0004], dtype=np.float64),
+            model=calib.FISHEYE,
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "camera.json"
+            calib.save_calibration(path, original)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            loaded = calib.load_calibration(path)
+
+        self.assertEqual(data["distortionModel"], "fisheye")
+        self.assertEqual(loaded.model, calib.FISHEYE)
+        np.testing.assert_allclose(loaded.distortion, original.distortion, atol=1e-12)
+
+    def test_writes_the_pinhole_model_by_default(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "camera.json"
+            calib.save_calibration(path, sample_calibration())
+            data = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["distortionModel"], "pinhole")
+
+    def test_reads_a_legacy_file_as_pinhole(self):
+        """Kalibrierungen von vor dem Linsenmodell-Feld (Schema /1) gelten
+        weiter -- ohne Neukalibrierung am Pi."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "camera.json"
+            calib.save_calibration(path, sample_calibration())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["schema"] = calib.LEGACY_SCHEMA
+            del data["distortionModel"]
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+            loaded = calib.load_calibration(path)
+
+        self.assertEqual(loaded.model, calib.PINHOLE)
+        self.assertEqual(loaded.distortion.shape, (5,))
+
+    def test_rejects_an_unknown_lens_model(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "camera.json"
+            calib.save_calibration(path, sample_calibration())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["distortionModel"] = "omnidir"
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+            with self.assertRaises(ValueError) as caught:
+                calib.load_calibration(path)
+
+        self.assertIn("omnidir", str(caught.exception))
+
+    def test_rejects_a_fisheye_file_with_pinhole_coefficients(self):
+        """5 Koeffizienten unter "fisheye" hiesse: falsch beschriftet. Beim
+        Laden auffallen, nicht erst mitten im Job."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "camera.json"
+            calib.save_calibration(path, sample_calibration())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["distortionModel"] = "fisheye"
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                calib.load_calibration(path)
+
     def test_rejects_an_unknown_schema(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "camera.json"

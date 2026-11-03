@@ -1,7 +1,8 @@
 """Rudimentaere Umsetzung von OPC-UA-Programmen (Spec Part 10).
 
-Uebernommen aus der Vorlage des Betreuers (`betreuer/OPC_UA_Program.py`,
-Robert Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024).
+Uebernommen aus der Vorlage des Betreuers (`OPC_UA_Program.py`, Robert
+Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024). Die Vorlage liegt nicht
+im Repo (`betreuer/` wurde am 23.09.2026 entfernt, die Datei war nie getrackt).
 
 Gegenueber der Vorlage geaendert -- jede Aenderung war noetig, damit sich das
 Framework ueberhaupt bzw. sauber einbauen laesst:
@@ -159,9 +160,6 @@ class Program(ABC):
     @abstractmethod
     def resume_inputs(self) -> list: ...
 
-    def get_current_state(self) -> State:
-        return self.state_machine._current_state
-
     async def running_to_halted(self, message=None):
         """Haelt das laufende Programm an (z. B. im Fehlerfall)."""
         if not self.state_machine._current_state.number == 13:
@@ -208,6 +206,9 @@ class Program(ABC):
             try:
                 result: str | None = await func(*args)
             except Exception as e:
+                # Der Fehlertext geht als Ergebnis an den Zustandswechsel;
+                # zusaetzlich im Log festhalten, damit die Ursache nicht verloren geht.
+                logger.warning("Programmfunktion warf einen Fehler: %s", e, exc_info=True)
                 result = str(e)
             if result is not None:
                 if not isinstance(result, str):

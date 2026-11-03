@@ -30,24 +30,36 @@ import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
+from . import lens
+from .boards import BoardSpec, chessboard_object_points
+from .calibration import CameraCalibration
 from .geometry import (
     Pose,
     average_poses,
     compose,
+    from_rotation_translation,
     invert,
     pose_from_dict,
     pose_to_dict,
     rotation_distance_rad,
+    rotation_from_rvec,
     rvec_from_rotation,
     translation_distance_m,
 )
+from .jsonio import finite_or_none, utc_now_z
 
 SCHEMA = "wsc.vision.handeye/1"
+#: Datensatz einer Sitzung (`data/handeye/sessions/<Zeit>/session.json`), den
+#: `vision_server.handeye_session` schreibt und `tagloc.cli.calibrate_handeye
+#: --session` offline nachrechnet.
+SESSION_SCHEMA = "wsc.vision.handeye.session/1"
+SESSION_FILE = "session.json"
+#: Stellen, auf die `save_hand_eye` die Kennzahlen in der Datei rundet.
+FILE_DIGITS = 6
 
 #: Hand-Auge braucht Bewegung um mehr als eine Achse, sonst ist die Rotation
 #: nicht bestimmt. Drei Posen sind das rechnerische Minimum; die Kalibrierfahrt
@@ -57,6 +69,12 @@ MIN_SAMPLES = 3
 #: Unterhalb dieses Eigenwerts gilt die Drehachsenverteilung als entartet --
 #: der Roboter hat dann im Wesentlichen um nur eine Achse gedreht.
 _DEGENERATE_EIGENVALUE = 1e-12
+
+#: Ab so viel Drehung um eine Achse zaehlt sie als "deutlich gedreht".
+#: Unterhalb davon bestimmt das Rauschen der Tag-Messung die Rotation mit.
+AXIS_THRESHOLD_DEG = 5.0
+#: Mindestzahl deutlich gedrehter Achsen, damit `T_flansch_cam` bestimmt ist.
+MIN_AXES = 3
 
 
 @dataclass(frozen=True)
@@ -73,6 +91,21 @@ class HandEye:
     rms_position_m: float = float("nan")
     rms_rotation_deg: float = float("nan")
     sample_count: int = 0
+    #: Groesste Abweichung (nicht RMS) unter den verwendeten Aufnahmen. Ab
+    #: 22.10.2026 getrennt vom RMS; aeltere Dateien haben sie nicht.
+    max_position_m: float = float("nan")
+    max_rotation_deg: float = float("nan")
+    #: Ab 28.10.2026, nur bei Brett-Kalibrierung mit gemeinsamer Verfeinerung
+    #: (`refine_hand_eye`); sonst NaN bzw. leer, aeltere Dateien haben sie nicht.
+    #: Reprojektion aller Brettecken nach der Verfeinerung (px).
+    refined_reprojection_rms_px: float = float("nan")
+    #: Geschaetzter Brettmassstab gegen das Nennmass (1.0 = passt).
+    board_scale: float = float("nan")
+    #: Leave-one-out-Vorhersagefehler (RMS ueber die Aufnahmen), px und m.
+    loo_error_rms_px: float = float("nan")
+    loo_error_rms_m: float = float("nan")
+    #: Woher die Intrinsik stammte (`calibration`, `realsense_factory`, ...).
+    intrinsics_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -91,7 +124,7 @@ class RobotAnchor:
 def anchor_world_base(
     pose_world_cam: Pose, pose_base_flange: Pose, pose_flange_cam: Pose
 ) -> Pose:
-    """Return `T_world_base` from one world-tag sighting and the robot pose.
+    """Liefert `T_world_base` aus einer Welttag-Sichtung und der Roboterpose.
 
     `T_world_cam = T_world_base · T_base_flansch · T_flansch_cam`, nach
     `T_world_base` aufgeloest. Das ist der Ankerschritt: ab hier weiss der
@@ -104,7 +137,7 @@ def anchor_world_base(
 def camera_pose_from_robot(
     pose_world_base: Pose, pose_base_flange: Pose, pose_flange_cam: Pose
 ) -> Pose:
-    """Return `T_world_cam` from the anchor and the current robot pose.
+    """Liefert `T_world_cam` aus dem Anker und der aktuellen Roboterpose.
 
     Der Weg ohne Welttag im Bild. Die Genauigkeit haengt jetzt am Anker und an
     der Kinematik, nicht mehr am Sichtfeld.
@@ -117,7 +150,7 @@ def target_spread(
     poses_cam_tag: Sequence[Pose],
     pose_flange_cam: Pose,
 ) -> tuple[float, float]:
-    """Return how far the reconstructed target location scatters, `(m, rad)`.
+    """Liefert, wie weit der rekonstruierte Zielort streut, `(m, rad)`.
 
     Der Tag der Kalibrierfahrt steht fest. Also muss
     `T_base_tag = T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` fuer jedes
@@ -140,7 +173,7 @@ def target_spread(
 def _motion_pairs(
     poses_base_flange: Sequence[Pose], poses_cam_tag: Sequence[Pose]
 ) -> list[tuple[Pose, Pose]]:
-    """Return the `(A, B)` motion pairs of the hand-eye equation `A·X = X·B`.
+    """Liefert die Bewegungspaare `(A, B)` der Hand-Auge-Gleichung `A·X = X·B`.
 
     Der Zielort steht fest, also gilt fuer je zwei Aufnahmen `i`, `j`:
 
@@ -169,7 +202,7 @@ def _motion_pairs(
 def solve_hand_eye(
     poses_base_flange: Sequence[Pose], poses_cam_tag: Sequence[Pose]
 ) -> tuple[Pose, float, float]:
-    """Solve `T_flansch_cam` from N robot poses looking at one fixed tag.
+    """Loest `T_flansch_cam` aus N Roboterposen, die einen festen Tag ansehen.
 
     Aufnahme: der Tag bleibt liegen, der Roboter faehrt N deutlich
     verschiedene Posen an und misst ihn jedes Mal. Reine Translation reicht
@@ -228,8 +261,891 @@ def solve_hand_eye(
     return pose_flange_cam, spread_m, math.degrees(spread_rad)
 
 
+#: Ausreisser: eine Aufnahme, deren Brettlage mehr als `OUTLIER_MAD_FACTOR` mal
+#: die robuste Streuung (MAD) ueber dem Median der Abweichungen liegt -- aber
+#: nie unter den Untergrenzen: bei sauberen Daten ist die MAD fast null, und
+#: ohne Untergrenze waere jedes Hundertstel Millimeter ein "Ausreisser".
+OUTLIER_MAD_FACTOR = 3.0
+OUTLIER_FLOOR_M = 0.002
+OUTLIER_FLOOR_DEG = 0.3
+#: Hoechstens dieser Anteil der Aufnahmen wird verworfen.
+OUTLIER_MAX_FRACTION = 0.25
+#: So viele Aufnahmen bleiben mindestens uebrig.
+MIN_KEPT = 4
+
+
+@dataclass(frozen=True)
+class HandEyeSolution:
+    """Ergebnis von `solve_hand_eye_robust`."""
+
+    pose_flange_cam: Pose
+    #: Echtes RMS der Abweichungen der Brettlage vom Mittel, ueber die
+    #: verwendeten Aufnahmen.
+    rms_position_m: float
+    rms_rotation_deg: float
+    #: Groesste Abweichung unter den verwendeten Aufnahmen.
+    max_position_m: float
+    max_rotation_deg: float
+    #: Je Eingabe-Aufnahme `(Abweichung in m, in Grad)` der Brettlage vom Mittel
+    #: der verwendeten -- auch fuer verworfene.
+    residuals: tuple[tuple[float, float], ...]
+    #: Indizes der verworfenen Eingabe-Aufnahmen, in der Reihenfolge des Verwerfens.
+    rejected: tuple[int, ...]
+    used_count: int
+
+
+def _reconstruct(poses_base_flange, poses_cam_tag, pose_flange_cam) -> list[Pose]:
+    """`T_base_tag = T_base_flansch · T_flansch_cam · T_cam_tag` je Aufnahme."""
+    return [
+        compose(flange, pose_flange_cam, tag)
+        for flange, tag in zip(poses_base_flange, poses_cam_tag)
+    ]
+
+
+def _distance(centre: Pose, pose: Pose) -> tuple[float, float]:
+    return (
+        translation_distance_m(centre, pose),
+        math.degrees(rotation_distance_rad(centre, pose)),
+    )
+
+
+def _threshold(values: list[float], floor: float) -> float:
+    """Median + `OUTLIER_MAD_FACTOR` robuste Standardabweichungen, mindestens `floor`."""
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(np.asarray(values) - median)))
+    return max(floor, median + OUTLIER_MAD_FACTOR * 1.4826 * mad)
+
+
+def solve_hand_eye_robust(
+    poses_base_flange: Sequence[Pose],
+    poses_cam_tag: Sequence[Pose],
+    *,
+    reject: bool = True,
+) -> HandEyeSolution:
+    """`solve_hand_eye` mit Ausreisserpruefung und ehrlichen Guetezahlen.
+
+    Der Tag (oder das Brett) steht fest, also muss `T_base_tag` aus jeder
+    Aufnahme dieselbe Pose ergeben. Das Residuum einer Aufnahme ist ihr
+    Abstand zum Mittel **der anderen** (leave-one-out): eine schlechte
+    Aufnahme zieht das Mittel nicht zu sich. Liegt das groesste Residuum ueber
+    der Schwelle, wird genau diese Aufnahme verworfen und neu geloest, bis
+    nichts mehr auffaellt. Verworfen werden hoechstens `OUTLIER_MAX_FRACTION`
+    der Aufnahmen und nie unter `MIN_KEPT`; scheitert das Neulosen (die
+    uebrigen drehen nicht genug um mehrere Achsen), bleibt die letzte gute
+    Loesung.
+
+    Raises:
+        ValueError: wie `solve_hand_eye`, schon fuer die erste Loesung.
+    """
+    flanges = list(poses_base_flange)
+    tags = list(poses_cam_tag)
+    pose, _, _ = solve_hand_eye(flanges, tags)
+    used = list(range(len(flanges)))
+    rejected: list[int] = []
+    max_rejected = int(len(flanges) * OUTLIER_MAX_FRACTION)
+
+    while reject and len(rejected) < max_rejected and len(used) > max(MIN_SAMPLES, MIN_KEPT):
+        reconstructed = _reconstruct(flanges, tags, pose)
+        loo = {
+            i: _distance(
+                average_poses([reconstructed[j] for j in used if j != i]), reconstructed[i]
+            )
+            for i in used
+        }
+        threshold_m = _threshold([loo[i][0] for i in used], OUTLIER_FLOOR_M)
+        threshold_deg = _threshold([loo[i][1] for i in used], OUTLIER_FLOOR_DEG)
+        worst = max(used, key=lambda i: max(loo[i][0] / threshold_m, loo[i][1] / threshold_deg))
+        if max(loo[worst][0] / threshold_m, loo[worst][1] / threshold_deg) <= 1.0:
+            break
+        trial = [i for i in used if i != worst]
+        try:
+            trial_pose, _, _ = solve_hand_eye([flanges[i] for i in trial], [tags[i] for i in trial])
+        except ValueError:
+            break
+        used, pose = trial, trial_pose
+        rejected.append(worst)
+
+    reconstructed = _reconstruct(flanges, tags, pose)
+    centre = average_poses([reconstructed[i] for i in used])
+    residuals = tuple(_distance(centre, pose_i) for pose_i in reconstructed)
+    kept = [residuals[i] for i in used]
+    return HandEyeSolution(
+        pose_flange_cam=pose,
+        rms_position_m=math.sqrt(sum(m * m for m, _ in kept) / len(kept)),
+        rms_rotation_deg=math.sqrt(sum(d * d for _, d in kept) / len(kept)),
+        max_position_m=max(m for m, _ in kept),
+        max_rotation_deg=max(d for _, d in kept),
+        residuals=residuals,
+        rejected=tuple(rejected),
+        used_count=len(used),
+    )
+
+
+# --- Gemeinsame Verfeinerung gegen die Pixel (nur Brett) -----------------------
+
+#: Huber-Schwelle in Pixeln: darunter quadratisch, darueber linear gewichtet.
+HUBER_DELTA_PX = 1.0
+REFINE_MAX_ITERATIONS = 60
+#: Schrittweite der numerischen Jacobi-Matrix: Rad / m / Massstab.
+_JACOBIAN_STEP = 1e-6
+
+
+@dataclass(frozen=True)
+class HandEyeRefinement:
+    """Ergebnis von `refine_hand_eye`."""
+
+    #: `X = T_flansch_cam`.
+    pose_flange_cam: Pose
+    #: `T_base_brett` (Brett-Ursprung = erste Innenecke), wie das Brett im
+    #: Basis-KS liegt -- im Status `targetInBase`.
+    pose_base_board: Pose
+    #: Massstab der Feldgroesse gegen den Nennwert (1.0 = Brett wie angegeben).
+    #: Bei `estimate_scale=False` bleibt er auf dem Startwert.
+    board_scale: float
+    #: RMS des Pixelabstands (2D-Betrag) ueber alle Ecken aller Aufnahmen,
+    #: ungewichtet.
+    reprojection_rms_px: float
+    iterations: int
+    converged: bool
+    #: Je Aufnahme der RMS-Pixelfehler (in der Reihenfolge der Eingabe).
+    sample_rms_px: tuple[float, ...] = ()
+
+
+@dataclass(frozen=True)
+class LeaveOneOutResult:
+    """Ergebnis von `leave_one_out_errors`."""
+
+    #: Je Aufnahme: RMS-Pixelfehler der vorhergesagten Ecken.
+    error_px: tuple[float, ...]
+    #: Je Aufnahme: mittlerer 3D-Abstand der vorhergesagten Ecken zu den Ecken
+    #: der gemessenen `T_cam_brett`, im Kamera-KS in Metern.
+    error_m: tuple[float, ...]
+    rms_px: float
+    rms_m: float
+
+
+def _project_all(
+    inverse_flanges: np.ndarray,
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    flange_cam: Pose,
+    base_board: Pose,
+    scale: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Ecken aller Aufnahmen: `(Pixel (n, m, 2), Kamera-KS (n, m, 3))`.
+
+    `inv(F_i · X) · T_base_brett · (s · P)`, ohne Verzeichnung.
+    """
+    to_camera = invert(flange_cam)[None, :, :] @ inverse_flanges @ base_board[None, :, :]
+    points = scale * object_points
+    camera = np.einsum("nij,mj->nmi", to_camera[:, :3, :3], points) + to_camera[:, None, :3, 3]
+    depth = np.where(np.abs(camera[..., 2]) < 1e-9, 1e-9, camera[..., 2])
+    pixels = np.stack(
+        [
+            camera_matrix[0, 0] * camera[..., 0] / depth + camera_matrix[0, 2],
+            camera_matrix[1, 1] * camera[..., 1] / depth + camera_matrix[1, 2],
+        ],
+        axis=-1,
+    )
+    return pixels, camera
+
+
+def _apply_increment(pose: Pose, delta: np.ndarray) -> Pose:
+    """Lokaler Zuwachs `(rvec, t)`: `R' = exp(rvec) · R`, `t' = t + t_delta`."""
+    rotation = rotation_from_rvec(delta[:3]) @ pose[:3, :3]
+    return from_rotation_translation(rotation, pose[:3, 3] + delta[3:6])
+
+
+def _huber_cost(errors: np.ndarray, delta: float) -> float:
+    """Huber-Kosten ueber den 2D-Betrag je Ecke."""
+    quadratic = errors <= delta
+    return float(
+        np.sum(np.where(quadratic, 0.5 * errors**2, delta * (errors - 0.5 * delta)))
+    )
+
+
+@dataclass(frozen=True)
+class _RefineProblem:
+    """Beobachtungen und Brettpunkte von `refine_hand_eye` samt Residuen-Funktion.
+
+    Der Zustand ist ein Tripel `(X, T_base_brett, Massstab)`; ein Schritt ist ein
+    Vektor aus 13 Zuwaechsen (`X` 6, Brett 6, Massstab 1), von denen ohne
+    `estimate_scale` nur die ersten 12 frei sind.
+    """
+
+    inverse_flanges: np.ndarray
+    points: np.ndarray
+    matrix: np.ndarray
+    observed: np.ndarray
+    estimate_scale: bool
+
+    @property
+    def free(self) -> int:
+        return 13 if self.estimate_scale else 12
+
+    def residuals(self, x_pose, board_pose, scale) -> np.ndarray:
+        """Projizierte minus beobachtete Ecken, `(n, m, 2)`."""
+        pixels, _ = _project_all(self.inverse_flanges, self.points, self.matrix, x_pose, board_pose, scale)
+        return pixels - self.observed
+
+    def step(self, x_pose, board_pose, scale, delta):
+        """Der Zustand nach dem Zuwachs `delta`."""
+        return (
+            _apply_increment(x_pose, delta[:6]),
+            _apply_increment(board_pose, delta[6:12]),
+            scale + (delta[12] if self.estimate_scale else 0.0),
+        )
+
+    def jacobian(self, state, size: int) -> np.ndarray:
+        """Numerische Jacobi-Matrix (zentrale Differenzen) der flachen Residuen."""
+        jacobian = np.empty((size, self.free), dtype=np.float64)
+        for column in range(self.free):
+            offset = np.zeros(13, dtype=np.float64)
+            offset[column] = _JACOBIAN_STEP
+            plus = self.residuals(*self.step(*state, offset)).reshape(-1)
+            minus = self.residuals(*self.step(*state, -offset)).reshape(-1)
+            jacobian[:, column] = (plus - minus) / (2.0 * _JACOBIAN_STEP)
+        return jacobian
+
+
+def _refine_problem(
+    flanges: list[np.ndarray],
+    corners_px: Sequence[np.ndarray],
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    estimate_scale: bool,
+) -> _RefineProblem:
+    """Prueft die Eingaben von `refine_hand_eye` und bringt sie in Arrayform.
+
+    Raises:
+        ValueError: Posen und Eckensaetze passen nicht zusammen, zu wenige
+            Aufnahmen oder Eckenzahl passt nicht zu den Brettpunkten.
+    """
+    if len(flanges) != len(corners_px):
+        raise ValueError(f"Verfeinerung: {len(flanges)} Roboterposen zu {len(corners_px)} Eckensaetzen")
+    if len(flanges) < MIN_SAMPLES:
+        raise ValueError(f"Verfeinerung braucht mindestens {MIN_SAMPLES} Aufnahmen")
+    observed = np.stack([np.asarray(c, dtype=np.float64).reshape(-1, 2) for c in corners_px])
+    points = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
+    if observed.shape[1] != points.shape[0]:
+        raise ValueError("Verfeinerung: Eckenzahl passt nicht zu den Brettpunkten")
+    matrix = np.asarray(camera_matrix, dtype=np.float64).reshape(3, 3)
+    inverse_flanges = np.stack([invert(f) for f in flanges])
+    return _RefineProblem(inverse_flanges, points, matrix, observed, estimate_scale)
+
+
+def refine_hand_eye(
+    poses_base_flange: Sequence[Pose],
+    corners_px: Sequence[np.ndarray],
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    *,
+    initial_flange_cam: Pose,
+    initial_base_board: Pose,
+    initial_scale: float = 1.0,
+    estimate_scale: bool = True,
+    huber_delta_px: float = HUBER_DELTA_PX,
+    max_iterations: int = REFINE_MAX_ITERATIONS,
+) -> HandEyeRefinement:
+    """Verfeinert `X`, `T_base_brett` und den Brettmassstab gegen die Pixel.
+
+    Die Park-Martin-Loesung legt die Rotation fest und rechnet die Translation
+    daraus; ein kleiner Rotationsfehler verschiebt `t_X` um Millimeter. Hier
+    gehen alle Brettecken aller Aufnahmen **gemeinsam** ein:
+
+        u_ik = K · (inv(F_i · X) · T_base_brett · (s · P_k))   (perspektivisch)
+
+    verglichen mit den entzerrten Pixeln der Aufnahme. Unbekannte: `X` (6),
+    `T_base_brett` (6) und optional `s` (1). Levenberg-Marquardt mit
+    numerischer Jacobi-Matrix; die Updates sind lokale Zuwaechse (Drehvektor
+    und Verschiebung) auf der laufenden Pose. Huber-Gewichtung (IRLS) haelt
+    einzelne schlechte Ecken oder Aufnahmen aus der Loesung.
+
+    `corners_px`: je Aufnahme `(N, 2)` **entzerrte** Ecken in Pixeln
+    (`lens.undistort_points`, `P=K`), in der Reihenfolge von `object_points`
+    `(N, 3)` (Brett-KS, Nennmass). Startwerte: `initial_flange_cam` aus
+    `solve_hand_eye_robust`, `initial_base_board` aus `estimate_base_board`.
+    """
+    flanges = [np.asarray(f, dtype=np.float64) for f in poses_base_flange]
+    problem = _refine_problem(flanges, corners_px, object_points, camera_matrix, estimate_scale)
+    free = problem.free
+
+    flange_cam = np.asarray(initial_flange_cam, dtype=np.float64).copy()
+    base_board = np.asarray(initial_base_board, dtype=np.float64).copy()
+    scale = float(initial_scale)
+
+    current = problem.residuals(flange_cam, base_board, scale)
+    cost = _huber_cost(np.linalg.norm(current, axis=-1), huber_delta_px)
+    damping = 1e-3
+    converged = False
+    iterations = 0
+    for iterations in range(1, max_iterations + 1):
+        flat = current.reshape(-1)
+        jacobian = problem.jacobian((flange_cam, base_board, scale), flat.size)
+        norms = np.linalg.norm(current, axis=-1)
+        # IRLS: Huber-Gewicht je Ecke, fuer beide Pixelkomponenten gleich.
+        corner_weight = np.where(norms <= huber_delta_px, 1.0, huber_delta_px / np.maximum(norms, 1e-12))
+        weights = np.repeat(corner_weight.reshape(-1), 2)
+        weighted = jacobian * weights[:, None]
+        normal = jacobian.T @ weighted
+        gradient = weighted.T @ flat
+        improved = False
+        while damping < 1e12:
+            try:
+                solved = np.linalg.solve(normal + damping * np.diag(np.diag(normal) + 1e-12), -gradient)
+            except np.linalg.LinAlgError:
+                damping *= 10.0
+                continue
+            delta = np.zeros(13, dtype=np.float64)
+            delta[:free] = solved
+            trial = problem.step(flange_cam, base_board, scale, delta)
+            trial_residuals = problem.residuals(*trial)
+            trial_cost = _huber_cost(np.linalg.norm(trial_residuals, axis=-1), huber_delta_px)
+            if trial_cost < cost:
+                relative = (cost - trial_cost) / max(cost, 1e-18)
+                flange_cam, base_board, scale = trial
+                current, cost = trial_residuals, trial_cost
+                damping = max(damping / 3.0, 1e-12)
+                improved = True
+                converged = relative < 1e-10 or float(np.max(np.abs(delta[:free]))) < 1e-10
+                break
+            damping *= 4.0
+        if not improved:
+            # Kein Schritt senkt die Kosten mehr: Minimum erreicht.
+            converged = True
+            break
+        if converged:
+            break
+
+    errors = np.linalg.norm(current, axis=-1)
+    return HandEyeRefinement(
+        pose_flange_cam=flange_cam,
+        pose_base_board=base_board,
+        board_scale=float(scale),
+        reprojection_rms_px=float(np.sqrt(np.mean(errors**2))),
+        iterations=iterations,
+        converged=converged,
+        sample_rms_px=tuple(float(np.sqrt(np.mean(row**2))) for row in errors),
+    )
+
+
+def rotation_diversity(poses_base_flange: list[Pose]) -> tuple[float, int]:
+    """`(groesste Drehung zwischen zwei Posen in Grad, Zahl der Drehachsen)`.
+
+    Die Achsen: die Drehvektoren aller Bewegungspaare, ihre Singulaerwerte
+    normiert auf die Zahl der Paare. Dreht der Roboter nur um eine Achse,
+    liegen alle Vektoren auf einer Linie -- dann ist `T_flansch_cam` nicht
+    bestimmt, egal wie viele Aufnahmen.
+    """
+    count = len(poses_base_flange)
+    if count < 2:
+        return 0.0, 0
+    vectors = []
+    spread = 0.0
+    for first in range(count):
+        for second in range(first + 1, count):
+            motion = compose(invert(poses_base_flange[first]), poses_base_flange[second])
+            vectors.append(rvec_from_rotation(motion[:3, :3]).reshape(3))
+            spread = max(
+                spread, rotation_distance_rad(poses_base_flange[first], poses_base_flange[second])
+            )
+    singular = np.linalg.svd(np.asarray(vectors), compute_uv=False) / math.sqrt(len(vectors))
+    axes = int(np.sum(singular >= math.radians(AXIS_THRESHOLD_DEG)))
+    return math.degrees(spread), axes
+
+
+#: Untergrenze der Ausreissergrenze der Verfeinerung, in Pixeln: darunter ist
+#: kein Bild ein Ausreisser, auch wenn die MAD fast null ist.
+REFINE_OUTLIER_FLOOR_PX = 1.0
+
+
+def refine_hand_eye_robust(
+    poses_base_flange: Sequence[Pose],
+    corners_px: Sequence[np.ndarray],
+    poses_cam_board: Sequence[Pose],
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    *,
+    estimate_scale: bool = True,
+    reject: bool = True,
+    huber_delta_px: float = HUBER_DELTA_PX,
+) -> tuple[HandEyeRefinement, tuple[int, ...], HandEyeSolution]:
+    """Verfeinerung mit Ausreisserpruefung **in Pixeln** (nur Brett).
+
+    Die Park-Martin-Streuung der Brettlage taugt dafuer nicht: ein Massstabs-
+    fehler des Bretts bläht sie auf und lieferte gute Aufnahmen als
+    Ausreisser. Hier gilt der RMS-Pixelfehler je Aufnahme nach der gemeinsamen
+    Verfeinerung (die den Massstab mitschaetzt).
+
+    Start: `solve_hand_eye_robust(..., reject=False)` und die gemittelte
+    Brettlage. Dann alle Aufnahmen verfeinern; ist der schlechteste RMS ueber
+    `max(REFINE_OUTLIER_FLOOR_PX, Median + OUTLIER_MAD_FACTOR · 1,4826 · MAD)`,
+    fliegt diese Aufnahme raus und es wird (Warmstart) neu verfeinert. Hoechstens
+    `OUTLIER_MAX_FRACTION` der Aufnahmen, nie unter `MIN_KEPT` verbleibende, und
+    nie so, dass die Rest-Posen um weniger als `MIN_AXES` Achsen drehen.
+
+    Liefert `(Verfeinerung der verbleibenden, Indizes der verworfenen
+    Eingabe-Aufnahmen in der Reihenfolge des Verwerfens, Park-Martin-Start)`.
+    `HandEyeRefinement.sample_rms_px` bezieht sich auf die verbleibenden.
+
+    Raises:
+        ValueError: wie `solve_hand_eye`.
+    """
+    flanges = list(poses_base_flange)
+    corners = list(corners_px)
+    boards = list(poses_cam_board)
+    initial = solve_hand_eye_robust(flanges, boards, reject=False)
+
+    def refine(indices: list[int], start: HandEyeRefinement | None) -> HandEyeRefinement:
+        pose_x = start.pose_flange_cam if start else initial.pose_flange_cam
+        board = (
+            start.pose_base_board
+            if start
+            else estimate_base_board(
+                [flanges[i] for i in indices], [boards[i] for i in indices], pose_x
+            )
+        )
+        return refine_hand_eye(
+            [flanges[i] for i in indices],
+            [corners[i] for i in indices],
+            object_points,
+            camera_matrix,
+            initial_flange_cam=pose_x,
+            initial_base_board=board,
+            initial_scale=start.board_scale if start else 1.0,
+            estimate_scale=estimate_scale,
+            huber_delta_px=huber_delta_px,
+        )
+
+    kept = list(range(len(flanges)))
+    rejected: list[int] = []
+    refinement = refine(kept, None)
+    max_rejected = int(len(flanges) * OUTLIER_MAX_FRACTION)
+    while reject and len(rejected) < max_rejected and len(kept) > max(MIN_SAMPLES, MIN_KEPT):
+        errors = list(refinement.sample_rms_px)
+        threshold = _threshold(errors, REFINE_OUTLIER_FLOOR_PX)
+        worst = int(np.argmax(errors))
+        if errors[worst] <= threshold:
+            break
+        trial = [i for i in kept if i != kept[worst]]
+        if rotation_diversity([flanges[i] for i in trial])[1] < MIN_AXES:
+            break
+        try:
+            trial_refinement = refine(trial, refinement)
+        except (ValueError, np.linalg.LinAlgError):
+            break
+        rejected.append(kept[worst])
+        kept, refinement = trial, trial_refinement
+    return refinement, tuple(rejected), initial
+
+
+def estimate_base_board(
+    poses_base_flange: Sequence[Pose], poses_cam_board: Sequence[Pose], pose_flange_cam: Pose
+) -> Pose:
+    """Startlage des Bretts: Mittel von `F_i · X · C_i` (wie `target_spread`)."""
+    return average_poses(_reconstruct(poses_base_flange, poses_cam_board, pose_flange_cam))
+
+
+def leave_one_out_errors(
+    poses_base_flange: Sequence[Pose],
+    corners_px: Sequence[np.ndarray],
+    poses_cam_board: Sequence[Pose],
+    object_points: np.ndarray,
+    camera_matrix: np.ndarray,
+    full: HandEyeRefinement,
+    *,
+    estimate_scale: bool = True,
+    huber_delta_px: float = HUBER_DELTA_PX,
+) -> LeaveOneOutResult:
+    """Vorhersagefehler je Aufnahme: ohne sie verfeinern, ihre Ecken vorhersagen.
+
+    Fuer jede Aufnahme `i` wird `refine_hand_eye` ohne `i` gerechnet (Warmstart
+    aus der Gesamtloesung `full`) und damit vorhergesagt, wo die Ecken in `i`
+    liegen muessten. Das ist ein ehrlicheres Mass als die Streuung: ein
+    fester Versatz, der in allen Aufnahmen gleich wirkt, bleibt dort unsichtbar,
+    ein schlecht bestimmtes `X` sagt aber eine fremde Ansicht schlecht voraus.
+
+    `error_px`: RMS-Abstand zu den entzerrten Pixelecken von `i`.
+    `error_m`: mittlerer 3D-Abstand im Kamera-KS zwischen den vorhergesagten
+    Ecken (`inv(F_i · X) · T_base_brett · s · P`) und den Ecken der gemessenen
+    Brettpose, `s · C_i · P`. Der Faktor `s`: ein Brett, das um `s` groesser ist
+    als das Nennmass, erscheint der PnP-Schaetzung mit Nennmass um `1/s`
+    verkleinert im Kamera-KS; ohne ihn ginge der Massstabsfehler als Abstand
+    ein, nicht der Vorhersagefehler.
+
+    Raises:
+        ValueError: weniger als `MIN_SAMPLES + 1` Aufnahmen.
+    """
+    count = len(poses_base_flange)
+    if count < MIN_SAMPLES + 1:
+        raise ValueError(f"Leave-one-out braucht mindestens {MIN_SAMPLES + 1} Aufnahmen")
+    points = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
+    matrix = np.asarray(camera_matrix, dtype=np.float64).reshape(3, 3)
+    homogeneous = np.hstack([points, np.ones((points.shape[0], 1))])
+    errors_px: list[float] = []
+    errors_m: list[float] = []
+    for index in range(count):
+        keep = [j for j in range(count) if j != index]
+        partial = refine_hand_eye(
+            [poses_base_flange[j] for j in keep],
+            [corners_px[j] for j in keep],
+            points,
+            matrix,
+            initial_flange_cam=full.pose_flange_cam,
+            initial_base_board=full.pose_base_board,
+            initial_scale=full.board_scale,
+            estimate_scale=estimate_scale,
+            huber_delta_px=huber_delta_px,
+        )
+        flange = np.asarray(poses_base_flange[index], dtype=np.float64)
+        pixels, predicted = _project_all(
+            invert(flange)[None, :, :],
+            points,
+            matrix,
+            partial.pose_flange_cam,
+            partial.pose_base_board,
+            partial.board_scale,
+        )
+        observed = np.asarray(corners_px[index], dtype=np.float64).reshape(-1, 2)
+        errors_px.append(float(np.sqrt(np.mean(np.sum((pixels[0] - observed) ** 2, axis=1)))))
+        measured = partial.board_scale * (np.asarray(poses_cam_board[index], dtype=np.float64) @ homogeneous.T).T[:, :3]
+        errors_m.append(float(np.mean(np.linalg.norm(predicted[0] - measured, axis=1))))
+    return LeaveOneOutResult(
+        error_px=tuple(errors_px),
+        error_m=tuple(errors_m),
+        rms_px=float(np.sqrt(np.mean(np.square(errors_px)))),
+        rms_m=float(np.sqrt(np.mean(np.square(errors_m)))),
+    )
+
+
+def reconstruction_spread(
+    poses_base_flange: Sequence[Pose],
+    poses_cam_target: Sequence[Pose],
+    pose_flange_cam: Pose,
+    used: Sequence[int],
+) -> tuple[tuple[tuple[float, float], ...], float, float, float, float]:
+    """Streuung von `T_base_ziel` fuer ein gegebenes `X`, wie `solve_hand_eye_robust`.
+
+    Liefert `(Residuen je Aufnahme (m, Grad), RMS m, RMS Grad, max m, max Grad)`;
+    Mittel und Statistik nur ueber die Indizes `used`, die Residuen fuer alle.
+    Fuer ein verfeinertes `X`, das nicht aus dem Park-Martin-Solver stammt.
+    """
+    reconstructed = _reconstruct(poses_base_flange, poses_cam_target, pose_flange_cam)
+    centre = average_poses([reconstructed[i] for i in used])
+    residuals = tuple(_distance(centre, pose) for pose in reconstructed)
+    kept = [residuals[i] for i in used]
+    return (
+        residuals,
+        math.sqrt(sum(m * m for m, _ in kept) / len(kept)),
+        math.sqrt(sum(d * d for _, d in kept) / len(kept)),
+        max(m for m, _ in kept),
+        max(d for _, d in kept),
+    )
+
+
+# --- Verfeinerung einer Brett-Sitzung: eine Pipeline fuer Server und CLI ------------
+
+#: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass (0,3 %) gibt es
+#: einen Hinweis (Status des Hand-Pis, Ausgabe von `calibrate_handeye --session`):
+#: Feldgroesse oder Intrinsik stimmen nicht.
+BOARD_SCALE_WARNING = 0.003
+
+#: Schritte von `refine_board_session`, fuer `RefinementError.stage`.
+STAGE_REFINEMENT = "refinement"
+STAGE_LEAVE_ONE_OUT = "leave-one-out"
+
+
+class RefinementError(Exception):
+    """Ein Rechenschritt der Brett-Verfeinerung ist gescheitert (kein `ValueError`).
+
+    `stage` nennt den Schritt (`STAGE_REFINEMENT`, `STAGE_LEAVE_ONE_OUT`), die
+    Ursache haengt als `__cause__` daran. `ValueError` (Posen zu aehnlich, zu
+    wenige Aufnahmen) laeuft dagegen unveraendert durch -- er ist ein Befund
+    ueber die Daten, kein Rechenfehler.
+    """
+
+    def __init__(self, stage: str) -> None:
+        super().__init__(stage)
+        self.stage = stage
+
+
+@dataclass(frozen=True)
+class BoardRefinement:
+    """Ergebnis von `refine_board_session`."""
+
+    refinement: HandEyeRefinement
+    #: Park-Martin-Start der Verfeinerung (ohne Ausreisserpruefung).
+    closed_form: HandEyeSolution
+    #: Indizes der verbleibenden Eingabe-Aufnahmen (nach der Pixel-Ausreisserpruefung).
+    kept: tuple[int, ...]
+    #: Vorhersagefehler je verbleibender Aufnahme; `None` bei hoechstens `MIN_SAMPLES`.
+    loo: LeaveOneOutResult | None
+    #: Das verfeinerte `X` mit Streuung der Brettlage, Indizes wie die Eingabe.
+    solution: HandEyeSolution
+
+    def hand_eye_fields(self) -> dict[str, float]:
+        """Die Verfeinerungs-Kennzahlen als Schluesselwoerter fuer `HandEye`."""
+        fields = {
+            "refined_reprojection_rms_px": self.refinement.reprojection_rms_px,
+            "board_scale": self.refinement.board_scale,
+        }
+        if self.loo is not None:
+            fields["loo_error_rms_px"] = self.loo.rms_px
+            fields["loo_error_rms_m"] = self.loo.rms_m
+        return fields
+
+
+def refine_board_session(
+    poses_base_flange: Sequence[Pose],
+    corners_px: Sequence[np.ndarray],
+    poses_cam_board: Sequence[Pose],
+    spec: BoardSpec,
+    calibration: CameraCalibration,
+    *,
+    estimate_scale: bool = True,
+) -> BoardRefinement:
+    """Die Verfeinerung einer Brett-Sitzung, von den verzerrten Ecken bis zur Streuung.
+
+    Entzerren (`lens.undistort_points`) -> `refine_hand_eye_robust` (Ausreisser
+    in Pixeln) -> Leave-one-out ueber die verbleibenden Aufnahmen ->
+    `reconstruction_spread` fuer das verfeinerte `X`. Das ist der Rechenweg des
+    Hand-Pis (`FinishHandEyeCalibration`) und der Nachrechnung am Rechner
+    (`calibrate_handeye --session`); beide rufen diese Funktion.
+
+    `corners_px`: je Aufnahme die kanonischen Ecken `(N, 2)` im **verzerrten**
+    Bild. Thread-tauglich, ohne Seiteneffekte.
+
+    Raises:
+        ValueError: wie `refine_hand_eye_robust` (Posen drehen um zu wenige
+            Achsen, zu wenige Aufnahmen, Eckenzahl passt nicht zum Brett).
+        RefinementError: ein anderer Fehler beim Verfeinern oder im Leave-one-out.
+    """
+    flanges = list(poses_base_flange)
+    boards = list(poses_cam_board)
+    try:
+        points = chessboard_object_points(spec)
+        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
+        undistorted = [lens.undistort_points(corners, calibration) for corners in corners_px]
+        refinement, rejected, closed_form = refine_hand_eye_robust(
+            flanges, undistorted, boards, points, matrix, estimate_scale=estimate_scale
+        )
+    except ValueError:
+        raise
+    except Exception as error:
+        raise RefinementError(STAGE_REFINEMENT) from error
+    try:
+        kept = [index for index in range(len(flanges)) if index not in rejected]
+        loo = None
+        if len(kept) > MIN_SAMPLES:
+            loo = leave_one_out_errors(
+                [flanges[i] for i in kept],
+                [undistorted[i] for i in kept],
+                [boards[i] for i in kept],
+                points,
+                matrix,
+                refinement,
+                estimate_scale=estimate_scale,
+            )
+        residuals, rms_m, rms_deg, max_m, max_deg = reconstruction_spread(
+            flanges, boards, refinement.pose_flange_cam, kept
+        )
+    except Exception as error:
+        raise RefinementError(STAGE_LEAVE_ONE_OUT) from error
+    solution = HandEyeSolution(
+        pose_flange_cam=refinement.pose_flange_cam,
+        rms_position_m=rms_m,
+        rms_rotation_deg=rms_deg,
+        max_position_m=max_m,
+        max_rotation_deg=max_deg,
+        residuals=residuals,
+        rejected=rejected,
+        used_count=len(kept),
+    )
+    return BoardRefinement(
+        refinement=refinement,
+        closed_form=closed_form,
+        kept=tuple(kept),
+        loo=loo,
+        solution=solution,
+    )
+
+
+# --- Datensatz einer Sitzung (`session.json`): Schreiber und Leser ----------------
+
+
+class UnknownSessionSchema(ValueError):
+    """Die Datei ist kein Datensatz dieser Version (`SESSION_SCHEMA`)."""
+
+
+@dataclass(frozen=True)
+class SessionSample:
+    """Eine Aufnahme, wie sie im Datensatz steht."""
+
+    accepted: bool
+    detail: str
+    flange_in_base: Pose
+    cam_to_target: Pose | None
+    reprojection_error_px: float | None
+    #: Kanonische Ecken `(N, 2)` im verzerrten Bild (Brett), sonst `None`.
+    corners_px: np.ndarray | None
+    #: Dateiname des Bildes neben der `session.json`, sonst `None`.
+    image: str | None
+
+
+def intrinsics_to_dict(calibration: CameraCalibration) -> dict:
+    """Die Intrinsik im Datensatz; Gegenstueck zu `intrinsics_from_dict`."""
+    return {
+        "cameraMatrix": np.asarray(calibration.camera_matrix, dtype=np.float64).tolist(),
+        "distortionCoefficients": np.asarray(calibration.distortion, dtype=np.float64)
+        .reshape(-1)
+        .tolist(),
+        "distortionModel": calibration.model,
+        "imageSize": [int(calibration.image_size[0]), int(calibration.image_size[1])],
+        "calibrationId": calibration.calibration_id,
+        "frameId": calibration.frame_id,
+    }
+
+
+def intrinsics_from_dict(data: dict) -> CameraCalibration:
+    """Liest die Intrinsik eines Datensatzes; Gegenstueck zu `intrinsics_to_dict`."""
+    size = data["imageSize"]
+    return CameraCalibration(
+        camera_matrix=np.asarray(data["cameraMatrix"], dtype=np.float64).reshape(3, 3),
+        distortion=np.asarray(data["distortionCoefficients"], dtype=np.float64),
+        image_size=(int(size[0]), int(size[1])),
+        frame_id=str(data.get("frameId", "")),
+        calibration_id=str(data.get("calibrationId", "")),
+        model=data.get("distortionModel", "pinhole"),
+    )
+
+
+def board_from_dict(data: dict) -> BoardSpec:
+    """Liest das Brett eines Datensatzes (`BoardSpec.as_dict` ist das Gegenstueck)."""
+    return BoardSpec(
+        type=data["type"],
+        cols=int(data["cols"]),
+        rows=int(data["rows"]),
+        square_size_m=float(data["squareSizeM"]),
+    )
+
+
+def session_payload(
+    *,
+    outcome: str,
+    frame_id: str,
+    tag_id: int,
+    tag_in_base: Pose | None,
+    board: BoardSpec | None,
+    intrinsics_source: str | None,
+    calibration: CameraCalibration | None,
+    samples: Sequence[SessionSample],
+    result: dict | None,
+) -> dict:
+    """Der Datensatz einer Sitzung als dict (`SESSION_SCHEMA`), Schluesselreihenfolge fest.
+
+    `outcome`: `finished`, `refused` oder `failed`. Gemeldete Flanschposen,
+    gemessene Brett- bzw. Tagposen, Ecken, Intrinsik und Brettgeometrie
+    genuegen, um mit `load_session` und `refine_board_session` neu zu rechnen.
+    """
+    return {
+        "schema": SESSION_SCHEMA,
+        "createdAt": utc_now_z(),
+        "outcome": outcome,
+        "frameId": frame_id,
+        "tagId": tag_id,
+        "tagInBase": pose_to_dict(tag_in_base) if tag_in_base is not None else None,
+        "board": board.as_dict() if board is not None else None,
+        "intrinsicsSource": intrinsics_source,
+        "intrinsics": intrinsics_to_dict(calibration) if calibration is not None else None,
+        "samples": [
+            {
+                "index": index,
+                "accepted": sample.accepted,
+                "detail": sample.detail,
+                "flangeInBase": pose_to_dict(sample.flange_in_base),
+                "camToTarget": (
+                    pose_to_dict(sample.cam_to_target) if sample.cam_to_target is not None else None
+                ),
+                "reprojectionErrorPx": sample.reprojection_error_px,
+                "cornersPx": sample.corners_px.tolist() if sample.corners_px is not None else None,
+                "image": sample.image,
+            }
+            for index, sample in enumerate(samples)
+        ],
+        "result": result,
+    }
+
+
+def session_json(payload: dict) -> str:
+    """Der Text der `session.json` zu `session_payload`."""
+    return json.dumps(payload, indent=2, default=float) + "\n"
+
+
+@dataclass(frozen=True)
+class SessionDataset:
+    """Ein gelesener Datensatz: nur die angenommenen Aufnahmen, Intrinsik und Brett roh."""
+
+    path: Path
+    frame_id: str
+    #: Wie im Datensatz (`None`, wenn unbekannt).
+    intrinsics_source: str | None
+    #: Zahl aller Aufnahmen im Datensatz, auch der abgelehnten.
+    total_count: int
+    flanges: list[Pose]
+    targets: list[Pose]
+    #: Je angenommene Aufnahme die Ecken (verschachtelte Listen) oder `None`.
+    corners_px: list
+    intrinsics: dict | None
+    board: dict | None
+
+    @property
+    def can_refine(self) -> bool:
+        """Brett-Sitzung mit Intrinsik und Ecken in jeder angenommenen Aufnahme."""
+        return bool(self.intrinsics and self.board and all(c is not None for c in self.corners_px))
+
+    def refine(self, *, estimate_scale: bool = True) -> BoardRefinement:
+        """`refine_board_session` ueber diesen Datensatz (nur wenn `can_refine`)."""
+        return refine_board_session(
+            self.flanges,
+            self.corners_px,
+            self.targets,
+            board_from_dict(self.board),
+            intrinsics_from_dict(self.intrinsics),
+            estimate_scale=estimate_scale,
+        )
+
+
+def load_session(path) -> SessionDataset:
+    """Liest einen Datensatz (Ordner oder `session.json`).
+
+    Raises:
+        UnknownSessionSchema: andere Version oder keine Sitzungsdatei.
+    """
+    path = Path(path)
+    if path.is_dir():
+        path = path / SESSION_FILE
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema") != SESSION_SCHEMA:
+        raise UnknownSessionSchema(
+            f"Unbekanntes Sitzungs-Schema '{data.get('schema')}' in {path} (erwartet {SESSION_SCHEMA})"
+        )
+    samples = data.get("samples", [])
+    accepted = [raw for raw in samples if raw.get("accepted")]
+    return SessionDataset(
+        path=path,
+        frame_id=str(data.get("frameId", "")),
+        intrinsics_source=data.get("intrinsicsSource"),
+        total_count=len(samples),
+        flanges=[pose_from_dict(raw["flangeInBase"]) for raw in accepted],
+        targets=[pose_from_dict(raw["camToTarget"]) for raw in accepted],
+        corners_px=[raw.get("cornersPx") for raw in accepted],
+        intrinsics=data.get("intrinsics"),
+        board=data.get("board"),
+    )
+
+
 def load_hand_eye(path) -> HandEye:
-    """Read a hand-eye calibration from JSON."""
+    """Liest eine Hand-Auge-Kalibrierung aus JSON."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Hand-Auge-Kalibrierung nicht gefunden: {path}")
@@ -249,31 +1165,46 @@ def load_hand_eye(path) -> HandEye:
         rms_position_m=_or_nan(data.get("rmsPositionM")),
         rms_rotation_deg=_or_nan(data.get("rmsRotationDeg")),
         sample_count=int(data.get("sampleCount", 0)),
+        max_position_m=_or_nan(data.get("maxPositionM")),
+        max_rotation_deg=_or_nan(data.get("maxRotationDeg")),
+        refined_reprojection_rms_px=_or_nan(data.get("refinedReprojectionRmsPx")),
+        board_scale=_or_nan(data.get("boardScale")),
+        loo_error_rms_px=_or_nan(data.get("looErrorRmsPx")),
+        loo_error_rms_m=_or_nan(data.get("looErrorRmsM")),
+        intrinsics_source=str(data.get("intrinsicsSource") or ""),
     )
 
 
 def save_hand_eye(path, hand_eye: HandEye) -> None:
-    """Write a hand-eye calibration as JSON."""
+    """Schreibt eine Hand-Auge-Kalibrierung als JSON."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    now = utc_now_z()
     payload = {
         "schema": SCHEMA,
         "frameId": hand_eye.frame_id,
         "calibrationId": hand_eye.calibration_id or f"{hand_eye.frame_id or path.stem}@{now}",
         "poseFlangeCam": pose_to_dict(hand_eye.pose_flange_cam),
-        "rmsPositionM": _finite(hand_eye.rms_position_m),
-        "rmsRotationDeg": _finite(hand_eye.rms_rotation_deg),
+        "rmsPositionM": finite_or_none(hand_eye.rms_position_m, FILE_DIGITS),
+        "rmsRotationDeg": finite_or_none(hand_eye.rms_rotation_deg, FILE_DIGITS),
+        "maxPositionM": finite_or_none(hand_eye.max_position_m, FILE_DIGITS),
+        "maxRotationDeg": finite_or_none(hand_eye.max_rotation_deg, FILE_DIGITS),
         "sampleCount": int(hand_eye.sample_count),
         "createdAt": now,
     }
+    # Nur wenn vorhanden: Dateien ohne Verfeinerung bleiben, wie sie waren.
+    for key, value in (
+        ("refinedReprojectionRmsPx", hand_eye.refined_reprojection_rms_px),
+        ("boardScale", hand_eye.board_scale),
+        ("looErrorRmsPx", hand_eye.loo_error_rms_px),
+        ("looErrorRmsM", hand_eye.loo_error_rms_m),
+    ):
+        rounded = finite_or_none(value, FILE_DIGITS)
+        if rounded is not None:
+            payload[key] = rounded
+    if hand_eye.intrinsics_source:
+        payload["intrinsicsSource"] = hand_eye.intrinsics_source
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-def _finite(value: float):
-    """Map NaN to `None` -- `json.dumps` would otherwise emit invalid JSON."""
-    number = float(value)
-    return None if math.isnan(number) or math.isinf(number) else round(number, 6)
 
 
 def _or_nan(value) -> float:
@@ -281,14 +1212,44 @@ def _or_nan(value) -> float:
 
 
 __all__ = [
+    "AXIS_THRESHOLD_DEG",
+    "BOARD_SCALE_WARNING",
+    "MIN_AXES",
     "MIN_SAMPLES",
     "SCHEMA",
+    "SESSION_FILE",
+    "SESSION_SCHEMA",
+    "HUBER_DELTA_PX",
+    "STAGE_LEAVE_ONE_OUT",
+    "STAGE_REFINEMENT",
+    "BoardRefinement",
     "HandEye",
+    "HandEyeRefinement",
+    "HandEyeSolution",
+    "LeaveOneOutResult",
+    "RefinementError",
     "RobotAnchor",
+    "SessionDataset",
+    "SessionSample",
+    "UnknownSessionSchema",
     "anchor_world_base",
+    "board_from_dict",
     "camera_pose_from_robot",
+    "estimate_base_board",
+    "intrinsics_from_dict",
+    "intrinsics_to_dict",
+    "leave_one_out_errors",
     "load_hand_eye",
+    "load_session",
+    "reconstruction_spread",
+    "refine_board_session",
+    "refine_hand_eye",
+    "refine_hand_eye_robust",
+    "rotation_diversity",
     "save_hand_eye",
+    "session_json",
+    "session_payload",
     "solve_hand_eye",
+    "solve_hand_eye_robust",
     "target_spread",
 ]

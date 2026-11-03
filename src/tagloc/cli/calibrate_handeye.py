@@ -34,6 +34,16 @@ Bildpfade sind relativ zur Aufnahmeliste. Dann:
         --calibration data/calibration/cam_flange.json \\
         --out data/handeye/cam_flange.json
 
+Aus einer Sitzung des Hand-Pis (`data/handeye/sessions/<Zeit>/`, geschrieben
+von `FinishHandEyeCalibration`) rechnet der Aufruf
+
+    python -m tagloc.cli.calibrate_handeye --session data/handeye/sessions/<Zeit> \\
+        [--out data/handeye/cam_flange.json]
+
+dieselbe Kalibrierung neu: geschlossene Loesung, robust, dann die gemeinsame
+Verfeinerung gegen die Brettecken samt Leave-one-out-Vorhersagefehler. Ohne
+`--out` wird nur gerechnet und angezeigt.
+
 Das Guetemass steht danach in der Ausgabe: der Tag lag fest, also muss er aus
 jeder Roboterpose an derselben Stelle herauskommen. Streut das, stimmt
 entweder die Kamerakalibrierung, die eingetragene Tag-Groesse oder die
@@ -44,10 +54,23 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
+
 from ..detector import build_detector
 from ..geometry import pose_from_dict
-from ..handeye import HandEye, save_hand_eye, solve_hand_eye
-from ._common import describe_pose, setup_logging
+from ..handeye import (
+    BOARD_SCALE_WARNING,
+    BoardRefinement,
+    HandEye,
+    RefinementError,
+    UnknownSessionSchema,
+    load_session,
+    save_hand_eye,
+    solve_hand_eye,
+    solve_hand_eye_robust,
+)
+from ..tagmap import DEFAULT_TAG_FAMILY
+from ._common import add_decoder_arguments, describe_pose, detector_options, setup_logging
 
 SAMPLES_SCHEMA = "wsc.vision.handeye.samples/1"
 
@@ -60,15 +83,25 @@ SPREAD_WARNING_M = 0.005
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--samples", type=Path, required=True, help="Aufnahmeliste der Kalibrierfahrt"
+        "--session",
+        type=Path,
+        help="Datensatz einer Sitzung (Ordner oder session.json): neu rechnen, "
+        "statt Bilder auszuwerten",
+    )
+    parser.add_argument("--samples", type=Path, help="Aufnahmeliste der Kalibrierfahrt")
+    parser.add_argument("--calibration", type=Path, help="Kamerakalibrierung (JSON)")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="Zieldatei der Hand-Auge-Kalibrierung (bei --session optional)",
     )
     parser.add_argument(
-        "--calibration", type=Path, required=True, help="Kamerakalibrierung (JSON)"
+        "--no-scale",
+        action="store_true",
+        help="Bei --session den Brettmassstab nicht mitschaetzen",
     )
-    parser.add_argument(
-        "--out", type=Path, required=True, help="Zieldatei der Hand-Auge-Kalibrierung"
-    )
-    parser.add_argument("--family", default="tag36h11", help="Tag-Familie")
+    parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
+    add_decoder_arguments(parser)
     parser.add_argument("--backend", default="aruco", help="Detektor-Backend")
     parser.add_argument(
         "--frame-id", default="", help="Bezugsrahmen; leer = aus der Kalibrierung"
@@ -84,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_samples(path: Path) -> tuple[int, float, list]:
-    """Read the capture list. Image paths resolve relative to the list."""
+    """Liest die Aufnahmeliste. Bildpfade gelten relativ zur Liste."""
     path = Path(path)
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")
@@ -107,9 +140,106 @@ def load_samples(path: Path) -> tuple[int, float, list]:
     return int(data.get("tagId", 0)), float(data.get("tagSizeM", 0.05)), samples
 
 
+def solve_session(path: Path, *, estimate_scale: bool = True, out: Path | None = None) -> int:
+    """Eine gespeicherte Sitzung neu rechnen und die Kennzahlen drucken.
+
+    Gerechnet wird in `tagloc.handeye` (`refine_board_session`, derselbe Weg wie
+    auf dem Hand-Pi); hier steht nur die Ausgabe.
+    """
+    try:
+        dataset = load_session(path)
+    except UnknownSessionSchema as error:
+        raise SystemExit(str(error)) from error
+    print(
+        f"Sitzung {dataset.path.parent.name}: {len(dataset.flanges)} von "
+        f"{dataset.total_count} Aufnahmen"
+    )
+    print(f"Intrinsik: {dataset.intrinsics_source}")
+
+    closed, spread_m, spread_deg = solve_hand_eye(dataset.flanges, dataset.targets)
+    print(f"\nGeschlossene Loesung (Park-Martin): {describe_pose(closed)}")
+    print(f"  Streuung des Ziel-Orts: {spread_m * 1000.0:.2f} mm / {spread_deg:.3f} deg")
+    robust = solve_hand_eye_robust(dataset.flanges, dataset.targets)
+    print(
+        f"\nRobust (Streuung der Brettlage; bei Brett nur Vergleich): "
+        f"{describe_pose(robust.pose_flange_cam)}"
+    )
+    print(
+        f"  RMS {robust.rms_position_m * 1000.0:.2f} mm / {robust.rms_rotation_deg:.3f} deg, "
+        f"{robust.used_count} Aufnahmen, verworfen: {list(robust.rejected) or 'keine'}"
+    )
+
+    refined = None
+    if not dataset.can_refine:
+        print("\nKeine Ecken/Intrinsik im Datensatz (Tag-Sitzung?) -- keine Verfeinerung.")
+        solution = robust
+    else:
+        # Ausreisser nach der Verfeinerung in Pixeln, nicht nach der
+        # Park-Martin-Streuung (ein Massstabsfehler blaeht die auf).
+        try:
+            refined = dataset.refine(estimate_scale=estimate_scale)
+        except RefinementError as error:
+            # Rechenfehler laufen wie immer als Traceback der Ursache durch.
+            raise error.__cause__ from None
+        solution = refined.solution
+        _print_refinement(refined)
+
+    print(
+        f"\nStreuung der Brettlage: RMS {solution.rms_position_m * 1000.0:.2f} mm / "
+        f"{solution.rms_rotation_deg:.3f} deg, max {solution.max_position_m * 1000.0:.2f} mm"
+    )
+    if out is not None:
+        save_hand_eye(
+            out,
+            HandEye(
+                pose_flange_cam=solution.pose_flange_cam,
+                frame_id=dataset.frame_id,
+                rms_position_m=solution.rms_position_m,
+                rms_rotation_deg=solution.rms_rotation_deg,
+                sample_count=solution.used_count,
+                max_position_m=solution.max_position_m,
+                max_rotation_deg=solution.max_rotation_deg,
+                intrinsics_source=dataset.intrinsics_source or "",
+                **(refined.hand_eye_fields() if refined is not None else {}),
+            ),
+        )
+        print(f"\nGeschrieben: {out}")
+    return 0
+
+
+def _print_refinement(refined: BoardRefinement) -> None:
+    """Die Verfeinerung einer Brett-Sitzung: Ausreisser, Lage, Vorhersagefehler."""
+    refinement = refined.refinement
+    print(f"\nVerworfen (Pixel-Ausreisser): {list(refined.solution.rejected) or 'keine'}")
+    print(f"\nVerfeinert: {describe_pose(refinement.pose_flange_cam)}")
+    print(
+        f"  Reprojektion {refinement.reprojection_rms_px:.3f} px, Brettmassstab "
+        f"{refinement.board_scale:.5f}, {refinement.iterations} Schritte, "
+        f"{'konvergiert' if refinement.converged else 'NICHT konvergiert'}"
+    )
+    print(f"  Brett im Basis-KS: {describe_pose(refinement.pose_base_board)}")
+    shift = np.linalg.norm(
+        refinement.pose_flange_cam[:3, 3] - refined.closed_form.pose_flange_cam[:3, 3]
+    )
+    print(f"  Verschiebung von t_X gegen Park-Martin: {shift * 1000.0:.2f} mm")
+    loo = refined.loo
+    if loo is not None:
+        print(
+            f"\nLeave-one-out-Vorhersagefehler: {loo.rms_px:.3f} px, {loo.rms_m * 1000.0:.2f} mm (RMS)"
+        )
+        for index, error_px, error_m in zip(refined.kept, loo.error_px, loo.error_m):
+            print(f"  Aufnahme {index}: {error_px:.3f} px, {error_m * 1000.0:.2f} mm")
+    if abs(refinement.board_scale - 1.0) > BOARD_SCALE_WARNING:
+        print("\nHINWEIS: Brettmassstab weicht ueber 0,3 % ab -- Brett nachmessen / Intrinsik pruefen.")
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
+    if args.session is not None:
+        return solve_session(args.session, estimate_scale=not args.no_scale, out=args.out)
+    if args.samples is None or args.calibration is None or args.out is None:
+        raise SystemExit("--samples, --calibration und --out sind noetig (oder --session).")
 
     import cv2
 
@@ -119,7 +249,7 @@ def main(argv=None) -> int:
 
     tag_id, tag_size_m, samples = load_samples(args.samples)
     calibration = load_calibration(args.calibration)
-    detector = build_detector(args.family, args.backend)
+    detector = build_detector(args.family, args.backend, **detector_options(args))
 
     poses_base_flange = []
     poses_cam_tag = []

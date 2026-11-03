@@ -22,6 +22,7 @@ alle Namespace-Indizes um eins nach unten; wer sie ueber
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import signal
@@ -100,37 +101,68 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # verdoppeln (`scale_to_resolution`). Nach der Neukalibrierung entfernen,
         # damit eine versehentlich falsche Aufloesung wieder auffaellt.
         "allow_resolution_mismatch": True,
-        "tag_size_m": 0.100,
+        # Rueckfallgroesse fuer Tags, die nicht in der Tag-Map stehen -- also
+        # fuer alle Modul- und Robotertags. Unsere Modultags sind 8 cm (Kante
+        # des schwarzen Quadrats); eine falsche Groesse skaliert den Abstand
+        # zur Kamera und schiebt den Tag seitlich weg (13.10.2026).
+        "tag_size_m": 0.080,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
         # Dasselbe gedruckte Board wie am Hand-Pi (siehe cam_flange unten) --
         # nur die Aufloesung/Kameradistanz unterscheidet sich, nicht das
-        # Blatt. Noch nicht real durchgemessen; falls das Board bei der
-        # Kalibrierfahrt nicht gefunden wird, war die Annahme falsch --
-        # dann mit dem Diagnose-Skript aus der Hand-Pi-Kalibrierung mehrere
-        # cols/rows-Kombinationen gegen einen echten Frame testen.
+        # Blatt. Seit 28.10.2026 das neue Brett: 7x10 innere Ecken (8x11 Felder),
+        # 23 mm/Feld.
+        # Wird es bei der Kalibrierfahrt nicht gefunden, mit dem
+        # Diagnose-Skript (`tools/diagnose_board.py`) mehrere cols/rows-
+        # Kombinationen gegen einen echten Frame testen.
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
-        "calibration_board_rows": 9,
-        "calibration_board_square_size_m": 0.022,
+        "calibration_board_rows": 10,
+        "calibration_board_square_size_m": 0.023,
+        # Kannala-Brandt statt Brown-Conrady: in den Bildtests vom 29.09.2026
+        # das beste Modell fuer die HQ-Kamera bei 4056x3040 (Arbeitsplan
+        # kalibrierung-linsenmodell-je-kamera.md).
+        "calibration_model": "fisheye",
+        # Detektor-Parameter (OpenCV-DetectorParameters, Attributname -> Wert).
+        # Stand 19.10.2026, Kamera neu fokussiert: der OpenCV-Standard findet
+        # alle Tags; ein feineres Abtastraster (8 statt 4 Pixel je Zelle) gibt
+        # unter kuenstlicher Verschlechterung +3 bis +5 Treffer Reserve, ohne
+        # Fehlalarme. errorCorrectionRate bewusst NICHT erhoeht -- mehr Reichweite,
+        # aber falsche IDs. Messung: doc/projektdoku/kamera-und-detektor-analyse.md.
+        # Zum Ausprobieren VISION_APRILTAG_DETECTOR_PARAMS setzen.
+        "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
     },
     "cam_flange": {
+        # Subpixel-Ecken an (Verfahren subpix): Die Handkamera misst Tags zum
+        # Anfahren, jede Eckenrundung wirkt als fester Versatz. Die CPU-Last
+        # (siehe AprilTagProfileConfig) spielt hier bei 640x480 keine Rolle.
+        "subpixel_corner_refinement": True,
+        "corner_refinement_method": "subpix",
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
         # Frames kommen ueber SharedCamera in dieser Aufloesung an, nicht in
         # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
         # ersten Job als ValueError ("Kalibrierung gilt fuer ...") auf.
         "resolution": (640, 480),
-        "tag_size_m": 0.050,
+        # Dieselben 8-cm-Modultags wie an der Decke (siehe cam_ceiling).
+        "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Echtes Board, am Hand-Pi durchgemessen (RMS 0,2945 px, Abdeckung
-        # 96 %/95 %, siehe data/calibration/cam_flange.json): ein simples
-        # Schachbrett aus dem Internet, 22 mm/Feld, 7x9 innere Ecken -- kein
-        # ChArUco-Board, das braeuchte zusaetzliche ArUco-Marker im Druck.
+        # Hand-Auge-/Kalibrierbrett seit 28.10.2026: 8x11 Felder = 7x10 innere
+        # Ecken, 23 mm/Feld. 7 + 10 = 17 ist ungerade, also eindeutig fuer die
+        # automatische Hand-Auge-Kalibrierung (die 180-Grad-Drehung des Bretts
+        # ist erkennbar). Eine zu kleine Eckenzahl findet ein Teilraster mit
+        # falsch zugeordneten Ecken ("Board-Pose passt schlecht", ca. 18 px).
+        # Die Intrinsik der Handkamera muss mit diesem Brett neu kalibriert
+        # werden (das alte 7x9-Brett mit 22 mm/Feld ist hinfaellig). Ein
+        # simples Schachbrett, kein ChArUco-Board.
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
-        "calibration_board_rows": 9,
-        "calibration_board_square_size_m": 0.022,
+        "calibration_board_rows": 10,
+        "calibration_board_square_size_m": 0.023,
+        # Brown-Conrady mit 5 Koeffizienten: in den Bildtests vom 29.09.2026
+        # das beste Modell bei 640x480. Entspricht dem bisherigen Verhalten,
+        # hier nur ausdruecklich festgehalten.
+        "calibration_model": "pinhole",
     },
 }
 
@@ -156,14 +188,27 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         # dafuer nicht: allein das Kodieren eines 4056x3040-Bildes
         # ueberschritt ihn zuverlaessig, das Overlay fiel jeden Tick auf das
         # unmarkierte Rohbild zurueck (Bug: Overlay-Text fehlte komplett auf
-        # Pi 1). "apriltag" verkleinert seit der Umstellung auf
-        # Software-Downscale (siehe stream_overlay.py.annotate) VOR Erkennung
-        # und Zeichnen auf `detection_max_width` -- braucht die Reserve nicht
-        # mehr zwingend, der grosszuegige Wert bleibt als Sicherheitsmarge
-        # bestehen. cam_flange braucht das nicht -- dort hat sich an der
+        # Pi 1). "apriltag" zeichnet seit 21.10.2026 nur noch ein fertiges
+        # Ergebnis in voller Aufloesung auf das verkleinerte Bild; die eigene
+        # Erkennung laeuft im Hintergrund (siehe stream_overlay.py) -- braucht
+        # die Reserve nicht mehr zwingend, der grosszuegige Wert bleibt als
+        # Sicherheitsmarge bestehen. cam_flange braucht das nicht -- dort hat sich an der
         # Erkennungsaufloesung nichts geaendert (640x480 war schon immer der
         # volle Frame).
         "overlay_timeout_s": 8.0,
+        # libcamera-Controls (ISP/Belichtung). Bester von 14 gemessenen
+        # Einstellungen (Einstellungstest 19.10.2026, siehe
+        # doc/projektdoku/kamera-und-detektor-analyse.md): etwas dunkler, damit
+        # das Weiss der Tags nicht ausbrennt (Automatik: 15-48 %), etwas mehr
+        # ISP-Schaerfe und Kontrast. Kontrast >= 1.25 und Matrix-Messung brennen
+        # die Tags dagegen komplett aus. Die Kalibrierung muss mit diesen Werten
+        # aufgenommen werden. Zum Ausprobieren VISION_CAMERA_CONTROLS setzen.
+        "camera_controls": {
+            "ExposureValue": -0.5,
+            "Sharpness": 1.5,
+            "Contrast": 1.15,
+            "NoiseReductionMode": "Fast",
+        },
     },
 }
 
@@ -172,6 +217,58 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
 #: Quelltext, nicht im Paket: Kalibrierungen gehoeren zur Hardware, die Tag-Map
 #: zur Zelle.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def merged_json_object_env(name: str, preset: dict | None) -> dict:
+    """`preset` mit dem JSON-Objekt der Umgebungsvariable `name` uebersteuert.
+
+    Je Schluessel gewinnt die Umgebungsvariable, `null` entfernt einen
+    Preset-Eintrag. Nicht gesetzt oder leer = unveraendertes Preset.
+    `ValueError` bei ungueltigem JSON oder wenn es kein Objekt ist -- beim
+    Start, nicht erst mitten im Betrieb.
+    """
+    merged = dict(preset or {})
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return merged
+    try:
+        override = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{name} ist kein gueltiges JSON ({error}): {raw!r}") from error
+    if not isinstance(override, dict):
+        raise ValueError(
+            f"{name} muss ein JSON-Objekt sein, z. B. '{{\"name\": 1.0}}', nicht {raw!r}"
+        )
+    for key, value in override.items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
+
+
+def subpixel_corner_settings(preset: dict) -> dict:
+    """`subpixel_corner_refinement` und `corner_refinement_method` aus Preset und Umgebung.
+
+    Preset-Vorgabe (`cam_flange`: an, Verfahren `"subpix"`; sonst aus).
+    `VISION_SUBPIXEL_CORNER_REFINEMENT` uebersteuert: `0`/`none` aus, `1`
+    an mit dem Verfahren des Presets, `apriltag`/`subpix` an mit diesem
+    Verfahren. Unbekannte Werte werfen `ValueError` beim Start.
+    """
+    enabled = bool(preset.get("subpixel_corner_refinement", False))
+    method = str(preset.get("corner_refinement_method", "subpix"))
+    raw = os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "").strip().lower()
+    if raw in ("0", "none", "false"):
+        enabled = False
+    elif raw in ("1", "true"):
+        enabled = True
+    elif raw in ("apriltag", "subpix"):
+        enabled, method = True, raw
+    elif raw:
+        raise ValueError(
+            f"VISION_SUBPIXEL_CORNER_REFINEMENT='{raw}': erwartet 0, 1, none, apriltag oder subpix"
+        )
+    return {"subpixel_corner_refinement": enabled, "corner_refinement_method": method}
 
 
 def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
@@ -188,7 +285,20 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     off -- must be set explicitly per Pi, never baked into the committed
     default.
     """
-    preset = PI_APRILTAG_PRESETS.get(frame_id, {})
+    preset = dict(PI_APRILTAG_PRESETS.get(frame_id, {}))
+    subpixel = subpixel_corner_settings(preset)
+    for key in subpixel:
+        preset.pop(key, None)
+    # OpenCV-Detektor-Parameter: Preset, je Schluessel von der Umgebungs-
+    # variable uebersteuert (`null` entfernt einen Eintrag).
+    preset["detector_parameters"] = merged_json_object_env(
+        "VISION_APRILTAG_DETECTOR_PARAMS", preset.get("detector_parameters")
+    )
+    # Uebersteuert das Linsenmodell des Presets, z. B. fuer einen
+    # Vergleichslauf mit dem anderen Modell, ohne den Code anzufassen.
+    model_override = os.getenv("VISION_CALIBRATION_MODEL")
+    if model_override:
+        preset["calibration_model"] = model_override
     # Hand-Auge nur dort, wo eine Kamera am Roboter sitzt. Die Deckenkamera
     # ist fest montiert und hat keinen Flansch -- ein Pfad fuer sie waere eine
     # Datei, die nie entsteht und beim Start jedes Mal eine Warnung erzeugt.
@@ -203,15 +313,24 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         hand_eye_path=hand_eye_path,
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
-        # Debug-Artefakt: jede uebernommene interaktive Aufnahme landet
-        # zusaetzlich als PNG hier -- zum Nachpruefen/Neu-Rechnen abseits vom
-        # Server (2026-09-23, waehrend Kalibrierprobleme auf Pi 1 untersucht
-        # wurden). `data/` ist gitignored, kein Aufraeum-Mechanismus noetig,
-        # nur von Hand leeren, wenn der Speicherplatz auf dem Pi knapp wird.
-        calibration_capture_dir=REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures",
+        # Debug-Artefakt, Standard aus (2026-09-23 eingefuehrt, dann zunaechst
+        # unbedingt fuer beide Pis aktiviert -- 2026-09-28 auf Env-Var
+        # umgestellt): jede uebernommene interaktive Aufnahme landet
+        # zusaetzlich als JPEG hier ab, zum Nachpruefen/Neu-Rechnen abseits
+        # vom Server. War live an der Deckenkamera (12 MP) selbst nach dem
+        # Umzug auf einen eigenen Hintergrund-Pool (siehe
+        # `calibration_session.py._schedule_capture_save`) noch spuerbar
+        # zusaetzliche SD-Karten-Last -- deshalb bewusst kein Standard mehr,
+        # sondern nur bei Bedarf einschalten. `data/` ist gitignored, kein
+        # Aufraeum-Mechanismus noetig, nur von Hand leeren.
+        calibration_capture_dir=(
+            REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures"
+            if os.getenv("VISION_SAVE_CALIBRATION_CAPTURES") == "1"
+            else None
+        ),
         # Default aus, siehe AprilTagProfileConfig.subpixel_corner_refinement.
         # Env-Var bleibt als Schalter fuer Layer 2/Kalibrierung.
-        subpixel_corner_refinement=os.getenv("VISION_SUBPIXEL_CORNER_REFINEMENT", "0") == "1",
+        **subpixel,
         # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
         # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver
         # Default aendert -- siehe `AprilTagProfileConfig.apriltag_quad_decimate`.
@@ -337,14 +456,24 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # `CameraStreamConfig.stream_enabled`) -- `resolution` bleibt gesetzt,
     # weil dieselbe `CameraStreamConfig` auch die Job-Kamera oeffnet.
     stream_enabled = os.getenv("VISION_DISABLE_STREAM") != "1"
+    # Kamera-Controls: Preset, je Schluessel von der Umgebungsvariable
+    # uebersteuert. Auch fuer die anderen Backends gelesen, damit ein gesetztes
+    # `VISION_CAMERA_CONTROLS` dort die Warnung "wird ignoriert" ausloest.
+    stream_preset = dict(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {})
+    camera_controls = merged_json_object_env(
+        "VISION_CAMERA_CONTROLS", stream_preset.pop("camera_controls", None)
+    )
     camera_stream = (
-        CameraStreamConfig(backend=backend, stream_enabled=stream_enabled)
+        CameraStreamConfig(
+            backend=backend, stream_enabled=stream_enabled, camera_controls=camera_controls
+        )
         if backend == "realsense"
         else CameraStreamConfig(
             backend=backend,
             resolution=apriltag.resolution,
             stream_enabled=stream_enabled,
-            **(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {}),
+            camera_controls=camera_controls,
+            **stream_preset,
         )
     )
     return VisionServerConfig(
@@ -367,7 +496,7 @@ async def main():
     # Der Endpoint nennt die LAN-IPv4, denn `register_to_discovery()` gibt
     # genau ihn als DiscoveryUrl an den Discovery-Server weiter. `0.0.0.0`
     # waere dort wertlos. Gelauscht wird trotzdem auf allen Schnittstellen,
-    # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Hello-World-Client
+    # sonst verlieren wir 127.0.0.1 -- darueber laeuft der Handshake-Client
     # auf dem Pi.
     endpoint = lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
     server.set_endpoint(endpoint)
@@ -403,13 +532,14 @@ async def main():
             # Erst der Server, dann Ankuendigung und Registrierung -- wer den
             # Dienst findet, soll ihn auch erreichen. Beim Verlassen werden
             # beide zurueckgezogen.
-            # Beide sind standardmaessig aus (`OPCUA_MDNS`, `OPCUA_LDS_URL`).
+            # Beide sind standardmaessig an (`OPCUA_MDNS=0` bzw.
+            # `OPCUA_LDS_URL=""` schalten ab).
             async with (
                 mdns.announce(instance, MDNS_PORT, MDNS_PATH),
                 # Die Ankuendigung allein genuegt dem Aggregation-Server der
                 # Zelle nicht: er nimmt nur auf, was beim Discovery-Server
                 # angemeldet ist. Messung und Begruendung stehen in `discovery.lds`.
-                # Standardmaessig aus -- ohne `OPCUA_LDS_URL` kehrt das sofort
+                # Standardmaessig an; mit `OPCUA_LDS_URL=""` kehrt das sofort
                 # zurueck, und das Modul erscheint dort nicht.
                 lds.register(server),
             ):

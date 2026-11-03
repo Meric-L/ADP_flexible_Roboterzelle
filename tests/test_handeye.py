@@ -17,6 +17,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests._support import pose
+
 try:
     import numpy as np
 
@@ -61,10 +63,6 @@ FLANGE_CAM_RVEC = (0.0, math.radians(12.0), 0.0)
 #: Groessenordnungen darueber -- `test_the_spread_exposes_a_wrong_transform`
 #: zeigt das an einem um 10 mm verschobenen Versatz.
 NUMERIC_NOISE_RAD = 1e-6
-
-
-def pose(translation, *, rvec=(0.0, 0.0, 0.0)):
-    return geometry.from_rvec_tvec(rvec, translation)
 
 
 def pose_world_base():

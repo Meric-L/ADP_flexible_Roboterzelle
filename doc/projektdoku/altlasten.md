@@ -1,5 +1,7 @@
 # Altlasten — Stand und Abbaubedingungen
 
+> **Abgelöst (30.10.2026)** durch [`altlasten-zelle.md`](altlasten-zelle.md) (dieses Repo) und [`altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition). Offene Punkte von hier sind dort neu geprüft und mit ihrer alten ID übernommen. Dieses Dokument bleibt als Verlauf stehen.
+
 Mitlaufende Liste der Dinge, die wir im Laufe des Projekts eingebaut haben und die
 **nicht zur Lokalisierung gehören**: Demo-Aufbauten, Testinstrumente, Platzhalter und
 Deployment-Behelfe. Zweck ist, dass nichts davon unbemerkt produktiv wird.
@@ -28,7 +30,7 @@ wurde. Fachlich hatte nichts davon mit der Zelle zu tun. Alles weg.
 |---|---|---|
 | ~~A1~~ | ~~`2:VisionSystem` — zweite, leere `VisionSystemType`-Instanz~~ | Der Adressraum enthält jetzt genau **eine** Instanz; festgehalten in `tests/test_part10_fassade.py` |
 | ~~A2~~ | ~~`CpuTemperatureResult`~~ | Mit A1 entfallen |
-| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz im Log ist der Loop-Lag-Watchdog in `runner.py`; das **nach außen sichtbare** Lebenszeichen ist seit 22.09.2026 `VisionAsset/Health/DeviceHealth` (OPC 40100-2, siehe `vision-server-interface.md` 11.4) — kein Zähler ohne Quelle, sondern ein genormter Zustand, der nur bei Änderung geschrieben wird |
+| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz im Log ist der Loop-Lag-Watchdog in `runner/machine.py`; das **nach außen sichtbare** Lebenszeichen ist seit 22.09.2026 `VisionAsset/Health/DeviceHealth` (OPC 40100-2, siehe `vision-server-interface.md` 11.4) — kein Zähler ohne Quelle, sondern ein genormter Zustand, der nur bei Änderung geschrieben wird |
 | ~~A4~~ | ~~`RaspiDevice/Setpoint`~~ | Mit B2 entfallen |
 | ~~A5~~ | ~~1-Hz-Endlosschleife im Server~~ | `main()` wartet jetzt nur noch auf das Stopp-Signal |
 | ~~A6~~ | ~~`print_setpoint.py`~~ | Gelöscht |
@@ -75,7 +77,7 @@ Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
 | ~~C4~~ | ~~`configuration_id` wird von keiner Quelle gesetzt~~ | — | — | **Erledigt**: `AprilTagDetectionSource` füllt ihn mit Tag-Familie, Kalibrier- und Tag-Map-Identität (`tagloc.identity`, ohne numpy und ohne cv2) |
 | ~~C5~~ | ~~Nodeset-XML unter `src/OPCUA/`~~ | — | — | **Erledigt** 22.09.2026: alle vier Nodesets liegen unter `src/vision_server/nodesets/`, `config.py` zeigt per `_NODESET_DIR` dorthin. `src/OPCUA/` gibt es nicht mehr |
 | ~~C6~~ | ~~`caputure.py` — QR-Scanner im AprilTag-Ordner~~ | — | — | **Erledigt**: gelöscht. Die Pi-Kamera spricht jetzt `SharedCamera` an, für CLI-Aufrufe `tagloc.frames.PiCameraSource` |
-| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. Seit 23.09.2026 ist die Anmeldung standardmäßig aus; `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/` schaltet sie ein bzw. biegt sie ohne Codeänderung um |
+| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. Seit 21.10.2026 ist die Anmeldung wieder standardmäßig an (vom 23.09. bis 21.10.2026 war sie aus); `OPCUA_LDS_URL=""` schaltet sie ab, eine andere URL biegt sie ohne Codeänderung um |
 
 ---
 
@@ -105,17 +107,17 @@ Keine Altlasten im engeren Sinn, aber Fallen, die uns bereits Zeit gekostet habe
 Das Folgende sind Platzhalter der Lokalisierung selbst, also die eigentliche Arbeit —
 keine Altlasten:
 
-- `detection/hello_world.py` und das Profil `hello_world`. Es bleibt als kamerafreier
-  Smoke-Test dauerhaft nützlich, damit das Backend-Team ohne Hardware testen kann.
+- ~~`detection/hello_world.py` und das Profil `hello_world`.~~ **Entfernt** am
+  28.09.2026: ein Start ohne gewählten Job ist jetzt ein Fehler (`UNKNOWN_RECIPE`)
+  statt eines stillen Platzhalterjobs.
 - ~~`frameId = "world"`, obwohl noch kein Weltsystem existiert.~~ **Erledigt**: der
   Rahmen folgt jetzt dem Bild — `world`, sobald ein Referenz-Tag aus der Tag-Map
   sichtbar ist, sonst das Kamera-KS der Quelle.
 - ~~Posen fest auf `[0,0,0]` / `[0,0,0,1]`.~~ **Erledigt** für `apriltag`; für
-  `hello_world` und `calibration` bleiben sie Null, und das ist dort richtig.
+  `calibration` bleiben sie Null, und das ist dort richtig.
 - ~~Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.~~
   **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
-  Prototyp `src/apriltag/detect_apriltags.py` steht noch, ist aber als abgelöst
-  gekennzeichnet.
+  Prototyp `src/apriltag/detect_apriltags.py` wurde am 30.10.2026 entfernt.
 - **Hand-Auge-Kalibrierung**: Rechnung, Dateiformat und Werkzeug stehen
   (`tagloc.handeye`, `python -m tagloc.cli.calibrate_handeye`). Offen ist die
   Durchführung an der echten Hardware — `T_flansch_cam` ist eine Konstante

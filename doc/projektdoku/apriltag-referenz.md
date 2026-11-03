@@ -181,6 +181,30 @@ statt nur ungenauem Ergebnis, ohne dass ein Fehler aufgefallen wäre.
 Regressionsschutz dafür: `tests/test_tag_pipeline.py`,
 `SyntheticCalibrationTest.test_corner_order_matches_the_classic_convention`.
 
+**Kann auf Pi-Hardware auch nach der `CALIB_CB_ACCURACY`-Entfernung noch
+hängen bleiben:** live an der Deckenkamera (12 MP) gefunden, 2026-09-28 — ein
+einzelner Aufruf lieferte über fünf Minuten kein Ergebnis (kein Fehler, kein
+Timeout-Log, einfach nie fertig; auf dem Hand-Pi bei 640×480 nie beobachtet).
+Die eigentliche Ursache des Hängers selbst ist damit nicht geklärt, nur
+eingedämmt: `CalibrationSession._process()` (`calibration_session.py`)
+begrenzt jeden `detect_board`-Aufruf mit `CAPTURE_DETECT_TIMEOUT_S` (20 s)
+und verwirft danach den betroffenen Ein-Worker-Pool, statt ihn für jede
+weitere Aufnahme blockiert zu lassen — Details und Begründung dort.
+
+Dieser Fund war zugleich der Auslöser für eine größere Änderung: Aufnahme
+(`capture()`) und Auswertung (`_process()`, `detect_board` je Bild +
+`calibrate_from_samples`) sind seither entkoppelt (`FinishCalibration` stößt
+die Auswertung nur noch im Hintergrund an, siehe
+`vision-server-interface.md` Abschnitt 12) — `detect_board` läuft also nicht
+mehr im OPC-UA-Antwortpfad von `CaptureCalibrationSample`, sondern erst nach
+`FinishCalibration`, wo ein Hängenbleiben "nur" eine einzelne Aufnahme
+kostet (übersprungen, siehe `CAPTURE_DETECT_TIMEOUT_S`) statt die gesamte
+Session zu blockieren. Ob `detect_board` auf dem vollen Sensor-Frame künftig
+auch für die Kalibrierung selbst herunterskaliert werden sollte (analog zum
+bereits bestehenden Downscale von Livestream/Job), bleibt eine offene Frage
+-- inzwischen mit deutlich geringerem Risiko, seit ein Hänger nicht mehr die
+ganze Session lahmlegt.
+
 ### Dateiformat `data/calibration/<frame_id>.json`
 
 ```jsonc
@@ -408,7 +432,7 @@ def estimate_tag_poses(observations: Sequence[TagObservation],
 
 Zwei Punkte, die der Prototyp heute falsch macht und die hier behoben sind:
 
-- **Die Ecken werden entzerrt.** `detect_apriltags.py` reicht `D` nur an
+- **Die Ecken werden entzerrt.** `detect_apriltags.py` (Prototyp, entfernt am 30.10.2026) reicht `D` nur an
   `drawFrameAxes` weiter und schätzt die Pose auf dem verzeichneten Bild
   ([`altlasten.md`](altlasten.md), „Was nicht hier steht").
 - **Mehrdeutigkeit wird gemeldet.** Ein flach gesehener quadratischer Marker hat
@@ -481,7 +505,7 @@ def expected_but_missing(tag_map: TagMap,
     # concept/offene_punkte.md Nr. 6, ohne zusaetzliche Konfiguration)
 ```
 
-`merge_samples` ist die Funktion, die `detection/apriltag.py` tatsächlich zum
+`merge_samples` ist die Funktion, die `detection/apriltag/job.py` tatsächlich zum
 Mitteln mehrerer Job-Aufnahmen benutzt — nicht zu verwechseln mit
 `merge_by_module` (mittelt mehrere Tags **einer** Aufnahme zu einer Modulpose).
 
@@ -603,11 +627,13 @@ konstant auf `1.0` gesetzt.
 ## 8. `tagloc.overlay` — Erkennungsergebnisse im Bild markieren
 
 ```python
-OVERLAY_MODES = ("off", "apriltag", "calibration")     # aus tagloc.modes
+OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted")     # aus tagloc.modes
 def normalise_mode(mode) -> str
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None
 def draw_tag_axes(image, tag_pose, calibration, axis_length_m: float) -> None
+def draw_tag_boxes(image, tag_poses) -> image
+    # schlank, vom Livestream benutzt: gruener Kasten + "#<id>", sonst nichts
 def draw_tag_overlay(image, tag_poses, calibration, *,
                      tag_map=None, default_size_m=0.05, show_distance=True)
 def draw_board_overlay(image, board_sample, *, coverage=None)
@@ -637,7 +663,13 @@ Y grün, Z blau — zusätzlich der Umriss und die ID. Genau das zeichnet
 erkannt wurde, das Achsenkreuz zeigt, **wie** die Pose liegt. Ein verdrehtes
 Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
 
-Beschriftet wird je Tag: ID, Modulname aus der Karte, Distanz und
+> **Stand 21.10.2026:** Das gilt für `draw_tag_overlay` und damit die CLI
+> (`python -m tagloc.cli.detect`). Der **Livestream** (Modus `apriltag`) nutzt stattdessen
+> `draw_tag_boxes`: je Tag nur ein grüner Kasten und `#<id>`, ohne Achsenkreuz,
+> Modulname, Distanz, Reprojektionsfehler, orange Färbung und ohne Statusleiste.
+> Die Modi `calibration`/`undistorted` sind unverändert (mit Statusleiste).
+
+Beschriftet wird (`draw_tag_overlay`) je Tag: ID, Modulname aus der Karte, Distanz und
 Reprojektionsfehler. **Mehrdeutige Posen werden orange statt grün gezeichnet** —
 das ist die Information, nach der man beim Debuggen sucht.
 
@@ -816,7 +848,7 @@ aus.
 |---|---|
 | Profil | `apriltag` |
 | Rezept | `RecipeId = "apriltag"` |
-| Klasse | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag.py` |
+| Klasse | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag/` (Paket; `__init__.py` setzt die Klasse aus Mixins zusammen) |
 | Konfiguration | `AprilTagProfileConfig` in `src/vision_server/profiles.py` |
 | `IsSimulated` | `False` |
 
@@ -829,7 +861,7 @@ Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/vision_server/
 | `frame_convention` | `z_forward_x_right_y_down` | `z_forward_x_right_y_down` |
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_map_path` | `config/tagmap.json` | `config/tagmap.json` |
-| `tag_size_m` | 0.100 | 0.050 |
+| `tag_size_m` | 0.080 (bis 13.10.2026: 0.100) | 0.080 (bis 13.10.2026: 0.050) |
 | `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
@@ -914,6 +946,7 @@ Strings, OPC UA kennt hier keine gemischten Typen):
 | `referenceTagId` | ein Welttag als Bezug bekannt | nächster Welttag |
 | `referencePosition`, `referenceOrientation`, `referenceDistanceM` | s. o. | Pose relativ zu diesem Welttag |
 | `worldTagIds`, `cameraSpreadM`, `cameraSpreadDeg`, `cameraPoseOrigin` | Kamera lokalisiert (`localize_camera`/Anker) | beitragende Welttags, Streuung, `"world_tags"` (optisch gemessen) oder `"robot_pose"` (aus dem Anker fortgeschrieben) |
+| `cameraPoseSolver`, `cameraReprojectionErrorPx` | Kamera optisch lokalisiert | `"joint"` (gemeinsames PnP über alle Welttag-Ecken, ab zwei Welttags), `"single"` (ein Welttag) oder `"average"` (Rückfall: Mittel der Einzel-Tags); RMS der Lösung in px |
 | `anchorWorldTagId` | Hand-Auge-Anker gesetzt | Welttag, an dem geankert wurde |
 | `anchorDriftM`, `anchorDriftDeg` | s. o., mit aktueller Sichtung vergleichbar | Abweichung Anker vs. jetzige Messung |
 | `missingModules` | Module aus der Tag-Map nicht gefunden | kommagetrennte Liste |
@@ -978,3 +1011,223 @@ Fixture-Dateien aus. Gemockt wird mit handgeschriebenen Fakes (`FakeCamera`,
 | `calibrate_handeye` bricht mit „Keine Aufnahmen" oder ähnlichem ab | Aufnahmeliste leer, falsches Schema, oder alle Aufnahmen über `--max-reproj-error-px` verworfen |
 | `solve_hand_eye`-Ergebnis mit großer Streuung (`target_spread` > `SPREAD_WARNING_M`) | zu wenige oder zu ähnliche Roboterposen (Rotation nicht ausreichend variiert), oder Kamerakalibrierung/Tag-Größe falsch |
 | Job meldet `DETECTION_FAILED`, obwohl ein Tag sichtbar war | `TagPose.is_usable()` hat die Pose verworfen — NaN/Inf-Reprojektionsfehler oder über `max_reprojection_error_px` |
+
+---
+
+## 13. Detektor-Parameter für unscharfe Tags (Deckenkamera)
+
+Das 12-MP-Bild der Deckenkamera ist optisch weich: Kanten 4–8 px breit bei
+Zellen von 6–13 px. Mit den OpenCV-Standards fanden sich auf
+`data/rohbilder/cam_ceiling_20261019-114704.png` nur die Tags [1, 2, 583]; Tag 0
+hatte 4 Bitfehler bei 3 korrigierbaren, Tag 3 (Kontrast nur 60 Graustufen)
+wurde falsch dekodiert. Drei `DetectorParameters` beheben das:
+
+| `AprilTagProfileConfig` / `build_detector` | OpenCV | Standard | `cam_ceiling` |
+|---|---|---|---|
+| `error_correction_rate` | `errorCorrectionRate` | 0.6 | 1.0 |
+| `perspective_remove_margin_per_cell` | `perspectiveRemoveIgnoredMarginPerCell` | 0.13 | 0.3 |
+| `perspective_remove_pixel_per_cell` | `perspectiveRemovePixelPerCell` | 4 | 8 |
+
+Ergebnis: [0, 1, 2, 3, 583] in 0,1 s, keine Mehrkosten. Rand 0.2–0.4 und
+ppc 8–10 liefern dasselbe. `None` lässt den OpenCV-Standard (alle anderen
+Profile, `cam_flange` eingeschlossen). Job, Stream-Overlay und
+Zellüberwachung bekommen dieselben Werte; die CLI-Werkzeuge haben
+`--error-correction-rate`, `--perspective-remove-margin`,
+`--perspective-remove-ppc`. Das `pupil`-Backend ignoriert sie.
+
+**Risiko:** Bei 1.0 werden bis zu 5 statt 3 Bitfehler korrigiert, das
+theoretische Fehlalarmrisiko je Viereck-Kandidat steigt von etwa 0,03 % auf
+etwa 1,5 % (die Randprüfung davor filtert den Großteil; auf den 40
+tag-freien Schachbrettbildern in `data/LV1` null Fehlalarme). Tauchen im
+Betrieb Geister-IDs auf, `error_correction_rate` Richtung 0.8 senken.
+
+`subpixel_corner_refinement` bleibt aus: auf diesem Bild verliert es mit
+Standardparametern Tags (nur [583]) und braucht 2,7 s.
+
+Regressionstest: `tests/test_detector.py` (`CeilingRawImageTest`).
+
+### Nachtrag 19.10.2026: Werte verworfen, Parameter frei einstellbar
+
+Die Kamera ist neu fokussiert. Die Werte 1.0 / 0.3 / 8 gehörten zum
+unscharfen Bild und sind **nicht mehr gesetzt**: `cam_ceiling` läuft mit dem
+OpenCV-Standard. Die drei Einzel-Keywords (`error_correction_rate`,
+`perspective_remove_margin_per_cell`, `perspective_remove_pixel_per_cell`)
+und die CLI-Optionen dazu sind entfernt. An ihre Stelle tritt ein
+generisches Mapping `detector_parameters` (Attributname von
+`cv2.aruco.DetectorParameters` → Wert):
+
+- Preset: `PI_APRILTAG_PRESETS[...]["detector_parameters"]` in `server.py`.
+- Umgebungsvariable `VISION_APRILTAG_DETECTOR_PARAMS` (JSON-Objekt), z. B.
+  `'{"errorCorrectionRate": 0.8}'`; je Schlüssel gewinnt die Variable,
+  `null` entfernt einen Preset-Eintrag.
+- CLI: `--detector-param NAME=WERT`, wiederholbar.
+- Unbekannte Namen und Werte vom falschen Typ werfen beim Start `ValueError`.
+
+Details und Schnittstellen:
+[`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
+Der Regressionstest auf dem alten Rohbild übergibt die Werte jetzt
+ausdrücklich und dokumentiert damit den Härtefall.
+
+## 14. Tag-Position mit der Kamera einmessen (nur Hand-Pi)
+
+Arbeitsplan mit Begründung und Schnittstellen: [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md). OPC-UA-Methoden: [`vision-server-interface.md`](vision-server-interface.md), Abschnitt 19.
+
+### Prinzip
+
+- **Die Kamera ersetzt den Zollstock.** Der Modulkatalog liefert den Startwert `T_module_tag` (Position, Drehung). Die zwei Bezugskanten (`placement.lines`) sind echte 3D-Strecken im Modul-KS. Die Hand-Kamera sieht Tag und beide Kanten im **selben** Bild. Gemessen wird deshalb im Tag-KS, ohne Roboterkinematik und ohne Hand-Auge-Fehler.
+- **Korrektur nur in der Tag-Ebene**, drei Freiheitsgrade: x, y und θ (Drehung um Tag-z). Neigung und Abstand zur Fläche bleiben aus dem Startwert (der Tag liegt bündig).
+- **`dofs`:** `full` = zwei nicht parallele Kanten (≥ 20°), alle drei Größen. `partial` = eine Kante: senkrecht zu ihr und die Drehung, entlang der Kante bleibt der Startwert. `none` = keine verwertbare Kante, der Startwert bleibt.
+- **Kantenhöhe `h`** über der Tag-Ebene kommt aus dem Startwert. Ein Fehler in `h` verschiebt die Messung seitlich um `Δh · tan(Sehwinkel)`. Deshalb frontal messen und die Kante nahe der Bildmitte halten. Die Tiefe der RealSense kann später optional genutzt werden.
+- **Standard-Kippung 10°:** Frontal auf einen erhöhten Tag liefert die Tag-Pose die Spiegellösung (ca. 13°). Der Anfrage-Standard ist `tiltDeg` = 10; der Python-Default `plan_reference_view(tilt_deg=0.0)` bleibt 0.
+- **Messwerte:** nur synthetisch (`tools/make_synthetic_scene.py`, Messung über `measure_tag_reference`): 0,23 bis 0,63 mm und 0,07 bis 0,11° bei 3 Bildern. Am Pi noch nicht gemessen.
+
+### Python-API `src/tagloc/reference_edges.py`
+
+Datenklassen: `ReferenceLine` (id, start, end; Modul-KS, m), `LineMeasurement`, `InPlaneCorrection` (dofs, delta_xy_m, delta_rot_deg, pose_module_tag, residual_m), `ViewPlan` (pose_tag_cam, standoff_m, fits, uncovered).
+
+- `measure_reference_lines(gray, calib, pose_cam_tag, pose_module_tag_guess, lines, *, tag_size_m, search_band_m=0.015, tag_margin_m=0.01) -> list[LineMeasurement]`: eine Messung je Bild.
+- `fit_in_plane_correction(measurements, pose_module_tag_guess) -> InPlaneCorrection`
+- `average_corrections(corrections) -> (InPlaneCorrection, dict)`: mehrere Bilder mitteln; das dict nennt die Streuung in mm und Grad.
+- `plan_reference_view(pose_module_tag_guess, lines, calib, *, tag_size_m, line_extent_m=0.10, margin=0.10, min_standoff_m=0.25, max_standoff_m=0.60, tilt_deg=0.0) -> ViewPlan`
+- `catalog_rpy_deg(rotation) -> ndarray`: Rotation ins Katalogformat (RPY in Grad).
+- `ValueError` bei ungültigen Eingaben: Kante kürzer als 2 cm, Größe ≤ 0, nicht endliche Werte, Auflösung passt nicht zur Kalibrierung.
+- `cv2` wird nur innerhalb der Funktionen importiert.
+
+### Datenformat im Modulkatalog
+
+Die Felder von `ModuleTag.placement` stehen in [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md) unter „Daten: `ModuleTag.placement`“ (`mode`, `normal`, `edgeA`, `edgeB`, `distancesM`, `inPlaneRotationDeg`, `flipped`, `offsetM`). Neu hinzu kommt:
+
+- **`placement.lines`** (optional): `TagReferenceLine[]` mit `id` (`"A"`, `"B"`), `start`, `end`. Die Kanten **ungeprojiziert**, Modul-KS, Meter. Die Kamera sucht genau diese Linien. Fehlt das Feld, leitet das Frontend die Kanten aus `edgeA`/`edgeB` ab (Länge 0,15 m; bei `corner` liegt die zweite Kante entlang `inward`), und die Oberfläche markiert sie als „Kanten geschätzt“.
+- **`measurement`** (`TagCameraMeasurement`, fehlt = noch nicht eingemessen). Das Beispiel zeigt nur das Format, die Zahlen sind erfunden:
+
+```json
+{ "tagId": 4, "sizeM": 0.1,
+  "position": [-0.2, -0.15, 0.8], "rotationDeg": [0, 0, 0],
+  "placement": { "mode": "corner", "normal": [0, 0, 1],
+                 "edgeA": { "point": [-0.3, -0.2, 0.8], "direction": [1, 0, 0], "inward": [0, 1, 0] },
+                 "distancesM": [0.1, 0.05], "inPlaneRotationDeg": null, "offsetM": 0.005,
+                 "lines": [ { "id": "A", "start": [-0.3, -0.2, 0.8], "end": [0.0, -0.2, 0.8] },
+                            { "id": "B", "start": [-0.3, -0.2, 0.8], "end": [-0.3, 0.0, 0.8] } ] },
+  "measurement": { "method": "camera-edges", "measuredAt": "2026-10-20T10:31:00Z", "dofs": "full",
+                   "guess": { "position": [-0.2, -0.15, 0.8], "rotationDeg": [0, 0, 0] },
+                   "deltaMm": [1.8, -0.6], "deltaRotDeg": 0.4, "spreadMm": 0.2, "lines": ["A", "B"] } }
+```
+
+Gemessen werden `position`/`rotationDeg` überschrieben. `placement` bleibt als Protokoll des Startwerts, und `measurement.guess` hält den Startwert fest. Der Pi bekommt weiter nur Welt-Tags, Modul-Tags stehen nicht in seiner Tag-Map.
+
+Erledigt ist damit der offene Punkt „`placement`-Format in `apriltag-referenz.md` übernehmen“ aus [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md).
+
+### Einmal-Regel
+
+Jeder Tag wird **einmal** eingemessen, wenn sein Modul neu angelegt oder bearbeitet wurde (Vorgabe vom 20.10.2026).
+
+- Speichern aus dem Editor verwirft `measurement` bei neuen Tags und bei Tags, deren `tagId`, `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes Speichern behält es.
+- Import und Laden lassen `measurement` unverändert.
+- Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind. Der Start erfolgt nur per Klick, weil der Roboter fährt.
+
+### Tags auf dem Roboter selbst (über Gelenkwinkel)
+
+Die Tags des Roboters (Katalogeintrag `kind: "robot"`) werden im selben Fenster „Tags einmessen“ (Settings → Zellüberwachung, neben „Modulkatalog“) gemessen,
+ohne Bezugskanten und ohne Layer 1. Der Pi bleibt unverändert: Es wird nur `MeasureTags` benutzt
+(`frames` 3). Umsetzung im Frontend (`webskillcomposition`, `model/robotTagRun.ts`), Arbeitsplan
+[`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), Nachtrag
+„Roboter-Variante“.
+
+**Prinzip**
+
+- Die Roboterbasis ist das Modul-KS des Roboters: `ROBOT_MODULE_TO_BASE` = Identität (URDF-Wurzel; die
+  Vorwärtskinematik rechnet im selben Frame, `robotBaseFrom` übernimmt die Modulpose ohne Versatz).
+  Damit ist `T_module_tag = T_module_base · T_base_tag`, und der Katalogwert ist der Startwert
+  `T_base_tag`.
+- Je Ansicht gilt `T_base_tag = FK(Gelenke) · T_flansch_cam · T_cam_tag` (`tagInBaseFrom`,
+  `model/tagServo.ts`). Gelesen werden die **Ist**-Gelenke nach der Fahrt, nicht die Sollwerte.
+- Volle 6 DoF. Der Fehler geht direkt in das Ergebnis ein: Hand-Auge-Kalibrierung und Gelenkwinkel.
+  Mehrere Ansichten aus verschiedenen Gelenkstellungen mitteln einen Teil davon heraus.
+
+**Ansichten (3)**
+
+- Erst wird wie beim Modul-Lauf zentriert (`centreOnTag`, Abstand 0,35 m). Danach liegen drei Kamerapositionen
+  auf einer Kugel um den Tag-Mittelpunkt, je 0,35 m entfernt und auf den Tag gerichtet: gekippt um +12° und
+  −12° um Tag-x sowie um +12° um Tag-y (`ROBOT_TAG_TILTS`, `robotTagViews`). Konvention wie
+  `PlanTagReferenceView`: Die Kamera schaut entlang −Tag-z.
+- Je Ansicht: `flangeForView` → `planMove` → Fahrt mit Clearance → Ist-Gelenke lesen → FK → `MeasureTags`.
+- Gültig ist eine Ansicht nur mit `frameCount` ≥ 2, nicht `placeholder`-Intrinsik, ohne Pi-Fehler und mit
+  dem Tag im Bild. Ist sie nicht erreichbar oder verletzt die Clearance, wird sie mit Warnung übersprungen.
+  Ein Fahrfehler ohne Blockade bricht den Tag ab.
+
+**Mittelung**
+
+- Position: Mittel über alle gültigen Ansichten.
+- Orientierung: Mittel über die nicht mehrdeutigen Ansichten (`ambiguous: false`). Sind alle mehrdeutig,
+  bleibt die Orientierung aus dem Katalog, mit Warnung.
+- Mindestens **2** gültige Ansichten (`ROBOT_TAG_MIN_VIEWS`), sonst bleibt der Tag ausstehend.
+- Streuung: `spreadMm` (RMS der Positionen um das Mittel), `spreadDeg` (RMS der Winkel zum Mittel).
+  Über 3 mm bzw. 1° kommt eine Warnung („Hand-Auge-Kalibrierung prüfen“). Die Schwellen sind Annahmen
+  und nicht an der Hardware gemessen.
+
+**Datenformat**
+
+`ModuleTag.measurement` (`TagCameraMeasurement`) mit `method: "robot-fk"`. Der Wert `"camera-edges"` gilt
+für die Modul-Tags. Felder:
+
+- `dofs` ist bei `robot-fk` immer `"full"`, `lines` ist `[]`.
+- `deltaMm`: neu minus Startwert, in Tag-x und Tag-y des Startwerts, mm.
+- `deltaNormalMm` (nur `robot-fk`, optional): dieselbe Verschiebung entlang Tag-z des Startwerts, mm.
+- `deltaRotDeg`: der gesamte Drehwinkel zwischen Startwert und Ergebnis.
+- `spreadMm`, `spreadDeg` (nur `robot-fk`, optional), `views` (nur `robot-fk`, optional): Anzahl der
+  gültigen Ansichten.
+
+`parseMeasurement` in `model/catalogStore.ts` verwirft ein fehlendes oder unbekanntes `method` (dann wird
+der Tag neu gemessen). Ungültige optionale Felder verwirft es einzeln. `describeTagMeasurement(tag,
+{ robot: true })` zeigt „measured … via robot joints · Δ … mm / …° · n views“, und ungemessen
+„not measured yet · measured with the robot's hand camera“.
+
+**Grenzen**
+
+- Hand-Auge-Kalibrierung und Gelenkwinkel gehen direkt ein. Erwartet werden ~1–2 mm, nicht gemessen.
+- Nur Tags, die die eigene Hand-Kamera sieht und erreicht. Seitlich am Fuß liegende Tags sind evtl.
+  unerreichbar und bleiben ausstehend.
+- Die Clearance (`keepOutFromRobotBounds`) blockiert Ansichten über dem eigenen Wagen nicht grundsätzlich:
+  geprüft werden Flansch, Kamera und Gelenkpunkte nur unter Tischplatte + 5 cm im Footprint bzw. unter
+  Boden + 10 cm. Die Wagen-Bounds im Katalog müssen den Footprint beschreiben.
+- Fehlt `frameCount` im Ergebnis (`null`), gilt die Ansicht als gültig. Der Pi liefert das Feld immer.
+- ±12° bei 0,35 m und ob die Schrägansicht `frameCount` ≥ 2 erreicht, sind ungetestet.
+
+### Live-Ansicht der Kantensuche
+
+Seit 21.10.2026 zeigt der Stream während der Einmessung, was die Kantensuche tut (Plan
+[`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)). Die Rechnung
+bleibt dieselbe: `measure_reference_lines(..., debug=...)` füllt nur eine Liste, Ergebnis und
+`LineMeasurement` sind mit und ohne `debug` bitgleich.
+
+**Was man sieht**, in dieser Reihenfolge der Suche:
+
+1. **Startwert-Kante** (gelb gestrichelt): die Kante aus dem Modulkatalog, in das Bild projiziert, nur der sichtbare Teil.
+2. **Suchband** (dünne gelbe Ränder): Bereich, in dem nach Kanten gesucht wird (`bandPx`).
+3. **Kandidatenpunkte** (cyan): alle Gradientenmaxima im Band.
+4. **Verworfene Linien** (orange): RANSAC-Geraden aus den Kandidaten, die nicht gewählt wurden (Inlier je Linie).
+5. **Gewählte Linie** (grün, rot bei `ambiguous`), mit Saum; Beschriftung je Kante mit Δ mm und Grad, bzw. `NO_EDGE` oder `mehrdeutig`.
+6. **Tag-Maske** (grau) und Tag-Rahmen, wie im Stream sonst.
+
+Die Ebenen sind einzeln abschaltbar (`overlay` in der Anfrage, acht Schalter, siehe
+[`vision-server-interface.md`](vision-server-interface.md) §19.1). Ohne aktive Vorschau läuft der
+Stream im Modus `tagreference` mit dem Titel „keine Einmess-Vorschau“ und normalen Tag-Rahmen.
+
+**Debug-Daten je Kante** (Pixel des Rohbilds, verzeichnet, volle Auflösung): `guessPx`, `profilesPx`,
+`normalsPx`, `bandPx`, `edgePointsPx`, `candidates` (mit `inliersPx`, `score`, `chosen`), `measuredPx`,
+`measuredPolyPx`, dazu `found`, `supportPx`, `contrast`, `ambiguous`, `offsetMm`, `angleDeg`. Einmal je Aufruf
+`_tag` mit `maskOutlinePx`. Die Zeichnung (`tagloc/reference_overlay.py`) rechnet nichts, sie zeichnet nur
+diese Daten.
+
+**Rechenlast:** die Vorschau wertet höchstens 3 Hz aus (`PREVIEW_INTERVAL_S`), auf demselben
+Ein-Thread-Pool wie die eigene Erkennung des Livestreams (der Detektor ist nicht für zwei Threads gebaut).
+Auf dem Testrechner 52–62 ms je Auswertung, am Hand-Pi nicht gemessen.
+
+**Mess-Protokoll:** jede Messung schreibt unter `data/tagreference/` einen Ordner mit Anfrage, Ergebnis,
+den Rohbildern (PNG) und dem Debug-Bild. Die letzte Messung ist unter `GET /tagreference.jpg` abrufbar.
+Details und Aufräumregel: `vision-server-interface.md` §19.1.
+
+**Testphase „alle Tags“ (Frontend, Stand 21.10.2026):** Der Schalter „Alle Tags neu einmessen (Testphase)“
+ist standardmäßig an. Jeder Lauf misst dann alle messbaren Tags neu, damit der Versuch oft wiederholt
+werden kann. Das ist eine **Ausnahme zur Einmal-Regel** oben. Zielzustand (Vorgabe des Nutzers): Schalter
+aus bzw. `TAG_MEASURE_ALL_TESTPHASE = false` in `tagMeasurementState.ts`, dann gilt wieder nur die Einmal-Regel.

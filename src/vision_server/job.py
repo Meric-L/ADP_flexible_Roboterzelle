@@ -21,6 +21,9 @@ from .state_machine import VisionStateMachines
 
 _log = logging.getLogger(__name__)
 
+#: So lange wartet `cancel_running` auf das Ende des abgebrochenen Jobs.
+_CANCEL_WAIT_S = 2.0
+
 
 @dataclass(frozen=True)
 class JobRequest:
@@ -113,8 +116,13 @@ def build_job_request(
         product_id=coerce_id(product_id, "ProductId", config.max_id_length),
         parameters=_coerce_parameters(parameters, config),
     )
+    known = ", ".join(sorted(x for x in config.known_recipe_ids if x))
+    if not request.recipe_id and "" not in config.known_recipe_ids:
+        raise VisionJobError(
+            VisionErrorCode.UNKNOWN_RECIPE,
+            f"Kein Job gewaehlt: RecipeId ist leer (bekannt: {known})",
+        )
     if (request.recipe_id or "") not in config.known_recipe_ids:
-        known = ", ".join(sorted(x for x in config.known_recipe_ids if x))
         raise VisionJobError(
             VisionErrorCode.UNKNOWN_RECIPE,
             f"Unbekannte RecipeId '{request.recipe_id}' (bekannt: {known})",
@@ -178,7 +186,7 @@ class JobRunner:
             except Exception:
                 _log.exception("Abschluss-Beobachter von Job %s fehlgeschlagen", job_id)
 
-    async def cancel_running(self, timeout: float = 2.0) -> None:
+    async def cancel_running(self) -> None:
         """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
 
         Best-Effort: Fehler beim Abbruch werden verschluckt, der Prozess
@@ -190,7 +198,7 @@ class JobRunner:
             return
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-            await asyncio.wait_for(task, timeout)
+            await asyncio.wait_for(task, _CANCEL_WAIT_S)
 
     async def stop(self, *, abort: bool = False) -> VisionErrorCode:
         """Bricht einen laufenden Job ab; OK, wenn gerade keiner laeuft.
@@ -314,6 +322,8 @@ class JobRunner:
                         frame_id=source.frame_id or self._config.frame_id,
                         frame_convention=source.frame_convention,
                         configuration_id=source.configuration_id,
+                        world_tags=source.world_tags,
+                        camera_localization=source.camera_localization,
                     )
                     await self._publish(
                         source, request, result_id, cycle_id, now,
@@ -378,6 +388,8 @@ class JobRunner:
                     frame_id=source.frame_id or self._config.frame_id,
                     frame_convention=source.frame_convention,
                     configuration_id=source.configuration_id,
+                    world_tags=source.world_tags,
+                    camera_localization=source.camera_localization,
                 )
                 await self._publish(
                     source, request, result_id, job_id, now, int(VisionErrorCode.OK), payload
@@ -476,6 +488,8 @@ class JobRunner:
                 frame_id=source.frame_id or self._config.frame_id,
                 frame_convention=source.frame_convention,
                 configuration_id=source.configuration_id,
+                world_tags=source.world_tags,
+                camera_localization=source.camera_localization,
             )
             await self._publish(
                 source, request, result_id, job_id, now, int(error.code), payload

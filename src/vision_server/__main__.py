@@ -23,7 +23,6 @@ def build_config(argv: list[str] | None = None) -> VisionServerConfig:
     parser.add_argument("--vision-system-name", default=VisionServerConfig.vision_system_name)
     parser.add_argument("--vision-system-id", default=VisionServerConfig.vision_system_id)
     parser.add_argument("--profile", help="erzwingt ein Profil fuer alle Rezepte")
-    parser.add_argument("--latency", type=float, default=VisionServerConfig.detection_latency)
     parser.add_argument("--nodeset", type=Path, default=DEFAULT_NODESET_PATH)
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
@@ -37,7 +36,6 @@ def build_config(argv: list[str] | None = None) -> VisionServerConfig:
         namespace_uri=args.namespace,
         vision_system_name=args.vision_system_name,
         vision_system_id=args.vision_system_id,
-        detection_latency=args.latency,
         nodeset_path=args.nodeset,
         recipe_profiles=(
             tuple((recipe, args.profile) for recipe, _ in DEFAULT_RECIPE_PROFILES)

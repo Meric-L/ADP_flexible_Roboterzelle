@@ -13,12 +13,6 @@ JOBS_DIR = Path(__file__).resolve().parent.parent.parent / "jobs"
 SourceFactory = Callable[[VisionServerConfig], DetectionSource]
 
 
-def _hello_world(config: VisionServerConfig) -> DetectionSource:
-    from .hello_world import HelloWorldDetectionSource
-
-    return HelloWorldDetectionSource(config.detection_latency)
-
-
 def _calibration(config: VisionServerConfig) -> DetectionSource:
     from .script_runner import ScriptDetectionSource
 
@@ -39,7 +33,6 @@ def _apriltag(config: VisionServerConfig) -> DetectionSource:
 #: Abhaengigkeit einer Quelle auf der Importkette des Zellenservers, und ein
 #: `import cv2` in einem Profil macht den Server ohne OpenCV unstartbar.
 DETECTION_SOURCES: dict[str, SourceFactory] = {
-    "hello_world": _hello_world,
     "calibration": _calibration,
     "apriltag": _apriltag,
 }
@@ -53,11 +46,6 @@ def _factory(profile_id: str) -> SourceFactory:
         raise ValueError(
             f"Unbekanntes Erkennungsprofil '{profile_id}' (bekannt: {known})"
         ) from None
-
-
-def build_detection_source(config: VisionServerConfig, profile_id: str) -> DetectionSource:
-    """Erzeugt die Quelle eines Profils."""
-    return _factory(profile_id)(config)
 
 
 def build_detection_sources(config: VisionServerConfig) -> dict[str, DetectionSource]:
@@ -74,6 +62,5 @@ __all__ = [
     "DetectionRequest",
     "DetectionSource",
     "DETECTION_SOURCES",
-    "build_detection_source",
     "build_detection_sources",
 ]

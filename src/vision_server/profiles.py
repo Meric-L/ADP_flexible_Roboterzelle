@@ -9,8 +9,9 @@ Nie eine Matrix hier hinein — `K`/`D` sind numpy, unhashbar und gehoeren dem,
 was sie aus `calibration_path` laedt.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -29,17 +30,15 @@ DEFAULT_HAND_EYE_PATH: Path | None = None
 class AprilTagProfileConfig:
     """Betriebsparameter der AprilTag-Erkennung."""
 
-    camera_index: int = 0
-    use_picamera: bool = True
     resolution: tuple[int, int] = (2028, 1520)
     calibration_path: Path = DEFAULT_CALIBRATION_PATH
     tag_map_path: Path | None = DEFAULT_TAG_MAP_PATH
     #: `None` = keine Hand-Auge-Kalibrierung. Dann wirkt nur der optische
     #: Pfad: ohne Welttag im Bild bleiben die Posen im Kamera-KS.
     hand_eye_path: Path | None = DEFAULT_HAND_EYE_PATH
+    #: Wie `tagloc.tagmap.DEFAULT_TAG_FAMILY` (hier als Literal: kein numpy-Import).
     tag_family: str = "tag36h11"
     tag_size_m: float = 0.05
-    warmup_s: float = 2.0
     capture_timeout_s: float = 5.0
     samples_per_job: int = 3
     max_reproj_error_px: float = 3.0
@@ -50,7 +49,7 @@ class AprilTagProfileConfig:
     #: `True` aktiviert `cv2.aruco.CORNER_REFINE_APRILTAG` (Subpixel-Ecken)
     #: im Job-Detektor (`AprilTagDetectionSource`). Betrifft seit dem
     #: Detektor-Split (Commit 3d91ee1) NUR noch den Job-Pfad -- der
-    #: Livestream-Overlay bekommt in `runner._build_annotator` eine eigene
+    #: Livestream-Overlay bekommt in `runner.livestream._build_annotator` eine eigene
     #: Instanz mit dieser Verfeinerung fest aus, unabhaengig von diesem Feld.
     #:
     #: Default `False`: live auf pi1 bestaetigt, dass Layer 1 ("Module
@@ -62,6 +61,12 @@ class AprilTagProfileConfig:
     #: `deckenkamera-volle-aufloesung.md`, Offene Fragen) -- noch nicht
     #: entschieden, noch nicht umgesetzt.
     subpixel_corner_refinement: bool = False
+    #: Verfahren, wenn `subpixel_corner_refinement` aktiv ist: `"apriltag"`
+    #: (CORNER_REFINE_APRILTAG), `"subpix"` (CORNER_REFINE_SUBPIX, Standard)
+    #: oder `"none"`. Die Handkamera (`cam_flange`) hat die Verfeinerung seit
+    #: 28.10.2026 an: ein fester Versatz beim Anfahren kommt auch von
+    #: gerundeten Tag-Ecken.
+    corner_refinement_method: str = "subpix"
     #: Dezimierungsfaktor fuer `cv2.aruco.DetectorParameters.
     #: aprilTagQuadDecimate` -- wirkt nur, wenn `subpixel_corner_refinement`
     #: aktiv ist (aktuell also inert, siehe dort). Standard-AprilTag-
@@ -73,6 +78,18 @@ class AprilTagProfileConfig:
     #: dass `subpixel_corner_refinement` spaeter (Layer 2, Kalibrierung)
     #: doch wieder gebraucht wird.
     apriltag_quad_decimate: float = 0.0
+    #: Frei waehlbare OpenCV-`DetectorParameters`: Attributname -> Wert, z. B.
+    #: `{"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}`. Leer =
+    #: OpenCV-Standard. Wirkt nur beim aruco-Backend, ein unbekannter Name
+    #: oder ein Wert vom falschen Typ wirft beim Start `ValueError`
+    #: (`tagloc.detector.apply_detector_parameters`). Job, Stream-Overlay und
+    #: Zellueberwachung nutzen dasselbe Mapping, sonst zeigt das Overlay
+    #: andere Tags. Ein ausdrueckliches `cornerRefinementMethod` gewinnt
+    #: gegen `subpixel_corner_refinement`, wird fuer das Overlay aber
+    #: entfernt (siehe `runner.livestream._build_annotator`). Preset und Override per
+    #: `VISION_APRILTAG_DETECTOR_PARAMS` siehe `server.apriltag_config`.
+    #: `hash=False`: ein dict ist nicht hashbar, die Config soll es bleiben.
+    detector_parameters: dict[str, Any] = field(default_factory=dict, hash=False)
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.
@@ -99,19 +116,24 @@ class AprilTagProfileConfig:
     #: Ab wie vielen Aufnahmen `FinishCalibration` ueberhaupt versucht zu
     #: rechnen (CLI-Tool `tagloc.cli.calibrate` nennt das `MIN_SAMPLES`).
     calibration_min_samples: int = 15
-    #: Sobald Abdeckung x UND y diesen Wert erreichen (und `calibration_
-    #: min_samples` Aufnahmen vorliegen), rechnet und speichert die Session
-    #: automatisch -- fuers Frontend, das nicht selbst wissen muss, wann
-    #: "genug" ist. `None` schaltet das ab (nur manuelles `FinishCalibration`,
-    #: wie es die CLI-Tools weiter nutzen). Deckt sich mit dem Abbruch-
-    #: kriterium aus dem Testplan ("Abdeckung x und y ueber 70%").
-    calibration_coverage_threshold: float | None = 0.7
-    #: Wenn gesetzt, speichert jede uebernommene Aufnahme zusaetzlich als
-    #: Bild hier ab -- zum Nachpruefen/Neu-Rechnen abseits vom Server,
+    #: Linsenmodell, mit dem `CalibrationSession` NEU kalibriert:
+    #: `"pinhole"` (Brown-Conrady, 5 Koeffizienten) oder `"fisheye"`
+    #: (Kannala-Brandt, 4 Koeffizienten), siehe `tagloc.lens`. String statt
+    #: `tagloc`-Konstante, aus demselben Grund wie `tag_family`. Fuer die
+    #: Posenschaetzung zaehlt allein das Modell in der geladenen
+    #: Kalibrierdatei, nicht dieses Feld -- eine aeltere Pinhole-Datei gilt
+    #: also weiter, bis neu kalibriert ist.
+    calibration_model: str = "pinhole"
+    #: Wenn gesetzt, archiviert `CalibrationSession` jede Aufnahme
+    #: zusaetzlich dauerhaft hier -- zum Nachpruefen abseits vom Server,
     #: dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to`
-    #: (`kalib_001.png`, `kalib_002.png`, ...). `None` (Standard) speichert
-    #: nichts; das sind reine Debug-Artefakte, kein Teil der Kalibrierung
-    #: selbst -- landen wie die Kalibrierdatei unter `data/` (`.gitignore`).
+    #: (`kalib_001.jpg`, `kalib_002.jpg`, ...). `None` (Standard) archiviert
+    #: nichts zusaetzlich; die Aufnahmen selbst landen unabhaengig davon
+    #: immer erst in einem session-eigenen Arbeitsordner
+    #: (`CalibrationSession._pending_dir`), der bei jedem `StartCalibration`
+    #: geleert wird -- dieses Feld hier ist nur fuer den Fall gedacht, dass
+    #: sie darueber hinaus dauerhaft erhalten bleiben sollen. Landet wie die
+    #: Kalibrierdatei unter `data/` (`.gitignore`).
     calibration_capture_dir: Path | None = None
 
 
@@ -137,7 +159,7 @@ class CameraStreamConfig:
 
     backend: str = "picamera2"
     #: `False` unterdrueckt nur die Stream-KNOTEN/den Publisher/den
-    #: MJPEG-Server (siehe `address_space.py`, `runner._start_camera_stream`)
+    #: MJPEG-Server (siehe `address_space.py`, `runner.livestream._start_camera_stream`)
     #: -- die uebrigen Felder hier (v. a. `resolution`) bleiben unveraendert
     #: in Kraft, weil `detection/apriltag.py` dieselbe `CameraStreamConfig`
     #: auch fuer die Job-Kamera (`SharedCamera`) nutzt. NICHT stattdessen das
@@ -166,6 +188,14 @@ class CameraStreamConfig:
     #: Video). Bei 12 MP waeren das ~220 MB CMA-Speicher, mehr als der Pi
     #: standardmaessig reserviert -- `configure()` scheitert dann.
     buffer_count: int | None = None
+    #: Nur Picamera2: libcamera-Controls, die beim Start gesetzt werden, z. B.
+    #: `{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}`.
+    #: Enum-Controls duerfen als Name angegeben werden (`camera.resolve_camera_controls`),
+    #: unbekannte Namen werfen beim Oeffnen `ValueError`. Leer = Picamera2-
+    #: Standard. RealSense/OpenCV ignorieren das Feld (Warnung, wenn gesetzt).
+    #: Preset und Override per `VISION_CAMERA_CONTROLS` siehe `server.py`.
+    #: `hash=False`: ein dict ist nicht hashbar, die Config soll es bleiben.
+    camera_controls: dict[str, Any] = field(default_factory=dict, hash=False)
     warmup_s: float = 2.0
     #: So oft nimmt die `SharedCamera` auf. Obergrenze fuer den HTTP-Stream.
     capture_fps: float = 15.0
@@ -207,8 +237,17 @@ class CameraStreamConfig:
     overlay_mode: str = "apriltag"
     #: Minimum gap between two detection runs for the overlay. The stream is
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
-    #: last result is redrawn.
+    #: last result is redrawn. Gilt seit 21.10.2026 nur noch fuer den Modus
+    #: "calibration"; "apriltag" siehe `overlay_detect_interval_s`.
     overlay_interval_s: float = 0.5
+    #: Modus "apriltag": das Overlay zeigt das neueste Ergebnis in voller
+    #: Aufloesung von Job, Zellen-Ueberwachung oder Messung. Ist es aelter
+    #: als dieser Wert, erkennt das Overlay selbst in voller Aufloesung --
+    #: im Hintergrund und nicht waehrend Job oder Kalibrierung. Am Pi kostet
+    #: ein Lauf auf 12 MP grob 1 s; bei 5 s also etwa 20 % einer Core statt
+    #: der ~100 %, die eine Erkennung alle 0,5 s kostete. `0` = nie selbst
+    #: erkennen, nur fremde Ergebnisse zeigen.
+    overlay_detect_interval_s: float = 5.0
     #: Watchdog: so lange darf ein einzelnes `capture_array()` dauern. Danach
     #: gilt die Kamera als haengend -- Picamera2 wartet sonst ewig auf einen
     #: Frame, den libcamera nie liefert (Pi 1, 2026-09-22).

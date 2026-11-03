@@ -22,6 +22,8 @@ try:
         _scale_for,
         draw_board_overlay,
         draw_status_bar,
+        COLOR_OK,
+        draw_tag_boxes,
         draw_tag_overlay,
     )
 
@@ -75,6 +77,31 @@ class DrawingSmokeTest(unittest.TestCase):
         result = draw_tag_overlay(image, [_tag_pose()], FakeCalibration())
 
         self.assertTrue((result != 0).any())
+
+    def test_draw_tag_boxes_draws_green_even_for_an_ambiguous_pose(self):
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        base = _tag_pose()
+        pose = TagPose(
+            tag_id=base.tag_id,
+            pose_cam_tag=base.pose_cam_tag,
+            reprojection_error_px=0.5,
+            ambiguity_ratio=0.99,
+            observation=base.observation,
+        )
+        self.assertTrue(pose.is_ambiguous)
+
+        result = draw_tag_boxes(image, [pose])
+
+        self.assertIs(result, image)
+        self.assertEqual(tuple(int(v) for v in image[100, 120]), COLOR_OK)
+
+    def test_draw_tag_boxes_skips_poses_without_observation(self):
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        pose = TagPose(tag_id=3, pose_cam_tag=_tag_pose().pose_cam_tag)
+
+        result = draw_tag_boxes(image, [pose])
+
+        self.assertFalse(result.any())
 
     def test_draw_status_bar_on_a_large_frame(self):
         image = np.zeros((3040, 4056, 3), dtype=np.uint8)

@@ -241,3 +241,9 @@ nur dort). Die Modi `"apriltag"`/`"off"` gehen weiterhin vom vollen `frame.image
 - Status auf `fertig`, Schnittstellen wie umgesetzt
 - Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert
 - Fachwissen in `doc/vision-server-interface.md` und `doc/vision-system.md`
+
+## Siehe auch
+
+- [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md):
+  Detektor-Parameter für die weichen 12-MP-Bilder der Deckenkamera (Tags 0 und
+  3 wurden mit den OpenCV-Standardwerten nicht gefunden).

@@ -46,7 +46,7 @@ class VisionAddressSpace:
     #: ("off", "apriltag", "calibration"). `None` without a livestream.
     camera_stream_mode: Node | None = None
     #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
-    #: `runner.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
+    #: `runner/calibration.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
     calibration_progress: Node | None = None
     #: Die aktuell geladene Tag-Map als JSON. Nur lesen -- geschrieben wird
     #: ueber die Methode `SetTagMap`, damit eine ungueltige Karte abgelehnt
@@ -62,6 +62,26 @@ class VisionAddressSpace:
     #: frontend builds the URL from the host it reaches OPC UA under. `None`
     #: without a livestream.
     camera_stream_http_port: Node | None = None
+    #: Naechstes Fahrziel des Layer-2-Laufs (JSON, `""` ohne Ziel) und sein
+    #: Zustand (JSON), siehe `layer2/run.py`. Nur auf dem Hand-Pi, also mit
+    #: `hand_eye_path` -- sonst `None`.
+    layer2_target: Node | None = None
+    layer2_status: Node | None = None
+    #: Zustand der Hand-Auge-Kalibrierung (JSON), siehe `handeye_session.py`.
+    #: Nur auf dem Hand-Pi, wie `layer2_*`.
+    hand_eye_status: Node | None = None
+    #: Zustand der Zellen-Ueberwachung (JSON), siehe `cellwatch.py`. Nur auf
+    #: der Deckenkamera, also mit AprilTag und ohne `hand_eye_path`.
+    cell_watch_status: Node | None = None
+    #: Ergebnis des letzten `MeasureTags` (JSON), nur zur Anzeige. Nur auf dem
+    #: Hand-Pi, wie `hand_eye_status`.
+    last_tag_measurement: Node | None = None
+    #: Ergebnis der letzten `MeasureTagReference` (JSON), nur zur Anzeige. Nur
+    #: auf dem Hand-Pi, wie `last_tag_measurement`.
+    last_tag_reference: Node | None = None
+    #: Live-Auswertung der Einmess-Vorschau (JSON, hoechstens 3 Hz), siehe
+    #: `tagreference_preview.py`. Nur auf dem Hand-Pi.
+    tag_reference_preview_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
     amcm_idx: int | None = None
@@ -245,14 +265,14 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     tag_map_json: Node | None = None
     active_calibration_info: Node | None = None
     if config.apriltag is not None:
-        # Nur lesen: die laufende `CalibrationSession` in `runner.py` schreibt
+        # Nur lesen: die laufende `CalibrationSession` in `runner/calibration.py` schreibt
         # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
         # eine Kalibrier-Session ist auch ohne Livestream denkbar (z. B. lokale
         # Entwicklung), auch wenn sie in der Praxis immer zusammen laufen.
         calibration_progress = await vision_system.add_variable(
             ua.NodeId(f"{name}.CalibrationProgress", own_idx),
             ua.QualifiedName("CalibrationProgress", own_idx),
-            '{"running": false}',
+            '{"running": false, "processing": false}',
             ua.VariantType.String,
         )
         # Bewusst nicht schreibbar: eine Tag-Map muss geprueft werden, bevor
@@ -264,12 +284,67 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             "",
             ua.VariantType.String,
         )
-        # Leer, bis `runner.py` nach dem Oeffnen der Erkennungsquelle den
+        # Leer, bis `runner/calibration.py` nach dem Oeffnen der Erkennungsquelle den
         # ersten Wert schreibt (echte Datei oder Platzhalter) -- kein
         # sinnvoller Default vorher, ohne die Kalibrierdatei gelesen zu haben.
         active_calibration_info = await vision_system.add_variable(
             ua.NodeId(f"{name}.ActiveCalibrationInfo", own_idx),
             ua.QualifiedName("ActiveCalibrationInfo", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+
+    layer2_target: Node | None = None
+    layer2_status: Node | None = None
+    hand_eye_status: Node | None = None
+    last_tag_measurement: Node | None = None
+    last_tag_reference: Node | None = None
+    tag_reference_preview_status: Node | None = None
+    cell_watch_status: Node | None = None
+    if config.apriltag is not None and config.apriltag.hand_eye_path is None:
+        cell_watch_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.CellWatchStatus", own_idx),
+            ua.QualifiedName("CellWatchStatus", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+    if config.apriltag is not None and config.apriltag.hand_eye_path is not None:
+        # Nur lesen: der Lauf schreibt, das Frontend abonniert. Gesteuert wird
+        # ueber StartLayer2Run/ReportRobotPose, damit jede Eingabe geprueft
+        # und mit einem Fehlercode beantwortet werden kann.
+        layer2_target = await vision_system.add_variable(
+            ua.NodeId(f"{name}.Layer2Target", own_idx),
+            ua.QualifiedName("Layer2Target", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        layer2_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.Layer2Status", own_idx),
+            ua.QualifiedName("Layer2Status", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        hand_eye_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.HandEyeStatus", own_idx),
+            ua.QualifiedName("HandEyeStatus", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        last_tag_measurement = await vision_system.add_variable(
+            ua.NodeId(f"{name}.LastTagMeasurement", own_idx),
+            ua.QualifiedName("LastTagMeasurement", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        last_tag_reference = await vision_system.add_variable(
+            ua.NodeId(f"{name}.LastTagReference", own_idx),
+            ua.QualifiedName("LastTagReference", own_idx),
+            "",
+            ua.VariantType.String,
+        )
+        tag_reference_preview_status = await vision_system.add_variable(
+            ua.NodeId(f"{name}.TagReferencePreviewStatus", own_idx),
+            ua.QualifiedName("TagReferencePreviewStatus", own_idx),
             "",
             ua.VariantType.String,
         )
@@ -301,5 +376,12 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
         tag_map_json=tag_map_json,
         active_calibration_info=active_calibration_info,
         camera_stream_http_port=camera_stream_http_port,
+        layer2_target=layer2_target,
+        layer2_status=layer2_status,
+        hand_eye_status=hand_eye_status,
+        cell_watch_status=cell_watch_status,
+        last_tag_measurement=last_tag_measurement,
+        last_tag_reference=last_tag_reference,
+        tag_reference_preview_status=tag_reference_preview_status,
         amcm_idx=amcm_idx,
     )

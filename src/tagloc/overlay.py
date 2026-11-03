@@ -6,6 +6,10 @@ does: the outline shows *that* something was detected, the axis cross shows
 *how* the pose sits -- a twisted cross is obvious at a glance, a wrong number
 is not.
 
+Der Livestream (Modus `apriltag`) nutzt dagegen die schlanke Variante
+`draw_tag_boxes`: nur gruener Kasten und Tag-ID, ohne Achsenkreuz und
+Statusleiste. Die ausfuehrliche Variante bleibt der CLI (`python -m tagloc.cli.detect --overlay`).
+
 One rule for this module: it only draws, it never computes. Poses arrive
 already finished. That lets the same code run for the stream, a CLI window,
 and a still image.
@@ -15,11 +19,13 @@ import logging
 import os
 import sys
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 
-from .calibration import CameraCalibration
+from .calibration import FISHEYE, CameraCalibration
 from .geometry import to_rvec_tvec
 from .modes import DEFAULT_OVERLAY_MODE, OVERLAY_MODE_LABELS, OVERLAY_MODES, normalise_mode
 from .observations import TagPose
@@ -51,13 +57,22 @@ def _scale_for(image) -> float:
     return max(1.0, width / _REFERENCE_WIDTH)
 
 
-def _put_text(image, text: str, origin: tuple[int, int], color=COLOR_TEXT) -> None:
-    """Draw text with a dark outline -- otherwise unreadable on a light background."""
+def _put_text(
+    image, text: str, origin: tuple[int, int], color=COLOR_TEXT, *, outline: bool = True
+) -> None:
+    """Draw text, by default with a dark outline -- otherwise unreadable on a light background.
+
+    `outline=False` draws plain text only (status bar: the outline read as a
+    doubled, shadowed font there).
+    """
     import cv2
 
     scale = _scale_for(image)
     font_scale = _FONT_SCALE * scale
     thickness = max(1, round(_THICKNESS * scale))
+    if not outline:
+        cv2.putText(image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+        return
     cv2.putText(
         image, text, origin, cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_SHADOW, thickness + 2
     )
@@ -81,14 +96,88 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
 
 
+#: Breite des gruenen Tag-Rahmens in `draw_tag_boxes`, Pixel.
+_TAG_BOX_PX = 2
+#: Versatz fuer den 1-px-Rand der Tag-ID in `draw_tag_boxes`.
+_ONE_PX_RING = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)]
+
+
+def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
+    """Schlankes Stream-Overlay: je Tag nur gruener Umriss und "#<id>".
+
+    Kein Achsenkreuz, kein Eck-Punkt, keine Distanz, kein Reprojektionsfehler;
+    mehrdeutige Posen werden nicht anders gefaerbt. Das Label sitzt knapp ueber
+    der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Der Rahmen ist
+    genau 2 px breit, die Zahl hat einen 1 px breiten
+    schwarzen Rand. Posen ohne `observation` werden uebersprungen. Aendert
+    `image` in-place.
+    """
+    import cv2
+
+    scale = _scale_for(image)
+    font_scale = _FONT_SCALE * scale
+    text_thickness = max(1, round(_THICKNESS * scale) - 1)
+    text_height = round(_FONT_SCALE * scale * 30)
+    margin = max(4, round(6 * scale))
+    for tag_pose in tag_poses:
+        if tag_pose.observation is None:
+            continue
+        corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
+        # Rahmen genau `_TAG_BOX_PX` breit: 1-px-Linie mehrfach um je 1 px
+        # versetzt. Ueber `thickness` geht das nicht -- OpenCV rastert
+        # Strichstaerke t als 2t-1 Pixel (2 -> 3 px).
+        for dx in range(_TAG_BOX_PX):
+            for dy in range(_TAG_BOX_PX):
+                cv2.polylines(
+                    image, [corners + (dx, dy)], isClosed=True, color=COLOR_OK, thickness=1
+                )
+        x = int(corners[:, 0, 0].min())
+        y = max(text_height, int(corners[:, 0, 1].min()) - margin)
+        label = f"#{tag_pose.tag_id}"
+        # Schwarzer Rand genau 1 px: die Schrift schwarz um je 1 px in alle
+        # acht Richtungen versetzt, dann gruen darueber. Nicht ueber eine
+        # dickere Strichstaerke -- OpenCV 5 ignoriert die bei putText.
+        for dx, dy in _ONE_PX_RING:
+            cv2.putText(
+                image, label, (x + dx, y + dy), cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                COLOR_SHADOW, text_thickness,
+            )
+        cv2.putText(
+            image, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, COLOR_OK, text_thickness
+        )
+    return image
+
+
 def draw_tag_axes(
     image, tag_pose: TagPose, calibration: CameraCalibration, axis_length_m: float
 ) -> None:
-    """Draw the coordinate cross into the tag: X red, Y green, Z blue."""
+    """Draw the coordinate cross into the tag: X red, Y green, Z blue.
+
+    `cv2.drawFrameAxes` projects with the pinhole model only. For a fisheye
+    calibration the axis ends are projected via `tagloc.lens` and drawn as
+    lines, same colours -- otherwise the cross would sit visibly off the tag
+    towards the image edge.
+    """
     import cv2
 
     thickness = max(1, round(_THICKNESS * _scale_for(image)))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
+    # getattr: Aufrufer (und Test-Fakes) duerfen ein Objekt ohne `model`
+    # uebergeben -- das ist dann, wie vor dem Fisheye-Modell, Pinhole.
+    if getattr(calibration, "model", None) == FISHEYE:
+        from .lens import project_points
+
+        axes = np.array(
+            [[0, 0, 0], [axis_length_m, 0, 0], [0, axis_length_m, 0], [0, 0, axis_length_m]],
+            dtype=np.float64,
+        )
+        points = project_points(axes, rvec, tvec, calibration)
+        if not np.all(np.isfinite(points)):
+            return
+        origin = tuple(int(round(value)) for value in points[0])
+        for end, color in zip(points[1:], ((0, 0, 255), (0, 255, 0), (255, 0, 0))):
+            cv2.line(image, origin, tuple(int(round(value)) for value in end), color, thickness)
+        return
     cv2.drawFrameAxes(
         image,
         np.asarray(calibration.camera_matrix, dtype=np.float64),
@@ -149,32 +238,123 @@ def draw_tag_overlay(
     return image
 
 
-def draw_board_overlay(image, board_sample: Any, *, coverage=None) -> Any:
+def draw_board_overlay(
+    image, board_sample: Any, *, coverage=None, outline: bool = True, compact: bool = False
+) -> Any:
     """Mark the found board corners -- the stream's calibration mode.
 
     Lets the frontend see *what* the calibration sees: whether the board is
     detected at all, where in the image it sits, and where samples are
     still missing.
+
+    `outline=False` zeichnet Text ohne dunkle Kontur. `compact=True` schreibt
+    oben links nur "{n} Ecken" (ohne "Board:"-Praefix, ohne Abdeckungszeile)
+    und zeichnet die Ecken etwas groesser (Stream im Kalibriermodus).
     """
     import cv2
 
     scale = _scale_for(image)
     margin = round(12 * scale)
+    origin = (margin, round(28 * scale))
     if board_sample is not None:
-        radius = max(2, round(4 * scale))
+        radius = max(3, round((6 if compact else 4) * scale))
         for point in np.asarray(board_sample.corners, dtype=np.float64).reshape(-1, 2):
             cv2.circle(image, (int(point[0]), int(point[1])), radius, COLOR_BOARD, -1)
         count = len(np.asarray(board_sample.corners).reshape(-1, 2))
-        _put_text(image, f"Board: {count} Ecken", (margin, round(28 * scale)), COLOR_BOARD)
+        text = f"{count} Ecken" if compact else f"Board: {count} Ecken"
+        _put_text(image, text, origin, COLOR_BOARD, outline=outline)
     else:
-        _put_text(image, "Board: nicht erkannt", (margin, round(28 * scale)), COLOR_AMBIGUOUS)
-    if coverage is not None:
+        if compact:
+            _put_text(image, "0 Ecken", origin, COLOR_BOARD, outline=outline)
+        else:
+            _put_text(image, "Board: nicht erkannt", origin, COLOR_AMBIGUOUS, outline=outline)
+    if coverage is not None and not compact:
         _put_text(
             image,
             f"Abdeckung x {coverage[0] * 100:.0f} %  y {coverage[1] * 100:.0f} %",
             (margin, round(52 * scale)),
             COLOR_BOARD,
+            outline=outline,
         )
+    return image
+
+
+#: Anzeige-Zeitzone der Kalibrier-Zeile (Anwender sitzen in Deutschland).
+_DISPLAY_TIMEZONE = "Europe/Berlin"
+#: Steht statt des Datums, wenn es keine (lesbare) Kalibrierung gibt.
+NO_CALIBRATION_STAMP = "\u2013"
+CALIBRATION_CAPTION_PREFIX = "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: "
+
+
+def format_calibration_stamp(calibration_id: str | None) -> str:
+    """Datum einer Kalibrier-ID als "TT.MM.JJJJ, HH:MM Uhr" in Europe/Berlin.
+
+    Die ID ist `<Kamera>@<ISO-8601-Zeitstempel>`; `scale_to_resolution` kann
+    weitere Teile anhaengen (`...@1280x720`), deshalb zaehlt der erste Teil
+    nach dem "@", der als Zeitstempel mit Zeitzone lesbar ist. Ohne ID, ohne
+    lesbaren oder ohne zeitzonenbehafteten Zeitstempel kommt "\u2013"
+    zurueck -- nie ein Fehler und nie der rohe String.
+    """
+    for part in str(calibration_id or "").split("@")[1:]:
+        try:
+            moment = datetime.fromisoformat(part.strip())
+        except ValueError:
+            continue
+        if moment.tzinfo is None:
+            continue
+        try:
+            local = moment.astimezone(ZoneInfo(_DISPLAY_TIMEZONE))
+        except ZoneInfoNotFoundError:
+            _log.warning("Zeitzonendatenbank ohne %s (Paket tzdata)", _DISPLAY_TIMEZONE)
+            return NO_CALIBRATION_STAMP
+        return local.strftime("%d.%m.%Y, %H:%M Uhr")
+    return NO_CALIBRATION_STAMP
+
+
+def draw_calibration_caption(image, calibration_id: str | None) -> Any:
+    """Eine Zeile unten links: "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
+
+    Das Datum ist das der Kamera-Kalibrierung (Intrinsik), nicht das der
+    Hand-Auge-Kalibrierung -- bis 02.11.2026 stand hier faelschlich
+    "Hand-Auge-Kalibrierung".
+
+    Rein weisse Schrift mit genau 1 px schwarzem Rand, ohne Balken, Schatten
+    oder Transparenz. Position und Schriftgroesse wie bei `draw_status_bar`.
+
+    Der Rand kommt aus einer Textmaske, die um einen Pixel aufgeweitet wird,
+    nicht aus einem zweiten `putText` mit groesserer Strichstaerke: OpenCV 5
+    rendert die Staerken 2 und 4 fast gleich breit, das Weiss deckte das
+    Schwarz dann vollstaendig zu. Die Maske ist binaer, es gibt also nur
+    Weiss, Schwarz und das unveraenderte Bild.
+    """
+    import cv2
+
+    shape = np.asarray(image).shape
+    scale = _scale_for(image)
+    margin = round(12 * scale)
+    text = CALIBRATION_CAPTION_PREFIX + format_calibration_stamp(calibration_id)
+    if int(cv2.__version__.split(".")[0]) < 5:
+        # Die Hershey-Schrift von OpenCV 4 kennt nur ASCII und malt sonst "?".
+        text = text.replace("\u00b7", "-").replace("\u2013", "-")
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = _FONT_SCALE * scale
+    thickness = max(1, round(_THICKNESS * scale))
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    pad = 3  # Platz fuer den Rand rund um die Glyphen
+    x0, y0 = max(0, margin - pad), max(0, shape[0] - margin - text_h - pad)
+    x1 = min(shape[1], margin + text_w + pad)
+    y1 = min(shape[0], shape[0] - margin + baseline + pad)
+    if x1 <= x0 or y1 <= y0:
+        return image
+    mask = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+    cv2.putText(
+        mask, text, (margin - x0, shape[0] - margin - y0), font, font_scale, 255, thickness, cv2.LINE_8
+    )
+    glyphs = mask >= 96
+    border = cv2.dilate(glyphs.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~glyphs
+    region = image[y0:y1, x0:x1]
+    region[border] = COLOR_SHADOW
+    region[glyphs] = COLOR_TEXT
     return image
 
 
@@ -186,7 +366,7 @@ def draw_status_bar(image, lines: Sequence[str]) -> Any:
     margin = round(12 * scale)
     line_height = round(22 * scale)
     for index, line in enumerate(reversed(list(lines))):
-        _put_text(image, line, (margin, height - margin - index * line_height))
+        _put_text(image, line, (margin, height - margin - index * line_height), outline=False)
     return image
 
 
@@ -278,6 +458,7 @@ __all__ = [
     "draw_board_overlay",
     "draw_status_bar",
     "draw_tag_axes",
+    "draw_tag_boxes",
     "draw_tag_outline",
     "draw_tag_overlay",
     "has_display",

@@ -258,7 +258,7 @@ async def install_vision_program(
             "RecipeId",
             "",
             ua.VariantType.String,
-            f"Erkennungsrezept; leer = Standard. Bekannt: {recipes}" if recipes else "Erkennungsrezept",
+            f"Erkennungsrezept, Pflicht (leer = Fehler). Bekannt: {recipes}" if recipes else "Erkennungsrezept",
         ),
         (
             "Continuous",

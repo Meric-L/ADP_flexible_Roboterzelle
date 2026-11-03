@@ -25,10 +25,11 @@ from asyncua import Client, ua
 
 from tagloc.boards import BoardSpec, detect_board
 
-#: Dieselben Kombinationen, mit denen sich am Hand-Pi das reale Board
-#: (7x9, 22mm/Feld) gefunden hat -- als erster, naheliegender Satz.
+#: Plausible Kombinationen als erster, naheliegender Satz: zuerst das aktuelle
+#: Brett (seit 28.10.2026 7x10 innere Ecken, 23 mm/Feld), dann das vorherige
+#: (7x9, 22 mm/Feld), mit dem sich am Hand-Pi das reale Board gefunden hat.
 DEFAULT_COMBOS = [
-    (7, 9), (9, 7), (6, 8), (8, 6), (6, 9), (9, 6),
+    (7, 10), (10, 7), (7, 9), (9, 7), (6, 8), (8, 6), (6, 9), (9, 6),
     (7, 8), (8, 7), (8, 9), (9, 8),
 ]
 

@@ -25,6 +25,28 @@ nicht gibt.
 | [`deckenkamera-volle-aufloesung.md`](deckenkamera-volle-aufloesung.md) | vision | in Arbeit | Meric | 24.09.2026 |
 | [`opcua-kamera-condition-monitoring.md`](opcua-kamera-condition-monitoring.md) | opcua | fertig | `Agent: Kamerazustand als DeviceHealth (OPC 40100-2)` | 22.09.2026 |
 | [`apriltag-posenschaetzung-optimierung.md`](apriltag-posenschaetzung-optimierung.md) | apriltag | fertig | `Agent: AprilTag-Optimierung` | 23.09.2026 |
+| [`modell-flaechen-tag-platzierung.md`](modell-flaechen-tag-platzierung.md) | frontend | fertig (vorläufig) | Meric, `Agent: Tags auf Modellflächen platzieren` | 29.09.2026 |
+| [`layer2-lauf-hand-pi.md`](layer2-lauf-hand-pi.md) | apriltag | fertig | Meric, `Agent: Layer-2-Lauf auf dem Hand-Pi` | 29.09.2026 |
+| [`layer2-annaeherung.md`](layer2-annaeherung.md) | apriltag | fertig | `Agent: Layer-2-Annäherung auf dem Hand-Pi` | 12.10.2026 |
+| [`handeye-ueber-opcua.md`](handeye-ueber-opcua.md) | apriltag | fertig | `Agent: Hand-Auge-Kalibrierung per OPC UA` | 13.10.2026 |
+| [`handeye-schachbrett-automatik.md`](handeye-schachbrett-automatik.md) | apriltag | fertig | John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett` | 13.10.2026 |
+| [`layer2-schraege-ansicht.md`](layer2-schraege-ansicht.md) | apriltag | fertig | John Glanz, `Agent: Layer 2 schräge Ansicht` | 13.10.2026 |
+| [`zellen-ueberwachung.md`](zellen-ueberwachung.md) | apriltag | fertig | `Agent: Zellen-Überwachung (Layer 1)` | 13.10.2026 |
+| [`layer2-measuretags.md`](layer2-measuretags.md) | apriltag | fertig | `Agent: MeasureTags auf dem Hand-Pi` | 15.10.2026 |
+| [`hand-auge-brett-zentrieren.md`](hand-auge-brett-zentrieren.md) | apriltag | fertig | `Agent: Hand-Auge-Brett zentrieren auf dem Hand-Pi` | 22.10.2026 |
+| [`handeye-genauigkeit.md`](handeye-genauigkeit.md) | apriltag | in Arbeit | Meric, `Agent: Hand-Auge-Genauigkeit` | 28.10.2026 |
+| [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
+| [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md) | frontend | fertig | Meric, `Agent: Tag um 90° drehen` | 19.10.2026 |
+| [`rohbild-speichern.md`](rohbild-speichern.md) | vision | fertig | Meric, `Agent: Rohbild speichern` | 19.10.2026 |
+| [`stream-overlay-schlank.md`](stream-overlay-schlank.md) | frontend | fertig | Meric, `Agent: Stream-Overlay verschlanken` | 21.10.2026 |
+| [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md) | vision | fertig | Meric, `Agent: Livestream-Tags aus voller Auflösung` | 21.10.2026 |
+| [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md) | apriltag | fertig | Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen` | 20.10.2026 |
+| [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md) | apriltag | fertig | Meric, `Agent: Live-Ansicht Tag-Einmessen` | 21.10.2026 |
+| [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md) | vision | fertig | Meric, `Agent: Erkennung unscharfe Tags` | 19.10.2026 |
+| [`kamera-controls-und-detektor-parameter.md`](kamera-controls-und-detektor-parameter.md) | vision | fertig | Meric, `Agent: Kamera-Controls` | 19.10.2026 |
+| [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
+| [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
+| [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
@@ -63,7 +85,11 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 | [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | Konzept der AprilTag-Lokalisierung |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag-Referenz |
 | [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | End-to-End-Testanleitung AprilTag |
-| [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen |
+| [`../code-handbuch.md`](../code-handbuch.md) | Code-Handbuch: jede Datei unseres Codes (dieses Repo und unser Anteil an webskillcomposition) mit Zweck, Einstieg und Verweisen |
+| [`../altlasten-zelle.md`](../altlasten-zelle.md) | Aufräum-Audit dieses Repos (`apriltag`): toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken |
+| [`../altlasten-wsc.md`](../altlasten-wsc.md) | Aufräum-Audit webskillcomposition, nur unser Anteil (`origin/dev..Ungetestet`) |
+| [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen (Stand 21.09., abgelöst durch die beiden Audits) |
+| [`../altlasten-toter-code.md`](../altlasten-toter-code.md) | Audit toter Code, Stand 21.10. (abgelöst durch die beiden Audits) |
 | [`../praesentation.md`](../praesentation.md) | Foliengrundlage der Betreuer-Präsentation |
 
 Kommt eine Fach-MD dazu, hier eine Zeile ergänzen. Für Agenten listet das

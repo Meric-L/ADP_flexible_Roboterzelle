@@ -1,12 +1,12 @@
 """Druckbogen fuer AprilTags und ChArUco-Boards, masshaltig in Millimetern.
 
-Output is **SVG**, not PNG: an SVG carries real millimeter measurements,
-prints from any browser at "scale 100%", and stays dimensionally accurate.
-A PNG instead depends on the printer driver's DPI assumption -- exactly the
-error that comes back later as a constant distance offset.
+Die Ausgabe ist **SVG**, nicht PNG: Ein SVG traegt echte Millimetermasse,
+druckt aus jedem Browser mit "Skalierung 100 %" und bleibt massgenau. Ein PNG
+haengt dagegen von der DPI-Annahme des Druckertreibers ab -- genau der Fehler,
+der spaeter als konstanter Abstandsversatz wiederkommt.
 
-Every sheet carries a 100 mm scale bar, so a ruler after printing confirms
-the printer really didn't rescale anything.
+Jeder Bogen traegt einen Massstab von 100 mm, sodass ein Lineal nach dem
+Drucken bestaetigt, dass der Drucker wirklich nichts skaliert hat.
 
     python tools/make_tag_sheet.py --ids 0 1 2 3 7 12 --size-mm 100 --out tags.svg
     python tools/make_tag_sheet.py --charuco --cols 7 --rows 5 \
@@ -18,12 +18,17 @@ import base64
 import sys
 from pathlib import Path
 
+# Marker-Woerterbuch und Board-Bau kommen aus `tagloc`, nicht aus eigenen Kopien.
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
 MARGIN_MM = 12.0
 LABEL_MM = 6.0
-#: Resolution of the embedded bitmap. Markers are rectangles; more pixels
-#: only add file size, too few create rounding artifacts.
+#: Aufloesung des eingebetteten Bitmaps. Marker sind Rechtecke; mehr Pixel
+#: vergroessern nur die Datei, zu wenige erzeugen Rundungsartefakte.
 PIXELS_PER_MM = 8
 
 
@@ -36,56 +41,37 @@ def _png_data_uri(image) -> str:
     return "data:image/png;base64," + base64.b64encode(buffer).decode("ascii")
 
 
-def _dictionary(name: str):
-    import cv2
-
-    aruco = cv2.aruco
-    if not hasattr(aruco, name):
-        raise SystemExit(f"Diese OpenCV-Version kennt '{name}' nicht")
-    identifier = getattr(aruco, name)
-    if hasattr(aruco, "getPredefinedDictionary"):
-        return aruco.getPredefinedDictionary(identifier)
-    return aruco.Dictionary_get(identifier)
-
-
 def render_marker(dictionary, tag_id: int, size_mm: float):
-    """Render one marker as a bitmap at print resolution."""
+    """Rendert einen Marker als Bitmap in Druckaufloesung."""
     import cv2
 
     pixels = max(64, int(size_mm * PIXELS_PER_MM))
-    if hasattr(cv2.aruco, "generateImageMarker"):
-        return cv2.aruco.generateImageMarker(dictionary, tag_id, pixels)
-    return cv2.aruco.drawMarker(dictionary, tag_id, pixels)
+    return cv2.aruco.generateImageMarker(dictionary, tag_id, pixels)
 
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
-    """Render a ChArUco board as a bitmap, plus its size in millimeters."""
-    import cv2
+    """Rendert ein ChArUco-Board als Bitmap samt seiner Groesse in Millimetern."""
+    from tagloc.boards import CHARUCO, BoardSpec, build_board
 
-    dictionary = _dictionary(name)
     width_mm = spec_cols * square_mm
     height_mm = spec_rows * square_mm
     size_px = (int(width_mm * PIXELS_PER_MM), int(height_mm * PIXELS_PER_MM))
-    aruco = cv2.aruco
-    if hasattr(aruco, "CharucoBoard"):
-        try:
-            board = aruco.CharucoBoard(
-                (spec_cols, spec_rows), square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-        except TypeError:
-            board = aruco.CharucoBoard_create(
-                spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
-            )
-    else:
-        board = aruco.CharucoBoard_create(
-            spec_cols, spec_rows, square_mm / 1000.0, marker_mm / 1000.0, dictionary
+    board = build_board(
+        BoardSpec(
+            type=CHARUCO,
+            cols=spec_cols,
+            rows=spec_rows,
+            square_size_m=square_mm / 1000.0,
+            marker_size_m=marker_mm / 1000.0,
+            dictionary=name,
         )
-    image = board.generateImage(size_px) if hasattr(board, "generateImage") else board.draw(size_px)
+    )
+    image = board.generateImage(size_px)
     return image, width_mm, height_mm
 
 
 def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
-    """Draw a scale bar for measuring after printing."""
+    """Zeichnet einen Massstab zum Nachmessen nach dem Drucken."""
     parts = [
         f'<line x1="{x_mm}mm" y1="{y_mm}mm" x2="{x_mm + length_mm}mm" y2="{y_mm}mm" '
         'stroke="black" stroke-width="0.4mm"/>'
@@ -105,10 +91,10 @@ def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
 
 
 def build_svg(items, title: str) -> str:
-    """Assemble the sheet. `items` are `(data_uri, x, y, w, h, label)` in mm.
+    """Setzt den Bogen zusammen. `items` sind `(data_uri, x, y, w, h, label)` in mm.
 
-    Pure string work, deliberately without OpenCV, so layout is testable
-    even without OpenCV installed.
+    Reine Zeichenkettenarbeit, bewusst ohne OpenCV, damit das Layout auch ohne
+    installiertes OpenCV testbar ist.
     """
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -135,7 +121,7 @@ def build_svg(items, title: str) -> str:
 
 
 def layout_tags(dictionary, ids, size_mm: float):
-    """Arrange markers in columns and rows on A4."""
+    """Ordnet Marker in Spalten und Zeilen auf A4 an."""
     cell = size_mm + LABEL_MM + 6.0
     columns = max(1, int((A4_WIDTH_MM - 2 * MARGIN_MM) / cell))
     items = []
@@ -182,6 +168,13 @@ def main(argv=None) -> int:
     if args.out.suffix.lower() != ".svg":
         print(f"Warnung: {args.out.name} ist kein .svg -- geschrieben wird SVG", file=sys.stderr)
 
+    try:
+        return _run(args)
+    except ValueError as error:  # unbekannte Woerterbuch-Namen
+        raise SystemExit(str(error)) from None
+
+
+def _run(args) -> int:
     if args.charuco:
         image, width_mm, height_mm = render_charuco(
             args.cols, args.rows, args.square_mm, args.marker_mm, args.board_dictionary
@@ -199,7 +192,9 @@ def main(argv=None) -> int:
         ]
         title = f"Kalibrierboard ChArUco {args.cols}x{args.rows}"
     else:
-        items = layout_tags(_dictionary(args.family), args.ids, args.size_mm)
+        from tagloc.detector import predefined_dictionary
+
+        items = layout_tags(predefined_dictionary(args.family), args.ids, args.size_mm)
         title = f"AprilTags {args.family}, Kantenlaenge {args.size_mm:.0f} mm"
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

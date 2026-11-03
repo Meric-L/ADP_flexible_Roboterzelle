@@ -167,8 +167,9 @@ bricht ab.
 - Abdeckung in x **und** y über **70 %** (steht am Ende der Kalibrierung). Eine
   Kalibrierung nur aus der Bildmitte hat gutes RMS und unbrauchbare Verzeichnung
   am Rand — also genau dort, wo die Module liegen.
-- im Overlay sitzt das Achsenkreuz **im** Tag, nicht daneben, und kippt nicht,
-  wenn man den Tag langsam dreht
+- im Overlay (CLI-Fenster, `--overlay`) sitzt das Achsenkreuz **im** Tag, nicht
+  daneben, und kippt nicht, wenn man den Tag langsam dreht. Der Livestream
+  zeigt nur Kasten und ID, kein Achsenkreuz
 
 ---
 
@@ -510,7 +511,7 @@ Bild ankommt, sondern was die Erkennung darin sieht.
 | Wert | Anzeige | Was markiert wird |
 |---|---|---|
 | `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
-| `apriltag` | „AprilTags markieren" | Umriss jedes erkannten Tags, **Achsenkreuz im Tag** (X rot, Y grün, Z blau), ID, Modulname aus der Karte, Distanz, Reprojektionsfehler. Mehrdeutige Posen orange statt grün |
+| `apriltag` | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die ID `#<id>`, keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und orange Färbung mehrdeutiger Posen gibt es nur im ausführlichen CLI-Overlay (`python -m tagloc.cli.detect --overlay`) |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Abdeckung — damit sieht man, was die Kalibrierung sieht |
 
 Umschalten ist ein einfacher Schreibzugriff:
@@ -535,7 +536,7 @@ Beschriftungen stehen serverseitig in `tagloc.modes.OVERLAY_MODE_LABELS`.
 
 - Bild kommt an, ca. 5 fps, keine über Minuten wachsende Verzögerung
 - Umschalten auf `apriltag` zeigt innerhalb von rund einer Sekunde Markierungen
-- das Achsenkreuz sitzt **im** Tag und dreht sich mit, wenn man den Tag dreht
+- der grüne Kasten sitzt auf dem Tag und folgt ihm, wenn man den Tag bewegt; daneben steht `#<id>`. Das Achsenkreuz prüft man nicht im Stream, sondern mit `python -m tagloc.cli.detect --source camera --overlay`
 - Umschalten auf `off` zeigt sofort wieder das Rohbild
 - ein laufender `apriltag`-Job unterbricht den Stream **nicht** — beide lesen aus
   derselben `SharedCamera`

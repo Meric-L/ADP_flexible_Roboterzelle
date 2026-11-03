@@ -1,24 +1,26 @@
-"""End-to-end test on a synthetically rendered image.
+"""End-to-End-Test an einem synthetisch gerenderten Bild.
 
-This is the level where the detection chain is checked against a **reference
-value** instead of itself: `tools/make_synthetic_scene.py` places tags at
-known locations and projects them with exactly the intrinsics later fed into
-pose estimation. What comes out afterward must match the input.
+Das ist die Ebene, auf der die Erkennungskette gegen einen **Referenzwert**
+statt gegen sich selbst geprueft wird: `tools/make_synthetic_scene.py` setzt
+Tags an bekannte Orte und projiziert sie mit genau den Intrinsiken, die
+spaeter in die Posenschaetzung gehen. Was danach herauskommt, muss der
+Eingabe entsprechen.
 
-Checks the whole chain:
+Geprueft wird die ganze Kette:
 
     detector -> estimate_tag_pose -> place_tags -> locate_modules
 
-plus the calibration path (rendered chessboards -> `calibrate_from_samples`).
-Tolerance per doc/projektdoku/apriltag-lokalisierung.md section 7: **2 mm and 0.5 degrees**.
+dazu der Kalibrierpfad (gerenderte Schachbretter -> `calibrate_from_samples`).
+Toleranz nach doc/projektdoku/apriltag-lokalisierung.md Abschnitt 7: **2 mm und 0,5 Grad**.
 
-Skips instead of failing without OpenCV. The probe access to `cv2.imread` is
-deliberate: an incomplete install can still be imported but lacks functions
--- without the access that would only surface mid-test.
+Ohne OpenCV wird uebersprungen statt zu scheitern. Der Probezugriff auf
+`cv2.imread` ist Absicht: Eine unvollstaendige Installation laesst sich noch
+importieren, es fehlen aber Funktionen -- ohne den Zugriff fiele das erst
+mitten im Test auf.
 """
 
-# Without this import, the return annotation `-> TagMap` would be evaluated
-# when the class is defined -- and blow up if the import above was skipped.
+# Ohne diesen Import wuerde die Rueckgabeannotation `-> TagMap` bei der
+# Klassendefinition ausgewertet -- und scheitern, wenn der Import oben uebersprungen wurde.
 from __future__ import annotations
 
 import unittest
@@ -50,38 +52,41 @@ try:
         render_tags,
         synthetic_calibration,
     )
-except Exception:  # pragma: no cover - skipped without OpenCV
+except Exception:  # pragma: no cover - ohne OpenCV uebersprungen
     cv2 = None
 
-#: Position: the concept's spec value. Measured worst case on this scene is
-#: 0.29 mm, so this keeps a factor of seven.
+#: Position: der Sollwert aus dem Konzept. Der gemessene Schlechtestfall auf
+#: dieser Szene ist 0,29 mm, damit bleibt ein Faktor sieben.
 POSITION_TOLERANCE_M = 0.002
 
-#: Angle: NOT the concept's 0.5 deg. Measured over all tags and views, the
-#: median is 0.031 deg but the worst case is 0.5005 deg -- a tag seen at 34 deg
-#: obliquity, where pixel quantisation of the rendered marker limits corner
-#: accuracy. At 0.5 the threshold sat exactly on the edge of the distribution
-#: and the test flickered. It is not ambiguity: for that sample the alternative
-#: IPPE solution is 82x worse (residual 0.045 vs 3.67), so the right pose was
-#: picked. A genuinely wrong pose lands tens of degrees off -- that same
-#: alternative is 67.8 deg out -- so 1.0 still separates right from wrong,
-#: and `reprojection_error_px < 1.0` below is the tight bound that does the
-#: real work (worst case there: 0.063 px).
+#: Winkel: NICHT die 0,5 Grad aus dem Konzept. Ueber alle Tags und Ansichten
+#: gemessen liegt der Median bei 0,031 Grad, der Schlechtestfall aber bei
+#: 0,5005 Grad -- ein Tag, unter 34 Grad Schraege gesehen, wo die
+#: Pixelquantisierung des gerenderten Markers die Eckengenauigkeit begrenzt.
+#: Bei 0,5 lag die Schwelle genau am Rand der Verteilung, und der Test
+#: flackerte. Es ist keine Mehrdeutigkeit: Fuer diese Aufnahme ist die
+#: alternative IPPE-Loesung 82-mal schlechter (Residuum 0,045 gegen 3,67), die
+#: richtige Pose wurde also gewaehlt. Eine wirklich falsche Pose landet zig
+#: Grad daneben -- dieselbe Alternative liegt 67,8 Grad daneben --, also
+#: trennt 1,0 weiterhin richtig von falsch, und `reprojection_error_px < 1.0`
+#: unten ist die enge Schranke, die die eigentliche Arbeit leistet
+#: (Schlechtestfall dort: 0,063 px).
 ANGLE_TOLERANCE_DEG = 1.0
 
-#: Looser for chained results (camera pose from reference tags, then module
-#: offset): multiple individual measurements add up there.
+#: Lockerer fuer verkettete Ergebnisse (Kamerapose aus Referenztags, dann
+#: Modulversatz): Dort summieren sich mehrere Einzelmessungen.
 CHAIN_TOLERANCE_M = 0.003
 CHAIN_TOLERANCE_DEG = 1.5
 
-#: Spread of the four world-tag estimates of the camera pose. Deliberately
-#: NOT an accuracy figure: it measures how far the single estimates disagree
-#: with each other, and the confidence-weighted merge comes out far better
-#: than the worst of them. Measured over all four views: worst case 4.21 mm
-#: at 0.444 deg (view 0, the most oblique one), against a merged camera-pose
-#: error of 0.77 mm. 8 mm keeps a factor of nearly two and still catches a
-#: map whose world tags genuinely contradict each other -- a mis-surveyed tag
-#: lands centimetres out, not millimetres.
+#: Streuung der vier Welttag-Schaetzungen der Kamerapose. Bewusst KEINE
+#: Genauigkeitsangabe: Sie misst, wie weit die Einzelschaetzungen einander
+#: widersprechen, und das konfidenzgewichtete Zusammenfuehren wird weit
+#: besser als die schlechteste davon. Ueber alle vier Ansichten gemessen:
+#: Schlechtestfall 4,21 mm bei 0,444 Grad (Ansicht 0, die schraegste), bei
+#: einem Fehler der zusammengefuehrten Kamerapose von 0,77 mm. 8 mm behalten
+#: einen Faktor von knapp zwei und fangen trotzdem eine Karte ab, deren
+#: Welttags einander wirklich widersprechen -- ein falsch eingemessener Tag
+#: landet Zentimeter daneben, nicht Millimeter.
 SPREAD_TOLERANCE_M = 0.008
 
 ANCHOR_TAG_ID = 0
@@ -95,7 +100,7 @@ def _degrees(first, second) -> float:
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class SyntheticTagSceneTest(unittest.TestCase):
-    """The full chain on rendered views of the same scene."""
+    """Die ganze Kette auf gerenderten Ansichten derselben Szene."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -109,14 +114,14 @@ class SyntheticTagSceneTest(unittest.TestCase):
         # AprilTagProfileConfig.subpixel_corner_refinement).
         cls.detector = build_detector("tag36h11", "aruco", subpixel_corner_refinement=True)
         cls.views = orbit_views(VIEW_COUNT)
-        # Render once, evaluate four times -- rendering is the expensive part.
+        # Einmal rendern, viermal auswerten -- das Rendern ist der teure Teil.
         cls.scenes = [
             render_tags(cls.placements, pose_world_cam, cls.calibration)
             for pose_world_cam in cls.views
         ]
 
     def _tag_map(self) -> TagMap:
-        """Return a map with the four world tags and one module tag with a CAD offset."""
+        """Liefert eine Karte mit den vier Welttags und einem Modul-Tag mit CAD-Versatz."""
         entries = {}
         for placement in self.placements:
             if placement.tag_id == MODULE_TAG_ID:
@@ -171,8 +176,8 @@ class SyntheticTagSceneTest(unittest.TestCase):
                     self.assertLess(
                         _degrees(tag_pose.pose_cam_tag, expected), ANGLE_TOLERANCE_DEG
                     )
-                    # Obliquely viewed tags are unambiguous; if not, the scene
-                    # would be a poor choice for this test.
+                    # Schraeg gesehene Tags sind eindeutig; wenn nicht, waere
+                    # die Szene fuer diesen Test eine schlechte Wahl.
                     self.assertFalse(tag_pose.is_ambiguous)
                     self.assertLess(tag_pose.reprojection_error_px, 1.0)
 
@@ -216,7 +221,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
                 )
                 self.assertLess(_degrees(pose, expected), ANGLE_TOLERANCE_DEG)
 
-        # The map must close -- that's its quality figure.
+        # Die Karte muss sich schliessen -- das ist ihre Guetezahl.
         for edge, (position_m, angle_rad) in residuals(observations, placed).items():
             with self.subTest(kante=edge):
                 self.assertLess(position_m, POSITION_TOLERANCE_M)
@@ -236,7 +241,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
             translation_distance_m(pose_world_cam, self.views[0]), CHAIN_TOLERANCE_M
         )
         self.assertLess(_degrees(pose_world_cam, self.views[0]), CHAIN_TOLERANCE_DEG)
-        # All four world tags of the scene are visible and agree.
+        # Alle vier Welttags der Szene sind sichtbar und stimmen ueberein.
         self.assertEqual(list(localization.world_tag_ids), [0, 1, 2, 3])
         self.assertIn(localization.primary_tag_id, (0, 1, 2, 3))
         self.assertLess(localization.spread_m, SPREAD_TOLERANCE_M)
@@ -249,7 +254,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
         self.assertEqual(module.instance_id, "mod-a-1")
         self.assertEqual(module.frame_id, "world")
         self.assertFalse(module.ambiguous)
-        # Reported relative to the world tag it sits closest to.
+        # Gemeldet relativ zu dem Welttag, neben dem es steht.
         self.assertIn(module.reference_tag_id, (0, 1, 2, 3))
         self.assertIsNotNone(module.pose_in_reference_tag)
 
@@ -261,7 +266,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
         self.assertLess(_degrees(module.pose, expected), CHAIN_TOLERANCE_DEG)
 
     def test_without_world_tags_the_pose_stays_in_the_camera_frame(self) -> None:
-        """The eye-in-hand case between two world tags: result in the camera frame."""
+        """Der Fall der Handkamera zwischen zwei Welttags: Ergebnis im Kamera-KS."""
         tag_map = self._tag_map()
         image, truth = self.scenes[0]
         tag_poses = estimate_tag_poses(
@@ -271,7 +276,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
             tag_poses, tag_map, localization=None, frame_id="cam_flange"
         )
         self.assertEqual([item.frame_id for item in located], ["cam_flange"])
-        # Without a camera pose there is no world tag to relate anything to.
+        # Ohne Kamerapose gibt es keinen Welttag, auf den sich etwas beziehen liesse.
         self.assertEqual(located[0].reference_tag_id, -1)
         self.assertIsNone(located[0].pose_in_reference_tag)
         expected = compose(truth[MODULE_TAG_ID], tag_map[MODULE_TAG_ID].tag_to_module)
@@ -282,7 +287,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class SyntheticCalibrationTest(unittest.TestCase):
-    """The calibration path: rendered chessboards back to the intrinsics."""
+    """Der Kalibrierpfad: gerenderte Schachbretter zurueck zu den Intrinsiken."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -340,8 +345,8 @@ class SyntheticCalibrationTest(unittest.TestCase):
         fx, fy, cx, cy = result.camera_params
         width, height = self.calibration.image_size
 
-        # A few percent is enough: this checks that the path recovers the
-        # right order of magnitude, not the quality of cv2.calibrateCamera.
+        # Ein paar Prozent genuegen: Das prueft, dass der Pfad die richtige
+        # Groessenordnung wiederfindet, nicht die Qualitaet von cv2.calibrateCamera.
         self.assertAlmostEqual(fx / expected_fx, 1.0, delta=0.02)
         self.assertAlmostEqual(fy / expected_fy, 1.0, delta=0.02)
         self.assertLess(abs(cx - expected_cx), 0.02 * width)

@@ -1,16 +1,79 @@
 {
   "schema": "wsc.vision.tagmap/2",
   "frameId": "world",
-  "anchorTagId": 0,
+  "anchorTagId": 583,
   "tagFamily": "tag36h11",
   "tags": [
     {
-      "tagId": 0,
+      "tagId": 583,
       "role": "world",
-      "sizeM": 0.1,
+      "sizeM": 0.2,
       "poseInWorld": {
-        "position": [0.0, 0.0, 0.0],
-        "orientation": [0.0, 0.0, 0.0, 1.0]
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "tagId": 584,
+      "role": "world",
+      "sizeM": 0.2,
+      "poseInWorld": {
+        "position": [
+          1.5944,
+          0.0044,
+          0.0
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "tagId": 585,
+      "role": "world",
+      "sizeM": 0.2,
+      "poseInWorld": {
+        "position": [
+          1.5803,
+          1.7521,
+          0.0
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "tagId": 586,
+      "role": "world",
+      "sizeM": 0.2,
+      "poseInWorld": {
+        "position": [
+          -0.0104,
+          1.7533,
+          0.0
+        ],
+        "orientation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
       }
     }
   ]

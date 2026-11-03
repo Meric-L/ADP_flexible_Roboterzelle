@@ -1,15 +1,17 @@
 """Kamerakalibrierung -- interaktiv an der Kamera oder headless aus Bildern.
 
-    # interactive: SPACE = capture, C = compute, S = save, Q = quit
+    # interactive: SPACE = capture, C = compute + save, Q = quit
     python -m tagloc.cli.calibrate --source camera:0 --board charuco \
         --out data/calibration/cam_ceiling.json --frame-id cam_ceiling
 
-    # headless, same computation core
+    # headless, same computation core; fisheye model as used for cam_ceiling
     python -m tagloc.cli.calibrate --source ./aufnahmen/decke/ --board charuco \
-        --out data/calibration/cam_ceiling.json --frame-id cam_ceiling
+        --out data/calibration/cam_ceiling.json --frame-id cam_ceiling --model fisheye
 
 `--capture-to FOLDER` additionally saves camera images without computing,
 producing the image set a calibration can later be reproduced from on a PC.
+It works in the window mode and, with a camera source, also with `--no-gui`
+(there every accepted frame is saved); image folders are not copied.
 """
 
 import argparse
@@ -25,7 +27,7 @@ from ..boards import (
     compute_coverage,
     detect_board,
 )
-from ..calibration import save_calibration
+from ..calibration import DISTORTION_MODELS, PINHOLE, save_calibration
 from ..overlay import draw_board_overlay, draw_status_bar
 from ._common import add_source_arguments, is_camera_source, setup_logging
 
@@ -41,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--square-size-m", type=float, default=0.030)
     parser.add_argument("--marker-size-m", type=float, default=0.022)
     parser.add_argument("--dictionary", default="DICT_4X4_50")
+    parser.add_argument(
+        "--model",
+        choices=DISTORTION_MODELS,
+        default=PINHOLE,
+        help="Linsenmodell: pinhole (Brown-Conrady, 5 Koeff.) oder fisheye (Kannala-Brandt, 4)",
+    )
     parser.add_argument("--out", type=Path, required=True, help="Zieldatei (JSON)")
     parser.add_argument("--frame-id", default="", help="Bezugsrahmen dieser Kamera")
     parser.add_argument("--min-samples", type=int, default=MIN_SAMPLES)
@@ -70,10 +78,13 @@ def _finish(samples, size, spec, board, args) -> int:
         )
         if len(samples) < 3:
             return 1
-    calibration = calibrate_from_samples(samples, size, spec, board, frame_id=args.frame_id)
+    calibration = calibrate_from_samples(
+        samples, size, spec, board, frame_id=args.frame_id, model=args.model
+    )
     coverage = compute_coverage(samples, size)
     save_calibration(args.out, calibration)
-    print(f"\nRMS-Reprojektionsfehler : {calibration.rms_reprojection_error:.4f} px")
+    print(f"\nLinsenmodell            : {calibration.model}")
+    print(f"RMS-Reprojektionsfehler : {calibration.rms_reprojection_error:.4f} px")
     print(f"Aufnahmen               : {calibration.sample_count}")
     print(f"Abdeckung               : x {coverage[0] * 100:.0f} %  y {coverage[1] * 100:.0f} %")
     if min(coverage) < 0.6:
@@ -113,6 +124,13 @@ def main(argv=None) -> int:
                 if sample is not None:
                     samples.append(sample)
                     print(f"Aufnahme {len(samples):>3}: {sample.count()} Ecken")
+                    if args.capture_to is not None and is_camera_source(args.source):
+                        import cv2
+
+                        saved += 1
+                        cv2.imwrite(
+                            str(Path(args.capture_to) / f"kalib_{saved:03d}.png"), image
+                        )
                 else:
                     print("Board nicht erkannt, Bild uebersprungen")
                 continue

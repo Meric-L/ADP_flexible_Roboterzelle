@@ -29,7 +29,6 @@ zurueckgelassen, nicht beendet.
 """
 
 import asyncio
-import contextlib
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -37,6 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
+from .aio import cancel_and_wait
 from .profiles import CAMERA_BACKENDS, CameraStreamConfig
 
 _log = logging.getLogger(__name__)
@@ -110,6 +110,25 @@ def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
     return bgr[:, :width] if bgr.shape[1] > width else bgr
 
 
+def realsense_color_profiles(device) -> set[tuple[int, int, int, str]]:
+    """Farb-Stream-Profile eines RealSense-Geraets als `(Breite, Hoehe, fps, Format)`.
+
+    Gemeinsam fuer die Fehlermeldung in `_open_realsense` und das Werkzeug
+    `tools/list_realsense_profiles.py`. Fragt nur Faehigkeiten ab, oeffnet keine
+    Pipeline.
+    """
+    import pyrealsense2 as rs
+
+    profiles = set()
+    for sensor in device.query_sensors():
+        for profile in sensor.get_stream_profiles():
+            if profile.stream_type() != rs.stream.color:
+                continue
+            video = profile.as_video_stream_profile()
+            profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+    return profiles
+
+
 def _list_realsense_color_profiles() -> str:
     """Fragt die angeschlossene RealSense nach ihren Farb-Stream-Profilen.
 
@@ -122,13 +141,7 @@ def _list_realsense_color_profiles() -> str:
         devices = rs.context().query_devices()
         if len(devices) == 0:
             return "keine RealSense gefunden (Kabel/USB-Port pruefen)"
-        profiles = set()
-        for sensor in devices[0].query_sensors():
-            for profile in sensor.get_stream_profiles():
-                if profile.stream_type() != rs.stream.color:
-                    continue
-                video = profile.as_video_stream_profile()
-                profiles.add((video.width(), video.height(), profile.fps(), profile.format().name))
+        profiles = realsense_color_profiles(devices[0])
         if not profiles:
             return "Kamera gefunden, aber keine Farb-Profile gemeldet"
         return ", ".join(
@@ -169,7 +182,151 @@ def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
         arguments["lores"] = {"size": preview, "format": PICAMERA2_PREVIEW_FORMAT}
     if config.buffer_count is not None:
         arguments["buffer_count"] = int(config.buffer_count)
+    if config.camera_controls:
+        # Picamera2 legt seine Video-Standards (`FrameDurationLimits`,
+        # `NoiseReductionMode`) unter diese Controls: `create_video_configuration`
+        # mischt sie mit den Standards, ersetzt sie nicht. Namen und Enum-Strings
+        # sind hier noch unaufgeloest, siehe `resolve_camera_controls`.
+        arguments["controls"] = dict(config.camera_controls)
     return arguments
+
+
+#: Enum-Controls, die als Name angegeben werden duerfen -> Pfad der Enum-Klasse
+#: in `libcamera.controls`. `NoiseReductionMode` liegt dort unter `draft`.
+CAMERA_ENUM_CONTROLS: dict[str, str] = {
+    "NoiseReductionMode": "draft.NoiseReductionModeEnum",
+    "AeMeteringMode": "AeMeteringModeEnum",
+    "AeExposureMode": "AeExposureModeEnum",
+    "AeConstraintMode": "AeConstraintModeEnum",
+    "AwbMode": "AwbModeEnum",
+}
+
+
+def resolve_camera_controls(controls: dict[str, Any], namespace: Any) -> dict[str, Any]:
+    """Ersetzt Enum-Namen (`"Fast"`) durch die libcamera-Werte.
+
+    `namespace` ist `libcamera.controls` (injizierbar, damit es ohne libcamera
+    testbar bleibt). Nur die Controls aus `CAMERA_ENUM_CONTROLS` werden
+    aufgeloest; Zahlen und alle anderen Werte bleiben unveraendert.
+    `ValueError` mit den gueltigen Namen bei einem unbekannten Enum-Namen.
+    """
+    resolved = dict(controls)
+    for name, path in CAMERA_ENUM_CONTROLS.items():
+        value = resolved.get(name)
+        if not isinstance(value, str):
+            continue
+        enum_class = namespace
+        for part in path.split("."):
+            enum_class = getattr(enum_class, part)
+        if not hasattr(enum_class, value):
+            valid = ", ".join(sorted(n for n in dir(enum_class) if n[:1].isupper()))
+            raise ValueError(
+                f"Kamera-Control {name}: unbekannter Name '{value}' (gueltig: {valid})"
+            )
+        resolved[name] = getattr(enum_class, value)
+    return resolved
+
+
+def validate_camera_controls(
+    controls: dict[str, Any], available: dict[str, Any]
+) -> dict[str, Any]:
+    """Prueft die Namen gegen `Picamera2.camera_controls` und gleicht Zahlentypen an.
+
+    `available` bildet Control-Name auf `(Minimum, Maximum, Standard)` ab. Ein
+    ganzzahliger Wert fuer ein Float-Control wird `float` (und umgekehrt, wenn
+    er ganzzahlig ist), `0`/`1` fuer ein Bool-Control wird `bool`; Listen aus
+    JSON werden zu Tupeln. `ValueError` mit den Namen der Kamera, wenn ein
+    Control dort nicht vorkommt -- ein Tippfehler soll beim Start auffallen.
+    """
+    unknown = sorted(name for name in controls if name not in available)
+    if unknown:
+        raise ValueError(
+            f"Unbekannte Kamera-Controls: {', '.join(unknown)} "
+            f"(diese Kamera kennt: {', '.join(sorted(available))})"
+        )
+    checked: dict[str, Any] = {}
+    for name, value in controls.items():
+        info = available[name]
+        default = info[2] if isinstance(info, (tuple, list)) and len(info) >= 3 else None
+        if isinstance(value, list):
+            value = tuple(value)
+        if isinstance(default, bool):
+            if isinstance(value, int) and value in (0, 1):
+                value = bool(value)
+        elif isinstance(default, float) and isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
+        elif (
+            isinstance(default, int)
+            and isinstance(value, float)
+            and value.is_integer()
+        ):
+            value = int(value)
+        checked[name] = value
+    return checked
+
+
+#: Metadaten, die nach dem Warmup ins Log gehen: damit waehlt man feste
+#: Belichtungswerte fuer `camera_controls`.
+CAMERA_METADATA_KEYS: tuple[str, ...] = (
+    "ExposureTime",
+    "AnalogueGain",
+    "DigitalGain",
+    "Lux",
+    "ColourTemperature",
+    "FocusFoM",
+)
+
+
+def format_camera_metadata(metadata: dict[str, Any]) -> str:
+    """Die Eintraege aus `CAMERA_METADATA_KEYS`, die die Kamera meldet, als eine Zeile."""
+    return ", ".join(f"{key}={metadata[key]}" for key in CAMERA_METADATA_KEYS if key in metadata)
+
+
+#: `calibration_id` einer aus der RealSense gelesenen Werks-Intrinsik.
+REALSENSE_FACTORY_CALIBRATION_ID = "realsense-werksintrinsik"
+
+
+def _realsense_calibration(pipeline: Any, frame_id: str) -> Any:
+    """Werks-Intrinsik des Farb-Streams einer laufenden Pipeline.
+
+    Brown-Conrady von librealsense entspricht dem OpenCV-Pinhole-Modell. Fuer
+    andere Modelle (die Farbkamera der D4xx meldet "Inverse Brown Conrady",
+    praktisch immer mit Koeffizienten 0) werden die Koeffizienten nur
+    uebernommen, wenn sie alle 0 sind -- sonst bedeuteten sie fuer OpenCV etwas
+    anderes, und eine stumm falsche Verzeichnung waere schlimmer als keine.
+    """
+    import numpy as np
+    import pyrealsense2 as rs
+
+    from tagloc.calibration import PINHOLE, CameraCalibration
+
+    profile = pipeline.get_active_profile().get_stream(rs.stream.color)
+    intrinsics = profile.as_video_stream_profile().get_intrinsics()
+    coefficients = [float(value) for value in intrinsics.coeffs][:5]
+    coefficients += [0.0] * (5 - len(coefficients))
+    if intrinsics.model != rs.distortion.brown_conrady and any(coefficients):
+        _log.warning(
+            "RealSense-Verzeichnungsmodell %s mit Koeffizienten %s ist nicht "
+            "OpenCV-kompatibel -- ohne Verzeichnung weiter",
+            intrinsics.model,
+            coefficients,
+        )
+        coefficients = [0.0] * 5
+    return CameraCalibration(
+        camera_matrix=np.array(
+            [
+                [intrinsics.fx, 0.0, intrinsics.ppx],
+                [0.0, intrinsics.fy, intrinsics.ppy],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        distortion=np.array(coefficients, dtype=np.float64),
+        image_size=(int(intrinsics.width), int(intrinsics.height)),
+        model=PINHOLE,
+        frame_id=frame_id,
+        calibration_id=REALSENSE_FACTORY_CALIBRATION_ID,
+    )
 
 
 class SharedCamera:
@@ -247,11 +404,38 @@ class SharedCamera:
         self._camera = await loop.run_in_executor(self._executor, self._open_camera)
         self._loop_task = asyncio.create_task(self._capture_loop())
 
+    async def factory_calibration(self, frame_id: str = "") -> Any | None:
+        """Die Werks-Intrinsik der Kamera als `CameraCalibration`, sonst `None`.
+
+        Nur die RealSense kennt ihre Intrinsik selbst (aus der Fertigung, im
+        Geraet gespeichert). Das ist kein Ersatz fuer eine eigene Kalibrierung,
+        aber weit besser als der geschaetzte Platzhalter -- Rueckfall, wenn die
+        Kalibrierdatei fehlt. Laeuft im Kamera-Thread, damit es nicht mit dem
+        Capture-Loop um die Pipeline konkurriert.
+        """
+        if self._config.backend != "realsense" or self._camera is None or self._executor is None:
+            return None
+        loop = asyncio.get_running_loop()
+        try:
+            return await loop.run_in_executor(
+                self._executor, _realsense_calibration, self._camera, frame_id
+            )
+        except Exception:
+            _log.warning("Werks-Intrinsik der RealSense nicht lesbar", exc_info=True)
+            return None
+
     def _open_camera(self) -> Any:
         """Laeuft im Kamera-Worker-Thread: Hardware oeffnen plus Warmup."""
         import time
 
         backend = self._config.backend
+        if self._config.camera_controls and backend != "picamera2":
+            _log.warning(
+                "camera_controls %s werden ignoriert: nur das Backend picamera2 setzt sie "
+                "(Backend ist '%s')",
+                self._config.camera_controls,
+                backend,
+            )
         if backend == "picamera2":
             camera = self._open_picamera2()
         elif backend == "realsense":
@@ -264,15 +448,44 @@ class SharedCamera:
                 f"{', '.join(CAMERA_BACKENDS)})"
             )
         time.sleep(self._config.warmup_s)
+        if backend == "picamera2":
+            self._log_metadata(camera)
         return camera
+
+    def _log_metadata(self, camera: Any) -> None:
+        """Loggt die tatsaechlichen Belichtungswerte nach dem Warmup, einmal je Oeffnung.
+
+        Laeuft im Kamera-Worker-Thread, bevor der Capture-Loop startet -- kein
+        Wettlauf um die Requests. Ein Fehler hier ist nur ein fehlendes Log,
+        kein Grund, die Kamera nicht zu nutzen.
+        """
+        try:
+            text = format_camera_metadata(camera.capture_metadata())
+        except Exception:
+            _log.warning("Kamera-Metadaten nach dem Warmup nicht lesbar", exc_info=True)
+            return
+        _log.info("Kamera-Metadaten nach dem Warmup: %s", text or "keine")
 
     def _open_picamera2(self) -> Any:
         from picamera2 import Picamera2
 
+        arguments = picamera2_video_configuration(self._config)
         camera = Picamera2()
-        camera.configure(
-            camera.create_video_configuration(**picamera2_video_configuration(self._config))
-        )
+        if "controls" in arguments:
+            try:
+                from libcamera import controls as libcamera_controls
+
+                arguments["controls"] = resolve_camera_controls(
+                    validate_camera_controls(arguments["controls"], camera.camera_controls),
+                    libcamera_controls,
+                )
+            except Exception:
+                # Fehlkonfiguration (ValueError) oder libcamera fehlt: die Kamera
+                # nicht offen lassen, sonst scheitert jedes Neu-Oeffnen am Handle.
+                camera.close()
+                raise
+            _log.info("Kamera-Controls: %s", self._config.camera_controls)
+        camera.configure(camera.create_video_configuration(**arguments))
         camera.start()
         self._preview_size = (
             tuple(self._config.preview_resolution)
@@ -351,7 +564,12 @@ class SharedCamera:
             color_frame = frames.get_color_frame()
             if not color_frame:
                 raise RuntimeError("RealSense-Pipeline lieferte keinen Farbframe")
-            return np.asanyarray(color_frame.get_data())
+            # Kopieren, nicht nur ansehen: `asanyarray(get_data())` haelt den
+            # Puffer von librealsense fest, solange das Array lebt. Die
+            # Hand-Auge-Sitzung hebt je Aufnahme ein Bild auf -- ohne Kopie
+            # gehen der RealSense die Puffer aus, `wait_for_frames()` haengt
+            # und der Livestream steht. 640x480 kostet die Kopie praktisch nichts.
+            return np.array(color_frame.get_data())
         ok, frame = self._camera.read()
         if not ok:
             raise RuntimeError("Kamera lieferte kein Bild")
@@ -476,9 +694,7 @@ class SharedCamera:
     async def close(self) -> None:
         """Stoppt den Capture-Loop und gibt die Kamera frei. Idempotent."""
         if self._loop_task is not None:
-            self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._loop_task
+            await cancel_and_wait(self._loop_task)
             self._loop_task = None
         if self._camera is not None:
             camera, self._camera = self._camera, None

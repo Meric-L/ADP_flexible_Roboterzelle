@@ -22,7 +22,8 @@ Fehlercodes, Betrieb. Der Rest dieses Dokuments erklärt das Warum.
 > entfallen ist. Genau deshalb gilt ausnahmslos: **Namespace-Indizes immer über
 > die URI auflösen, nie hartcodieren.**
 
-Stand: `hello-world` ist weiterhin ein **Platzhalter** ohne Bildverarbeitung.
+Stand: Das Platzhalterrezept `hello-world` ist entfallen; ein Start ohne
+`RecipeId` wird mit `Error=4` (`UNKNOWN_RECIPE`) abgelehnt.
 `apriltag` ist die echte Erkennung — sie steuert die Pi-Kamera an, lokalisiert
 mit AprilTags bestückte Module und liefert echte Posen; `calibration` prüft die
 Messbereitschaft dieser Zelle. Der komplette Job-Ablauf (Zustandsautomaten,
@@ -116,13 +117,13 @@ Interner Aufbau (Python-Paket `src/vision_server/`):
 | `errors.py` | `VisionJobError`, Fehlercodes (Abschnitt 5) |
 | `nodeset_ids.py` | feste NodeIds/BrowseNames für Nodeset-Importe und Events |
 | `profiles.py` | `AprilTagProfileConfig` u. a. je-Pi-Profile (Kamera, Hand-Auge-Pfad, Tag-Map) |
-| `detection/` | Strategie `DetectionSource`; `hello_world.py`, `apriltag.py` (AprilTags), `script_runner.py` (Kalibrierprüfung) |
+| `detection/` | Strategie `DetectionSource`; `apriltag/` (AprilTags, Paket), `script_runner.py` (Kalibrierprüfung) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | Markiert und kodiert jeden Frame einmal; schreibt ihn als Base64-JPEG in `LatestCameraFrame` und reicht ihn an den MJPEG-Server, siehe Abschnitt 10 |
 | `mjpeg_server.py` | Livestream als MJPEG über HTTP (`/stream.mjpg`, `/snapshot.jpg`), siehe Abschnitt 10.2 |
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA, siehe Abschnitt 12 |
 | `stream_overlay.py` | Markiert erkannte Tags im Livestream-Bild, siehe Abschnitt 10 |
-| `runner.py` | verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server |
+| `runner/` | Paket: verdrahtet Adressraum, Zustandsautomaten und Job-Ablauf zum laufenden Server (`install.py`), je Methodengruppe ein Modul |
 | `vision_program.py` | Part-10-Programmfassade `VisionProgram` auf Basis von `src/ua_program`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
 | `discovery/mdns.py`, `discovery/lds.py` | mDNS-Ankündigung und LDS-Registrierung, siehe [`vision-system.md`](vision-system.md) |
 | `tagloc/` (eigenes Paket) | Die Lokalisierung selbst: Kalibrierung, Erkennung, Posen, Tag-Map. Siehe [`apriltag-referenz.md`](apriltag-referenz.md) |
@@ -238,7 +239,6 @@ Abschnitt 4 und 6.
 
 | `RecipeId` | Job | Implementierung | Ergebnis |
 | --- | --- | --- | --- |
-| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung | in-process, `detection/hello_world.py` | `attributes.message` = `"Hello World"` |
 | `"calibration"` | Messbereitschaft dieser Zelle pruefen | Subprozess, `src/jobs/calibrate.py` | `attributes.message` = Kalibrier-Id, Aufloesung, RMS, Aufnahmezahl, Alter, Tag-Map |
 | `"apriltag"` | **Module lokalisieren** | in-process, `detection/apriltag.py`, liest von der geteilten Kamera (Abschnitt 10) | eine Detektion je erkanntem Modul-Tag mit echter Pose |
 
@@ -264,6 +264,8 @@ Nur die Welttags stehen fest. Jede Detektion traegt zusaetzlich `source`
 (`T_worldtag_module`) und `referenceDistanceM`, sowie `worldTagIds`,
 `cameraSpreadM` und `cameraSpreadDeg` als Guete der Kameralokalisierung.
 
+**Wie die Kamerapose gerechnet wird** (`cameraPoseSolver`): Sind zwei oder mehr Welttags im Bild, löst der Pi `T_world_cam` aus **einem gemeinsamen PnP über alle Ecken aller Welttags** (`joint`). Mit vier Tags sind das 16 Punkte über die ganze Zelle. Früher wurde je Tag eine eigene Pose aus vier Ecken auf 20 cm Basis gerechnet und dann gemittelt (`average`). Aus 2–3 m Höhe ist die Neigung so schlecht bestimmt: In der Simulation mit den vier Welttags der Zelle ergab das gemeinsame PnP rund 4,5 mm und 0,09° Fehler, das Mittel rund 37–41 mm und 0,8°. Mehrdeutige Tags zählen mit, denn die Mehrdeutigkeit gehört zur Einzel-Tag-Lösung, nicht zu den Ecken. Ein einzelner Welttag bleibt beim Einzel-Tag-Weg (`single`). `cameraReprojectionErrorPx` ist der RMS der Lösung über alle Ecken. `cameraSpreadM`/`Deg` geben jetzt an, wie weit die Einzel-Tag-Schätzungen von der gemeinsamen Pose abweichen. Das ist eine Diagnose, nicht die Pose selbst. In `worldTags` trägt jeder Tag zusätzlich `jointReprojectionErrorPx`, den Fehler seiner Ecken unter der gemeinsamen Pose. Ein Welttag, der nicht zur Karte passt, fällt dort mit dem größten Wert auf.
+
 `cameraPoseOrigin` sagt, **woher** die Kamerapose stammt: `world_tags` heisst
 optisch gemessen, `robot_pose` heisst aus dem Anker und der Kinematik
 fortgeschrieben. Die beiden sind nicht gleich genau — wer die Pose anfaehrt,
@@ -281,13 +283,12 @@ Layer 1 und Layer 2 benutzen **dasselbe** Rezept und dasselbe Profil. Sie
 unterscheiden sich nur in der `AprilTagProfileConfig`, die `server.py` je
 Pi setzt.
 
-Eine unbekannte `RecipeId` wird sofort mit `Error=4` (`UNKNOWN_RECIPE`)
-abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
+Eine unbekannte oder leere `RecipeId` wird sofort mit `Error=4`
+(`UNKNOWN_RECIPE`) abgelehnt; die Fehlermeldung listet die bekannten Rezepte.
+Einen Standardjob gibt es nicht -- wer keinen Job waehlt, bekommt einen Fehler.
 
 Die gewaehlte Quelle bestimmt `frameId`, `frameConvention`, `configurationId`
-und `IsSimulated` des Ergebnisses — `hello-world` bleibt damit dauerhaft als
-kamerafreier Smoke-Test brauchbar, auch wenn daneben eine echte Erkennung
-laeuft. Die `RecipeId` steht nach dem Job in `InternalRecipeId` am
+und `IsSimulated` des Ergebnisses. Die `RecipeId` steht nach dem Job in `InternalRecipeId` am
 Ergebnisknoten und in `attributes.recipeId`.
 
 **Bewusste Abweichung:** Das Nodeset deklariert die Ids als Strukturen. Ein
@@ -391,13 +392,15 @@ leer:
 }
 ```
 
-**Zwei additive Schlüssel** (nur bei nicht-leerem Wert, das Schema bleibt
+**Additive Schlüssel** (nur bei nicht-leerem Wert, das Schema bleibt
 `wsc.vision.detections/1`):
 
 | Schlüssel | Bedeutung |
 | --- | --- |
 | `frameConvention` | Achsenkonvention hinter `frameId`, z. B. `"z_forward_x_right_y_down"` = OpenCV-Optikrahmen: +X rechts im Bild, +Y nach unten, +Z entlang der optischen Achse nach vorn. Pose ist `T_cam_tag`, Tiefe positiv. **Nicht** die Robotik-Konvention (REP-103) und **kein** Weltsystem. |
 | `configurationId` | Identität der wirksamen Konfiguration, z. B. Kalibrierdatei plus Änderungszeit — beantwortet bei falschen Posen die Frage, welche Kalibrierung das war. |
+| `worldTags` | Die Welttags, die die Kamera in diesem Job gesehen hat: `[{tagId, position, orientation, reprojectionErrorPx, ambiguous, sampleCount, jointReprojectionErrorPx?}]`. `jointReprojectionErrorPx` gibt es nur bei gemeinsamer Lösung (siehe oben). Die Pose ist die **beobachtete**, `T_world_cam · T_cam_tag`, über die Bilder des Jobs gemittelt und immer im Welt-KS der Tag-Map. Ihre Abweichung von `poseInWorld` der Karte ist das Fehlermaß „eingemessen gegen gesehen“. In `detections` stehen Welttags weiterhin nicht. Das Feld gibt es nur, wenn eine Kamerapose aus Welttags bestimmt wurde. Es kommt **auch im Fehler-Payload** mit: Ein Bild nur mit Welttags endet in `DETECTION_FAILED` und ist trotzdem genau das Bild zum Prüfen der Karte. |
+| `cameraLocalization` | Wie die Kamerapose dieses Jobs zustande kam (letztes Bild): `{solver, reprojectionErrorPx, spreadM, spreadDeg, worldTagIds}`. `solver` ist `joint`, `single`, `average` oder `anchor` (aus dem Hand-Auge-Anker fortgeschrieben, dann `reprojectionErrorPx: null`). Dieselben Werte wie `cameraPoseSolver`/`cameraReprojectionErrorPx`/`cameraSpread*` an den Detektionen, aber auf oberster Ebene und **auch im Fehler-Payload**: Ein Bild nur mit Welttags hat keine Detektionen. Fehlt ohne Kamerapose. Bei `solver: "joint"` zusätzlich `poseInWorld` (die Kamerapose, `T_world_cam`) und `tagErrorsPx` (Eckenfehler je Welt-Tag): Die Zellen-Überwachung übernimmt daraus die Pose, siehe Abschnitt 16. |
 
 `frameId` kommt jetzt **von der Erkennungsquelle**, nicht mehr fest aus dem
 Modul: eine Instanz kann gleichzeitig eine Platzhalterquelle im Weltrahmen und
@@ -479,7 +482,7 @@ verwenden. Sie ist über Neustarts stabil und kostet keine Browse-Runde.
 
 Das Nodeset bringt **alle** Methoden der Spec als Teil der Typdefinition mit;
 sie stehen im Adressraum, sobald die `VisionSystemType`-Instanz existiert. Ob
-sie etwas tun, entscheidet `server.link_method` in `runner.py`. Eine nicht
+sie etwas tun, entscheidet `server.link_method` in `runner/jobs.py`; die Zusatzmethoden legt `runner/` selbst an. Eine nicht
 verlinkte Methode antwortet `BadNothingToDo` auf OPC-UA-Statusebene — **nicht**
 `Error != 0` im Output.
 
@@ -498,7 +501,7 @@ verlinkte Methode antwortet `BadNothingToDo` auf OPC-UA-Statusebene — **nicht*
 
 | Methode | Warum nicht |
 | --- | --- |
-| `SimulationMode` | bräuchte je Profil eine simulierte Datenquelle. Das Profil `hello_world` ist bereits genau das und ohne Kamera aufrufbar |
+| `SimulationMode` | bräuchte je Profil eine simulierte Datenquelle, die es nicht gibt |
 | `SelectModeAutomatic` | es gibt nur eine Betriebsart. Eine Methode, die immer `OK` zurückgibt und nichts umschaltet, wäre irreführender als eine erkennbar nicht implementierte |
 | `ConfirmAll`, `Sync` der StepModels | gehören zum Schrittketten-Modell, das wir nicht benutzen |
 | **`ConfigurationManagement`** vollständig | bräuchte ein Konfigurations-Datenmodell, das die Zelle nicht hat. `configurationId` im Ergebnis benennt die wirksame Kalibrierung |
@@ -514,8 +517,8 @@ Diese Lücken sind Entscheidungen, keine Versäumnisse.
 sudo systemctl restart opcua-server.service
 
 # Referenzimplementierung des Handshakes (von beliebigem Rechner):
-PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://<pi>:4840/raspi/server/
+PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py \
+    --url opc.tcp://<pi>:4840/raspi/server/ --recipe-id calibration
 ```
 
 Der Client gibt `StartSingleJob -> JobId=... Error=0`, das Payload und die
@@ -638,8 +641,10 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Datentyp String, schreibbar
 | Wert | Anzeige im Frontend | Was markiert wird |
 | --- | --- | --- |
 | `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
-| `apriltag` (Standard) | „AprilTags markieren" | Umriss jedes erkannten Tags, **Achsenkreuz im Tag** (X rot, Y grün, Z blau), ID, Modulname aus der Tag-Map, Distanz, Reprojektionsfehler; mehrdeutige Posen orange statt grün |
+| `apriltag` (Standard) | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die Tag-ID `#<id>` (`tagloc.overlay.draw_tag_boxes`), keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und die orange Färbung mehrdeutiger Posen zeigt der Stream nicht mehr; Mehrdeutigkeit steht weiter in den Job-Ergebnissen (`ambiguous`, `ambiguityRatio`, `confidence`). Das ausführliche Overlay mit Achsenkreuz liefert die CLI `python -m tagloc.cli.detect --overlay` |
 | `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Bildabdeckung |
+| `undistorted` | „Entzerrt" | nichts — das Bild **entzerrt** mit der aktiven Kalibrierung (Linsenmodell der Kamera, `alpha`/`balance` = 1: ganzes Bild mit gebogenen schwarzen Rändern). Ohne echte Kalibrierung (Platzhalter oder keine Datei) das Rohbild mit dem Hinweis „Keine Kalibrierung -- Rohbild“ |
+| `tagreference` | „Tag einmessen“ | nur mit laufender Einmess-Vorschau (`SetTagReferencePreview`, siehe §19.1): die Kantensuche der gewählten Tag-Kanten — Startwert-Kante, Suchband, Kandidatenpunkte, verworfene und gewählte Linie, Beschriftung mit Δ mm und °, Tag-Rahmen. Die Ebenen sind einzeln schaltbar (§19.1). Ohne Vorschau: Tag-Rahmen wie `apriltag` mit Titel „keine Einmess-Vorschau“ |
 
 Verhalten:
 
@@ -661,6 +666,7 @@ Verhalten:
   `max_stream_width` herunterskalierten Kopie, nicht auf dem vollen
   Kamera-Frame — bei `cam_ceiling` (2028×1520) kostete die volle Auflösung
   auf dem Pi spürbar Zeit und drückte die Framerate.
+- Im `undistorted`-Modus wird erst auf `max_stream_width` verkleinert und dann entzerrt (`cv2.remap`). Die Maps rechnet der Pi einmal je Auflösung und hält sie im Cache (`tagloc.lens.undistortion_maps`). Eine neue Kalibrierung (`FinishCalibration`) leert den Cache. Das ist nur eine Anzeige: Jobs, Layer 2 und Hand-Auge rechnen weiter mit dem Rohbild und entzerren nur die Eckpunkte.
 - Gezeichnet wird auf einer Kopie; der geteilte Frame bleibt unverändert.
 - Ein Fehler im Overlay beendet den Stream nicht — dann kommt das unmarkierte
   Bild, und der Fehler steht im Log.
@@ -749,6 +755,58 @@ sind Job- und Stream-Auflösung ohnehin identisch (640×480).
 
 Hauptstrom im Format `RGB888`: Picamera2 legt es als B,G,R ab, also direkt
 OpenCV-BGR — die frühere Farbumrechnung auf jedem Frame entfällt.
+
+### 10.4 „AprilTags markieren“ zeigt das Ergebnis in voller Auflösung
+
+> **Seit 21.10.2026.** Plan:
+> [`arbeitsplaene/livestream-tags-volle-aufloesung.md`](arbeitsplaene/livestream-tags-volle-aufloesung.md).
+> Ersetzt für den Modus `apriltag` die Aussagen zum Rechentakt in 10.1
+> (`overlay_interval_s`) und zur Erkennungsauflösung in 10.3.
+
+Gestreamt wird weiter nur das kleine Bild (`max_stream_width`, 960 px). Die
+markierten Tags stammen aber aus einer Erkennung auf dem **vollen** Frame
+(Deckenkamera 4056×3040). Davor erkannte das Overlay vom 24.09. bis zum
+21.10.2026 selbst auf dem kleinen Bild. Das zeigte nachweislich andere Tags
+als der Job. Gemessen auf `data/rohbilder/cam_ceiling_20261019-142133.png`
+am PC:
+
+| Auflösung | `detect()` | gefundene IDs |
+| --- | --- | --- |
+| 4056×3040 (Job) | 153–166 ms | 0, 1, 1, 2, 3, 583, 586 |
+| 960×720 (altes Overlay) | 26–32 ms | 0, 1, 1, 2, 583, **584** |
+
+Das Overlay erkennt dabei **nicht im Stream-Takt**. Alle 0,5 s auf 12 MP zu
+erkennen kostete am Pi eine Core und ließ Jobs in den 20-s-Timeout laufen
+(py-spy, 24.09.2026). Gezeichnet wird stattdessen das neueste Ergebnis, das
+ohnehin entsteht:
+
+| Quelle | Wann | Zusätzliche CPU |
+| --- | --- | --- |
+| Job | jedes Bild eines AprilTag-Jobs | keine |
+| Zellen-Überwachung | alle 2 s, solange sie scharf ist | keine |
+| Messung | `MeasureTag`/`MeasureTags`, Hand-Auge-Aufnahmen | keine |
+| Overlay selbst | nur wenn das neueste Ergebnis älter als `overlay_detect_interval_s` (Standard 5 s) ist | am Pi grob 1 s je Lauf |
+
+Die eigene Erkennung läuft im Hintergrund, `annotate()` wartet nicht auf sie.
+Es läuft höchstens eine gleichzeitig, und keine, solange ein Job oder eine
+Kamera-Kalibrierung läuft. Das ist dasselbe Signal, mit dem die
+Zellen-Überwachung pausiert. Sie nutzt den Stream-Detektor: dieselben
+Parameter wie der Job, nur ohne Eckenverfeinerung (bei `cam_ceiling` ist sie
+auch im Job aus). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
+selbst und zeigt nur Ergebnisse von Job, Zellen-Überwachung und Messung.
+
+Die Pixel-Ecken werden von der Auflösung des Ergebnisses auf die Stream-Größe
+umgerechnet. Gezeichnet wird nur der grüne Kasten mit `#<id>`
+(`draw_tag_boxes`, siehe 10.1), ohne Achsenkreuz und ohne Statusleiste.
+
+Auflösung, Quelle und Alter des gezeigten Ergebnisses stehen damit nicht im
+Bild. Vor dem ersten Ergebnis kommt das Bild ohne Markierung. Bei bewegten
+Modulen kann die Markierung bis zu einigen Sekunden hinter dem Bild herlaufen.
+
+Python: `AprilTagDetectionSource.latest_tags` (`TagSnapshot` mit `tag_poses`,
+`image_size`, `origin` = `job`/`cellwatch`/`measure`/`overlay`, `taken_at`),
+`AprilTagStreamAnnotator(full_resolution_tags=..., detect_interval_s=...)`,
+`AprilTagStreamAnnotator.set_busy(...)`.
 
 ## 11. OPC 40100-2: Anlagensicht
 
@@ -1004,23 +1062,39 @@ Bisher lief Kalibrierung ausschließlich über das eigenständige CLI-Tool
 (`tagloc.cli.calibrate` per SSH) — es öffnet die Kamera exklusiv, der Server
 muss dafür gestoppt sein. Diese vier Methoden plus ein Knoten erlauben
 dasselbe **bei laufendem Server**, aus einem Settings-Menü heraus: Session
-starten, Board vor die Kamera halten, Aufnahme auslösen, Fortschritt live
-sehen. Ein explizites `FinishCalibration` ist dabei **optional** — sobald die
-Abdeckung reicht, schließt sich die Session von selbst ab (Abschnitt 12.5),
-das Frontend muss also nur `CalibrationProgress` beobachten und das Ergebnis
-anzeigen, sobald es dort auftaucht.
+starten, Board vor die Kamera halten, Aufnahmen auslösen, danach
+`FinishCalibration` — das Ergebnis erscheint kurz darauf in
+`CalibrationProgress` (Abschnitt 12.5).
 
 Wie beim Livestream gilt: die Session liest nur aus der bereits laufenden
 `SharedCamera` mit (dieselbe, die `apriltag`-Job und Livestream nutzen) —
 kein zweiter, exklusiver Kamera-Zugriff, kein Stoppen des Servers nötig.
 
+**Aufnahme und Auswertung sind entkoppelt (seit 2026-09-28).**
+`CaptureCalibrationSample` merkt sich nur noch den aktuellen Kamera-Frame —
+keine Ecken-Erkennung mehr in diesem Aufruf. Grund: An der Deckenkamera
+(12 MP) konnte die Ecken-Erkennung auf der Pi-Hardware so lange dauern (bis
+hin zu einem echten Hängenbleiben, live gefunden), dass die OPC-UA-Anfrage in
+den Timeout lief oder die Verbindung ganz abbrach — mit spürbaren Folgen für
+jede weitere Aufnahme. `FinishCalibration` (Abschnitt 12.3) stößt die
+eigentliche Auswertung (Ecken-Erkennung je Aufnahme + Kamerakalibrierung) als
+**Hintergrundaufgabe** an und kehrt sofort zurück; das Frontend beobachtet
+`processing`/`result` in `CalibrationProgress`. Der Preis: während der
+Aufnahme gibt es kein Live-Feedback mehr, ob eine bestimmte Aufnahme das
+Board tatsächlich zeigt, und keine laufende Abdeckungsanzeige — beides
+stellt sich erst nach `FinishCalibration` heraus. Der Livestream
+(`CameraStreamMode="calibration"`) zeigt beim Positionieren weiterhin
+Board-Ecken auf dem kleinen Vorschaubild (unverändert, eigener, günstiger
+Erkennungslauf), das hilft beim Ausrichten, sagt aber nichts darüber, welche
+Aufnahmen tatsächlich übernommen wurden. **Während der Auswertung pausiert
+der Server den Livestream** (`LatestCameraFrame`/MJPEG liefern währenddessen
+nur noch das letzte Bild vor der Pause), um dem Pi die volle CPU dafür zu
+geben — danach läuft er automatisch wieder an und zeigt das Ergebnis.
+
 **Eine frisch gespeicherte Kalibrierung wirkt sofort, ohne Server-Neustart.**
 Direkt nach dem Speichern übernehmen die laufende Erkennung (`apriltag`-Job)
 und das Stream-Overlay die neuen Werte — der nächste Job nach einer
-erfolgreichen Kalibrierung rechnet bereits damit. (Bis 2026-09-22 stimmte
-das nicht: die Datei lag zwar auf der Platte, die laufende Erkennung merkte
-das aber erst nach einem manuellen `systemctl restart`. Falls ihr das noch
-irgendwo dokumentiert oder umgangen habt, ist das jetzt nicht mehr nötig.)
+erfolgreichen Kalibrierung rechnet bereits damit.
 
 **Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
 in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
@@ -1028,58 +1102,55 @@ das Frontend sendet und kennt keine Board-Parameter.
 
 ### 12.1 `StartCalibration`
 
-Setzt gesammelte Samples zurück und beginnt eine neue Session. Aufnahmen
+Setzt gesammelte Aufnahmen zurück und beginnt eine neue Session. Aufnahmen
 kommen danach ausschließlich über `CaptureCalibrationSample` (Abschnitt
 12.2) — kein automatisches Erfassen.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job oder eine Session) |
+| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job, eine Session oder noch eine Auswertung aus einem vorherigen `FinishCalibration`) |
 
 ### 12.2 `CaptureCalibrationSample`
 
-Versucht **eine** Aufnahme vom aktuellen Kamerabild. Manuell ausgelöst —
-kein Zeitintervall, kein Bewegungsabgleich: der Operator sieht das Live-Bild
-(Livestream oder `stream_viewer.py`, Abschnitt 12.5) und entscheidet selbst,
-wann eine Pose gut ist, bevor er auslöst.
+Merkt sich **einen** Kamera-Frame für die spätere Auswertung. Manuell
+ausgelöst — kein Zeitintervall, kein Bewegungsabgleich, keine Erkennung in
+diesem Aufruf (siehe oben): der Operator sieht das Live-Bild (Livestream
+oder `stream_viewer.py`) und entscheidet selbst, wann eine Pose gut aussieht,
+bevor er auslöst. Fast immer sofort und schnell — es wird nur ein Bild
+gemerkt, nichts ausgewertet.
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Error` | `Int32` | `0` (`OK`, Board gefunden und übernommen), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, Board in diesem Frame nicht gefunden — die Session läuft weiter, einfach erneut auslösen) |
+| `Error` | `Int32` | `0` (`OK`, Aufnahme übernommen), `1` (`INVALID_STATE`, keine Session aktiv oder gerade kein Kamera-Frame verfügbar) |
 
 ### 12.3 `FinishCalibration`
 
-Beendet die Session manuell, rechnet aus den gesammelten Samples und
-speichert `data/calibration/<frame_id>.json` — derselbe Rechenkern wie im
-CLI-Tool (`tagloc.boards.calibrate_from_samples`) und wie der automatische
-Abschluss (Abschnitt 12.5). Gedacht für den Fall, dass der Operator **vor**
-Erreichen der Abdeckungs-Schwelle abbrechen und trotzdem das bisherige
-Ergebnis haben will — im Normalfall (Schwelle erreicht) ist die Session zu
-diesem Zeitpunkt schon automatisch beendet, ein weiterer Aufruf liefert dann
-nur noch `INVALID_STATE`.
+Beendet die Aufnahme-Phase und stößt die Auswertung **im Hintergrund** an —
+kehrt sofort zurück, ohne auf das Ergebnis zu warten. Das Ergebnis erscheint
+danach in `CalibrationProgress` (`processing` → `result`, Abschnitt 12.5).
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Summary` | `String` (JSON) | z. B. `{"rms":0.2945,"samples":21,"coverageX":0.96,"coverageY":0.95,"path":"data/calibration/cam_flange.json"}`, ggf. mit `warning` (siehe 12.5). Bei Fehlschlag `{"message": "...", "samples": N}` |
-| `Error` | `Int32` | `0` (`OK`, gespeichert), `1` (`INVALID_STATE`, keine Session aktiv — auch wenn sie sich gerade automatisch beendet hat), `5` (`DETECTION_FAILED`, weniger als 3 Samples **oder** die Berechnung selbst ist numerisch gescheitert — `message` nennt den Grund) |
+| `Summary` | `String` (JSON) | Bei Annahme `{"message": "Auswertung gestartet", "samples": N}` (das ist noch **nicht** das Ergebnis — das kommt über `CalibrationProgress`). Bei sofortiger Ablehnung (zu wenige Aufnahmen) `{"message": "...", "samples": N}` |
+| `Error` | `Int32` | `0` (`OK`, Auswertung wurde angestoßen), `1` (`INVALID_STATE`, keine Session aktiv), `5` (`DETECTION_FAILED`, weniger als 3 Aufnahmen gemacht — dann wurde gar nichts angestoßen) |
 
-`DETECTION_FAILED` mit Berechnungs-Grund kann passieren, obwohl genug Samples
-und gute Bildabdeckung vorlagen: `cv2.calibrateCamera` prüft nicht nur die
-Anzahl, sondern ob sich daraus überhaupt ein Kameramodell lösen lässt — bei
-zu wenig Neigungs-/Distanz-Variation (Abschnitt 12.5, "Abdeckung allein sagt
-nichts über die tatsächliche Genauigkeit") kann das ganz scheitern statt nur
-ungenau zu werden. Bis 2026-09-23 fing der Server dabei nur `ValueError` ab;
-die eigentliche Exception (`cv2.error`) lief unbehandelt durch und ließ die
-Session unsichtbar beendet zurück, ohne Ergebnis oder Fehlermeldung — jede
-weitere `CaptureCalibrationSample` lieferte danach nur noch `DETECTION_FAILED`
-("Board nicht gefunden"), ein späteres `FinishCalibration` nur `INVALID_STATE`.
-Seither wird jede Exception aus der Berechnung abgefangen und als
-`DETECTION_FAILED` mit `message` gemeldet.
+`Error=OK` heißt hier also nur "die Auswertung läuft jetzt", nicht "die
+Kalibrierung ist fertig und gut". Das eigentliche Ergebnis (`rms`,
+`coverageX`/`coverageY`, ggf. `warning`) und ein etwaiges Scheitern *während*
+der Auswertung landen ausschließlich in `CalibrationProgress["result"]`
+(Abschnitt 12.5, dort auch mit den möglichen Fehlschlag-Gründen). Ein
+Frontend, das nur den `FinishCalibration`-Rückgabewert anzeigt, zeigt dem
+Operator ein falsches "Erfolg", solange die Auswertung noch läuft oder am
+Ende doch scheitert — `CalibrationProgress` muss beobachtet werden.
 
 ### 12.4 `AbortCalibration`
 
 Beendet die Session, **ohne** zu speichern — für den Fall, dass sich der
-Operator vertan hat oder neu anfangen will.
+Operator vertan hat oder neu anfangen will. Nur während der Aufnahme-Phase
+aufrufbar, nicht während eine Auswertung aus einem vorherigen
+`FinishCalibration` noch läuft (dann bereits `INVALID_STATE`, da `running`
+schon `false` ist — die laufende Auswertung selbst lässt sich nicht
+abbrechen, sie läuft zu Ende).
 
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
@@ -1134,37 +1205,34 @@ ns=<vision>;s=VisionMachine.CalibrationProgress     Datentyp String (JSON)
 ```
 
 Wird bei jedem Publish-Tick des Livestreams mitgeschrieben (kein eigener
-Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht.
+Task) — läuft also auch mit, wenn `CameraStreamMode` gerade auf `off` steht,
+und auch während der Livestream selbst pausiert ist (Auswertungsphase, siehe
+oben — der Fortschritts-Knoten ist ein eigener, vom Bild unabhängiger
+Schreibpfad).
 
 | Feld | Bedeutung |
 | --- | --- |
-| `running` | `bool` — Session aktiv? |
-| `samples` | Anzahl bisher erfasster Aufnahmen |
-| `minSamples` | Mindestanzahl für ein erfolgreiches `FinishCalibration` (Config, Standard 15) |
-| `coverageX`, `coverageY` | kumulierte Bildabdeckung der Board-Ecken über alle Samples, 0–1 |
-| `result` | **nur vorhanden, sobald die Session beendet ist** (automatisch oder per `FinishCalibration`/`AbortCalibration`, siehe unten) |
+| `running` | `bool` — Aufnahme-Phase aktiv? Wird mit `FinishCalibration` schon `false`, **bevor** das Ergebnis feststeht |
+| `processing` | `bool` — läuft gerade die Hintergrund-Auswertung aus einem `FinishCalibration`? |
+| `samples` | Anzahl bisher aufgenommener Bilder (**nicht** geprüft, ob das Board darauf zu sehen ist — das entscheidet sich erst bei der Auswertung) |
+| `minSamples` | Mindestanzahl, ab der `FinishCalibration` überhaupt eine Auswertung anstößt (Config, Standard 15) |
+| `model` | Linsenmodell dieser Session, `"pinhole"` oder `"fisheye"` — schon während der Aufnahme gesetzt (Abschnitt 12.10). Fehlt im Ruhezustand ohne Session |
+| `result` | **nur vorhanden, sobald die Auswertung fertig ist** (siehe unten) |
 
-Im Ruhezustand (keine Session je gestartet, oder nach `Abort` ohne
-automatischen Abschluss): `{"running": false}`, ohne `result`. Mitverfolgen
-lässt sich das auch visuell über den Livestream
-(`CameraStreamMode="calibration"`, Abschnitt 10.1) — im Bild erscheinen dann
-zusätzlich zur aktuellen Board-Erkennung die kumulierte Abdeckung und
-`Aufnahmen X/minSamples`.
-
-**Automatischer Abschluss:** Erreichen `coverageX` **und** `coverageY`
-`calibration_coverage_threshold` (Config, Standard `0.7`, entspricht dem
-Abbruchkriterium aus dem Testplan) und liegen genug Aufnahmen vor, rechnet
-und speichert die Session **von selbst** — ausgelöst vom nächsten
-`CaptureCalibrationSample`-Aufruf, der die Schwelle überschreitet. Kein
-Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
-`running` auf `false` springt und `result` erscheint:
+Im Ruhezustand (keine Session je gestartet, oder nach `AbortCalibration`):
+`{"running": false, "processing": false}`, ohne `result`. Ein typischer
+Ablauf:
 
 ```jsonc
+// waehrend der Aufnahme
+{"running": true, "processing": false, "samples": 12, "minSamples": 15}
+// FinishCalibration wurde aufgerufen, Auswertung laeuft
+{"running": false, "processing": true, "samples": 18, "minSamples": 15}
+// fertig
 {
-  "running": false, "samples": 18, "minSamples": 15,
-  "coverageX": 0.84, "coverageY": 0.9,
+  "running": false, "processing": false, "samples": 18, "minSamples": 15,
   "result": {
-    "error": 0, "rms": 2.069, "samples": 18,
+    "error": 0, "rms": 2.069, "model": "fisheye", "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_ceiling.json",
     "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
@@ -1172,28 +1240,38 @@ Aufruf von `FinishCalibration` nötig. Das Frontend erkennt das daran, dass
 }
 ```
 
+Zwei Zahlen können hier auseinanderfallen: `samples` (oben, im Wurzelobjekt)
+ist die Anzahl **aufgenommener** Bilder (18), `result.samples` die Anzahl
+Bilder, auf denen das Board bei der Auswertung tatsächlich **gefunden**
+wurde (16 — zwei waren z. B. unscharf oder das Board war nicht im
+Bildausschnitt). Nur Letzteres fließt in die Kalibrierung ein.
+
 `result.error` ist derselbe `Error`-Code wie bei `FinishCalibration`
-(0 = `OK`). **Abdeckung allein sagt nichts über die tatsächliche
-Genauigkeit** — ein Board, das nie gekippt wurde, füllt zwar den
-Bildbereich, lässt die Brennweite aber unbestimmt (Testplan Abschnitt 3.3).
+(0 = `OK`). Ein Scheitern *während* der Auswertung erscheint genauso in
+`result`, mit `error != 0` und `message` statt `rms`/`samples`/`coverageX`/
+`coverageY` — aus zwei möglichen Gründen: entweder zeigten zu wenige der
+aufgenommenen Bilder tatsächlich das Board (`result.samples` bliebe unter 3),
+oder `cv2.calibrateCamera` selbst scheitert numerisch. Letzteres kann
+passieren, obwohl genug Aufnahmen und gute Bildabdeckung vorlagen: **Abdeckung
+allein sagt nichts über die tatsächliche Genauigkeit** — ein Board, das nie
+gekippt wurde, füllt zwar den Bildbereich, lässt die Brennweite aber
+unbestimmt (Testplan Abschnitt 3.3).
 `result.warning` erscheint deshalb zusätzlich, wenn der RMS-Reprojektionsfehler
 über 0,5 px liegt; sie verhindert das Speichern **nicht** — die Datei ist
 trotzdem geschrieben, nur mit dem Hinweis, dass sie ungenauer als empfohlen
 ist. Das Frontend sollte diese Warnung sichtbar anzeigen, nicht nur loggen.
-`calibration_coverage_threshold: null` in der Config schaltet den
-automatischen Abschluss ganz ab (nur noch manuelles `FinishCalibration`, wie
-es die CLI-Tools weiter unterstützen).
 
 Für Pis mit angeschlossenem Monitor gibt es dafür drei Kommandozeilen-Tools
 unter `src/vision_server/tools/` (fürs Frontend-Team als Referenz, nicht
-Teil des Frontends): `calibration_client.py` startet/beendet eine Session und
-loggt `CalibrationProgress`; `stream_viewer.py` zeigt den Livestream in einem
-lokalen Fenster und löst mit der Leertaste `CaptureCalibrationSample` aus —
-zusammen der Handshake, den ein Frontend nachbilden muss. `diagnose_board.py`
-ist reine Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und
-probiert mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board`
-durch, falls das Board im Stream zwar sichtbar, aber nicht erkannt wird —
-z. B. weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
+Teil des Frontends): `calibration_client.py` startet/beendet eine Session,
+loggt `CalibrationProgress` und wartet nach `FinishCalibration` auf
+`result`; `stream_viewer.py` zeigt den Livestream in einem lokalen Fenster
+und löst mit der Leertaste `CaptureCalibrationSample` aus — zusammen der
+Handshake, den ein Frontend nachbilden muss. `diagnose_board.py` ist reine
+Fehlersuche: holt ein unmarkiertes Rohbild vom laufenden Server und probiert
+mehrere plausible `cols`/`rows`-Kombinationen gegen `detect_board` durch,
+falls das Board im Stream zwar sichtbar, aber nicht erkannt wird — z. B.
+weil die in `PI_APRILTAG_PRESETS` angenommene Geometrie nicht zum
 tatsächlich aufgehängten Board passt.
 
 ### 12.6 `ActiveCalibrationInfo` (nur lesen)
@@ -1220,6 +1298,7 @@ oben).
   "rms": 0.2945,
   "samples": 21,
   "board": {"type": "chessboard", "cols": 7, "rows": 9, "squareSizeM": 0.022, ...},
+  "model": "pinhole",
   "path": "data/calibration/cam_flange.json"
 }
 ```
@@ -1229,19 +1308,27 @@ oben).
 | `placeholder` | `true`, wenn noch nie echt kalibriert wurde (`allow_placeholder_calibration`, Abschnitt 9) — dann sind `rms`/`createdAt` `null`, Posen sind nicht maßhaltig |
 | `calibrationId`, `createdAt` | aus der Kalibrierdatei, stabil über Neustarts |
 | `rms`, `samples`, `board` | wie im `result`-Objekt aus `CalibrationProgress`/`FinishCalibration` |
+| `model` | Linsenmodell der aktiven Kalibrierung, `"pinhole"` oder `"fisheye"` (Abschnitt 12.10) |
 | `path` | Pfad der Datei auf dem Pi (Diagnose, keine Backend-Bedeutung) |
 
 ### 12.7 Sperren
 
-`StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft. Umgekehrt lehnen
-`StartSingleJob`/`StartContinuous` ab (`BUSY`), solange eine Kalibrier-Session
-läuft — beide teilen sich Kamera und Detektor, gleichzeitig ergibt keinen
-Sinn. Es gibt dafür **keinen eigenen State-Machine-Zustand**: das Nodeset
-kennt keinen passenden Zustand für „Kalibrierung läuft", der Automat bleibt in
-`Ready`, die Sperre läuft rein über die beiden Busy-Flags — dieselbe
-`BUSY`-Semantik wie zwischen zwei Jobs (Abschnitt 5, Fehlercodes).
+`StartCalibration` lehnt ab (`BUSY`), solange ein Job läuft **oder** eine
+Kalibrier-Session/-Auswertung läuft (`CalibrationSession.busy` — Aufnahme
+UND die Hintergrund-Auswertung nach `FinishCalibration` zählen, siehe
+Abschnitt 12.3: ein neuer Start während einer noch laufenden Auswertung
+würde deren Arbeitsordner unter den Füßen wegräumen). Umgekehrt lehnen
+`StartSingleJob`/`StartContinuous` ebenfalls ab (`BUSY`), solange eine
+Kalibrier-Session/-Auswertung läuft — beide teilen sich Kamera und Detektor,
+gleichzeitig ergibt keinen Sinn. Es gibt dafür **keinen eigenen
+State-Machine-Zustand**: das Nodeset kennt keinen passenden Zustand für
+„Kalibrierung läuft", der Automat bleibt in `Ready`, die Sperre läuft rein
+über die Busy-Flags — dieselbe `BUSY`-Semantik wie zwischen zwei Jobs
+(Abschnitt 5, Fehlercodes).
 
 ### 12.8 Stand
+
+**Kalibrierbrett seit 19.10.2026:** Beide Pis kalibrieren mit dem neuen Schachbrett, **6×7 innere Ecken, 23 mm je Feld** (`cols=6`, `rows=7` in `server.py`, beide Kameras). `cols`/`rows` zählen die **Innenecken**, nicht die Felder: Das Brett hat 7×8 Felder. Mit der alten Einstellung (7×9, 22 mm) wird das neue Brett nicht gefunden, die Overlay-Anzeige „Board gefunden“ im Modus `calibration` bleibt dann leer. Die Zahlen unten gehören zu den Kalibrierungen mit dem alten Brett (7×9, 22 mm). Bereits gespeicherte Kalibrierdateien bleiben gültig, sie tragen ihr Brett im Feld `board`. Nach der Umstellung beide Kameras mit dem neuen Brett neu kalibrieren, damit auch die Dokumentation in der Datei stimmt. Cols + Rows = 13 ist ungerade, das Brett eignet sich damit auch für die automatische Hand-Auge-Kalibrierung mit Schachbrett (Abschnitt 15.1).
 
 Für Layer 2 (Hand-Pi, `ADP-HandInEye-Kamera-Pi`, RealSense) real verifiziert
 (`chessboard`, 7×9, 22 mm, RMS 0,2945 px bei 21 Aufnahmen über das CLI-Tool).
@@ -1260,28 +1347,114 @@ Fokus auf Neigung/Distanz-Variation statt nur Bildabdeckung (siehe die
 
 Reines Diagnose-Werkzeug, kein Teil der Schnittstelle selbst — für die
 Untersuchung von Kalibrierproblemen live auf einem Pi, ohne dass Backend-Logs
-zur Verfügung stehen. `AprilTagProfileConfig.calibration_capture_dir`
-(Standard `None`, also aus) schreibt jede von `CaptureCalibrationSample`
-übernommene Aufnahme zusätzlich als PNG unter `data/calibration/<frame_id>_captures/
-kalib_001.png`, `kalib_002.png`, … ab — dieselbe Namenskonvention wie
-`tagloc.cli.calibrate --capture-to`. Der Zähler setzt bei jedem
-`StartCalibration` neu bei 1 an, verworfene Aufnahmen (Board nicht gefunden)
-werden nicht mitgezählt. `data/` ist gitignored, es gibt keinen automatischen
-Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz auf dem Pi knapp
-wird. Aktuell auf beiden Pis aktiv, während die Ursache dafür untersucht wird,
-dass Layer 1 im `calibration`-Stream keine Board-Ecken einzeichnet und dort
-der automatische Abschluss trotz ausreichender Abdeckung nicht ausgelöst hat.
+zur Verfügung stehen. **Standardmäßig aus** (seit 2026-09-28,
+`VISION_SAVE_CALIBRATION_CAPTURES=1` schaltet es ein) — dazu unten mehr.
+Eingeschaltet archiviert `AprilTagProfileConfig.calibration_capture_dir`
+zusätzlich zum session-eigenen Arbeitsordner (`_pending_dir`, siehe Abschnitt
+12) jede per `CaptureCalibrationSample` gemachte Aufnahme dauerhaft als JPEG
+unter `data/calibration/<frame_id>_captures/kalib_001.jpg`, `kalib_002.jpg`,
+… — dieselbe Namenskonvention wie `tagloc.cli.calibrate --capture-to` (dort
+PNG, hier bewusst JPEG, siehe unten). Der Zähler setzt bei jedem
+`StartCalibration` neu bei 1 an; da `capture()` seit der Entkopplung von
+Aufnahme und Auswertung nicht mehr prüft, ob das Board sichtbar ist, wird
+jetzt jede Aufnahme mitgezählt und archiviert, nicht nur die später
+tatsächlich verwertbaren. `data/` wird seit 02.11.2026 versioniert (`3535115`): die Aufnahmen
+tauchen in `git status` auf, nur bewusst committen. Es gibt keinen
+automatischen Aufräum-Mechanismus — von Hand leeren, wenn der Speicherplatz
+auf dem Pi knapp wird.
 
-**Speichert im Hintergrund, blockiert `CaptureCalibrationSample` nicht.** Ein
-`await` an dieser Stelle hätte die OPC-UA-Antwort auf das Schreiben warten
-lassen — bei der Deckenkamera (12 MP) kann `cv2.imwrite` als PNG mehrere
-Sekunden brauchen, live gefunden 2026-09-23: derselbe Timeout
-("Failed to send request to OPC UA server"), den zuvor schon
-`CALIB_CB_ACCURACY` verursacht hatte (Abschnitt 4, `apriltag-referenz.md`),
-diesmal durch dieses Debug-Feature selbst. Die Aufnahme läuft jetzt als
-Hintergrund-Task weiter, während `capture()` bereits zurückkehrt; Reihenfolge
-bleibt erhalten (derselbe Ein-Worker-Pool wie `detect_board`), ein
-Fehlschlag beim Speichern landet nur im Log, nie im `Error`-Rückgabewert.
+**Zwei Performance-Bugs live an der Deckenkamera (12 MP) gefunden, Hand-Pi
+(640x480) nie betroffen:**
+
+1. **2026-09-23 — blockierte `CaptureCalibrationSample`.** Das Speichern lief
+   zunächst synchron in `capture()`, bevor die OPC-UA-Antwort rausging —
+   `cv2.imwrite` bei 12 MP kann mehrere Sekunden brauchen, derselbe Timeout
+   ("Failed to send request to OPC UA server"), den zuvor schon
+   `CALIB_CB_ACCURACY` verursacht hatte (Abschnitt 4, `apriltag-referenz.md`).
+   Fix: die Speicherung läuft seither als Hintergrund-Task, `capture()` kehrt
+   zurück, sobald die Aufnahme übernommen ist.
+2. **2026-09-28 — Pi hängt sich nach jedem Foto auf.** Der Hintergrund-Task
+   lief weiter über denselben Ein-Worker-Pool wie `detect_board`
+   (`_pool()`). Auf der SD-Karte dauert das Schreiben eines 12-MP-Bilds
+   länger, als ein Operator zwischen zwei Aufnahmen braucht — jede weitere
+   `capture()` musste dann in genau dieser Warteschlange auf die noch
+   laufende Speicherung der *vorherigen* Aufnahme warten, bevor
+   `detect_board` überhaupt startete. Das häufte sich mit jedem Foto auf und
+   drückte vermutlich auch die gleichzeitig laufende `calibration`-Stream-
+   Vorschau (SD-Karten-/CPU-Last insgesamt, nicht das Overlay selbst).
+   Fix: ein eigener Ein-Worker-Pool nur fürs Speichern (`_save_pool()`,
+   `calibration_session.py`), getrennt von `detect_board`. Zusätzlich JPEG
+   statt PNG (schneller zu kodieren, kleiner zu schreiben) — für den Zweck
+   (visuelle Kontrolle, ggf. Neu-Rechnen des RMS) verändert die
+   verlustbehaftete Kompression die erkannten Eckenpositionen eines
+   Schachbrettmusters nicht spürbar.
+
+Nach beiden Funden auf `None` als Standard umgestellt, statt weiter
+unbedingt für beide Pis aktiv zu sein — ein Debug-Werkzeug, das die
+Kalibrierung, die es untersuchen soll, selbst beeinträchtigt, gehört nicht in
+den Standardbetrieb. Bei Bedarf gezielt mit `VISION_SAVE_CALIBRATION_CAPTURES=1`
+einschalten (systemd-Unit oder Shell vor dem Start), wieder ausschalten, wenn
+die Untersuchung abgeschlossen ist.
+
+**Überholt durch die Entkopplung von Aufnahme und Auswertung (2026-09-28,
+siehe Abschnitt 12):** `capture()` ruft `detect_board` inzwischen gar nicht
+mehr auf, `_pool()` wird also nicht mehr von `CaptureCalibrationSample`
+belegt — Bug 2 könnte in dieser Form nicht mehr auftreten. Der eigentliche
+Auslöser für die Entkopplung war ein dritter, schwererer Fund desselben
+Tages: `detect_board` selbst blieb auf der Deckenkamera bei der
+Ecken-Erkennung auf dem vollen 12-MP-Frame über mehrere Minuten hängen (kein
+Fehler, kein Rückgabewert) — mit nur einem Worker im Pool legte das jede
+folgende Aufnahme lahm, ein Server-Neustart war der einzige Ausweg. Diese
+Datei bleibt als Protokoll stehen, weil sie zeigt, wie sich das Problem
+schrittweise eingegrenzt hat, nicht weil der beschriebene Mechanismus noch
+so läuft.
+
+### 12.10 Linsenmodell je Kamera (seit 2026-09-29)
+
+Jede Kamera wird mit dem Linsenmodell kalibriert, das in den Bildtests am
+besten abgeschnitten hat (Arbeitsplan
+`arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md`):
+
+| Layer | Kamera | Auflösung | Modell | Koeffizienten |
+| --- | --- | --- | --- | --- |
+| LV1 | `cam_ceiling` (Pi 4, HQ-Kamera) | 4056 × 3040 | `fisheye` — OpenCV-Fisheye, Kannala-Brandt | 4: k1, k2, k3, k4 |
+| LV2 | `cam_flange` (Pi 5) | 640 × 480 | `pinhole` — OpenCV-Standard, Brown-Conrady | 5: k1, k2, p1, p2, k3 |
+
+**Wer entscheidet was:**
+
+- **Neu kalibrieren** (`CalibrationSession`, `tagloc.cli.calibrate`) nutzt
+  das Modell aus der Config: `AprilTagProfileConfig.calibration_model`, per
+  Preset in `server.py` gesetzt, zum Vergleichen per
+  `VISION_CALIBRATION_MODEL=pinhole|fisheye` übersteuerbar. CLI: `--model`.
+- **Posen, Overlay, Skalierung** richten sich allein nach dem Modell **in der
+  geladenen Kalibrierdatei**. Eine ältere Pinhole-Datei der Deckenkamera
+  gilt also weiter, bis dort neu kalibriert wurde.
+
+**Datei:** Schema `wsc.vision.calibration/2` mit dem neuen Feld
+`"distortionModel": "pinhole" | "fisheye"`. Dateien mit Schema `/1` werden
+weiter gelesen und gelten als `pinhole`. Eine Fisheye-Datei mit anderer
+Koeffizientenzahl als 4 oder ein unbekanntes Modell wird beim Laden
+abgelehnt — die Quelle bleibt dann wie bei jeder kaputten Kalibrierung zu.
+
+**OPC UA:** nur zusätzliche Felder, alle `"pinhole"` oder `"fisheye"`:
+
+| Wo | Feld | Wann |
+| --- | --- | --- |
+| `CalibrationProgress` (12.5) | `model` | während einer Session: Aufnahme, Auswertung, Ergebnis |
+| `CalibrationProgress` (12.5) | `result.model` | in jedem `result`, **auch bei Fehlschlag** |
+| `FinishCalibration` (12.3) | `Summary.model` | bei sofortiger Ablehnung (zu wenige Aufnahmen) |
+| `ActiveCalibrationInfo` (12.6) | `model` | immer: Modell der aktiven Kalibrierung |
+
+Im Ruhezustand ohne Session fehlt `model` in `CalibrationProgress`; dann
+`ActiveCalibrationInfo.model` anzeigen.
+
+**Technik:** alle modellabhängigen OpenCV-Aufrufe liegen in `tagloc/lens.py`
+(`undistort_points`, `project_points`, `calibrate`). Fisheye rechnet mit
+`cv2.fisheye.calibrate` und den Flags `RECOMPUTE_EXTRINSIC | CHECK_COND |
+FIX_SKEW`. Meldet `CHECK_COND` eine schlecht konditionierte Aufnahme, wird
+einmal ohne diese Prüfung nachgerechnet (Warnung im Log). Die Flag-Konstanten
+werden zur Laufzeit nachgeschlagen: OpenCV 4 führt sie unter `cv2.fisheye.*`,
+OpenCV 5 unter `cv2.*` mit **anderen Zahlenwerten**.
 
 ---
 
@@ -1338,9 +1511,8 @@ Eingang `(MeasId, PartId, RecipeId, ProductId, Parameters)` — alle String,
 `(JobId: String, Error: Int32)`. Der Aufruf ist **nicht blockierend**: er
 quittiert nur die Annahme, das Ergebnis kommt per Event.
 
-`RecipeId` wählt den Job: `""` und `hello-world` (Platzhalter ohne
-Bildverarbeitung), `calibration` (Bereitschaftsprüfung), `apriltag` (echte
-Erkennung). Details in Abschnitt 5.
+`RecipeId` wählt den Job: `calibration` (Bereitschaftsprüfung) oder
+`apriltag` (echte Erkennung). Leer oder unbekannt -> `Error=4`. Details in Abschnitt 5.
 
 | `Error` | Name | Bedeutung |
 | --- | --- | --- |
@@ -1432,3 +1604,331 @@ alles an einer Stelle findet. Vollständig in
 Punkt 5 ist der einzige, der in der bisherigen Backend-Umsetzung noch fehlt
 (`vision-system-integration.md`, Risiko R9). Punkt 6 ist im Frontend
 umgesetzt (Ampel im Kamera-Panel).
+
+## 14. Layer-2-Lauf (nur Hand-Pi)
+
+Der Hand-Pi führt die Feinmessung selbst:
+1. Er fährt zuerst an den Welttag und ankert dort (`apriltag-hand-auge-ankern.md`).
+2. Er plant jedes Modul mit der **gemessenen** Basis neu.
+3. Er misst jedes Modul.
+
+Frontend und Backend reichen nur Posen weiter. Planung und Ablauf liegen in `src/vision_server/layer2/`. Der Arbeitsplan mit allen JSON-Formaten ist [`arbeitsplaene/layer2-lauf-hand-pi.md`](arbeitsplaene/layer2-lauf-hand-pi.md).
+
+Die Knoten gibt es nur, wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist, also auf dem Pi mit `frame_id = cam_flange`. Alle liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt:
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `StartLayer2Run` | `ns=<vision>;s=VisionMachine.StartLayer2Run` | `(RunJson: String) -> (Error: Int32)` |
+| `ReportRobotPose` | `ns=<vision>;s=VisionMachine.ReportRobotPose` | `(ReportJson: String) -> (Error: Int32)` |
+| `Layer2Target` | `ns=<vision>;s=VisionMachine.Layer2Target` | String, JSON `wsc.vision.layer2.target/1`, `""` ohne Ziel |
+| `Layer2Status` | `ns=<vision>;s=VisionMachine.Layer2Status` | String, JSON `wsc.vision.layer2.status/1` |
+
+**Ablauf aus Sicht des Clients:**
+1. `StartLayer2Run` aufrufen. Übergeben werden die Roboterbasis und die Module aus Layer 1, mit den Tag-Lagen aus dem Modulkatalog (`wsc.vision.layer2.run/1`).
+2. `Layer2Target` abonnieren. Steht dort ein Ziel, den Roboter mit dem Flansch auf `flangeInBase` fahren.
+3. `ReportRobotPose` mit der **vom Roboter gemeldeten** Flanschpose aufrufen. Ist die Fahrt gescheitert, mit `reached: false`. Der Pi startet dann einen normalen `apriltag`-Job mit dieser Pose als Parameter. Es kommen dieselben Events und dasselbe `LatestResultJson` wie bei `StartSingleJob`.
+4. Nach dem Job steht das nächste Ziel in `Layer2Target`. `Layer2Status` trägt je Schritt `status`, `detail` und bei Modulen das Ergebnis (`result.frameId`, `result.detections`).
+5. `state` steht am Ende auf `finished` oder `aborted`. `Stop` bricht den Lauf jederzeit ab.
+
+**Eine Rechnung für Welttag und Modul.** Die Kamera steht 0,3 m vor dem Tag und schaut auf ihn. Daraus ergibt sich mit `inv(T_flansch_cam)` der Flansch und mit `inv(T_world_base)` das Fahrziel. Der einzige Unterschied ist die Herkunft der Tag-Pose:
+- Welttag: aus der Tag-Map, und zwar der der Basis nächste.
+- Modul: Modulpose aus Layer 1 mal Tag-Lage. Genommen wird der Tag, der am meisten zur Basis zeigt.
+
+**Annäherung** ([`arbeitsplaene/layer2-annaeherung.md`](arbeitsplaene/layer2-annaeherung.md)): Vor jedem Anker- und Mess-Schritt kommt ein Schritt mit `purpose: "approach"`. In diesem Schritt steht die Kamera 0,6 m vor dem Tag (`options.approachStandoffM`, `0` = aus). Das Bild dieses Schritts misst den Tag, und der Pi plant daraus das nahe Ziel neu. Geankert und gemessen wird erst im nahen Bild. Der Client fährt die Annäherung wie jeden anderen Schritt.
+
+**Flansch-Frame:** `flangeInBase` ist die Pose des mechanischen Werkzeugflanschs ohne Greifer, und auf genau diesen Link wird `T_flansch_cam` kalibriert. Die Links sind: EVA/Demo1 `model_6`, UR5e `flange`, FR3 `eef_attach_point`.
+
+**Wann der Anker gilt:** `locate_modules` überspringt Welttags. Der Anker-Job endet deshalb oft mit `DETECTION_FAILED`. Er gilt trotzdem als geglückt, wenn danach ein **neuer** `RobotAnchor` in der Quelle steht. Ohne Anker bricht der Lauf ab, weil keine Weltposen entstehen würden.
+
+**Fehlercodes:**
+
+| Code | Wann |
+| --- | --- |
+| `INVALID_ARGUMENT` | JSON ungültig |
+| `INVALID_STATE` | keine Hand-Auge-Datei; kein vermessener Welttag; `ReportRobotPose` ohne wartendes Ziel oder mit falschem `stepIndex` |
+| `BUSY` | Job, Kalibrierung oder bereits ein Lauf aktiv |
+
+**Sperren:** Während eines Laufs antworten `StartCalibration` und `SetTagMap` mit `BUSY`, weil eine neue Tag-Map den Anker verwirft. `StartSingleJob` bleibt erlaubt, zum Debuggen.
+
+**Noch offen:** Die Roboter-Server kennen heute keinen kartesischen Fahrbefehl. Solange das so ist, kann ein Client den Lauf nur im Trockenlauf bedienen: Er meldet das Ziel selbst als erreicht. Der Pi ankert dann an einer Pose, die niemand gefahren ist.
+
+### 14.1 Schräger Blick
+
+Liegt der frontale Blick auf einen Tag außer Reichweite, kippt der Planer die Kamera um die Tag-Mitte zur Roboterbasis hin, in Stufen bis `options.maxTiltDeg` (Standard 60°, `0` = immer frontal). Abstand und Blick auf die Tag-Mitte bleiben gleich. `Layer2Target.tiltDeg` sagt, wie schräg die Kamera schaut. Details stehen in [`arbeitsplaene/layer2-schraege-ansicht.md`](arbeitsplaene/layer2-schraege-ansicht.md).
+
+## 15. Hand-Auge-Kalibrierung über OPC UA (nur Hand-Pi)
+
+Damit lässt sich `T_flansch_cam` aus dem Frontend bestimmen, ohne CLI. Der Ablauf folgt dem Muster der Kamera-Kalibrierung (Abschnitt 12). Alle JSON-Formate stehen im Arbeitsplan [`arbeitsplaene/handeye-ueber-opcua.md`](arbeitsplaene/handeye-ueber-opcua.md). Die Knoten gibt es nur mit `hand_eye_path`, also auf dem Pi mit `frame_id = cam_flange`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `StartHandEyeCalibration` | `(OptionsJson: String) -> (Error: Int32)`, `wsc.vision.handeye.start/1` |
+| `CaptureHandEyeSample` | `(SampleJson: String) -> (Error: Int32)`, `wsc.vision.handeye.sample/1` |
+| `FinishHandEyeCalibration` | `() -> (Error: Int32)` |
+| `AbortHandEyeCalibration` | `() -> (Error: Int32)` |
+| `HandEyeStatus` | String, JSON `wsc.vision.handeye.status/1` |
+
+**Ablauf:**
+1. Den Tag wählen, der liegen bleibt.
+2. Den Roboter in verschiedene Posen fahren. Zu jeder Pose `CaptureHandEyeSample` mit der **gemeldeten** Flanschpose aufrufen (Flansch-Links wie in Abschnitt 14).
+3. `FinishHandEyeCalibration` aufrufen. Der Pi rechnet nach Park–Martin, die Lage des Tags muss dafür nicht bekannt sein. Er schreibt das Ergebnis nach `data/handeye/cam_flange.json` und kopiert die alte Datei vorher daneben. Die neue Kalibrierung gilt sofort, ohne Neustart. Ein vorhandener Anker wird dabei verworfen.
+
+Ist `tagInBase` aus dem Katalog bekannt, prüft der Pi sie nur gegen (`knownTagCheckM`/`Deg`). In die Rechnung geht sie nicht ein.
+
+**Sperren:** Während einer Sitzung antworten `StartLayer2Run`, `StartCalibration` und `SetTagMap` mit `BUSY`.
+
+### 15.1 Schachbrett statt Tag
+
+Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. Details stehen in [`arbeitsplaene/handeye-schachbrett-automatik.md`](arbeitsplaene/handeye-schachbrett-automatik.md). Genutzt wird das gelaserte Brett mit 6×7 Feldern zu 23 mm.
+
+```json
+{ "schema": "wsc.vision.handeye.start/1",
+  "board": { "type": "chessboard", "cols": 5, "rows": 6, "squareSizeM": 0.023 } }
+```
+
+- `cols`/`rows` sind die **Innenecken**. `cols + rows` muss ungerade sein, sonst kommt `INVALID_ARGUMENT`, denn nur dann ist das Brett um 180° gedreht vom Original zu unterscheiden.
+- Der Board-Frame ist in jedem Bild derselbe: Ursprung in der ersten Innenecke, deren Feld schwarz ist, +z ins Brett (`tagloc.boards.canonical_chessboard_corners`).
+- Jede Aufnahme braucht das **ganze** Brett im Bild. Sonst wird sie verworfen (`DETECTION_FAILED`), und die Sitzung läuft weiter.
+- Der Status hat dann `tagId = -1` und `target = {"type": "chessboard", ...}`. `samples[].camToTag` ist `T_cam_board`.
+
+### 15.2 Gütezahlen und Ausreißer (ab 22.10.2026)
+
+- `result.rmsPositionM`/`rmsRotationDeg` sind das **echte RMS**, `maxPositionM`/`maxRotationDeg` das **Maximum** der Abweichung der Brett- bzw. Tag-Lage vom Mittel über die verwendeten Aufnahmen. Vorher stand das Maximum unter dem Namen RMS.
+- Nach `FinishHandEyeCalibration` hat jede Aufnahme `samples[i].residualM`, `residualDeg` und `rejected`. Eine Aufnahme, deren Lage mehr als Median + 3 × MAD (mindestens 2 mm / 0,3°) vom Mittel der anderen abweicht, wird verworfen und die Kalibrierung neu gelöst (höchstens ein Viertel, nie unter 4 Aufnahmen). `result.rejectedCount` und `result.rejectedSamples` fassen es zusammen, `sampleCount` zählt nur die verwendeten.
+- Die Datei und `current` tragen zusätzlich `maxPositionM`/`maxRotationDeg`.
+
+### 15.3 Gespeicherte Kalibrierung im Status
+
+`HandEyeStatus` hat das Feld `current`. Darin steht die Kalibrierung aus `data/handeye/cam_flange.json`: `{poseFlangeCam, calibrationId, rmsPositionM, rmsRotationDeg, sampleCount}`, ohne Datei `null`.
+
+Anders als `result` gibt es `current` auch nach einem Neustart des Servers und ohne laufende Sitzung. Das Frontend zeigt damit die Handkamera am Flansch des Roboter-Zwillings.
+
+### 15.4 `MeasureBoard`: Brett vor der Aufnahme zentrieren
+
+Mit `MeasureBoard` bringt die Steuerung das Schachbrett mittig ins Bild, bevor sie `CaptureHandEyeSample` ruft. Der Pi misst nur und schickt keine Fahrbefehle. Details im Arbeitsplan [`arbeitsplaene/hand-auge-brett-zentrieren.md`](arbeitsplaene/hand-auge-brett-zentrieren.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `MeasureBoard` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, `wsc.vision.measureboard.request/1` → `…result/1` |
+
+- **Anfrage:** `{"board": {"type","cols","rows","squareSizeM"}?, "frames": 1..10 (3)?}`. Ohne `board` gilt das Brett der Konfiguration.
+- **Bilder:** Nur Bilder, die **nach** dem Aufruf eintreffen. Das gilt auch für `MeasureTags` und `CaptureHandEyeSample`.
+- **Error:** `OK` (auch bei `found: false`), `DETECTION_FAILED` (`error: "NO_FRAME"`), `INVALID_ARGUMENT` (JSON/Brett ungültig), `INVALID_STATE` (nicht `Operational`), `BUSY` (Job oder Kamera-Kalibrierung). Läuft auch während einer Hand-Auge-Sitzung.
+- **Ergebnis-JSON:** `found`, `complete`, `frameCount`, `framesRequested`, `framesUsed`, `imageSize`, `capturedAt`/`capturedUntil`, `frameId`, `frameConvention`, `intrinsicsSource`, `calibrationId`, `board`, `error`, `message`.
+  - **Ganzes Brett** (`complete: true`): `poseInCamera {position, orientation}`, `poseOk` (Fehler unter der Schranke der Hand-Auge-Aufnahme), `reprojectionErrorPx`, `distanceM`, `viewAngleDeg`, `cornersPx` (alle Ecken), `centerPx`, `offsetPx`, `nearEdge`.
+  - **Brett nur teilweise sichtbar** (`found: true`, `complete: false`): `partial {gridCols, gridRows, cornerCount, bboxPx}`, dazu `centerPx`, `offsetPx`, `nearEdge`. Keine Pose, denn der Ursprung eines Teilrasters ist beliebig.
+  - **Nichts gefunden:** `found: false`, kein Fehler.
+  - `offsetPx` zeigt vom Bildmittelpunkt zum Schwerpunkt der Ecken (x nach rechts, y nach unten). Dorthin muss die Kamera, damit das Brett in die Mitte rückt.
+- **Brett auf schwarzem Träger:** Helle Felder auf schwarzem Träger ohne helle Ruhezone (das Labor-Brett) findet die Erkennung nur am invertierten Graubild. `detect_board` versucht deshalb nach dem Originalbild das invertierte. Ecken und Ursprung bleiben gleich, die Feldfarbe für den Ursprung wird weiter am Originalbild gelesen.
+- **Rechenzeit:** Die Suche läuft auf einem auf 640 px (längste Kante) verkleinerten Bild, die Ecken werden danach im vollen Bild nachgeschärft (gleiche Ecken auf < 0,3 px). Das Teilraster wird nur im letzten Bild gesucht. Ohne Brett im Bild ist die Suche der teure Teil: Ein Fehlversuch am vollen Bild kostete Sekunden, am Pi ein Vielfaches. `MeasureTags` und `MeasureBoard` laufen auch während einer offenen Hand-Auge-Sitzung (ab 22.10.2026).
+- **Fehlersuche `"diagnose": true`:** Das Ergebnis enthält dann `diagnosis` für das letzte Bild: `largestGrid {cols, rows}` (größtes Raster, das der schnelle Detektor um die Angabe herum findet), `sbExact`, `classicExact`, `sbSwapped`, `tried`, `imageSize`, `grayMin/Max/Mean`, `saturatedFraction`. Kostet einige Erkennungsversuche, nur zum Analysieren.
+- **`samples[i].reprojectionErrorPx`** im `HandEyeStatus`: mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch bei verworfenen. `null`, wenn nichts gefunden wurde.
+
+### Nachtrag 28.10.2026: Verfeinerung und Vorhersagefehler
+
+Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba`. Plan: [`arbeitsplaene/handeye-genauigkeit.md`](arbeitsplaene/handeye-genauigkeit.md) (Status `in Arbeit`, Messung am Aufbau steht aus). Die Abschnitte 15 bis 15.4 oben gelten weiter, soweit sie nicht widersprechen. Die Brettangabe „6×7 Felder“ in 15.1 ist überholt: Das Brett hat 7×8 Felder, also 6×7 Innenecken (siehe `arbeitsplaene/handeye-schachbrett-automatik.md`, Nachtrag 28.10.2026).
+
+- **Verfeinerung:** Mit Brett wird `T_flansch_cam` zusammen mit der Brettlage und dem Brettmaßstab gegen die Pixel der Brettecken verfeinert (`refine_hand_eye_robust`, Start Park-Martin). Ausreißer werden nach dem Pixelfehler je Aufnahme verworfen. Ohne Brett oder ohne Ecken bleibt es bei Park-Martin, mit Hinweis in `result.warnings`.
+- **`FinishHandEyeCalibration`:**
+  - `INVALID_STATE` bei mindestens 3 angenommenen Aufnahmen und weniger als 3 Drehachsen (ab 5°). Die Sitzung bleibt offen, der Datensatz bekommt `outcome: "refused"`.
+  - `INVALID_STATE` bei weniger als 3 verwertbaren Posen. Die Sitzung bleibt offen, Datensatz `outcome: "failed"`.
+  - `INTERNAL` und Zustand `failed`, wenn die Kalibrierung berechnet, aber nicht gespeichert werden konnte.
+  - Sonst `OK`, Zustand `finished`.
+- **`HandEyeStatus`, neue Felder** (Schema `wsc.vision.handeye.status/1`):
+  - Top-level `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null` (unbekannt).
+  - `samples[i]`: `looErrorPx`, `looErrorM`. Vorhersagefehler ohne diese Aufnahme, nur nach `Finish` und nicht für verworfene Aufnahmen, sonst `null`.
+  - `result`: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `refinementConverged`, `targetInBase`, `warnings`, `sessionPath`. Die verfeinerten Werte sind ohne Verfeinerung `null`. `targetInBase` ist immer gesetzt: `{"position": [x, y, z], "orientation": [x, y, z, w]}` in Metern, Basis-KS. Mit Brett ist es der Brettursprung (erste Innenecke, +z ins Brett), sonst das Mittel über `F · X · C`.
+  - `warnings`: Liste deutscher Texte. Enthalten sind Hinweise zu den Werks- oder Platzhalter-Intrinsiks, zu fehlender Verfeinerung und zu `|boardScale − 1| > 0,3 %` („Brett nachmessen / Intrinsik pruefen“).
+  - `current`: zusätzlich `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`, jeweils aus `data/handeye/cam_flange.json`.
+- **`data/handeye/cam_flange.json`:** dieselben Zusatzschlüssel, nur wenn vorhanden.
+- **Sitzungsdatensatz:** `data/handeye/sessions/<UTC-Start>/session.json` (Schema `wsc.vision.handeye.session/1`, `outcome` finished, refused oder failed) und `sample_NNN.png` je Aufnahme. Offline neu rechnen:
+
+  ```
+  python -m tagloc.cli.calibrate_handeye --session data/handeye/sessions/<UTC-Start> [--out data/handeye/cam_flange.json] [--no-scale]
+  ```
+
+- **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
+- **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+
+## 16. Zellen-Überwachung (nur Deckenkamera)
+
+Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde, und meldet nur **bestätigte** Änderungen. Formate, Regeln und Defaults stehen im Arbeitsplan [`arbeitsplaene/zellen-ueberwachung.md`](arbeitsplaene/zellen-ueberwachung.md). Die Knoten gibt es nur mit AprilTag und ohne `hand_eye_path`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `StartCellWatch` | `(OptionsJson: String) -> (Error: Int32)`, `wsc.vision.cellwatch.start/1` |
+| `StopCellWatch` | `() -> (Error: Int32)` |
+| `PauseCellWatch` | `(ReasonText: String, MaxPauseS: Double) -> (Error: Int32)` (ab 22.10.2026) |
+| `ResumeCellWatch` | `() -> (Error: Int32)` (ab 22.10.2026) |
+| `CellWatchStatus` | String, JSON `wsc.vision.cellwatch.status/1` |
+
+- **Referenz:** das Ergebnis eines Layer-1-Jobs (`referenceJobId`, eines der letzten 20) oder, mit `null`, die aktuelle stabile Beobachtung („Ignorieren“).
+- **Gültige Bilder:** Nur Bilder mit gemeinsam gelöster Kamerapose (`joint`, mindestens zwei Welttags) zählen. Andere sind „keine Aussage“, nicht „Tag fehlt“.
+- **Auswertung:** Gerechnet wird je Tag mit dem Median über ein Zeitfenster, mit Bestätigungszeit und Hysterese.
+- **Ressourcen:** Die Überwachung nutzt die Frames der geteilten Kamera und einen eigenen Detektor. Während eines Jobs oder einer Kalibrierung steht sie auf `paused`.
+- **`visibleTagIds`** (additiv, int-Array): alle Tag-IDs, Welt- und Modul-Tags, die im Bild der letzten Prüfung erkannt wurden. Das Feld wird bei jeder Prüfung aktualisiert, **auch bei `paused`**, wenn das Bild keine Aussage erlaubt: Dann sieht der Bediener, welcher Welttag fehlt. `null`, solange noch kein Bild geprüft wurde, und bei `off`. Pausiert die Überwachung wegen eines Jobs oder einer Kalibrierung, wird kein Bild geprüft. Das Feld zeigt dann den letzten Stand.
+- **Ein Welt-Tag genügt (`minWorldTags`, Standard 1):** Die Überwachung läuft, sobald mindestens ein Welt-Tag zu sehen ist. Die Kamera ist fest montiert, ihre Pose ändert sich nicht. Deshalb schätzt der Pi sie nur aus Bildern mit **mindestens zwei** Welt-Tags (gemeinsames PnP, ~6 mm), merkt sie sich (Mittel der letzten 20) und benutzt sie bei genau einem sichtbaren Welt-Tag. Neu aus einem einzelnen Tag geschätzt wäre sie aus 2,5 m um Zentimeter ungenau (simuliert: Median 40 mm, Ausreißer bis 1,5 m durch gekippte Lösungen, 31–38 % der Bilder über 5 cm). Mit gemerkter Pose lag der Modulfehler in der Simulation bei 12 mm im Median, höchstens 46 mm, nie über 5 cm. Der eine sichtbare Welt-Tag wird nur auf Konsistenz geprüft: Liegen seine Ecken um mehr als `storedPoseMarginPx` (Standard 2 px) über dem Wert, den er beim Speichern der Pose hatte, hat sich die Kamera vermutlich bewegt. Das Bild zählt dann nicht, und nach 5 solchen Bildern in Folge verwirft der Pi die Pose und braucht wieder zwei Welt-Tags. Gemessen erkennt das Verschiebungen ab etwa 7 mm und Drehungen ab 0,1°. `minWorldTags: 2` ist das alte Verhalten. Eine neue Tag-Map (`SetTagMap`) verwirft die gemerkte Pose.
+- **Die gemerkte Pose übersteht Neustarts (ab 22.10.2026):** Sonst pausierte die Überwachung nach jedem Neustart, bis einmal zwei Welt-Tags gleichzeitig zu sehen waren. Zwei Wege:
+  - **Datei:** Die Pose liegt in `cellwatch_camera_pose.json` neben der Kamerakalibrierung (`data/calibration/`), mit der Tag-Map, gegen die sie geschätzt wurde, und der Grundlinie je Welt-Tag. Gespeichert wird, sobald 5 Posen vorliegen, danach höchstens alle 10 min (SD-Karte). Beim Start wird sie wiederhergestellt.
+  - **Referenz-Scan:** `cameraLocalization` hat bei `solver: "joint"` zusätzlich `poseInWorld` und `tagErrorsPx`. `StartCellWatch` mit `referenceJobId` übernimmt diese Pose, wenn noch keine gemerkt ist, oder wenn sie deutlich (> 15 mm / 0,5°) von der gemerkten abweicht, denn dann wurde die Kamera bewegt. Passt sie zur gemerkten, bleibt die über viele Bilder gemittelte.
+  - **Abgesichert:** Eine wiederhergestellte oder übernommene Pose wird genauso auf Konsistenz geprüft. Wurde die Kamera während der Pause bewegt, passt der eine Welt-Tag nicht, und die Pose fällt samt Datei weg. Eine geänderte Tag-Map (`SetTagMap`) entwertet sie ebenfalls. Eine fehlende oder unbrauchbare Datei ist kein Fehler, dann pausiert der Pi wie vorher, bis zwei Welt-Tags zu sehen waren.
+  - **Status:** `cameraPose: {source, poseCount, savedAt}`. `source` ist `measured` (aus ≥ 2 Welt-Tags gemessen), `file` (wiederhergestellt), `scan` (aus dem Referenz-Scan) oder `null` (keine Pose, dann pausiert der Pi bei nur einem Welt-Tag).
+- **Pausen wegen der Verortung** nennen alle „Welt-Tag“ in `message`. Das Frontend erkennt die Pause daran: „kein Welt-Tag im Bild“, „Kamerapose noch nicht bekannt – erst müssen 2 Welt-Tags gleichzeitig zu sehen sein“ (Start mit nur einem Welt-Tag), „Welt-Tag N passt nicht zur gespeicherten Kamerapose … Kamera bewegt?“, „… Pose verworfen“.
+- **`pending`** (additiv): was gerade nach einer Änderung aussieht, aber noch nicht bestätigt ist, `[{tagId, moduleId, kind, since, distanceM, rotationDeg, confirmInS}]`. Damit kann das Frontend sofort „verschoben um 6 cm, Meldung in 3 s“ zeigen. `since` ist bei `moved` der Beginn der ununterbrochenen Abweichung, bei `disappeared` die letzte Sichtung (Eintrag erst nach `persistS` ohne Sichtung), bei `appeared` die erste Sichtung. `confirmInS` ist die Zeit bis zur Meldung, falls es so bleibt; bei `disappeared` ist sie geschätzt, weil die Zahl der Fehlbilder von der Erkennungsrate abhängt. Nach der Bestätigung wandert der Eintrag nach `changes`.
+- **Drehung bei flachen Modulen:** Liegt ein Modul flach (Hochachse ≤ 30° zur Welt-Z), zählt sein Gierwinkel auch bei mehrdeutiger Pose. Aus der Draufsicht ist das fast immer so. Senkrechte Flächen: mehrdeutig heißt weiterhin nur Position.
+- **Pause von außen (`PauseCellWatch` / `ResumeCellWatch`, ab 22.10.2026):** Das Frontend pausiert die Überwachung, solange der Roboter fährt, denn Arm und Greifer verdecken Tags und würden Änderungen vortäuschen. `PauseCellWatch("Roboter fährt", 0)` setzt `state: "paused"` mit `message = ReasonText` (leer: „Ueberwachung pausiert“). Solange die Pause gilt, wertet der Pi **kein** Bild aus und nimmt nichts in den Verlauf auf. `MaxPauseS <= 0` heißt 600 s, mehr als 3600 s wird auf 3600 gekürzt. Nach Ablauf geht die Überwachung von selbst weiter, auch ohne `ResumeCellWatch` (Frontend weg, Roboter still). `ResumeCellWatch` beendet die Pause. Danach beginnen alle Zeitgeber neu, alle Tags gelten als eben gesehen, Kandidaten (`pending`) sind verworfen, bestätigte Meldungen (`changes`) bleiben, bis die übliche Hysterese sie löscht. Beide sind idempotent: Ein zweites `PauseCellWatch` ersetzt Grund und Frist, `ResumeCellWatch` ohne Pause ist `OK`. Läuft die Überwachung nicht (`off`, `failed`), ist die Antwort `INVALID_STATE`; `NaN`/`inf` als `MaxPauseS` ist `INVALID_ARGUMENT`. Neu scharf schalten hebt die Pause nicht auf, `StopCellWatch` schon. Der Status hat dazu `manualPause: {reason, resumesAt}` bzw. `null`. Die Pause wegen Job oder Kalibrierung bleibt davon unberührt.
+- **Neu scharf schalten:** Ein erneutes `StartCellWatch` übernimmt den Bildverlauf und damit die Erkennungsraten. Mit derselben `referenceJobId` bleiben auch Kandidaten, Meldungen und die `referenceId`. So lassen sich Zeiten und Schwellen ändern, ohne dass „disappeared“ danach bis zu 2 min braucht.
+- **`tagVisibility`** (additiv): je Tag aus der Referenz bzw. je gesehenem Tag `{tagId, seenRatio, framesChecked, lastSeenAt, unreliable}`. `seenRatio` ist der Anteil der gültigen Bilder der letzten `missingPersistS` Sekunden, in denen der Tag erkannt wurde. Das ist die stabile Antwort auf „ist der Tag im Bild?“, anders als `visibleTagIds`, das nur das letzte Bild zeigt und bei einem Tag an der Erkennungsgrenze flackert. `unreliable` steht, wenn der Tag zwar erkannt wird, aber in weniger als 50 % der Bilder. Dann nennt `message` (ohne Alarm) „unsicher erkannt: Tag 2 (20 %) …“.
+- **Warum „fehlt“, obwohl der Scan den Tag findet:** Ein Layer-1-Scan wertet 3–5 Bilder aus und meldet einen Tag schon, wenn er in einem davon erkannt wurde. Die Überwachung prüft einzelne Bilder. Ein Tag an der Erkennungsgrenze (klein, weit weg, schräg, am Bildrand, Blendung) ist deshalb im Scan da und in der Überwachung oft nicht.
+- **Timer für `disappeared`:** Er misst die Zeit seit der letzten Sichtung des Tags. Wie viele gültige Bilder ohne den Tag nötig sind, hängt von seiner Erkennungsrate vor der Lücke ab: so viele, dass ein zufälliges Verpassen unter 0,001 % liegt (`(1 − Rate)^n < 10⁻⁵`), mindestens 3, höchstens 60. Als Rate gilt vorsichtig die untere Grenze des 95-%-Konfidenzintervalls über den Verlauf; ohne Verlauf ist sie 0, dann gilt die Obergrenze. Bei 2 s Takt gibt es viele Lücken pro Stunde, deshalb diese kleine Schwelle. In der Simulation (je 20 Stunden) gab es bei 20 %, 40 %, 60 % und 95 % Erkennungsrate keinen Fehlalarm. Ein wirklich entfernter Tag wurde nach etwa 22 s (95 %), 32 s (60 %), 52 s (40 %) bzw. 2 min (20 %) gemeldet. Jede einzelne Sichtung setzt ihn zurück. Zeit in `paused` zählt mit, sie zählt aber nicht als „fehlt“: Ausgelöst wird erst, wenn danach zusätzlich mindestens 3 gültige Bilder ohne den Tag vorliegen und er im letzten `persistS`-Fenster nicht gesehen wurde.
+
+## 17. MeasureTags: Tags in Kamerakoordinaten (nur Hand-Pi)
+
+Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, fährt und regelt, der Hand-Pi misst nur. Steht der Roboter, ruft die Steuerung `MeasureTags` auf. Formate und Regeln stehen im Arbeitsplan [`arbeitsplaene/layer2-measuretags.md`](arbeitsplaene/layer2-measuretags.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `MeasureTags` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, `wsc.vision.measuretag.request/1` → `…result/1` |
+| `LastTagMeasurement` | String, das letzte Ergebnis, nur zur Anzeige |
+
+- **Messung:** Der Pi misst `T_cam_tag` (Kamera-KS wie OpenCV), ohne Welt-KS und ohne CAD-Versatz. Er nutzt nur Bilder, die **nach** dem Aufruf eintreffen, und mittelt standardmäßig über 3 davon.
+- **Mehrdeutige Orientierung:** Sie wird geliefert und mit `ambiguous` markiert. Dann auf die Position regeln, nicht auf die Drehung.
+- **`nearEdge`:** sagt je Tag, welchen Bildrändern er nahe kommt (innerhalb 5 %). Die Steuerung nutzt das bei der Suche nach anfangs unerreichbaren Tags, um gezielt nachzuschwenken. Fahrbefehle schickt der Pi bewusst nicht.
+- **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.
+
+## 18. SaveRawImage: Kamera-Vollbild als PNG speichern
+
+Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem Pi, als Rohmaterial zum Nachrechnen. Planung und Hintergründe stehen im Arbeitsplan [`arbeitsplaene/rohbild-speichern.md`](arbeitsplaene/rohbild-speichern.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `SaveRawImage` | `() -> (FileName: String, Error: Int32)`, am Vision-System und unter `VisionProgram` gespiegelt |
+
+- **Ablage:** `data/rohbilder/<frame_id>_<YYYYmmdd-HHMMSS>.png`. Existiert der Name schon, hängt der Server `_2`, `_3`, … an, eine Datei wird nie überschrieben. `frame_id` ist die des AprilTag-Profils, sonst der Name des Vision-Systems.
+- **`FileName`:** Pfad relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
+- **`Error`:** `0` gespeichert, `1` noch kein Kamerabild, `3` ein Job läuft (das PNG-Encoding eines 12-MP-Bilds soll den Job-Timeout nicht gefährden), `6` Schreiben fehlgeschlagen.
+- **Konfiguration:** `VisionServerConfig.raw_image_dir`, `None` legt die Methode nicht an. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird; die PNGs tauchen also in `git status` auf. Große Rohbilder nur bewusst committen.
+
+## 18a. SaveUseCaseImage: Use-Case-Foto je Versuch
+
+Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die Handkamera (Hand-Pi, PI_2) in die Fotopose: 20 cm senkrecht über der Soll-Mitte der Ablage, berechnet aus der Hand-Auge-Kalibrierung (`poseFlangeCam`). Die Methode legt Bild und Metadaten pro Versuch auf dem Pi ab und misst die Ablage direkt aus dem Bild (Δx, Δy, Δθ gegen die Zielscheibe), damit Genauigkeit und Wiederholgenauigkeit ausgewertet werden können. Aufnahme und Versuchsablauf stehen im Arbeitsplan [`arbeitsplaene/use-case-foto.md`](arbeitsplaene/use-case-foto.md), Zielscheibe, Messverfahren und kennzahlen im Arbeitsplan [`arbeitsplaene/use-case-messung.md`](arbeitsplaene/use-case-messung.md).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `SaveUseCaseImage` | `(Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`, am Vision-System (`ns=<own_idx>;s=<vision_system_name>.SaveUseCaseImage`) und wie `SaveRawImage` unter `VisionProgram` gespiegelt |
+
+- **Ablage:** `data/use-case/reihe_NNN/versuch_NNN.png` und `versuch_NNN.json`, jeweils dreistellig mit Nullen aufgefüllt (`reihe_001`, `versuch_012`). Die Versuchsnummer ist die höchste vorhandene Nummer in der Reihe plus 1; Lücken werden nicht aufgefüllt. Die Dateien werden exklusiv angelegt, eine Datei wird nie überschrieben. Liegt eine Messung mit Kontrollbild vor, kommt `versuch_NNN_messung.png` daneben (Marker, Toleranzkreise, Messwerte eingezeichnet).
+- **`Series`:** Versuchsreihe aus dem Feld der Web-App. Muss `>= 1` sein, sonst `Error=2`.
+- **`MetadataJson`:** Vom Web-Client gesendetes JSON, Schema `wsc.usecase.trial/1` (Soll-Pose, Tisch, Route, Ist-Gelenke usw.). Ist es kein gültiges JSON-Objekt, wird der Text unverändert als `client_raw` abgelegt. Der Server prüft den Inhalt nicht.
+- **Bildwahl:** Die Methode nimmt ein Kamerabild, das mindestens 0,3 s nach dem Aufruf entstanden ist (Hand und Bild beruhigen sich). Sie wartet dafür höchstens 5 s. Während eines laufenden Jobs wird sofort `BUSY` geliefert.
+- **`FileName`:** Pfad des PNG relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
+- **`ResultJson`:** Bildmessung als JSON-Text (`TrialMeasurement.to_dict()`, Felder siehe Arbeitsplan `use-case-messung.md`). Bei Fehler-Codes leer (`""`). Die Messung läuft vor dem Speichern (in einem Thread, also ohne den Server zu blockieren) und landet unverändert im Feld `messung` der Versuchs-JSON. **Ein Messfehler lässt das Speichern nie scheitern:** das Foto wird trotzdem abgelegt, die Messung steht dann als `{"ok": false, "grund": "..."}` in `ResultJson` und in `messung`. Ohne Kamerakalibrierung lautet der Grund `Keine Kamerakalibrierung verfuegbar`.
+- **Aufkleber-Versatz:** Vor der Messung liest der Server `data/use-case/aufkleber_versatz.json` (`{"x_mm": ..., "y_mm": ...}`, Lage der Markermitte relativ zur Würfelmitte im Markersystem) und zieht ihn von der Messung ab. Fehlt die Datei, gilt `(0, 0)`. Der Wert wird mit `tools/use_case_auswertung.py <reihe> --aufkleber-kalibrieren N1 N2` bestimmt.
+- **`Error`:** `0` gespeichert, `1` INVALID_STATE (kein frisches Bild innerhalb 5 s), `2` INVALID_ARGUMENT (Reihe < 1), `3` BUSY (Job läuft), `6` INTERNAL (Speicherfehler, Ausnahme im Log). Die Codes `4`, `5` und `7` kommen bei dieser Methode nicht vor. Bei jedem Fehlercode ist `FileName` und `ResultJson` leer.
+- **JSON-Datei:** Schema `adp.usecase.trial/1`. Felder: `reihe`, `versuch`, `bild` (Dateiname des PNG), `gespeichert` (lokale Zeit, ISO 8601, Sekunden genau), `pi` (Pi-Metadaten: `frame_timestamp`, `frame_age_s`, `image_shape`, `frame_id`, `vision_system_name`, `vision_system_id`, `hostname`, `endpoint`, `camera_stream`, `apriltag`, `calibration`, `hand_eye`; Felder, die nicht ermittelt werden können, fehlen), dazu `messung` (Bildmessung, s. `ResultJson`; bei neuen Versuchen immer vorhanden, auch als `{"ok": false, "grund": ...}`), `client` (geparstes Objekt) oder `client_raw` (Text). Die vollständige Beschreibung der Felder steht im Arbeitsplan.
+
+- **`pi.intrinsics`** (nur bei geladener Kalibrierung): die tatsächlich benutzte Kameramatrix und Verzeichnung, damit die Offline-Auswertung dieselbe Intrinsik nimmt. Felder: `source` (`calibration` = Kalibrierdatei, `realsense_factory` = Werks-Intrinsik der Kamera, `placeholder` = Platzhalter), `calibrationId`, `imageSize` (`[Breite, Höhe]` in px), `cameraMatrix` (3x3), `distortionCoefficients`, `distortionModel` (`pinhole` oder `fisheye`). `source` ist dieselbe Herkunft wie in der Handauge-Session (`intrinsicsSource`).
+- **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird (`3535115`); die Bilder tauchen also in `git status` auf und werden nur bewusst committet.
+
+## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
+
+Die Hand-Kamera misst die Lage eines Modul-Tags relativ zu zwei Bezugskanten des Moduls, die im selben Bild liegen. Sie ersetzt den Zollstock. Die Steuerung fragt mit `PlanTagReferenceView`, wohin die Kamera soll (rechnet nur, kein Bild), fährt dorthin und ruft `MeasureTagReference` auf. Ablauf und Begründung stehen im Arbeitsplan [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), das Verfahren in [`apriltag-referenz.md`](apriltag-referenz.md) (Abschnitt 14).
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `MeasureTagReference` | `ns=<vision>;s=VisionMachine.MeasureTagReference` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, misst mit Bildern |
+| `PlanTagReferenceView` | `ns=<vision>;s=VisionMachine.PlanTagReferenceView` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)`, rechnet nur |
+| `LastTagReference` | `ns=<vision>;s=VisionMachine.LastTagReference` | String (JSON), nur zur Anzeige |
+
+Die Methoden liegen unter `VisionMachine` und sind unter `VisionProgram` verlinkt. Sie gibt es nur auf dem Hand-Pi (`hand_eye_path` gesetzt).
+
+**Error-Codes je Methode** (Zahlen wie in Abschnitt 6, `VisionErrorCode`):
+
+| Error | `MeasureTagReference` | `PlanTagReferenceView` |
+| --- | --- | --- |
+| 0 `OK` | gemessen; auch wenn Kanten fehlen (dann `dofs` reduziert oder `none`) | geplant, auch mit `fits: false` |
+| 5 `DETECTION_FAILED` | `NO_FRAME`, `TAG_NOT_SEEN`; auch ein `ValueError` der Messung (z. B. Bildgröße passt nicht zur Kalibrierung) | entfällt (kein Bild) |
+| 2 `INVALID_ARGUMENT` | Anfrage-JSON bzw. Werte ungültig | wie links |
+| 1 `INVALID_STATE` | Vision-System nicht `Operational` | wie links |
+| 3 `BUSY` | Job, Kamera-Kalibrierung, Hand-Auge-Sitzung, `MeasureTags` oder eine weitere Einmessung läuft | kein `BUSY`: rechnet nur, kein Bild |
+
+- Bei Ablehnung steht im JSON `"<CODE>: Text"`; bei Mess-Fehlern (`NO_FRAME`, `TAG_NOT_SEEN`) der nackte Code. `ResultJson` ist immer gültiges JSON.
+- `LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
+- **BUSY-Regeln:** Während `MeasureTagReference` läuft, antwortet `MeasureTags` mit `BUSY`. Umgekehrt meldet `MeasureTagReference` `BUSY`, solange `MeasureTags` läuft. Verhaltensänderung: `MeasureTags` antwortet jetzt zusätzlich mit `BUSY`, solange eine Einmessung läuft. `PlanTagReferenceView` wird davon nicht gesperrt.
+
+**Anfrage** `wsc.vision.tagreference.request/1` (für beide Methoden):
+
+```json
+{ "schema": "wsc.vision.tagreference.request/1",
+  "tagId": 7, "tagSizeM": 0.08,
+  "moduleTagGuess": { "position": [x,y,z], "orientation": [qx,qy,qz,qw] },
+  "lines": [ { "id": "A", "start": [x,y,z], "end": [x,y,z] },
+             { "id": "B", "start": [x,y,z], "end": [x,y,z] } ],
+  "searchBandM": 0.015, "frames": 3,
+  "view": { "lineExtentM": 0.10, "tiltDeg": 10 } }
+```
+
+- `moduleTagGuess`: `T_module_tag` aus dem Katalog (Startwert). `lines`: 3D-Kanten im Modul-KS, 1 bis 4 Stück, je ≥ 2 cm, `id` eindeutig.
+- Optional: `tagSizeM` (Vorrang Anfrage > Tag-Map > `config.tag_size_m`), `searchBandM` (Standard 0,015; 0,003 bis 0,05 m), `frames` (Standard 3; 1 bis 10), `view.lineExtentM` (Standard 0,10; (0, 1] m), `view.tiltDeg` (Standard **10**; |tiltDeg| < 80).
+- `moduleTagGuess.orientation` wird normiert; ein Nullquaternion ist ungültig. Unbekannte Felder werden ignoriert.
+
+**Ergebnis** `wsc.vision.tagreference.result/1` (von `MeasureTagReference`):
+
+- `capturedAt`, `capturedUntil`, `imageSize`, `intrinsicsSource` (`calibration` | `realsense_factory` | `placeholder`), `framesUsed` (Bilder mit erkanntem Tag).
+- `tag`: `poseInCamera`, `reprojectionErrorPx`, `viewAngleDeg`, `ambiguous`. `null` im Fehlerfall.
+- `lines[]`: je Kante `id`, `found`, `offsetMm`, `angleDeg`, `supportPx`, `residualPx`, `contrast`, `candidates`, `ambiguous`, `reason` (`NOT_VISIBLE` | `NO_EDGE` | `PERPENDICULAR_TO_TAG`, nur bei nicht gefundenen Kanten).
+- `correction`: `dofs` (`full` | `partial` | `none`), `deltaMm`, `deltaRotDeg`, `moduleTag` sowie `position` und `rotationDeg` (Katalogformat), `spreadMm`, `spreadDeg`, `residualMm`. `null` im Fehlerfall.
+- `warnings[]` und `error` (`null` bei Erfolg).
+- Mehrdeutige Tag-Pose: ohne eindeutiges Bild bleibt die Orientierung exakt der Startwert; nur der Tag-Ursprung wandert, und es gibt eine Warnung.
+
+**Planung** `wsc.vision.tagreference.view/1` (von `PlanTagReferenceView`):
+
+```json
+{ "schema": "wsc.vision.tagreference.view/1",
+  "camInTag": { "position": [x,y,z], "orientation": [qx,qy,qz,qw] },
+  "standoffM": 0.38, "fits": true, "uncovered": [], "error": null }
+```
+
+- `camInTag`: Kamerapose im Tag-KS (OpenCV, +Z aus der Linse). Die Kamera schaut entlang −Tag-z.
+- `fits: false`: Der Tag ist immer im Bild; Kanten werden nach Abstand nacheinander zugenommen, solange alles bei `max_standoff` passt. `uncovered` nennt die übrigen Kanten (ggf. `"tag"`).
+- Ablehnung: `camInTag: null`, `fits: false`, `uncovered: []`, `error` als `"<CODE>: Text"`.
+
+Die Anfrage schreibt weder in die Tag-Map des Pi noch ändert sie Welt-Tags. Modul-Tags und ihre Pose stehen nur im Modulkatalog des Frontends. Das Flanschziel rechnet die Steuerung selbst.
+
+### 19.1 Live-Ansicht und Mess-Protokoll
+
+Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)) sieht man die Kantensuche live im Livestream und bekommt jede Messung als Protokoll auf den Pi.
+
+| Element | NodeId | Signatur / Typ |
+| --- | --- | --- |
+| `SetTagReferencePreview` | `ns=<vision>;s=VisionMachine.SetTagReferencePreview` | `(RequestJson: String) -> (Error: Int32)` |
+| `TagReferencePreviewStatus` | `ns=<vision>;s=VisionMachine.TagReferencePreviewStatus` | String (JSON), Abo möglich, höchstens 3 Hz |
+| `GET /tagreference.jpg` | MJPEG-Port (`http://<host>:<port>/tagreference.jpg`) | JPEG, `Cache-Control: no-store`, CORS `*` |
+
+- **`SetTagReferencePreview`**: `RequestJson` ist `wsc.vision.tagreference.request/1` (Parser wie bei
+  `MeasureTagReference`; `frames` und `view` werden ignoriert). Ein Tag an, `""` aus. Error: `OK`,
+  `INVALID_ARGUMENT` (ungültiges JSON, fehlender Tag, ungültiges `overlay`), `INVALID_STATE` (nicht
+  `Operational` oder kein Livestream-Overlay). Nie `BUSY`. Nur Hand-Pi, unter `VisionProgram` verlinkt.
+  Die Vorschau läuft nach 120 s ohne Erneuerung ab. Die Prüfung läuft auch außerhalb des Modus `tagreference`.
+- **`MeasureTagReference`** setzt die Vorschau automatisch auf ihre eigene Anfrage. Signatur bleibt.
+- **Status** `TagReferencePreviewStatus`, Schema `wsc.vision.tagreference.preview/1`:
+  `{ "schema", "active", "tagId", "tagSeen", "updatedAt", "overlay", "lines": [ {"id", "found", "offsetMm",
+  "angleDeg", "ambiguous", "reason", "supportPx", "contrast"} ] }`. Ohne aktive Vorschau: `active: false`,
+  `tagId: null`, `lines: []`.
+- **Overlay-Ebenen** (`overlay` in der Anfrage, Schlüssel `guess`, `band`, `candidates`, `rejected`,
+  `chosen`, `mask`, `labels`, `tagBox`): fehlende Schlüssel = `true`, unbekannte werden ignoriert, ein
+  Wert, der kein Bool ist, ergibt `INVALID_ARGUMENT`. Im Status steht die wirksame Belegung.
+- **`saveDebug`** in der Anfrage von `MeasureTagReference` (Standard `true`): `false` legt kein Protokoll
+  an, `debugDir` ist dann `null`.
+- **Mess-Protokoll**: je Messung `data/tagreference/<YYYYmmdd-HHMMSS>_tag<id>/` (Config
+  `tag_reference_debug_dir`, `None` = aus) mit `request.json`, `result.json`, `frame<k>.png` (Rohbilder,
+  verlustfrei) und `overlay.jpg`. Höchstens 50 eigene Ordner, nach mtime aufgeräumt, der neue Ordner bleibt.
+  `ResultJson.debugDir` ist der repo-relative Pfad oder `null`; bei Schreibfehlern nur eine Log-Warnung.
+- **`GET /tagreference.jpg`** liefert `overlay.jpg` aus dem neuesten Messordner. 404, wenn keine
+  Messung vorliegt.
+- **Stream-Modus `tagreference`**: höchstens 3 Hz, das letzte Debug-Bild wird zwischen zwei Auswertungen
+  bis 1 s gehalten. Eine Messung hält ihr Debug-Bild 5 s im Stream. Tag nicht im Bild: Titel „Tag 7 nicht im Bild“.
+
+**Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
+die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
+und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.

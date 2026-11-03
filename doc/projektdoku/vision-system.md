@@ -21,12 +21,12 @@ Der Endpoint-Pfad heißt weiterhin `/raspi/server/`, obwohl das namensgebende
 jeder Client-Konfiguration.
 
 Das Vision-System ist die Umsetzung von Phase 2 und 3 aus Teil 9 des Plans.
-Neben dem `hello-world`-Platzhalterrezept (nur zu Testzwecken, `moduleId`
-immer `HELLO-WORLD`) gibt es inzwischen eine echte Erkennung: das Rezept
+Das frühere Platzhalterrezept `hello-world` ist entfallen; ein Start ohne
+`RecipeId` ist ein Fehler (`UNKNOWN_RECIPE`). Die Erkennung: das Rezept
 `apriltag` liefert reale AprilTag-Posen samt Welttag-Referenz und
 Hand-Auge-Ankerung (siehe [`apriltag-referenz.md`](apriltag-referenz.md)),
 und `calibration` ist eine echte Bereitschaftsprüfung der Kamerakalibrierung.
-Details zu allen drei Rezepten und zur Part-2-Anlagensicht (AMCM) stehen in
+Details zu beiden Rezepten und zur Part-2-Anlagensicht (AMCM) stehen in
 [`vision-server-interface.md`](vision-server-interface.md).
 
 Das Vision-Paket ist als **Einbau** gebaut (`install_vision_machine(server, config)`)
@@ -41,7 +41,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | Datei | Inhalt |
 | --- | --- |
 | [`src/vision_server/`](../../src/vision_server/) | Vision-Server (Paket, siehe Modultabelle unten) |
-| [`src/vision_server/tools/hello_world_client.py`](../../src/vision_server/tools/hello_world_client.py) | Testclient: Referenzimplementierung des Handshakes |
+| [`src/vision_server/tools/handshake_client.py`](../../src/vision_server/tools/handshake_client.py) | Testclient: Referenzimplementierung des Handshakes |
 | [`src/vision_server/server.py`](../../src/vision_server/server.py) | Server der Zelle: Identität des Pi, mDNS/LDS, Einbau des Vision-Systems |
 | [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendorierter offizieller OPC 40100-Nodeset; von **beiden** Servern geladen |
 | [`requirements.txt`](../../requirements.txt) | u. a. `asyncua` |
@@ -63,7 +63,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `errors.py` | `VisionJobError`, Fehlercodes für den `Error`-Ausgang |
 | `job.py` | Validierung, State-Guard, Job-Ablauf, Fehlerpfad |
 | `profiles.py` | `AprilTagProfileConfig` u. a. — Kamera, Hand-Auge-Pfad, Tag-Map je Pi |
-| `runner.py` | `install_vision_machine()` (Einbau) und `run()` (standalone) |
+| `runner/` | Paket: `install_vision_machine()` (Einbau, `install.py`) und `run()` (standalone, `standalone.py`); je Aufgabe ein Modul, siehe Modul-Docstring und `code-handbuch.md` Teil A2 |
 | `vision_program.py` | Part-10-Programmfassade `VisionProgram`, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
 | `camera.py` | `SharedCamera` — ein Capture-Loop, geteilt von Erkennung und Livestream |
 | `camera_stream.py` | schreibt Kamera-Frames als Base64-JPEG in `LatestCameraFrame` |
@@ -72,7 +72,7 @@ und isolierte Tests lässt sich das Paket zusätzlich standalone starten
 | `calibration_session.py` | `CalibrationSession` — interaktive Kamerakalibrierung über OPC UA |
 | `discovery/mdns.py` | mDNS-Ankündigung |
 | `discovery/lds.py` | LDS-Registrierung beim Aggregation-Server |
-| `detection/` | Strategie `DetectionSource`: `hello_world.py` (Platzhalter), `apriltag.py` (echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
+| `detection/` | Strategie `DetectionSource`: `apriltag/` (Paket, echte AprilTag-Erkennung), `script_runner.py` (Kalibrierprüfung, Rezept `calibration`) |
 
 Echte Bilderkennung anschließen = eine neue Datei in `detection/` plus ein
 Registry-Eintrag; der Server-Kern kennt keine Bildverarbeitung. Details zu
@@ -139,12 +139,14 @@ Instanzkinder — sie existieren nur als feste Knoten am Typ
 - Beim Start zwei Bekanntmachungen nebeneinander, beide werden beim geordneten
   Beenden zurückgezogen:
   - **mDNS** (`src/vision_server/discovery/mdns.py`): `_opcua-tcp._tcp.local.`, Instanzname ist die
-    Vision-Identität. Für Clients im Subnetz. **Seit 23.09.2026
-    standardmäßig aus**; einschalten mit `OPCUA_MDNS=1`.
+    Vision-Identität. Für Clients im Subnetz. **Standardmäßig an**
+    (seit 21.10.2026 wieder, vom 23.09. bis 21.10.2026 war sie aus); abschalten
+    mit `OPCUA_MDNS=0`.
   - **LDS-Anmeldung** (`src/vision_server/discovery/lds.py` über `Server.register_to_discovery()`):
-    **seit 23.09.2026 standardmäßig aus** — der Server erscheint dann nicht im
-    Aggregation-Server. Einschalten mit
-    `OPCUA_LDS_URL=opc.tcp://10.10.38.27:4840/`, dann alle 60 s erneuert.
+    **standardmäßig an** (seit 21.10.2026 wieder, vom 23.09. bis 21.10.2026
+    war sie aus und der Server erschien nicht im Aggregation-Server). Meldet
+    sich bei `opc.tcp://10.10.38.27:4840/` an und erneuert alle 60 s.
+    Abschalten mit `OPCUA_LDS_URL=""`, umbiegen mit einer anderen URL.
     **Nur darüber** nimmt der Aggregation-Server der Zelle das Modul auf —
     mDNS allein genügt ihm nicht, siehe [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
   Scheitert eine der beiden, läuft der Server weiter und loggt eine Warnung.
@@ -169,8 +171,8 @@ pip install -r requirements.txt
 PYTHONPATH=src python3 -m vision_server.server
 
 # Handshake einmal durchspielen
-PYTHONPATH=src python3 src/vision_server/tools/hello_world_client.py \
-    --url opc.tcp://127.0.0.1:4840/raspi/server/
+PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py \
+    --url opc.tcp://127.0.0.1:4840/raspi/server/ --recipe-id calibration
 
 # Nur das Vision-System, isoliert (Entwicklung)
 PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
@@ -188,21 +190,11 @@ Zwei Umschalter verändern den Adressraum bzw. das Verhalten:
 | Weg | Wofür |
 | --- | --- |
 | `python3 -m vision_server.server` | Entwicklung und Handarbeit. Braucht `PYTHONPATH=src` oder `WorkingDirectory=…/src`. |
-| `python3 src/OPCUA/server.py` | **Die systemd-Unit auf den Pis.** Ein 15-Zeilen-Starter ohne Logik, der `src/` auf den Pfad legt und `vision_server.server.main()` aufruft. |
-
-`src/OPCUA/server.py` existiert **nur** deshalb: die Unit zeigt seit jeher auf
-diesen Pfad, sie ist in keinem Repo versioniert (Altlast D5), und sie auf zwei
-Pis von Hand nachzuziehen wäre eine Fehlerquelle bei jedem Neuaufsetzen. Sie
-kann wegfallen, sobald die Unit versioniert ist und mit ausgerollt wird.
-
-Beim Umzug ins Paket war diese Datei kurzzeitig gelöscht — der Dienst startete
-nach einem Reboot nicht mehr. Der Starter ist die Lehre daraus: **an einem
-Einstiegspunkt, den ein nicht versioniertes Deployment festhält, wird nicht
-ohne Ersatz gezogen.**
+| `<Repo>/.venv/bin/python -m vision_server.server` | **Die systemd-Unit auf den Pis** (`PYTHONPATH=<Repo>/src`). Vorlage und Einspielanleitung: [`deploy/`](../../deploy/README.md). |
 
 Auf dem Pi läuft der Server produktiv als systemd-Service `opcua-server.service`
-(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service` —
-nicht in diesem Repo versioniert). **Wichtig beim Testen auf dem Pi:** Kein
+(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service`,
+Vorlage in `deploy/`). **Wichtig beim Testen auf dem Pi:** Kein
 Vordergrundstart, das kollidiert mit dem Service (Port 4840 belegt) —
 stattdessen `systemctl restart opcua-server.service` und mit einem separaten
 Client dagegen testen.
@@ -244,13 +236,12 @@ Festgehalten in `tests/test_part10_fassade.py`.
 
 ## Bekannte Einschränkungen
 
-- Nur das Rezept `hello-world` ist ein Platzhalter: `moduleId` ist `HELLO-WORLD`,
-  die Pose immer Null. Das Rezept `apriltag` liefert echte Posen, `calibration`
-  eine echte Bereitschaftsprüfung.
+- Es gibt keinen Standardjob: eine leere `RecipeId` wird abgelehnt. Das Rezept
+  `apriltag` liefert echte Posen, `calibration` eine echte Bereitschaftsprüfung.
 - `frameId` folgt der Erkennungsquelle: `world`, sobald ein Referenz-Tag aus der
   Tag-Map sichtbar ist, sonst das Kamera-KS. Die Hand-Auge-Kalibrierung für
   Layer 2 ist implementiert (`AprilTagProfileConfig.hand_eye_path`, verkettet
-  in `detection/apriltag.py`) — offen ist nur noch die reale Vermessung der
+  in `detection/apriltag/`) — offen ist nur noch die reale Vermessung der
   Hand-Auge-Datei je Zelle, siehe [`vision-server-interface.md`](vision-server-interface.md)
   Abschnitt 9.
 - Verlinkt sind `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`
@@ -277,3 +268,42 @@ Festgehalten in `tests/test_part10_fassade.py`.
   Abschnitt 10.3. Eine Kalibrierung für 2028×1520 wird bis zur Neukalibrierung
   hochgerechnet (`allow_resolution_mismatch` im Preset `cam_ceiling`) — nach
   der Neukalibrierung bei 4056×3040 den Schalter wieder entfernen.
+
+## Kamera-Controls (Picamera2)
+
+Für die Deckenkamera (Picamera2) lassen sich libcamera-Controls ohne
+Codeänderung setzen: Feld `CameraStreamConfig.camera_controls`, Preset
+`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]` (vorerst leer,
+Werte folgen nach Messung) und Umgebungsvariable `VISION_CAMERA_CONTROLS`
+(JSON-Objekt, je Schlüssel gewinnt die Variable, `null` entfernt einen
+Preset-Eintrag):
+
+```
+VISION_CAMERA_CONTROLS='{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}'
+```
+
+- Die Controls gehen als `controls=` in die Video-Konfiguration und werden
+  mit den Picamera2-Standards (`FrameDurationLimits`, `NoiseReductionMode`)
+  gemischt, nicht ersetzt.
+- Typen: `ExposureTime` in µs (int), `AnalogueGain` (float), `AeEnable`
+  (bool), `ExposureValue`, `Sharpness`, `Contrast`, `Brightness`,
+  `Saturation` (float). Die Enum-Controls `NoiseReductionMode`,
+  `AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode` dürfen
+  als Name angegeben werden (`"HighQuality"`, `"Off"`, `"Fast"`).
+- Ein Name, den die Kamera nicht kennt (`Picamera2.camera_controls`), oder
+  ein unbekannter Enum-Name wirft beim Öffnen `ValueError`; die Meldung
+  listet die gültigen Namen.
+- Nach dem Warmup loggt der Server die tatsächlichen Metadaten
+  (`ExposureTime`, `AnalogueGain`, `DigitalGain`, `Lux`, `ColourTemperature`,
+  `FocusFoM`): `journalctl -u opcua-server.service | grep "Kamera-Metadaten"`.
+  Daraus wählt man feste Belichtungswerte.
+- RealSense und OpenCV ignorieren das Feld (einmalige Warnung je Öffnen).
+
+**Hardware-Hinweis:** Die Deckenkamera hat ein M12-Objektiv mit fester
+Blende. Einstellbar sind nur der Fokus (am Objektiv, von Hand) und die ISP-/
+Belichtungs-Controls oben.
+
+Setzen auf dem Pi: Drop-In per `sudo systemctl edit opcua-server.service`
+mit `Environment='VISION_CAMERA_CONTROLS=...'`, danach
+`sudo systemctl restart opcua-server.service`. Schnittstellen:
+[`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).

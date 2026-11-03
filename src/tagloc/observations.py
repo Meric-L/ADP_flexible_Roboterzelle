@@ -1,9 +1,9 @@
-"""Data types between image and math. No OpenCV.
+"""Datentypen zwischen Bild und Mathematik. Kein OpenCV.
 
-Split out because `detector.py` and `pose.py` need OpenCV but `localize.py`
-must not: if these dataclasses lived in the cv2 modules, `localize` would
-drag OpenCV in with them. Both types are re-exported from `detector` and
-`pose` so callers find them where they expect them.
+Ausgelagert, weil `detector.py` und `pose.py` OpenCV brauchen, `localize.py`
+aber nicht darf: Laegen diese Dataclasses in den cv2-Modulen, zoege
+`localize` OpenCV mit hinein. Beide Typen werden aus `detector` und `pose`
+erneut exportiert, damit Aufrufer sie dort finden, wo sie sie erwarten.
 """
 
 import math
@@ -12,18 +12,19 @@ from typing import Any
 
 from .geometry import Pose
 
-#: Above this ratio a pose counts as ambiguous.
+#: Oberhalb dieses Verhaeltnisses gilt eine Pose als mehrdeutig.
 AMBIGUITY_THRESHOLD = 0.6
 
 
 @dataclass(frozen=True)
 class TagObservation:
-    """A tag found in the image -- no pose yet.
+    """Ein im Bild gefundener Tag -- noch ohne Pose.
 
-    `corners` are four image points in **clockwise order, starting top-left**
-    (the order `cv2.aruco` uses). Every detector adapter brings its output
-    into this order; `pose.py` relies on it because `SOLVEPNP_IPPE_SQUARE`
-    expects exactly this correspondence to the object points.
+    `corners` sind vier Bildpunkte in **Uhrzeigerreihenfolge, oben links
+    beginnend** (die Reihenfolge von `cv2.aruco`). Jeder Detektor-Adapter
+    bringt seine Ausgabe in diese Reihenfolge; `pose.py` verlaesst sich darauf,
+    weil `SOLVEPNP_IPPE_SQUARE` genau diese Zuordnung zu den Objektpunkten
+    erwartet.
     """
 
     tag_id: int
@@ -36,7 +37,7 @@ class TagObservation:
         return (sum(xs) / len(xs), sum(ys) / len(ys))
 
     def side_length_px(self) -> float:
-        """Mean edge length in the image -- rough measure of detection quality."""
+        """Mittlere Kantenlaenge im Bild -- grobes Mass fuer die Erkennungsguete."""
         total = 0.0
         count = len(self.corners)
         for index in range(count):
@@ -48,35 +49,36 @@ class TagObservation:
 
 @dataclass(frozen=True)
 class TagPose:
-    """A tag with an estimated pose in the camera coordinate frame."""
+    """Ein Tag mit geschaetzter Pose im Kamera-Koordinatensystem."""
 
     tag_id: int
     pose_cam_tag: Pose
     reprojection_error_px: float = float("nan")
-    #: Best-solution error divided by second-best, in (0, 1]. Near 1 means
-    #: both solutions explain the image equally well.
+    #: Fehler der besten Loesung geteilt durch den der zweitbesten, in (0, 1].
+    #: Nahe 1 heisst, beide Loesungen erklaeren das Bild gleich gut.
     ambiguity_ratio: float = 0.0
     observation: TagObservation | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_ambiguous(self) -> bool:
-        """A square marker seen at a shallow angle has two good solutions.
+        """Ein quadratischer Marker, unter flachem Winkel gesehen, hat zwei gute Loesungen.
 
-        Ambiguous doesn't mean wrong, but such a pose must not be acted on
-        unchecked, hence the flag is carried in the payload.
+        Mehrdeutig heisst nicht falsch, aber auf eine solche Pose darf nicht
+        ungeprueft gehandelt werden, deshalb wird das Flag in den Nutzdaten
+        mitgefuehrt.
         """
         return self.ambiguity_ratio > AMBIGUITY_THRESHOLD
 
     def is_usable(self, max_reprojection_error_px: float | None = None) -> bool:
-        """Return whether this pose is fit to pass on.
+        """Liefert, ob diese Pose zur Weitergabe taugt.
 
-        The NaN case is checked first and explicitly: `nan > threshold` is
-        `False` in Python, so a plain comparison would let a degenerate
-        solution through -- exactly the case this check guards against.
-        Downstream, `payload` would then raise on serialisation
-        (`allow_nan=False`) and the job would end as INTERNAL instead of
-        DETECTION_FAILED.
+        Der NaN-Fall wird zuerst und ausdruecklich geprueft: `nan > threshold`
+        ist in Python `False`, ein einfacher Vergleich liesse also eine
+        entartete Loesung durch -- genau den Fall, vor dem diese Pruefung
+        schuetzt. Nachgelagert wuerde `payload` beim Serialisieren
+        (`allow_nan=False`) eine Ausnahme werfen, und der Job endete als
+        INTERNAL statt als DETECTION_FAILED.
         """
         error = self.reprojection_error_px
         if math.isnan(error) or math.isinf(error):

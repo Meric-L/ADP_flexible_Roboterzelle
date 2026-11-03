@@ -1,19 +1,20 @@
-"""Identity of the effective configuration. Stdlib only.
+"""Identitaet der wirksamen Konfiguration. Nur Standardbibliothek.
 
-Split out because the vision server needs the `configurationId` while still
-building the detection source -- before anything is loaded, so numpy and
-OpenCV must not be on the import chain.
+Ausgelagert, weil der Vision-Server die `configurationId` schon braucht,
+waehrend er die Erkennungsquelle aufbaut -- bevor irgendetwas geladen ist,
+also duerfen numpy und OpenCV nicht in der Importkette liegen.
 
-The value later answers which calibration and which map produced a bad pose
-(doc/projektdoku/altlasten.md C4). Filename plus mtime: both come for free without
-parsing, and change on every recalibration.
+Der Wert beantwortet spaeter, welche Kalibrierung und welche Karte eine
+schlechte Pose erzeugt haben (doc/projektdoku/altlasten.md C4). Dateiname plus
+mtime: beides gibt es umsonst ohne Parsen und aendert sich bei jeder
+Neukalibrierung.
 """
 
 from pathlib import Path
 
 
 def file_identity(path, missing: str = "fehlt") -> str:
-    """Return `"<name>#<mtime>"` without opening the file."""
+    """Liefert `"<name>#<mtime>"`, ohne die Datei zu oeffnen."""
     path = Path(path)
     try:
         return f"{path.stem}#{int(path.stat().st_mtime)}"
@@ -22,12 +23,12 @@ def file_identity(path, missing: str = "fehlt") -> str:
 
 
 def calibration_identity(path) -> str:
-    """Return the calibration file's identity."""
+    """Liefert die Identitaet der Kalibrierdatei."""
     return file_identity(path)
 
 
 def tag_map_identity(path) -> str:
-    """Return the tag map's identity. `None` is valid -- operation without a map."""
+    """Liefert die Identitaet der Tag-Karte. `None` ist gueltig -- Betrieb ohne Karte."""
     if path is None:
         return "tagmap#keine"
     return file_identity(path)

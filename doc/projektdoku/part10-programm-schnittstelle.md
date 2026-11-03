@@ -161,7 +161,7 @@ beides; die URL baut `discovery.lds.advertised_endpoint()`.
 Verifiziert am 21.09.2026 mit dem echten `server.py` lokal: Log meldet
 `Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/` und
 `Listening on 0.0.0.0:4840`, erreichbar über `127.0.0.1` **und** die LAN-IP.
-Das ist wichtig, weil `print_setpoint.py` und der Hello-World-Client auf dem Pi
+Das ist wichtig, weil `print_setpoint.py` und der Handshake-Client (`tools/handshake_client.py`) auf dem Pi
 über `127.0.0.1` gehen.
 
 **Falle 2 — einmal beobachtet, nicht reproduziert:** Bei einer Anmeldung per
@@ -334,7 +334,7 @@ generischen, wiederverwendbaren Teil-10-Programmgerüsts:
   Umgehung eines asyncua-2.0.1-Bugs bei `set_available_transitions()`.
 - **`src/vision_server/vision_program.py`** — `class VisionProgram(Program)`,
   die vision-spezifische Umsetzung: verdrahtet Start/Halt/Reset/Suspend/Resume
-  mit dem `JobRunner` aus `runner.py` und legt `ParameterSet`/`ResultSet` wie
+  mit dem `JobRunner` aus `runner/install.py` und legt `ParameterSet`/`ResultSet` wie
   oben beschrieben an.
 
 Wer ein weiteres Teil-10-Programm für ein anderes Modul dieses Repos bauen
@@ -521,7 +521,6 @@ Aktuell auf diesem Stand:
 
 | `RecipeId` | Job |
 | --- | --- |
-| `""` oder `"hello-world"` | Platzhalter ohne Bildverarbeitung, kamerafreier Smoke-Test |
 | `"calibration"` | Messbereitschaft der Zelle prüfen |
 | `"apriltag"` | **Module lokalisieren** — echte Posen aus der Kamera |
 
@@ -603,4 +602,4 @@ avahi-browse -rt _opcua-tcp._tcp
 ```
 
 Mit UaExpert: `VisionProgram` browsen, `ParameterSet/RecipeId` auf
-`hello-world` schreiben, `Start` aufrufen, `CurrentState` beobachten.
+`calibration` schreiben, `Start` aufrufen, `CurrentState` beobachten.
