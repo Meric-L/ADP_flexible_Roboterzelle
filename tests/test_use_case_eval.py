@@ -431,3 +431,28 @@ class MeasureSheetTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("kalibrierung", result["grund"].lower())
         self.assertTrue(live.measure_sheet_for_save(self.sheet_image(200.0), CALIBRATION)["ok"])
+
+
+@unittest.skipUnless(np is not None, "numpy/OpenCV fehlen")
+class MeasureSheetRotationTest(unittest.TestCase):
+    """Die Kameradrehung im Blatt fuer den Drehtest der Hand-Auge-Kalibrierung."""
+
+    def test_reports_the_camera_rotation_and_its_yaw_in_the_sheet(self):
+        for yaw in (0.0, 35.0, -120.0):
+            with self.subTest(yaw=yaw):
+                pose = synthetic.look_down_pose(2.0, -1.0, 250.0, yaw, 0.0)
+                image = synthetic.render_trial(CALIBRATION, pose, 0, 0, 0, with_cube=False, supersample=4)
+                result = measure.measure_sheet(image, CALIBRATION)
+                self.assertTrue(result["ok"], result["grund"])
+                self.assertAlmostEqual(angle_error(result["camera_yaw_deg"], yaw), 0.0, delta=0.2)
+                self.assertAlmostEqual((result["camera_yaw_deg"] - yaw + 180.0) % 360.0 - 180.0, 0.0, delta=0.2)
+                rotation = np.array(result["camera_rotation_in_sheet"])
+                np.testing.assert_allclose(rotation.T @ rotation, np.eye(3), atol=1e-9)
+                # Spalten = Kameraachsen im Blatt-KS; die Kamera schaut nach unten.
+                np.testing.assert_allclose(rotation[:, 2], [0.0, 0.0, -1.0], atol=0.01)
+                np.testing.assert_allclose(rotation, pose[:3, :3], atol=0.01)
+
+    def test_the_new_fields_are_none_when_the_measurement_fails(self):
+        result = measure.measure_sheet(np.full((480, 640, 3), 255, dtype=np.uint8), CALIBRATION)
+        self.assertIsNone(result["camera_rotation_in_sheet"])
+        self.assertIsNone(result["camera_yaw_deg"])

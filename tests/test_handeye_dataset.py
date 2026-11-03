@@ -58,7 +58,14 @@ class SessionDatasetTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(calibrate_main(["--session", str(dataset), "--out", str(out)]), 0)
             self.assertIn("Verfeinert:", stdout.getvalue())
             self.assertIn("Leave-one-out-Vorhersagefehler", stdout.getvalue())
-            self.assertIn("HINWEIS: Brettmassstab", stdout.getvalue())  # 1 % Massstabsfehler
+            # Like the Pi, the CLI takes the board as exact by default: no scale hint.
+            self.assertNotIn("HINWEIS: Brettmassstab", stdout.getvalue())
+            with_scale = io.StringIO()
+            with contextlib.redirect_stdout(with_scale):
+                self.assertEqual(
+                    calibrate_main(["--session", str(dataset), "--scale", "--out", str(Path(folder) / "skaliert.json")]), 0
+                )
+            self.assertIn("HINWEIS: Brettmassstab", with_scale.getvalue())  # 1 % Massstabsfehler
 
             on_pi = json.loads(pi.path.read_text(encoding="utf-8"))
             at_desk = json.loads(out.read_text(encoding="utf-8"))
@@ -90,7 +97,8 @@ class SessionDatasetTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     (loaded.board["cols"], loaded.board["rows"]), (SPEC.cols, SPEC.rows)
                 )
-            refined = loaded.refine()
+            # The Pi refines without estimating the scale.
+            refined = loaded.refine(estimate_scale=False)
             result = pi.status["result"]
             np.testing.assert_allclose(
                 g.pose_to_dict(refined.refinement.pose_flange_cam)["position"],

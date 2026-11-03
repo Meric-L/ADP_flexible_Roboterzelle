@@ -421,3 +421,14 @@ class SaveImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.busy["value"] = True
         self.assertEqual((await self.call("hoehentest", 0))[2], int(VisionErrorCode.BUSY))
         self.assertFalse((self.root / "hoehentest").exists())
+
+
+class DefaultImageKindsTest(unittest.TestCase):
+    def test_use_case_height_test_and_rotation_test_are_there(self):
+        from vision_server.config import VisionServerConfig
+
+        kinds = VisionServerConfig().image_kinds
+        self.assertEqual(sorted(kinds), ["drehtest", "hoehentest", "usecase"])
+        rotation = kinds["drehtest"]
+        self.assertEqual((rotation.base_dir.name, rotation.folder, rotation.stem), ("drehtest", "lauf", "bild"))
+        self.assertEqual((rotation.schema, rotation.measure), ("adp.drehtest.image/1", "sheet"))

@@ -48,7 +48,7 @@ _DEFAULT_USE_CASE_DIR = _REPO_ROOT / "data" / "use-case"
 
 
 def _default_image_kinds() -> dict[str, "ImageKind"]:
-    """Standard-Zwecke: Use-Case-Foto und Hoehentest."""
+    """Standard-Zwecke: Use-Case-Foto, Hoehentest und Drehtest."""
     return {
         "usecase": ImageKind(
             base_dir=_DEFAULT_USE_CASE_DIR,
@@ -66,6 +66,15 @@ def _default_image_kinds() -> dict[str, "ImageKind"]:
             series_key="lauf",
             number_key="bild_nr",
             schema="adp.hoehentest.image/1",
+            measure="sheet",
+        ),
+        "drehtest": ImageKind(
+            base_dir=_REPO_ROOT / "data" / "drehtest",
+            folder="lauf",
+            stem="bild",
+            series_key="lauf",
+            number_key="bild_nr",
+            schema="adp.drehtest.image/1",
             measure="sheet",
         ),
     }

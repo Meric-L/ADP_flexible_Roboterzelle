@@ -438,7 +438,8 @@ def measure_sheet(image, calibration, *, refine_edges: bool = True) -> dict:
 
     Rechnet dieselbe Blattpose wie `measure_trial` (gemeinsamer Helfer).
     Rueckgabe: `{"ok", "grund", "camera_height_mm", "camera_tilt_deg",
-    "camera_in_sheet_mm" [x, y, z], "axis_hit_mm" [x, y] (optische Achse trifft
+    "camera_in_sheet_mm" [x, y, z], "camera_rotation_in_sheet" (3x3 zeilenweise,
+    Spalten = Kamera-x/-y/-z im Blatt-KS), "camera_yaw_deg" (Kamera-x in der Blattebene), "axis_hit_mm" [x, y] (optische Achse trifft
     die Blattebene z = 0), "reprojection_rms_px", "sheet_markers",
     "sheet_edges_refined"}`; bei Fehlschlag `ok` False, `grund` erklaert, die
     Messwerte sind None.
@@ -450,6 +451,8 @@ def measure_sheet(image, calibration, *, refine_edges: bool = True) -> dict:
         "camera_tilt_deg": None,
         "camera_in_sheet_mm": None,
         "axis_hit_mm": None,
+        "camera_rotation_in_sheet": None,
+        "camera_yaw_deg": None,
         "reprojection_rms_px": None,
         "sheet_markers": [],
         "sheet_edges_refined": 0,
@@ -470,6 +473,12 @@ def measure_sheet(image, calibration, *, refine_edges: bool = True) -> dict:
         result["camera_height_mm"] = float(center[2])
         result["camera_tilt_deg"] = math.degrees(math.acos(float(np.clip(-axis[2], -1.0, 1.0))))
         result["camera_in_sheet_mm"] = [float(v) for v in center]
+        # Spalten = Kamera-x, -y, -z im Blatt-KS (pose.rotation: Blatt -> Kamera).
+        camera_rotation = np.asarray(pose.rotation, dtype=np.float64).T
+        result["camera_rotation_in_sheet"] = [[float(v) for v in row] for row in camera_rotation]
+        result["camera_yaw_deg"] = float(
+            math.degrees(math.atan2(camera_rotation[1][0], camera_rotation[0][0]))
+        )
         if axis[2] >= -1e-6:
             result["grund"] = "Optische Achse trifft die Blattebene nicht"
             return result

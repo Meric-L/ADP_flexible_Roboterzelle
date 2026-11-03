@@ -1738,6 +1738,7 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
   - Top-level `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null` (unbekannt).
   - `samples[i]`: `looErrorPx`, `looErrorM`. Vorhersagefehler ohne diese Aufnahme, nur nach `Finish` und nicht für verworfene Aufnahmen, sonst `null`.
   - `result`: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `refinementConverged`, `targetInBase`, `warnings`, `sessionPath`. Die verfeinerten Werte sind ohne Verfeinerung `null`. `targetInBase` ist immer gesetzt: `{"position": [x, y, z], "orientation": [x, y, z, w]}` in Metern, Basis-KS. Mit Brett ist es der Brettursprung (erste Innenecke, +z ins Brett), sonst das Mittel über `F · X · C`.
+  - Seit 03.11.2026 kalibriert die Pi-Session ohne Maßstabsschätzung (`HAND_EYE_ESTIMATE_SCALE = False`); `boardScale` ist damit 1,0.
   - `warnings`: Liste deutscher Texte. Enthalten sind Hinweise zu den Werks- oder Platzhalter-Intrinsiks, zu fehlender Verfeinerung und zu `|boardScale − 1| > 0,3 %` („Brett nachmessen / Intrinsik pruefen“).
   - `current`: zusätzlich `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`, jeweils aus `data/handeye/cam_flange.json`.
 - **`data/handeye/cam_flange.json`:** dieselben Zusatzschlüssel, nur wenn vorhanden.
@@ -1856,6 +1857,7 @@ Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, 
 | --- | --- | --- | --- |
 | `usecase` | `data/use-case/reihe_NNN/versuch_NNN.*` | `measure_trial` (Würfel auf dem Blatt), Aufkleber-Versatz, Kontrollbild `versuch_NNN_messung.png` | `adp.usecase.trial/1` (`reihe`, `versuch`) |
 | `hoehentest` | `data/hoehentest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.hoehentest.image/1` (`lauf`, `bild_nr`) |
+| `drehtest` | `data/drehtest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.drehtest.image/1` (`lauf`, `bild_nr`) |
 
 - **`Kind`:** Schlüssel aus `image_kinds`; unbekannt: `Error=2`.
 - **`Series`:** `0` legt die nächste freie Reihe bzw. den nächsten Lauf an (höchster vorhandener Ordner plus 1), `>= 1` legt das Bild in diese(n). Negativ: `Error=2`. Die Nummer steht im Ordnernamen von `FileName`.
@@ -1863,7 +1865,7 @@ Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, 
 - **Ablage:** `<base_dir>/<folder>_NNN/<stem>_NNN.png` und `.json`, nie überschreibend; Bildnummer = höchste vorhandene plus 1.
 - **JSON-Datei:** `schema`, Reihenschlüssel, Bildschlüssel (siehe Tabelle), `bild`, `gespeichert`, `pi` (wie bei `SaveUseCaseImage`), `client`/`client_raw`, `messung` (bei Zweck mit Messung).
 - **`FileName`:** Pfad des PNG relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
-- **`ResultJson`:** Messung des Zwecks als JSON; `{}` bei Zweck ohne Messung, leer bei Fehler-Codes. `measure_sheet`: `ok`, `grund`, `camera_height_mm`, `camera_tilt_deg`, `camera_in_sheet_mm` `[x, y, z]`, `axis_hit_mm` `[x, y]` (optische Achse trifft die Blattebene z = 0), `reprojection_rms_px`, `sheet_markers`, `sheet_edges_refined`. Eine fehlgeschlagene Messung ist kein Fehler: sie steht als `{"ok": false, "grund": ...}` im Ergebnis, das Bild wird trotzdem gespeichert.
+- **`ResultJson`:** Messung des Zwecks als JSON; `{}` bei Zweck ohne Messung, leer bei Fehler-Codes. `measure_sheet`: `ok`, `grund`, `camera_height_mm`, `camera_tilt_deg`, `camera_in_sheet_mm` `[x, y, z]`, `axis_hit_mm` `[x, y]` (optische Achse trifft die Blattebene z = 0), `camera_rotation_in_sheet` (3×3, zeilenweise; Spalten = Kamera-x, -y, -z im Blatt-KS), `camera_yaw_deg` (Winkel der Kamera-x in der Blattebene), `reprojection_rms_px`, `sheet_markers`, `sheet_edges_refined`. Eine fehlgeschlagene Messung ist kein Fehler: sie steht als `{"ok": false, "grund": ...}` im Ergebnis, das Bild wird trotzdem gespeichert.
 - **`Error`:** `0` gespeichert, `1` INVALID_STATE (kein frisches Bild innerhalb 5 s), `2` INVALID_ARGUMENT (unbekannter Zweck oder negative Reihe), `3` BUSY (Job läuft), `6` INTERNAL (Speicherfehler). Bei jedem Fehlercode sind `FileName` und `ResultJson` leer.
 - **Bildwahl:** wie `SaveUseCaseImage` (Bild mindestens 0,3 s nach dem Aufruf, höchstens 5 s Wartezeit).
 - **Konfiguration:** `VisionServerConfig.image_kinds` (`ImageKind`: `base_dir`, `folder`, `stem`, `series_key`, `number_key`, `schema`, `measure` = `trial` | `sheet` | `none`). Die Methode entsteht, wenn eine Kamera da ist und `image_kinds` nicht leer ist. `use_case_dir` bleibt als Kurzform für den Zweck `usecase`: `None` entfernt ihn (und damit `SaveUseCaseImage`), ein anderer Pfad ersetzt dessen `base_dir`.

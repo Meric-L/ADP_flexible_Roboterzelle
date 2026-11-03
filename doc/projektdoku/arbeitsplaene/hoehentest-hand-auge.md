@@ -1,6 +1,6 @@
 # Höhentest der Hand-Auge-Kalibrierung
 
-**Status:** in Arbeit — 03.11.2026 (Nachtrag Drehtest und Hand-Auge ohne Maßstab)
+**Status:** fertig — 03.11.2026 (Drehtest und Hand-Auge ohne Maßstab; an Roboter und Pi noch nicht getestet)
 **Verantwortlich:** Meric, `Agent: Höhentest Hand-Auge`
 **Thema:** vision
 **Branch:** messkette-protokoll (dieses Repo und `webskillcomposition`)
@@ -203,11 +203,18 @@ Auswertung (Kleinste Quadrate, `R_i` = gemessene Kameradrehung im Blatt-KS, Spal
 - Kameramitte `c_i = c0 + R_i[:, x]·Δx + R_i[:, y]·Δy` (xy-Anteile): `(Δx, Δy)` ist der seitliche Fehler der Hand-Auge-Lage im Kamera-KS (die Kameramitte beschreibt einen Kreis mit Radius |Δ|).
 - Blickachse `a_i = g + R_i[:, x]·e1 + R_i[:, y]·e2` (xy-Anteile): `e` ist der Kippfehler der Kamera gegenüber dem Flansch (dreht mit), `g` die Neigung zwischen Roboter-Senkrechter und Blattnormale (bleibt).
 - Höhe: Modell minus gemessen wie beim Höhentest (`Δz`).
-- Gierwinkel: gemessene Kamera-x im Blatt minus gefahrene Drehung, Mittel und Streuung (Mittel enthält auch die Tischdrehung aus Layer 2, nicht trennbar).
-- Vorschlag: korrigierte Hand-Auge-Position `p + R_fc·(Δx, Δy, Δz)` (Kamera-KS → Flansch-KS).
+- Gierwinkel: gemessene Kamera-x im Blatt **plus** gefahrene Drehung (die Drehung um die nach unten zeigende Kamera-z erscheint von oben gespiegelt), Mittel und Streuung (Mittel enthält auch die Tischdrehung aus Layer 2, nicht trennbar).
+- Vorschlag: korrigierte Hand-Auge-Pose: Position `p + R_fc·(Δx, Δy, Δz)` (Kamera-KS → Flansch-KS), Drehung `q_fc · Drehung(−e2, e1, 0)` (Kippung im Kamera-KS).
 
 Pi: neuer Zweck in `image_kinds`: `drehtest` → `data/drehtest/lauf_NNN/bild_NNN.*`, Schema `adp.drehtest.image/1`, Messung `sheet`. `measure_sheet` liefert zusätzlich `camera_rotation_in_sheet` (3×3, zeilenweise; Spalten = Kamera-x, -y, -z im Blatt-KS) und `camera_yaw_deg` (Winkel der Kamera-x in der Blattebene).
 
 `MetadataJson` wie beim Höhentest, Schema `wsc.handeye.rotationtest/1`, zusätzlich `turnDeg`.
 
 Frontend: Höhentest und Drehtest teilen sich den Fahr- und Fotoablauf (`HandEyeChecks`), Auswertung in `rotationTest.ts`.
+
+### Umsetzung Drehtest und Hand-Auge ohne Maßstab (03.11.2026)
+
+- Frontend (`webskillcomposition`, `messkette-protokoll`): `model/rotationTest.ts` (Auswertung), `model/useHandEyePhotoSeries.ts` (gemeinsamer Fahr- und Fotoablauf), `components/HandEyeChecks.tsx` (ersetzt `HandEyeHeightTest.tsx`, zwei Knöpfe). Ende-zu-Ende-Test: aus einer Kalibrierung mit 3/−2/9,5 mm Versatz, 0,4°/0,3° Kippung und 1,1° schiefem Blatt wird die wahre Pose auf < 0,5 mm und < 0,1° zurückgerechnet.
+- Pi: Zweck `drehtest` in `image_kinds`; `measure_sheet` liefert `camera_rotation_in_sheet` und `camera_yaw_deg`; Hand-Auge-Sitzung mit `HAND_EYE_ESTIMATE_SCALE = False`; CLI `calibrate_handeye` ohne Schätzung, `--scale` schaltet sie ein.
+- Tests angepasst: `test_handeye_session_refine.py` (genaues Brett, Maßstab bleibt 1,0; auch bei 1 % falschem Brett keine Schätzung), `test_handeye_dataset.py` (CLI wie der Pi ohne Schätzung, `--scale` mit Hinweis). Neu: `MeasureSheetRotationTest`, `DefaultImageKindsTest`.
+- Zur Vermutung „Greifer in der Ausgangsstellung schief“: Für Höhen- und Drehtest ist die Ausgangsstellung unerheblich, die Kamera wird über die Hand-Auge-Pose senkrecht gestellt. Eine schief montierte Kamera ist kein Fehler, solange die Kalibrierung sie kennt; ein Kippfehler der Kalibrierung zeigt sich im Drehtest als mitdrehender Anteil, eine Tisch-/Wagenneigung als stehender.
