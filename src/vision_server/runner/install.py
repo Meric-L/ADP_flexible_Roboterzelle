@@ -36,6 +36,7 @@ from .livestream import _start_camera_stream, _start_mjpeg_server
 from .machine import VisionMachine, _watch_loop_lag
 from .measure_board import _install_measure_board
 from .measure_tags import _Activity, _install_measure_tags
+from .measure_target import _install_measure_target
 from .part10 import install_part10_program
 from .save_raw_image import _install_save_raw_image
 from .save_use_case_image import _install_save_image, _install_save_use_case_image
@@ -148,6 +149,9 @@ async def _install_measurements(wiring: Wiring) -> None:
         activity=tags_activity,
         blocked_by=lambda: reference_activity.active,
     )
+    # MeasureTarget (Zielscheibe fuer das Ablegen) liest nur Kamerabilder wie
+    # MeasureTags und ist genauso nur fuer Job und Kamera-Kalibrierung gesperrt.
+    await _install_measure_target(space, config, source, wiring.methods, wiring.states, measuring_busy)
     if space.last_tag_reference is not None:
         await _install_tag_reference(
             space, config, source, wiring.methods, wiring.states,
