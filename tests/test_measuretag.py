@@ -6,7 +6,7 @@ import sys
 import tempfile
 import types
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 try:
@@ -117,6 +117,26 @@ class ResultTest(unittest.TestCase):
             intrinsics_source="calibration", calibration_id="",
         )["tags"]
         self.assertTrue(tag["ambiguous"])
+
+    def test_every_frame_is_kept_unaveraged(self):
+        later = WALL + timedelta(milliseconds=70)
+        frames = [
+            FrameMeasurement(WALL, (640, 480), (tag_pose(7, (0.01, 0.0, 0.35)),)),
+            FrameMeasurement(WALL, (640, 480), ()),
+            FrameMeasurement(later, (640, 480), (ambiguous_pose(7, (0.03, 0.0, 0.35), tilt_deg=20, ratio=0.9),)),
+        ]
+        [tag] = build_result(
+            frames, frames_requested=3, frame_id="cam_flange", sizes=self.sizes(),
+            intrinsics_source="calibration", calibration_id="",
+        )["tags"]
+        first, second = tag["frames"]
+        np.testing.assert_allclose(first["poseInCamera"]["position"], [0.01, 0.0, 0.35])
+        np.testing.assert_allclose(second["poseInCamera"]["position"], [0.03, 0.0, 0.35])
+        self.assertEqual((first["ambiguous"], second["ambiguous"]), (False, True))
+        self.assertAlmostEqual(second["ambiguityRatio"], 0.9)
+        self.assertEqual(second["capturedAt"], later.isoformat(timespec="milliseconds"))
+        self.assertEqual(len(first["cornersPx"]), 4)
+        self.assertIn("reprojectionErrorPx", first)
 
     def test_size_sources(self):
         sizes = self.sizes(t7=0.1)

@@ -155,6 +155,33 @@ class MeasureTrialTest(unittest.TestCase):
             self.assertIn(key, data)
         self.assertEqual(TrialMeasurement.from_dict(data).to_dict(), data)
 
+    def test_keeps_every_intermediate_value(self):
+        m = measure.measure_trial(render(1.0, -0.5, 10.0, camera=(2.0, 1.0, 20.0, 1.5)), CALIBRATION)
+        self.assertTrue(m.ok, m.grund)
+        data = json.loads(json.dumps(m.to_dict()))["zwischenwerte"]
+        self.assertEqual(sorted(data["marker"]), ["0", "1", "10", "2", "3"])
+        for marker_id in ("0", "1", "2", "3"):
+            marker = data["marker"][marker_id]
+            self.assertEqual(len(marker["eckenRohPx"]), 4)
+            self.assertEqual(len(marker["eckenEntzerrtPx"]), 4)
+            self.assertLess(marker["reprojektionRmsPx"], 0.5)
+        self.assertNotIn("reprojektionRmsPx", data["marker"]["10"])
+        pose = data["blattPose"]
+        self.assertEqual(pose["punkte"], 16)
+        self.assertAlmostEqual(pose["kameraImBlattMm"][2], m.camera_height_mm, places=6)
+        cube = data["wuerfel"]
+        self.assertEqual(len(cube["eckenOberseiteMm"]), 4)
+        self.assertEqual(len(cube["kantenYawDeg"]), 4)
+        np.testing.assert_allclose(
+            np.array(cube["markerMitteMm"]) - np.array(cube["versatzImBlattMm"]), [m.dx_mm, m.dy_mm], atol=1e-9
+        )
+        self.assertEqual(len(data["durchstosspunktMm"]), 3)
+
+    def test_a_failed_measurement_keeps_what_it_found(self):
+        m = measure.measure_trial(render(0, 0, 0, with_sheet_markers=[1]), CALIBRATION)
+        self.assertFalse(m.ok)
+        self.assertEqual(sorted(m.to_dict()["zwischenwerte"]["marker"]), ["1", "10"])
+
     def test_annotate_draws_on_a_copy(self):
         image = render(0, 0, 0)
         before = image.copy()

@@ -82,6 +82,10 @@ class TrialMeasurement:
     sheet_edges_refined: int = 0
     #: Verwendeter Aufkleber-Versatz im Markersystem (mm).
     sticker_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    #: Jede Zwischengroesse der Messung (Marker-Ecken roh und entzerrt,
+    #: Blattpose, Reprojektion je Marker, Wuerfelecken, Kantenwinkel); bei
+    #: einem Fehlschlag soweit berechnet. Felder: `messkette-protokoll.md`.
+    zwischenwerte: dict | None = None
     #: Bildpunkte fuer `annotate`; nicht Teil von `to_dict`.
     overlay: dict | None = field(default=None, repr=False, compare=False)
 
@@ -105,6 +109,8 @@ class TrialMeasurement:
 
 def _plain(value: Any) -> Any:
     """numpy-Werte in reine Python-Typen wandeln."""
+    if isinstance(value, dict):
+        return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, np.ndarray):
         return _plain(value.tolist())
     if isinstance(value, (list, tuple)):
@@ -337,12 +343,18 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         return undistort_points(raw, calibration), False
 
     sheet_ids = sorted(i for i in found if i in target.SHEET_MARKERS)
+    # Alles, was die Messung unterwegs berechnet -- auch bei einem Fehlschlag.
+    marker_log: dict[int, dict] = {
+        int(i): {"eckenRohPx": np.asarray(corners, dtype=np.float64).reshape(-1, 2)} for i, corners in found.items()
+    }
+    zwischenwerte: dict[str, Any] = {"marker": marker_log}
     if target.CUBE_MARKER_ID not in found:
-        return _fail("Kein Wuerfelmarker (ID 10) erkannt", sheet_markers=sheet_ids)
+        return _fail("Kein Wuerfelmarker (ID 10) erkannt", sheet_markers=sheet_ids, zwischenwerte=zwischenwerte)
     if len(sheet_ids) < MIN_SHEET_MARKERS:
         return _fail(
             f"Nur {len(sheet_ids)} Blattmarker erkannt, mindestens {MIN_SHEET_MARKERS} noetig",
             sheet_markers=sheet_ids,
+            zwischenwerte=zwischenwerte,
         )
 
     camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
@@ -350,25 +362,40 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
     sheet_results = [undistorted_corners(found[i]) for i in sheet_ids]
     sheet_px = np.vstack([corners for corners, _ in sheet_results])
     sheet_refined = sum(1 for _, refined in sheet_results if refined)
+    for marker_id, (corners, refined) in zip(sheet_ids, sheet_results):
+        marker_log[int(marker_id)].update(eckenEntzerrtPx=corners, kanteVerfeinert=refined)
 
     ok, rvec, tvec = cv2.solvePnP(
         object_points, sheet_px, camera_matrix, None, flags=cv2.SOLVEPNP_IPPE
     )
     if not ok:
-        return _fail("Blattpose nicht berechenbar (solvePnP)", sheet_markers=sheet_ids)
+        return _fail("Blattpose nicht berechenbar (solvePnP)", sheet_markers=sheet_ids, zwischenwerte=zwischenwerte)
     rvec, tvec = cv2.solvePnPRefineLM(object_points, sheet_px, camera_matrix, None, rvec, tvec)
     projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
-    rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - sheet_px) ** 2, axis=1))))
+    squared = np.sum((projected.reshape(-1, 2) - sheet_px) ** 2, axis=1)
+    rms = float(np.sqrt(np.mean(squared)))
+    # Je Blattmarker vier Punkte, in der Reihenfolge von `sheet_ids`.
+    for at, marker_id in enumerate(sheet_ids):
+        marker_log[int(marker_id)]["reprojektionRmsPx"] = float(np.sqrt(np.mean(squared[4 * at : 4 * at + 4])))
 
     rotation, _ = cv2.Rodrigues(rvec)  # Blatt -> Kamera
     camera_center = -rotation.T @ tvec.reshape(3)  # Kamera im Blattsystem
+    axis_sheet = rotation.T @ np.array([0.0, 0.0, 1.0])  # optische Achse im Blattsystem
+    zwischenwerte["blattPose"] = {
+        "rvec": rvec.reshape(3),
+        "tvecMm": tvec.reshape(3),
+        "rotationBlattZuKamera": rotation,
+        "kameraImBlattMm": camera_center,
+        "optischeAchseImBlatt": axis_sheet,
+        "punkte": int(len(object_points)),
+    }
     if camera_center[2] <= target.CUBE_TOP_Z_MM:
         return _fail(
             "Blattpose unplausibel (Kamera nicht ueber dem Blatt)",
             sheet_markers=sheet_ids,
             reprojection_rms_px=rms,
+            zwischenwerte=zwischenwerte,
         )
-    axis_sheet = rotation.T @ np.array([0.0, 0.0, 1.0])  # optische Achse im Blattsystem
     tilt = math.degrees(math.acos(float(np.clip(-axis_sheet[2], -1.0, 1.0))))
 
     def to_sheet_plane(pixels: np.ndarray, z_mm: float) -> np.ndarray:
@@ -386,6 +413,7 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
 
     cube_raw = found[target.CUBE_MARKER_ID]
     cube_px, cube_refined = undistorted_corners(cube_raw)
+    marker_log[int(target.CUBE_MARKER_ID)].update(eckenEntzerrtPx=cube_px, kanteVerfeinert=cube_refined)
     cube_pts = to_sheet_plane(cube_px, target.CUBE_TOP_Z_MM)
     xy = cube_pts[:, :2]
 
@@ -401,7 +429,8 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
     dtheta = _wrap90(yaw_full)
 
     marker_center = xy.mean(axis=0)
-    center = marker_center - target.rotation_2d(yaw_full) @ offset_vec
+    offset_in_sheet = target.rotation_2d(yaw_full) @ offset_vec
+    center = marker_center - offset_in_sheet
     corners = target.cube_corners_xy(center, yaw_full)
     max_radius = float(np.max(np.hypot(corners[:, 0], corners[:, 1])))
 
@@ -410,7 +439,15 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         hit = camera_center + axis_sheet * ((target.CUBE_TOP_Z_MM - camera_center[2]) / axis_sheet[2])
         nadir_offset = float(np.hypot(hit[0] - center[0], hit[1] - center[1]))
     else:
+        hit = None
         nadir_offset = None
+    zwischenwerte["wuerfel"] = {
+        "eckenOberseiteMm": cube_pts,
+        "kantenYawDeg": [math.degrees(math.atan2(edge[1], edge[0])) for edge in edges],
+        "markerMitteMm": marker_center,
+        "versatzImBlattMm": offset_in_sheet,
+    }
+    zwischenwerte["durchstosspunktMm"] = hit
 
     overlay = _build_overlay(
         calibration, rvec, tvec, sheet_ids, found, cube_raw, corners, project_points
@@ -433,6 +470,7 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         marker_center_mm=marker_center.tolist(),
         marker_yaw_deg=float(yaw_full % 360.0),
         sticker_offset_mm=offset_vec.tolist(),
+        zwischenwerte=zwischenwerte,
         overlay=overlay,
     )
 
