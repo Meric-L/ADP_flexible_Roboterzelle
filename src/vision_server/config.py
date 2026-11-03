@@ -48,7 +48,7 @@ _DEFAULT_USE_CASE_DIR = _REPO_ROOT / "data" / "use-case"
 
 
 def _default_image_kinds() -> dict[str, "ImageKind"]:
-    """Standard-Zwecke: Use-Case-Foto, Hoehentest und Drehtest."""
+    """Standard-Zwecke: Use-Case-Foto, Hoehentest, Drehtest und Level-2-Messrauschen."""
     return {
         "usecase": ImageKind(
             base_dir=_DEFAULT_USE_CASE_DIR,
@@ -76,6 +76,17 @@ def _default_image_kinds() -> dict[str, "ImageKind"]:
             number_key="bild_nr",
             schema="adp.drehtest.image/1",
             measure="sheet",
+        ),
+        # Level 2 mehrmals hintereinander ohne bewegte Module: je angefahrenem
+        # Tag ein Bild, die Messung selbst schickt das Frontend in den Metadaten.
+        "lv2_messrauschen": ImageKind(
+            base_dir=_REPO_ROOT / "data" / "LV2_Messrauschen",
+            folder="lauf",
+            stem="messung",
+            series_key="lauf",
+            number_key="messung_nr",
+            schema="adp.lv2_messrauschen.image/1",
+            measure="none",
         ),
     }
 

@@ -1858,6 +1858,7 @@ Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, 
 | `usecase` | `data/use-case/reihe_NNN/versuch_NNN.*` | `measure_trial` (Würfel auf dem Blatt), Aufkleber-Versatz, Kontrollbild `versuch_NNN_messung.png` | `adp.usecase.trial/1` (`reihe`, `versuch`) |
 | `hoehentest` | `data/hoehentest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.hoehentest.image/1` (`lauf`, `bild_nr`) |
 | `drehtest` | `data/drehtest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.drehtest.image/1` (`lauf`, `bild_nr`) |
+| `lv2_messrauschen` | `data/LV2_Messrauschen/lauf_NNN/messung_NNN.*` | keine (die Level-2-Messung steht in den Metadaten des Frontends) | `adp.lv2_messrauschen.image/1` (`lauf`, `messung_nr`) |
 
 - **`Kind`:** Schlüssel aus `image_kinds`; unbekannt: `Error=2`.
 - **`Series`:** `0` legt die nächste freie Reihe bzw. den nächsten Lauf an (höchster vorhandener Ordner plus 1), `>= 1` legt das Bild in diese(n). Negativ: `Error=2`. Die Nummer steht im Ordnernamen von `FileName`.

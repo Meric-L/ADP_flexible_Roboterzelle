@@ -428,7 +428,10 @@ class DefaultImageKindsTest(unittest.TestCase):
         from vision_server.config import VisionServerConfig
 
         kinds = VisionServerConfig().image_kinds
-        self.assertEqual(sorted(kinds), ["drehtest", "hoehentest", "usecase"])
+        self.assertEqual(sorted(kinds), ["drehtest", "hoehentest", "lv2_messrauschen", "usecase"])
         rotation = kinds["drehtest"]
         self.assertEqual((rotation.base_dir.name, rotation.folder, rotation.stem), ("drehtest", "lauf", "bild"))
         self.assertEqual((rotation.schema, rotation.measure), ("adp.drehtest.image/1", "sheet"))
+        noise = kinds["lv2_messrauschen"]
+        self.assertEqual((noise.base_dir.name, noise.folder, noise.stem), ("LV2_Messrauschen", "lauf", "messung"))
+        self.assertEqual((noise.schema, noise.measure), ("adp.lv2_messrauschen.image/1", "none"))
