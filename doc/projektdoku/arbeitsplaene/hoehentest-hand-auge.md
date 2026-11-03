@@ -1,6 +1,6 @@
 # Höhentest der Hand-Auge-Kalibrierung
 
-**Status:** fertig — 03.11.2026 (an Roboter und Pi noch nicht getestet)
+**Status:** in Arbeit — 03.11.2026 (Nachtrag Drehtest und Hand-Auge ohne Maßstab)
 **Verantwortlich:** Meric, `Agent: Höhentest Hand-Auge`
 **Thema:** vision
 **Branch:** messkette-protokoll (dieses Repo und `webskillcomposition`)
@@ -180,3 +180,34 @@ def next_series_number(base_dir: Path, folder: str) -> int: ...  # für Series =
 - [x] `vision-server-interface.md` ergänzt (Abschnitt 18b, Hinweis „veraltet“ in 18a)
 - [x] Tests: `tests/test_use_case_eval.py` (`MeasureSheetTest`), `tests/test_use_case_image.py` (`GeneralSaveTest`, `SaveImageOpcUaTest`); Frontend `heightTest.test.ts`, `pickPlaceTarget.test.ts`, `useSaveRawImage.test.ts`, `pickPlace.test.ts` (`photoFlangeAt`)
 - [ ] Höhentest am Roboter
+
+## Nachtrag 03.11.2026: Ergebnis Höhentest, Hand-Auge ohne Maßstab, Drehtest
+
+### Ergebnis Höhentest (Läufe 1–4)
+
+Lauf 4 (Ziel mittig, alle 4 Marker): Modell minus Kamera 8,8 / 9,0 / 9,4 / 10,1 / 8,9 mm bei 346–146 mm. Ausgleichsgerade: konstant 9,8 mm, Steigung −0,2 % (über 200 mm −0,5 mm). Kein Maßstabsfehler; Blatt, Tischmodell und Modul sind nachgemessen (je höchstens etwa 1 mm). Folgerung: Hand-Auge-z, die Kamera sitzt etwa 9,5 mm weiter vorn entlang ihrer Blickachse als kalibriert. Zusätzlich: Beim senkrechten Abwärtsfahren wandert die Kamera relativ zum Blatt um etwa 1,8 mm je 100 mm, Roboter-Senkrechte und Blattnormale weichen also um etwa 1° ab.
+
+### Hand-Auge-Kalibrierung ohne Maßstabsschätzung
+
+Die Kalibrierung schätzte den Brettmaßstab mit (1,0104). Maßstab und Lage der Kamera entlang der Blickachse sind in der Rechnung eng gekoppelt; das Brett gilt als genau (Intrinsik und Hand-Auge wurden mit verschiedenen Brettern kalibriert, beide Größen sind nachgemessen). Deshalb:
+
+- `vision_server/handeye_session.py`: `refine_board_session(..., estimate_scale=False)` (Konstante `HAND_EYE_ESTIMATE_SCALE = False`). `boardScale` im Ergebnis bleibt 1,0.
+- `tagloc/cli/calibrate_handeye.py`: Standard ohne Schätzung, `--scale` schaltet sie ein; `--no-scale` bleibt als (wirkungsloser) Schalter erlaubt.
+
+### Drehtest
+
+Die Kamera steht senkrecht über dem Fotoziel (250 mm über der Tischplatte) und dreht sich um ihre Blickachse: 0°, 90°, 180°, −90° (nicht erreichbare werden ausgelassen, mindestens 3 nötig). Je Stellung ein Bild über `SaveImage("drehtest", …)`.
+
+Auswertung (Kleinste Quadrate, `R_i` = gemessene Kameradrehung im Blatt-KS, Spalten = Kameraachsen):
+
+- Kameramitte `c_i = c0 + R_i[:, x]·Δx + R_i[:, y]·Δy` (xy-Anteile): `(Δx, Δy)` ist der seitliche Fehler der Hand-Auge-Lage im Kamera-KS (die Kameramitte beschreibt einen Kreis mit Radius |Δ|).
+- Blickachse `a_i = g + R_i[:, x]·e1 + R_i[:, y]·e2` (xy-Anteile): `e` ist der Kippfehler der Kamera gegenüber dem Flansch (dreht mit), `g` die Neigung zwischen Roboter-Senkrechter und Blattnormale (bleibt).
+- Höhe: Modell minus gemessen wie beim Höhentest (`Δz`).
+- Gierwinkel: gemessene Kamera-x im Blatt minus gefahrene Drehung, Mittel und Streuung (Mittel enthält auch die Tischdrehung aus Layer 2, nicht trennbar).
+- Vorschlag: korrigierte Hand-Auge-Position `p + R_fc·(Δx, Δy, Δz)` (Kamera-KS → Flansch-KS).
+
+Pi: neuer Zweck in `image_kinds`: `drehtest` → `data/drehtest/lauf_NNN/bild_NNN.*`, Schema `adp.drehtest.image/1`, Messung `sheet`. `measure_sheet` liefert zusätzlich `camera_rotation_in_sheet` (3×3, zeilenweise; Spalten = Kamera-x, -y, -z im Blatt-KS) und `camera_yaw_deg` (Winkel der Kamera-x in der Blattebene).
+
+`MetadataJson` wie beim Höhentest, Schema `wsc.handeye.rotationtest/1`, zusätzlich `turnDeg`.
+
+Frontend: Höhentest und Drehtest teilen sich den Fahr- und Fotoablauf (`HandEyeChecks`), Auswertung in `rotationTest.ts`.
