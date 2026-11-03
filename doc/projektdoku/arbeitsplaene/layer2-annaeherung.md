@@ -245,3 +245,17 @@ Eingang sind die zentrierte Messung und die Ansichten.
 
 - Am Roboter noch nicht geprüft.
 - Erwartung: Wiederholgenauigkeit der Modulposition ~1–3 mm, Drehung ~0,3°.
+
+## Nachtrag 03.11.2026: Regeln geändert
+
+Die Regeln aus dem Nachtrag vom 27.10. (Drehung erst ab 2 eindeutigen Ansichten, Mindestzahl an Messungen je Tag) gelten für Layer 2 nicht mehr.
+
+Neu:
+- Die Position wird schon ab 1 Messung übernommen (`LAYER2_MIN_MEASUREMENTS = 1`). Die Messung der Roboter-Tags verlangt weiterhin 3 Messungen.
+- Die Drehung wird übernommen, wenn mindestens 1 eindeutige Ansicht vorliegt und die Streuung höchstens 0,5° beträgt.
+- Nach dem Zentrieren im geplanten Abstand wird nah herangefahren und noch einmal zentriert: Das schwarze Quadrat füllt 75 % der Bildhöhe. Die Greiferspitze bleibt mindestens 5 cm vor dem Tag.
+- Die Zusatzansichten werden aus dem 1,3-fachen Nahabstand gemessen (`CLOSE_VIEW_DISTANCE_FACTOR`).
+- Nachregeln: Liegt der Tag mehr als 3° neben der Achse oder nah am Bildrand, wird einmal seitlich verschoben und neu gemessen.
+- Zurückfahren um 30 % des Abstands, wenn der Tag nicht im Bild ist.
+
+Aktueller Stand und Auswertung: siehe [`../messkette-auswertung.md`](../messkette-auswertung.md).
