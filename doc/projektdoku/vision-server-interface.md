@@ -1821,6 +1821,8 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 | --- | --- |
 | `SaveUseCaseImage` | `(Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`, am Vision-System (`ns=<own_idx>;s=<vision_system_name>.SaveUseCaseImage`) und wie `SaveRawImage` unter `VisionProgram` gespiegelt |
 
+**Veraltet (03.11.2026):** leitet an `SaveImage("usecase", Series, MetadataJson)` weiter (Abschnitt 18b), Verhalten unverändert (`Series >= 1`); neue Clients nehmen `SaveImage`.
+
 - **Ablage:** `data/use-case/reihe_NNN/versuch_NNN.png` und `versuch_NNN.json`, jeweils dreistellig mit Nullen aufgefüllt (`reihe_001`, `versuch_012`). Die Versuchsnummer ist die höchste vorhandene Nummer in der Reihe plus 1; Lücken werden nicht aufgefüllt. Die Dateien werden exklusiv angelegt, eine Datei wird nie überschrieben. Liegt eine Messung mit Kontrollbild vor, kommt `versuch_NNN_messung.png` daneben (Marker, Toleranzkreise, Messwerte eingezeichnet).
 - **`Series`:** Versuchsreihe aus dem Feld der Web-App. Muss `>= 1` sein, sonst `Error=2`.
 - **`MetadataJson`:** Vom Web-Client gesendetes JSON, Schema `wsc.usecase.trial/1` (Soll-Pose, Tisch, Route, Ist-Gelenke usw.). Ist es kein gültiges JSON-Objekt, wird der Text unverändert als `client_raw` abgelegt. Der Server prüft den Inhalt nicht.
@@ -1841,6 +1843,30 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 
 Feldbeschreibung: [`arbeitsplaene/messkette-protokoll.md`](arbeitsplaene/messkette-protokoll.md).
 - **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird (`3535115`); die Bilder tauchen also in `git status` auf und werden nur bewusst committet.
+
+## 18b. SaveImage: Kamerabild je Zweck ablegen (nur Hand-Pi)
+
+Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, Ablageordner, Dateinamen, Schema und Messung je Zweck stehen in `VisionServerConfig.image_kinds`. Ein weiterer Zweck braucht keine neue Methode, nur einen Eintrag dort. Entstanden für den Höhentest der Hand-Auge-Kalibrierung ([`arbeitsplaene/hoehentest-hand-auge.md`](arbeitsplaene/hoehentest-hand-auge.md)).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `SaveImage` | `(Kind: String, Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`, am Vision-System (`ns=<own_idx>;s=<vision_system_name>.SaveImage`) und wie `SaveRawImage` unter `VisionProgram` gespiegelt |
+
+| `Kind` | Ablage | Messung | Schema (Schlüssel) |
+| --- | --- | --- | --- |
+| `usecase` | `data/use-case/reihe_NNN/versuch_NNN.*` | `measure_trial` (Würfel auf dem Blatt), Aufkleber-Versatz, Kontrollbild `versuch_NNN_messung.png` | `adp.usecase.trial/1` (`reihe`, `versuch`) |
+| `hoehentest` | `data/hoehentest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.hoehentest.image/1` (`lauf`, `bild_nr`) |
+
+- **`Kind`:** Schlüssel aus `image_kinds`; unbekannt: `Error=2`.
+- **`Series`:** `0` legt die nächste freie Reihe bzw. den nächsten Lauf an (höchster vorhandener Ordner plus 1), `>= 1` legt das Bild in diese(n). Negativ: `Error=2`. Die Nummer steht im Ordnernamen von `FileName`.
+- **`MetadataJson`:** beliebiges JSON des Clients, unverändert unter `client`; kein JSON-Objekt: Text unter `client_raw`.
+- **Ablage:** `<base_dir>/<folder>_NNN/<stem>_NNN.png` und `.json`, nie überschreibend; Bildnummer = höchste vorhandene plus 1.
+- **JSON-Datei:** `schema`, Reihenschlüssel, Bildschlüssel (siehe Tabelle), `bild`, `gespeichert`, `pi` (wie bei `SaveUseCaseImage`), `client`/`client_raw`, `messung` (bei Zweck mit Messung).
+- **`FileName`:** Pfad des PNG relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
+- **`ResultJson`:** Messung des Zwecks als JSON; `{}` bei Zweck ohne Messung, leer bei Fehler-Codes. `measure_sheet`: `ok`, `grund`, `camera_height_mm`, `camera_tilt_deg`, `camera_in_sheet_mm` `[x, y, z]`, `axis_hit_mm` `[x, y]` (optische Achse trifft die Blattebene z = 0), `reprojection_rms_px`, `sheet_markers`, `sheet_edges_refined`. Eine fehlgeschlagene Messung ist kein Fehler: sie steht als `{"ok": false, "grund": ...}` im Ergebnis, das Bild wird trotzdem gespeichert.
+- **`Error`:** `0` gespeichert, `1` INVALID_STATE (kein frisches Bild innerhalb 5 s), `2` INVALID_ARGUMENT (unbekannter Zweck oder negative Reihe), `3` BUSY (Job läuft), `6` INTERNAL (Speicherfehler). Bei jedem Fehlercode sind `FileName` und `ResultJson` leer.
+- **Bildwahl:** wie `SaveUseCaseImage` (Bild mindestens 0,3 s nach dem Aufruf, höchstens 5 s Wartezeit).
+- **Konfiguration:** `VisionServerConfig.image_kinds` (`ImageKind`: `base_dir`, `folder`, `stem`, `series_key`, `number_key`, `schema`, `measure` = `trial` | `sheet` | `none`). Die Methode entsteht, wenn eine Kamera da ist und `image_kinds` nicht leer ist. `use_case_dir` bleibt als Kurzform für den Zweck `usecase`: `None` entfernt ihn (und damit `SaveUseCaseImage`), ein anderer Pfad ersetzt dessen `base_dir`.
 
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
 

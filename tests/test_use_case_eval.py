@@ -375,3 +375,59 @@ def contextlib_redirect_stderr():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(np is not None, "numpy/OpenCV fehlen")
+class MeasureSheetTest(unittest.TestCase):
+    """Blattpose ohne Wuerfel: die Kamerahoehe fuer den Hoehentest der Hand-Auge-Kalibrierung."""
+
+    def sheet_image(self, height_mm, x=0.0, y=0.0, yaw=0.0, tilt=0.0):
+        pose = synthetic.look_down_pose(x, y, height_mm, yaw, tilt)
+        return synthetic.render_trial(CALIBRATION, pose, 0, 0, 0, with_cube=False, supersample=4)
+
+    def test_measures_the_camera_height_from_any_height_without_a_cube(self):
+        for height in (150.0, 250.0, 350.0):
+            with self.subTest(height=height):
+                result = measure.measure_sheet(self.sheet_image(height, x=4.0, y=-3.0, yaw=20.0, tilt=1.5), CALIBRATION)
+                self.assertTrue(result["ok"], result["grund"])
+                self.assertAlmostEqual(result["camera_height_mm"], height, delta=0.5)
+                self.assertAlmostEqual(result["camera_tilt_deg"], 1.5, delta=0.2)
+                x, y, z = result["camera_in_sheet_mm"]
+                self.assertAlmostEqual(x, 4.0, delta=0.5)
+                self.assertAlmostEqual(y, -3.0, delta=0.5)
+                self.assertAlmostEqual(z, result["camera_height_mm"], places=9)
+                self.assertEqual(len(result["axis_hit_mm"]), 2)
+                self.assertEqual(result["sheet_markers"], [0, 1, 2, 3])
+                self.assertLess(result["reprojection_rms_px"], 0.5)
+
+    def test_gives_the_same_height_as_the_trial_measurement(self):
+        image = render(1.0, -0.5, 3.0, camera=(2.0, 1.0, 10.0, 1.0))
+        trial = measure.measure_trial(image, CALIBRATION)
+        sheet = measure.measure_sheet(image, CALIBRATION)
+        self.assertTrue(trial.ok and sheet["ok"])
+        self.assertAlmostEqual(sheet["camera_height_mm"], trial.camera_height_mm, places=9)
+        self.assertAlmostEqual(sheet["camera_tilt_deg"], trial.camera_tilt_deg, places=9)
+        self.assertAlmostEqual(sheet["reprojection_rms_px"], trial.reprojection_rms_px, places=9)
+
+    def test_the_axis_hits_the_sheet_under_a_camera_looking_straight_down(self):
+        result = measure.measure_sheet(self.sheet_image(250.0, x=6.0, y=2.0), CALIBRATION)
+        self.assertTrue(result["ok"], result["grund"])
+        hx, hy = result["axis_hit_mm"]
+        self.assertAlmostEqual(hx, 6.0, delta=0.5)
+        self.assertAlmostEqual(hy, 2.0, delta=0.5)
+
+    def test_fails_with_a_reason_instead_of_raising_and_survives_json(self):
+        blank = measure.measure_sheet(np.full((480, 640, 3), 255, dtype=np.uint8), CALIBRATION)
+        self.assertFalse(blank["ok"])
+        self.assertIn("Blattmarker", blank["grund"])
+        self.assertIsNone(blank["camera_height_mm"])
+        wrong_size = measure.measure_sheet(np.zeros((100, 100, 3), dtype=np.uint8), CALIBRATION)
+        self.assertFalse(wrong_size["ok"])
+        good = measure.measure_sheet(self.sheet_image(200.0), CALIBRATION)
+        self.assertEqual(json.loads(json.dumps(good)), good)
+
+    def test_measure_sheet_for_save_never_raises(self):
+        result = live.measure_sheet_for_save(self.sheet_image(200.0), None)
+        self.assertFalse(result["ok"])
+        self.assertIn("kalibrierung", result["grund"].lower())
+        self.assertTrue(live.measure_sheet_for_save(self.sheet_image(200.0), CALIBRATION)["ok"])

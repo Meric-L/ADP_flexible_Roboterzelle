@@ -20,7 +20,7 @@ beim Aufruf lesen:
 | `layer2.py`, `hand_eye.py` | Layer-2-Lauf und Hand-Auge-Kalibrierung (Hand-Pi) |
 | `measure_board.py`, `measure_tags.py` | Messungen auf Anfrage (Brett, Tags) |
 | `tag_reference.py` | Tag-Einmessung ueber Bezugskanten |
-| `save_raw_image.py`, `save_use_case_image.py` | Rohbild und Use-Case-Foto |
+| `save_raw_image.py`, `save_use_case_image.py` | Rohbild, `SaveImage` (allgemein) und `SaveUseCaseImage` (veraltet) |
 | `cell_watch.py` | Zellen-Ueberwachung (Deckenkamera) |
 | `part10.py` | `VisionProgram` auf denselben Jobs |
 | `machine.py` | `VisionMachine`, `aclose`, Event-Loop-Watchdog |
@@ -61,6 +61,7 @@ from .save_use_case_image import (  # noqa: F401
     USE_CASE_POLL_INTERVAL_S,
     _build_use_case_pi_meta,
     _file_meta,
+    _install_save_image,
     _install_save_use_case_image,
     _load_file_content,
 )

@@ -1,6 +1,6 @@
 # Höhentest der Hand-Auge-Kalibrierung
 
-**Status:** in Arbeit — 03.11.2026
+**Status:** fertig — 03.11.2026 (an Roboter und Pi noch nicht getestet)
 **Verantwortlich:** Meric, `Agent: Höhentest Hand-Auge`
 **Thema:** vision
 **Branch:** messkette-protokoll (dieses Repo und `webskillcomposition`)
@@ -166,11 +166,17 @@ def next_series_number(base_dir: Path, folder: str) -> int: ...  # für Series =
 
 ## Abweichungen vom Plan
 
-—
+- `MetadataJson` des Höhentests enthält zusätzlich `handEye` (`calibrationId`, `rmsPositionM`, `rmsRotationDeg`, `sampleCount` der Kalibrierung, die gerade auf dem Pi liegt), damit später klar ist, welche Kalibrierung gemessen wurde.
+- Das Urteil nennt beide Anteile, wenn beide deutlich sind („Beides: …“). Grenzen: konstanter Anteil ab 3 mm, Maßstabsanteil ab 2 mm über die gefahrene Höhenspanne.
+- `measure_sheet` meldet zusätzlich „Kamera nicht über dem Blatt“ und „optische Achse parallel zur Blattebene“ als Fehler.
+- `VisionServerConfig` hat ein eigenes `__hash__` (das dict `image_kinds` zählt als sortierte Paare), weil die Konfiguration hashbar bleiben muss.
+- Frontend: Fehlt `SaveImage` auf dem Pi, merkt das der Höhentest erst beim ersten Foto (nach der Fahrt auf die erste Höhe). Nach Halt, Fahrfehler oder Speicherfehler bleibt der Arm stehen, wo er ist; nur ein vollständiger Lauf fährt zurück in die Ausgangsstellung.
+- Die gemeinsame Speicherfunktion liegt in `runner/save_use_case_image.py` (`_make_save`), `SaveUseCaseImage` und `SaveImage` registrieren beide darüber.
 
 ## Nach Abschluss
 
-- [ ] Status `fertig`, tatsächliche Schnittstellen nachgetragen
-- [ ] Indexzeile in `README.md`
-- [ ] `vision-server-interface.md` ergänzt
-- [ ] Tests
+- [x] Status `fertig`, tatsächliche Schnittstellen nachgetragen
+- [x] Indexzeile in `README.md`
+- [x] `vision-server-interface.md` ergänzt (Abschnitt 18b, Hinweis „veraltet“ in 18a)
+- [x] Tests: `tests/test_use_case_eval.py` (`MeasureSheetTest`), `tests/test_use_case_image.py` (`GeneralSaveTest`, `SaveImageOpcUaTest`); Frontend `heightTest.test.ts`, `pickPlaceTarget.test.ts`, `useSaveRawImage.test.ts`, `pickPlace.test.ts` (`photoFlangeAt`)
+- [ ] Höhentest am Roboter

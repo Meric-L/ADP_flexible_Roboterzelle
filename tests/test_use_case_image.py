@@ -268,3 +268,156 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(np is not None, "numpy/OpenCV/asyncua fehlen")
+class GeneralSaveTest(unittest.TestCase):
+    """Die Ablage mit waehlbaren Ordner- und Dateinamen (Grundlage von `SaveImage`)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name) / "hoehentest"
+
+    def test_next_series_number_counts_only_its_own_folders(self):
+        from vision_server.use_case_image import next_series_number
+
+        self.assertEqual(next_series_number(self.base, "lauf"), 1)
+        for name in ("lauf_001", "lauf_004", "reihe_009"):
+            (self.base / name).mkdir(parents=True)
+        (self.base / "lauf_007.txt").write_text("keine Reihe")
+        self.assertEqual(next_series_number(self.base, "lauf"), 5)
+        self.assertEqual(next_series_number(self.base, "reihe"), 10)
+
+    def test_saves_under_the_given_folder_and_names(self):
+        path, number = save_use_case_image(
+            test_image(), self.base, 3, '{"a": 1}', {}, NOW, {"ok": True},
+            folder="lauf", stem="bild", series_key="lauf", number_key="bild_nr",
+            schema="adp.hoehentest.image/1",
+        )
+        self.assertEqual((path, number), (self.base / "lauf_003" / "bild_001.png", 1))
+        document = read_json(path)
+        self.assertEqual(document["schema"], "adp.hoehentest.image/1")
+        self.assertEqual((document["lauf"], document["bild_nr"], document["bild"]), (3, 1, "bild_001.png"))
+        self.assertNotIn("reihe", document)
+        self.assertEqual(document["messung"], {"ok": True})
+        second, number = save_use_case_image(
+            test_image(), self.base, 3, "{}", {}, NOW, folder="lauf", stem="bild",
+            series_key="lauf", number_key="bild_nr", schema="adp.hoehentest.image/1",
+        )
+        self.assertEqual((second.name, number), ("bild_002.png", 2))
+
+
+class SaveImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
+    """`SaveImage(Kind, Series, MetadataJson)` und die Weiterleitung `SaveUseCaseImage`."""
+
+    async def asyncSetUp(self):
+        if np is None:
+            self.skipTest("numpy/OpenCV/asyncua fehlen")
+        from vision_server.config import ImageKind
+        from vision_server.runner import _install_save_image, _install_save_use_case_image
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        calibration = self.root / "intrinsik.json"
+        calibration.write_text('{"fx": 1000.0}')
+        server = Server()
+        await server.init()
+        idx = await server.register_namespace("http://launch-rm.de/vision")
+        self.vision_system = await server.nodes.objects.add_object(
+            ua.NodeId("VisionMachine", idx), ua.QualifiedName("VisionMachine", idx)
+        )
+        space = types.SimpleNamespace(vision_system=self.vision_system, own_idx=idx)
+        kinds = {
+            "usecase": ImageKind(self.root / "use-case", "reihe", "versuch", "reihe", "versuch", "adp.usecase.trial/1", "trial"),
+            "hoehentest": ImageKind(self.root / "hoehentest", "lauf", "bild", "lauf", "bild_nr", "adp.hoehentest.image/1", "sheet"),
+        }
+        config = types.SimpleNamespace(
+            vision_system_name="VisionMachine",
+            vision_system_id="vision-hand",
+            endpoint="opc.tcp://0.0.0.0:4840/raspi/server/",
+            camera_stream=None,
+            apriltag=types.SimpleNamespace(frame_id="cam_hand", calibration_path=calibration, hand_eye_path=None),
+            use_case_dir=self.root / "use-case",
+            image_kinds=kinds,
+        )
+        self.camera = types.SimpleNamespace(latest_frame=None)
+        self.camera_source = types.SimpleNamespace(camera=self.camera)
+        self.busy = {"value": False}
+        self.methods = {}
+        save = await _install_save_image(space, config, self.camera_source, self.methods, lambda: self.busy["value"])
+        await _install_save_use_case_image(
+            space, config, self.camera_source, self.methods, lambda: self.busy["value"], save=save
+        )
+        self.save_image = server.get_node(ua.NodeId("VisionMachine.SaveImage", idx))
+        self.save_use_case = server.get_node(ua.NodeId("VisionMachine.SaveUseCaseImage", idx))
+
+    def fresh_frame(self, image=None):
+        return types.SimpleNamespace(
+            image=test_image() if image is None else image, timestamp=asyncio.get_running_loop().time() + 60
+        )
+
+    async def call(self, kind, series, metadata="{}"):
+        return await self.vision_system.call_method(
+            self.save_image,
+            ua.Variant(kind, ua.VariantType.String),
+            ua.Variant(series, ua.VariantType.Int32),
+            ua.Variant(metadata, ua.VariantType.String),
+        )
+
+    async def test_both_methods_are_there(self):
+        self.assertEqual(sorted(self.methods), ["SaveImage", "SaveUseCaseImage"])
+
+    async def test_series_zero_starts_a_new_run_and_later_images_go_into_it(self):
+        from use_case_eval import synthetic
+
+        calibration = synthetic.make_calibration()
+        pose = synthetic.look_down_pose(0.0, 0.0, 250.0, 0.0, 0.0)
+        image = synthetic.render_trial(calibration, pose, 0, 0, 0, with_cube=False, supersample=2)
+        self.camera_source.calibration = calibration
+        self.camera.latest_frame = self.fresh_frame(image)
+        name, result_json, error = await self.call("hoehentest", 0, '{"plannedHeightM": 0.25}')
+        self.assertEqual(error, int(VisionErrorCode.OK))
+        self.assertEqual(Path(name), self.root / "hoehentest" / "lauf_001" / "bild_001.png")
+        result = json.loads(result_json)
+        self.assertTrue(result["ok"], result.get("grund"))
+        self.assertAlmostEqual(result["camera_height_mm"], 250.0, delta=1.0)
+        document = read_json(Path(name))
+        self.assertEqual(document["schema"], "adp.hoehentest.image/1")
+        self.assertEqual((document["lauf"], document["bild_nr"]), (1, 1))
+        self.assertEqual(document["client"], {"plannedHeightM": 0.25})
+        self.assertEqual(document["messung"], result)
+        # No control image for a sheet measurement.
+        self.assertFalse((Path(name).parent / "bild_001_messung.png").exists())
+        self.camera.latest_frame = self.fresh_frame(image)
+        second, _, error = await self.call("hoehentest", 1)
+        self.assertEqual((error, Path(second).name), (int(VisionErrorCode.OK), "bild_002.png"))
+        self.camera.latest_frame = self.fresh_frame(image)
+        third, _, _ = await self.call("hoehentest", 0)
+        self.assertEqual(Path(third).parent.name, "lauf_002")
+
+    async def test_the_use_case_kind_and_the_old_method_save_the_same_way(self):
+        self.camera.latest_frame = self.fresh_frame()
+        name, _, error = await self.call("usecase", 2, '{"series": 2}')
+        self.assertEqual(error, int(VisionErrorCode.OK))
+        self.assertEqual(Path(name), self.root / "use-case" / "reihe_002" / "versuch_001.png")
+        self.assertEqual(read_json(Path(name))["schema"], "adp.usecase.trial/1")
+        self.camera.latest_frame = self.fresh_frame()
+        old, _, error = await self.vision_system.call_method(
+            self.save_use_case, ua.Variant(2, ua.VariantType.Int32), ua.Variant("{}", ua.VariantType.String)
+        )
+        self.assertEqual((error, Path(old).name), (int(VisionErrorCode.OK), "versuch_002.png"))
+        # The old method keeps its rule: no series 0.
+        _, _, error = await self.vision_system.call_method(
+            self.save_use_case, ua.Variant(0, ua.VariantType.Int32), ua.Variant("{}", ua.VariantType.String)
+        )
+        self.assertEqual(error, int(VisionErrorCode.INVALID_ARGUMENT))
+
+    async def test_unknown_kind_negative_series_and_busy_are_refused(self):
+        self.camera.latest_frame = self.fresh_frame()
+        self.assertEqual((await self.call("gibtsnicht", 1))[2], int(VisionErrorCode.INVALID_ARGUMENT))
+        self.assertEqual((await self.call("hoehentest", -1))[2], int(VisionErrorCode.INVALID_ARGUMENT))
+        self.busy["value"] = True
+        self.assertEqual((await self.call("hoehentest", 0))[2], int(VisionErrorCode.BUSY))
+        self.assertFalse((self.root / "hoehentest").exists())

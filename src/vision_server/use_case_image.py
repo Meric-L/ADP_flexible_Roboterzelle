@@ -13,20 +13,30 @@ from typing import Any
 #: Schema-Kennung in der JSON-Datei neben jedem Bild.
 SCHEMA = "adp.usecase.trial/1"
 
-_TRIAL_RE = re.compile(r"^versuch_(\d+)\.(?:png|json)$")
+def next_trial_number(directory: Path, stem: str = "versuch") -> int:
+    """Hoechste vorhandene Bildnummer in `directory` plus 1 (leer/fehlend: 1).
 
-
-def next_trial_number(directory: Path) -> int:
-    """Hoechste vorhandene Versuchsnummer in `directory` plus 1 (leer/fehlend: 1).
-
-    Zaehlt `versuch_NNN.png` und `versuch_NNN.json`; Luecken werden nicht
+    Zaehlt `<stem>_NNN.png` und `<stem>_NNN.json`; Luecken werden nicht
     aufgefuellt.
     """
+    pattern = re.compile(rf"^{re.escape(stem)}_(\d+)\.(?:png|json)$")
     highest = 0
     if directory.is_dir():
         for entry in directory.iterdir():
-            match = _TRIAL_RE.match(entry.name)
+            match = pattern.match(entry.name)
             if match:
+                highest = max(highest, int(match.group(1)))
+    return highest + 1
+
+
+def next_series_number(base_dir: Path, folder: str) -> int:
+    """Hoechste vorhandene Ordnernummer `<folder>_NNN` in `base_dir` plus 1 (leer/fehlend: 1)."""
+    pattern = re.compile(rf"^{re.escape(folder)}_(\d+)$")
+    highest = 0
+    if Path(base_dir).is_dir():
+        for entry in Path(base_dir).iterdir():
+            match = pattern.match(entry.name)
+            if match and entry.is_dir():
                 highest = max(highest, int(match.group(1)))
     return highest + 1
 
@@ -51,8 +61,18 @@ def save_use_case_image(
     now: datetime | None = None,
     measurement: dict | None = None,
     annotated: Any = None,
+    *,
+    folder: str = "reihe",
+    stem: str = "versuch",
+    series_key: str = "reihe",
+    number_key: str = "versuch",
+    schema: str = SCHEMA,
 ) -> tuple[Path, int]:
-    """Schreibt `image` als PNG samt JSON; liefert (PNG-Pfad, Versuchsnummer).
+    """Schreibt `image` als PNG samt JSON; liefert (PNG-Pfad, Bildnummer).
+
+    Ablage `<base_dir>/<folder>_<series>/<stem>_<n>.*`; `series_key`/`number_key`
+    sind die Schluessel der Nummern in der JSON, `schema` ihre Kennung. Die
+    Vorgaben ergeben das Use-Case-Foto (`reihe_NNN/versuch_NNN.*`).
 
     `measurement` (Bildmessung, vor dem Speichern berechnet) steht unter
     "messung" in der JSON -- so wird die Datei weiter in einem Zug exklusiv
@@ -69,7 +89,7 @@ def save_use_case_image(
     # Erst hier: der Rest des Servers soll ohne OpenCV importierbar bleiben.
     import cv2
 
-    directory = base_dir / f"reihe_{series:03d}"
+    directory = base_dir / f"{folder}_{series:03d}"
     directory.mkdir(parents=True, exist_ok=True)
     stamp = (now or datetime.now()).isoformat(timespec="seconds")
     key, value = _client_section(client_meta)
@@ -79,10 +99,10 @@ def save_use_case_image(
         raise OSError("Bild konnte nicht als PNG kodiert werden")
     png_bytes = encoded.tobytes()
 
-    n = next_trial_number(directory)
+    n = next_trial_number(directory, stem)
     while True:
-        png_path = directory / f"versuch_{n:03d}.png"
-        json_path = directory / f"versuch_{n:03d}.json"
+        png_path = directory / f"{stem}_{n:03d}.png"
+        json_path = directory / f"{stem}_{n:03d}.json"
         try:
             # "xb": schlaegt fehl, wenn die Datei existiert -> nie ueberschreiben.
             with open(png_path, "xb") as fh:
@@ -97,9 +117,9 @@ def save_use_case_image(
         break
 
     document = {
-        "schema": SCHEMA,
-        "reihe": series,
-        "versuch": n,
+        "schema": schema,
+        series_key: series,
+        number_key: n,
         "bild": png_path.name,
         "gespeichert": stamp,
         "pi": pi_meta,
@@ -118,7 +138,7 @@ def save_use_case_image(
         ok, control = cv2.imencode(".png", annotated)
         if ok:
             try:
-                with open(directory / f"versuch_{n:03d}_messung.png", "xb") as fh:
+                with open(directory / f"{stem}_{n:03d}_messung.png", "xb") as fh:
                     fh.write(control.tobytes())
             except OSError:
                 pass

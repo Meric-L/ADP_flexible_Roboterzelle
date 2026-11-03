@@ -318,12 +318,38 @@ def measure_trial(
         return _fail(f"Messung fehlgeschlagen: {type(error).__name__}: {error}")
 
 
-def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
+@dataclass
+class _SheetPose:
+    """Ergebnis von `_sheet_pose`: Blattpose samt allem, was die Aufrufer weiter brauchen."""
+
+    found: dict
+    sheet_ids: list
+    undistorted_corners: Any
+    marker_log: dict
+    zwischenwerte: dict
+    camera_matrix: np.ndarray
+    object_points: np.ndarray
+    rvec: np.ndarray
+    tvec: np.ndarray
+    rotation: np.ndarray
+    camera_center: np.ndarray
+    axis_sheet: np.ndarray
+    rms: float
+    sheet_refined: int
+
+
+def _sheet_pose(image, calibration, refine_edges: bool, require_cube: bool):
+    """Blattpose aus den Blattmarkern; `_SheetPose` oder eine fehlgeschlagene `TrialMeasurement`.
+
+    Gemeinsamer Teil von `_measure` und `measure_sheet`, damit beide dieselben
+    Zahlen rechnen: Erkennung, entzerrte/verfeinerte Blattecken, solvePnP (IPPE)
+    plus RefineLM, Reprojektionsfehler, Drehung, Kamerazentrum, optische Achse.
+    `require_cube`: zusaetzlich den Wuerfelmarker (ID 10) verlangen.
+    """
     import cv2
 
-    from tagloc.lens import project_points, undistort_points
+    from tagloc.lens import undistort_points
 
-    offset_vec = np.asarray(offset, dtype=np.float64).reshape(2)
     height_px, width_px = np.asarray(image).shape[:2]
     if (int(width_px), int(height_px)) != tuple(int(v) for v in calibration.image_size):
         return _fail(
@@ -348,7 +374,7 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         int(i): {"eckenRohPx": np.asarray(corners, dtype=np.float64).reshape(-1, 2)} for i, corners in found.items()
     }
     zwischenwerte: dict[str, Any] = {"marker": marker_log}
-    if target.CUBE_MARKER_ID not in found:
+    if require_cube and target.CUBE_MARKER_ID not in found:
         return _fail("Kein Wuerfelmarker (ID 10) erkannt", sheet_markers=sheet_ids, zwischenwerte=zwischenwerte)
     if len(sheet_ids) < MIN_SHEET_MARKERS:
         return _fail(
@@ -389,6 +415,87 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         "optischeAchseImBlatt": axis_sheet,
         "punkte": int(len(object_points)),
     }
+    return _SheetPose(
+        found=found,
+        sheet_ids=sheet_ids,
+        undistorted_corners=undistorted_corners,
+        marker_log=marker_log,
+        zwischenwerte=zwischenwerte,
+        camera_matrix=camera_matrix,
+        object_points=object_points,
+        rvec=rvec,
+        tvec=tvec,
+        rotation=rotation,
+        camera_center=camera_center,
+        axis_sheet=axis_sheet,
+        rms=rms,
+        sheet_refined=sheet_refined,
+    )
+
+
+def measure_sheet(image, calibration, *, refine_edges: bool = True) -> dict:
+    """Blattpose aus den Blattmarkern (IDs 0-3), ohne Wuerfel. Wirft nie.
+
+    Rechnet dieselbe Blattpose wie `measure_trial` (gemeinsamer Helfer).
+    Rueckgabe: `{"ok", "grund", "camera_height_mm", "camera_tilt_deg",
+    "camera_in_sheet_mm" [x, y, z], "axis_hit_mm" [x, y] (optische Achse trifft
+    die Blattebene z = 0), "reprojection_rms_px", "sheet_markers",
+    "sheet_edges_refined"}`; bei Fehlschlag `ok` False, `grund` erklaert, die
+    Messwerte sind None.
+    """
+    result: dict[str, Any] = {
+        "ok": False,
+        "grund": "",
+        "camera_height_mm": None,
+        "camera_tilt_deg": None,
+        "camera_in_sheet_mm": None,
+        "axis_hit_mm": None,
+        "reprojection_rms_px": None,
+        "sheet_markers": [],
+        "sheet_edges_refined": 0,
+    }
+    try:
+        pose = _sheet_pose(image, calibration, refine_edges, require_cube=False)
+        if isinstance(pose, TrialMeasurement):
+            result["grund"] = pose.grund
+            result["sheet_markers"] = [int(i) for i in pose.sheet_markers]
+            return result
+        result["sheet_markers"] = [int(i) for i in pose.sheet_ids]
+        result["reprojection_rms_px"] = float(pose.rms)
+        result["sheet_edges_refined"] = int(pose.sheet_refined)
+        center, axis = pose.camera_center, pose.axis_sheet
+        if center[2] <= 0.0:
+            result["grund"] = "Blattpose unplausibel (Kamera nicht ueber dem Blatt)"
+            return result
+        result["camera_height_mm"] = float(center[2])
+        result["camera_tilt_deg"] = math.degrees(math.acos(float(np.clip(-axis[2], -1.0, 1.0))))
+        result["camera_in_sheet_mm"] = [float(v) for v in center]
+        if axis[2] >= -1e-6:
+            result["grund"] = "Optische Achse trifft die Blattebene nicht"
+            return result
+        hit = center + axis * (-center[2] / axis[2])
+        result["axis_hit_mm"] = [float(hit[0]), float(hit[1])]
+        result["ok"] = True
+        return result
+    except Exception as error:  # Messfehler duerfen nie den Aufrufer treffen
+        result["ok"] = False
+        result["grund"] = f"Messung fehlgeschlagen: {type(error).__name__}: {error}"
+        return result
+
+
+def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
+    from tagloc.lens import project_points
+
+    offset_vec = np.asarray(offset, dtype=np.float64).reshape(2)
+    pose = _sheet_pose(image, calibration, refine_edges, require_cube=True)
+    if isinstance(pose, TrialMeasurement):
+        return pose
+    found, sheet_ids = pose.found, pose.sheet_ids
+    undistorted_corners, marker_log = pose.undistorted_corners, pose.marker_log
+    zwischenwerte, camera_matrix = pose.zwischenwerte, pose.camera_matrix
+    rvec, tvec, rotation = pose.rvec, pose.tvec, pose.rotation
+    camera_center, axis_sheet = pose.camera_center, pose.axis_sheet
+    rms, sheet_refined = pose.rms, pose.sheet_refined
     if camera_center[2] <= target.CUBE_TOP_Z_MM:
         return _fail(
             "Blattpose unplausibel (Kamera nicht ueber dem Blatt)",

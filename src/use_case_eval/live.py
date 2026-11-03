@@ -86,3 +86,18 @@ def measure_for_save(image: Any, calibration: Any, sticker_offset_mm=(0.0, 0.0))
         return result, annotate(image, measurement)
     except Exception:
         return result, None
+
+
+def measure_sheet_for_save(image: Any, calibration: Any) -> dict:
+    """Misst nur die Blattpose von `image` (`measure_sheet`); wirft nie.
+
+    Ohne Kalibrierung: `{"ok": False, "grund": ...}`.
+    """
+    if calibration is None:
+        return {"ok": False, "grund": "Keine Kamerakalibrierung verfuegbar"}
+    try:
+        from .measure import measure_sheet
+
+        return measure_sheet(image, calibration)
+    except Exception as error:
+        return {"ok": False, "grund": f"Messung fehlgeschlagen: {type(error).__name__}: {error}"}
