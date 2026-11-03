@@ -1,6 +1,6 @@
 # Messkette vollständig mitschreiben
 
-**Status:** in Arbeit — 03.11.2026
+**Status:** fertig — 03.11.2026 (an der Hardware noch nicht erprobt)
 **Verantwortlich:** Meric, `Agent: Messkette im Versuchs-JSON protokollieren`
 **Thema:** vision
 **Branch:** `messkette-protokoll` (dieses Repo und webskillcomposition)
@@ -105,7 +105,7 @@ Blattsystem, Pixel im Rohbild (verzeichnet) bzw. entzerrt wie angegeben.
 | Feld | Inhalt |
 | --- | --- |
 | `layer2` | Protokoll des Layer-2-Laufs, aus dem die Tischpose stammt (`wsc.layer2.chain/1`, unten), oder `null` (Tisch nur aus Layer 1, oder Lauf vor dem Neuladen der Seite ohne gespeichertes Protokoll) |
-| `drives` | Jede Fahrt des Pick-&-Place-Laufs: `{ what, slow, target, reached, flangeInBase, status, reason?, at }` — Soll- und Ist-Gelenke, Flanschpose per FK aus den Ist-Gelenken |
+| `drives` | Jede Fahrt und jedes Greiferschalten des Pick-&-Place-Laufs bis zum Foto: `{ at, what, slow?, target, reached, flangeInBase, gripper?, status, reason? }`. `status`: `reached`, `failed` oder `switched` (Greifer; `target`/`reached`/`flangeInBase` dann `null`). Flanschpose per FK aus den Ist-Gelenken |
 
 `wsc.layer2.chain/1`:
 
@@ -173,4 +173,19 @@ Tisches, auf den abgelegt wird.
 
 ## Abweichungen vom Plan
 
-—
+- `drives` enthält auch das Greiferschalten (`gripper`, `status: "switched"`), beim
+  Schalten von Hand mit `what` = „… (von Hand)“.
+- Ein Vorschlag der Zellen-Überwachung („Neu positionieren“, `source: "watch"`)
+  bekommt kein Layer-2-Protokoll: er stammt von der Deckenkamera, nicht aus einem Lauf.
+- `phase` einer Messung ist der Statustext, den die Anzeige für den Tag gerade
+  zeigt (z. B. „Korrektur 2: 4 mm neben der Bildmitte“, „nicht im Bild — sucht,
+  Schritt 3/17“, Ansichtstext), kein festes Schlüsselwort.
+
+## Umsetzung
+
+- Dieses Repo: Commit auf `messkette-protokoll` (`measuretag.py`, `use_case_eval/measure.py`, Tests).
+- webskillcomposition: Branch `messkette-protokoll` (von `layer2-nah-ran-2`):
+  `layer2Chain.ts` (+ Test), `ApproachPlanPanel.tsx`, `measureTagsCall.ts`,
+  `useCaseRecord.ts` (+ Test), `usePickPlaceRun.ts`.
+- Tests: Pi `test_measuretag.py`, `test_use_case_eval.py` grün; Frontend
+  `tsc` fehlerfrei, `vitest` 89 Dateien / 936 Tests grün.

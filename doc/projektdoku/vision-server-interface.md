@@ -1796,6 +1796,10 @@ Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, f
 - **`nearEdge`:** sagt je Tag, welchen Bildrändern er nahe kommt (innerhalb 5 %). Die Steuerung nutzt das bei der Suche nach anfangs unerreichbaren Tags, um gezielt nachzuschwenken. Fahrbefehle schickt der Pi bewusst nicht.
 - **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.
 
+### Nachtrag 03.11.2026: Einzelbilder je Tag (`frames`)
+
+Jeder Tag im Ergebnis hat zusätzlich `frames`: ein Eintrag je Bild, in dem er erkannt wurde, in Aufnahmereihenfolge, ungemittelt. Felder je Eintrag: `capturedAt`, `poseInCamera` (`position`, `orientation` xyzw), `reprojectionErrorPx`, `ambiguous`, `ambiguityRatio`, `cornersPx` (roh, verzeichnet), `decisionMargin`. Die gemittelten Felder bleiben unverändert, das Schema bleibt `…result/1`. Die Web-App legt die Antworten unverändert im Layer-2-Protokoll ab (`wsc.layer2.chain/1`). Plan: [`arbeitsplaene/messkette-protokoll.md`](arbeitsplaene/messkette-protokoll.md).
+
 ## 18. SaveRawImage: Kamera-Vollbild als PNG speichern
 
 Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem Pi, als Rohmaterial zum Nachrechnen. Planung und Hintergründe stehen im Arbeitsplan [`arbeitsplaene/rohbild-speichern.md`](arbeitsplaene/rohbild-speichern.md).
@@ -1828,6 +1832,14 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 - **JSON-Datei:** Schema `adp.usecase.trial/1`. Felder: `reihe`, `versuch`, `bild` (Dateiname des PNG), `gespeichert` (lokale Zeit, ISO 8601, Sekunden genau), `pi` (Pi-Metadaten: `frame_timestamp`, `frame_age_s`, `image_shape`, `frame_id`, `vision_system_name`, `vision_system_id`, `hostname`, `endpoint`, `camera_stream`, `apriltag`, `calibration`, `hand_eye`; Felder, die nicht ermittelt werden können, fehlen), dazu `messung` (Bildmessung, s. `ResultJson`; bei neuen Versuchen immer vorhanden, auch als `{"ok": false, "grund": ...}`), `client` (geparstes Objekt) oder `client_raw` (Text). Die vollständige Beschreibung der Felder steht im Arbeitsplan.
 
 - **`pi.intrinsics`** (nur bei geladener Kalibrierung): die tatsächlich benutzte Kameramatrix und Verzeichnung, damit die Offline-Auswertung dieselbe Intrinsik nimmt. Felder: `source` (`calibration` = Kalibrierdatei, `realsense_factory` = Werks-Intrinsik der Kamera, `placeholder` = Platzhalter), `calibrationId`, `imageSize` (`[Breite, Höhe]` in px), `cameraMatrix` (3x3), `distortionCoefficients`, `distortionModel` (`pinhole` oder `fisheye`). `source` ist dieselbe Herkunft wie in der Handauge-Session (`intrinsicsSource`).
+
+### Nachtrag 03.11.2026: Zwischenwerte der Messung und Messkette im Client-Teil
+
+- **`messung.zwischenwerte`** (auch in `ResultJson`): alles, was die Bildmessung unterwegs berechnet, bei einem Fehlschlag soweit vorhanden. `marker` je ID (`eckenRohPx`, `eckenEntzerrtPx`, `kanteVerfeinert`, bei Blattmarkern `reprojektionRmsPx`), `blattPose` (`rvec`, `tvecMm`, `rotationBlattZuKamera`, `kameraImBlattMm`, `optischeAchseImBlatt`, `punkte`), `wuerfel` (`eckenOberseiteMm`, `kantenYawDeg`, `markerMitteMm`, `versatzImBlattMm`), `durchstosspunktMm`. Längen in mm im Blattsystem.
+- **`client.layer2`:** Protokoll des Layer-2-Laufs, aus dem die Tischpose stammt (`wsc.layer2.chain/1`): jede `MeasureTags`-Antwort mit Einzelbildern, Gelenkwinkeln, Flansch- und Kamerapose, `T_base_tag`, dazu Zentrieren, Nahmessung, Ansichten, Fusion und Basiskorrektur. `null`, wenn der Tisch nur aus Layer 1 stammt.
+- **`client.drives`:** jede Fahrt des Laufs bis zum Foto mit Soll- und Ist-Gelenken und Flanschpose, dazu jedes Greiferschalten.
+
+Feldbeschreibung: [`arbeitsplaene/messkette-protokoll.md`](arbeitsplaene/messkette-protokoll.md).
 - **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird (`3535115`); die Bilder tauchen also in `git status` auf und werden nur bewusst committet.
 
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
