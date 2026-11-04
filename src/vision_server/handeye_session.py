@@ -642,6 +642,15 @@ class HandEyeSession:
     async def publish_idle(self) -> None:
         await self._publish()
 
+    async def forget_result(self, message: str) -> None:
+        """Nach einer Aenderung der Datei von aussen (`ApplyHandEyeCorrection`):
+        zurueck auf `idle`, ohne das alte Ergebnis -- es zeigte die alte
+        Kameralage. `current` liest die Datei neu. Nur ohne laufende Sitzung."""
+        if self.active:
+            return
+        self._s = _State(message=message)
+        await self._publish()
+
     async def _measure(self, s: _State) -> tuple[Any, str, dict]:
         """`(Pose | None, Grund, Info)`. Die Messfunktionen duerfen auch nur
         `(Pose, Grund)` liefern."""

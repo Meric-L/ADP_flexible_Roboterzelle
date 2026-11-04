@@ -29,6 +29,7 @@ from .calibration import (
 )
 from .cell_watch import _install_cell_watch
 from .hand_eye import _install_hand_eye_session
+from .hand_eye_correction import _install_hand_eye_correction
 from .health import _start_camera_health
 from .jobs import install_job_methods
 from .layer2 import _install_layer2_run
@@ -98,6 +99,12 @@ async def _install_hand_pi_sessions(wiring: Wiring) -> None:
     if source is not None and space.hand_eye_status is not None:
         wiring.hand_eye_session = await _install_hand_eye_session(
             space, config, source, wiring.methods,
+            lambda: wiring.jobs.busy or wiring.calibration_busy() or wiring.layer2_active(),
+        )
+        # Die Kameralage aus der Punkte-Pruefung: dieselben Sperren wie der Start
+        # einer Sitzung, dazu die Sitzung selbst.
+        await _install_hand_eye_correction(
+            space, config, source, wiring.methods, wiring.states, wiring.hand_eye_session,
             lambda: wiring.jobs.busy or wiring.calibration_busy() or wiring.layer2_active(),
         )
     annotator = wiring.annotator

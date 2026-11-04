@@ -17,7 +17,7 @@ beim Aufruf lesen:
 | `tag_map.py` | `TagMapJson` und `SetTagMap` |
 | `livestream.py` | Overlay, Livestream-Publisher, MJPEG-Server |
 | `health.py` | Kamera-Watchdog als `DeviceHealth` |
-| `layer2.py`, `hand_eye.py` | Layer-2-Lauf und Hand-Auge-Kalibrierung (Hand-Pi) |
+| `layer2.py`, `hand_eye.py`, `hand_eye_correction.py` | Layer-2-Lauf, Hand-Auge-Kalibrierung und ihre Korrektur aus der Punkte-Pruefung (Hand-Pi) |
 | `measure_board.py`, `measure_tags.py` | Messungen auf Anfrage (Brett, Tags) |
 | `tag_reference.py` | Tag-Einmessung ueber Bezugskanten |
 | `save_raw_image.py`, `save_use_case_image.py` | Rohbild, `SaveImage` (allgemein) und `SaveUseCaseImage` (veraltet) |
@@ -38,6 +38,7 @@ from .calibration import (  # noqa: F401
 )
 from .cell_watch import _install_cell_watch  # noqa: F401
 from .hand_eye import _install_hand_eye_session  # noqa: F401
+from .hand_eye_correction import _install_hand_eye_correction  # noqa: F401
 from .health import _camera_config_of, _start_camera_health  # noqa: F401
 from .install import install_vision_machine
 from .layer2 import _install_layer2_run  # noqa: F401
