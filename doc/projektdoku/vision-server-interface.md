@@ -1973,3 +1973,19 @@ Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/
 **Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
 die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
 und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.
+
+## 20. ApplyHandEyeCorrection: Kameralage aus der Punkte-Prüfung übernehmen (nur Hand-Pi)
+
+Nach einer Hand-Auge-Kalibrierung misst die Handkamera das Blatt der Use-Case-Zielscheibe (`MeasureTarget`, Plan [`arbeitsplaene/zielscheibe-servoing.md`](arbeitsplaene/zielscheibe-servoing.md)), der Roboter hält die Greiferspitze über die 9 Kreuze des Blatts, und der Bediener trägt je Kreuz den Versatz der Spitze ein. Aus dem mittleren Versatz rechnet das Frontend eine korrigierte Kameralage am Flansch, die der Hand-Pi mit dieser Methode übernimmt. Planung, Rechnung und Grenzen: Arbeitsplan [`arbeitsplaene/handeye-punkte-pruefung.md`](arbeitsplaene/handeye-punkte-pruefung.md).
+
+| Element | NodeId | Signatur |
+| --- | --- | --- |
+| `ApplyHandEyeCorrection` | `ns=<vision>;s=VisionMachine.ApplyHandEyeCorrection` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` |
+
+- **Anfrage** `wsc.vision.handeye.correction/1`: `{"basedOnCalibrationId", "poseFlangeCam": {"position", "orientation"}, "check": {…}}`. `basedOnCalibrationId` muss die `calibrationId` der aktiven Datei sein, die Änderung höchstens 20 mm und 2°. `check` ist das Protokoll der Prüfung aus der Steuerung und wird nur abgelegt.
+- **Wirkung:** `data/handeye/cam_flange.json` wird als `cam_flange.json.<UTC>.bak` gesichert und mit der neuen Lage und einer neuen `calibrationId` neu geschrieben; die Gütezahlen bleiben die der ursprünglichen Kalibrierung. Die Lage ist sofort aktiv, der Anker der AprilTag-Quelle wird verworfen, die Sitzung geht auf `idle` (kein altes `result` mehr), `HandEyeStatus.current` zeigt die neue Lage. Protokoll mit Anfrage, alter und neuer Lage: `data/handeye/corrections/<UTC>.json`.
+- **Ergebnis** `wsc.vision.handeye.correction.result/1`: `applied`, `calibrationId`, `previousCalibrationId`, `poseFlangeCam`, `previousPoseFlangeCam`, `deltaPositionM` (Flansch-KS), `deltaRotationDeg`, `path`, `backupPath`, `logPath`, `error`, `message`. Bei Ablehnung `applied: false` mit `error` (Code-Name) und `message`.
+- **Error:** `OK`, `INVALID_ARGUMENT` (Anfrage ungültig oder Änderung zu groß), `INVALID_STATE` (nicht `Operational`, keine Kalibrierdatei, `basedOnCalibrationId` passt nicht; eine zweimal geschickte Korrektur wird so abgelehnt), `BUSY` (Hand-Auge-Sitzung, Job, Kamera-Kalibrierung oder Layer-2-Lauf), `INTERNAL` (nicht schreibbar, die alte Kalibrierung bleibt aktiv).
+- **Python:** `vision_server.handeye_correction` (`parse_correction`, `apply_correction`), `HandEyeSession.forget_result`, Runner `hand_eye_correction.py`.
+
+**Frontend** (`webskillcomposition`): Abschnitt „Punkte-Prüfung“ im Fenster „Hand-Kamera kalibrieren“ (`HandEyePointCheck.tsx`), Rechnung in `handEyePointCheck.ts`, Aufrufe von `MeasureTarget` und `ApplyHandEyeCorrection` in `handEyePointCheckCall.ts`. Er ersetzt die Prüfung „Brettursprung anfahren“.
