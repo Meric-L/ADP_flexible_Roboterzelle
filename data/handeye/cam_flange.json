@@ -1,29 +1,29 @@
 {
   "schema": "wsc.vision.handeye/1",
   "frameId": "cam_flange",
-  "calibrationId": "cam_flange@2026-11-03T14:54:37Z",
+  "calibrationId": "cam_flange@2026-11-06T14:34:28Z",
   "poseFlangeCam": {
     "position": [
-      -0.046683224201639735,
-      -0.03466415447965639,
-      0.057311292450399266
+      -0.04682334093061473,
+      -0.03460832390138701,
+      0.06083862040185542
     ],
     "orientation": [
-      -0.003499849923090031,
-      -0.016671170609798978,
-      0.7141650132635173,
-      0.6997700743468065
+      -0.002578718248233161,
+      -0.01668547465900237,
+      0.7081216738084695,
+      0.7058885466065389
     ]
   },
-  "rmsPositionM": 0.001872,
-  "rmsRotationDeg": 0.924663,
-  "maxPositionM": 0.003637,
-  "maxRotationDeg": 1.949121,
-  "sampleCount": 14,
-  "createdAt": "2026-11-03T14:54:37Z",
-  "refinedReprojectionRmsPx": 1.183309,
+  "rmsPositionM": 0.002006,
+  "rmsRotationDeg": 0.761107,
+  "maxPositionM": 0.003517,
+  "maxRotationDeg": 1.507232,
+  "sampleCount": 15,
+  "createdAt": "2026-11-06T14:34:28Z",
+  "refinedReprojectionRmsPx": 1.241442,
   "boardScale": 1.0,
-  "looErrorRmsPx": 1.629425,
-  "looErrorRmsM": 0.002028,
+  "looErrorRmsPx": 1.666261,
+  "looErrorRmsM": 0.001906,
   "intrinsicsSource": "calibration"
 }
