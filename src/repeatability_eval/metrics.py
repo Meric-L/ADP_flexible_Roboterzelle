@@ -20,13 +20,32 @@ def homography_metrics(
     `homographyRmsPx` (Rueckprojektion Board -> Bild), `nCorners`.
     `ValueError` bei weniger als 6 Ecken oder nicht berechenbarer Homographie.
     """
-    import cv2
-
     ids = np.asarray(ids, dtype=int).reshape(-1)
     corners = np.asarray(corners, dtype=np.float64).reshape(-1, 2)
     if len(ids) < MIN_CORNERS:
         raise ValueError(f"Zu wenige Ecken fuer die Homographie: {len(ids)} < {MIN_CORNERS}")
-    board_mm = object_points_mm(ids, spec)
+    return homography_metrics_points(corners, object_points_mm(ids, spec), image_size, MIN_CORNERS)
+
+
+def homography_metrics_points(
+    corners: np.ndarray,
+    object_mm: np.ndarray,
+    image_size: tuple[int, int],
+    min_points: int = 4,
+) -> dict[str, Any]:
+    """Wie `homography_metrics`, aber mit expliziten Objektpunkten (mm, `(N, 2)`).
+
+    `corners` (N, 2) in px, `object_mm` (N, 2) in mm auf der Zielebene. `ValueError`
+    bei weniger als `min_points` Punkten oder nicht berechenbarer Homographie.
+    """
+    import cv2
+
+    corners = np.asarray(corners, dtype=np.float64).reshape(-1, 2)
+    board_mm = np.asarray(object_mm, dtype=np.float64).reshape(-1, 2)
+    if len(corners) != len(board_mm):
+        raise ValueError("Ecken und Objektpunkte haben unterschiedliche Anzahl")
+    if len(corners) < min_points:
+        raise ValueError(f"Zu wenige Ecken fuer die Homographie: {len(corners)} < {min_points}")
     h, _ = cv2.findHomography(corners, board_mm, 0)
     if h is None or not np.all(np.isfinite(h)):
         raise ValueError("Homographie nicht berechenbar")
@@ -49,7 +68,7 @@ def homography_metrics(
         "rotationDeg": float(rotation),
         "scalePxPerMm": 1.0 / mm_per_px,
         "homographyRmsPx": rms,
-        "nCorners": int(len(ids)),
+        "nCorners": int(len(corners)),
     }
 
 

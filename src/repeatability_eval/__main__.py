@@ -23,12 +23,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Fehler: {error}", file=sys.stderr)
         return 1
     print(f"Session {args.session_ordner}: {res['nVerwendet']} von {res['nBilder']} Bildern verwendet")
-    print(f"Basis-Ecken: {len(res['basisIds'])} ({res['basisRegel']})")
+    if res.get("board") is None:
+        print(f"AprilTag {res['target'].get('tagId')} ({res['basisRegel']})")
+    else:
+        print(f"Basis-Ecken: {len(res['basisIds'])} ({res['basisRegel']})")
     for phase, s in res["serien"].items():
         if s.get("rpUm") is None:
             print(f"  {phase}: {s.get('grund', 'keine Auswertung')}")
             continue
-        line = f"  {phase}: RP = {s['rpUm']:.1f} um (n={s['nAufnahmen']})"
+        label = "RP kalibrierfrei" if res.get("board") is None else "RP"
+        line = f"  {phase}: {label} = {s['rpUm']:.1f} um (n={s['nAufnahmen']})"
         if "noiseRatio" in s:
             ratio = s["noiseRatio"]
             line += (
@@ -36,6 +40,17 @@ def main(argv: list[str] | None = None) -> int:
                 if ratio is not None else ", Rauschverhaeltnis unbekannt, gueltig: nein"
             )
         print(line)
+        for key, name in (("kamera", "Kamera"), ("basis", "Basis")):
+            sub = s.get(key)
+            if sub is None:
+                continue
+            if sub.get("rpUm") is None:
+                print(f"    {name}: {sub.get('grund', 'keine Auswertung')}")
+                continue
+            line = f"    {name}: RP = {sub['rpUm']:.1f} um (n={sub['n']})"
+            if sub.get("noiseRatio") is not None:
+                line += f", Rauschverhaeltnis {sub['noiseRatio']:.3f}, gueltig: {'ja' if sub['valid'] else 'nein'}"
+            print(line)
     print(f"Ausgeschlossene IDs: {res['ausgeschlosseneIds'] or 'keine'}; streuende IDs: {res['streuendeIds'] or 'keine'}")
     if res["ausgeschlosseneBilder"]:
         print(f"Ausgeschlossene Bilder: {len(res['ausgeschlosseneBilder'])}")
