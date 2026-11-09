@@ -120,6 +120,8 @@ class HandEyePorts:
     intrinsics_source: Callable[[], str | None] | None = None
     #: Wohin die Datensaetze der Sitzungen kommen; `None`: `sessions/` neben `path`.
     sessions_dir: Path | None = None
+    capture_board_raw: Callable[[BoardSpec], Awaitable[tuple]] | None = None
+    raw_sessions_dir: Path | None = None
 
 
 @dataclass
@@ -144,10 +146,15 @@ class _Sample:
     #: (px; m im Kamera-KS). `None` vorher, bei Tags und bei Ausreissern.
     loo_error_px: float | None = None
     loo_error_m: float | None = None
+    pose_id: str | None = None
+    joints_rad: list[float] | None = None
+    captured_at: str | None = None
+    pose_group: str | None = None
+    invalidated: bool = False
 
     @property
     def accepted(self) -> bool:
-        return self.cam_to_tag is not None
+        return self.cam_to_tag is not None and not self.invalidated
 
 
 @dataclass
@@ -165,6 +172,8 @@ class _State:
     intrinsics_source: str | None = None
     #: Ordnername des Datensatzes (UTC), gesetzt beim Start.
     stamp: str = ""
+    capture_only: bool = False
+    session_path: str | None = None
 
 
 def _intrinsics_warnings(source: str | None) -> list[str]:
@@ -260,6 +269,52 @@ def _write_session_dataset(
         result=state.result,
     )
     (folder / SESSION_FILE).write_text(session_json(payload), encoding="utf-8")
+
+
+def _write_raw_capture(folder: Path, state: _State, sample: _Sample,
+                       calibration, frame_id: str) -> None:
+    """Ein Bild und seinen Roboterzustand unter derselben Pose-ID ablegen."""
+    from tagloc.handeye import intrinsics_to_dict
+
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "results").mkdir(exist_ok=True)
+    config_path = folder / "config.json"
+    existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else None
+    if existing is None or (existing.get("intrinsics") is None and calibration is not None):
+        config = {
+            "schema": "wsc.vision.handeye.raw/1", "frameId": frame_id,
+            "imageStream": "configured", "units": "m", "rotation": "quaternion_xyzw",
+            "frames": {"T_base_flange": "flange in base", "T_camera_board": "board in camera",
+                       "T_flange_camera": "camera in flange"},
+            "board": state.board.as_dict(),
+            "intrinsics": intrinsics_to_dict(calibration) if calibration is not None else None,
+            "intrinsicsSource": state.intrinsics_source,
+        }
+        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    pose_folder = folder / "poses" / sample.pose_id
+    pose_folder.mkdir(parents=True, exist_ok=False)
+    if sample.image is not None:
+        import cv2
+        if not cv2.imwrite(str(pose_folder / "camera.png"), np.asarray(sample.image)):
+            raise OSError(f"Bild nicht geschrieben: {pose_folder}")
+    state_json = {
+        "schema": "wsc.vision.handeye.robot-state/1", "poseId": sample.pose_id,
+        "T_base_flange": np.asarray(sample.flange_in_base).tolist(),
+        "jointAnglesRad": sample.joints_rad, "capturedAt": sample.captured_at,
+        "poseGroup": sample.pose_group,
+        "accepted": sample.accepted, "status": sample.detail,
+        "reprojectionErrorPx": sample.reprojection_error_px,
+    }
+    (pose_folder / "robot_state.json").write_text(
+        json.dumps(state_json, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _invalidate_raw_capture(folder: Path, pose_id: str, reason: str) -> None:
+    """Qualitaetsentscheidung getrennt vom unveraenderten Rohzustand speichern."""
+    path = folder / "poses" / pose_id / "quality.json"
+    path.write_text(json.dumps({"poseId": pose_id, "valid": False, "reason": reason},
+                               indent=2) + "\n", encoding="utf-8")
 
 
 def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
@@ -468,6 +523,11 @@ class HandEyeSession:
             return VisionErrorCode.BUSY
         try:
             tag_id, tag_in_base, board = parse_start(options_json)
+            capture_only = _load(options_json, START_SCHEMA).get("captureOnly", False)
+            if not isinstance(capture_only, bool) or (capture_only and board is None):
+                raise ValueError("captureOnly erfordert ein Schachbrett und einen Bool-Wert")
+            if capture_only and (board.cols, board.rows, board.square_size_m) != (7, 10, 0.023):
+                raise ValueError("Rohaufnahme erfordert 7x10 Innenecken mit 23 mm Feldgroesse")
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
@@ -477,7 +537,13 @@ class HandEyeSession:
             tag_in_base=tag_in_base,
             board=board,
             stamp=utc_stamp(),
+            capture_only=capture_only,
         )
+        if capture_only:
+            from uuid import uuid4
+            root = self._ports.raw_sessions_dir or (Path(__file__).resolve().parents[2] /
+                                                     "data" / "rohbilder" / "calibration")
+            self._s.session_path = str(root / f"{self._s.stamp}_{uuid4().hex[:8]}")
         self._s.message = self._hint()
         _log.info("Hand-Auge-Kalibrierung gestartet, Ziel %s", self._target_label())
         await self._publish()
@@ -492,8 +558,42 @@ class HandEyeSession:
             return VisionErrorCode.INVALID_STATE
         if self._measuring or self._ports.busy():
             return VisionErrorCode.BUSY
+        if s.capture_only:
+            try:
+                command = _load(sample_json, SAMPLE_SCHEMA)
+            except ValueError:
+                return VisionErrorCode.INVALID_ARGUMENT
+            if "invalidatePoseId" in command:
+                pose_id = command["invalidatePoseId"]
+                matching = next((sample for sample in s.samples if sample.pose_id == pose_id), None)
+                if matching is None or not isinstance(command.get("reason"), str):
+                    return VisionErrorCode.INVALID_ARGUMENT
+                try:
+                    _invalidate_raw_capture(Path(s.session_path), pose_id, command["reason"])
+                except OSError:
+                    _log.exception("Rohaufnahme %s konnte nicht markiert werden", pose_id)
+                    return VisionErrorCode.INTERNAL
+                matching.invalidated = True
+                s.message = f"Aufnahme {pose_id} verworfen: {command['reason']}"
+                await self._publish()
+                return VisionErrorCode.OK
         try:
             flange_in_base = parse_sample(sample_json)
+            metadata = _load(sample_json, SAMPLE_SCHEMA)
+            if s.capture_only:
+                pose_id = metadata.get("poseId")
+                joints = metadata.get("jointAnglesRad")
+                if not isinstance(pose_id, str) or not pose_id.startswith("pose_") or not pose_id[5:].isdigit():
+                    raise ValueError("poseId muss pose_NNN sein")
+                if any(x.pose_id == pose_id for x in s.samples):
+                    raise ValueError(f"poseId doppelt: {pose_id}")
+                if metadata.get("poseGroup") not in ("A", "B", "C", "D", "E"):
+                    raise ValueError("poseGroup muss A bis E sein")
+                if not isinstance(joints, list) or len(joints) != 7 or any(
+                    not isinstance(x, (int, float)) or isinstance(x, bool) or not math.isfinite(x)
+                    for x in joints
+                ):
+                    raise ValueError("jointAnglesRad muss sieben endliche Winkel enthalten")
         except ValueError as error:
             _log.warning("CaptureHandEyeSample abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
@@ -513,15 +613,48 @@ class HandEyeSession:
             cam_to_tag,
             detail,
             reprojection_error_px=finite_or_none(info.get("reprojectionErrorPx")),
+            pose_id=metadata.get("poseId") if s.capture_only else None,
+            joints_rad=metadata.get("jointAnglesRad") if s.capture_only else None,
+            captured_at=info.get("capturedAt"),
+            pose_group=metadata.get("poseGroup") if s.capture_only else None,
         )
+        sample.image = info.get("image")
+        if s.capture_only:
+            calibration = info.get("calibration")
+            if calibration is None:
+                s.message = "Keine Kameraintrinsik fuer den konfigurierten Kamerastrom"
+                await self._publish()
+                return VisionErrorCode.INVALID_STATE
+            if info.get("intrinsicsSource") != "calibration":
+                s.message = "Aufnahme erfordert die zuvor kalibrierte Kameraintrinsik"
+                await self._publish()
+                return VisionErrorCode.INVALID_STATE
+            if s.calibration is not None and (
+                calibration.image_size != s.calibration.image_size or
+                calibration.model != s.calibration.model or
+                not np.allclose(calibration.camera_matrix, s.calibration.camera_matrix) or
+                not np.allclose(calibration.distortion, s.calibration.distortion)
+            ):
+                s.message = "Kameraintrinsik hat sich waehrend der Aufnahme geaendert"
+                await self._publish()
+                return VisionErrorCode.INVALID_STATE
+        if info.get("calibration") is not None:
+            s.calibration = info["calibration"]
+        if info.get("intrinsicsSource"):
+            s.intrinsics_source = str(info["intrinsicsSource"])
         if cam_to_tag is not None and info.get("corners") is not None:
             sample.corners_px = np.asarray(info["corners"], dtype=np.float64).reshape(-1, 2)
-            sample.image = info.get("image")
-            if info.get("calibration") is not None:
-                s.calibration = info["calibration"]
-            if info.get("intrinsicsSource"):
-                s.intrinsics_source = str(info["intrinsicsSource"])
         s.samples.append(sample)
+        if s.capture_only:
+            try:
+                _write_raw_capture(Path(s.session_path), s, sample,
+                                   s.calibration, self._ports.frame_id)
+            except Exception:
+                _log.exception("Rohaufnahme %s konnte nicht gespeichert werden", sample.pose_id)
+                s.samples.pop()
+                s.message = f"Rohaufnahme {sample.pose_id} nicht gespeichert; Fahrt anhalten"
+                await self._publish()
+                return VisionErrorCode.INTERNAL
         s.message = self._hint() if cam_to_tag is not None else f"Aufnahme verworfen: {reason}"
         await self._publish()
         if cam_to_tag is not None:
@@ -534,6 +667,11 @@ class HandEyeSession:
         s = self._s
         if s.state != CAPTURING or self._measuring:
             return VisionErrorCode.INVALID_STATE
+        if s.capture_only:
+            s.state = FINISHED
+            s.message = f"{sum(x.accepted for x in s.samples)} Rohaufnahmen gespeichert: {s.session_path}"
+            await self._publish()
+            return VisionErrorCode.OK
         accepted = _Accepted.of(s.samples)
         refusal = _axes_refusal(accepted.flanges)
         if refusal is not None:
@@ -625,7 +763,10 @@ class HandEyeSession:
         if not self.active:
             return VisionErrorCode.INVALID_STATE
         self._s.state = IDLE
-        self._s.message = "abgebrochen, nichts gespeichert"
+        self._s.message = (
+            f"abgebrochen, Rohaufnahmen bleiben unter {self._s.session_path}"
+            if self._s.capture_only else "abgebrochen, nichts gespeichert"
+        )
         _log.info("Hand-Auge-Kalibrierung abgebrochen")
         await self._publish()
         return VisionErrorCode.OK
@@ -638,6 +779,8 @@ class HandEyeSession:
         `(Pose, Grund)` liefern."""
         if s.board is None:
             result = await self._ports.measure_tag(s.tag_id)
+        elif s.capture_only and self._ports.capture_board_raw is not None:
+            result = await self._ports.capture_board_raw(s.board)
         elif self._ports.measure_board is None:
             return None, "Dieser Server kann kein Schachbrett messen", {}
         else:
@@ -752,12 +895,14 @@ class HandEyeSession:
                 #: Herkunft der Intrinsik: `calibration`, `realsense_factory`,
                 #: `placeholder` oder `null` (unbekannt).
                 "intrinsicsSource": self._intrinsics_source(),
+                "sessionPath": s.session_path,
                 "acceptedCount": len(flanges),
                 "rotationSpreadDeg": spread_deg,
                 "rotationAxes": axes,
                 "samples": [
                     {
                         "index": index,
+                        "poseId": sample.pose_id,
                         "accepted": sample.accepted,
                         "detail": sample.detail,
                         "flangeInBase": pose_to_dict(sample.flange_in_base),

@@ -1750,6 +1750,35 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
 - **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
 - **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
 
+### 15.5 Rohbild-Aufnahme und Offline-Kalibrierung (09.11.2026)
+
+Der bestehende Frontend-Button „Kalibrierung starten“ nutzt bei einem
+Schachbrett `captureOnly: true` in `StartHandEyeCalibration`. Der Pi verwendet
+den **normal konfigurierten Kamerastream** samt dessen kalibrierter Intrinsik.
+`CaptureHandEyeSample` erhält zusätzlich `poseId: "pose_NNN"`, `poseGroup`
+(`A`–`E`) und `jointAnglesRad` (sieben Winkel); `flangeInBase` bleibt die FK
+der gemessenen Gelenkwinkel. Jede Aufnahme wird sofort unter
+`data/rohbilder/calibration/<UTC>_<ID>/poses/pose_NNN/` gespeichert:
+`camera.png` ist das unveränderte Bild, `robot_state.json` enthält Pose-ID,
+4×4-Transformation `T_base_flange`, Gelenkwinkel und Bildzeitstempel.
+`config.json` enthält Brett, Koordinatenkonventionen und Intrinsik.
+
+`HandEyeStatus.sessionPath` nennt den Sitzungsordner. In diesem Modus schließt
+`FinishHandEyeCalibration` nur die Aufnahme; weder Berechnung noch Aktivierung
+findet online statt. `AbortHandEyeCalibration` erhält die bisher geschriebenen
+Bilder. Wenn sich Gelenke während einer Aufnahme bewegen, kann
+`CaptureHandEyeSample` mit `invalidatePoseId` und `reason` dieselbe Pose als
+ungültig kennzeichnen; `quality.json` dokumentiert dies, Rohbild und
+`robot_state.json` bleiben unverändert. Die Offline-Auswertung schließt
+solche Aufnahmen aus. Die bisherigen Tag- und Brett-Aufrufe ohne
+`captureOnly` behalten ihre Semantik.
+
+Offline-Aufruf: `python -m tagloc.cli.calibrate_handeye_offline <sitzungsordner>
+[--pnp iterative|ippe]`. Ergebnisse liegen ausschließlich in `results/`:
+Detektionscache, Experiment-JSON, HTML-Vergleich und bei konvergierter
+Gesamtlösung `candidate_handeye_<pnp>.json`. Die Kandidatendatei ist mit dem
+bestehenden Hand-Auge-Dateiformat kompatibel und wird nicht automatisch aktiv.
+
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 
 Die Deckenkamera wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde, und meldet nur **bestätigte** Änderungen. Formate, Regeln und Defaults stehen im Arbeitsplan [`arbeitsplaene/zellen-ueberwachung.md`](arbeitsplaene/zellen-ueberwachung.md). Die Knoten gibt es nur mit AprilTag und ohne `hand_eye_path`. Sie liegen unter `VisionMachine` und sind zusätzlich unter `VisionProgram` verlinkt.
