@@ -260,6 +260,7 @@ class PupilAprilTagDetector:
                     tag_id=int(detection.tag_id),
                     corners=tuple(corners),
                     decision_margin=float(getattr(detection, "decision_margin", 0.0)),
+                    hamming=int(getattr(detection, "hamming", 0)),
                 )
             )
         return sorted(found, key=lambda observation: observation.tag_id)

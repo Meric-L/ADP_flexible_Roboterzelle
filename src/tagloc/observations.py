@@ -30,6 +30,8 @@ class TagObservation:
     tag_id: int
     corners: tuple[tuple[float, float], ...]
     decision_margin: float | None = None
+    #: Korrigierte Bitfehler beim Dekodieren (nur `pupil_apriltags`).
+    hamming: int | None = None
 
     def center(self) -> tuple[float, float]:
         xs = [corner[0] for corner in self.corners]

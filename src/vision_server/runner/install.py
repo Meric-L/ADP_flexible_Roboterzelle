@@ -32,6 +32,7 @@ from .hand_eye import _install_hand_eye_session
 from .health import _start_camera_health
 from .jobs import install_job_methods
 from .layer2 import _install_layer2_run
+from .light_test import install_light_test
 from .livestream import _start_camera_stream, _start_mjpeg_server
 from .machine import VisionMachine, _watch_loop_lag
 from .measure_board import _install_measure_board
@@ -124,6 +125,12 @@ async def _install_measurements(wiring: Wiring) -> None:
     await _install_measure_board(
         space, config, source, wiring.methods, wiring.states,
         lambda: wiring.jobs.busy or wiring.calibration_processing(),
+    )
+    # Helligkeitstest an beiden Pis: liest nur Kamerabilder (und friert auf
+    # Wunsch die Belichtung ein). Gesperrt fuer Job und Kamera-Kalibrierung.
+    await install_light_test(
+        space, config, source, wiring.methods, wiring.states,
+        lambda: wiring.jobs.busy or wiring.calibration_busy(),
     )
     if space.last_tag_measurement is None:
         return

@@ -1871,6 +1871,22 @@ Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, 
 - **Bildwahl:** wie `SaveUseCaseImage` (Bild mindestens 0,3 s nach dem Aufruf, höchstens 5 s Wartezeit).
 - **Konfiguration:** `VisionServerConfig.image_kinds` (`ImageKind`: `base_dir`, `folder`, `stem`, `series_key`, `number_key`, `schema`, `measure` = `trial` | `sheet` | `none`). Die Methode entsteht, wenn eine Kamera da ist und `image_kinds` nicht leer ist. `use_case_dir` bleibt als Kurzform für den Zweck `usecase`: `None` entfernt ihn (und damit `SaveUseCaseImage`), ein anderer Pfad ersetzt dessen `base_dir`.
 
+## 18c. Helligkeitstest: RecordLightLevel / LightTestStatus / SetExposureLock (beide Pis)
+
+Wie gut ein fest montierter Tag bei abnehmendem Licht noch erkannt wird. Das Frontend (Fenster „Helligkeitstest“) friert die Belichtung bei voller Helligkeit ein und nimmt je Lichtstufe viele Bilder auf. Code: `vision_server/lighttest.py` (Auswertung) und `runner/light_test.py` (Methoden).
+
+| Methode | Signatur | Wirkung |
+| --- | --- | --- |
+| `RecordLightLevel` | `(RequestJson: String) -> (StatusJson: String, Error: Int32)` | startet eine Stufe und antwortet sofort (sie dauert Minuten); `BUSY` bei Job, Kalibrierung oder laufender Stufe |
+| `LightTestStatus` | `(Command: String) -> (StatusJson: String, Error: Int32)` | `""` liest Zustand und Fortschritt, `"abort"` bricht ab (das Bisherige wird gespeichert) |
+| `SetExposureLock` | `(Command: String) -> (ResultJson: String, Error: Int32)` | `"lock"` friert Belichtung, Gain und Weißabgleich auf den aktuellen Automatik-Werten ein, `"unlock"` schaltet die Automatik wieder an, `""` liest nur |
+
+- **Anfrage** (`wsc.vision.lighttest.request/1`): `tagId` (Pflicht), `frames` (1–2000, Standard 300), `sampleImages` (0–50, Standard 10), `series` (0 = neue Reihe), `sizeM` (optional, sonst Tag-Map), `level` (frei, z. B. `{percent, lux, label}`), `metadata` (frei).
+- **Je Bild:** `cv2.aruco` (erkannt, Pose im Kamera-KS, Reprojektionsfehler), `pupil_apriltags` (erkannt, `decisionMargin`, `hamming`) und der Michelson-Kontrast: schwarzer Rand (mittlere Zellreihe) gegen einen schmalen Ring direkt außerhalb, im entzerrten Tag. Fehlt `pupil_apriltags`, läuft die Stufe ohne (Hinweis in `detectors.apriltagError`).
+- **Zusammenfassung** (`summary`): Erkennungsraten beider Detektoren, Decision Margin und Hamming (Mittel, sd, min, max, Häufigkeiten), Pose-Jitter (sd je Achse, radial RMS/max in mm, Drehung RMS in Grad), Kontrast und mittlere Bildhelligkeit.
+- **Ablage:** `data/Helligkeitstest/reihe_NNN/stufe_NNN.json` (Schema `wsc.vision.lighttest.level/1`, mit allen Einzelbildern) und `stufe_NNN_bild_NN.png` (gleichmäßig verteilte Stichprobe). Der Status liefert dieselbe JSON ohne die Einzelbilder, dazu `file` und `folder`.
+- **Belichtung:** Picamera2 setzt `AeEnable`/`AwbEnable` aus und `ExposureTime`, `AnalogueGain`, `ColourGains` auf die Werte aus den Metadaten; RealSense schaltet `enable_auto_exposure`/`enable_auto_white_balance` aus. Die Antwort trägt die mittlere Bildhelligkeit vor und nach dem Umschalten (`imageMeanBefore`/`imageMeanAfter`): bleibt sie gleich, hat das Einfrieren gehalten. Ein Neu-Öffnen der Kamera (Watchdog) hebt das Einfrieren auf; jede Stufe hält die Werte am Anfang und Ende fest (`camera.exposureStart`/`exposureEnd`).
+
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
 
 Die Hand-Kamera misst die Lage eines Modul-Tags relativ zu zwei Bezugskanten des Moduls, die im selben Bild liegen. Sie ersetzt den Zollstock. Die Steuerung fragt mit `PlanTagReferenceView`, wohin die Kamera soll (rechnet nur, kein Bild), fährt dorthin und ruft `MeasureTagReference` auf. Ablauf und Begründung stehen im Arbeitsplan [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), das Verfahren in [`apriltag-referenz.md`](apriltag-referenz.md) (Abschnitt 14).
