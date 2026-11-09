@@ -1,0 +1,1046 @@
+{
+  "schema": "adp.repeatability.bericht/1",
+  "einstellungen": {
+    "speedFraction": 1,
+    "maxSpeed": 0.15,
+    "settleS": 2,
+    "burstCount": 3,
+    "warmupMinutes": 1,
+    "noiseCount": 30,
+    "autoCycles": 30,
+    "handCycles": 30
+  },
+  "regeln": {
+    "laufTrennung": "cycle kleiner als beim vorigen Bild",
+    "bildVerwendet": "ok, 60 Ecken, settled, nicht movedDuringCapture, Flansch <= 5.0 mm von P",
+    "zyklus": "Burst-Mittel",
+    "rauschGrenze": 0.2
+  },
+  "laeufe": [
+    {
+      "phase": "warmlauf",
+      "lauf": 1,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:04:22",
+      "bis": "2026-11-09T16:08:23",
+      "nBilder": 4,
+      "nVerwendet": 4,
+      "nZyklen": 4,
+      "kennzahlen": {}
+    },
+    {
+      "phase": "warmlauf",
+      "lauf": 2,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:10:04",
+      "bis": "2026-11-09T16:10:04",
+      "nBilder": 1,
+      "nVerwendet": 1,
+      "nZyklen": 1,
+      "kennzahlen": {}
+    },
+    {
+      "phase": "rauschen",
+      "lauf": 1,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:11:26",
+      "bis": "2026-11-09T16:12:06",
+      "nBilder": 27,
+      "nVerwendet": 27,
+      "nZyklen": 27,
+      "kennzahlen": {
+        "nBilder": 27,
+        "kamera": {
+          "rpUm": 9.144788223576883,
+          "lMeanUm": 2.966628719335427,
+          "sLUm": 2.059386501413819,
+          "stdPerAxisUm": [
+            2.4408539506370777,
+            2.7244607404098593
+          ],
+          "centroidMm": [
+            143.28346483762172,
+            119.8237525848638
+          ],
+          "n": 27
+        },
+        "flansch": {
+          "rpUm": 6.80272937156934,
+          "lMeanUm": 2.1399207103149696,
+          "sLUm": 1.5542695537514566,
+          "stdPerAxisUm": [
+            0.55771000007182,
+            1.7162327621140876,
+            1.9785460731805276
+          ],
+          "centroidMm": [
+            448.8255675680643,
+            59.16069450567728,
+            445.54266564807176
+          ],
+          "n": 27
+        },
+        "rotationStdArcsec": 2.7273334870830763,
+        "massstabRelStdPpm": 18.528345524716343,
+        "mittelKameraMm": [
+          143.28346483762172,
+          119.8237525848638
+        ],
+        "mittelFlanschMm": [
+          448.8255675680643,
+          59.16069450567728,
+          445.54266564807176
+        ]
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 1,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:13:46",
+      "bis": "2026-11-09T16:18:25",
+      "nBilder": 38,
+      "nVerwendet": 36,
+      "nZyklen": 12,
+      "kennzahlen": {
+        "nZyklen": 12,
+        "kamera": {
+          "rpUm": 225.7789048747722,
+          "lMeanUm": 80.64273132431423,
+          "sLUm": 48.37872451681932,
+          "stdPerAxisUm": [
+            60.21835423974218,
+            76.21486383853444
+          ],
+          "centroidMm": [
+            143.7575085286811,
+            120.46297232711773
+          ],
+          "n": 12
+        },
+        "flansch": {
+          "rpUm": 106.47910450329273,
+          "lMeanUm": 47.21447928312233,
+          "sLUm": 19.754875073390135,
+          "stdPerAxisUm": [
+            17.18612846203757,
+            43.40839132838904,
+            25.346910672398447
+          ],
+          "centroidMm": [
+            448.88982157944815,
+            59.301523646554955,
+            445.4633085854064
+          ],
+          "n": 12
+        },
+        "rotationStdArcsec": 38.26669588407336,
+        "massstabRelStdPpm": 46.1298236763981,
+        "burstSigmaMedianUm": 2.5693493525532967
+      }
+    },
+    {
+      "phase": "rauschen",
+      "lauf": 2,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:20:01",
+      "bis": "2026-11-09T16:20:08",
+      "nBilder": 4,
+      "nVerwendet": 4,
+      "nZyklen": 4,
+      "kennzahlen": {
+        "nBilder": 4,
+        "kamera": {
+          "rpUm": 9.791713292883847,
+          "lMeanUm": 3.5850313819134496,
+          "sLUm": 2.0688939703234657,
+          "stdPerAxisUm": [
+            3.6094240936959827,
+            2.896373592044611
+          ],
+          "centroidMm": [
+            143.83412581857587,
+            121.66396960208178
+          ],
+          "n": 4
+        },
+        "flansch": {
+          "rpUm": 7.42636863921004,
+          "lMeanUm": 2.2260917361844066,
+          "sLUm": 1.7334256343418777,
+          "stdPerAxisUm": [
+            0.45073624696308057,
+            1.67856323079299,
+            2.567360376516768
+          ],
+          "centroidMm": [
+            449.0578876040419,
+            58.0413343671105,
+            445.47453829161907
+          ],
+          "n": 4
+        },
+        "rotationStdArcsec": 1.8520051687051635,
+        "massstabRelStdPpm": 21.353871594173313,
+        "mittelKameraMm": [
+          143.83412581857587,
+          121.66396960208178
+        ],
+        "mittelFlanschMm": [
+          449.0578876040419,
+          58.0413343671105,
+          445.47453829161907
+        ]
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 2,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:21:01",
+      "bis": "2026-11-09T16:27:05",
+      "nBilder": 45,
+      "nVerwendet": 40,
+      "nZyklen": 14,
+      "kennzahlen": {
+        "nZyklen": 14,
+        "kamera": {
+          "rpUm": 187.09117185620232,
+          "lMeanUm": 85.93631004121903,
+          "sLUm": 33.7182872716611,
+          "stdPerAxisUm": [
+            66.50495342472098,
+            68.3164999968398
+          ],
+          "centroidMm": [
+            143.7830975698241,
+            120.612987715523
+          ],
+          "n": 14
+        },
+        "flansch": {
+          "rpUm": 108.72922311161129,
+          "lMeanUm": 35.93709166442194,
+          "sLUm": 24.264043815729778,
+          "stdPerAxisUm": [
+            15.770330810925607,
+            34.40721815087975,
+            23.388086316234173
+          ],
+          "centroidMm": [
+            448.889487955514,
+            59.2668131285754,
+            445.4555212346183
+          ],
+          "n": 14
+        },
+        "rotationStdArcsec": 35.22655895284191,
+        "massstabRelStdPpm": 62.23964023145617,
+        "burstSigmaMedianUm": 2.2184617922908636
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 3,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:28:53",
+      "bis": "2026-11-09T16:30:01",
+      "nBilder": 7,
+      "nVerwendet": 7,
+      "nZyklen": 3,
+      "kennzahlen": {
+        "nZyklen": 3,
+        "kamera": {
+          "rpUm": 111.91126531022367,
+          "lMeanUm": 55.40298045998762,
+          "sLUm": 18.83609495007869,
+          "stdPerAxisUm": [
+            61.09672501436045,
+            35.017481794992825
+          ],
+          "centroidMm": [
+            143.76207176097023,
+            120.62059246883518
+          ],
+          "n": 3
+        },
+        "flansch": {
+          "rpUm": 84.80400266129747,
+          "lMeanUm": 42.779987540056055,
+          "sLUm": 14.008005040413812,
+          "stdPerAxisUm": [
+            14.331394620630775,
+            49.00417641551758,
+            18.292540232779917
+          ],
+          "centroidMm": [
+            448.89235083120064,
+            59.18940828622154,
+            445.429845191143
+          ],
+          "n": 3
+        },
+        "rotationStdArcsec": 57.54822599898969,
+        "massstabRelStdPpm": 45.034056461805946,
+        "burstSigmaMedianUm": 2.5097559944792716
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 4,
+      "sitzung": "2026-11-09_160215",
+      "von": "2026-11-09T16:31:31",
+      "bis": "2026-11-09T16:34:23",
+      "nBilder": 14,
+      "nVerwendet": 14,
+      "nZyklen": 5,
+      "kennzahlen": {
+        "nZyklen": 5,
+        "kamera": {
+          "rpUm": 108.36762900204533,
+          "lMeanUm": 36.94486151525192,
+          "sLUm": 23.80758916226447,
+          "stdPerAxisUm": [
+            36.18543112734075,
+            31.041413729469223
+          ],
+          "centroidMm": [
+            143.69581327998057,
+            120.62238605417167
+          ],
+          "n": 5
+        },
+        "flansch": {
+          "rpUm": 89.24620079155191,
+          "lMeanUm": 44.77221648511855,
+          "sLUm": 14.82466143547779,
+          "stdPerAxisUm": [
+            10.515768454574049,
+            48.95022507610191,
+            14.790330514332416
+          ],
+          "centroidMm": [
+            448.8767928460672,
+            59.19610345641894,
+            445.3917602463513
+          ],
+          "n": 5
+        },
+        "rotationStdArcsec": 48.009786247844616,
+        "massstabRelStdPpm": 57.77637115470412,
+        "burstSigmaMedianUm": 1.6988510089137283
+      }
+    },
+    {
+      "phase": "zyklen_hand",
+      "lauf": 1,
+      "sitzung": "2026-11-09_163746",
+      "von": "2026-11-09T16:37:58",
+      "bis": "2026-11-09T16:49:43",
+      "nBilder": 96,
+      "nVerwendet": 83,
+      "nZyklen": 29,
+      "kennzahlen": {
+        "nZyklen": 29,
+        "kamera": {
+          "rpUm": 3337.4760015179313,
+          "lMeanUm": 1771.7359709576735,
+          "sLUm": 521.9133435200857,
+          "stdPerAxisUm": [
+            783.1770906356686,
+            1705.9262596325786
+          ],
+          "centroidMm": [
+            143.97641170378267,
+            119.02178874916696
+          ],
+          "n": 29
+        },
+        "flansch": {
+          "rpUm": 1412.7629102004275,
+          "lMeanUm": 649.9470736526185,
+          "sLUm": 254.27194551593635,
+          "stdPerAxisUm": [
+            126.21436884237642,
+            464.09297726741016,
+            520.4420149204731
+          ],
+          "centroidMm": [
+            449.15217863973925,
+            59.127836399353264,
+            445.94411276525136
+          ],
+          "n": 29
+        },
+        "rotationStdArcsec": 1541.6261755077019,
+        "massstabRelStdPpm": 1264.9016855400146,
+        "burstSigmaMedianUm": 5.152070569972487
+      }
+    }
+  ],
+  "autoGesamt": {
+    "nZyklen": 34,
+    "kamera": {
+      "rpUm": 249.83610933794768,
+      "lMeanUm": 104.99108998677822,
+      "sLUm": 48.281673117056485,
+      "stdPerAxisUm": [
+        64.72142075192889,
+        97.46497238935804
+      ],
+      "centroidMm": [
+        143.75937500013305,
+        120.56209422412054
+      ],
+      "n": 34
+    },
+    "flansch": {
+      "rpUm": 160.20362114486568,
+      "lMeanUm": 57.551293401116716,
+      "sLUm": 34.21744258124965,
+      "stdPerAxisUm": [
+        15.658129756942897,
+        56.967268790343525,
+        33.05913234530292
+      ],
+      "centroidMm": [
+        448.8879913839561,
+        59.26183557939631,
+        445.4466275621976
+      ],
+      "n": 34
+    },
+    "rotationStdArcsec": 43.40166161495251,
+    "massstabRelStdPpm": 105.13991394816647,
+    "burstSigmaMedianUm": 2.220787414390947
+  },
+  "handGesamt": {
+    "nZyklen": 29,
+    "kamera": {
+      "rpUm": 3337.4760015179313,
+      "lMeanUm": 1771.7359709576735,
+      "sLUm": 521.9133435200857,
+      "stdPerAxisUm": [
+        783.1770906356686,
+        1705.9262596325786
+      ],
+      "centroidMm": [
+        143.97641170378267,
+        119.02178874916696
+      ],
+      "n": 29
+    },
+    "flansch": {
+      "rpUm": 1412.7629102004275,
+      "lMeanUm": 649.9470736526185,
+      "sLUm": 254.27194551593635,
+      "stdPerAxisUm": [
+        126.21436884237642,
+        464.09297726741016,
+        520.4420149204731
+      ],
+      "centroidMm": [
+        449.15217863973925,
+        59.127836399353264,
+        445.94411276525136
+      ],
+      "n": 29
+    },
+    "rotationStdArcsec": 1541.6261755077019,
+    "massstabRelStdPpm": 1264.9016855400146,
+    "burstSigmaMedianUm": 5.152070569972487
+  },
+  "messrauschen": {
+    "rpUm": 9.144788223576883,
+    "noiseRatioKamera": 0.03660314855130462,
+    "noiseRatioFlansch": 0.05708228165022325,
+    "gueltig": true,
+    "faktorFeiner": 27.320054136828006,
+    "versatzLauf1Lauf2KameraMm": 1.9208399689729563,
+    "flanschYLauf1Lauf2Mm": [
+      59.16069450567728,
+      58.0413343671105
+    ]
+  },
+  "laufVersatz": {
+    "zumGesamtmittelUm": {
+      "0": 99.13946833183078,
+      "1": 56.15075938826657,
+      "2": 58.560371871318004,
+      "3": 87.608201897174
+    },
+    "paareUm": {
+      "1-2": 152.18217959079612,
+      "1-3": 157.68618253974083,
+      "1-4": 170.9357776635664,
+      "2-3": 22.35882176900919,
+      "2-4": 87.78881490738594,
+      "3-4": 66.28275229210384
+    },
+    "maxUm": 170.9357776635664
+  },
+  "gelenkSollIst": {
+    "einheit": "mrad, Ist - Soll, verwendete Bilder",
+    "phasen": {
+      "warmlauf": {
+        "n": 5,
+        "mittelMrad": [
+          2.1469544153660545,
+          1.5914738178253285,
+          -0.7552117109298762,
+          -2.0850658416749823,
+          -4.419691239794098,
+          1.4454523722331025,
+          -5.855401357015011
+        ],
+        "sigmaMrad": [
+          0.09138295722884951,
+          0.016104196284133326,
+          0.032658994229807746,
+          0.02581121392163379,
+          0.3821041898091865,
+          0.09090649576924269,
+          0.19678520587961862
+        ]
+      },
+      "rauschen": {
+        "n": 31,
+        "mittelMrad": [
+          0.923955793021828,
+          1.3691369564302525,
+          -0.357736342696734,
+          -2.0464107554447466,
+          -3.161057889942202,
+          0.9061700554304273,
+          -3.116561520484219
+        ],
+        "sigmaMrad": [
+          0.6167120508688593,
+          0.08849071210918515,
+          0.15886771517344958,
+          0.017150118148392204,
+          0.6718840339941495,
+          0.23388839383486623,
+          0.9872356125297115
+        ]
+      },
+      "zyklen_auto": {
+        "n": 97,
+        "mittelMrad": [
+          2.0870101306894697,
+          1.6060820764692372,
+          -0.7821443359466761,
+          -2.1354808020839062,
+          -4.818545110344478,
+          1.4884463700232258,
+          -5.855983884883537
+        ],
+        "sigmaMrad": [
+          0.1134626632777671,
+          0.017143973042304233,
+          0.03431801349784799,
+          0.06040120974617592,
+          0.179292189143183,
+          0.09326030281988122,
+          0.15291182119566024
+        ]
+      },
+      "zyklen_hand": {
+        "n": 83,
+        "mittelMrad": [
+          0.4457683446461781,
+          1.623878277927994,
+          0.09998206393306913,
+          -0.9633977729155478,
+          -1.2883113166055546,
+          1.4078961797507248,
+          -1.0954488712142672
+        ],
+        "sigmaMrad": [
+          0.8811120795935377,
+          0.7168499766744093,
+          0.4959945433756956,
+          0.5163453736617976,
+          3.5586830266595846,
+          0.4019474661681808,
+          6.195758494718551
+        ],
+        "gelenk7Seiten": {
+          "unter": {
+            "n": 56,
+            "mittelMrad": -5.369585894403043
+          },
+          "ueber": {
+            "n": 27,
+            "mittelMrad": 7.769427917621711
+          }
+        }
+      }
+    },
+    "korrelationBilddrehungAuto": [
+      -0.4734148556759997,
+      0.28443722428093815,
+      -0.042516398738075306,
+      -0.14685466034608916,
+      0.53731376707662,
+      0.06295707013585022,
+      0.7999960243761962
+    ]
+  },
+  "driftImLauf": [
+    {
+      "phase": "warmlauf",
+      "lauf": 1,
+      "nBilder": 4,
+      "dauerMin": 4.016666666666667,
+      "kameraX": {
+        "umProMin": -17.80508000203906,
+        "r2": 0.8554861313382915
+      },
+      "kameraY": {
+        "umProMin": 83.75726991903313,
+        "r2": 0.7112962134160429
+      },
+      "flanschX": {
+        "umProMin": -4.26702634448896,
+        "r2": 0.8031987574548963
+      },
+      "flanschY": {
+        "umProMin": -6.904859245754125,
+        "r2": 0.2543090980383409
+      },
+      "flanschZ": {
+        "umProMin": -7.629521520094242,
+        "r2": 0.6540479935241621
+      }
+    },
+    {
+      "phase": "rauschen",
+      "lauf": 1,
+      "nBilder": 27,
+      "dauerMin": 0.6666666666666666,
+      "kameraX": {
+        "umProMin": -7.444915931033707,
+        "r2": 0.40730187811787133
+      },
+      "kameraY": {
+        "umProMin": -10.059620507144835,
+        "r2": 0.5968737668130485
+      },
+      "flanschX": {
+        "umProMin": -1.495997500954126,
+        "r2": 0.31501067951753015
+      },
+      "flanschY": {
+        "umProMin": 2.1295468566026936,
+        "r2": 0.06740660110920649
+      },
+      "flanschZ": {
+        "umProMin": -5.985348720075971,
+        "r2": 0.4006516963929144
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 1,
+      "nBilder": 36,
+      "dauerMin": 4.383333333333334,
+      "kameraX": {
+        "umProMin": 15.066925863680506,
+        "r2": 0.12191703088167127
+      },
+      "kameraY": {
+        "umProMin": 39.7214844283077,
+        "r2": 0.5290028496427457
+      },
+      "flanschX": {
+        "umProMin": 0.3437099248334588,
+        "r2": 0.0007793493163346099
+      },
+      "flanschY": {
+        "umProMin": -1.318401966843573,
+        "r2": 0.0017974298751909368
+      },
+      "flanschZ": {
+        "umProMin": 2.6466367420254158,
+        "r2": 0.021224839491465364
+      }
+    },
+    {
+      "phase": "rauschen",
+      "lauf": 2,
+      "nBilder": 4,
+      "dauerMin": 0.11666666666666667,
+      "kameraX": {
+        "umProMin": -69.40748936262439,
+        "r2": 0.8901976364276055
+      },
+      "kameraY": {
+        "umProMin": 25.729558236078585,
+        "r2": 0.18997877963014742
+      },
+      "flanschX": {
+        "umProMin": 4.289139652897733,
+        "r2": 0.21799422978626826
+      },
+      "flanschY": {
+        "umProMin": -32.094185007109125,
+        "r2": 0.8800895916724425
+      },
+      "flanschZ": {
+        "umProMin": -52.012190359528795,
+        "r2": 0.9880665814350812
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 2,
+      "nBilder": 40,
+      "dauerMin": 5.75,
+      "kameraX": {
+        "umProMin": 0.34795751639229106,
+        "r2": 0.00010822589735848265
+      },
+      "kameraY": {
+        "umProMin": -28.53793534140707,
+        "r2": 0.5873472629248122
+      },
+      "flanschX": {
+        "umProMin": 1.1915902174436104,
+        "r2": 0.020545787671867655
+      },
+      "flanschY": {
+        "umProMin": -2.6922257320827554,
+        "r2": 0.020611614844015524
+      },
+      "flanschZ": {
+        "umProMin": -3.937375883240228,
+        "r2": 0.10336710076117639
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 3,
+      "nBilder": 7,
+      "dauerMin": 1.1333333333333333,
+      "kameraX": {
+        "umProMin": -109.56957038265581,
+        "r2": 0.9740592160365653
+      },
+      "kameraY": {
+        "umProMin": -51.29196650793733,
+        "r2": 0.37005661609023477
+      },
+      "flanschX": {
+        "umProMin": -25.683097840443555,
+        "r2": 0.9735842490706894
+      },
+      "flanschY": {
+        "umProMin": 58.42165665618545,
+        "r2": 0.24937809534173083
+      },
+      "flanschZ": {
+        "umProMin": -20.125392363814306,
+        "r2": 0.4796015678847878
+      }
+    },
+    {
+      "phase": "zyklen_auto",
+      "lauf": 4,
+      "nBilder": 14,
+      "dauerMin": 2.8666666666666667,
+      "kameraX": {
+        "umProMin": -1.2682472433571361,
+        "r2": 0.0013200134136819308
+      },
+      "kameraY": {
+        "umProMin": -16.387077588459412,
+        "r2": 0.301728126102475
+      },
+      "flanschX": {
+        "umProMin": -0.9587769174038712,
+        "r2": 0.00907102157729911
+      },
+      "flanschY": {
+        "umProMin": 10.210010229824155,
+        "r2": 0.04724389797957407
+      },
+      "flanschZ": {
+        "umProMin": -0.7879133846394991,
+        "r2": 0.0030350934288049247
+      }
+    },
+    {
+      "phase": "zyklen_hand",
+      "lauf": 1,
+      "nBilder": 83,
+      "dauerMin": 11.75,
+      "kameraX": {
+        "umProMin": -20.35304110615737,
+        "r2": 0.007939706804811264
+      },
+      "kameraY": {
+        "umProMin": -265.2205373302589,
+        "r2": 0.28228614940650754
+      },
+      "flanschX": {
+        "umProMin": -1.799061524586906,
+        "r2": 0.0023742098249949217
+      },
+      "flanschY": {
+        "umProMin": -1.0814479433100515,
+        "r2": 6.870900373967537e-05
+      },
+      "flanschZ": {
+        "umProMin": 49.986060051668,
+        "r2": 0.10777743246832183
+      }
+    }
+  ],
+  "rauschenGegenAuto": {
+    "kameraMm": 0.8749752133414888,
+    "flanschMm": 0.15353760665811736,
+    "rotNoiseDeg": -0.9098264966957041,
+    "rotAutoDeg": -1.1615824978207612,
+    "gelenk7NoiseMrad": -2.742754088507787,
+    "gelenk7AutoMrad": -5.855983884883537
+  },
+  "versatzZuP": {
+    "autoMittelMm": [
+      -0.16492213475607334,
+      0.26106686829516107,
+      -1.5687043725740533
+    ],
+    "autoStdMm": [
+      0.015658129756942897,
+      0.05696726879034352,
+      0.03305913234530293
+    ],
+    "handMittelMm": [
+      0.09926512102688007,
+      0.12706768825211842,
+      -1.0712191695200517
+    ]
+  },
+  "standardauswertung": {
+    "2026-11-09_160215": {
+      "basisEcken": 60,
+      "nBilder": 140,
+      "nVerwendet": 135,
+      "serien": {
+        "rauschen": {
+          "n": 31,
+          "rpUm": 1888.7340692443595,
+          "noiseRatio": null,
+          "valid": null
+        },
+        "zyklen_auto": {
+          "n": 34,
+          "rpUm": 251.85533227974366,
+          "noiseRatio": 7.4992816397728,
+          "valid": false
+        }
+      }
+    },
+    "2026-11-09_163746": {
+      "basisEcken": 14,
+      "nBilder": 96,
+      "nVerwendet": 87,
+      "serien": {
+        "zyklen_hand": {
+          "n": 30,
+          "rpUm": 106853.69352148366,
+          "noiseRatio": null,
+          "valid": false
+        }
+      }
+    }
+  },
+  "ausgeschlossen": [
+    {
+      "datei": "03_zyklen_auto/a_037.json",
+      "phase": "zyklen_auto",
+      "zyklus": 13,
+      "burst": 1,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 386 mm entfernt, 0 Ecken)",
+      "abstandPMm": 385.9326670298095
+    },
+    {
+      "datei": "03_zyklen_auto/a_038.json",
+      "phase": "zyklen_auto",
+      "zyklus": 13,
+      "burst": 2,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 386 mm entfernt, 0 Ecken)",
+      "abstandPMm": 385.9326670298095
+    },
+    {
+      "datei": "03_zyklen_auto/a_048.json",
+      "phase": "zyklen_auto",
+      "zyklus": 4,
+      "burst": 1,
+      "ecken": 56,
+      "grund": "nur 56 Ecken",
+      "abstandPMm": 1.5608768863443612
+    },
+    {
+      "datei": "03_zyklen_auto/a_049.json",
+      "phase": "zyklen_auto",
+      "zyklus": 4,
+      "burst": 2,
+      "ecken": 56,
+      "grund": "nur 56 Ecken",
+      "abstandPMm": 1.562401077987412
+    },
+    {
+      "datei": "03_zyklen_auto/a_081.json",
+      "phase": "zyklen_auto",
+      "zyklus": 15,
+      "burst": 1,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 386 mm entfernt, 0 Ecken)",
+      "abstandPMm": 385.8887504500456
+    },
+    {
+      "datei": "03_zyklen_auto/a_082.json",
+      "phase": "zyklen_auto",
+      "zyklus": 15,
+      "burst": 2,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 386 mm entfernt, 0 Ecken)",
+      "abstandPMm": 385.8887504500456
+    },
+    {
+      "datei": "03_zyklen_auto/a_083.json",
+      "phase": "zyklen_auto",
+      "zyklus": 15,
+      "burst": 3,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 386 mm entfernt, 0 Ecken)",
+      "abstandPMm": 385.8887504500456
+    },
+    {
+      "datei": "04_zyklen_hand/h_002.json",
+      "phase": "zyklen_hand",
+      "zyklus": 1,
+      "burst": 2,
+      "ecken": 60,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 5.340054147753397
+    },
+    {
+      "datei": "04_zyklen_hand/h_003.json",
+      "phase": "zyklen_hand",
+      "zyklus": 1,
+      "burst": 3,
+      "ecken": 0,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 351.2708843452317
+    },
+    {
+      "datei": "04_zyklen_hand/h_004.json",
+      "phase": "zyklen_hand",
+      "zyklus": 2,
+      "burst": 1,
+      "ecken": 14,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 54.720389828471724
+    },
+    {
+      "datei": "04_zyklen_hand/h_005.json",
+      "phase": "zyklen_hand",
+      "zyklus": 2,
+      "burst": 2,
+      "ecken": 0,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 300.07065982423364
+    },
+    {
+      "datei": "04_zyklen_hand/h_006.json",
+      "phase": "zyklen_hand",
+      "zyklus": 2,
+      "burst": 3,
+      "ecken": 0,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 482.94549242624345
+    },
+    {
+      "datei": "04_zyklen_hand/h_044.json",
+      "phase": "zyklen_hand",
+      "zyklus": 15,
+      "burst": 2,
+      "ecken": 60,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 1.4190160961558358
+    },
+    {
+      "datei": "04_zyklen_hand/h_045.json",
+      "phase": "zyklen_hand",
+      "zyklus": 15,
+      "burst": 3,
+      "ecken": 42,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 54.07842364316376
+    },
+    {
+      "datei": "04_zyklen_hand/h_046.json",
+      "phase": "zyklen_hand",
+      "zyklus": 16,
+      "burst": 1,
+      "ecken": 0,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 487.41926854340545
+    },
+    {
+      "datei": "04_zyklen_hand/h_047.json",
+      "phase": "zyklen_hand",
+      "zyklus": 16,
+      "burst": 2,
+      "ecken": 0,
+      "grund": "Roboter in Bewegung",
+      "abstandPMm": 478.04883470160854
+    },
+    {
+      "datei": "04_zyklen_hand/h_048.json",
+      "phase": "zyklen_hand",
+      "zyklus": 16,
+      "burst": 3,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 478 mm entfernt, 0 Ecken)",
+      "abstandPMm": 478.1418341287221
+    },
+    {
+      "datei": "04_zyklen_hand/h_091.json",
+      "phase": "zyklen_hand",
+      "zyklus": 31,
+      "burst": 1,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 973 mm entfernt, 0 Ecken)",
+      "abstandPMm": 972.8301428442036
+    },
+    {
+      "datei": "04_zyklen_hand/h_092.json",
+      "phase": "zyklen_hand",
+      "zyklus": 31,
+      "burst": 2,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 973 mm entfernt, 0 Ecken)",
+      "abstandPMm": 972.8409047970779
+    },
+    {
+      "datei": "04_zyklen_hand/h_093.json",
+      "phase": "zyklen_hand",
+      "zyklus": 31,
+      "burst": 3,
+      "ecken": 0,
+      "grund": "Aufnahme abseits von P (Vorpose V, 973 mm entfernt, 0 Ecken)",
+      "abstandPMm": 972.8447419708351
+    }
+  ],
+  "bilder": {
+    "gesamt": 236,
+    "verwendet": 216,
+    "ausgeschlossen": 20
+  }
+}

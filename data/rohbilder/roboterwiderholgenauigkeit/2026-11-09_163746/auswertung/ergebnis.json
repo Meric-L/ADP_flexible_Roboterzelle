@@ -1,0 +1,139 @@
+{
+  "schema": "adp.repeatability.result/1",
+  "ordner": "data/rohbilder/roboterwiderholgenauigkeit/2026-11-09_163746",
+  "board": {
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.025,
+    "markerSizeM": 0.0185,
+    "dictionary": "DICT_5X5_100",
+    "legacyPattern": false
+  },
+  "target": {
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.025,
+    "markerSizeM": 0.0185,
+    "dictionary": "DICT_5X5_100",
+    "legacyPattern": false
+  },
+  "basisIds": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    25,
+    26
+  ],
+  "basisRegel": "Ecken in mindestens 90 % aller Bilder",
+  "ausgeschlosseneIds": [],
+  "streuendeIds": [],
+  "ausgeschlosseneBilder": [
+    {
+      "phase": "zyklen_hand",
+      "index": 3,
+      "datei": "04_zyklen_hand/h_003.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 5,
+      "datei": "04_zyklen_hand/h_005.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 6,
+      "datei": "04_zyklen_hand/h_006.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 46,
+      "datei": "04_zyklen_hand/h_046.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 47,
+      "datei": "04_zyklen_hand/h_047.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 48,
+      "datei": "04_zyklen_hand/h_048.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 91,
+      "datei": "04_zyklen_hand/h_091.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 92,
+      "datei": "04_zyklen_hand/h_092.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    },
+    {
+      "phase": "zyklen_hand",
+      "index": 93,
+      "datei": "04_zyklen_hand/h_093.json",
+      "grund": "nur 0 von 14 Basis-Ecken erkannt"
+    }
+  ],
+  "warnungen": [],
+  "referenzEcken": 14,
+  "rauschstreuungJeEckePx": {},
+  "serien": {
+    "zyklen_hand": {
+      "nAufnahmen": 30,
+      "n": 30,
+      "centroidMm": [
+        147.58858164649646,
+        111.65457805258772
+      ],
+      "lMeanMm": 15.940702749635202,
+      "sLMm": 30.304330257282814,
+      "rpMm": 106.85369352148365,
+      "rpUm": 106853.69352148366,
+      "lMeanUm": 15940.702749635202,
+      "sLUm": 30304.330257282814,
+      "stdPerAxisUm": [
+        19439.962634145533,
+        28342.69862386023
+      ],
+      "rotationStdArcsec": 9987.112165884648,
+      "scaleRelStdPpm": 44963.08659346164,
+      "robotReported": {
+        "n": 30,
+        "rpMm": 32.32303102876993,
+        "lMeanMm": 4.48358809623439,
+        "sLMm": 9.27981431084518,
+        "stdPerAxisMm": [
+          4.238338759036641,
+          8.643867436026165,
+          3.77236636252256
+        ]
+      },
+      "noiseRatio": null,
+      "valid": false
+    }
+  },
+  "warmlauf": [],
+  "nBilder": 96,
+  "nVerwendet": 87,
+  "plots": "matplotlib fehlt"
+}
