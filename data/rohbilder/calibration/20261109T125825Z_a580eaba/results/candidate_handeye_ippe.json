@@ -1,0 +1,26 @@
+{
+  "schema": "wsc.vision.handeye/1",
+  "frameId": "cam_flange",
+  "calibrationId": "cam_flange@2026-11-09T13:11:05Z",
+  "poseFlangeCam": {
+    "position": [
+      -0.047034410743976914,
+      -0.035205488338801556,
+      0.05711763666291317
+    ],
+    "orientation": [
+      -0.004021892962021873,
+      -0.016181035320376087,
+      0.709739139254952,
+      0.7042672452149131
+    ]
+  },
+  "rmsPositionM": 0.002068,
+  "rmsRotationDeg": 1.081549,
+  "maxPositionM": null,
+  "maxRotationDeg": null,
+  "sampleCount": 54,
+  "createdAt": "2026-11-09T13:11:05Z",
+  "refinedReprojectionRmsPx": 1.580135,
+  "intrinsicsSource": "calibration"
+}
