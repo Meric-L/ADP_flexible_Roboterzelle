@@ -1,0 +1,392 @@
+{
+ "schema": "wsc.vision.lighttest.level/1",
+ "reihe": 1,
+ "stufe": 1,
+ "tagId": 0,
+ "level": {
+  "percent": 100,
+  "lux": null,
+  "label": "Decken_Camera_100"
+ },
+ "client": {
+  "camera": "Hand (Pi 2)",
+  "clientTime": "2026-11-09T09:13:37.805Z"
+ },
+ "startedAt": "2026-11-09T10:13:38+01:00",
+ "finishedAt": "2026-11-09T10:13:40+01:00",
+ "aborted": false,
+ "error": null,
+ "camera": {
+  "frameId": "cam_flange",
+  "imageSize": [
+   640,
+   480
+  ],
+  "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+  "intrinsicsSource": "calibration",
+  "exposureStart": {
+   "backend": "realsense",
+   "values": {
+    "autoExposure": 0.0,
+    "exposure": 166.0,
+    "gain": 64.0,
+    "autoWhiteBalance": 0.0,
+    "whiteBalance": 4600.0
+   },
+   "locked": true
+  },
+  "exposureEnd": {
+   "backend": "realsense",
+   "values": {
+    "autoExposure": 0.0,
+    "exposure": 166.0,
+    "gain": 64.0,
+    "autoWhiteBalance": 0.0,
+    "whiteBalance": 4600.0
+   },
+   "locked": true
+  }
+ },
+ "detectors": {
+  "aruco": {
+   "family": "tag36h11",
+   "detectorParameters": {},
+   "subpixelCornerRefinement": true
+  },
+  "apriltag": {
+   "library": "pupil_apriltags"
+  },
+  "apriltagError": null
+ },
+ "summary": {
+  "framesRequested": 25,
+  "framesUsed": 25,
+  "aruco": {
+   "detectionRate": 0.0,
+   "detected": 0,
+   "posed": 0,
+   "reprojectionErrorPx": null
+  },
+  "apriltag": {
+   "detectionRate": 0.0,
+   "detected": 0,
+   "decisionMargin": null,
+   "hamming": null,
+   "hammingCounts": {}
+  },
+  "poseJitter": null,
+  "contrast": null,
+  "imageMean": {
+   "mean": 83.25731432291668,
+   "sd": 0.006396946650337901,
+   "min": 83.24466796875,
+   "max": 83.268896484375,
+   "count": 25
+  }
+ },
+ "images": [
+  "stufe_001_bild_01.png"
+ ],
+ "frames": [
+  {
+   "index": 0,
+   "capturedAt": "2026-11-09T09:13:38.812232+00:00",
+   "imageMean": 83.26567057291666,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 1,
+   "capturedAt": "2026-11-09T09:13:38.880842+00:00",
+   "imageMean": 83.26484049479167,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 2,
+   "capturedAt": "2026-11-09T09:13:38.947726+00:00",
+   "imageMean": 83.26450846354167,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 3,
+   "capturedAt": "2026-11-09T09:13:39.015191+00:00",
+   "imageMean": 83.25500651041666,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 4,
+   "capturedAt": "2026-11-09T09:13:39.082849+00:00",
+   "imageMean": 83.2632421875,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 5,
+   "capturedAt": "2026-11-09T09:13:39.149784+00:00",
+   "imageMean": 83.25311848958333,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 6,
+   "capturedAt": "2026-11-09T09:13:39.217123+00:00",
+   "imageMean": 83.25502604166667,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 7,
+   "capturedAt": "2026-11-09T09:13:39.284394+00:00",
+   "imageMean": 83.25658854166667,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 8,
+   "capturedAt": "2026-11-09T09:13:39.351547+00:00",
+   "imageMean": 83.25651041666667,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 9,
+   "capturedAt": "2026-11-09T09:13:39.418730+00:00",
+   "imageMean": 83.24916666666667,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 10,
+   "capturedAt": "2026-11-09T09:13:39.486256+00:00",
+   "imageMean": 83.26508463541667,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 11,
+   "capturedAt": "2026-11-09T09:13:39.553249+00:00",
+   "imageMean": 83.26182942708333,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 12,
+   "capturedAt": "2026-11-09T09:13:39.620753+00:00",
+   "imageMean": 83.25222981770834,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 13,
+   "capturedAt": "2026-11-09T09:13:39.688054+00:00",
+   "imageMean": 83.26053059895834,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 14,
+   "capturedAt": "2026-11-09T09:13:39.755423+00:00",
+   "imageMean": 83.24466796875,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 15,
+   "capturedAt": "2026-11-09T09:13:39.822197+00:00",
+   "imageMean": 83.260361328125,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 16,
+   "capturedAt": "2026-11-09T09:13:39.889685+00:00",
+   "imageMean": 83.250693359375,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 17,
+   "capturedAt": "2026-11-09T09:13:39.956691+00:00",
+   "imageMean": 83.24729817708334,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 18,
+   "capturedAt": "2026-11-09T09:13:40.023941+00:00",
+   "imageMean": 83.268896484375,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 19,
+   "capturedAt": "2026-11-09T09:13:40.091327+00:00",
+   "imageMean": 83.25675455729167,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 20,
+   "capturedAt": "2026-11-09T09:13:40.158827+00:00",
+   "imageMean": 83.261650390625,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 21,
+   "capturedAt": "2026-11-09T09:13:40.226262+00:00",
+   "imageMean": 83.25778971354167,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 22,
+   "capturedAt": "2026-11-09T09:13:40.293090+00:00",
+   "imageMean": 83.25720052083334,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 23,
+   "capturedAt": "2026-11-09T09:13:40.360430+00:00",
+   "imageMean": 83.2479296875,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 24,
+   "capturedAt": "2026-11-09T09:13:40.428134+00:00",
+   "imageMean": 83.25626302083333,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  }
+ ]
+}
