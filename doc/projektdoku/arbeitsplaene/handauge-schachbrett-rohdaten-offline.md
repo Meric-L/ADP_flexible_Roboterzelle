@@ -107,3 +107,55 @@ OpenCV 4.14, Pis bleiben auf OpenCV 5) erneut ausgewertet. Bericht:
 - 0,5 mm nicht erreichbar mit diesen Daten. Nächster Schritt (braucht Roboterfahrt,
   erst nach Freigabe): Aufnahme mit warmgefahrenem Roboter, wiederholter
   Referenzpose und gemischter Gruppenreihenfolge.
+
+## Nachtrag 09.11.2026 (2): Sitzungen nach Aufwärmen und Kinematik als Fehlerquelle
+
+Die beiden offenen Punkte aus dem Stand oben (warmgefahrener Roboter, gemischte Gruppenreihenfolge) sind in neuen Sitzungen umgesetzt.
+
+### Neue Sitzungen
+
+- `20261109T142717Z_a7d466a1` (S3, Schachbrett 7×10): 53 von 55 Posen gültig, nach 15 min Aufwärmen. Gruppen reihum gemischt, Gruppenwechsel 1,00 (kalt S1: 0,32).
+- `20261109T143834Z_6852cbc7` (S4, ChArUco 11×7): 47 von 47 Posen gültig, nach 15 min Aufwärmen. Gruppen reihum gemischt, Gruppenwechsel 0,98 (kalt S2: 0,28).
+- Alle vier Sitzungen mit `analyse.py` und `drift.py --session` offline nachgerechnet.
+- Berichte: `doc/auswertung/handeye_warm_vergleich.html` (Generator `tools/handeye_offline_cv4/warm_report.py`), Einzelberichte `calibration_schachbrett_2.html` und `calibration_charuco_2.html`.
+
+### Endlösungen kalt gegen warm
+
+Translation T_flange_camera in mm (x / y / z):
+
+- S1 kalt: −47,43 / −33,82 / 57,08; RMS 2,01 px
+- S2 kalt: −47,07 / −35,21 / 57,10; RMS 1,58 px
+- S3 warm: −46,79 / −35,45 / 57,28; RMS 1,89 px
+- S4 warm: −47,01 / −34,93 / 56,89; RMS 1,54 px
+
+Befunde:
+
+- Spannweite über alle vier Sitzungen: 1,76 mm (Ausreißer S1, größtes Paar S1–S3). Paar S3–S4 (beide warm): 0,69 mm. Paar S1–S2 (beide kalt): 1,43 mm.
+- Lineare Brettdrift erklärt warm nur noch 5 bis 7 % (S3 7,4 %, S4 5,2 %); kalt in S1 27 %.
+- Die zweite Hälfte bleibt schlechter: RMS-Verhältnis zweite zu erster Hälfte S3 1,84, S4 2,10 (kalt S1 1,72, S2 1,37).
+- In S4 bleibt nach Herausrechnen von Kippung und Abstand eine Teilkorrelation RMS–Zeit von 0,53.
+- Aufwärmen allein bringt die 0,5 mm nicht. Das Ziel 0,5 mm ist weiterhin nicht belegt.
+
+### Kinematik als Fehlerquelle (Experiment, `tools/handeye_offline_cv4/kinematik/`)
+
+- `T_base_flange` ist exakt die nominelle Franka-Vorwärtskinematik der gemessenen Gelenkwinkel. Der feste Rest ist Rz −45° und z −0,2 mm. Die Soll/Ist-Abweichung der Gelenke aus der Wiederholgenauigkeitsmessung spielt daher keine Rolle, weil die gemessenen Winkel verwendet werden.
+- Die nominellen Parameter weichen aber vom realen Roboter ab. Ein gemeinsamer Bündelausgleich mit trennbaren Kinematikparametern (Nullpunkte Gelenk 2 bis 6, Längen d3, d5, a4, a5, a7) senkt die Reprojektion in jeder zurückgehaltenen Sitzung (Leave-one-session-out):
+  - S1: 2,01 → 1,28 px
+  - S2: 1,58 → 1,07 px
+  - S3: 1,89 → 1,37 px
+  - S4: 1,54 → 1,06 px
+- Geschätzte Werte im gemeinsamen Fit: Nullpunkte 0,0 / −1,8 / −4,2 / 2,0 / 4,3 mrad; Längen 0,7 / 1,6 / 1,1 / −2,8 / −3,5 mm.
+- Spannweite der Hand-Auge-Translation über die Sitzungen: 1,76 mm → 1,34 mm.
+- Ein überparametrisiertes Modell (alle 7 Nullpunkte und Längen) ist nicht von Hand-Auge und Brettlage trennbar und liefert unsinnige Translationen (t_X bis 122,7 mm). Es dient nur als Indiz.
+
+### Bewertung
+
+- Gemeinsamer Fit über alle vier Sitzungen: RMS 1,79 → 1,16 px. Die Kinematik erklärt damit rund 60 % der Fehlervarianz (1 − (1,16/1,79)² ≈ 0,58).
+- Der Rest liegt bei gut 1 px, gegenüber einem PnP-Niveau von 0,25 px.
+
+### Nächste Schritte (offen)
+
+- Kinematik mitkalibrieren: Modell ausbauen, ggf. Durchbiegung unter Schwerkraft für Gelenk 2 und 4 berücksichtigen, Intrinsik mitschätzen.
+- Alternativ lokale Kalibrierung im Arbeits-Orientierungsbereich. Die flachen Gruppen A und E schließen bereits mit 0,45 bis 0,55 px.
+- Genauigkeit unabhängig messen: AprilTag aus verschiedenen Posen anfahren und die Streuung von `tagInBase` auswerten (AprilTag-Modus der Wiederholgenauigkeit).
+- Für neue Aufnahmen echte Zufallsreihenfolge verwenden, damit die Kippung nicht mit der Zeit korreliert.
