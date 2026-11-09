@@ -1,0 +1,472 @@
+{
+ "schema": "wsc.vision.lighttest.level/1",
+ "reihe": 1,
+ "stufe": 11,
+ "tagId": 0,
+ "level": {
+  "percent": 30,
+  "lux": null,
+  "label": "Decken_Camera_89"
+ },
+ "client": {
+  "camera": "Decke (Pi 1)",
+  "clientTime": "2026-11-09T09:24:37.947Z"
+ },
+ "startedAt": "2026-11-09T10:24:38+01:00",
+ "finishedAt": "2026-11-09T10:24:57+01:00",
+ "aborted": false,
+ "error": null,
+ "camera": {
+  "frameId": "cam_ceiling",
+  "imageSize": [
+   4056,
+   3040
+  ],
+  "calibrationId": "cam_ceiling@2026-11-02T14:47:53.213779+00:00",
+  "intrinsicsSource": "calibration",
+  "exposureStart": {
+   "backend": "picamera2",
+   "values": {
+    "ExposureTime": 16470,
+    "AnalogueGain": 2.0,
+    "DigitalGain": 1.0016286373138428,
+    "ColourGains": [
+     2.5552382469177246,
+     2.0340962409973145
+    ],
+    "ColourTemperature": 3663,
+    "Lux": 39.911285400390625
+   },
+   "controlsSet": null,
+   "locked": true
+  },
+  "exposureEnd": {
+   "backend": "picamera2",
+   "values": {
+    "ExposureTime": 16470,
+    "AnalogueGain": 2.0,
+    "DigitalGain": 1.0016286373138428,
+    "ColourGains": [
+     2.5552382469177246,
+     2.0340962409973145
+    ],
+    "ColourTemperature": 3663,
+    "Lux": 39.89814376831055
+   },
+   "controlsSet": null,
+   "locked": true
+  }
+ },
+ "detectors": {
+  "aruco": {
+   "family": "tag36h11",
+   "detectorParameters": {
+    "perspectiveRemovePixelPerCell": 8
+   },
+   "subpixelCornerRefinement": false
+  },
+  "apriltag": {
+   "library": "pupil_apriltags"
+  },
+  "apriltagError": null
+ },
+ "summary": {
+  "framesRequested": 25,
+  "framesUsed": 25,
+  "aruco": {
+   "detectionRate": 0.0,
+   "detected": 0,
+   "posed": 0,
+   "reprojectionErrorPx": null
+  },
+  "apriltag": {
+   "detectionRate": 0.08,
+   "detected": 2,
+   "decisionMargin": {
+    "mean": 4.9308929443359375,
+    "sd": 0.10756145479810626,
+    "min": 4.854835510253906,
+    "max": 5.006950378417969,
+    "count": 2
+   },
+   "hamming": {
+    "mean": 0.0,
+    "sd": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "count": 2
+   },
+   "hammingCounts": {
+    "0": 2
+   }
+  },
+  "poseJitter": null,
+  "contrast": {
+   "mean": 0.8521201120487142,
+   "sd": 0.0013735144502985033,
+   "min": 0.8511488906668504,
+   "max": 0.853091333430578,
+   "count": 2
+  },
+  "imageMean": {
+   "mean": 8.766453726772554,
+   "sd": 0.0710547729392128,
+   "min": 8.574730337771204,
+   "max": 8.845056138404443,
+   "count": 25
+  }
+ },
+ "images": [
+  "stufe_011_bild_01.png"
+ ],
+ "frames": [
+  {
+   "index": 0,
+   "capturedAt": "2026-11-09T09:24:39.341754+00:00",
+   "imageMean": 8.762736653949963,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 1,
+   "capturedAt": "2026-11-09T09:24:40.982628+00:00",
+   "imageMean": 8.767199908517595,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 2,
+   "capturedAt": "2026-11-09T09:24:41.401509+00:00",
+   "imageMean": 8.766049971452299,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 3,
+   "capturedAt": "2026-11-09T09:24:42.185259+00:00",
+   "imageMean": 8.834046539240113,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 4,
+   "capturedAt": "2026-11-09T09:24:42.711061+00:00",
+   "imageMean": 8.845056138404443,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 5,
+   "capturedAt": "2026-11-09T09:24:43.510610+00:00",
+   "imageMean": 8.842782378931798,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 6,
+   "capturedAt": "2026-11-09T09:24:44.240055+00:00",
+   "imageMean": 8.835054629917991,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 7,
+   "capturedAt": "2026-11-09T09:24:44.905149+00:00",
+   "imageMean": 8.824659779533894,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 8,
+   "capturedAt": "2026-11-09T09:24:45.359582+00:00",
+   "imageMean": 8.81654525783764,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 9,
+   "capturedAt": "2026-11-09T09:24:46.287238+00:00",
+   "imageMean": 8.812615812830893,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 10,
+   "capturedAt": "2026-11-09T09:24:46.669626+00:00",
+   "imageMean": 8.801952435637912,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 11,
+   "capturedAt": "2026-11-09T09:24:47.263425+00:00",
+   "imageMean": 8.657477794430603,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 12,
+   "capturedAt": "2026-11-09T09:24:48.046232+00:00",
+   "imageMean": 8.574730337771204,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 4.854835510253906,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.5773925781245,
+      1580.4757080078125
+     ],
+     [
+      1984.3134765624998,
+      1583.8908691406248
+     ],
+     [
+      1984.5224609375,
+      1491.3648681640623
+     ],
+     [
+      2075.2026367187495,
+      1489.3640136718748
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8511488906668504,
+    "black": 0.8679315476190477,
+    "white": 10.793809523809523
+   }
+  },
+  {
+   "index": 13,
+   "capturedAt": "2026-11-09T09:24:48.757422+00:00",
+   "imageMean": 8.614974890999688,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 14,
+   "capturedAt": "2026-11-09T09:24:49.417478+00:00",
+   "imageMean": 8.734292033245096,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 15,
+   "capturedAt": "2026-11-09T09:24:50.255236+00:00",
+   "imageMean": 8.809753824743071,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 16,
+   "capturedAt": "2026-11-09T09:24:50.794676+00:00",
+   "imageMean": 8.839567356353161,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 17,
+   "capturedAt": "2026-11-09T09:24:51.356139+00:00",
+   "imageMean": 8.820781671727396,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 18,
+   "capturedAt": "2026-11-09T09:24:52.130254+00:00",
+   "imageMean": 8.760521287501298,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 19,
+   "capturedAt": "2026-11-09T09:24:52.772947+00:00",
+   "imageMean": 8.733887742655455,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 20,
+   "capturedAt": "2026-11-09T09:24:53.512795+00:00",
+   "imageMean": 8.708215168561196,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 5.006950378417969,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.782958984375,
+      1581.4809570312498
+     ],
+     [
+      1985.0393066406248,
+      1581.8377685546875
+     ],
+     [
+      1983.5947265624998,
+      1490.8304443359375
+     ],
+     [
+      2075.1481933593755,
+      1489.3568115234377
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.853091333430578,
+    "black": 0.8392857142857143,
+    "white": 10.586666666666666
+   }
+  },
+  {
+   "index": 21,
+   "capturedAt": "2026-11-09T09:24:53.945967+00:00",
+   "imageMean": 8.710650319864008,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 22,
+   "capturedAt": "2026-11-09T09:24:54.841015+00:00",
+   "imageMean": 8.753436105055538,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 23,
+   "capturedAt": "2026-11-09T09:24:55.314680+00:00",
+   "imageMean": 8.763248160619744,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 24,
+   "capturedAt": "2026-11-09T09:24:56.307591+00:00",
+   "imageMean": 8.771106969531818,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  }
+ ]
+}
