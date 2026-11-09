@@ -1,0 +1,4 @@
+# Separate Offline-Umgebung fuer die Hand-Auge-Analyse (cv2.calibrateHandEye existiert nur in OpenCV 4.x); die Pis bleiben auf OpenCV 5.
+opencv-contrib-python-headless==4.14.0.94
+numpy==2.5.4
+scipy==1.18.1

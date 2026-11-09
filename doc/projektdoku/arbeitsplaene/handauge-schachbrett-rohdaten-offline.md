@@ -87,3 +87,23 @@ Ergebnisse werden nicht automatisch aktiv. Keine neuen Ports oder Dienste.
 Konfigurierten RealSense-Strom und zugehörige Intrinsikdatei gegen die
 tatsächliche Auflösung prüfen; die Software kann diese Prüfung ohne Gerät
 nicht durchführen.
+
+## Stand 09.11.2026: Vergleich mit `cv2.calibrateHandEye` (OpenCV 4.14, offline)
+
+Beide Sitzungen (`20261109T125050Z_a5c964f0` ChArUco, `20261109T125825Z_a580eaba`
+Schachbrett) wurden in einer separaten Umgebung (`tools/handeye_offline_cv4/`,
+OpenCV 4.14, Pis bleiben auf OpenCV 5) erneut ausgewertet. Bericht:
+`docs/auswertung/calibration_cv4_vergleich.html`, Rohzahlen unter
+`docs/auswertung/handeye_cv4/`.
+
+- cv2-Park ist identisch mit `park_numpy`; Tsai/Daniilidis weichen ≤ 0,45 mm ab.
+  Das fehlende `calibrateHandEye` unter OpenCV 5 hat die Ergebnisse nicht verfälscht.
+- Ergebnis bleibt die Reprojektions-Verfeinerung (aus jedem Start dieselbe Lösung);
+  geschlossene Verfahren nur als Startwert, ihre Translation ist bei kleinen
+  Drehwinkeln schlecht bestimmt (6,7 bzw. 8,3 mm daneben).
+- Der Fehler je Pose ist ein starrer Versatz und wächst mit der Aufnahmezeit;
+  ein Modell mit linear wandernder Brettlage erklärt in Sitzung 1 einen großen Teil
+  (Drift 4,1 mm), in Sitzung 2 wenig (2,0 mm). Ursache nicht belegt.
+- 0,5 mm nicht erreichbar mit diesen Daten. Nächster Schritt (braucht Roboterfahrt,
+  erst nach Freigabe): Aufnahme mit warmgefahrenem Roboter, wiederholter
+  Referenzpose und gemischter Gruppenreihenfolge.

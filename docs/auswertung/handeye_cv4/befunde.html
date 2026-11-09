@@ -1,0 +1,130 @@
+<section id="kurzfassung">
+  <h2>Kurzfassung</h2>
+  <p>Untersucht wurde die Hand-Auge-Kalibrierung (Translation Flansch→Kamera) aus zwei Aufnahmesitzungen: Sitzung 1 (ChArUco) <code>20261109T125050Z_a5c964f0</code> und Sitzung 2 (Schachbrett) <code>20261109T125825Z_a580eaba</code>. Die Umstellung auf OpenCV 5 hat die bisherigen Ergebnisse nicht verfälscht, und die Verfeinerung per Reprojektion konvergiert aus allen Startwerten auf dieselbe Lösung. Die beiden Sitzungen liegen dennoch 1,4 mm auseinander, und die Translation hängt stark von der Posenauswahl ab (Spannweite je nach Teilmenge 2–5 mm). Der Fehler je Pose ist überwiegend ein starrer Versatz des Bretts, der mit der Zeit steigt; ein Driftmodell erklärt einen Teil davon (Drift bis 4,1 mm in Sitzung 1), die Ursache ist aber nicht belegt. Empfehlung: keine Lösung aktivieren, OpenCV auf den Pis unverändert lassen und die Drift in einer neuen Aufnahme mit fester Referenzpose direkt messen.</p>
+  <p><strong>Rahmen:</strong> Offline, ohne Roboterbewegung, ohne Aktivierung einer Kalibrierung. OpenCV 5 auf den Pis unverändert. Auswertung in einer separaten Umgebung: <code>opencv-contrib-python-headless</code> 4.14.0.94, numpy 2.5.4, scipy 1.18.1 (<code>tools/handeye_offline_cv4/requirements.txt</code>). Skripte: <code>tools/handeye_offline_cv4/analyse.py</code> (Hauptanalyse) und <code>drift.py</code> (Driftmodelle). Sitzung 1: ChArUco 11×7, 25 mm, 58/58 gültige Posen, 383 s. Sitzung 2: Schachbrett 7×10, 23 mm, 54/56 gültig, pose_052 und pose_053 „Brett nicht erkannt“, 407 s. Gleiche Kameraintrinsik (cam_flange 2026-09-23).</p>
+</section>
+
+<section id="paritaet">
+  <h2>1. Parität OpenCV 4.14 ↔ gespeicherte Erkennung (OpenCV 5)</h2>
+  <ul>
+    <li>Sitzung 1: identische Posenmenge und Eck-IDs, maximale Eckabweichung 7e-5 px.</li>
+    <li>Sitzung 2: identische Posenmenge. Maximal 0,94 px nur bei pose_035 (PnP 0,357 statt 0,299 px), alle anderen unter 0,35 px. Kein Einfluss auf die Schlüsse.</li>
+  </ul>
+</section>
+
+<section id="verfahrensvergleich">
+  <h2>2. Verfahrensvergleich</h2>
+  <p>Alle gültigen Posen. Translation Flansch→Kamera in mm, RMS in px.</p>
+  <table>
+    <thead>
+      <tr><th>Verfahren</th><th>Sitzung 1: x / y / z</th><th>S1 RMS</th><th>Sitzung 2: x / y / z</th><th>S2 RMS</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Park</td><td>−54,01 / −34,37 / 56,26</td><td>2,347</td><td>−55,05 / −33,37 / 55,90</td><td>2,318</td></tr>
+      <tr><td>Tsai</td><td>−53,93 / −34,28 / 56,36</td><td>2,328</td><td>−55,14 / −33,27 / 55,98</td><td>2,302</td></tr>
+      <tr><td>Daniilidis</td><td>−54,05 / −34,11 / 56,31</td><td>2,349</td><td>−54,79 / −33,03 / 55,80</td><td>2,295</td></tr>
+      <tr><td>park_numpy</td><td>−54,01 / −34,37 / 56,26</td><td>2,347</td><td>= Park</td><td>= Park</td></tr>
+      <tr><td><strong>Verfeinerung</strong> (Reprojektion, soft_l1)</td><td>−47,43 / −33,82 / 57,08</td><td>2,013</td><td>−47,07 / −35,21 / 57,10</td><td>1,583</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>cv2-Park und park_numpy sind identisch (unter 0,01 mm). Tsai und Daniilidis weichen um höchstens 0,45 mm bzw. 0,07° ab. Andreff (nur Zusatz) liegt in z 13–22 mm daneben.</li>
+    <li>Die Verfeinerung konvergiert aus allen vier Startwerten auf exakt dieselbe Lösung. Abstand der beiden Sitzungen: 1,4 mm. Mit linearem statt robustem Verlust verschiebt sich die Lösung um 0,9 mm (S1) bzw. 0,4 mm (S2).</li>
+    <li><strong>Folgerung:</strong> Das fehlende <code>cv2.calibrateHandEye</code> unter OpenCV 5 hat die bisherigen Ergebnisse nicht verfälscht. park_numpy ist ein gleichwertiger Startwert.</li>
+  </ul>
+</section>
+
+<section id="abstand">
+  <h2>3. Abstand geschlossene Verfahren ↔ Verfeinerung</h2>
+  <p>Abstand 6,7 mm (Sitzung 1) bzw. 8,3 mm (Sitzung 2) zwischen Park und Verfeinerung.</p>
+  <ul>
+    <li>Park auf Teilmengen, flache Posen (Neigung ≤ 20°): x −55,5 bzw. −56,4 mm, z 49,9 bzw. 50,2 mm. Abstand zur Verfeinerung 11–12,5 mm.</li>
+    <li>Park auf geneigten Posen (&gt; 20°): x −49,9 bzw. −49,5 mm. Abstand zur Verfeinerung 5,2 bzw. 3,9 mm.</li>
+    <li>Die Verfeinerung bleibt auf allen Teilmengen bei x −45,6 … −50,0 mm.</li>
+    <li><strong>Folgerung:</strong> Die Translation der geschlossenen Verfahren ist bei kleinen Drehwinkeln schlecht bestimmt, weil PnP-Tiefenfehler verstärkt werden. Sie taugen als Startwert, nicht als Ergebnis.</li>
+  </ul>
+</section>
+
+<section id="reprojektion">
+  <h2>4. Reprojektionsfehler je Pose</h2>
+  <ul>
+    <li>Der Fehler je Pose ist zu etwa 93 % (Median) ein starrer Versatz des ganzen Bretts im Bild, kein Muster über die Bildfläche. Das spricht für eine Inkonsistenz zwischen Roboterpose und Kamerapose je Aufnahme, nicht für ein Intrinsik- oder Verzeichnungsbild.</li>
+    <li>PnP je Bild liegt nur bei 0,15–0,52 px. Die Bilder selbst sind gut.</li>
+  </ul>
+  <p>Posegruppen, Median und Maximum des Reprojektionsfehlers in px:</p>
+  <table>
+    <thead>
+      <tr><th>Posegruppe</th><th>S1 Median</th><th>S1 Max</th><th>S2 Median</th><th>S2 Max</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A</td><td>0,98</td><td>2,24</td><td>1,17</td><td>1,80</td></tr>
+      <tr><td>B</td><td>1,29</td><td>2,41</td><td>1,46</td><td>2,40</td></tr>
+      <tr><td>C</td><td>1,45</td><td>6,48</td><td>0,95</td><td>3,56</td></tr>
+      <tr><td>D</td><td>1,85</td><td>4,22</td><td>1,57</td><td>2,98</td></tr>
+      <tr><td>E</td><td>0,73</td><td>2,83</td><td>0,87</td><td>2,07</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Mediane Neigung: A etwa 0,6°, B 35°, C 15°, D 30°, E 0,8° (S1) bzw. 7,6° (S2), in beiden Sitzungen gleich geplant. Yaw-Spannweite: D etwa 29°, E 135° (S1) bzw. 45° (S2), sonst etwa 1°.</li>
+    <li>Zeit: erste Hälfte etwa 1,0 px, zweite Hälfte 2,2 px (S1) bzw. 1,8 px (S2). Innerhalb der Gruppen A, C und E steigt der Fehler in beiden Sitzungen mit der Zeit (ρ +0,64 … +0,90). Ausnahme: S2-Gruppe A (ρ −0,71).</li>
+    <li>Neigung: ρ(Fehler, Neigung) 0,24 (p 0,07) in S1 und 0,37 (p 0,005) in S2. In S2 hängen Zeit und Neigung stark zusammen (ρ 0,74), in S1 kaum (0,21). In S1 ist der Zeiteffekt daher eigenständig.</li>
+    <li>Yaw: kein Zusammenhang (ρ 0,10 bzw. 0,16).</li>
+    <li>Abstand: in px wirken nahe Posen schlechter (ρ −0,68 in S1). In mm umgerechnet bleibt der Zeit- und Neigungseffekt: Median etwa 0,9–1,0 mm, erste Hälfte 0,74 mm, zweite Hälfte 1,07–1,12 mm.</li>
+    <li>Schlechteste Posen: S1 pose_057 (C) 6,48, pose_056 (C) 6,07, pose_055 (D) 4,22, pose_054 (D) 3,39 px. Das sind die letzten vier Aufnahmen (362–383 s). Ohne sie sinkt der RMS von 2,01 auf 1,50 px. S2 pose_054 (C, 40°) 3,56, pose_041 und pose_042 (D, 40°) 2,98 bzw. 2,97, pose_055 (C) 2,90 px.</li>
+    <li>Gelenke: Die Brettlage-Abweichung korreliert am stärksten mit q7 (ρ 0,54 in S1, 0,31 in S2).</li>
+  </ul>
+</section>
+
+<section id="wer-verschiebt">
+  <h2>5. Wer verschiebt die Translation</h2>
+  <ul>
+    <li>Keine Einzelpose: Leave-one-out max. 0,46 mm (S1, pose_034, E) bzw. 0,43 mm (S2, pose_036, E).</li>
+    <li>Gruppen weglassen: ohne E 1,7 mm (S1), ohne C 1,4 mm (S1) bzw. 0,8 mm (S2), der Rest höchstens 1,1 mm. Lösungen aus nur einer Gruppe sind schlecht bestimmt. Nur-C bricht weg: +60,7 mm (S1) bzw. +4,6 mm (S2) in x. Daher ist keine davon ein Maßstab.</li>
+    <li>Die Posenzahl-Drift (x −49,7 → −47,1 mm, y −31 → −34/−35 mm) steckt nur in der Verfeinerung. Die geschlossenen Verfahren bleiben bei x ≈ −53 … −55 mm. Von 40 auf alle Posen kommen vor allem Gruppe A (8) und Gruppe C (8 bzw. 4) hinzu, flache oder wenig gedrehte Posen, die die D-optimale Auswahl zuletzt nimmt.</li>
+    <li>Driftmodell (Brettlage darf linear mit der Zeit wandern, 6 Parameter):</li>
+  </ul>
+  <table>
+    <thead>
+      <tr><th>Kennzahl</th><th>Sitzung 1</th><th>Sitzung 2</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>RMS ohne → mit Drift</td><td>2,01 → 1,48 px</td><td>1,58 → 1,50 px</td></tr>
+      <tr><td>Drift (x / y / z)</td><td>4,1 mm (−3,7 / −0,7 / −1,7) über 383 s</td><td>2,0 mm (−1,4 / +0,8 / −1,2)</td></tr>
+      <tr><td>x-Spannweite über Teilmengen</td><td>2,4 → 0,8 mm</td><td>2,6 → 1,0 mm</td></tr>
+      <tr><td>y-Spannweite über Teilmengen</td><td>4,8 → 2,2 mm</td><td>bleibt etwa 5 mm</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Driftrichtung ist in beiden Sitzungen (verschiedene Bretter) in x und z gleich (−x, −z). In y ist sie nicht gleich, und in der späteren Sitzung ist sie kleiner. Das spricht eher für Roboter oder Basis (z. B. Erwärmung) als für ein verrutschtes Brett. Nicht belegt.</li>
+    <li>Das Modell „Halterung driftet“ passt ähnlich gut, braucht aber 6–12 mm. Das ist unplausibel.</li>
+    <li>Erste und zweite Zeithälfte (x / y / z in mm):</li>
+  </ul>
+  <table>
+    <thead>
+      <tr><th>Zeithälfte</th><th>Sitzung 1</th><th>Sitzung 2</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Erste</td><td>−45,6 / −36,9 / 57,8</td><td>−48,1 / −37,4 / 56,2</td></tr>
+      <tr><td>Zweite</td><td>−50,0 / −34,3 / 57,5</td><td>−47,6 / −33,4 / 56,9</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="intrinsik">
+  <h2>6. Intrinsik und Maßstab</h2>
+  <p>Diagnose, nichts gespeichert.</p>
+  <ul>
+    <li>Freie Intrinsik senkt den RMS nur von 2,01 auf 1,99 px (S1) bzw. von 1,58 auf 1,51 px (S2). cx und cy wandern um ±16 px, k2 und k3 stark. Die Intrinsik ist schlecht bestimmt und nicht die Ursache.</li>
+    <li>Freier Brettmaßstab s = 0,997–0,998. Der RMS bleibt praktisch unverändert.</li>
+  </ul>
+</section>
+
+<section id="empfehlung">
+  <h2>Empfehlung für den nächsten Schritt</h2>
+  <ol>
+    <li><strong>Keine der Lösungen aktivieren.</strong> Das 0,5-mm-Ziel ist nicht belegt: Die Spannweite liegt je nach Teilmenge bei 2–5 mm, der Abstand der Sitzungen bei 1,4 mm und die Zeitdrift bei bis zu 4 mm.</li>
+    <li><strong>OpenCV auf den Pis nicht ändern.</strong> cv2-Park und park_numpy sind identisch, Tsai und Daniilidis bringen nichts. Das Ergebnis kommt immer aus der Reprojektions-Verfeinerung, geschlossene Verfahren nur als Startwert.</li>
+    <li><strong>Drift und Posenabhängigkeit direkt messen</strong>, statt weiter auszuwerten. Dafür eine neue Aufnahme (erfordert Roboterbewegung, erst nach Freigabe) mit (a) Roboter vorher etwa 15–20 min warmfahren, (b) einer festen Referenzpose, die alle etwa 8 Posen erneut angefahren wird, (c) gemischter Gruppenreihenfolge statt blockweise, damit Zeit und Neigung nicht zusammenfallen, (d) fest sichtbar fixiertem Brett. Bleibt die Referenzpose stabil (&lt; 0,2 mm), ist die Drift nicht der Roboter, und die Posenabhängigkeit (Neigung, q7) ist die nächste Spur.</li>
+    <li><strong>Bis dahin</strong> Auswertungen mit Driftmodell bzw. ohne die letzten Posen nur als Diagnose verwenden, nicht als Kalibrierung.</li>
+  </ol>
+</section>
