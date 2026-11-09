@@ -13,7 +13,7 @@ Translation ueber die D-optimalen Teilmengen (15/25/40/alle). Nur Auswertung,
 nichts wird gespeichert oder aktiviert.
 
 Aufruf (separate Umgebung, siehe requirements.txt):
-    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out doc/auswertung/handeye_cv4]
+    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out doc/auswertung/handeye_cv4] [--session <ordner> ...]
 """
 
 from __future__ import annotations
@@ -139,9 +139,12 @@ def analyse(folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=ROOT / "doc/auswertung/handeye_cv4")
+    parser.add_argument("--session", action="append", type=Path,
+                        help="Sitzungsordner (mehrfach); Default: beide Standardsitzungen")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    report = [analyse(folder) for folder in SESSIONS]
+    sessions = [s if s.is_absolute() else ROOT / s for s in (args.session or SESSIONS)]
+    report = [analyse(folder) for folder in sessions]
     (args.out / "drift.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     for r in report:
         print(f"== {r['session']} ({r['poseCount']} Posen, {r['sessionSpanS']:.0f} s)")
