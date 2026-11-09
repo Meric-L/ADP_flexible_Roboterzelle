@@ -13,7 +13,8 @@ from tagloc.boards import BoardSpec, chessboard_object_points
 from tagloc.calibration import CameraCalibration
 from tagloc.handeye_offline import Observation, load_observations, solve_subset
 from vision_server.errors import VisionErrorCode
-from vision_server.handeye_session import HandEyePorts, HandEyeSession
+from vision_server.detection.apriltag.board import BoardMeasureMixin
+from vision_server.handeye_session import HandEyePorts, HandEyeSession, _parse_board
 
 
 SPEC = BoardSpec(type="chessboard", cols=7, rows=10, square_size_m=0.023)
@@ -68,6 +69,48 @@ class RawCaptureTest(unittest.IsolatedAsyncioTestCase):
 
 
 class OfflineSolverTest(unittest.TestCase):
+    def test_charuco_reader_keeps_ids_and_matched_points(self):
+        spec = BoardSpec(type="charuco", cols=11, rows=7, square_size_m=0.025,
+                         marker_size_m=0.0185, dictionary="DICT_5X5_100")
+        self.assertEqual(_parse_board(spec.as_dict()), spec)
+        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
+        board = cv2.aruco.CharucoBoard((11, 7), 0.025, 0.0185, dictionary)
+        image = np.full((480, 640), 255, dtype=np.uint8)
+        image[65:415, 45:595] = board.generateImage((550, 350))
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            from tagloc.handeye import intrinsics_to_dict
+            (folder / "config.json").write_text(json.dumps({
+                "schema": "wsc.vision.handeye.raw/1", "imageStream": "configured",
+                "board": spec.as_dict(), "intrinsics": intrinsics_to_dict(CAL),
+                "intrinsicsSource": "calibration"}))
+            for pose_id, captured in (("pose_000", image), ("pose_001", image.copy())):
+                if pose_id == "pose_001":
+                    captured[:, 350:] = 255
+                pose_folder = folder / "poses" / pose_id
+                pose_folder.mkdir(parents=True)
+                (pose_folder / "robot_state.json").write_text(json.dumps({
+                    "poseId": pose_id, "poseGroup": "A", "T_base_flange": geometry.identity().tolist(),
+                    "jointAnglesRad": [0] * 7}))
+                cv2.imwrite(str(pose_folder / "camera.png"), captured)
+            observed, excluded, _, points = load_observations(folder)
+            self.assertEqual(excluded, [])
+            self.assertIsNone(points)
+            self.assertEqual(len(observed), 2)
+            self.assertEqual(len(observed[0].corner_ids), 60)
+            self.assertEqual(observed[0].object_points.shape, (60, 3))
+            self.assertEqual(len(observed[1].corner_ids), 30)
+            self.assertEqual(observed[1].object_points.shape, (30, 3))
+            self.assertLess(observed[0].pnp_rms_px, 1.5)
+            meter = type("Meter", (), {
+                "_calibration_for": lambda _self, _image: CAL,
+                "_config": type("Config", (), {"max_reproj_error_px": 1.5})(),
+            })()
+            pose, reason, error, corners, _ = BoardMeasureMixin._measure_board(meter, image, spec)
+            self.assertIsNotNone(pose, reason)
+            self.assertLess(error, 1.5)
+            self.assertEqual(len(corners), 60)
+
     def test_offline_reader_detects_full_board_from_saved_png(self):
         square_px, margin = 50, 20
         texture = np.full((11 * square_px + 2 * margin,

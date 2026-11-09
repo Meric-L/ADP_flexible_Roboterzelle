@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from . import geometry, lens
-from .boards import BoardSpec, canonical_chessboard_corners, chessboard_object_points, detect_board
+from .boards import CHARUCO, CHESSBOARD, BoardSpec, canonical_chessboard_corners, chessboard_object_points, detect_board, matched_board_points
 from .frames import to_gray
 from .handeye import HandEye, intrinsics_from_dict, save_hand_eye, solve_hand_eye
 
@@ -24,6 +24,8 @@ class Observation:
     corners: np.ndarray
     pnp_rms_px: float
     pnp_ambiguity: float | None
+    object_points: np.ndarray | None = None
+    corner_ids: np.ndarray | None = None
 
 
 def _pose_from_vector(values):
@@ -85,12 +87,14 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
     if config.get("intrinsicsSource") != "calibration":
         raise ValueError("Sitzung nutzt keine eigene, kalibrierte Kameraintrinsik")
     board_data = config["board"]
-    if board_data.get("type") != "chessboard":
-        raise ValueError("Nur Schachbrett-Sitzungen werden ausgewertet")
-    board = BoardSpec(type="chessboard", cols=int(board_data["cols"]),
-                      rows=int(board_data["rows"]), square_size_m=float(board_data["squareSizeM"]))
+    if board_data.get("type") not in (CHESSBOARD, CHARUCO):
+        raise ValueError("Unbekannter Bretttyp")
+    board = BoardSpec(type=board_data["type"], cols=int(board_data["cols"]),
+                      rows=int(board_data["rows"]), square_size_m=float(board_data["squareSizeM"]),
+                      marker_size_m=float(board_data.get("markerSizeM", 0.022)),
+                      dictionary=board_data.get("dictionary", "DICT_4X4_50"))
     calibration = intrinsics_from_dict(config["intrinsics"])
-    points = chessboard_object_points(board)
+    points = chessboard_object_points(board) if board.type == CHESSBOARD else None
     observations, excluded, cache = [], [], []
     for path in sorted((folder / "poses").glob("pose_*")):
         try:
@@ -117,10 +121,19 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
                 raise ValueError("Bildaufloesung passt nicht zur Intrinsik")
             gray = to_gray(image)
             sample = detect_board(gray, board)
-            if sample is None or sample.count() != len(points):
-                raise ValueError("Vollstaendiges Schachbrett nicht erkannt")
-            corners = canonical_chessboard_corners(gray, sample.corners, board).reshape(-1, 2)
-            pose, error, ambiguity = _pnp(corners, points, calibration, pnp)
+            if sample is None:
+                raise ValueError("Brett nicht erkannt")
+            if board.type == CHARUCO:
+                if sample.count() < 25:
+                    raise ValueError("Weniger als 25 ChArUco-Ecken erkannt")
+                object_points, corners = matched_board_points(sample, board)
+                ids = sample.ids.reshape(-1)
+            else:
+                if sample.count() != len(points):
+                    raise ValueError("Vollstaendiges Schachbrett nicht erkannt")
+                corners = canonical_chessboard_corners(gray, sample.corners, board).reshape(-1, 2)
+                object_points, ids = points, None
+            pose, error, ambiguity = _pnp(corners, object_points, calibration, pnp)
             if pnp == "ippe" and ambiguity is not None and ambiguity < 1.2:
                 raise ValueError(f"Planare PnP-Lage mehrdeutig (Fehlerverhaeltnis {ambiguity:.3f})")
             if error > max_pnp_rms_px:
@@ -128,8 +141,11 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
             group = state.get("poseGroup")
             if group not in ("A", "B", "C", "D", "E"):
                 raise ValueError("Posegruppe fehlt")
-            observations.append(Observation(path.name, group, flange, pose, corners, error, ambiguity))
+            observations.append(Observation(path.name, group, flange, pose, corners, error, ambiguity,
+                                            object_points, ids))
             cache.append({"poseId": path.name, "cornersPx": corners.tolist(),
+                          "cornerIds": ids.tolist() if ids is not None else None,
+                          "objectPointsM": object_points.tolist(),
                           "poseGroup": group,
                           "T_camera_board": pose.tolist(), "pnpRmsPx": error,
                           "pnpAmbiguity": ambiguity})
@@ -170,7 +186,7 @@ def _residuals(values, observations, calibration, points):
     chunks = []
     for obs in observations:
         camera_board = geometry.invert(geometry.compose(obs.flange, handeye)) @ base_board
-        projected = lens.project_points(points, geometry.rvec_from_rotation(camera_board[:3, :3]),
+        projected = lens.project_points(obs.object_points if obs.object_points is not None else points, geometry.rvec_from_rotation(camera_board[:3, :3]),
                                         camera_board[:3, 3], calibration)
         chunks.append((projected - obs.corners).reshape(-1))
     return np.concatenate(chunks)

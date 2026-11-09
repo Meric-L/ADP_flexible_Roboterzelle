@@ -69,7 +69,7 @@ class BoardMeasureMixin:
                 "intrinsicsSource": self.intrinsics_source}
         if poses:
             info.update(
-                corners=np.mean(np.stack(corner_sets), axis=0),
+                corners=(corner_sets[-1] if spec.type == "charuco" else np.mean(np.stack(corner_sets), axis=0)),
                 calibration=calibration,
                 intrinsicsSource=self.intrinsics_source,
                 image=last_image,
@@ -88,6 +88,7 @@ class BoardMeasureMixin:
         verzerrten Bild. Worker-Thread."""
         from tagloc import frames as frame_tools
         from tagloc.boards import (
+            CHARUCO,
             canonical_chessboard_corners,
             detect_board,
             estimate_board_pose,
@@ -96,10 +97,18 @@ class BoardMeasureMixin:
         gray = frame_tools.to_gray(image)
         sample = detect_board(gray, spec)
         if sample is None:
-            return None, "Board nicht (vollstaendig) gesehen -- alle Ecken muessen im Bild sein", None, None, None
-        corners = canonical_chessboard_corners(gray, sample.corners, spec)
+            reason = ("ChArUco-Brett nicht erkannt" if spec.type == CHARUCO else
+                      "Schachbrett nicht vollstaendig gesehen -- alle Ecken muessen im Bild sein")
+            return None, reason, None, None, None
+        if spec.type == CHARUCO:
+            if sample.count() < 25:
+                return None, f"Nur {sample.count()} ChArUco-Ecken erkannt (mindestens 25)", None, None, None
+            corners = sample.corners.reshape(-1, 2)
+        else:
+            corners = canonical_chessboard_corners(gray, sample.corners, spec)
         calibration = self._calibration_for(image)
-        pose, error_px = estimate_board_pose(corners, spec, calibration)
+        pose, error_px = estimate_board_pose(corners, spec, calibration,
+                                             ids=sample.ids if spec.type == CHARUCO else None)
         # Ein Board mit Dutzenden Ecken passt viel besser als ein Tag;
         # ein grosser Fehler heisst Unschaerfe, ein welliges Brett oder ein
         # falsches Raster.
@@ -186,6 +195,7 @@ class BoardMeasureMixin:
 
         from tagloc import frames as frame_tools
         from tagloc.boards import (
+            CHARUCO,
             canonical_chessboard_corners,
             detect_board,
             detect_partial_board,
@@ -199,10 +209,16 @@ class BoardMeasureMixin:
         now = datetime.now(timezone.utc)
         sample = detect_board(gray, spec, max_side=OBSERVE_MAX_SIDE)
         if sample is None:
-            partial = detect_partial_board(gray, spec, max_side=OBSERVE_MAX_SIDE) if with_partial else None
+            partial = detect_partial_board(gray, spec, max_side=OBSERVE_MAX_SIDE) if with_partial and spec.type != CHARUCO else None
             return FrameBoard(now, size, partial=partial)
-        corners = canonical_chessboard_corners(gray, sample.corners, spec)
-        pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image))
+        if spec.type == CHARUCO:
+            corners = sample.corners.reshape(-1, 2)
+            if sample.count() < 25:
+                return FrameBoard(now, size, partial=(corners, spec.cols - 1, spec.rows - 1))
+        else:
+            corners = canonical_chessboard_corners(gray, sample.corners, spec)
+        pose, error_px = estimate_board_pose(corners, spec, self._calibration_for(image),
+                                             ids=sample.ids if spec.type == CHARUCO else None)
         return FrameBoard(
             now, size, complete=True, pose=pose, reprojection_error_px=error_px, corners=corners
         )

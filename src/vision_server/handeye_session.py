@@ -34,7 +34,7 @@ from typing import Any
 
 import numpy as np
 
-from tagloc.boards import CHESSBOARD, BoardSpec, chessboard_is_unambiguous
+from tagloc.boards import CHARUCO, CHESSBOARD, BoardSpec, chessboard_is_unambiguous
 from tagloc.geometry import (
     Pose,
     average_poses,
@@ -525,9 +525,13 @@ class HandEyeSession:
             tag_id, tag_in_base, board = parse_start(options_json)
             capture_only = _load(options_json, START_SCHEMA).get("captureOnly", False)
             if not isinstance(capture_only, bool) or (capture_only and board is None):
-                raise ValueError("captureOnly erfordert ein Schachbrett und einen Bool-Wert")
-            if capture_only and (board.cols, board.rows, board.square_size_m) != (7, 10, 0.023):
-                raise ValueError("Rohaufnahme erfordert 7x10 Innenecken mit 23 mm Feldgroesse")
+                raise ValueError("captureOnly erfordert ein Kalibrierbrett und einen Bool-Wert")
+            if capture_only and board.type == CHESSBOARD and (board.cols, board.rows, board.square_size_m) != (7, 10, 0.023):
+                raise ValueError("Schachbrett-Rohaufnahme erfordert 7x10 Innenecken mit 23 mm Feldgroesse")
+            if capture_only and board.type == CHARUCO and (
+                board.cols, board.rows, board.square_size_m, board.marker_size_m, board.dictionary
+            ) != (11, 7, 0.025, 0.0185, "DICT_5X5_100"):
+                raise ValueError("ChArUco-Rohaufnahme erfordert 11x7 Felder, 25/18,5 mm und DICT_5X5_100")
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
@@ -954,14 +958,23 @@ def parse_start(text: str) -> tuple[int, Pose | None, BoardSpec | None]:
 
 
 def _parse_board(raw: Any) -> BoardSpec:
-    if not isinstance(raw, dict) or raw.get("type") != CHESSBOARD:
-        raise ValueError('board: nur {"type": "chessboard", ...} wird unterstuetzt.')
+    if not isinstance(raw, dict) or raw.get("type") not in (CHESSBOARD, CHARUCO):
+        raise ValueError('board.type muss "chessboard" oder "charuco" sein.')
     cols, rows, size = raw.get("cols"), raw.get("rows"), raw.get("squareSizeM")
     for name, value in (("cols", cols), ("rows", rows)):
         if not isinstance(value, int) or isinstance(value, bool) or value < 2:
-            raise ValueError(f"board.{name}: Innenecken als Ganzzahl >= 2.")
+            raise ValueError(f"board.{name}: Anzahl als Ganzzahl >= 2.")
     if not isinstance(size, (int, float)) or isinstance(size, bool) or not 0 < size < 1:
         raise ValueError("board.squareSizeM: Feldkante in Metern, zwischen 0 und 1.")
+    if raw["type"] == CHARUCO:
+        marker = raw.get("markerSizeM")
+        dictionary = raw.get("dictionary")
+        if not isinstance(marker, (int, float)) or isinstance(marker, bool) or not 0 < marker < size:
+            raise ValueError("board.markerSizeM muss kleiner als squareSizeM und positiv sein.")
+        if not isinstance(dictionary, str) or dictionary != "DICT_5X5_100":
+            raise ValueError("board.dictionary: DICT_5X5_100 erwartet.")
+        return BoardSpec(type=CHARUCO, cols=cols, rows=rows, square_size_m=float(size),
+                         marker_size_m=float(marker), dictionary=dictionary)
     spec = BoardSpec(type=CHESSBOARD, cols=cols, rows=rows, square_size_m=float(size))
     if not chessboard_is_unambiguous(spec):
         raise ValueError(
