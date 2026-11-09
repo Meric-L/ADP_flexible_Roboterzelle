@@ -302,9 +302,9 @@ centerY_mm, rotationDeg, scalePxPerMm, homographyRmsPx, meanDisplacementPx, used
 
 ## Offene Fragen
 
-- Board-Maße (Felder quer und hoch, Feld- und Markergröße, Dictionary, `legacyPattern`) müssen im
-  Panel auf das echte Brett eingestellt werden. Die Standardwerte (7 x 5 Felder, 30 mm Feld,
-  22 mm Marker, `DICT_5X5_100`) sind Platzhalter.
+- Standard im Panel ist das Labor-ChArUco-Brett (auch Hand-Auge-Brett, `handauge-charuco-auswahl.md`):
+  11 x 7 Felder, 25 mm Feld, 18,5 mm Marker, `DICT_5X5_100`, 38 Marker, 60 innere Ecken. Bei 7 Zeilen
+  (ungerade) spielt `legacyPattern` keine Rolle. Ein anderes Brett im Panel einstellen.
 - Kamera-Belichtung und Gain werden nicht mitgespeichert. Vor der Messung manuell fixieren.
 - `movedDuringCapture` im Record stammt nur aus den Lesungen vor der Aufnahme. Die Nachlesung
   erscheint nur im Frontend.
