@@ -1932,3 +1932,29 @@ Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/
 **Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
 die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
 und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.
+
+## 20. SaveRepeatabilityImage: Kamerapose für die Roboter-Wiederholgenauigkeit
+
+Methode unter dem Vision-System, nur wenn eine Kamera vorhanden ist und `repeatability_dir` gesetzt ist.
+Speichert das aktuelle Kamerabild einer Messphase als PNG plus JSON und liefert eine kalibrierfreie
+Live-Messung (Homographie Bild → Board-Ebene, Mittelpunkt auf dem Board in mm). Ziel ist die Pose-Wiederholgenauigkeit
+nach ISO 9283 (RP = l̄ + 3·S_l) der Kamerapose; gemessen wird nicht der TCP. Kein Kameramodell, keine Hand-Auge-Kalibrierung.
+
+- **NodeId**: `ns=<eigener Namespace>;s=<VisionSystemName>.SaveRepeatabilityImage`
+- **Eingänge** (String): `Session` (`^[0-9A-Za-z_-]{1,64}$`), `Phase` (`warmlauf`, `rauschen`, `zyklen_auto`,
+  `zyklen_hand`), `MetadataJson` (Client-Record `wsc.repeatability.record/1`, Board unter `board`; leer erlaubt).
+- **Ausgänge**: `FileName` (String, repo-relativ, leer bei Fehler), `ResultJson` (String, JSON der Live-Messung,
+  leer bei Fehler), `Error` (Int32, `VisionErrorCode`).
+- **Fehlercodes**: `0` OK; `1` INVALID_STATE (kein frisches Kamerabild); `2` INVALID_ARGUMENT (Session oder Phase
+  ungültig); `3` BUSY (Job läuft); `6` INTERNAL (PNG-Kodierung oder Schreibfehler). Codes 4, 5, 7 nicht verwendet.
+- **`ResultJson`** bei OK: `{"ok": true, "centerOnBoardMm": [x, y], "rotationDeg", "scalePxPerMm", "homographyRmsPx",
+  "nCorners", "nMarkers"}` oder `{"ok": false, "grund": "..."}`. Ein Problem bei der Live-Messung verhindert das
+  Speichern nicht.
+- **Ablage**: `<repeatability_dir>/<Session>/<01_warmlauf|02_rauschen|03_zyklen_auto|04_zyklen_hand>/<w|r|a|h>_NNN.png`
+  plus `.json` (Schema `adp.repeatability.image/1`). Standard `data/rohbilder/roboterwiderholgenauigkeit`.
+  Nie überschreibend.
+- **Auswertung** offline: `PYTHONPATH=src python -m repeatability_eval <session_ordner> [--exclude-ids 3,17] [--no-write]`,
+  Ergebnis unter `<session>/auswertung/ergebnis.json` (`adp.repeatability.result/1`) und `messwerte.csv`.
+- **Frontend**: Panel „Wiederholgenauigkeit“ unter dem Pick&Place-Panel beim Hand-Pi.
+
+Details, Schnittstellen im Einzelnen und Auswertungsregeln: Arbeitsplan `arbeitsplaene/roboter-wiederholgenauigkeit.md`.
