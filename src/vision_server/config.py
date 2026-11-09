@@ -80,6 +80,9 @@ class VisionServerConfig:
     #: Ablage fuer `SaveUseCaseImage` (PNG + Metadaten-JSON je Versuch unter
     #: `reihe_NNN/versuch_NNN.*`). `None` = die Methode nicht anlegen.
     use_case_dir: Path | None = _REPO_ROOT / "data" / "use-case"
+    #: Ablage fuer `SaveRepeatabilityImage` (`<session>/<NN_phase>/<praefix>_<NNN>.*`).
+    #: `None` = die Methode nicht anlegen.
+    repeatability_dir: Path | None = _REPO_ROOT / "data" / "rohbilder" / "roboterwiderholgenauigkeit"
     #: Mess-Protokoll von `MeasureTagReference` (siehe `tagreference_log.py`).
     #: `None` = nichts schreiben; `GET /tagreference.jpg` liefert dann 404.
     tag_reference_debug_dir: Path | None = _REPO_ROOT / "data" / "tagreference"

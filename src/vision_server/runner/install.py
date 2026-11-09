@@ -39,6 +39,7 @@ from .measure_tags import _Activity, _install_measure_tags
 from .part10 import install_part10_program
 from .save_raw_image import _install_save_raw_image
 from .save_use_case_image import _install_save_use_case_image
+from .save_repeatability_image import _install_save_repeatability_image
 from .sources import _camera_owner, _open_source
 from .tag_map import install_tag_map
 from .tag_reference import _install_tag_reference
@@ -159,7 +160,7 @@ async def _install_measurements(wiring: Wiring) -> None:
 
 
 async def _install_image_saves(wiring: Wiring) -> None:
-    """`SaveRawImage` und `SaveUseCaseImage` (brauchen eine Kamera)."""
+    """`SaveRawImage`, `SaveUseCaseImage`, `SaveRepeatabilityImage` (brauchen eine Kamera)."""
     space, config = wiring.space, wiring.config
     camera_owner = _camera_owner(wiring.sources, wiring.opened)
     if camera_owner is not None and config.raw_image_dir is not None:
@@ -168,6 +169,10 @@ async def _install_image_saves(wiring: Wiring) -> None:
         )
     if camera_owner is not None and config.use_case_dir is not None:
         await _install_save_use_case_image(
+            space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy
+        )
+    if camera_owner is not None and config.repeatability_dir is not None:
+        await _install_save_repeatability_image(
             space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy
         )
 
