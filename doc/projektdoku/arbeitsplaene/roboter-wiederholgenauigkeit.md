@@ -320,3 +320,88 @@ centerY_mm, rotationDeg, scalePxPerMm, homographyRmsPx, meanDisplacementPx, used
   Fehlertexte). Der Lauf auf dem Roboter ist nicht automatisch getestet.
 - Frontend: zusätzliche Einstellung `handCycles` (Ziel der Hand-Zyklen). `cycle`/`burstIndex` zählen ab 1;
   Warmlauf und Rauschen haben `burstCount` 1.
+
+## Nachtrag 09.11.2026: AprilTag als Messziel
+
+**Stand:** umgesetzt im Branch `roboter-wiederholgenauigkeit` (nicht committet, an echter Hardware nicht getestet).
+
+**Zweck.** Derselbe Ablauf wie oben, aber das Messziel ist EIN AprilTag (tag36h11) statt des ChArUco-Bretts.
+Gemessen wird, wie wiederholgenau die Position dieses Tags bestimmt wird. Es zählt wieder die Streuung, nicht der absolute Fehler.
+
+**Drei Messgrößen je Bild**
+
+1. Kalibrierfrei: Homographie über die 4 Tag-Ecken (Objektpunkte in mm auf der Tag-Ebene) → `centerOnBoardMm`, `rotationDeg`, `scalePxPerMm`, `homographyRmsPx`.
+2. Kamera: `tagInCamM` (Position, m) und `tagInCamQuat` (Orientierung) aus IPPE_SQUARE mit der Intrinsik des Pi; `reprojectionErrorPx` als Güte der Pose.
+3. Roboterbasis: `tagInBaseM` = T_base_flange (Client `actual.flangeInBase`) · T_flange_cam (Hand-Auge des Pi) · T_cam_tag.
+
+**Schnittstellen-Änderungen** (Record `wsc.repeatability.record/1`)
+
+- `target` nennt jetzt das Messziel:
+  - ChArUco: `{"type":"charuco", cols, rows, squareSizeM, markerSizeM, dictionary, legacyPattern}`
+  - AprilTag: `{"type":"apriltag","tagId": int | null,"tagSizeM": float}`
+- Bei AprilTag ist `board` `null`.
+- Die Soll-Gelenkwinkel heißen jetzt `targetJoints` (vorher `target: {joints}`).
+- Regel für Leser: Nur ein `target` mit `type` gilt als Messziel. Sonst ist das Ziel ChArUco über `board`. Ältere Aufnahmen bleiben so auswertbar.
+- Familie und Detektor-Einstellungen kommen vom Pi: `config.apriltag`, in der Bild-JSON unter `pi.apriltag`.
+- `pi.intrinsics` und `pi.hand_eye` (`content.poseFlangeCam`) stehen jetzt in jeder Bild-JSON.
+
+**ResultJson bei AprilTag** (`SaveRepeatabilityImage`, bei OK):
+
+`ok` (true), `target` ("apriltag"), `tagId` (int), `nCorners` (4), `nMarkers` (1), `cornersPx` ([[x, y] × 4]),
+`centerOnBoardMm` ([x, y]), `rotationDeg`, `scalePxPerMm`, `homographyRmsPx`, `tagInCamM` ([x, y, z] oder null),
+`tagInCamQuat` (Quaternion, Reihenfolge wie `tagloc.geometry.to_position_quaternion`, oder null),
+`reprojectionErrorPx` (oder null), `tagInBaseM` ([x, y, z] oder null).
+
+Kamera-Felder fehlen (null), wenn keine Intrinsik da ist; Basis-Feld, wenn Hand-Auge oder Flanschpose fehlen.
+Bei Problemen: `{"ok": false, "grund": "..."}`, z. B. Tag nicht erkannt, mehrfach erkannt, mehrere Tags ohne `tagId`,
+Detektor auf dem Pi nicht verfügbar.
+
+**Python-API**
+
+- `repeatability_eval.apriltag`:
+  - `AprilTagSpec(tag_id: int | None, tag_size_m: float)`
+  - `target_type(client) -> "apriltag" | "charuco"`
+  - `apriltag_spec_from_dict(d) -> AprilTagSpec` (wirft `ValueError`)
+  - `build_apriltag_detector(config)` (Dataclass oder Mapping wie `pi.apriltag`)
+  - `detect_observations(image, detector) -> list` (alle Tags, sortiert nach ID)
+  - `select_observation(observations, tag_id) -> (Beobachtung | None, grund: str)`
+  - `pose_from_client(d) -> 4x4 | None`
+  - `measure_observation(observation, spec, image_size, calibration=None, pose_flange_cam=None, flange_in_base=None) -> dict` (wirft `ValueError` nur bei nicht berechenbarer Homographie)
+- `repeatability_eval.live`:
+  - `AprilTagLive(detector, calibration: () -> CameraCalibration | None, pose_flange_cam: () -> 4x4 | None)`
+  - `measure_for_save(image, client_meta, apriltag: AprilTagLive | None = None) -> dict` (wirft nie)
+- `repeatability_eval.metrics.homography_metrics_points(corners (N,2) px, object_mm (N,2), image_size, min_points=4) -> dict`
+  (wirft `ValueError` bei zu wenigen Punkten oder entarteter Homographie).
+
+**Auswertung** (`repeatability_eval.session`)
+
+- Tag-ID `null` (Standard): je Bild muss genau ein Tag erkannt sein. Ausgewertet wird die häufigste einzeln erkannte ID.
+  Bilder mit anderer ID oder ohne genau einen Tag sind ausgeschlossen, der Grund steht in der CSV.
+- `ergebnis.json`: `board: null`, `target` mit aufgelöster `tagId` und `tagSizeM`, `basisIds` leer,
+  `basisRegel` "AprilTag: 4 Ecken des Tags <ID>".
+- Je Serie zusätzlich `kamera` und `basis`, jeweils mit `rpUm`, `lMeanUm`, `sLUm`, `stdPerAxisUm`, `noiseRatio`, `valid`.
+  `kamera` hat außerdem `rotationStdArcsec` und `reprojectionMeanPx`. Gruppen mitteln Kamera- und Basis-Position über den Burst.
+- CSV-Zusatzspalten: `tagInCamX_mm`, `tagInCamY_mm`, `tagInCamZ_mm`, `tagInBaseX_mm`, `tagInBaseY_mm`, `tagInBaseZ_mm`, `reprojectionErrorPx`.
+- CLI: statt "Basis-Ecken" die Zeile "AprilTag <ID> (...)", je Serie drei RPs: "RP kalibrierfrei", "Kamera", "Basis".
+- Session-Namen enden auf `_apriltag`, damit sich beide Ziele nie in einer Session mischen.
+
+**Frontend** (`webskillcomposition`, Branch `wiederholgenauigkeit-apriltag`)
+
+- Zielauswahl im Panel: ChArUco-Brett oder AprilTag.
+- Tag-ID: leer = einziger Tag im Bild; sonst 0 bis 586 (tag36h11).
+- Tag-Größe: Standard 80 mm, gemessen an der schwarzen Außenkante.
+- Live-Abweichung kalibrierfrei und in der Basis.
+- Zielwechsel startet eine neue Session.
+
+**Tests:** `tests/test_repeatability_apriltag.py`, 12 Tests (unittest, synthetische Tag-Bilder mit `DICT_APRILTAG_36h11`):
+Zielerkennung, Spec-Parsing, ältere Records, Tag-Auswahl (eindeutig, mehrdeutig, fehlend), Live-Messung in Kamera und Basis,
+Subpixel-Verschiebung, fehlende Intrinsik oder Hand-Auge, "wirft nie", Session-Auswertung mit drei RPs, CSV-Spalten.
+
+Hinweis: Ein mathematisch exakt frontales, perfekt mittiges synthetisches Tag-Quadrat ist für IPPE entartet (die Pose kippt weg).
+Echte Bilder betrifft das nicht. Die Testbilder liegen deshalb um einige Pixel neben dem Bildhauptpunkt.
+
+**Grenzen**
+
+- Die Basis-RP enthält die Wiederholgenauigkeit des Roboters, das Messrauschen und Fehler der Hand-Auge-Kalibrierung.
+  Letztere gehen als fester Versatz ein, nicht als Streuung.
+- Die Rotationsstreuung mit nur 4 Ecken ist groß.

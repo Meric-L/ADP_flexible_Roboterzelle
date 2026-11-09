@@ -1958,3 +1958,15 @@ nach ISO 9283 (RP = l̄ + 3·S_l) der Kamerapose; gemessen wird nicht der TCP. K
 - **Frontend**: Panel „Wiederholgenauigkeit“ unter dem Pick&Place-Panel beim Hand-Pi.
 
 Details, Schnittstellen im Einzelnen und Auswertungsregeln: Arbeitsplan `arbeitsplaene/roboter-wiederholgenauigkeit.md`.
+
+### 20.1 Nachtrag: AprilTag als Messziel
+
+Seit 09.11.2026 kann das Messziel auch ein einzelner AprilTag (tag36h11) sein. Änderungen gegenüber Abschnitt 20:
+
+- **`MetadataJson`**: `target` nennt das Messziel. ChArUco `{"type":"charuco", …}`, AprilTag `{"type":"apriltag","tagId": int | null,"tagSizeM": float}`. Bei AprilTag ist `board` `null`. Nur ein `target` mit `type` gilt als Messziel, sonst ChArUco über `board`.
+- **Soll-Gelenkwinkel** heißen jetzt `targetJoints` (vorher `target: {joints}`).
+- **`ResultJson`** bei AprilTag (OK): zusätzlich zu `ok`, `centerOnBoardMm`, `rotationDeg`, `scalePxPerMm`, `homographyRmsPx`, `nCorners` (4), `nMarkers` (1) die Felder `target` ("apriltag"), `tagId`, `cornersPx`, `tagInCamM` ([x, y, z] in m, oder null), `tagInCamQuat` (oder null), `reprojectionErrorPx` (oder null) und `tagInBaseM` ([x, y, z] in m, oder null). Bei Fehler `{"ok": false, "grund": "..."}`.
+- **Bild-JSON** (`pi`): `pi.apriltag` (Detektor-Einstellungen), `pi.intrinsics` und `pi.hand_eye` stehen jetzt in jeder Bild-JSON.
+- **Eingänge, Ausgänge, Fehlercodes** bleiben wie in Abschnitt 20.
+
+Vollständige Feldliste, Python-Signaturen und Auswertungsregeln: Arbeitsplan `arbeitsplaene/roboter-wiederholgenauigkeit.md`, Abschnitt "Nachtrag 09.11.2026: AprilTag als Messziel".
