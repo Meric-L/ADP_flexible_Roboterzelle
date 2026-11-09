@@ -558,7 +558,7 @@ def summary(res):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default=str(ROOT / "docs/auswertung/handeye_cv4"))
+    ap.add_argument("--out", default=str(ROOT / "doc/auswertung/handeye_cv4"))
     ap.add_argument("--session", action="append", help="Sitzungsordner (mehrfach); Default: beide Standardsitzungen")
     args = ap.parse_args()
     sessions = [Path(s) if Path(s).is_absolute() else ROOT / s for s in (args.session or DEFAULT_SESSIONS)]

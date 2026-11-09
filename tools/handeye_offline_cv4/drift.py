@@ -13,7 +13,7 @@ Translation ueber die D-optimalen Teilmengen (15/25/40/alle). Nur Auswertung,
 nichts wird gespeichert oder aktiviert.
 
 Aufruf (separate Umgebung, siehe requirements.txt):
-    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out docs/auswertung/handeye_cv4]
+    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out doc/auswertung/handeye_cv4]
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ def analyse(folder):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", type=Path, default=ROOT / "docs/auswertung/handeye_cv4")
+    parser.add_argument("--out", type=Path, default=ROOT / "doc/auswertung/handeye_cv4")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     report = [analyse(folder) for folder in SESSIONS]

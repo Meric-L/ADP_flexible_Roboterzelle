@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Berichtsgenerator Hand-Auge-Offline-Auswertung (OpenCV-Vergleich).
 
-Nur Standardbibliothek. Liest ausschliesslich docs/auswertung/handeye_cv4/
+Nur Standardbibliothek. Liest ausschliesslich doc/auswertung/handeye_cv4/
 (<session>.json, <session>_posen.csv, vergleich.json, drift.json, optional befunde.html)
-und schreibt docs/auswertung/calibration_cv4_vergleich.html (eigenstaendig, alles inline).
+und schreibt doc/auswertung/calibration_cv4_vergleich.html (eigenstaendig, alles inline).
 
 Aufruf: python3 tools/handeye_offline_cv4/report.py
 """

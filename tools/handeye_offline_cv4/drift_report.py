@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Erzeugt docs/auswertung/handeye_drift.html aus den Offline-Auswertungen.
+"""Erzeugt doc/auswertung/handeye_drift.html aus den Offline-Auswertungen.
 
-Nur Python-Standardbibliothek. Liest docs/auswertung/handeye_cv4/ (nur lesen).
+Nur Python-Standardbibliothek. Liest doc/auswertung/handeye_cv4/ (nur lesen).
 Aufruf: python3 tools/handeye_offline_cv4/drift_report.py
 """
 import csv
@@ -517,8 +517,8 @@ def build():
       '<code>python3 tools/handeye_offline_cv4/drift_report.py</code></p>')
     A('<p>Umgebung: OpenCV 4.14 separat, die Pis sind unverändert. Rohdaten wurden nur gelesen.</p>')
     A('<p>Sitzungen:<br>'
-      + "<br>".join(f'{s["short"]}: <code>docs/auswertung/handeye_cv4/{s["id"]}_posen.csv</code>' for s in S)
-      + '<br>Auswertung: <code>docs/auswertung/handeye_cv4/drift.json</code></p>')
+      + "<br>".join(f'{s["short"]}: <code>doc/auswertung/handeye_cv4/{s["id"]}_posen.csv</code>' for s in S)
+      + '<br>Auswertung: <code>doc/auswertung/handeye_cv4/drift.json</code></p>')
     A('</div></div>')
 
     OUT.write_text("\n".join(out), encoding="utf-8")

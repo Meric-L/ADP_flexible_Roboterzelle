@@ -93,8 +93,8 @@ nicht durchführen.
 Beide Sitzungen (`20261109T125050Z_a5c964f0` ChArUco, `20261109T125825Z_a580eaba`
 Schachbrett) wurden in einer separaten Umgebung (`tools/handeye_offline_cv4/`,
 OpenCV 4.14, Pis bleiben auf OpenCV 5) erneut ausgewertet. Bericht:
-`docs/auswertung/calibration_cv4_vergleich.html`, Rohzahlen unter
-`docs/auswertung/handeye_cv4/`.
+`doc/auswertung/calibration_cv4_vergleich.html`, Rohzahlen unter
+`doc/auswertung/handeye_cv4/`.
 
 - cv2-Park ist identisch mit `park_numpy`; Tsai/Daniilidis weichen ≤ 0,45 mm ab.
   Das fehlende `calibrateHandEye` unter OpenCV 5 hat die Ergebnisse nicht verfälscht.
