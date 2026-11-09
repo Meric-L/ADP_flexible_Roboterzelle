@@ -290,6 +290,20 @@ def chessboard_object_points(spec: BoardSpec) -> np.ndarray:
     return _chessboard_object_points(spec).astype(np.float64)
 
 
+def matched_board_points(sample: BoardSample, spec: BoardSpec) -> tuple[np.ndarray, np.ndarray]:
+    """Bild- und Objektpunkte eines Bretts in derselben, festen Reihenfolge."""
+    if spec.type == CHARUCO:
+        if sample.ids is None:
+            raise ValueError("ChArUco-IDs fehlen")
+        object_points, image_points = build_board(spec).matchImagePoints(
+            np.asarray(sample.corners, dtype=np.float32), np.asarray(sample.ids, dtype=np.int32))
+        if object_points is None or image_points is None:
+            raise ValueError("ChArUco-Korrespondenzen fehlen")
+        return (np.asarray(object_points, dtype=np.float64).reshape(-1, 3),
+                np.asarray(image_points, dtype=np.float64).reshape(-1, 2))
+    return chessboard_object_points(spec), np.asarray(sample.corners, dtype=np.float64).reshape(-1, 2)
+
+
 def chessboard_is_unambiguous(spec: BoardSpec) -> bool:
     """Ob sich ein Schachbrett um 180 Grad gedreht vom Original unterscheidet.
 
@@ -340,9 +354,9 @@ def canonical_chessboard_corners(gray, corners, spec: BoardSpec) -> np.ndarray:
 
 
 def estimate_board_pose(
-    corners, spec: BoardSpec, calibration: CameraCalibration
+    corners, spec: BoardSpec, calibration: CameraCalibration, *, ids=None
 ) -> tuple[np.ndarray, float]:
-    """`(T_cam_board, Reprojektionsfehler in px)` aus kanonischen Ecken.
+    """`(T_cam_board, Reprojektionsfehler in px)` aus Brett-Ecken.
 
     Board-Frame: Ursprung in der ersten Innenecke, +x entlang der Zeile,
     +y zur naechsten Zeile, +z von der Kamera weg (ins Board). Entzerrt wird
@@ -354,7 +368,12 @@ def estimate_board_pose(
     from . import lens
     from .geometry import from_rvec_tvec
 
-    object_points = _chessboard_object_points(spec).astype(np.float64)
+    if spec.type == CHARUCO:
+        if ids is None:
+            raise ValueError("ChArUco-IDs fehlen")
+        object_points, corners = matched_board_points(BoardSample(np.asarray(corners), np.asarray(ids)), spec)
+    else:
+        object_points = _chessboard_object_points(spec).astype(np.float64)
     image_points = lens.undistort_points(corners, calibration).reshape(-1, 1, 2)
     camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     no_distortion = np.zeros(5, dtype=np.float64)

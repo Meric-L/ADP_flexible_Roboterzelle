@@ -1961,3 +1961,21 @@ Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/
 **Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
 die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
 und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.
+
+## Hand-Auge-Rohaufnahme: Schachbrett oder ChArUco (09.11.2026)
+
+Der vorhandene Startknopf der Hand-Auge-Kalibrierung verwendet `captureOnly: true`.
+Im selben Fenster kann das Brett gewählt werden. Die bestehende Schachbrettangabe
+ist `{"type":"chessboard","cols":7,"rows":10,"squareSizeM":0.023}`;
+`cols`/`rows` zählen hier Innenecken. Das ChArUco-Brett wird als
+`{"type":"charuco","cols":11,"rows":7,"squareSizeM":0.025,"markerSizeM":0.0185,"dictionary":"DICT_5X5_100"}`
+übergeben; hier zählen `cols`/`rows` Felder. Diese `board`-Angabe gilt auch für
+`MeasureBoard` und wird unverändert in der Rohsitzung unter
+`data/rohbilder/calibration/<Sitzung>/config.json` gespeichert. Bilder liegen
+weiter als `poses/pose_NNN/camera.png` beim zugehörigen `robot_state.json`.
+
+Die ChArUco-Erkennung verlangt mindestens 25 zugeordnete Innenecken pro
+Aufnahme. Ihre IDs und 3D-Objektpunkte werden bei der Offline-Detektion je Pose
+gespeichert und für PnP sowie die Reprojektionsoptimierung verwendet. Kamera-
+intrinsik und Bildstrom bleiben die bereits konfigurierten Werte. Es gibt
+keine neue OPC-UA-Methode und keine automatische Aktivierung der Offline-Lösung.
