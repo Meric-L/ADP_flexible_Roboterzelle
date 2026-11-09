@@ -405,3 +405,31 @@ Echte Bilder betrifft das nicht. Die Testbilder liegen deshalb um einige Pixel n
 - Die Basis-RP enthält die Wiederholgenauigkeit des Roboters, das Messrauschen und Fehler der Hand-Auge-Kalibrierung.
   Letztere gehen als fester Versatz ein, nicht als Streuung.
 - Die Rotationsstreuung mit nur 4 Ecken ist groß.
+
+## Nachtrag 09.11.2026: Erste Messung am Roboter
+
+**Stand:** erste Messung am Roboter (Franka) durchgeführt und mit dem Bericht-Generator ausgewertet. Kennzahlen in `doc/auswertung/roboter_wiederholgenauigkeit.json`, Bericht in `doc/auswertung/roboter_wiederholgenauigkeit.html` (Generator `tools/wiederholgenauigkeit/bericht.py`, Aufruf `PYTHONPATH=src .venv/bin/python tools/wiederholgenauigkeit/bericht.py`).
+
+**Daten.** Sessions `2026-11-09_160215` (Warmlauf, Rauschen, Auto-Zyklen) und `2026-11-09_163746` (Hand-Zyklen). 236 Bilder, davon 216 verwendet. ChArUco 11 x 7, Geschwindigkeit 0,15 (100 %), Burst 3.
+
+**Ergebnisse** (RP nach ISO 9283, Burst-Mittel je Zyklus):
+
+| Serie | RP Kamera | RP Flansch | Anmerkung |
+| --- | --- | --- | --- |
+| Messrauschen (Rauschserie, Lauf 1, 27 Bilder) | 9,1 µm | 6,8 µm | Referenz |
+| Auto-Zyklen V → P (34 Zyklen, 4 Läufe) | 250 µm | 160 µm | Rauschverhältnis 0,037, gültig (<= 0,2) |
+| Hand-Zyklen (29 Zyklen) | 3,3 mm | 1,4 mm | Hauptursache: Gelenk 7 (siehe unten) |
+
+**Befunde**
+
+- Fester Versatz zum eingelernten P: z ≈ −1,6 mm, reproduzierbar. Erklärt durch eine bleibende Regelabweichung der Handgelenke: Gelenk 5 −4,8 mrad, Gelenk 7 −5,9 mrad. Die V → P-Anfahrt ist dabei reproduzierbar (σ ≤ 0,2 mrad).
+- Hand-Zyklen: Gelenk 7 landet je nach Anfahrseite bei −5,4 mrad oder bei +7,8 mrad. Das Totband ist die Hauptursache der Hand-RP.
+- Die Kamera zeigt in Auto-Lauf 1 und 2 eine langsame y-Wanderung (+40 bzw. −29 µm/min), die die Gelenkgeber nicht zeigen.
+- Warmlauf zu kurz: Lauf 1 rund 4 min, Lauf 2 nur ein Bild. Geplant sind 30 min.
+
+**Mangel der Standardauswertung.** `repeatability_eval` trennt die Läufe nicht und filtert Bewegungsbilder nicht über `settled` und `movedDuringCapture`. Folge: Messrauschen 1888,7 µm (Rauschverhältnis 7,5, „ungültig“), Hand-RP 106,9 mm. Die Zahlen oben stammen aus dem Bericht mit Lauf-Trennung und Bildfilter (Regeln unter `regeln` in der JSON).
+
+**Offene Punkte**
+
+- Lauf-Trennung und Bewegungsfilter in `session.py` übernehmen. Vorher die Schnittstelle von `ergebnis.json` im Arbeitsplan anpassen.
+- Nächste Messung: Warmlauf 30 min, Läufe ohne Abbruch, Rauschserie direkt nach einer V → P-Anfahrt, Hand-Zyklen getrennt bewerten.
