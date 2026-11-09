@@ -1,5 +1,5 @@
 # Bildverarbeitung und Marker-Erkennung. `contrib`, weil `cv2.aruco` dort liegt.
-opencv-contrib-python>=5.0.0
+opencv-contrib-python>=4.8.0,<5
 scipy>=1.11
 numpy
 # Optionaler zweiter Detektor-Backend (tagloc.detector, backend="pupil").

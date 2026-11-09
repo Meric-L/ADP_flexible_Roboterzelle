@@ -411,7 +411,7 @@ Die letzte Zeile muss `aruco ok: True` ausgeben.
 
 | Datei | Aufgabe | Wichtigste Inhalte |
 | --- | --- | --- |
-| `requirements.txt` | Python-Abhängigkeiten | `opencv-contrib-python>=5.0.0` (liefert `cv2.aruco`; `opencv-python` allein reicht nicht), `numpy`, `pupil-apriltags` (nur für `--backend pupil`), `asyncua>=1.1.5`, `zeroconf>=0.131` (zur Laufzeit optional), `tzdata`. Bewusst nicht enthalten: `picamera2` (per apt, venv mit `--system-site-packages`) und `pyrealsense2` (auf dem Hand-Pi von Hand). |
+| `requirements.txt` | Python-Abhängigkeiten | `opencv-contrib-python>=4.8.0` (liefert `cv2.aruco`; `opencv-python` allein reicht nicht), `numpy`, `pupil-apriltags` (nur für `--backend pupil`), `asyncua>=1.1.5`, `zeroconf>=0.131` (zur Laufzeit optional), `tzdata`. Bewusst nicht enthalten: `picamera2` (per apt, venv mit `--system-site-packages`) und `pyrealsense2` (auf dem Hand-Pi von Hand). |
 | `setup.sh` | Bash-Skript: legt das ShareLaTeX-Remote `sharelatex` an und setzt die Git-Aliase `pushall` und `pullsl` | — |
 | `setup.bat` | Windows-Gegenstück zu `setup.sh` | — |
 
