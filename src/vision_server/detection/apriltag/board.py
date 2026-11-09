@@ -19,7 +19,7 @@ OBSERVE_MAX_SIDE = 640
 class BoardMeasureMixin:
     """Das Schachbrett im Kamerabild messen."""
 
-    async def measure_board(self, spec) -> tuple[Any | None, str, dict]:
+    async def measure_board(self, spec, *, samples: int | None = None) -> tuple[Any | None, str, dict]:
         """`T_cam_board` eines Schachbretts aus `samples_per_job` frischen Bildern.
 
         Wie `measure_tag`, nur mit einem Kalibrier-Schachbrett als festem
@@ -43,13 +43,14 @@ class BoardMeasureMixin:
         calibration = None
         last_image = None
         seen_timestamp = self._latest_timestamp()
-        samples = max(1, self._config.samples_per_job)
+        samples = max(1, self._config.samples_per_job if samples is None else samples)
         for _ in range(samples):
             try:
                 frame = await self._next_frame(seen_timestamp)
             except VisionJobError as error:
                 return None, error.message, {"reprojectionErrorPx": None}
             seen_timestamp = frame.timestamp
+            last_image = frame.image
             pose, reason, error_px, corners, used_calibration = await self.run_blocking(
                 self._measure_board, frame.image, spec
             )
@@ -60,8 +61,12 @@ class BoardMeasureMixin:
                 continue
             poses.append(pose)
             corner_sets.append(corners)
-            calibration, last_image = used_calibration, frame.image
-        info = {"reprojectionErrorPx": sum(errors) / len(errors) if errors else None}
+            calibration = used_calibration
+        info = {"reprojectionErrorPx": sum(errors) / len(errors) if errors else None,
+                "image": last_image, "capturedAt": captured_at(frame).isoformat() if last_image is not None else None,
+                "calibration": calibration if calibration is not None else
+                (self._calibration_for(last_image) if last_image is not None else None),
+                "intrinsicsSource": self.intrinsics_source}
         if poses:
             info.update(
                 corners=np.mean(np.stack(corner_sets), axis=0),
@@ -71,6 +76,10 @@ class BoardMeasureMixin:
             )
             return merge_tag_poses(poses), "", info
         return None, reasons[-1] if reasons else "Board nicht gesehen", info
+
+    async def capture_board_raw(self, spec):
+        """Genau ein frisches Originalbild mit Online-Pruefung aufnehmen."""
+        return await self.measure_board(spec, samples=1)
 
     def _measure_board(self, image, spec):
         """Ein Bild, ein Schachbrett:

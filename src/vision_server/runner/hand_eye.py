@@ -7,6 +7,7 @@ from asyncua import Node, ua, uamethod
 
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
+from ..profiles import _REPO_ROOT
 from .uamethods import add_vision_method, code_reply
 
 
@@ -32,6 +33,8 @@ async def _install_hand_eye_session(
         HandEyePorts(
             measure_tag=apriltag_source.measure_tag,
             measure_board=getattr(apriltag_source, "measure_board", None),
+            capture_board_raw=getattr(apriltag_source, "capture_board_raw", None),
+            raw_sessions_dir=_REPO_ROOT / "data" / "rohbilder" / "calibration",
             intrinsics_source=lambda: getattr(apriltag_source, "intrinsics_source", None),
             busy=busy,
             path=config.apriltag.hand_eye_path,
