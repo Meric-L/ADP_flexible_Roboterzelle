@@ -70,7 +70,7 @@ Brettstreuung 1.95 mm / 0.57°</pre>
 <p class="sub">Rot markierte Zeilen sind nicht belastbar.</p>
 
 <h2>7. Auffälligkeiten</h2>
-<div class="warn"><b>OpenCV:</b> Im venv liegt <code>opencv-contrib-python</code> 5.0.0.93; dieses <code>cv2</code> hat kein <code>calibrateHandEye</code>. Park, Tsai und Daniilidis aus OpenCV fallen deshalb in jedem Lauf aus (<code>cv2.calibrateHandEye fehlt</code>), der Startwert kommt aus <code>park_numpy</code>. Die Gegenprobe der drei OpenCV-Methoden fehlt also auch hier. <code>requirements.txt</code> verlangt jetzt <code>&gt;=5.0.0</code>, passend zum installierten Stand.</div>
+<div class="warn"><b>OpenCV:</b> Im venv liegt <code>opencv-contrib-python</code> 5.0.0.93; dieses <code>cv2</code> hat kein <code>calibrateHandEye</code>. Park, Tsai und Daniilidis aus OpenCV fallen deshalb in jedem Lauf aus (<code>cv2.calibrateHandEye fehlt</code>), der Startwert kommt aus <code>park_numpy</code>. Die Gegenprobe der drei OpenCV-Methoden fehlt also auch hier. Die OpenCV-Version auf den Pis bleibt unverändert, <code>requirements.txt</code> ist nicht geändert (<code>&lt;5</code>).</div>
 <ul><li>Intrinsik wie in der Schachbrett-Sitzung: <code>cam_flange@2026-09-23</code>, 640×480, k3 = 0,64. Die Prüfung gegen die tatsächliche Auflösung am Gerät steht aus.</li>
 <li>Die Reprojektion der gemeinsamen Lösung (2,0 px) liegt rund das Achtfache über dem Einzelbild-PnP (0,25 px). Der Roboterzustand passt also schlechter zum Modell, als es die Bilder allein erwarten lassen.</li>
 <li>0,5 mm ist nicht validiert (<code>accuracyValidated: false</code>).</li></ul>
