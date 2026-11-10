@@ -61,10 +61,21 @@ class FlangeCameraTest(unittest.TestCase):
 
     def test_keeps_its_settings(self):
         config = config_for("cam_flange", "realsense")
-        self.assertEqual(config.apriltag.resolution, (640, 480))
+        # Seit 10.11.2026 volle Aufloesung des D415-Farbsensors.
+        self.assertEqual(config.apriltag.resolution, (1920, 1080))
         self.assertIsNone(config.camera_stream.preview_resolution)
         self.assertIsNone(config.camera_stream.buffer_count)
         self.assertFalse(config.apriltag.allow_resolution_mismatch)
+
+    def test_detection_resolution_matches_the_realsense_frames(self):
+        """Die Frames kommen in `realsense_resolution` an; die Erkennung muss
+        dieselbe Aufloesung erwarten, sonst scheitert der erste Job erst zur
+        Laufzeit ("Kalibrierung gilt fuer ...")."""
+        config = config_for("cam_flange", "realsense")
+        self.assertEqual(config.apriltag.resolution, config.camera_stream.realsense_resolution)
+        self.assertEqual(config.camera_stream.realsense_resolution, (1920, 1080))
+        # Ueber USB 2 bietet die D415 1920x1080 nur mit 8 Hz an.
+        self.assertEqual(config.camera_stream.realsense_fps, 8)
 
     def test_keeps_the_default_overlay_timeout(self):
         """Erkennungsaufloesung hat sich fuer cam_flange nicht geaendert
@@ -127,24 +138,26 @@ class QuadDecimateSwitchTest(unittest.TestCase):
 
 
 class SubpixelRefinementSwitchTest(unittest.TestCase):
-    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- Default aus (spart ~46% CPU
-    im Job-Thread, siehe profiles.py). Env-Var bleibt als Schalter fuer
-    Layer 2/Kalibrierung."""
+    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- Deckenkamera seit 10.11.2026
+    mit subpix an (ganzzahlige Ecken zitterten, siehe server.py). Das
+    teure Verfahren `apriltag` bleibt aus; die Env-Var schaltet pro Pi um."""
 
-    def test_defaults_to_disabled(self):
-        self.assertFalse(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
+    def test_ceiling_defaults_to_subpix(self):
+        apriltag = config_for("cam_ceiling", "picamera2").apriltag
+        self.assertTrue(apriltag.subpixel_corner_refinement)
+        self.assertEqual(apriltag.corner_refinement_method, "subpix")
 
-    def test_can_be_enabled_via_env_var(self):
+    def test_can_be_disabled_via_env_var(self):
         with mock.patch.dict(
             os.environ,
             {
                 "VISION_FRAME_ID": "cam_ceiling",
                 "VISION_CAMERA_BACKEND": "picamera2",
-                "VISION_SUBPIXEL_CORNER_REFINEMENT": "1",
+                "VISION_SUBPIXEL_CORNER_REFINEMENT": "0",
             },
         ):
             config = vision_config()
-        self.assertTrue(config.apriltag.subpixel_corner_refinement)
+        self.assertFalse(config.apriltag.subpixel_corner_refinement)
 
 
 class MergedJsonObjectEnvTest(unittest.TestCase):

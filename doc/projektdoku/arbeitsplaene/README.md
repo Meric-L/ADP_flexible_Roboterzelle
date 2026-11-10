@@ -50,6 +50,7 @@ nicht gibt.
 | [`messkette-protokoll.md`](messkette-protokoll.md) | vision | fertig | Meric, `Agent: Messkette im Versuchs-JSON protokollieren` | 03.11.2026 |
 | [`zielscheibe-servoing.md`](zielscheibe-servoing.md) | vision | in Arbeit | Meric, `Agent: Zielscheiben-Servoing beim Ablegen` | 03.11.2026 |
 | [`hoehentest-hand-auge.md`](hoehentest-hand-auge.md) | vision | fertig | Meric, `Agent: Höhentest Hand-Auge` | 03.11.2026 |
+| [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
