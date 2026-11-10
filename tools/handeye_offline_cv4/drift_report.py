@@ -18,7 +18,7 @@ SESSIONS = [
     {"id": "20261109T125050Z_a5c964f0", "short": "S1", "name": "Sitzung 1", "board": "ChArUco"},
     {"id": "20261109T125825Z_a580eaba", "short": "S2", "name": "Sitzung 2", "board": "Schachbrett"},
 ]
-GROUPS = "ABCDE"
+GROUPS = "ABCDE"  # "F" kommt in load() dazu, falls eine Sitzung die Gruppe enthaelt
 MINUS = "−"
 
 
@@ -73,6 +73,9 @@ def load():
             for r in csv.DictReader(f):
                 rows.append(r)
         out.append({**meta, "rows": rows, "drift": by[meta["id"]]})
+    global GROUPS
+    if any(r["poseGroup"] == "F" for s in out for r in s["rows"]) and "F" not in GROUPS:
+        GROUPS += "F"
     return out
 
 
@@ -101,6 +104,10 @@ def shape(g, cx, cy, title, s=5.5):
         k = s * 1.25
         pts = f"{cx:.1f},{cy-k:.1f} {cx+k:.1f},{cy:.1f} {cx:.1f},{cy+k:.1f} {cx-k:.1f},{cy:.1f}"
         return f'<polygon class="g g-D" points="{pts}">{t}</polygon>'
+    if g == "F":  # diagonales Kreuz
+        d = f"M{cx-s:.1f} {cy-s:.1f}L{cx+s:.1f} {cy+s:.1f}M{cx-s:.1f} {cy+s:.1f}L{cx+s:.1f} {cy-s:.1f}"
+        return (f'<g class="g-plus"><path class="plus-ring" d="{d}"/>'
+                f'<path class="plus g-F-s" d="{d}"/>{t}</g>')
     d = f"M{cx-s:.1f} {cy:.1f}H{cx+s:.1f}M{cx:.1f} {cy-s:.1f}V{cy+s:.1f}"
     return (f'<g class="g-plus"><path class="plus-ring" d="{d}"/>'
             f'<path class="plus g-E-s" d="{d}"/>{t}</g>')
@@ -352,11 +359,11 @@ def models_table(sessions):
 # ---------------------------------------------------------------- Seite
 CSS = """
 :root{--bg:#f7f8f8;--surface:#ffffff;--fg:#15191c;--muted:#56616a;--grid:#e2e6e9;--accent:#1d5f8c;
---gA:#2a78d6;--gB:#eb6834;--gC:#1baf7a;--gD:#eda100;--gE:#e87ba4;--m-rigid:#52514e;--m-drift:#6250d6}
+--gA:#2a78d6;--gB:#eb6834;--gC:#1baf7a;--gD:#eda100;--gE:#e87ba4;--gF:#7a7a2e;--m-rigid:#52514e;--m-drift:#6250d6}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141617;--surface:#1c1f21;--fg:#e8ecee;--muted:#a3aeb6;--grid:#2c3236;--accent:#6aaee0;
---gA:#3987e5;--gB:#d95926;--gC:#199e70;--gD:#c98500;--gE:#d55181;--m-rigid:#c3c2b7;--m-drift:#9085e9;color-scheme:dark}}
+--gA:#3987e5;--gB:#d95926;--gC:#199e70;--gD:#c98500;--gE:#d55181;--gF:#a8a83c;--m-rigid:#c3c2b7;--m-drift:#9085e9;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#141617;--surface:#1c1f21;--fg:#e8ecee;--muted:#a3aeb6;--grid:#2c3236;--accent:#6aaee0;
---gA:#3987e5;--gB:#d95926;--gC:#199e70;--gD:#c98500;--gE:#d55181;--m-rigid:#c3c2b7;--m-drift:#9085e9;color-scheme:dark}
+--gA:#3987e5;--gB:#d95926;--gC:#199e70;--gD:#c98500;--gE:#d55181;--gF:#a8a83c;--m-rigid:#c3c2b7;--m-drift:#9085e9;color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);margin:0;font:16px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 .wrap{max-width:1032px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -391,6 +398,7 @@ code{font-size:.88em;overflow-wrap:anywhere}
 .g-A{fill:var(--gA)}.g-B{fill:var(--gB)}.g-C{fill:var(--gC)}.g-D{fill:var(--gD)}
 .plus{stroke:var(--gE);stroke-width:3;fill:none;stroke-linecap:butt}
 .plus-ring{stroke:var(--bg);stroke-width:6;fill:none}
+.plus.g-F-s{stroke:var(--gF)}
 .link{stroke:var(--grid);stroke-width:1.2}
 .sr{fill:var(--m-rigid);stroke:var(--bg);stroke-width:1}
 .sd{fill:none;stroke:var(--m-drift);stroke-width:1.8}

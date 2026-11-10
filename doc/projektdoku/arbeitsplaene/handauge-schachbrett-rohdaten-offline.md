@@ -159,3 +159,46 @@ Befunde:
 - Alternativ lokale Kalibrierung im Arbeits-Orientierungsbereich. Die flachen Gruppen A und E schließen bereits mit 0,45 bis 0,55 px.
 - Genauigkeit unabhängig messen: AprilTag aus verschiedenen Posen anfahren und die Streuung von `tagInBase` auswerten (AprilTag-Modus der Wiederholgenauigkeit).
 - Für neue Aufnahmen echte Zufallsreihenfolge verwenden, damit die Kippung nicht mit der Zeit korreliert.
+
+## Nachtrag 10.11.2026: Posegruppe F (Bildrand) für die Offline-Intrinsik
+
+### Anlass
+
+- Die Intrinsik der Hand-Kamera wird offline neu bestimmt (`doc/auswertung/intrinsik_20261110.md`).
+- Dafür braucht es Ansichten mit dem Brett in den Bildecken und an den Bildrändern sowie starke Kippung. Die Kippung bestimmt die Brennweite.
+- Bisher zielte jede Ansicht auf die Brettmitte. Die Hand-Auge-Rohaufnahme liefert damit in einem automatischen Lauf verlustfreie Bilder für Intrinsik und Hand-Auge.
+
+### Schnittstellenänderung
+
+Gilt ab sofort und ersetzt die Angaben zu `poseGroup` und zur Posenzahl oben.
+
+- `CaptureHandEyeSample.poseGroup` ist `A`–`F`.
+- Pi (`handeye_session.py`) und Offline-Leser (`tagloc.handeye_offline.load_observations`) nutzen die gemeinsame Konstante `tagloc.handeye_offline.POSE_GROUPS = ("A","B","C","D","E","F")`.
+- Andere Werte: `INVALID_ARGUMENT` (Pi) bzw. Ausschluss der Aufnahme mit Grund „Posegruppe fehlt“ (Offline).
+
+### Frontend (webskillcomposition)
+
+Dateien: `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx`.
+
+- Gruppe F hat 16 Kandidaten.
+- 8 Bildpositionen: 4 Ecken, 4 Kantenmitten. Die Brettmitte liegt bei ±0,30·Bildbreite bzw. ±0,28·Bildhöhe vom Bildzentrum.
+- Je Bildposition zwei Ansichten: eine mit 30°, eine mit 45° Kippung. Eine kippt in Versatzrichtung, die andere senkrecht dazu (welche Kippung welche Richtung bekommt, wechselt von Position zu Position). 8 × 2 = 16.
+- Nur beim ChArUco-Brett, da das Schachbrett vollständig im Bild sein muss.
+- Mit ChArUco bis zu 76 Posen (Quote F 16), mit Schachbrett weiterhin bis zu 60.
+- Gemischte Reihenfolge schließt F ein.
+- Hilfsfunktion `projectBoardCentrePx` und Konstante `GUESS_FOCAL_PX = 605` (Schätzung, nur zum Zielen).
+
+### Offline-Intrinsik
+
+- Aufruf: `python tools/handeye_offline_cv4/intrinsik_offline.py <Sitzungsordner> [--nur-gruppe F]`. Das Skript liest `poses/*/camera.png` direkt.
+
+### Erster Befund ohne Gruppe F
+
+- Sitzung `20261109T143834Z_6852cbc7` (47 PNG, Kippung 1–39°) ergibt allein: fx 603,3, fy 603,5, cx 332,0, cy 244,2; k1 0,092, k2 −0,125; RMS 0,11 px.
+- Das deckt sich mit den 18 Einzelaufnahmen vom 10.11. (fx 602,9, fy 603,3, cx 331,8, cy 244,2).
+- Der Werksangabe fx 608,8 liegt die Messung damit etwa 1 % daneben. Gruppe F soll das mit stärkerer Kippung bestätigen.
+
+### Commits
+
+- ADP `6327a98` (Pi und Offline).
+- Frontend `6c59c40` auf Branch `handauge-schachbrett-offline` in `webskillcomposition` (Remote archiviert, Commit liegt lokal).
