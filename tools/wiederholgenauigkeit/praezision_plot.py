@@ -1,7 +1,8 @@
 """Schlichter Plot zur Praezision der Hand-Kamera aus der Rauschserie vom 09.11.2026.
 
 Roboter steht still, 27 Bilder des ChArUco-Bretts (Rauschlauf 1). Je Bild PnP mit der
-Pi-Intrinsik; gezeigt wird die Lage der Brettmitte in Kamerakoordinaten relativ zum Mittel.
+Pi-Intrinsik; gezeigt wird die Lage der Brettmitte in Kamerakoordinaten relativ zum Mittel
+(3D, gleicher Massstab auf allen Achsen; z = Tiefe entlang der Blickrichtung).
 Aufruf aus der Repo-Wurzel:
     PYTHONPATH=src python tools/wiederholgenauigkeit/praezision_plot.py [--out doc/auswertung/kamera_praezision.png]
 """
@@ -42,20 +43,26 @@ def main():
     sx, sy, sz = dev.std(0, ddof=1)
     dist_mm = np.linalg.norm(C.mean(0))
 
-    fig, ax = plt.subplots(figsize=(6.4, 5.2), dpi=150)
-    ax.scatter(dev[:, 0], dev[:, 1], s=28, color="#2a78d6", zorder=3)
-    lim = max(12, np.abs(dev[:, :2]).max() * 1.3)
-    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_aspect("equal")
-    ax.axhline(0, color="#999", lw=0.8); ax.axvline(0, color="#999", lw=0.8)
-    ax.grid(color="#e2e6e9", lw=0.6)
-    ax.set_xlabel("Δx [µm]"); ax.set_ylabel("Δy [µm]")
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
+    fig = plt.figure(figsize=(6.6, 6.2), dpi=150)
+    ax = fig.add_subplot(projection="3d")
+    # Gleicher Massstab auf allen drei Achsen, damit die groessere Tiefenstreuung sichtbar ist.
+    lim = max(10, np.ceil(np.abs(dev).max() * 1.15))
+    floor = -lim
+    ax.scatter(dev[:, 0], dev[:, 1], np.full(len(dev), floor), s=10, color="#b9c4cc", depthshade=False)
+    for x, y, z in dev:
+        ax.plot([x, x], [y, y], [floor, z], color="#d5dbe0", lw=0.6)
+    ax.scatter(dev[:, 0], dev[:, 1], dev[:, 2], s=26, color="#2a78d6", depthshade=False)
+    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
+    ax.set_box_aspect((1, 1, 1))
+    ax.set_xlabel("Δx [µm]"); ax.set_ylabel("Δy [µm]"); ax.set_zlabel("Δz Tiefe [µm]")
+    ax.view_init(elev=18, azim=-58)
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.set_facecolor((1, 1, 1, 0)); pane.set_edgecolor("#e2e6e9")
     fig.suptitle("Präzision der Hand-Kamera", fontsize=14, fontweight="bold", x=0.03, ha="left")
     text = (f"Roboter steht still, {len(dev)} Bilder in 40 s, Abstand {dist_mm:.0f} mm\n"
             f"σx = {sx:.1f} µm   σy = {sy:.1f} µm   σz (Tiefe) = {sz:.1f} µm").replace(".", ",")
-    fig.text(0.03, 0.885, text, ha="left", va="top", fontsize=10, color="#333")
-    fig.subplots_adjust(top=0.80, left=0.14, right=0.97, bottom=0.11)
+    fig.text(0.03, 0.915, text, ha="left", va="top", fontsize=10, color="#333")
+    fig.subplots_adjust(top=0.86, left=0.0, right=0.94, bottom=0.02)
     fig.savefig(args.out)
     print(text)
     print("geschrieben:", args.out)
