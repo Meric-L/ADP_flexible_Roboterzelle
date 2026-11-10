@@ -63,6 +63,7 @@ from tagloc.handeye import (
     session_payload,
     solve_hand_eye_robust,
 )
+from tagloc.handeye_offline import POSE_GROUPS
 from tagloc.jsonio import finite_or_none, utc_stamp
 
 from .errors import VisionErrorCode
@@ -591,8 +592,8 @@ class HandEyeSession:
                     raise ValueError("poseId muss pose_NNN sein")
                 if any(x.pose_id == pose_id for x in s.samples):
                     raise ValueError(f"poseId doppelt: {pose_id}")
-                if metadata.get("poseGroup") not in ("A", "B", "C", "D", "E"):
-                    raise ValueError("poseGroup muss A bis E sein")
+                if metadata.get("poseGroup") not in POSE_GROUPS:
+                    raise ValueError(f"poseGroup muss {POSE_GROUPS[0]} bis {POSE_GROUPS[-1]} sein")
                 if not isinstance(joints, list) or len(joints) != 7 or any(
                     not isinstance(x, (int, float)) or isinstance(x, bool) or not math.isfinite(x)
                     for x in joints
