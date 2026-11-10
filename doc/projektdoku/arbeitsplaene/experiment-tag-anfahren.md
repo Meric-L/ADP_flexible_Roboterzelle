@@ -170,3 +170,7 @@ Umgesetzt in webskillcomposition `5022124` (Branch `roboter-wiederholgenauigkeit
 - Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
 - Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/` übernommen (nicht nur hier im Plan stehen lassen).
+
+## Nachtrag 10.11.2026: Nadel im Greifer
+
+Feld „Nadel über Greifermitte (mm)“, 0 … 150 mm, im Browser gespeichert (`wsc.tagtouch.tipExtensionMm`): Abstand vom Werkzeugpunkt des Greifers (zwischen den Fingerspitzen, 103,4 mm vor dem Flansch) bis zur Nadelspitze. `withTipExtension(flangeToTool, extensionM)` in `tagTouch.ts` verschiebt den Werkzeugpunkt entlang der Werkzeug-z; Ziel, erreichte Spitze und Abstand beziehen sich dann auf die Nadelspitze. Datensatz zusätzlich `tipExtensionMm` und `toolLengthMm` (Flansch → Nadelspitze). `touch(offsetMm, tipExtensionMm?, yawDeg?)`. Umgesetzt in webskillcomposition `roboter-wiederholgenauigkeit` (Commit siehe Log), 4 weitere Tests.
