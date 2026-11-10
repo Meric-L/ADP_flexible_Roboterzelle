@@ -174,3 +174,7 @@ Umgesetzt in webskillcomposition `5022124` (Branch `roboter-wiederholgenauigkeit
 ## Nachtrag 10.11.2026: Nadel im Greifer
 
 Feld „Nadel über Greifermitte (mm)“, 0 … 150 mm, im Browser gespeichert (`wsc.tagtouch.tipExtensionMm`): Abstand vom Werkzeugpunkt des Greifers (zwischen den Fingerspitzen, 103,4 mm vor dem Flansch) bis zur Nadelspitze. `withTipExtension(flangeToTool, extensionM)` in `tagTouch.ts` verschiebt den Werkzeugpunkt entlang der Werkzeug-z; Ziel, erreichte Spitze und Abstand beziehen sich dann auf die Nadelspitze. Datensatz zusätzlich `tipExtensionMm` und `toolLengthMm` (Flansch → Nadelspitze). `touch(offsetMm, tipExtensionMm?, yawDeg?)`. Umgesetzt in webskillcomposition `roboter-wiederholgenauigkeit` (Commit siehe Log), 4 weitere Tests.
+
+## Nachtrag 10.11.2026: ohne Kollisionsprüfung
+
+Auf Wunsch entfällt im Experiment die Kollisionsprüfung der App (`cellClearance`: Arm gegen Robotertisch/Wagen und Boden, `legCollision` über die Wege). Grund: Der Tag liegt auf dem eigenen Tisch des Roboters, also im Sperrbereich dieser Prüfung, und die Spitze soll bis an den Tag. Es bleiben Umkehrrechnung und Gelenkgrenzen; im Panel steht dauerhaft der Hinweis „Ohne Kollisionsprüfung … Fahrt beobachten, Stopp bereit halten“. Layer 2 und Pick & Place prüfen weiter. Umgesetzt in webskillcomposition `533e68f`. Die eigene Kollisionserkennung des Roboters (Momentenschwellen der Steuerung) ist davon nicht berührt.
