@@ -1,21 +1,22 @@
 {
-  "schema": "wsc.vision.calibration/1",
-  "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+  "schema": "wsc.vision.calibration/2",
+  "calibrationId": "cam_flange@2026-11-10T10:41:51Z-offline-640x480-umgerechnet",
   "frameId": "cam_flange",
+  "distortionModel": "pinhole",
   "imageSize": [
     640,
     480
   ],
   "cameraMatrix": [
     [
-      607.4727365540497,
+      602.9969069770432,
       0.0,
-      323.5463184029497
+      332.58530272026525
     ],
     [
       0.0,
-      606.406328142742,
-      263.37341962604376
+      603.2532182929181,
+      243.36385905775148
     ],
     [
       0.0,
@@ -24,19 +25,21 @@
     ]
   ],
   "distortionCoefficients": [
-    0.17328208467960027,
-    -0.646032116769254,
-    0.008934129824652966,
-    -0.008192412806441795,
-    0.6423944484326257
+    0.13824703251719886,
+    -0.427233488375535,
+    -0.0019531256910768975,
+    0.0010097910551485332,
+    0.3666283056193733
   ],
-  "rmsReprojectionError": 0.13985384839537937,
-  "sampleCount": 15,
+  "rmsReprojectionError": 0.09133333333333334,
+  "sampleCount": 59,
   "board": {
-    "type": "chessboard",
-    "cols": 7,
-    "rows": 9,
-    "squareSizeM": 0.022
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.024981818181818185,
+    "markerSizeM": 0.018486545454545453,
+    "dictionary": "DICT_5X5_100"
   },
-  "createdAt": "2026-09-23T15:25:06.698763+00:00"
+  "createdAt": "2026-11-10T11:06:18.165364+00:00"
 }
