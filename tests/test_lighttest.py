@@ -40,7 +40,7 @@ def tag_image(black=40, white=200, outside=200):
 class ParseRequestTest(unittest.TestCase):
     def test_defaults_and_values(self):
         request = parse_request(json.dumps({"tagId": 5, "level": {"percent": 50, "lux": 120.5}}))
-        self.assertEqual((request.tag_id, request.frames, request.sample_images, request.series), (5, 300, 10, 0))
+        self.assertEqual((request.tag_id, request.frames, request.sample_images, request.series), (5, 300, 1, 0))
         self.assertEqual(request.level, {"percent": 50, "lux": 120.5})
         self.assertIsNone(request.size_m)
 

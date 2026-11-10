@@ -13,7 +13,7 @@ in Stufen gedimmt. Je Stufe nimmt `RecordLightLevel` viele Bilder auf (Standard
   die des weissen Rands direkt ausserhalb, im entzerrten Tag-Ausschnitt.
 
 Gespeichert wird je Stufe eine JSON mit allen Einzelbildern und der Zusammen-
-fassung, dazu eine Stichprobe von Vollbildern:
+fassung, dazu ein Vollbild zur Anschauung (auf Wunsch mehrere):
 `data/Helligkeitstest/reihe_NNN/stufe_NNN.json` und `stufe_NNN_bild_NN.png`.
 
 Hier steckt kein asyncua und keine Kamera: Bilder und Detektionen kommen als
@@ -40,7 +40,7 @@ EXPOSURE_SCHEMA = "wsc.vision.exposure/1"
 
 DEFAULT_FRAMES = 300
 MAX_FRAMES = 2000
-DEFAULT_SAMPLE_IMAGES = 10
+DEFAULT_SAMPLE_IMAGES = 1
 MAX_SAMPLE_IMAGES = 50
 
 #: Ablage, relativ zur Wurzel des Repos (`profiles._REPO_ROOT`).
