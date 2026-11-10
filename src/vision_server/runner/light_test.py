@@ -253,6 +253,7 @@ class LightTest:
                         "family": config.tag_family,
                         "detectorParameters": getattr(config, "detector_parameters", None),
                         "subpixelCornerRefinement": getattr(config, "subpixel_corner_refinement", None),
+                        "cornerRefinementMethod": getattr(config, "corner_refinement_method", None),
                     },
                     "apriltag": None if self._pupil is None else {"library": "pupil_apriltags"},
                     "apriltagError": self._pupil_error,

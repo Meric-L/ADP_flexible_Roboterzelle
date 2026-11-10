@@ -279,6 +279,16 @@ def subpixel_corner_settings(preset: dict) -> dict:
         raise ValueError(
             f"VISION_SUBPIXEL_CORNER_REFINEMENT='{raw}': erwartet 0, 1, none, apriltag oder subpix"
         )
+    # Im Journal sichtbar machen, was wirklich gilt und woher es kommt: Ein
+    # vergessenes Drop-in (override.conf) hielt die Decke am 10.11.2026 trotz
+    # neuem Preset bei "aus".
+    state = f"an ({method})" if enabled else "aus"
+    if raw and enabled != bool(preset.get("subpixel_corner_refinement", False)):
+        _log.warning(
+            "Subpixel-Ecken: %s -- VISION_SUBPIXEL_CORNER_REFINEMENT=%s uebersteuert das Preset", state, raw
+        )
+    else:
+        _log.info("Subpixel-Ecken: %s (%s)", state, f"Umgebung {raw}" if raw else "Preset")
     return {"subpixel_corner_refinement": enabled, "corner_refinement_method": method}
 
 

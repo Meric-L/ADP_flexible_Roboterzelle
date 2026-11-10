@@ -39,6 +39,11 @@ class SubpixelSettingsTest(unittest.TestCase):
         )
         self.assertTrue(settings("subpix", frame="cam_ceiling")["subpixel_corner_refinement"])
 
+    def test_override_against_preset_is_logged_as_warning(self):
+        with self.assertLogs("vision-cell-server", level="WARNING") as logs:
+            settings("0", frame="cam_ceiling")
+        self.assertIn("uebersteuert das Preset", logs.output[0])
+
     def test_unknown_value_stops_the_start(self):
         with self.assertRaises(ValueError):
             settings("ja")

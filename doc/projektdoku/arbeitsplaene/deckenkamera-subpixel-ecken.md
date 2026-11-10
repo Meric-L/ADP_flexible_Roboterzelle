@@ -67,14 +67,17 @@ def subpixel_corner_settings(preset: dict) -> dict:
 
 Keine Formatänderung. `cornersPx` in Job-Ergebnissen und im Helligkeitstest
 (`frames[].aruco.cornersPx`) sind auf der Decke ab jetzt Gleitkommawerte statt
-ganzer Pixel. Der Helligkeitstest schreibt den Schalter in
-`detectors.aruco.subpixelCornerRefinement` mit.
+ganzer Pixel. Der Helligkeitstest schreibt Schalter und Verfahren in
+`detectors.aruco.subpixelCornerRefinement` und `detectors.aruco.cornerRefinementMethod` mit.
 
 ### Netz / Betrieb
 
 - Wirkt nach `git pull` und Neustart von `opcua-server.service` auf dem Decken-Pi.
 - Zurückschalten ohne Code: `VISION_SUBPIXEL_CORNER_REFINEMENT=0` in der Unit
-  (`sudo systemctl edit opcua-server.service`).
+  (`sudo systemctl edit opcua-server.service`). **Achtung:** Auf dem Decken-Pi stand
+  genau diese Zeile noch im Drop-in. Sie muss raus, sonst greift das Preset nicht.
+- Startlog (`journalctl -u opcua-server`): `Subpixel-Ecken: an (subpix) (Preset)`, bei
+  Übersteuerung eine WARNING mit `uebersteuert das Preset`.
 - Betroffen sind Job (`DetectAprilTags`), Zellen-Überwachung und Helligkeitstest.
   Der Livestream-Overlay-Detektor bleibt ohne Verfeinerung (`runner/livestream.py`).
 
@@ -103,7 +106,12 @@ ganzer Pixel. Der Helligkeitstest schreibt den Schalter in
 
 ## Abweichungen vom Plan
 
-(noch keine)
+- **10.11.2026: Override auf dem Decken-Pi.** Reihe 3 der Decke lief trotz neuem Preset
+  ohne Subpixel. Ursache ist das Drop-in `opcua-server.service.d/override.conf` mit
+  `VISION_SUBPIXEL_CORNER_REFINEMENT=0` (siehe `deploy/README.md`). Es übersteuert das Preset.
+  Gegenmaßnahmen: Zeile auf dem Pi entfernen. `subpixel_corner_settings()` loggt den
+  wirksamen Zustand beim Start und warnt, wenn die Umgebung das Preset übersteuert.
+  Der Helligkeitstest schreibt zusätzlich `detectors.aruco.cornerRefinementMethod` mit.
 
 ## Nach Abschluss
 

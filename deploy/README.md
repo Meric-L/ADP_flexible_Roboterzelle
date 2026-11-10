@@ -27,6 +27,13 @@ Environment=VISION_APRILTAG_QUAD_DECIMATE=1.5
 Environment=VISION_SUBPIXEL_CORNER_REFINEMENT=0
 ```
 
+**Ab 10.11.2026 zu entfernen:** Die Zeile `VISION_SUBPIXEL_CORNER_REFINEMENT=0` stammt aus
+der Zeit, als Subpixel `CORNER_REFINE_APRILTAG` bedeutete (~46 % CPU). Das Preset
+`cam_ceiling` schaltet jetzt das billige `subpix` ein. Diese Zeile hält es aber aus.
+Arbeitsplan: [`deckenkamera-subpixel-ecken.md`](../doc/projektdoku/arbeitsplaene/deckenkamera-subpixel-ecken.md).
+Der Server loggt beim Start `Subpixel-Ecken: an (subpix) (Preset)` bzw. eine Warnung,
+wenn die Umgebung das Preset übersteuert.
+
 Der Hand-Pi hat keine `VISION_*`-Variablen. Beide Pis: venv `<Repo>/.venv` mit
 Python 3.13, `include-system-site-packages = true`, `opencv-contrib-python` 5.0 im
 venv (die apt-Paket-Version `python3-opencv` wird dort überdeckt).
