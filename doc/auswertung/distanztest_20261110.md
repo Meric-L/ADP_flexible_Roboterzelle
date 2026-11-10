@@ -26,4 +26,11 @@ Gleiche Session, Bilder `r_041`–`r_087`, Kamera ~0,34 m. Brettkante gegen eine
 - Der größte Fehler (+0,31 mm, y, 39,8 → 59,7) ist ein Einzelbild am Bildrand (50 statt 60 Ecken) nach 19 mm seitlichem Rutschen; mit der Werks-Intrinsik (ohne Verzeichnung) fast gleich (+0,33 mm) → eher Aufbau als Verzeichnungsmodell.
 - Seitlich praktisch unabhängig von der Intrinsik (Werk: x −0,26 %, y +0,74 %).
 - Offen: Brettmaß in y nachmessen (7 Felder, soll 174,87 mm); y-Reihe ggf. mit Brett ganz im Bild, zweitem Anschlag gegen Querrutschen und ~10 Bildern je Lage wiederholen.
-- Tiefe aus der Mutter-Lage nicht bestimmbar: Brett in allen Lagen 1,8° geneigt und 336,4 mm entfernt (flach auf dem Tisch ~348 mm) — lag nicht auf dem Tisch.
+- Tiefe aus der Mutter-Lage nicht bestimmbar (Brett scheinbar 1,8° geneigt und 336,4 mm entfernt statt ~348 mm) — Ursache siehe unten (Roboter in Ruhestellung abgesackt).
+
+## Nachtrag: Brettmaß y und Absacken in Ruhestellung
+
+- Brett in y nachgemessen (Nutzer, aus einem Bild): 174,7 mm über 7 Felder (Feld 24,957 mm, −0,17 %; in x −0,07 %). Mit getrennten Maßstäben für x und y ändert sich der Seitentest kaum: x +0,05 %, Schritte −0,001 / −0,065 / +0,125 mm; y +0,65 %, Schritte +0,053 / +0,086 / +0,310 mm. Der etwas zu große y-Maßstab kommt also nicht vom Druck, sondern im Wesentlichen vom Einzelbild am Bildrand.
+- Während des Seitentests stand der Roboter in Ruhestellung (Motoren aus, nur Bremsen). Er meldete dieselben Gelenkwinkel wie eingeschaltet (Kamera rechnerisch auf z 347,72 mm), das Brett erschien an derselben Stelle (Basis x ~408, y ~9) aber 10 mm höher (z 11,2 statt 1,0 mm) und 1,2° stärker geneigt (1,5° statt 0,35°): Die Kamera ist um diesen Betrag abgesackt und gekippt, ohne dass die gemeldeten Gelenkwinkel es zeigen.
+- Für den Seitentest unschädlich (Kamera stand während der Reihe still, gezählt wird die Verschiebung in der Brettebene). Für Hand-Auge-Aufnahmen, Layer 2 und jede Rückrechnung in Roboterkoordinaten darf der Roboter nicht in Ruhestellung stehen (~10 mm unsichtbarer Fehler); Langzeitmessungen durchgehend im selben Zustand.
+- In Roboterkoordinaten treffen die Distanzstück-Höhen absolut 19,35 / 39,43 / 59,10 mm (soll 19,9 / 39,8 / 59,7), einschließlich Hand-Auge und Roboterpose. Lauf 0 (z 1,0 mm) stand mit 1,6 mm anderer Kamerahöhe (Gelenke bis 0,004 rad anders).
