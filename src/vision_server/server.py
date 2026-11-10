@@ -142,7 +142,8 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # Frames kommen ueber SharedCamera in dieser Aufloesung an, nicht in
         # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
         # ersten Job als ValueError ("Kalibrierung gilt fuer ...") auf.
-        "resolution": (640, 480),
+        # Seit 10.11.2026 volle Aufloesung 1920x1080 (vorher 640x480).
+        "resolution": (1920, 1080),
         # Dieselben 8-cm-Modultags wie an der Decke (siehe cam_ceiling).
         "tag_size_m": 0.080,
         "samples_per_job": 5,
