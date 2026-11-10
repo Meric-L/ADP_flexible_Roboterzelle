@@ -68,6 +68,48 @@ class RawCaptureTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((Path(tmp) / "active.json").exists())
 
 
+class PoseGroupTest(unittest.IsolatedAsyncioTestCase):
+    """Gruppe F (Bildrand, fuer die Offline-Intrinsik) ist seit 10.11.2026 erlaubt;
+    unbekannte Gruppen lehnt der Pi weiter ab."""
+
+    async def test_group_f_is_stored_and_unknown_group_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            statuses = []
+
+            async def measure(_):
+                return geometry.identity(), "", {
+                    "image": np.full((480, 640), 127, dtype=np.uint8),
+                    "calibration": CAL, "capturedAt": "2026-11-10T10:00:00+00:00",
+                    "intrinsicsSource": "calibration", "reprojectionErrorPx": 0.2,
+                }
+
+            async def publish(text):
+                statuses.append(json.loads(text))
+
+            session = HandEyeSession(HandEyePorts(
+                measure_tag=measure, capture_board_raw=measure, busy=lambda: False,
+                path=Path(tmp) / "active.json", apply=lambda *_: None, publish=publish,
+                raw_sessions_dir=Path(tmp) / "rohbilder"))
+            start = {"schema": "wsc.vision.handeye.start/1", "captureOnly": True,
+                     "board": SPEC.as_dict()}
+            self.assertEqual(await session.start(json.dumps(start)), VisionErrorCode.OK)
+
+            def sample(pose_id, group):
+                return json.dumps({"schema": "wsc.vision.handeye.sample/1", "poseId": pose_id,
+                                   "poseGroup": group,
+                                   "flangeInBase": geometry.pose_to_dict(geometry.identity()),
+                                   "jointAnglesRad": [0.] * 7})
+
+            self.assertEqual(await session.capture(sample("pose_070", "F")), VisionErrorCode.OK)
+            self.assertEqual(await session.capture(sample("pose_071", "G")),
+                             VisionErrorCode.INVALID_ARGUMENT)
+            self.assertEqual(await session.finish(), VisionErrorCode.OK)
+            folder = Path(statuses[-1]["sessionPath"])
+            state = json.loads((folder / "poses" / "pose_070" / "robot_state.json").read_text())
+            self.assertEqual(state["poseGroup"], "F")
+            self.assertFalse((folder / "poses" / "pose_071").exists())
+
+
 class OfflineSolverTest(unittest.TestCase):
     def test_charuco_reader_keeps_ids_and_matched_points(self):
         spec = BoardSpec(type="charuco", cols=11, rows=7, square_size_m=0.025,
@@ -144,6 +186,18 @@ class OfflineSolverTest(unittest.TestCase):
             self.assertEqual(len(observed), 1)
             self.assertEqual(observed[0].corners.shape, (70, 2))
             self.assertEqual(points.shape, (70, 3))
+            # Gruppe F (seit 10.11.2026) wird genauso geladen, eine unbekannte Gruppe nicht.
+            state_path = folder / "poses" / "pose_000" / "robot_state.json"
+            for group, valid in (("F", True), ("G", False)):
+                state = json.loads(state_path.read_text())
+                state["poseGroup"] = group
+                state_path.write_text(json.dumps(state))
+                observed, excluded, _, _ = load_observations(folder)
+                self.assertEqual(len(observed), 1 if valid else 0, group)
+                if valid:
+                    self.assertEqual(observed[0].pose_group, "F")
+                else:
+                    self.assertEqual(excluded[0]["reason"], "Posegruppe fehlt")
 
     def test_three_methods_and_refinement_recover_known_transform(self):
         points = chessboard_object_points(SPEC)

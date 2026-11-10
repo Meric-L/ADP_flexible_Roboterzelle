@@ -15,6 +15,10 @@ from .frames import to_gray
 from .handeye import HandEye, intrinsics_from_dict, save_hand_eye, solve_hand_eye
 
 
+#: Erlaubte Posegruppen der Rohaufnahme (F = Bildrand, 30-45 Grad gekippt, fuer die Offline-Intrinsik).
+POSE_GROUPS = ("A", "B", "C", "D", "E", "F")
+
+
 @dataclass(frozen=True)
 class Observation:
     pose_id: str
@@ -139,7 +143,7 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
             if error > max_pnp_rms_px:
                 raise ValueError(f"PnP-Reprojektion {error:.3f} px > {max_pnp_rms_px:.3f} px")
             group = state.get("poseGroup")
-            if group not in ("A", "B", "C", "D", "E"):
+            if group not in POSE_GROUPS:
                 raise ValueError("Posegruppe fehlt")
             observations.append(Observation(path.name, group, flange, pose, corners, error, ambiguity,
                                             object_points, ids))
@@ -312,7 +316,8 @@ def run_experiments(folder, *, pnp="iterative", max_pnp_rms_px=1.5, repeats=3):
             runs.append({"poseIds": [obs.pose_id for obs in subset], "poseCount": count,
                          "result": solve_subset(subset, calibration, points)})
     for label, subset in [(group, [obs for obs in observations if obs.pose_group == group])
-                          for group in ("A", "B", "C", "D", "E")]:
+                          for group in POSE_GROUPS]:
+        # Gruppen ohne (genug) Posen, etwa F in alten Sitzungen, werden uebersprungen.
         if len(subset) >= 3:
             runs.append({"selection": f"group_{label}", "poseIds": [obs.pose_id for obs in subset],
                          "poseCount": len(subset), "result": solve_subset(subset, calibration, points)})

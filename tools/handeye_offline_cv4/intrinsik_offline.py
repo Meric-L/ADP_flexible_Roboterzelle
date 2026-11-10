@@ -5,17 +5,38 @@ Marker 18,487 mm). Vergleicht drei Verzeichnungsmodelle (inkl. Leave-one-out) mi
 Werks-Intrinsik der D415 und der alten cam_flange.json. Nichts wird gespeichert oder aktiviert.
 
 Aufruf aus der Repo-Wurzel:
-    python tools/handeye_offline_cv4/intrinsik_offline.py [Bildmuster]
+    python tools/handeye_offline_cv4/intrinsik_offline.py [Bildmuster | Hand-Auge-Sitzungsordner] [--nur-gruppe F]
+Ein Sitzungsordner (mit config.json und poses/) nimmt poses/*/camera.png; --nur-gruppe filtert
+ueber poseGroup in poses/*/robot_state.json.
 Standard-Bildmuster: data/calibration/cam_flange_pending/kalib_*.jpg (18 Bilder vom 10.11.2026)
 Ergebnis vom 10.11.2026: doc/auswertung/intrinsik_20261110.md
 """
-import cv2, numpy as np, glob, json, sys
+import cv2, numpy as np, glob, json, sys, os, argparse
 F = 274.8 / 275.0
 SQ, MK = 0.025 * F, 0.0185 * F
 d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 board = cv2.aruco.CharucoBoard((11, 7), SQ, MK, d)
 det = cv2.aruco.CharucoDetector(board)
-fs = sorted(glob.glob(sys.argv[1] if len(sys.argv) > 1 else 'data/calibration/cam_flange_pending/kalib_*.jpg'))
+ap = argparse.ArgumentParser()
+ap.add_argument('muster', nargs='?', default='data/calibration/cam_flange_pending/kalib_*.jpg')
+ap.add_argument('--nur-gruppe', default=None, help='nur Posen dieser poseGroup (nur bei Sitzungsordner)')
+args = ap.parse_args()
+if os.path.isdir(args.muster) and os.path.isfile(os.path.join(args.muster, 'config.json')) \
+        and os.path.isdir(os.path.join(args.muster, 'poses')):
+    fs = sorted(glob.glob(os.path.join(args.muster, 'poses', '*', 'camera.png')))
+    if args.nur_gruppe:
+        def _gruppe(f):
+            try:
+                return json.load(open(os.path.join(os.path.dirname(f), 'robot_state.json'))).get('poseGroup')
+            except (OSError, ValueError):
+                return None
+        fs = [f for f in fs if _gruppe(f) == args.nur_gruppe]
+else:
+    if args.nur_gruppe:
+        sys.exit('--nur-gruppe geht nur mit einem Sitzungsordner')
+    fs = sorted(glob.glob(args.muster))
+if not fs:
+    sys.exit('keine Bilder gefunden')
 obj, img, names = [], [], []
 for f in fs:
     g = cv2.imread(f, cv2.IMREAD_GRAYSCALE)

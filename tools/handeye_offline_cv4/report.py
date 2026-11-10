@@ -21,8 +21,8 @@ S1 = "20261109T125050Z_a5c964f0"
 S2 = "20261109T125825Z_a580eaba"
 SESSIONS = [(S1, "S1", "ChArUco"), (S2, "S2", "Schachbrett")]
 GROUPS = ["A", "B", "C", "D", "E"]
-SHAPES = {"A": "circle", "B": "square", "C": "triangle", "D": "diamond", "E": "plus"}
-SHAPE_NAME = {"A": "Kreis", "B": "Quadrat", "C": "Dreieck", "D": "Raute", "E": "Plus"}
+SHAPES = {"A": "circle", "B": "square", "C": "triangle", "D": "diamond", "E": "plus", "F": "cross"}
+SHAPE_NAME = {"A": "Kreis", "B": "Quadrat", "C": "Dreieck", "D": "Raute", "E": "Plus", "F": "Kreuz"}
 METHODS = ["park", "tsai", "daniilidis", "park_numpy"]
 EXTRA = ["horaud", "andreff"]
 R = 6  # Markerradius (Durchmesser 12 viewBox-Einheiten, >= 8 px auch bei 360 px Breite)
@@ -141,6 +141,11 @@ def marker(group, cx, cy, title):
         r = R + 2
         pts = f"{cx:.1f},{cy - r:.1f} {cx + r:.1f},{cy:.1f} {cx:.1f},{cy + r:.1f} {cx - r:.1f},{cy:.1f}"
         return f'<polygon points="{pts}" fill="{col}" stroke="{ring}" stroke-width="2" stroke-linejoin="round">{t}</polygon>'
+    if shp == "cross":  # diagonales Kreuz (Gruppe F)
+        r = R
+        d = f"M{cx - r:.1f},{cy - r:.1f}L{cx + r:.1f},{cy + r:.1f}M{cx - r:.1f},{cy + r:.1f}L{cx + r:.1f},{cy - r:.1f}"
+        return (f'<g>{t}<path d="{d}" stroke="{ring}" stroke-width="7" stroke-linecap="round" fill="none"/>'
+                f'<path d="{d}" stroke="{col}" stroke-width="3.5" stroke-linecap="round" fill="none"/></g>')
     r = R + 1
     d = f"M{cx - r:.1f},{cy:.1f}H{cx + r:.1f}M{cx:.1f},{cy - r:.1f}V{cy + r:.1f}"
     return (f'<g>{t}<path d="{d}" stroke="{ring}" stroke-width="7" stroke-linecap="round" fill="none"/>'
@@ -220,6 +225,8 @@ def load():
                     "dist": float(r["distanceMm"]), "dev": float(r["boardDevMm"]),
                 })
         loo = {p["poseId"]: p["dtNormMm"] for p in j["leaveOneOut"]["perPose"]}
+        if any(r["g"] == "F" for r in rows) and "F" not in GROUPS:
+            GROUPS.append("F")  # Gruppe F nur bei Sitzungen, die sie enthalten (alte Ausgaben bleiben gleich)
         sess[sid] = {"j": j, "rows": rows, "loo": loo, "short": short, "kind": kind}
     vg = json.loads((IN_DIR / "vergleich.json").read_text(encoding="utf-8"))
     dr = {d["session"]: d for d in json.loads((IN_DIR / "drift.json").read_text(encoding="utf-8"))}
@@ -325,7 +332,7 @@ def reproj_section(sess):
         out.append(f'<h3>{short} · {kind} <small>({len(rows)} Posen)</small></h3><div class="multi">')
         W, H = 440, 290
 
-        c = Chart(W, H, (-0.6, 4.6), ylim, [0, 1, 2, 3, 4], yt, lambda v: GROUPS[int(v)], yf, "Posegruppe", yl)
+        c = Chart(W, H, (-0.6, len(GROUPS) - 0.4), ylim, list(range(len(GROUPS))), yt, lambda v: GROUPS[int(v)], yf, "Posegruppe", yl)
         for gi, g in enumerate(GROUPS):
             vals = [r["reproj"] for r in rows if r["g"] == g]
             if vals:
@@ -479,12 +486,12 @@ def repro_section(sess):
 
 
 DARK = ("--surface:#1a1a19;--text:#f0efec;--text-2:#c3c2b7;--grid:#383835;"
-        "--g-a:#3987e5;--g-b:#d95926;--g-c:#199e70;--g-d:#c98500;--g-e:#d55181;"
+        "--g-a:#3987e5;--g-b:#d95926;--g-c:#199e70;--g-d:#c98500;--g-e:#d55181;--g-f:#7a7a2e;"
         "--s-rigid:#c3c2b7;--s-drift:#9085e9;--s-park:#008300;--card:#232321")
 
 CSS = """
 :root{--surface:#fcfcfb;--text:#0b0b0b;--text-2:#52514e;--grid:#e4e3df;
---g-a:#2a78d6;--g-b:#eb6834;--g-c:#1baf7a;--g-d:#eda100;--g-e:#e87ba4;
+--g-a:#2a78d6;--g-b:#eb6834;--g-c:#1baf7a;--g-d:#eda100;--g-e:#e87ba4;--g-f:#a8a83c;
 --s-rigid:#52514e;--s-drift:#6250d6;--s-park:#008300;--card:#f4f4f1}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){%DARK%}}
 :root[data-theme="dark"]{%DARK%}
