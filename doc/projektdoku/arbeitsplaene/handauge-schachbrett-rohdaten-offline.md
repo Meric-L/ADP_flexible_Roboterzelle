@@ -202,3 +202,10 @@ Dateien: `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx`.
 
 - ADP `6327a98` (Pi und Offline).
 - Frontend `6c59c40` auf Branch `handauge-schachbrett-offline` in `webskillcomposition` (Remote archiviert, Commit liegt lokal).
+
+## Nachtrag 10.11.2026: Handkamera auf volle Auflösung 1920×1080
+
+- `CameraStreamConfig.realsense_resolution` (1920, 1080), `realsense_fps` 8; `cam_flange`-Preset `resolution` ebenso (1920, 1080). Vorher 640×480 @ 15 Hz, ein 4:3-Ausschnitt (1440×1080, um 2,25 verkleinert, horizontal 55° statt 70° Sichtfeld).
+- 8 Hz, weil die D415 über USB 2 (Pi-Kabel, `Usb Type Descriptor 2.1`) 1920×1080 nur so anbietet. Mit USB-3-Kabel gibt es 6/15/30 Hz; dann `realsense_fps` anpassen, 8 Hz wird dort nicht angeboten.
+- Die Intrinsik `data/calibration/cam_flange.json` gilt weiter für 640×480 und passt nicht mehr. Sie wird neu bestimmt; bis dahin lehnen Tag-Erkennung und Online-Prüfung der Hand-Auge-Rohaufnahme die Bilder ab („Kalibrierung gilt für 640x480“). Die Intrinsik-Aufnahme selbst braucht keine Intrinsik.
+- Frontend Gruppe F (`handEyeAutoPoses.ts`): Zielwerte für 1920×1080, `GUESS_FOCAL_PX` 1357 (603 px bei 640×480 mal 2,25).

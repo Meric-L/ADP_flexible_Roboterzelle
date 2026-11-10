@@ -208,12 +208,18 @@ class CameraStreamConfig:
     #: fuer RealSense mitbringt) zuverlaessig startet. Bei Bedarf hochsetzen,
     #: sobald `_open_realsense`s Fehlermeldung die tatsaechlich unterstuetzten
     #: Profile der angeschlossenen Kamera zeigt.
-    realsense_resolution: tuple[int, int] = (640, 480)
+    #: Seit 10.11.2026 volle Aufloesung des Farbsensors (D415: 1920x1080, 16:9,
+    #: volles Sichtfeld). 640x480 war ein 4:3-Ausschnitt (1440x1080, um 2,25
+    #: verkleinert, horizontal 55 statt 70 Grad). Ueber USB 2 bietet die D415
+    #: 1920x1080 nur mit 8 Hz an; mit USB-3-Kabel 6/15/30 Hz -- dann
+    #: `realsense_fps` anpassen. Die Intrinsik der Handkamera muss zu dieser
+    #: Aufloesung gehoeren (neu kalibrieren).
+    realsense_resolution: tuple[int, int] = (1920, 1080)
     #: Native Aufnahme-Framerate der RealSense-Pipeline; unabhaengig von
     #: `stream_fps`, weil die Sensoren nur bestimmte fps-Werte je Aufloesung
     #: unterstuetzen (typ. 6/15/30/60). `stream_fps` bleibt die Kadenz, mit
     #: der `SharedCamera` den jeweils neuesten Frame abholt.
-    realsense_fps: int = 15
+    realsense_fps: int = 8
     jpeg_quality: int = 70
     #: Maximale Bildbreite im Stream; breitere Frames werden vor dem
     #: JPEG-Encode herunterskaliert (nur fuer den Stream -- Erkennung und

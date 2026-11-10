@@ -135,14 +135,16 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_flange": {
         # Subpixel-Ecken an (Verfahren subpix): Die Handkamera misst Tags zum
         # Anfahren, jede Eckenrundung wirkt als fester Versatz. Die CPU-Last
-        # (siehe AprilTagProfileConfig) spielt hier bei 640x480 keine Rolle.
+        # (siehe AprilTagProfileConfig) war bei 640x480 kein Thema; bei 1920x1080
+        # (seit 10.11.2026) auf dem Pi beobachten.
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
         # Frames kommen ueber SharedCamera in dieser Aufloesung an, nicht in
         # der hier eingetragenen. Eine falsche Abweichung faellt erst beim
         # ersten Job als ValueError ("Kalibrierung gilt fuer ...") auf.
-        "resolution": (640, 480),
+        # Seit 10.11.2026 volle Aufloesung 1920x1080 (vorher 640x480).
+        "resolution": (1920, 1080),
         # Dieselben 8-cm-Modultags wie an der Decke (siehe cam_ceiling).
         "tag_size_m": 0.080,
         "samples_per_job": 5,
