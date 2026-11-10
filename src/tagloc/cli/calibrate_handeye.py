@@ -96,9 +96,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Zieldatei der Hand-Auge-Kalibrierung (bei --session optional)",
     )
     parser.add_argument(
+        "--scale",
+        action="store_true",
+        help="Bei --session den Brettmassstab mitschaetzen (Standard: aus)",
+    )
+    parser.add_argument(
         "--no-scale",
         action="store_true",
-        help="Bei --session den Brettmassstab nicht mitschaetzen",
+        help="Ohne Wirkung (Standard ist ohne Massstabsschaetzung); bleibt als Schalter erlaubt",
     )
     parser.add_argument("--family", default=DEFAULT_TAG_FAMILY, help="Tag-Familie")
     add_decoder_arguments(parser)
@@ -140,7 +145,7 @@ def load_samples(path: Path) -> tuple[int, float, list]:
     return int(data.get("tagId", 0)), float(data.get("tagSizeM", 0.05)), samples
 
 
-def solve_session(path: Path, *, estimate_scale: bool = True, out: Path | None = None) -> int:
+def solve_session(path: Path, *, estimate_scale: bool = False, out: Path | None = None) -> int:
     """Eine gespeicherte Sitzung neu rechnen und die Kennzahlen drucken.
 
     Gerechnet wird in `tagloc.handeye` (`refine_board_session`, derselbe Weg wie
@@ -237,7 +242,7 @@ def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
     if args.session is not None:
-        return solve_session(args.session, estimate_scale=not args.no_scale, out=args.out)
+        return solve_session(args.session, estimate_scale=args.scale, out=args.out)
     if args.samples is None or args.calibration is None or args.out is None:
         raise SystemExit("--samples, --calibration und --out sind noetig (oder --session).")
 

@@ -144,13 +144,17 @@ def build_result(
       gibt, ueber alle -- und dann `ambiguous: true`.
     * Pixel (`cornersPx`, `centerPx`, `decisionMargin`): aus dem letzten Bild,
       roh wie vom Detektor (verzeichnet).
+    * `frames`: jedes Bild einzeln (Pose, Ecken, Reprojektionsfehler,
+      Mehrdeutigkeit), damit die Mittelung offline nachvollziehbar bleibt.
     """
     from tagloc.geometry import average_poses, to_position_quaternion
 
     by_tag: dict[int, list] = {}
+    frame_of: dict[int, list[FrameMeasurement]] = {}
     for frame in frames:
         for tag_pose in frame.tag_poses:
             by_tag.setdefault(int(tag_pose.tag_id), []).append(tag_pose)
+            frame_of.setdefault(int(tag_pose.tag_id), []).append(frame)
 
     tags = []
     for tag_id in sorted(by_tag):
@@ -187,6 +191,9 @@ def build_result(
                 "distanceM": float(np.linalg.norm(pose[:3, 3])),
                 "viewAngleDeg": view_angle_deg(pose),
                 "nearEdge": near_edge(corners, frames[-1].image_size) if corners else [],
+                "frames": [
+                    _frame_entry(frame, tag_pose) for frame, tag_pose in zip(frame_of[tag_id], seen)
+                ],
             }
         )
 
@@ -203,6 +210,25 @@ def build_result(
         "framesUsed": len(frames),
         "tags": tags,
         "error": error,
+    }
+
+
+def _frame_entry(frame: FrameMeasurement, tag_pose) -> dict:
+    """Ein Tag in einem einzelnen Bild, ungemittelt."""
+    from tagloc.geometry import to_position_quaternion
+
+    position, orientation = to_position_quaternion(np.asarray(tag_pose.pose_cam_tag, dtype=np.float64))
+    observation = tag_pose.observation
+    return {
+        "capturedAt": _iso(frame.captured_at),
+        "poseInCamera": {"position": list(position), "orientation": list(orientation)},
+        "reprojectionErrorPx": finite_or_none(tag_pose.reprojection_error_px),
+        "ambiguous": bool(tag_pose.is_ambiguous),
+        "ambiguityRatio": finite_or_none(tag_pose.ambiguity_ratio),
+        "cornersPx": (
+            [[float(u), float(v)] for u, v in observation.corners] if observation is not None else None
+        ),
+        "decisionMargin": finite_or_none(getattr(observation, "decision_margin", None)),
     }
 
 

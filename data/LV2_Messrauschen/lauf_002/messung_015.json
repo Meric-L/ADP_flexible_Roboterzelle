@@ -1,0 +1,2001 @@
+{
+  "schema": "adp.lv2_messrauschen.image/1",
+  "lauf": 2,
+  "messung_nr": 15,
+  "bild": "messung_015.png",
+  "gespeichert": "2026-11-03T16:33:55",
+  "pi": {
+    "frame_timestamp": 432761.749531288,
+    "frame_age_s": 0.023,
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "frame_id": "cam_flange",
+    "vision_system_name": "VisionMachine",
+    "vision_system_id": "vision-flange-01",
+    "hostname": "ADP-HandInEye-Kamera-Pi",
+    "endpoint": "opc.tcp://10.10.38.109:4840/raspi/server/",
+    "camera_stream": {
+      "backend": "realsense",
+      "stream_enabled": true,
+      "camera_index": 0,
+      "resolution": [
+        1280,
+        720
+      ],
+      "preview_resolution": null,
+      "buffer_count": null,
+      "camera_controls": {},
+      "warmup_s": 2.0,
+      "capture_fps": 15.0,
+      "stream_fps": 5.0,
+      "realsense_resolution": [
+        640,
+        480
+      ],
+      "realsense_fps": 15,
+      "jpeg_quality": 70,
+      "max_stream_width": 960,
+      "http_port": 8080,
+      "http_fps": 15.0,
+      "http_port_node_name": "CameraStreamHttpPort",
+      "node_name": "LatestCameraFrame",
+      "mode_node_name": "CameraStreamMode",
+      "overlay_mode": "apriltag",
+      "overlay_interval_s": 0.5,
+      "overlay_detect_interval_s": 5.0,
+      "frame_timeout_s": 3.0,
+      "max_capture_failures": 3,
+      "max_reopen_attempts": 2,
+      "stale_frame_s": 2.0,
+      "overlay_timeout_s": 2.0,
+      "health_interval_s": 0.5
+    },
+    "intrinsics": {
+      "source": "calibration",
+      "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+      "imageSize": [
+        640,
+        480
+      ],
+      "cameraMatrix": [
+        [
+          607.4727365540497,
+          0.0,
+          323.5463184029497
+        ],
+        [
+          0.0,
+          606.406328142742,
+          263.37341962604376
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "distortionCoefficients": [
+        0.17328208467960027,
+        -0.646032116769254,
+        0.008934129824652966,
+        -0.008192412806441795,
+        0.6423944484326257
+      ],
+      "distortionModel": "pinhole"
+    },
+    "apriltag": {
+      "resolution": [
+        640,
+        480
+      ],
+      "calibration_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "tag_map_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/config/tagmap.json",
+      "hand_eye_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "tag_family": "tag36h11",
+      "tag_size_m": 0.08,
+      "capture_timeout_s": 5.0,
+      "samples_per_job": 5,
+      "max_reproj_error_px": 1.5,
+      "frame_id": "cam_flange",
+      "frame_convention": "z_forward_x_right_y_down",
+      "detector_backend": "aruco",
+      "subpixel_corner_refinement": true,
+      "corner_refinement_method": "subpix",
+      "apriltag_quad_decimate": 0.0,
+      "detector_parameters": {},
+      "allow_resolution_mismatch": false,
+      "allow_placeholder_calibration": false,
+      "calibration_board_type": "chessboard",
+      "calibration_board_cols": 7,
+      "calibration_board_rows": 10,
+      "calibration_board_square_size_m": 0.023,
+      "calibration_board_marker_size_m": 0.022,
+      "calibration_board_dictionary": "DICT_4X4_50",
+      "calibration_min_samples": 15,
+      "calibration_model": "pinhole",
+      "calibration_capture_dir": null
+    },
+    "calibration": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.calibration/1",
+        "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+        "frameId": "cam_flange",
+        "imageSize": [
+          640,
+          480
+        ],
+        "cameraMatrix": [
+          [
+            607.4727365540497,
+            0.0,
+            323.5463184029497
+          ],
+          [
+            0.0,
+            606.406328142742,
+            263.37341962604376
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "distortionCoefficients": [
+          0.17328208467960027,
+          -0.646032116769254,
+          0.008934129824652966,
+          -0.008192412806441795,
+          0.6423944484326257
+        ],
+        "rmsReprojectionError": 0.13985384839537937,
+        "sampleCount": 15,
+        "board": {
+          "type": "chessboard",
+          "cols": 7,
+          "rows": 9,
+          "squareSizeM": 0.022
+        },
+        "createdAt": "2026-09-23T15:25:06.698763+00:00"
+      }
+    },
+    "hand_eye": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.handeye/1",
+        "frameId": "cam_flange",
+        "calibrationId": "cam_flange@2026-11-03T14:54:37Z",
+        "poseFlangeCam": {
+          "position": [
+            -0.046683224201639735,
+            -0.03466415447965639,
+            0.057311292450399266
+          ],
+          "orientation": [
+            -0.003499849923090031,
+            -0.016671170609798978,
+            0.7141650132635173,
+            0.6997700743468065
+          ]
+        },
+        "rmsPositionM": 0.001872,
+        "rmsRotationDeg": 0.924663,
+        "maxPositionM": 0.003637,
+        "maxRotationDeg": 1.949121,
+        "sampleCount": 14,
+        "createdAt": "2026-11-03T14:54:37Z",
+        "refinedReprojectionRmsPx": 1.183309,
+        "boardScale": 1.0,
+        "looErrorRmsPx": 1.629425,
+        "looErrorRmsM": 0.002028,
+        "intrinsicsSource": "calibration"
+      }
+    }
+  },
+  "client": {
+    "schema": "wsc.layer2.noise/1",
+    "durchlauf": 8,
+    "durchlaeufe": 10,
+    "tagId": 583,
+    "moduleId": "WORLD-0",
+    "moduleKey": null,
+    "name": "Welt-Tag 1",
+    "purpose": "anchor",
+    "ok": true,
+    "status": "done",
+    "detail": "Position gegenüber Layer 1 korrigiert um 9 mm (x +8, y +5 mm), Drehung nicht gemessen (Tag-Ausrichtung mehrdeutig) · Höhe nicht übernommen: gemessen +18 mm (aus größerem Abstand gemessen (1,00 m, 28° schräg), mittig 2 mm, 0 Korr. · nah 1,00 m (so nah wie erreichbar) · 4 Messungen, Streuung 6,1 mm / 0,9° — Ansicht 1/3 übersprungen: Keine Gelenkstellung für das Ziel gefunden (bestenfalls 32 mm / 2.2° daneben) — außer Reichweite?)",
+    "poseInWorld": {
+      "position": [
+        0.7412721414222349,
+        0.8251253812400454,
+        1.0009850120544435
+      ],
+      "orientation": [
+        0,
+        0,
+        0.7083795807089429,
+        0.7058316864767564
+      ]
+    },
+    "tagInBase": {
+      "position": [
+        -0.8224490279219699,
+        0.7442404711418499,
+        -1.0194767330003973
+      ],
+      "orientation": [
+        -0.0003137701335450787,
+        -0.008168854546571128,
+        0.70484774715165,
+        -0.7093115145681367
+      ]
+    },
+    "run": {
+      "robotId": "robot-e52a1c6c0bd6dfd0",
+      "poseFlangeCam": {
+        "position": [
+          -0.046683224201639735,
+          -0.03466415447965639,
+          0.057311292450399266
+        ],
+        "orientation": [
+          -0.0034998499230900326,
+          -0.016671170609798978,
+          0.7141650132635174,
+          0.6997700743468064
+        ]
+      },
+      "standoffM": 0.35,
+      "anchorStandoffM": 1,
+      "baseLayer1": {
+        "position": [
+          0.7334609420223234,
+          0.8205980354884239,
+          1.0009850120544435
+        ],
+        "orientation": [
+          0,
+          0,
+          0.7083795807089429,
+          0.7058316864767564
+        ]
+      },
+      "baseCorrected": {
+        "position": [
+          0.7412721414222349,
+          0.8251253812400454,
+          1.0009850120544435
+        ],
+        "orientation": [
+          0,
+          0,
+          0.7083795807089429,
+          0.7058316864767564
+        ]
+      },
+      "home": [
+        -0.0028781581204384565,
+        -0.32279646396636963,
+        0.002409837208688259,
+        -2.0072133541107178,
+        0.0007692724466323853,
+        1.6844202280044556,
+        0.7847192883491516
+      ],
+      "startJoints": [
+        -0.002679457189515233,
+        -0.32134658098220825,
+        0.002762195421382785,
+        -2.0083727836608887,
+        0.004559035878628492,
+        1.6869268417358398,
+        0.7773817181587219
+      ],
+      "schema": "wsc.layer2.chain/1",
+      "runId": "2026-11-03T15:32:59.869Z",
+      "startedAt": "2026-11-03T15:32:59.869Z",
+      "finishedAt": null,
+      "acceptedAt": null
+    },
+    "tag": {
+      "tagId": 583,
+      "moduleId": "WORLD-0",
+      "moduleKey": null,
+      "moduleName": "Welt-Tag 1",
+      "purpose": "anchor",
+      "planned": {
+        "tagInBase": {
+          "position": [
+            -0.8179498573488708,
+            0.7364130092432486,
+            -1.0009850120544435
+          ],
+          "orientation": [
+            0,
+            0,
+            -0.708379580708943,
+            0.7058316864767565
+          ]
+        },
+        "cameraInBase": {
+          "position": [
+            -0.4463611009595153,
+            0.4018658584184176,
+            -0.13495960827000486
+          ],
+          "orientation": [
+            0.03585855941626126,
+            0.9652599989685733,
+            0.16591432481724022,
+            -0.19864474553388017
+          ]
+        },
+        "flangeInBase": {
+          "position": [
+            -0.4604968776423719,
+            0.33907826100342864,
+            -0.08472606670253299
+          ],
+          "orientation": [
+            -0.6677233859904641,
+            0.6983380245967773,
+            0.25518654577018995,
+            -0.036732956069168425
+          ]
+        },
+        "tiltDeg": 30,
+        "angles": [
+          -0.17685987055301666,
+          -1.3377959728240967,
+          2.7742955684661865,
+          -1.465267300605774,
+          2.370408773422241,
+          2.966477632522583,
+          3.015899896621704
+        ],
+        "approximate": null
+      },
+      "reachedJoints": [
+        -0.17518071830272675,
+        -1.3395828008651733,
+        2.7739546298980713,
+        -1.466934323310852,
+        2.3665573596954346,
+        2.9649040699005127,
+        3.0064728260040283
+      ],
+      "measurements": [
+        {
+          "at": "2026-11-03T15:33:13.021Z",
+          "phase": "richtet die Kamera auf den Tag aus…",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": [
+            -0.17517700791358948,
+            -1.339586853981018,
+            2.773958444595337,
+            -1.4669361114501953,
+            2.3665544986724854,
+            2.964907169342041,
+            3.0064752101898193
+          ],
+          "flangeInBase": {
+            "position": [
+              -0.4598151648356478,
+              0.3383925488156429,
+              -0.08585457323056613
+            ],
+            "orientation": [
+              -0.6732704747579659,
+              0.693541096463526,
+              0.2539405515798218,
+              -0.03495442173301176
+            ]
+          },
+          "cameraInBase": {
+            "position": [
+              -0.446187375653096,
+              0.4015401056189851,
+              -0.1357763190108353
+            ],
+            "orientation": [
+              0.028524077668124724,
+              0.9658394994786665,
+              0.16638827030245407,
+              -0.19660971935725763
+            ]
+          },
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:13.174+00:00",
+            "capturedUntil": "2026-11-03T15:33:13.308+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    -0.0010232269528826854,
+                    0.000862816156618706,
+                    1.0163358114943017
+                  ],
+                  "orientation": [
+                    -0.6647483824539037,
+                    0.7060898976583245,
+                    -0.022592983936284772,
+                    0.24297366426555425
+                  ]
+                },
+                "centerPx": [
+                  320.78680419921875,
+                  262.5641174316406
+                ],
+                "cornersPx": [
+                  [
+                    266,
+                    328
+                  ],
+                  [
+                    264,
+                    211
+                  ],
+                  [
+                    377.7370300292969,
+                    200.25091552734375
+                  ],
+                  [
+                    375.4101867675781,
+                    311.00555419921875
+                  ]
+                ],
+                "reprojectionErrorPx": 0.6507515393366549,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.1531150912335214,
+                "frameCount": 3,
+                "distanceM": 1.0163366928193127,
+                "viewAngleDeg": 28.232594384011758,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:13.174+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.0010098780171027759,
+                        0.0008722964891199873,
+                        1.016331917289576
+                      ],
+                      "orientation": [
+                        -0.6647728100852428,
+                        0.7060649629852119,
+                        -0.02231289456737763,
+                        0.24300517227434917
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.6419980635368661,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.14905481165317236,
+                    "cornersPx": [
+                      [
+                        266,
+                        328
+                      ],
+                      [
+                        264,
+                        211
+                      ],
+                      [
+                        377.7735595703125,
+                        200.29408264160156
+                      ],
+                      [
+                        375.4317626953125,
+                        310.986083984375
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:13.241+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.0010308699749567907,
+                        0.0008586753604381565,
+                        1.0163732834818295
+                      ],
+                      "orientation": [
+                        -0.6647425718572172,
+                        0.7061194965187928,
+                        -0.022755948946385822,
+                        0.242888321218309
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.6568684266947864,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.1531150912335214,
+                    "cornersPx": [
+                      [
+                        266,
+                        328
+                      ],
+                      [
+                        264,
+                        211
+                      ],
+                      [
+                        377.7251281738281,
+                        200.2543182373047
+                      ],
+                      [
+                        375.42010498046875,
+                        311.00982666015625
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:13.308+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.0010289328665884897,
+                        0.0008574766202979741,
+                        1.0163022337114993
+                      ],
+                      "orientation": [
+                        -0.6647297214146942,
+                        0.7060851867284134,
+                        -0.022710106792001496,
+                        0.24302748321978065
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.6533881277783121,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.15211504836799866,
+                    "cornersPx": [
+                      [
+                        266,
+                        328
+                      ],
+                      [
+                        264,
+                        211
+                      ],
+                      [
+                        377.7370300292969,
+                        200.25091552734375
+                      ],
+                      [
+                        375.4101867675781,
+                        311.00555419921875
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": [
+            {
+              "tagId": 583,
+              "tagInBase": {
+                "position": [
+                  -0.8214847147772746,
+                  0.7404229588512374,
+                  -1.0173944859075816
+                ],
+                "orientation": [
+                  -0.0016796804578837888,
+                  -0.01411246385316339,
+                  0.7070507760273664,
+                  -0.7070199552747091
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "at": "2026-11-03T15:33:17.301Z",
+          "phase": "Korrektur 1: 1 mm neben der Bildmitte",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": [
+            -0.21412231028079987,
+            -1.3901623487472534,
+            2.8025481700897217,
+            -1.388796091079712,
+            2.338347911834717,
+            2.9895970821380615,
+            3.0079092979431152
+          ],
+          "flangeInBase": {
+            "position": [
+              -0.4637617735345497,
+              0.34439256457655587,
+              -0.10109995335550383
+            ],
+            "orientation": [
+              -0.6753828401301162,
+              0.6916933203189946,
+              0.25343803717877456,
+              -0.03446057449945973
+            ]
+          },
+          "cameraInBase": {
+            "position": [
+              -0.45034785392396376,
+              0.4076630333860498,
+              -0.1509239014858239
+            ],
+            "orientation": [
+              0.025716184625323994,
+              0.9660485841861525,
+              0.1664180628430847,
+              -0.19594345919116934
+            ]
+          },
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:17.417+00:00",
+            "capturedUntil": "2026-11-03T15:33:17.551+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    0.0010454944046932471,
+                    0.0012499949516497227,
+                    0.9981307698130925
+                  ],
+                  "orientation": [
+                    -0.6665527120065274,
+                    0.7051731556029144,
+                    -0.016579677516705766,
+                    0.2411709290673593
+                  ]
+                },
+                "centerPx": [
+                  322.0185852050781,
+                  262.7211608886719
+                ],
+                "cornersPx": [
+                  [
+                    266,
+                    329
+                  ],
+                  [
+                    264,
+                    210
+                  ],
+                  [
+                    380.6221618652344,
+                    199.70932006835938
+                  ],
+                  [
+                    377.4521789550781,
+                    312.1753234863281
+                  ]
+                ],
+                "reprojectionErrorPx": 0.5179188982764035,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.11455542037607283,
+                "frameCount": 3,
+                "distanceM": 0.998132100071732,
+                "viewAngleDeg": 28.070477809497827,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:17.417+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.0010555694326563308,
+                        0.001249765352212003,
+                        0.9981405123403683
+                      ],
+                      "orientation": [
+                        -0.666562025812252,
+                        0.7052206077221689,
+                        -0.016507488510242193,
+                        0.24101133378355008
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.5230494609925324,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11455542037607283,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.62158203125,
+                        199.70925903320312
+                      ],
+                      [
+                        377.5027770996094,
+                        312.1792907714844
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:17.484+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.0010419285947694686,
+                        0.0012507830138190974,
+                        0.9981446277436257
+                      ],
+                      "orientation": [
+                        -0.6665544874722118,
+                        0.7051654884886377,
+                        -0.016612274726235134,
+                        0.24118619654461598
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.5169999579370691,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11303259081677947,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.6175842285156,
+                        199.71153259277344
+                      ],
+                      [
+                        377.4671936035156,
+                        312.1791687011719
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:17.551+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.0010389851866539424,
+                        0.001249436488918068,
+                        0.9981071693552833
+                      ],
+                      "orientation": [
+                        -0.6665416032445339,
+                        0.7051333499783335,
+                        -0.016619268828142627,
+                        0.24131524982097022
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.513707275899609,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11218547788613126,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.6221618652344,
+                        199.70932006835938
+                      ],
+                      [
+                        377.4521789550781,
+                        312.1753234863281
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": [
+            {
+              "tagId": 583,
+              "tagInBase": {
+                "position": [
+                  -0.8204989260949067,
+                  0.7398197424103892,
+                  -1.016330045220907
+                ],
+                "orientation": [
+                  0.0034383157463126622,
+                  -0.01569127793208919,
+                  0.7054405449760074,
+                  -0.70858704425472
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "at": "2026-11-03T15:33:24.103Z",
+          "phase": "fährt näher an den Tag (0,35 m)…",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": null,
+          "flangeInBase": null,
+          "cameraInBase": null,
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:24.290+00:00",
+            "capturedUntil": "2026-11-03T15:33:24.424+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    0.0010345170907935363,
+                    0.001263468393475466,
+                    0.9980999529402762
+                  ],
+                  "orientation": [
+                    -0.6665913428976903,
+                    0.7050852628741215,
+                    -0.016679944210971916,
+                    0.24131417926160853
+                  ]
+                },
+                "centerPx": [
+                  322.0171890258789,
+                  262.7290840148926
+                ],
+                "cornersPx": [
+                  [
+                    266,
+                    329
+                  ],
+                  [
+                    264,
+                    210
+                  ],
+                  [
+                    380.6365051269531,
+                    199.71571350097656
+                  ],
+                  [
+                    377.4322509765625,
+                    312.20062255859375
+                  ]
+                ],
+                "reprojectionErrorPx": 0.5096668007739328,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.11127185181798638,
+                "frameCount": 3,
+                "distanceM": 0.9981012887665129,
+                "viewAngleDeg": 28.088172629450373,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:24.290+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.001028952541471899,
+                        0.0012719374793224386,
+                        0.9981426582274651
+                      ],
+                      "orientation": [
+                        -0.6666271157955566,
+                        0.7050772601857876,
+                        -0.016768045368709336,
+                        0.24123262281356905
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.50967996259594,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11127185181798638,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.6267395019531,
+                        199.72459411621094
+                      ],
+                      [
+                        377.4215087890625,
+                        312.22137451171875
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:24.357+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.001037220564802439,
+                        0.0012559917868632977,
+                        0.998088871553955
+                      ],
+                      "orientation": [
+                        -0.6665606948838119,
+                        0.7050977986635356,
+                        -0.016621730504319667,
+                        0.24136622056718676
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.5098303375475262,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11123423937809357,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.630615234375,
+                        199.7151336669922
+                      ],
+                      [
+                        377.43829345703125,
+                        312.18426513671875
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:24.424+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.0010373781661062711,
+                        0.0012624759142406614,
+                        0.9980683290394086
+                      ],
+                      "orientation": [
+                        -0.6665862097608661,
+                        0.7050807210434263,
+                        -0.01665005655383163,
+                        0.2413436914159536
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.5094901021783323,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.11116509707846273,
+                    "cornersPx": [
+                      [
+                        266,
+                        329
+                      ],
+                      [
+                        264,
+                        210
+                      ],
+                      [
+                        380.6365051269531,
+                        199.71571350097656
+                      ],
+                      [
+                        377.4322509765625,
+                        312.20062255859375
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": []
+        },
+        {
+          "at": "2026-11-03T15:33:28.970Z",
+          "phase": "misst Ansicht 2/3…",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": [
+            0.34379953145980835,
+            -0.9621608257293701,
+            2.776735544204712,
+            -1.535516381263733,
+            2.7114274501800537,
+            3.667156934738159,
+            2.950303554534912
+          ],
+          "flangeInBase": {
+            "position": [
+              -0.5565422902632556,
+              0.04987152765686793,
+              0.12274589445919025
+            ],
+            "orientation": [
+              -0.6538986829578033,
+              0.7076705176561137,
+              0.25938229874317686,
+              0.06587696080636919
+            ]
+          },
+          "cameraInBase": {
+            "position": [
+              -0.5310177523038537,
+              0.11710220522084097,
+              0.08409301324402871
+            ],
+            "orientation": [
+              0.051908441718715594,
+              0.9601921671696524,
+              0.24193298817570347,
+              -0.12963388838091663
+            ]
+          },
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:29.138+00:00",
+            "capturedUntil": "2026-11-03T15:33:29.273+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    -0.004041270485537501,
+                    0.005417150918321931,
+                    1.3005413141726099
+                  ],
+                  "orientation": [
+                    -0.6400528252642388,
+                    0.7184442979220568,
+                    0.08164318208618554,
+                    0.25981640147109814
+                  ]
+                },
+                "centerPx": [
+                  320.70477294921875,
+                  264.6380615234375
+                ],
+                "cornersPx": [
+                  [
+                    279,
+                    314
+                  ],
+                  [
+                    272,
+                    231
+                  ],
+                  [
+                    364.8925476074219,
+                    216.48248291015625
+                  ],
+                  [
+                    366.9265441894531,
+                    297.06976318359375
+                  ]
+                ],
+                "reprojectionErrorPx": 0.4244548693159991,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.1402436160964244,
+                "frameCount": 3,
+                "distanceM": 1.3005588749691528,
+                "viewAngleDeg": 31.72197694859137,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:29.138+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.004024120491676627,
+                        0.005412727096260159,
+                        1.3003096707213004
+                      ],
+                      "orientation": [
+                        -0.6400325738081926,
+                        0.7184179307276509,
+                        0.08172185164723753,
+                        0.25991444791855595
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.4228349527392898,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.13724890332063275,
+                    "cornersPx": [
+                      [
+                        279,
+                        314
+                      ],
+                      [
+                        272,
+                        231
+                      ],
+                      [
+                        364.93060302734375,
+                        216.48678588867188
+                      ],
+                      [
+                        366.92218017578125,
+                        297.0670166015625
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:29.206+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.00405556130636072,
+                        0.005429157227360657,
+                        1.300696681481914
+                      ],
+                      "orientation": [
+                        -0.6400870650216762,
+                        0.7183936503217692,
+                        0.08163267625017079,
+                        0.25987539040381435
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.42019096293092423,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.1362338302804397,
+                    "cornersPx": [
+                      [
+                        279,
+                        314
+                      ],
+                      [
+                        272,
+                        231
+                      ],
+                      [
+                        364.9106750488281,
+                        216.51889038085938
+                      ],
+                      [
+                        366.8869934082031,
+                        297.0672302246094
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:29.273+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.004044129658575157,
+                        0.005409568431344976,
+                        1.300617590314615
+                      ],
+                      "orientation": [
+                        -0.6400388178671154,
+                        0.7185212912835244,
+                        0.08157501592481142,
+                        0.25965935833778275
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.4303386922777831,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.1402436160964244,
+                    "cornersPx": [
+                      [
+                        279,
+                        314
+                      ],
+                      [
+                        272,
+                        231
+                      ],
+                      [
+                        364.8925476074219,
+                        216.48248291015625
+                      ],
+                      [
+                        366.9265441894531,
+                        297.06976318359375
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": [
+            {
+              "tagId": 583,
+              "tagInBase": {
+                "position": [
+                  -0.8173546594663159,
+                  0.743446695092354,
+                  -1.01915543695441
+                ],
+                "orientation": [
+                  0.0010369691494060695,
+                  -0.0027489172955096897,
+                  0.7041414685916965,
+                  -0.7100536320294508
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "at": "2026-11-03T15:33:38.857Z",
+          "phase": "misst Ansicht 3/3…",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": [
+            -0.3375450074672699,
+            -0.6303855180740356,
+            2.3048763275146484,
+            -2.3103690147399902,
+            1.749943733215332,
+            2.3323757648468018,
+            2.917158365249634
+          ],
+          "flangeInBase": {
+            "position": [
+              -0.16732404343929874,
+              0.46046048159246267,
+              0.14084311686441148
+            ],
+            "orientation": [
+              0.6872413360791224,
+              -0.6713539050611634,
+              -0.24348168228404246,
+              0.13304116105717723
+            ]
+          },
+          "cameraInBase": {
+            "position": [
+              -0.16606704937149724,
+              0.5170085648762752,
+              0.08196828766868683
+            ],
+            "orientation": [
+              -0.003071298433245907,
+              -0.9619628925009472,
+              -0.08917460783987287,
+              0.2581973080683644
+            ]
+          },
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:39.109+00:00",
+            "capturedUntil": "2026-11-03T15:33:39.243+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    0.012066031645290867,
+                    0.0005528728069155426,
+                    1.3075036164929983
+                  ],
+                  "orientation": [
+                    -0.6800292060246607,
+                    0.6845878720514033,
+                    -0.11994024130005551,
+                    0.23348246810089537
+                  ]
+                },
+                "centerPx": [
+                  327.5906677246094,
+                  263.2795829772949
+                ],
+                "cornersPx": [
+                  [
+                    285,
+                    313
+                  ],
+                  [
+                    289,
+                    218
+                  ],
+                  [
+                    369.52239990234375,
+                    216.72181701660156
+                  ],
+                  [
+                    366.84027099609375,
+                    305.3965148925781
+                  ]
+                ],
+                "reprojectionErrorPx": 0.7171515726603817,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.22437564437525803,
+                "frameCount": 3,
+                "distanceM": 1.3075594066543499,
+                "viewAngleDeg": 30.94696622681194,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:39.109+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.01206970079956286,
+                        0.0005507507954971122,
+                        1.3075336734113203
+                      ],
+                      "orientation": [
+                        -0.6800170474836496,
+                        0.6846548063349572,
+                        -0.1201061133466249,
+                        0.23323621680783171
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.7280120108162076,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.22437564437525803,
+                    "cornersPx": [
+                      [
+                        285,
+                        313
+                      ],
+                      [
+                        289,
+                        218
+                      ],
+                      [
+                        369.4930114746094,
+                        216.71484375
+                      ],
+                      [
+                        366.8660888671875,
+                        305.3975830078125
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:39.176+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.01205740887770051,
+                        0.0005499407664762532,
+                        1.3075156665067709
+                      ],
+                      "orientation": [
+                        -0.6800184944197218,
+                        0.6845332180758008,
+                        -0.11981050289689817,
+                        0.23374037732817002
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.7083241390938998,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.2176494160574149,
+                    "cornersPx": [
+                      [
+                        285,
+                        313
+                      ],
+                      [
+                        289,
+                        218
+                      ],
+                      [
+                        369.52239990234375,
+                        216.72488403320312
+                      ],
+                      [
+                        366.8134460449219,
+                        305.3730773925781
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:39.243+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        0.012070985258609234,
+                        0.0005579268587732623,
+                        1.3074615095609041
+                      ],
+                      "orientation": [
+                        -0.6800520145087543,
+                        0.684575529669976,
+                        -0.11990409678325101,
+                        0.23347078899564658
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.7151185680710376,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.22020827288385453,
+                    "cornersPx": [
+                      [
+                        285,
+                        313
+                      ],
+                      [
+                        289,
+                        218
+                      ],
+                      [
+                        369.52239990234375,
+                        216.72181701660156
+                      ],
+                      [
+                        366.84027099609375,
+                        305.3965148925781
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": [
+            {
+              "tagId": 583,
+              "tagInBase": {
+                "position": [
+                  -0.8252847757366717,
+                  0.7434642890098624,
+                  -1.0243144050384432
+                ],
+                "orientation": [
+                  0.00012711172847671567,
+                  0.012430240829045988,
+                  -0.7080543906345832,
+                  0.7060484776972682
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "at": "2026-11-03T15:33:55.059Z",
+          "phase": "misst Ersatzansicht 2…",
+          "requestedTagIds": [
+            583
+          ],
+          "frames": null,
+          "joints": [
+            -0.8665604591369629,
+            -1.7549349069595337,
+            -2.206743001937866,
+            -2.1751554012298584,
+            -2.5820720195770264,
+            1.2831103801727295,
+            0.8121069669723511
+          ],
+          "flangeInBase": {
+            "position": [
+              -0.4045352763055849,
+              -0.1467206269089194,
+              -0.08329686565465347
+            ],
+            "orientation": [
+              -0.6183740904954731,
+              0.6793570112459343,
+              0.38733320367046004,
+              0.07784937256822096
+            ]
+          },
+          "cameraInBase": {
+            "position": [
+              -0.38429680523087373,
+              -0.07238640823591569,
+              -0.11032165969304306
+            ],
+            "orientation": [
+              0.05863816246759503,
+              0.9143613985530799,
+              0.3393281504690936,
+              -0.21298170118041596
+            ]
+          },
+          "status": "measured",
+          "reason": null,
+          "result": {
+            "schema": "wsc.vision.measuretag.result/1",
+            "capturedAt": "2026-11-03T15:33:55.221+00:00",
+            "capturedUntil": "2026-11-03T15:33:55.355+00:00",
+            "frameId": "cam_flange",
+            "frameConvention": "z_forward_x_right_y_down",
+            "imageSize": [
+              640,
+              480
+            ],
+            "intrinsicsSource": "calibration",
+            "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+            "framesRequested": 3,
+            "framesUsed": 3,
+            "tags": [
+              {
+                "tagId": 583,
+                "poseInCamera": {
+                  "position": [
+                    -0.02120902514021876,
+                    -0.024516508836462784,
+                    1.302103509368995
+                  ],
+                  "orientation": [
+                    -0.599214379639289,
+                    0.6949618369235026,
+                    0.08741221813132403,
+                    0.387723195817293
+                  ]
+                },
+                "centerPx": [
+                  312.4221649169922,
+                  250.5663299560547
+                ],
+                "cornersPx": [
+                  [
+                    271.74432373046875,
+                    300.28594970703125
+                  ],
+                  [
+                    268,
+                    225
+                  ],
+                  [
+                    357.26922607421875,
+                    203.65792846679688
+                  ],
+                  [
+                    352.67510986328125,
+                    273.3214416503906
+                  ]
+                ],
+                "reprojectionErrorPx": 0.9861685122646541,
+                "decisionMargin": null,
+                "sizeM": 0.2,
+                "sizeSource": "tagmap",
+                "ambiguous": false,
+                "ambiguityRatio": 0.2245392358537663,
+                "frameCount": 3,
+                "distanceM": 1.3025069792764947,
+                "viewAngleDeg": 45.41633469171442,
+                "nearEdge": [],
+                "frames": [
+                  {
+                    "capturedAt": "2026-11-03T15:33:55.221+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.02121825996135647,
+                        -0.024539426129674365,
+                        1.302058030495563
+                      ],
+                      "orientation": [
+                        -0.5991111055449237,
+                        0.6949206898872122,
+                        0.08746652877120156,
+                        0.3879442283681212
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.9985490380815987,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.2245392358537663,
+                    "cornersPx": [
+                      [
+                        271.70660400390625,
+                        300.29742431640625
+                      ],
+                      [
+                        268,
+                        225
+                      ],
+                      [
+                        357.2666320800781,
+                        203.6556854248047
+                      ],
+                      [
+                        352.64923095703125,
+                        273.2212219238281
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:55.288+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.021217204678285754,
+                        -0.02450995078917082,
+                        1.3017734131995526
+                      ],
+                      "orientation": [
+                        -0.5991876049114743,
+                        0.6948912484798513,
+                        0.08740850622208328,
+                        0.3878918920866854
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.990022195737099,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.22312077531402505,
+                    "cornersPx": [
+                      [
+                        271.6803283691406,
+                        300.3097839355469
+                      ],
+                      [
+                        268,
+                        225
+                      ],
+                      [
+                        357.2728576660156,
+                        203.6501007080078
+                      ],
+                      [
+                        352.6600036621094,
+                        273.2571716308594
+                      ]
+                    ],
+                    "decisionMargin": null
+                  },
+                  {
+                    "capturedAt": "2026-11-03T15:33:55.355+00:00",
+                    "poseInCamera": {
+                      "position": [
+                        -0.021191610781014062,
+                        -0.024500149590543165,
+                        1.302479084411869
+                      ],
+                      "orientation": [
+                        -0.599344343925954,
+                        0.6950734743583944,
+                        0.08736160706464598,
+                        0.3873334122670038
+                      ]
+                    },
+                    "reprojectionErrorPx": 0.9699343029752646,
+                    "ambiguous": false,
+                    "ambiguityRatio": 0.21855298563450767,
+                    "cornersPx": [
+                      [
+                        271.74432373046875,
+                        300.28594970703125
+                      ],
+                      [
+                        268,
+                        225
+                      ],
+                      [
+                        357.26922607421875,
+                        203.65792846679688
+                      ],
+                      [
+                        352.67510986328125,
+                        273.3214416503906
+                      ]
+                    ],
+                    "decisionMargin": null
+                  }
+                ]
+              }
+            ],
+            "error": null
+          },
+          "tagsInBase": [
+            {
+              "tagId": 583,
+              "tagInBase": {
+                "position": [
+                  -0.8266621017639707,
+                  0.7502299258579608,
+                  -1.0181430861691518
+                ],
+                "orientation": [
+                  -0.0055366830525386546,
+                  -0.001951029730387438,
+                  0.7015979753114804,
+                  -0.7125488191433611
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "centred": {
+        "status": "centred",
+        "tagInBase": {
+          "position": [
+            -0.8204970403292706,
+            0.739819091149295,
+            -1.0163314728970279
+          ],
+          "orientation": [
+            0.0034388843263264274,
+            -0.01569050567265648,
+            0.7054409715222401,
+            -0.7085866339439975
+          ]
+        },
+        "lateralErrorM": 0.001629584587983907,
+        "distanceErrorM": -0.0018692301869075445,
+        "rounds": 1,
+        "searchSteps": 0,
+        "joints": [
+          -0.21412403881549835,
+          -1.3901625871658325,
+          2.8025481700897217,
+          -1.3887978792190552,
+          2.338346004486084,
+          2.9895946979522705,
+          3.007911205291748
+        ]
+      },
+      "close": {
+        "status": "far",
+        "tagInBase": {
+          "position": [
+            -0.8204846418696943,
+            0.7398258797638886,
+            -1.0162972283001768
+          ],
+          "orientation": [
+            0.0033684854473600137,
+            -0.015542665499167451,
+            0.7055181653742759,
+            -0.7085133712089616
+          ]
+        },
+        "lateralErrorM": 0.0016329660108083685,
+        "distanceErrorM": 0.6507547443144359,
+        "rounds": 0,
+        "searchSteps": 0,
+        "joints": [
+          -0.21412338316440582,
+          -1.3901581764221191,
+          2.802546501159668,
+          -1.3887943029403687,
+          2.3383471965789795,
+          2.9895949363708496,
+          3.0079073905944824
+        ]
+      },
+      "views": {
+        "seen": [
+          {
+            "tagInBase": {
+              "position": [
+                -0.8173581553711282,
+                0.7434422877485497,
+                -1.0191557469892016
+              ],
+              "orientation": [
+                0.001039195580063351,
+                -0.002748680937554093,
+                0.7041416106757715,
+                -0.7100534887884012
+              ]
+            },
+            "ambiguous": false,
+            "index": 2
+          },
+          {
+            "tagInBase": {
+              "position": [
+                -0.8252947727868689,
+                0.7434626866057186,
+                -1.0243093984356952
+              ],
+              "orientation": [
+                0.00012585566483375166,
+                0.012432312354004618,
+                -0.7080526422207094,
+                0.7060501948262293
+              ]
+            },
+            "ambiguous": false,
+            "index": 3
+          },
+          {
+            "tagInBase": {
+              "position": [
+                -0.8266585416601884,
+                0.7502310304492427,
+                -1.0181445582765156
+              ],
+              "orientation": [
+                -0.00553687022482699,
+                -0.001950830693677269,
+                0.7015984375063353,
+                -0.7125483631420305
+              ]
+            },
+            "ambiguous": false,
+            "index": 5
+          }
+        ],
+        "warnings": [
+          "Ansicht 1/3 übersprungen: Keine Gelenkstellung für das Ziel gefunden (bestenfalls 32 mm / 2.2° daneben) — außer Reichweite?"
+        ],
+        "outcome": "done"
+      },
+      "fused": {
+        "tagInBase": {
+          "position": [
+            -0.8224490279219699,
+            0.7442404711418499,
+            -1.0194767330003973
+          ],
+          "orientation": [
+            -0.0003137701335450787,
+            -0.008168854546571128,
+            0.70484774715165,
+            -0.7093115145681367
+          ]
+        },
+        "spreadMm": 6.073572998366851,
+        "spreadDeg": 0.8639654931892575,
+        "used": [
+          0,
+          2,
+          3,
+          5
+        ],
+        "rejected": [],
+        "unambiguous": 4,
+        "warnings": []
+      },
+      "result": {
+        "kind": "anchor",
+        "tagInBase": {
+          "position": [
+            -0.8224490279219699,
+            0.7442404711418499,
+            -1.0194767330003973
+          ],
+          "orientation": [
+            -0.0003137701335450787,
+            -0.008168854546571128,
+            0.70484774715165,
+            -0.7093115145681367
+          ]
+        },
+        "worldTag": {
+          "moduleId": "WORLD-0",
+          "name": "Welt-Tag 1",
+          "tagId": 583,
+          "sizeM": 0.2,
+          "worldPosition": [
+            0,
+            0,
+            0
+          ],
+          "rotationDeg": [
+            0,
+            0,
+            0
+          ]
+        },
+        "headingOk": false,
+        "correction": {
+          "baseInWorld": {
+            "position": [
+              0.7412721414222349,
+              0.8251253812400454,
+              1.0009850120544435
+            ],
+            "orientation": [
+              0,
+              0,
+              0.7083795807089429,
+              0.7058316864767564
+            ]
+          },
+          "shiftM": [
+            0.007811199399911484,
+            0.004527345751621503,
+            0
+          ],
+          "distanceM": 0.009028382779872751,
+          "measuredHeightOffsetM": 0.01849172094595386,
+          "yawDeg": 0,
+          "headingMeasured": false
+        }
+      },
+      "status": "done",
+      "detail": "Position gegenüber Layer 1 korrigiert um 9 mm (x +8, y +5 mm), Drehung nicht gemessen (Tag-Ausrichtung mehrdeutig) · Höhe nicht übernommen: gemessen +18 mm (aus größerem Abstand gemessen (1,00 m, 28° schräg), mittig 2 mm, 0 Korr. · nah 1,00 m (so nah wie erreichbar) · 4 Messungen, Streuung 6,1 mm / 0,9° — Ansicht 1/3 übersprungen: Keine Gelenkstellung für das Ziel gefunden (bestenfalls 32 mm / 2.2° daneben) — außer Reichweite?)"
+    },
+    "clientTime": "2026-11-03T15:33:55.465Z"
+  }
+}

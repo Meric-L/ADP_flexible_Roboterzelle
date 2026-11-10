@@ -361,3 +361,9 @@ Die Zahlen sagen nichts über den festen Versatz am echten FR3 aus; das klärt n
 3. Kalibrierfahrt durchführen.
 4. `boardScale` und den Vorhersagefehler ablesen.
 5. „Brettursprung anfahren“ ausführen und den Versatz messen.
+
+## Nachtrag 03.11.2026
+
+- Die Pi-Session (`vision_server/handeye_session.py`) kalibriert ohne Maßstabsschätzung (`HAND_EYE_ESTIMATE_SCALE = False`); `boardScale` bleibt 1,0.
+- CLI `tagloc/cli/calibrate_handeye.py`: Standard jetzt ohne Maßstabsschätzung, `--scale` schaltet sie ein; `--no-scale` bleibt erlaubt, ist aber wirkungslos. Die Bibliothek `tagloc/handeye.py` behält ihre Vorgaben.
+- Grund: Der Höhentest zeigt einen konstanten Versatz von 9,8 mm ohne Maßstabsfehler; das Brett ist genau. Maßstab und Kamerahöhe entlang der Blickachse sind in der Verfeinerung gekoppelt (Details in `hoehentest-hand-auge.md`).

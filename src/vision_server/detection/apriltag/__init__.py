@@ -58,6 +58,7 @@ from .reference import ReferenceMixin
 from .resources import ResourcesMixin
 from .snapshot import TagSnapshot
 from .tags import TagMeasureMixin
+from .target import TargetMeasureMixin
 
 __all__ = [
     "OBSERVE_MAX_SIDE",
@@ -75,6 +76,7 @@ class AprilTagDetectionSource(
     CaptureMixin,
     JobMixin,
     TagMeasureMixin,
+    TargetMeasureMixin,
     BoardMeasureMixin,
     ReferenceMixin,
     CellObserveMixin,

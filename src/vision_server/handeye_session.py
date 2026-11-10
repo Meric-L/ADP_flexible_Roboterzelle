@@ -88,6 +88,10 @@ REQUIRED_AXES = 3
 #: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass
 #: (0,3 %) gibt es einen Hinweis: Feldgroesse oder Intrinsik stimmen nicht.
 SCALE_WARNING = BOARD_SCALE_WARNING
+#: Brettmassstab in der Verfeinerung nicht mitschaetzen: Das Brett gilt als
+#: genau; Massstab und Lage der Kamera entlang ihrer Blickachse sind in der
+#: Rechnung eng gekoppelt. `boardScale` im Ergebnis bleibt damit 1,0.
+HAND_EYE_ESTIMATE_SCALE = False
 #: Werte von `intrinsicsSource`, bei denen die Intrinsik nicht von uns stammt.
 FACTORY_INTRINSICS = "realsense_factory"
 PLACEHOLDER_INTRINSICS = "placeholder"
@@ -199,7 +203,12 @@ def _refine_board(
         return None
     try:
         return refine_board_session(
-            flanges, [sample.corners_px for sample in samples], tags, spec, calibration
+            flanges,
+            [sample.corners_px for sample in samples],
+            tags,
+            spec,
+            calibration,
+            estimate_scale=HAND_EYE_ESTIMATE_SCALE,
         )
     except RefinementError as error:
         _log.exception("%s -- Park-Martin bleibt", _REFINEMENT_FAILURES[error.stage])

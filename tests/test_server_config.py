@@ -138,24 +138,26 @@ class QuadDecimateSwitchTest(unittest.TestCase):
 
 
 class SubpixelRefinementSwitchTest(unittest.TestCase):
-    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- Default aus (spart ~46% CPU
-    im Job-Thread, siehe profiles.py). Env-Var bleibt als Schalter fuer
-    Layer 2/Kalibrierung."""
+    """`VISION_SUBPIXEL_CORNER_REFINEMENT` -- Deckenkamera seit 10.11.2026
+    mit subpix an (ganzzahlige Ecken zitterten, siehe server.py). Das
+    teure Verfahren `apriltag` bleibt aus; die Env-Var schaltet pro Pi um."""
 
-    def test_defaults_to_disabled(self):
-        self.assertFalse(config_for("cam_ceiling", "picamera2").apriltag.subpixel_corner_refinement)
+    def test_ceiling_defaults_to_subpix(self):
+        apriltag = config_for("cam_ceiling", "picamera2").apriltag
+        self.assertTrue(apriltag.subpixel_corner_refinement)
+        self.assertEqual(apriltag.corner_refinement_method, "subpix")
 
-    def test_can_be_enabled_via_env_var(self):
+    def test_can_be_disabled_via_env_var(self):
         with mock.patch.dict(
             os.environ,
             {
                 "VISION_FRAME_ID": "cam_ceiling",
                 "VISION_CAMERA_BACKEND": "picamera2",
-                "VISION_SUBPIXEL_CORNER_REFINEMENT": "1",
+                "VISION_SUBPIXEL_CORNER_REFINEMENT": "0",
             },
         ):
             config = vision_config()
-        self.assertTrue(config.apriltag.subpixel_corner_refinement)
+        self.assertFalse(config.apriltag.subpixel_corner_refinement)
 
 
 class MergedJsonObjectEnvTest(unittest.TestCase):

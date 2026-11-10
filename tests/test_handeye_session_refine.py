@@ -82,8 +82,8 @@ class RefinedSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await session.capture(sample_json(flange)), VisionErrorCode.OK)
         return session
 
-    async def test_scale_error_is_refined_away_and_reported(self):
-        flanges, corners, boards = scene(count=12, scale=1.01, sigma_px=0.2, seed=31)
+    async def test_an_exact_board_is_refined_without_estimating_its_scale(self):
+        flanges, corners, boards = scene(count=12, scale=1.0, sigma_px=0.2, seed=31)
         with tempfile.TemporaryDirectory() as folder:
             pi = BoardPi(folder, flanges, corners, boards)
             session = await self.run_session(pi, 12)
@@ -92,11 +92,12 @@ class RefinedSessionTest(unittest.IsolatedAsyncioTestCase):
             result = status["result"]
             self.assertEqual(status["state"], "finished")
             self.assertEqual(status["intrinsicsSource"], "calibration")
-            self.assertAlmostEqual(result["boardScale"], 1.01, delta=0.002)
+            # The board is taken as exact (HAND_EYE_ESTIMATE_SCALE): its scale stays 1.
+            self.assertEqual(result["boardScale"], 1.0)
             self.assertLess(result["refinedReprojectionRmsPx"], 0.6)
             self.assertIsNotNone(result["looErrorRmsPx"])
             self.assertLess(result["looErrorRmsM"], 0.002)
-            self.assertTrue(any("Brettmassstab" in w for w in result["warnings"]))
+            self.assertFalse(any("Brettmassstab" in w for w in result["warnings"]))
             self.assertFalse(any("Werkswerte" in w or "Platzhalter" in w for w in result["warnings"]))
             np.testing.assert_allclose(
                 g.pose_from_dict(result["targetInBase"])[:3, 3], T_BASE_BOARD[:3, 3], atol=0.002
@@ -115,6 +116,17 @@ class RefinedSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(dataset["outcome"], "finished")
             self.assertEqual(len(dataset["samples"]), 12)
             self.assertEqual(len(dataset["samples"][0]["cornersPx"]), 42)
+
+    async def test_the_scale_is_no_longer_estimated_even_for_a_wrong_board(self):
+        from vision_server.handeye_session import HAND_EYE_ESTIMATE_SCALE
+
+        self.assertFalse(HAND_EYE_ESTIMATE_SCALE)
+        flanges, corners, boards = scene(count=12, scale=1.01, sigma_px=0.2, seed=31)
+        with tempfile.TemporaryDirectory() as folder:
+            pi = BoardPi(folder, flanges, corners, boards)
+            session = await self.run_session(pi, 12)
+            self.assertEqual(await session.finish(), VisionErrorCode.OK)
+            self.assertEqual(pi.status["result"]["boardScale"], 1.0)
 
     async def test_factory_intrinsics_are_named_and_warned(self):
         flanges, corners, boards = scene(count=8, sigma_px=0.2, seed=32)

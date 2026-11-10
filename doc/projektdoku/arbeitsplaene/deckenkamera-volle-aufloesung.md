@@ -247,3 +247,10 @@ nur dort). Die Modi `"apriltag"`/`"off"` gehen weiterhin vom vollen `frame.image
 - [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md):
   Detektor-Parameter für die weichen 12-MP-Bilder der Deckenkamera (Tags 0 und
   3 wurden mit den OpenCV-Standardwerten nicht gefunden).
+
+## Nachtrag 10.11.2026: Subpixel wieder an, Verfahren `subpix`
+
+Die ~46 % CPU oben galten für `CORNER_REFINE_APRILTAG`. Die Decke nutzt seit
+10.11.2026 `CORNER_REFINE_SUBPIX`: gleiche Treffer, +3 % Laufzeit, 5- bis 8-mal
+weniger Eckenrauschen. Details stehen im Arbeitsplan
+[`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md).

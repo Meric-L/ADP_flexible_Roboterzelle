@@ -32,13 +32,15 @@ from .hand_eye import _install_hand_eye_session
 from .health import _start_camera_health
 from .jobs import install_job_methods
 from .layer2 import _install_layer2_run
+from .light_test import install_light_test
 from .livestream import _start_camera_stream, _start_mjpeg_server
 from .machine import VisionMachine, _watch_loop_lag
 from .measure_board import _install_measure_board
 from .measure_tags import _Activity, _install_measure_tags
+from .measure_target import _install_measure_target
 from .part10 import install_part10_program
 from .save_raw_image import _install_save_raw_image
-from .save_use_case_image import _install_save_use_case_image
+from .save_use_case_image import _install_save_image, _install_save_use_case_image
 from .save_repeatability_image import _install_save_repeatability_image
 from .sources import _camera_owner, _open_source
 from .tag_map import install_tag_map
@@ -125,6 +127,12 @@ async def _install_measurements(wiring: Wiring) -> None:
         space, config, source, wiring.methods, wiring.states,
         lambda: wiring.jobs.busy or wiring.calibration_processing(),
     )
+    # Helligkeitstest an beiden Pis: liest nur Kamerabilder (und friert auf
+    # Wunsch die Belichtung ein). Gesperrt fuer Job und Kamera-Kalibrierung.
+    await install_light_test(
+        space, config, source, wiring.methods, wiring.states,
+        lambda: wiring.jobs.busy or wiring.calibration_busy(),
+    )
     if space.last_tag_measurement is None:
         return
     # MeasureTags und MeasureTagReference nehmen beide frische Bilder; sie
@@ -149,6 +157,9 @@ async def _install_measurements(wiring: Wiring) -> None:
         activity=tags_activity,
         blocked_by=lambda: reference_activity.active,
     )
+    # MeasureTarget (Zielscheibe fuer das Ablegen) liest nur Kamerabilder wie
+    # MeasureTags und ist genauso nur fuer Job und Kamera-Kalibrierung gesperrt.
+    await _install_measure_target(space, config, source, wiring.methods, wiring.states, measuring_busy)
     if space.last_tag_reference is not None:
         await _install_tag_reference(
             space, config, source, wiring.methods, wiring.states,
@@ -160,18 +171,25 @@ async def _install_measurements(wiring: Wiring) -> None:
 
 
 async def _install_image_saves(wiring: Wiring) -> None:
-    """`SaveRawImage`, `SaveUseCaseImage`, `SaveRepeatabilityImage` (brauchen eine Kamera)."""
+    """`SaveRawImage`, `SaveImage`, `SaveUseCaseImage` und `SaveRepeatabilityImage` (brauchen eine Kamera)."""
     space, config = wiring.space, wiring.config
     camera_owner = _camera_owner(wiring.sources, wiring.opened)
     if camera_owner is not None and config.raw_image_dir is not None:
         await _install_save_raw_image(
             space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy
         )
-    if camera_owner is not None and config.use_case_dir is not None:
-        await _install_save_use_case_image(
+    if camera_owner is None:
+        return
+    save = None
+    if config.image_kinds:
+        save = await _install_save_image(
             space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy
         )
-    if camera_owner is not None and config.repeatability_dir is not None:
+    if "usecase" in config.image_kinds:
+        await _install_save_use_case_image(
+            space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy, save
+        )
+    if config.repeatability_dir is not None:
         await _install_save_repeatability_image(
             space, config, camera_owner, wiring.methods, lambda: wiring.jobs.busy
         )

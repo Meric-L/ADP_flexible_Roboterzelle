@@ -47,6 +47,10 @@ nicht gibt.
 | [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
 | [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
 | [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
+| [`messkette-protokoll.md`](messkette-protokoll.md) | vision | fertig | Meric, `Agent: Messkette im Versuchs-JSON protokollieren` | 03.11.2026 |
+| [`zielscheibe-servoing.md`](zielscheibe-servoing.md) | vision | in Arbeit | Meric, `Agent: Zielscheiben-Servoing beim Ablegen` | 03.11.2026 |
+| [`hoehentest-hand-auge.md`](hoehentest-hand-auge.md) | vision | fertig | Meric, `Agent: Höhentest Hand-Auge` | 03.11.2026 |
+| [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
 | [`roboter-wiederholgenauigkeit.md`](roboter-wiederholgenauigkeit.md) | vision | fertig | Meric, `Agent: Roboter-Wiederholgenauigkeit` | 09.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`

@@ -1,0 +1,808 @@
+{
+ "schema": "wsc.vision.lighttest.level/1",
+ "reihe": 1,
+ "stufe": 10,
+ "tagId": 0,
+ "level": {
+  "percent": 35,
+  "lux": null,
+  "label": "Decken_Camera_90"
+ },
+ "client": {
+  "camera": "Decke (Pi 1)",
+  "clientTime": "2026-11-09T09:23:44.975Z"
+ },
+ "startedAt": "2026-11-09T10:23:45+01:00",
+ "finishedAt": "2026-11-09T10:24:04+01:00",
+ "aborted": false,
+ "error": null,
+ "camera": {
+  "frameId": "cam_ceiling",
+  "imageSize": [
+   4056,
+   3040
+  ],
+  "calibrationId": "cam_ceiling@2026-11-02T14:47:53.213779+00:00",
+  "intrinsicsSource": "calibration",
+  "exposureStart": {
+   "backend": "picamera2",
+   "values": {
+    "ExposureTime": 16470,
+    "AnalogueGain": 2.0,
+    "DigitalGain": 1.0016286373138428,
+    "ColourGains": [
+     2.5552382469177246,
+     2.0340962409973145
+    ],
+    "ColourTemperature": 3663,
+    "Lux": 40.796730041503906
+   },
+   "controlsSet": null,
+   "locked": true
+  },
+  "exposureEnd": {
+   "backend": "picamera2",
+   "values": {
+    "ExposureTime": 16470,
+    "AnalogueGain": 2.0,
+    "DigitalGain": 1.0016286373138428,
+    "ColourGains": [
+     2.5552382469177246,
+     2.0340962409973145
+    ],
+    "ColourTemperature": 3663,
+    "Lux": 41.994483947753906
+   },
+   "controlsSet": null,
+   "locked": true
+  }
+ },
+ "detectors": {
+  "aruco": {
+   "family": "tag36h11",
+   "detectorParameters": {
+    "perspectiveRemovePixelPerCell": 8
+   },
+   "subpixelCornerRefinement": false
+  },
+  "apriltag": {
+   "library": "pupil_apriltags"
+  },
+  "apriltagError": null
+ },
+ "summary": {
+  "framesRequested": 25,
+  "framesUsed": 25,
+  "aruco": {
+   "detectionRate": 0.0,
+   "detected": 0,
+   "posed": 0,
+   "reprojectionErrorPx": null
+  },
+  "apriltag": {
+   "detectionRate": 0.64,
+   "detected": 16,
+   "decisionMargin": {
+    "mean": 8.184654355049133,
+    "sd": 0.1831819794269986,
+    "min": 7.765545845031738,
+    "max": 8.433073043823242,
+    "count": 16
+   },
+   "hamming": {
+    "mean": 0.0,
+    "sd": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "count": 16
+   },
+   "hammingCounts": {
+    "0": 16
+   }
+  },
+  "poseJitter": null,
+  "contrast": {
+   "mean": 0.874080417622697,
+   "sd": 0.009315802344914777,
+   "min": 0.8563064775834085,
+   "max": 0.8865491276897329,
+   "count": 16
+  },
+  "imageMean": {
+   "mean": 9.226337501946434,
+   "sd": 0.17938587766122746,
+   "min": 8.852757042847504,
+   "max": 9.451777094363127,
+   "count": 25
+  }
+ },
+ "images": [
+  "stufe_010_bild_01.png"
+ ],
+ "frames": [
+  {
+   "index": 0,
+   "capturedAt": "2026-11-09T09:23:46.303812+00:00",
+   "imageMean": 8.852757042847504,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.360865592956543,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.657470703125,
+      1580.5374755859375
+     ],
+     [
+      1986.1378173828125,
+      1582.5751953125
+     ],
+     [
+      1984.4010009765623,
+      1491.2990722656248
+     ],
+     [
+      2074.6298828124995,
+      1490.5816650390623
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8827967876610677,
+    "black": 1.0688244047619047,
+    "white": 17.17
+   }
+  },
+  {
+   "index": 1,
+   "capturedAt": "2026-11-09T09:23:48.015238+00:00",
+   "imageMean": 8.920689702714627,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 2,
+   "capturedAt": "2026-11-09T09:23:48.807793+00:00",
+   "imageMean": 8.952446343299076,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 7.765545845031738,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.903076171875,
+      1580.4865722656255
+     ],
+     [
+      1985.7088623046875,
+      1583.83203125
+     ],
+     [
+      1983.673095703125,
+      1491.4650878906245
+     ],
+     [
+      2074.935302734375,
+      1490.4825439453125
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8563064775834085,
+    "black": 1.329985119047619,
+    "white": 17.181428571428572
+   }
+  },
+  {
+   "index": 3,
+   "capturedAt": "2026-11-09T09:23:49.407223+00:00",
+   "imageMean": 8.998536605937922,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 4,
+   "capturedAt": "2026-11-09T09:23:50.262299+00:00",
+   "imageMean": 8.998561828480224,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 5,
+   "capturedAt": "2026-11-09T09:23:50.832165+00:00",
+   "imageMean": 9.214854779793418,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.141741752624512,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.30224609375,
+      1580.933227539063
+     ],
+     [
+      1985.3209228515625,
+      1582.3187255859373
+     ],
+     [
+      1984.5949707031252,
+      1490.733032226562
+     ],
+     [
+      2074.653076171875,
+      1491.0761718750002
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8761068191769,
+    "black": 1.1495535714285714,
+    "white": 17.407619047619047
+   }
+  },
+  {
+   "index": 6,
+   "capturedAt": "2026-11-09T09:23:51.698494+00:00",
+   "imageMean": 9.259097308730405,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.273877143859863,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.2895507812505,
+      1581.201416015625
+     ],
+     [
+      1985.0086669921875,
+      1581.9913330078125
+     ],
+     [
+      1984.2344970703125,
+      1490.9128417968752
+     ],
+     [
+      2075.015869140625,
+      1490.609619140625
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8776409691347742,
+    "black": 1.1369047619047619,
+    "white": 17.446190476190477
+   }
+  },
+  {
+   "index": 7,
+   "capturedAt": "2026-11-09T09:23:52.209155+00:00",
+   "imageMean": 9.302151134122289,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 8,
+   "capturedAt": "2026-11-09T09:23:53.124054+00:00",
+   "imageMean": 9.397428922713589,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 9,
+   "capturedAt": "2026-11-09T09:23:53.541405+00:00",
+   "imageMean": 9.413253432212187,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.060934066772461,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.382568359375,
+      1580.8482666015623
+     ],
+     [
+      1985.3228759765627,
+      1582.947509765625
+     ],
+     [
+      1984.242919921875,
+      1491.0898437500002
+     ],
+     [
+      2074.478271484375,
+      1490.5462646484375
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8628834632375239,
+    "black": 1.2447916666666667,
+    "white": 16.91190476190476
+   }
+  },
+  {
+   "index": 10,
+   "capturedAt": "2026-11-09T09:23:54.472014+00:00",
+   "imageMean": 9.437447851785528,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 11,
+   "capturedAt": "2026-11-09T09:23:55.198360+00:00",
+   "imageMean": 9.430813268841483,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.426594734191895,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.24609375,
+      1581.1014404296875
+     ],
+     [
+      1985.4925537109373,
+      1582.794677734375
+     ],
+     [
+      1984.7636718750005,
+      1491.2913818359377
+     ],
+     [
+      2074.9006347656255,
+      1489.9541015625002
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8563098014366579,
+    "black": 1.314360119047619,
+    "white": 16.98
+   }
+  },
+  {
+   "index": 12,
+   "capturedAt": "2026-11-09T09:23:55.840945+00:00",
+   "imageMean": 9.3766911268556,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.21406364440918,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.574951171875,
+      1581.0472412109377
+     ],
+     [
+      1985.39013671875,
+      1582.0032958984375
+     ],
+     [
+      1983.9007568359373,
+      1490.859619140625
+     ],
+     [
+      2074.595703125,
+      1490.8271484375
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8865491276897329,
+    "black": 1.060639880952381,
+    "white": 17.63714285714286
+   }
+  },
+  {
+   "index": 13,
+   "capturedAt": "2026-11-09T09:23:56.558648+00:00",
+   "imageMean": 9.307973324120212,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 14,
+   "capturedAt": "2026-11-09T09:23:57.377991+00:00",
+   "imageMean": 9.385233782959618,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.185940742492676,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.7951660156245,
+      1580.7080078125
+     ],
+     [
+      1985.4232177734373,
+      1582.6258544921873
+     ],
+     [
+      1984.1673583984377,
+      1491.3150634765625
+     ],
+     [
+      2074.9909667968755,
+      1490.5045166015623
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8699234981290696,
+    "black": 1.2034970238095237,
+    "white": 17.30095238095238
+   }
+  },
+  {
+   "index": 15,
+   "capturedAt": "2026-11-09T09:23:58.027322+00:00",
+   "imageMean": 9.449468542380359,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.195592880249023,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.8977050781255,
+      1580.6999511718748
+     ],
+     [
+      1985.5966796875002,
+      1582.1268310546877
+     ],
+     [
+      1984.178955078125,
+      1491.4569091796877
+     ],
+     [
+      2074.89111328125,
+      1490.0983886718748
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8767599903789444,
+    "black": 1.1551339285714286,
+    "white": 17.59095238095238
+   }
+  },
+  {
+   "index": 16,
+   "capturedAt": "2026-11-09T09:23:58.601346+00:00",
+   "imageMean": 9.451777094363127,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.251472473144531,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.620361328125,
+      1581.1409912109377
+     ],
+     [
+      1985.0947265625005,
+      1581.89990234375
+     ],
+     [
+      1984.755249023438,
+      1491.4180908203125
+     ],
+     [
+      2074.330810546875,
+      1490.5253906250002
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.886439177957298,
+    "black": 1.0435267857142858,
+    "white": 17.334761904761905
+   }
+  },
+  {
+   "index": 17,
+   "capturedAt": "2026-11-09T09:23:59.158849+00:00",
+   "imageMean": 9.177417795598464,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.220229148864746,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2076.0439453125005,
+      1580.9743652343745
+     ],
+     [
+      1984.6132812499998,
+      1582.70947265625
+     ],
+     [
+      1985.2923583984375,
+      1491.4685058593755
+     ],
+     [
+      2074.38037109375,
+      1490.7393798828125
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8764912848303473,
+    "black": 1.1361607142857142,
+    "white": 17.261904761904763
+   }
+  },
+  {
+   "index": 18,
+   "capturedAt": "2026-11-09T09:23:59.886098+00:00",
+   "imageMean": 9.028456704816776,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 19,
+   "capturedAt": "2026-11-09T09:24:00.382164+00:00",
+   "imageMean": 9.151160318047337,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": false
+   },
+   "contrast": null
+  },
+  {
+   "index": 20,
+   "capturedAt": "2026-11-09T09:24:00.928037+00:00",
+   "imageMean": 9.242704278262224,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.075594902038574,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.71923828125,
+      1581.1453857421875
+     ],
+     [
+      1985.9243164062505,
+      1582.5819091796877
+     ],
+     [
+      1984.3768310546875,
+      1491.7564697265625
+     ],
+     [
+      2074.745849609375,
+      1490.46337890625
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8698282212416348,
+    "black": 1.2109375,
+    "white": 17.394285714285715
+   }
+  },
+  {
+   "index": 21,
+   "capturedAt": "2026-11-09T09:24:01.701542+00:00",
+   "imageMean": 9.23784070707464,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.220648765563965,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.89208984375,
+      1580.5842285156255
+     ],
+     [
+      1985.3276367187502,
+      1582.957275390625
+     ],
+     [
+      1984.398193359375,
+      1491.5822753906245
+     ],
+     [
+      2074.699462890625,
+      1490.0874023437498
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8730667206898081,
+    "black": 1.193452380952381,
+    "white": 17.61095238095238
+   }
+  },
+  {
+   "index": 22,
+   "capturedAt": "2026-11-09T09:24:02.281868+00:00",
+   "imageMean": 9.236481366137237,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 7.837954521179199,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.8232421875005,
+      1580.8546142578127
+     ],
+     [
+      1985.6756591796877,
+      1582.7010498046875
+     ],
+     [
+      1984.16064453125,
+      1490.7637939453123
+     ],
+     [
+      2074.763916015625,
+      1490.4605712890625
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8733215100076007,
+    "black": 1.1904761904761905,
+    "white": 17.604761904761904
+   }
+  },
+  {
+   "index": 23,
+   "capturedAt": "2026-11-09T09:24:03.068079+00:00",
+   "imageMean": 9.216689942774837,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.433073043823242,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.5634765625,
+      1581.25634765625
+     ],
+     [
+      1985.1428222656245,
+      1581.8714599609375
+     ],
+     [
+      1984.6895751953123,
+      1490.789794921875
+     ],
+     [
+      2074.6379394531255,
+      1490.7801513671877
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8829896389995695,
+    "black": 1.0758928571428572,
+    "white": 17.313809523809525
+   }
+  },
+  {
+   "index": 24,
+   "capturedAt": "2026-11-09T09:24:03.516417+00:00",
+   "imageMean": 9.218504343792173,
+   "aruco": {
+    "detected": false
+   },
+   "apriltag": {
+    "detected": true,
+    "decisionMargin": 8.290340423583984,
+    "hamming": 0,
+    "cornersPx": [
+     [
+      2075.351318359375,
+      1581.0373535156255
+     ],
+     [
+      1985.6693115234375,
+      1582.2369384765625
+     ],
+     [
+      1984.0301513671877,
+      1491.4072265624998
+     ],
+     [
+      2075.08642578125,
+      1490.8044433593752
+     ]
+    ]
+   },
+   "contrast": {
+    "michelson": 0.8778731938088138,
+    "black": 1.130952380952381,
+    "white": 17.39
+   }
+  }
+ ]
+}

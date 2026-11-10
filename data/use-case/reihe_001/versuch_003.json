@@ -1,0 +1,710 @@
+{
+  "schema": "adp.usecase.trial/1",
+  "reihe": 1,
+  "versuch": 3,
+  "bild": "versuch_003.png",
+  "gespeichert": "2026-11-04T16:44:15",
+  "pi": {
+    "frame_timestamp": 519781.415769734,
+    "frame_age_s": 0.006,
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "frame_id": "cam_flange",
+    "vision_system_name": "VisionMachine",
+    "vision_system_id": "vision-flange-01",
+    "hostname": "ADP-HandInEye-Kamera-Pi",
+    "endpoint": "opc.tcp://10.10.38.109:4840/raspi/server/",
+    "camera_stream": {
+      "backend": "realsense",
+      "stream_enabled": true,
+      "camera_index": 0,
+      "resolution": [
+        1280,
+        720
+      ],
+      "preview_resolution": null,
+      "buffer_count": null,
+      "camera_controls": {},
+      "warmup_s": 2.0,
+      "capture_fps": 15.0,
+      "stream_fps": 5.0,
+      "realsense_resolution": [
+        640,
+        480
+      ],
+      "realsense_fps": 15,
+      "jpeg_quality": 70,
+      "max_stream_width": 960,
+      "http_port": 8080,
+      "http_fps": 15.0,
+      "http_port_node_name": "CameraStreamHttpPort",
+      "node_name": "LatestCameraFrame",
+      "mode_node_name": "CameraStreamMode",
+      "overlay_mode": "apriltag",
+      "overlay_interval_s": 0.5,
+      "overlay_detect_interval_s": 5.0,
+      "frame_timeout_s": 3.0,
+      "max_capture_failures": 3,
+      "max_reopen_attempts": 2,
+      "stale_frame_s": 2.0,
+      "overlay_timeout_s": 2.0,
+      "health_interval_s": 0.5
+    },
+    "intrinsics": {
+      "source": "calibration",
+      "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+      "imageSize": [
+        640,
+        480
+      ],
+      "cameraMatrix": [
+        [
+          607.4727365540497,
+          0.0,
+          323.5463184029497
+        ],
+        [
+          0.0,
+          606.406328142742,
+          263.37341962604376
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "distortionCoefficients": [
+        0.17328208467960027,
+        -0.646032116769254,
+        0.008934129824652966,
+        -0.008192412806441795,
+        0.6423944484326257
+      ],
+      "distortionModel": "pinhole"
+    },
+    "apriltag": {
+      "resolution": [
+        640,
+        480
+      ],
+      "calibration_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "tag_map_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/config/tagmap.json",
+      "hand_eye_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "tag_family": "tag36h11",
+      "tag_size_m": 0.08,
+      "capture_timeout_s": 5.0,
+      "samples_per_job": 5,
+      "max_reproj_error_px": 1.5,
+      "frame_id": "cam_flange",
+      "frame_convention": "z_forward_x_right_y_down",
+      "detector_backend": "aruco",
+      "subpixel_corner_refinement": true,
+      "corner_refinement_method": "subpix",
+      "apriltag_quad_decimate": 0.0,
+      "detector_parameters": {},
+      "allow_resolution_mismatch": false,
+      "allow_placeholder_calibration": false,
+      "calibration_board_type": "chessboard",
+      "calibration_board_cols": 7,
+      "calibration_board_rows": 10,
+      "calibration_board_square_size_m": 0.023,
+      "calibration_board_marker_size_m": 0.022,
+      "calibration_board_dictionary": "DICT_4X4_50",
+      "calibration_min_samples": 15,
+      "calibration_model": "pinhole",
+      "calibration_capture_dir": null
+    },
+    "calibration": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.calibration/1",
+        "calibrationId": "cam_flange@2026-09-23T15:25:06.698737+00:00",
+        "frameId": "cam_flange",
+        "imageSize": [
+          640,
+          480
+        ],
+        "cameraMatrix": [
+          [
+            607.4727365540497,
+            0.0,
+            323.5463184029497
+          ],
+          [
+            0.0,
+            606.406328142742,
+            263.37341962604376
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "distortionCoefficients": [
+          0.17328208467960027,
+          -0.646032116769254,
+          0.008934129824652966,
+          -0.008192412806441795,
+          0.6423944484326257
+        ],
+        "rmsReprojectionError": 0.13985384839537937,
+        "sampleCount": 15,
+        "board": {
+          "type": "chessboard",
+          "cols": 7,
+          "rows": 9,
+          "squareSizeM": 0.022
+        },
+        "createdAt": "2026-09-23T15:25:06.698763+00:00"
+      }
+    },
+    "hand_eye": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.handeye/1",
+        "frameId": "cam_flange",
+        "calibrationId": "cam_flange@2026-11-04T14:46:52Z",
+        "poseFlangeCam": {
+          "position": [
+            -0.04533518841218129,
+            -0.03536472027280276,
+            0.05672777209586831
+          ],
+          "orientation": [
+            -0.0042627372546579605,
+            -0.015812475796695494,
+            0.7131755244262786,
+            0.7007941680975799
+          ]
+        },
+        "rmsPositionM": 0.001542,
+        "rmsRotationDeg": 0.881112,
+        "maxPositionM": 0.00249,
+        "maxRotationDeg": 1.862995,
+        "sampleCount": 27,
+        "createdAt": "2026-11-04T14:46:52Z",
+        "refinedReprojectionRmsPx": 1.272724,
+        "boardScale": 1.0,
+        "looErrorRmsPx": 1.52102,
+        "looErrorRmsM": 0.001702,
+        "intrinsicsSource": "calibration"
+      }
+    }
+  },
+  "client": {
+    "schema": "wsc.usecase.trial/1",
+    "series": 1,
+    "clientTime": "2026-11-04T15:44:15.182Z",
+    "runKind": "place",
+    "robot": {
+      "robotId": "robot-e52a1c6c0bd6dfd0",
+      "name": "Franka Roboter",
+      "model": "ROBOT_FRANKA"
+    },
+    "speeds": {
+      "maxSpeed": 0.12,
+      "slowMaxSpeed": 0.04
+    },
+    "gripper": {
+      "mode": "skill"
+    },
+    "table": {
+      "key": "module-MOD-9",
+      "name": "Tisch leer mit Rad NEU",
+      "precision": "precise",
+      "pose": {
+        "position": [
+          1.1896136383258926,
+          1.505624629140739,
+          0.06520000100135803
+        ],
+        "orientation": [
+          0,
+          0,
+          -0.7284880645690752,
+          0.6850584936926211
+        ]
+      }
+    },
+    "baseInWorld": {
+      "position": [
+        0.724546061355325,
+        0.8347751396204375,
+        1.0009850120544435
+      ],
+      "orientation": [
+        0,
+        0,
+        0.7128843311719275,
+        0.7012816341310769
+      ]
+    },
+    "plan": {
+      "placeInBase": [
+        0.32062389862856844,
+        -0.6049473016436447,
+        -0.2189850366115571
+      ],
+      "tableTopCentreInBase": [
+        0.3244810334015712,
+        -0.602239030689463,
+        -0.2189850366115571
+      ],
+      "dropFlangeInBase": {
+        "position": [
+          0.3197907594548876,
+          -0.6033082904854257,
+          -0.09654765869823326
+        ],
+        "orientation": [
+          0.999213628680027,
+          -0.03893274107184325,
+          0.003660012595323766,
+          0.0065551689931015195
+        ]
+      },
+      "photoFlangeInBase": {
+        "position": [
+          0.2836427704753411,
+          -0.6465000332802454,
+          0.03957902685191471
+        ],
+        "orientation": [
+          -0.6853684331576148,
+          0.7280122976374457,
+          -0.003644265118335328,
+          -0.015966359994394906
+        ]
+      },
+      "photoCameraInBase": {
+        "position": [
+          0.32062389862856844,
+          -0.6049473016436447,
+          -0.018985036611557093
+        ],
+        "orientation": [
+          0.03890878674492183,
+          0.9992427664556988,
+          0,
+          0
+        ]
+      },
+      "objectInFlange": [
+        0,
+        0,
+        0.12245118206350461
+      ],
+      "precision": "precise"
+    },
+    "place": {
+      "corner": [
+        "max",
+        "min"
+      ],
+      "measurement": {
+        "corner": [
+          "max",
+          "min"
+        ],
+        "alongX": 0.3471001205444335,
+        "alongY": 0.17800000056624382,
+        "size": [
+          0.7014699704945088,
+          0.35000000819563865
+        ],
+        "fromEdge": {
+          "xMin": 0.35436984995007526,
+          "xMax": 0.3471001205444335,
+          "yMin": 0.17800000056624382,
+          "yMax": 0.17200000762939482
+        },
+        "cornerInBase": [
+          -0.025257262639884925,
+          -0.41429757135531575,
+          -0.2189850366115571
+        ],
+        "legEndInBase": [
+          0.32079191254277084,
+          -0.4412876072456918,
+          -0.2189850366115571
+        ],
+        "pointInBase": [
+          0.3069508732592515,
+          -0.6187486616580188,
+          -0.2189850366115571
+        ]
+      },
+      "shift": {
+        "distanceM": 0.01844380712889405,
+        "delta": [
+          0.01740198949451177,
+          -0.006111037803904096,
+          0
+        ]
+      },
+      "accuracyNote": null,
+      "fromTag": {
+        "tagId": 3,
+        "offsetM": [
+          -0.301,
+          -0.126
+        ],
+        "atTagM": [
+          0.645,
+          0.296
+        ]
+      }
+    },
+    "dropHeightMm": -10,
+    "liftM": 0.1,
+    "photoCameraHeightM": 0.2,
+    "poseFlangeCam": {
+      "position": [
+        -0.04533518841218129,
+        -0.03536472027280276,
+        0.05672777209586831
+      ],
+      "orientation": [
+        -0.004262737254657961,
+        -0.015812475796695497,
+        0.7131755244262786,
+        0.7007941680975801
+      ]
+    },
+    "cubeSizeM": 0.02,
+    "pick": {
+      "joints": [
+        -0.0003450996009632945,
+        0.3981126844882965,
+        -0.04442984610795975,
+        -2.5069046020507812,
+        0.020551355555653572,
+        2.9128475189208984,
+        0.7335752844810486
+      ],
+      "flangeInBase": {
+        "position": [
+          0.45706326291058863,
+          -0.02361124120830215,
+          0.13243737791332377
+        ],
+        "orientation": [
+          0.9999607541205499,
+          -0.00470364602571019,
+          0.0038822717425321556,
+          0.0064260329008794005
+        ]
+      }
+    },
+    "home": [
+      -0.0028781581204384565,
+      -0.32279646396636963,
+      0.002409837208688259,
+      -2.0072133541107178,
+      0.0007692724466323853,
+      1.6844202280044556,
+      0.7847192883491516
+    ],
+    "route": [
+      {
+        "index": 0,
+        "kind": "move",
+        "role": "pick-above",
+        "flangeInBase": {
+          "position": [
+            0.45706326291058863,
+            -0.02361124120830215,
+            0.23243737791332378
+          ],
+          "orientation": [
+            0.9999607541205499,
+            -0.00470364602571019,
+            0.0038822717425321556,
+            0.0064260329008794005
+          ]
+        },
+        "option": null,
+        "angles": [
+          0.027020158246159554,
+          0.1058984100818634,
+          -0.07783550769090652,
+          -2.546236753463745,
+          -0.009210995398461819,
+          2.6601428985595703,
+          0.7526051998138428
+        ],
+        "via": null
+      },
+      {
+        "index": 1,
+        "kind": "move",
+        "role": "pick",
+        "flangeInBase": {
+          "position": [
+            0.45706326291058863,
+            -0.02361124120830215,
+            0.13243737791332377
+          ],
+          "orientation": [
+            0.9999607541205499,
+            -0.00470364602571019,
+            0.0038822717425321556,
+            0.0064260329008794005
+          ]
+        },
+        "option": null,
+        "angles": [
+          -0.0003450996009632945,
+          0.3981126844882965,
+          -0.04442984610795975,
+          -2.5069046020507812,
+          0.020551355555653572,
+          2.9128475189208984,
+          0.7335752844810486
+        ],
+        "via": null
+      },
+      {
+        "index": 2,
+        "kind": "gripper",
+        "action": "close",
+        "flangeInBase": null,
+        "option": null,
+        "angles": null,
+        "via": null
+      },
+      {
+        "index": 3,
+        "kind": "move",
+        "role": "pick-lift",
+        "flangeInBase": {
+          "position": [
+            0.45706326291058863,
+            -0.02361124120830215,
+            0.23243737791332378
+          ],
+          "orientation": [
+            0.9999607541205499,
+            -0.00470364602571019,
+            0.0038822717425321556,
+            0.0064260329008794005
+          ]
+        },
+        "option": null,
+        "angles": [
+          0.027020158246159554,
+          0.1058984100818634,
+          -0.07783550769090652,
+          -2.546236753463745,
+          -0.009210995398461819,
+          2.6601428985595703,
+          0.7526051998138428
+        ],
+        "via": null
+      },
+      {
+        "index": 4,
+        "kind": "transfer",
+        "role": "carry",
+        "flangeInBase": null,
+        "option": "über die Tischkante",
+        "angles": [
+          -1.1336119174957275,
+          1.1490849256515503,
+          0.026151828467845917,
+          -1.4207894802093506,
+          -0.04448520019650459,
+          2.584317684173584,
+          -0.22221225500106812
+        ],
+        "via": [
+          [
+            -0.723021924495697,
+            0.3702410161495209,
+            -0.1940632164478302,
+            -2.145488977432251,
+            0.11569782346487045,
+            2.521029472351074,
+            -0.15293164551258087
+          ]
+        ]
+      },
+      {
+        "index": 5,
+        "kind": "move",
+        "role": "drop",
+        "flangeInBase": {
+          "position": [
+            0.30611773408557047,
+            -0.6171096504997999,
+            -0.09654765869823326
+          ],
+          "orientation": [
+            0.999213628680027,
+            -0.03893274107184325,
+            0.003660012595323766,
+            0.0065551689931015195
+          ]
+        },
+        "option": null,
+        "angles": [
+          -1.126278281211853,
+          1.4518283605575562,
+          0.020230276510119438,
+          -1.1233116388320923,
+          -0.03765282779932022,
+          2.589813470840454,
+          -0.22882115840911865
+        ],
+        "via": null
+      },
+      {
+        "index": 6,
+        "kind": "gripper",
+        "action": "open",
+        "flangeInBase": null,
+        "option": null,
+        "angles": null,
+        "via": null
+      },
+      {
+        "index": 7,
+        "kind": "move",
+        "role": "drop-lift",
+        "flangeInBase": {
+          "position": [
+            0.30611773408557047,
+            -0.6171096504997999,
+            0.003452341301766748
+          ],
+          "orientation": [
+            0.999213628680027,
+            -0.03893274107184325,
+            0.003660012595323766,
+            0.0065551689931015195
+          ]
+        },
+        "option": null,
+        "angles": [
+          -0.983688235282898,
+          1.1581501960754395,
+          -0.14311428368091583,
+          -1.415797233581543,
+          0.2429322749376297,
+          2.5718231201171875,
+          -0.3818913698196411
+        ],
+        "via": null
+      },
+      {
+        "index": 8,
+        "kind": "move",
+        "role": "photo",
+        "flangeInBase": {
+          "position": [
+            0.26996974510602395,
+            -0.6603013932946197,
+            0.03957902685191471
+          ],
+          "orientation": [
+            -0.6853684331576148,
+            0.7280122976374457,
+            -0.003644265118335328,
+            -0.015966359994394906
+          ]
+        },
+        "option": null,
+        "angles": [
+          -0.7348964810371399,
+          1.261826515197754,
+          -0.59483402967453,
+          -1.303625226020813,
+          0.7907293438911438,
+          2.346506357192993,
+          0.8695510625839233
+        ],
+        "via": null
+      }
+    ],
+    "actual": {
+      "joints": [
+        -1.130486011505127,
+        1.3107855319976807,
+        0.02324473112821579,
+        -1.2653255462646484,
+        -0.039742182940244675,
+        2.5808823108673096,
+        -0.21478386223316193
+      ],
+      "flangeInBase": {
+        "position": [
+          0.30647641853429314,
+          -0.6188562613128367,
+          -0.05173095838595379
+        ],
+        "orientation": [
+          0.9989664980400923,
+          -0.04537345402827237,
+          0.0018131469912951773,
+          0.0019743254662004466
+        ]
+      }
+    }
+  },
+  "messung": {
+    "ok": false,
+    "grund": "Kein Wuerfelmarker (ID 10) erkannt",
+    "dx_mm": null,
+    "dy_mm": null,
+    "dtheta_deg": null,
+    "r_mm": null,
+    "zone": null,
+    "sheet_markers": [
+      0
+    ],
+    "reprojection_rms_px": null,
+    "camera_height_mm": null,
+    "camera_tilt_deg": null,
+    "nadir_offset_mm": null,
+    "cube_corners_mm": null,
+    "marker_center_mm": null,
+    "marker_yaw_deg": null,
+    "cube_edge_refined": false,
+    "sheet_edges_refined": 0,
+    "sticker_offset_mm": [
+      0.0,
+      0.0
+    ],
+    "zwischenwerte": {
+      "marker": {
+        "0": {
+          "eckenRohPx": [
+            [
+              241.28277587890625,
+              296.625244140625
+            ],
+            [
+              237.72067260742188,
+              183.36529541015625
+            ],
+            [
+              350.7645263671875,
+              179.72894287109375
+            ],
+            [
+              354.83319091796875,
+              292.6639404296875
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

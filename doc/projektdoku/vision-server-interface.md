@@ -792,7 +792,7 @@ Es läuft höchstens eine gleichzeitig, und keine, solange ein Job oder eine
 Kamera-Kalibrierung läuft. Das ist dasselbe Signal, mit dem die
 Zellen-Überwachung pausiert. Sie nutzt den Stream-Detektor: dieselben
 Parameter wie der Job, nur ohne Eckenverfeinerung (bei `cam_ceiling` ist sie
-auch im Job aus). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
+im Job seit 10.11.2026 an, Verfahren `subpix`). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
 selbst und zeigt nur Ergebnisse von Job, Zellen-Überwachung und Messung.
 
 Die Pixel-Ecken werden von der Auflösung des Ergebnisses auf die Stream-Größe
@@ -1738,6 +1738,7 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
   - Top-level `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null` (unbekannt).
   - `samples[i]`: `looErrorPx`, `looErrorM`. Vorhersagefehler ohne diese Aufnahme, nur nach `Finish` und nicht für verworfene Aufnahmen, sonst `null`.
   - `result`: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `refinementConverged`, `targetInBase`, `warnings`, `sessionPath`. Die verfeinerten Werte sind ohne Verfeinerung `null`. `targetInBase` ist immer gesetzt: `{"position": [x, y, z], "orientation": [x, y, z, w]}` in Metern, Basis-KS. Mit Brett ist es der Brettursprung (erste Innenecke, +z ins Brett), sonst das Mittel über `F · X · C`.
+  - Seit 03.11.2026 kalibriert die Pi-Session ohne Maßstabsschätzung (`HAND_EYE_ESTIMATE_SCALE = False`); `boardScale` ist damit 1,0.
   - `warnings`: Liste deutscher Texte. Enthalten sind Hinweise zu den Werks- oder Platzhalter-Intrinsiks, zu fehlender Verfeinerung und zu `|boardScale − 1| > 0,3 %` („Brett nachmessen / Intrinsik pruefen“).
   - `current`: zusätzlich `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`, jeweils aus `data/handeye/cam_flange.json`.
 - **`data/handeye/cam_flange.json`:** dieselben Zusatzschlüssel, nur wenn vorhanden.
@@ -1748,7 +1749,7 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
   ```
 
 - **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
-- **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+- **Subpixel-Ecken:** Die Presets `cam_flange` und `cam_ceiling` (seit 10.11.2026, Arbeitsplan [`deckenkamera-subpixel-ecken.md`](arbeitsplaene/deckenkamera-subpixel-ecken.md)) nutzen sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 
@@ -1796,6 +1797,10 @@ Für die neue Layer-2-Aufteilung ist die Arbeit getrennt: Die Steuerung plant, f
 - **`nearEdge`:** sagt je Tag, welchen Bildrändern er nahe kommt (innerhalb 5 %). Die Steuerung nutzt das bei der Suche nach anfangs unerreichbaren Tags, um gezielt nachzuschwenken. Fahrbefehle schickt der Pi bewusst nicht.
 - **Herkunft der Intrinsik:** `intrinsicsSource` sagt, woher sie stammt. Ohne Kalibrierdatei nimmt die RealSense ihre Werks-Intrinsik (`realsense_factory`). Das gilt dann auch für Jobs und Livestream dieses Pis.
 
+### Nachtrag 03.11.2026: Einzelbilder je Tag (`frames`)
+
+Jeder Tag im Ergebnis hat zusätzlich `frames`: ein Eintrag je Bild, in dem er erkannt wurde, in Aufnahmereihenfolge, ungemittelt. Felder je Eintrag: `capturedAt`, `poseInCamera` (`position`, `orientation` xyzw), `reprojectionErrorPx`, `ambiguous`, `ambiguityRatio`, `cornersPx` (roh, verzeichnet), `decisionMargin`. Die gemittelten Felder bleiben unverändert, das Schema bleibt `…result/1`. Die Web-App legt die Antworten unverändert im Layer-2-Protokoll ab (`wsc.layer2.chain/1`). Plan: [`arbeitsplaene/messkette-protokoll.md`](arbeitsplaene/messkette-protokoll.md).
+
 ## 18. SaveRawImage: Kamera-Vollbild als PNG speichern
 
 Speichert das aktuelle Vollbild der geteilten Kamera verlustfrei als PNG auf dem Pi, als Rohmaterial zum Nachrechnen. Planung und Hintergründe stehen im Arbeitsplan [`arbeitsplaene/rohbild-speichern.md`](arbeitsplaene/rohbild-speichern.md).
@@ -1817,6 +1822,8 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 | --- | --- |
 | `SaveUseCaseImage` | `(Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`, am Vision-System (`ns=<own_idx>;s=<vision_system_name>.SaveUseCaseImage`) und wie `SaveRawImage` unter `VisionProgram` gespiegelt |
 
+**Veraltet (03.11.2026):** leitet an `SaveImage("usecase", Series, MetadataJson)` weiter (Abschnitt 18b), Verhalten unverändert (`Series >= 1`); neue Clients nehmen `SaveImage`.
+
 - **Ablage:** `data/use-case/reihe_NNN/versuch_NNN.png` und `versuch_NNN.json`, jeweils dreistellig mit Nullen aufgefüllt (`reihe_001`, `versuch_012`). Die Versuchsnummer ist die höchste vorhandene Nummer in der Reihe plus 1; Lücken werden nicht aufgefüllt. Die Dateien werden exklusiv angelegt, eine Datei wird nie überschrieben. Liegt eine Messung mit Kontrollbild vor, kommt `versuch_NNN_messung.png` daneben (Marker, Toleranzkreise, Messwerte eingezeichnet).
 - **`Series`:** Versuchsreihe aus dem Feld der Web-App. Muss `>= 1` sein, sonst `Error=2`.
 - **`MetadataJson`:** Vom Web-Client gesendetes JSON, Schema `wsc.usecase.trial/1` (Soll-Pose, Tisch, Route, Ist-Gelenke usw.). Ist es kein gültiges JSON-Objekt, wird der Text unverändert als `client_raw` abgelegt. Der Server prüft den Inhalt nicht.
@@ -1828,7 +1835,57 @@ Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter die
 - **JSON-Datei:** Schema `adp.usecase.trial/1`. Felder: `reihe`, `versuch`, `bild` (Dateiname des PNG), `gespeichert` (lokale Zeit, ISO 8601, Sekunden genau), `pi` (Pi-Metadaten: `frame_timestamp`, `frame_age_s`, `image_shape`, `frame_id`, `vision_system_name`, `vision_system_id`, `hostname`, `endpoint`, `camera_stream`, `apriltag`, `calibration`, `hand_eye`; Felder, die nicht ermittelt werden können, fehlen), dazu `messung` (Bildmessung, s. `ResultJson`; bei neuen Versuchen immer vorhanden, auch als `{"ok": false, "grund": ...}`), `client` (geparstes Objekt) oder `client_raw` (Text). Die vollständige Beschreibung der Felder steht im Arbeitsplan.
 
 - **`pi.intrinsics`** (nur bei geladener Kalibrierung): die tatsächlich benutzte Kameramatrix und Verzeichnung, damit die Offline-Auswertung dieselbe Intrinsik nimmt. Felder: `source` (`calibration` = Kalibrierdatei, `realsense_factory` = Werks-Intrinsik der Kamera, `placeholder` = Platzhalter), `calibrationId`, `imageSize` (`[Breite, Höhe]` in px), `cameraMatrix` (3x3), `distortionCoefficients`, `distortionModel` (`pinhole` oder `fisheye`). `source` ist dieselbe Herkunft wie in der Handauge-Session (`intrinsicsSource`).
+
+### Nachtrag 03.11.2026: Zwischenwerte der Messung und Messkette im Client-Teil
+
+- **`messung.zwischenwerte`** (auch in `ResultJson`): alles, was die Bildmessung unterwegs berechnet, bei einem Fehlschlag soweit vorhanden. `marker` je ID (`eckenRohPx`, `eckenEntzerrtPx`, `kanteVerfeinert`, bei Blattmarkern `reprojektionRmsPx`), `blattPose` (`rvec`, `tvecMm`, `rotationBlattZuKamera`, `kameraImBlattMm`, `optischeAchseImBlatt`, `punkte`), `wuerfel` (`eckenOberseiteMm`, `kantenYawDeg`, `markerMitteMm`, `versatzImBlattMm`), `durchstosspunktMm`. Längen in mm im Blattsystem.
+- **`client.layer2`:** Protokoll des Layer-2-Laufs, aus dem die Tischpose stammt (`wsc.layer2.chain/1`): jede `MeasureTags`-Antwort mit Einzelbildern, Gelenkwinkeln, Flansch- und Kamerapose, `T_base_tag`, dazu Zentrieren, Nahmessung, Ansichten, Fusion und Basiskorrektur. `null`, wenn der Tisch nur aus Layer 1 stammt.
+- **`client.drives`:** jede Fahrt des Laufs bis zum Foto mit Soll- und Ist-Gelenken und Flanschpose, dazu jedes Greiferschalten.
+
+Feldbeschreibung: [`arbeitsplaene/messkette-protokoll.md`](arbeitsplaene/messkette-protokoll.md).
 - **Konfiguration:** `VisionServerConfig.use_case_dir`, Default `<Repo>/data/use-case`. `None` legt die Methode nicht an. Die Methode entsteht auf jedem Pi mit geöffneter Kamera; die Web-App ruft sie auf dem Hand-Pi (PI_2) auf. Der Ordner liegt unter `data/`, das seit 02.11.2026 versioniert wird (`3535115`); die Bilder tauchen also in `git status` auf und werden nur bewusst committet.
+
+## 18b. SaveImage: Kamerabild je Zweck ablegen (nur Hand-Pi)
+
+Allgemeine Form von `SaveUseCaseImage`: der Zweck (`Kind`) kommt als Parameter, Ablageordner, Dateinamen, Schema und Messung je Zweck stehen in `VisionServerConfig.image_kinds`. Ein weiterer Zweck braucht keine neue Methode, nur einen Eintrag dort. Entstanden für den Höhentest der Hand-Auge-Kalibrierung ([`arbeitsplaene/hoehentest-hand-auge.md`](arbeitsplaene/hoehentest-hand-auge.md)).
+
+| Element | Signatur / Typ |
+| --- | --- |
+| `SaveImage` | `(Kind: String, Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`, am Vision-System (`ns=<own_idx>;s=<vision_system_name>.SaveImage`) und wie `SaveRawImage` unter `VisionProgram` gespiegelt |
+
+| `Kind` | Ablage | Messung | Schema (Schlüssel) |
+| --- | --- | --- | --- |
+| `usecase` | `data/use-case/reihe_NNN/versuch_NNN.*` | `measure_trial` (Würfel auf dem Blatt), Aufkleber-Versatz, Kontrollbild `versuch_NNN_messung.png` | `adp.usecase.trial/1` (`reihe`, `versuch`) |
+| `hoehentest` | `data/hoehentest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.hoehentest.image/1` (`lauf`, `bild_nr`) |
+| `drehtest` | `data/drehtest/lauf_NNN/bild_NNN.*` | `measure_sheet` (nur Blattpose), kein Kontrollbild | `adp.drehtest.image/1` (`lauf`, `bild_nr`) |
+| `lv2_messrauschen` | `data/LV2_Messrauschen/lauf_NNN/messung_NNN.*` | keine (die Level-2-Messung steht in den Metadaten des Frontends) | `adp.lv2_messrauschen.image/1` (`lauf`, `messung_nr`) |
+
+- **`Kind`:** Schlüssel aus `image_kinds`; unbekannt: `Error=2`.
+- **`Series`:** `0` legt die nächste freie Reihe bzw. den nächsten Lauf an (höchster vorhandener Ordner plus 1), `>= 1` legt das Bild in diese(n). Negativ: `Error=2`. Die Nummer steht im Ordnernamen von `FileName`.
+- **`MetadataJson`:** beliebiges JSON des Clients, unverändert unter `client`; kein JSON-Objekt: Text unter `client_raw`.
+- **Ablage:** `<base_dir>/<folder>_NNN/<stem>_NNN.png` und `.json`, nie überschreibend; Bildnummer = höchste vorhandene plus 1.
+- **JSON-Datei:** `schema`, Reihenschlüssel, Bildschlüssel (siehe Tabelle), `bild`, `gespeichert`, `pi` (wie bei `SaveUseCaseImage`), `client`/`client_raw`, `messung` (bei Zweck mit Messung).
+- **`FileName`:** Pfad des PNG relativ zur Repo-Wurzel mit `/`, bei Fehler leer.
+- **`ResultJson`:** Messung des Zwecks als JSON; `{}` bei Zweck ohne Messung, leer bei Fehler-Codes. `measure_sheet`: `ok`, `grund`, `camera_height_mm`, `camera_tilt_deg`, `camera_in_sheet_mm` `[x, y, z]`, `axis_hit_mm` `[x, y]` (optische Achse trifft die Blattebene z = 0), `camera_rotation_in_sheet` (3×3, zeilenweise; Spalten = Kamera-x, -y, -z im Blatt-KS), `camera_yaw_deg` (Winkel der Kamera-x in der Blattebene), `reprojection_rms_px`, `sheet_markers`, `sheet_edges_refined`. Eine fehlgeschlagene Messung ist kein Fehler: sie steht als `{"ok": false, "grund": ...}` im Ergebnis, das Bild wird trotzdem gespeichert.
+- **`Error`:** `0` gespeichert, `1` INVALID_STATE (kein frisches Bild innerhalb 5 s), `2` INVALID_ARGUMENT (unbekannter Zweck oder negative Reihe), `3` BUSY (Job läuft), `6` INTERNAL (Speicherfehler). Bei jedem Fehlercode sind `FileName` und `ResultJson` leer.
+- **Bildwahl:** wie `SaveUseCaseImage` (Bild mindestens 0,3 s nach dem Aufruf, höchstens 5 s Wartezeit).
+- **Konfiguration:** `VisionServerConfig.image_kinds` (`ImageKind`: `base_dir`, `folder`, `stem`, `series_key`, `number_key`, `schema`, `measure` = `trial` | `sheet` | `none`). Die Methode entsteht, wenn eine Kamera da ist und `image_kinds` nicht leer ist. `use_case_dir` bleibt als Kurzform für den Zweck `usecase`: `None` entfernt ihn (und damit `SaveUseCaseImage`), ein anderer Pfad ersetzt dessen `base_dir`.
+
+## 18c. Helligkeitstest: RecordLightLevel / LightTestStatus / SetExposureLock (beide Pis)
+
+Wie gut ein fest montierter Tag bei abnehmendem Licht noch erkannt wird. Das Frontend (Fenster „Helligkeitstest“) friert die Belichtung bei voller Helligkeit ein und nimmt je Lichtstufe viele Bilder auf. Code: `vision_server/lighttest.py` (Auswertung) und `runner/light_test.py` (Methoden).
+
+| Methode | Signatur | Wirkung |
+| --- | --- | --- |
+| `RecordLightLevel` | `(RequestJson: String) -> (StatusJson: String, Error: Int32)` | startet eine Stufe und antwortet sofort (sie dauert Minuten); `BUSY` bei Job, Kalibrierung oder laufender Stufe |
+| `LightTestStatus` | `(Command: String) -> (StatusJson: String, Error: Int32)` | `""` liest Zustand und Fortschritt, `"abort"` bricht ab (das Bisherige wird gespeichert) |
+| `SetExposureLock` | `(Command: String) -> (ResultJson: String, Error: Int32)` | `"lock"` friert Belichtung, Gain und Weißabgleich auf den aktuellen Automatik-Werten ein, `"unlock"` schaltet die Automatik wieder an, `""` liest nur |
+
+- **Anfrage** (`wsc.vision.lighttest.request/1`): `tagId` (Pflicht), `frames` (1–2000, Standard 300), `sampleImages` (0–50, Standard 1: ein Bild zur Anschauung), `series` (0 = neue Reihe), `sizeM` (optional, sonst Tag-Map), `level` (frei, z. B. `{percent, lux, label}`), `metadata` (frei).
+- **Je Bild:** `cv2.aruco` (erkannt, Pose im Kamera-KS, Reprojektionsfehler), `pupil_apriltags` (erkannt, `decisionMargin`, `hamming`) und der Michelson-Kontrast: schwarzer Rand (mittlere Zellreihe) gegen einen schmalen Ring direkt außerhalb, im entzerrten Tag. Fehlt `pupil_apriltags`, läuft die Stufe ohne (Hinweis in `detectors.apriltagError`).
+- **Zusammenfassung** (`summary`): Erkennungsraten beider Detektoren, Decision Margin und Hamming (Mittel, sd, min, max, Häufigkeiten), Pose-Jitter (sd je Achse, radial RMS/max in mm, Drehung RMS in Grad), Kontrast und mittlere Bildhelligkeit.
+- **Ablage:** `data/Helligkeitstest/reihe_NNN/stufe_NNN.json` (Schema `wsc.vision.lighttest.level/1`, mit allen Einzelbildern) und `stufe_NNN_bild_NN.png` (Standard: das erste Bild der Stufe; mehrere gleichmäßig verteilt). Der Status liefert dieselbe JSON ohne die Einzelbilder, dazu `file` und `folder`.
+- **Belichtung:** Picamera2 setzt `AeEnable`/`AwbEnable` aus und `ExposureTime`, `AnalogueGain`, `ColourGains` auf die Werte aus den Metadaten; RealSense schaltet `enable_auto_exposure`/`enable_auto_white_balance` aus. Die Antwort trägt die mittlere Bildhelligkeit vor und nach dem Umschalten (`imageMeanBefore`/`imageMeanAfter`): bleibt sie gleich, hat das Einfrieren gehalten. Ein Neu-Öffnen der Kamera (Watchdog) hebt das Einfrieren auf; jede Stufe hält die Werte am Anfang und Ende fest (`camera.exposureStart`/`exposureEnd`).
 
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
 

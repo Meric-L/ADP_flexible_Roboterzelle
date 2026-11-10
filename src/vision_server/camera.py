@@ -282,6 +282,83 @@ def format_camera_metadata(metadata: dict[str, Any]) -> str:
     return ", ".join(f"{key}={metadata[key]}" for key in CAMERA_METADATA_KEYS if key in metadata)
 
 
+#: Was `SharedCamera.exposure` aus den Picamera2-Metadaten liest.
+PICAMERA2_EXPOSURE_KEYS: tuple[str, ...] = (
+    "ExposureTime",
+    "AnalogueGain",
+    "DigitalGain",
+    "ColourGains",
+    "ColourTemperature",
+    "Lux",
+)
+
+
+def _plain(value: Any) -> Any:
+    """Tupel und numpy-Zahlen JSON-tauglich machen."""
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def picamera2_exposure(camera: Any, lock: bool | None) -> dict[str, Any]:
+    """Belichtung einer Picamera2: lesen, einfrieren (`True`) oder freigeben (`False`).
+
+    Einfrieren setzt die Werte, die die Automatik gerade hat (aus den
+    Metadaten des naechsten Bilds), fest und schaltet Belichtungs- und
+    Weissabgleich-Automatik aus -- die Kamera gleicht Lichtaenderungen dann
+    nicht mehr aus. `ExposureValue` und die uebrigen Controls des Presets
+    bleiben, wie sie sind. Laeuft im Kamera-Worker-Thread.
+    """
+    metadata = camera.capture_metadata()
+    values = {key: metadata.get(key) for key in PICAMERA2_EXPOSURE_KEYS}
+    controls: dict[str, Any] | None = None
+    if lock is True:
+        controls = {"AeEnable": False, "AwbEnable": False}
+        if values["ExposureTime"] is not None:
+            controls["ExposureTime"] = int(values["ExposureTime"])
+        if values["AnalogueGain"] is not None:
+            controls["AnalogueGain"] = float(values["AnalogueGain"])
+        if values["ColourGains"] is not None:
+            controls["ColourGains"] = tuple(float(gain) for gain in values["ColourGains"])
+        camera.set_controls(controls)
+    elif lock is False:
+        controls = {"AeEnable": True, "AwbEnable": True}
+        camera.set_controls(controls)
+    return {"backend": "picamera2", "values": _plain(values), "controlsSet": _plain(controls)}
+
+
+def realsense_exposure(pipeline: Any, lock: bool | None) -> dict[str, Any]:
+    """Belichtung des RealSense-Farbsensors: lesen, einfrieren (`True`) oder freigeben (`False`).
+
+    Einfrieren schaltet Belichtungs- und Weissabgleich-Automatik aus; der
+    Sensor behaelt dabei die zuletzt eingestellten Werte. Ob das die Werte
+    der Automatik sind, zeigt die Bildhelligkeit vorher/nachher in der
+    Antwort von `SetExposureLock`. Laeuft im Kamera-Worker-Thread.
+    """
+    import pyrealsense2 as rs
+
+    sensor = pipeline.get_active_profile().get_device().first_color_sensor()
+    if lock is not None:
+        for option in (rs.option.enable_auto_exposure, rs.option.enable_auto_white_balance):
+            if sensor.supports(option):
+                sensor.set_option(option, 0.0 if lock else 1.0)
+    options = {
+        "autoExposure": rs.option.enable_auto_exposure,
+        "exposure": rs.option.exposure,
+        "gain": rs.option.gain,
+        "autoWhiteBalance": rs.option.enable_auto_white_balance,
+        "whiteBalance": rs.option.white_balance,
+    }
+    values = {
+        name: float(sensor.get_option(option)) for name, option in options.items() if sensor.supports(option)
+    }
+    return {"backend": "realsense", "values": values}
+
+
 #: `calibration_id` einer aus der RealSense gelesenen Werks-Intrinsik.
 REALSENSE_FACTORY_CALIBRATION_ID = "realsense-werksintrinsik"
 
@@ -356,6 +433,8 @@ class SharedCamera:
         #: Groesse des `lores`-Stroms, sobald Picamera2 damit konfiguriert ist;
         #: sonst `None` und jede Aufnahme liefert nur `image`.
         self._preview_size: tuple[int, int] | None = None
+        #: Belichtung eingefroren (`exposure(True)`); ein Neu-Oeffnen hebt das auf.
+        self._exposure_locked = False
 
     @property
     def latest_frame(self) -> CameraFrame | None:
@@ -385,6 +464,28 @@ class SharedCamera:
             gave_up=self._gave_up,
             frame_age_s=None if latest is None else now - latest.timestamp,
         )
+
+    async def exposure(self, lock: bool | None) -> dict[str, Any]:
+        """Belichtung, Gain und Weissabgleich: `True` einfrieren, `False` Automatik an, `None` nur lesen.
+
+        Laeuft im Kamera-Worker -- zwischen zwei Aufnahmen, nie gleichzeitig mit
+        einer. Nur Picamera2 und RealSense; sonst `RuntimeError`.
+        """
+        if self._camera is None or self._executor is None:
+            raise RuntimeError("Kamera ist nicht offen")
+        backend = self._config.backend
+        if backend == "picamera2":
+            read = picamera2_exposure
+        elif backend == "realsense":
+            read = realsense_exposure
+        else:
+            raise RuntimeError(f"Belichtung einfrieren kann das Kamera-Backend '{backend}' nicht")
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(self._executor, read, self._camera, lock)
+        if lock is not None:
+            self._exposure_locked = lock
+            _log.info("Belichtung %s: %s", "eingefroren" if lock else "wieder automatisch", result.get("values"))
+        return {**result, "locked": self._exposure_locked}
 
     def set_give_up_handler(
         self, handler: Callable[[], Awaitable[None] | None]
@@ -657,6 +758,9 @@ class SharedCamera:
         )
         camera, self._camera = self._camera, None
         executor, self._executor = self._executor, None
+        if self._exposure_locked:
+            _log.warning("Neu-Oeffnen hebt die eingefrorene Belichtung auf")
+            self._exposure_locked = False
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
         if camera is not None:
