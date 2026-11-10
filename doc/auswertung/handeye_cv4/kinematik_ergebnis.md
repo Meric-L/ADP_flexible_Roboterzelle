@@ -34,3 +34,7 @@ LOSO test S4: RMS starr 1.541 -> mit Trainings-Kinematik 1.055 px; t_X starr [-4
 Spannweite Hand-Auge-Translation (max. Paarabstand) starr: 1.76 mm
 Spannweite Hand-Auge-Translation (max. Paarabstand) Kinematik: 1.34 mm
 ```
+
+## Nachtrag 10.11.2026: Gegentest auf neuer Sitzung negativ
+
+Auf die 1080p-Sitzung `20261110T104151Z_77e0dd17` angewandt, verschlechtert die aus S1–S4 geschätzte Kinematik-Korrektur die Reprojektion von 3,63 auf 4,78 px. Die Leave-one-session-out-Werte oben waren nicht unabhängig genug (gleiche Brettlage, fast gleiche Posen). Siehe `doc/auswertung/handauge_1080_20261110.md`.
