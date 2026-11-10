@@ -547,7 +547,7 @@ Umgebungsvariablen (16 Stück):
 | `VISION_SUBPIXEL_CORNER_REFINEMENT` | `0`, `none`, `false` schalten aus. `1`, `true` schalten an. `apriltag` oder `subpix` schalten an mit diesem Verfahren. Unbekannte Werte brechen den Start ab | `server.py`, `subpixel_corner_settings()` |
 | `VISION_CALIBRATION_MODEL` | Linsenmodell (`pinhole` oder `fisheye`), überschreibt das Preset | `server.py`, `apriltag_config()` |
 | `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` | Notausgang: Platzhalter-Intrinsik ohne Kalibrierdatei. Posen sind dann nicht maßstabsgetreu | `server.py`, `apriltag_config()` |
-| `VISION_SAVE_CALIBRATION_CAPTURES=1` | Kalibrieraufnahmen zusätzlich als JPEG archivieren | `server.py`, `apriltag_config()` |
+| `VISION_SAVE_CALIBRATION_CAPTURES=1` | Kalibrieraufnahmen zusätzlich verlustfrei als PNG je Sitzung archivieren | `server.py`, `apriltag_config()` |
 | `OPCUA_APPLICATION_URI` | ApplicationUri. Standard ist Präfix und Name aus `PI_APPLICATION_NAMES` | `server.py`, `application_uri()` |
 | `OPCUA_MDNS_NAME` | Dienstname im Netz. Standard ist die Vision-Identität | `server.py`, `mdns_instance_name()` |
 | `OPCUA_MDNS` | `0`, `false`, `no` oder `off` schalten die mDNS-Ankündigung ab | `discovery/mdns.py`, `enabled()` |
@@ -854,7 +854,7 @@ Die Methoden `StartCalibration`, `CaptureCalibrationSample`, `FinishCalibration`
 
 - Schachbrett (`AprilTagProfileConfig`): `calibration_board_type` (`chessboard`), `calibration_board_cols` und `calibration_board_rows` (innere Ecken), `calibration_board_square_size_m`. Pi-Wert: 7 × 10 innere Ecken, 23 mm.
 - `calibration_model`: `pinhole` (Brown-Conrady) oder `fisheye` (Kannala-Brandt). Pi: Decke `fisheye`, Hand `pinhole`. Überschreibbar mit `VISION_CALIBRATION_MODEL`. Für die Posenschätzung zählt das Modell in der geladenen Datei, nicht das Feld.
-- `calibration_capture_dir`: zusätzliches Archiv. Es ist nur mit `VISION_SAVE_CALIBRATION_CAPTURES=1` aktiv und liegt in `data/calibration/<Rahmen>_captures/`.
+- `calibration_capture_dir`: zusätzliches Archiv. Es ist nur mit `VISION_SAVE_CALIBRATION_CAPTURES=1` aktiv und liegt in `data/calibration/<Rahmen>_captures/<UTC-Stempel>/`.
 - Konstanten: `MIN_SAMPLES_FOR_CALIBRATION` = 3 (darunter Ablehnung), `CAPTURE_DETECT_TIMEOUT_S` = 20 s, `RMS_WARNING_PX` = 0,5 (nur Warnung im Log).
 
 Stolpersteine:

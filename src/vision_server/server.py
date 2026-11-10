@@ -316,7 +316,7 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # Debug-Artefakt, Standard aus (2026-09-23 eingefuehrt, dann zunaechst
         # unbedingt fuer beide Pis aktiviert -- 2026-09-28 auf Env-Var
         # umgestellt): jede uebernommene interaktive Aufnahme landet
-        # zusaetzlich als JPEG hier ab, zum Nachpruefen/Neu-Rechnen abseits
+        # zusaetzlich als PNG je Sitzung hier ab, zum Nachpruefen/Neu-Rechnen abseits
         # vom Server. War live an der Deckenkamera (12 MP) selbst nach dem
         # Umzug auf einen eigenen Hintergrund-Pool (siehe
         # `calibration_session.py._schedule_capture_save`) noch spuerbar

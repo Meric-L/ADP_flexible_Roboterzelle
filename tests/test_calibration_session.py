@@ -18,10 +18,12 @@ Standardpfad im Repo (`data/calibration/...`).
 """
 
 import asyncio
+import json
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 try:
@@ -32,6 +34,7 @@ except Exception:  # numpy broken in this environment
 from vision_server.calibration_session import (
     RMS_WARNING_PX,
     CalibrationSession,
+    _save_capture_image,
 )
 from vision_server.errors import VisionErrorCode
 from vision_server.profiles import AprilTagProfileConfig
@@ -48,6 +51,9 @@ FAST_CONFIG = AprilTagProfileConfig(
 #: Kleines echtes Bild -- `tagloc.frames.image_size`/`to_gray` sind nicht
 #: injiziert und brauchen ein echtes Array, kein String-Platzhalter.
 _FRAME = np.zeros((4, 4, 3), dtype=np.uint8) if np is not None else None
+
+#: Feste Uhr fuer die Archiv-Tests: Sitzungsordner `20261110T091500Z`.
+_T0 = datetime(2026, 11, 10, 9, 15, 0, tzinfo=timezone.utc)
 
 
 class FakeCamera:
@@ -223,9 +229,10 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         def fake_save_capture_image(path, image):
             saved_calls.append(path)
 
-        config = replace(FAST_CONFIG, calibration_capture_dir=Path("archive"))
+        archive = Path(tempfile.mkdtemp(prefix="calib_archive_test_"))
+        config = replace(FAST_CONFIG, calibration_capture_dir=archive)
         session, camera, _, _ = make_session(
-            config, save_capture_image=fake_save_capture_image
+            config, save_capture_image=fake_save_capture_image, now=lambda: _T0
         )
         session.start()
         camera.push()
@@ -233,11 +240,13 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         await session.capture()
         await session.wait_for_pending_saves()
 
-        # Einmal in den Pending-Ordner, einmal ins Archiv.
+        # Einmal in den Pending-Ordner (JPEG), einmal ins Archiv der Sitzung (PNG).
         self.assertEqual(len(saved_calls), 2)
-        archive_paths = [p for p in saved_calls if p.parent == Path("archive")]
+        archive_paths = [p for p in saved_calls if p.parent == archive / "20261110T091500Z"]
         self.assertEqual(len(archive_paths), 1)
-        self.assertEqual(archive_paths[0].name, "kalib_001.jpg")
+        self.assertEqual(archive_paths[0].name, "kalib_001.png")
+        pending = [p for p in saved_calls if p not in archive_paths]
+        self.assertEqual(pending[0].name, "kalib_001.jpg")
 
     async def test_counter_resets_on_a_new_start(self):
         saved_calls: list = []
@@ -733,3 +742,127 @@ class RestartTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
+class ArchiveTest(unittest.IsolatedAsyncioTestCase):
+    """Archiv `calibration_capture_dir` (seit 10.11.2026): je Sitzung ein
+    eigener Ordner `<UTC-Stempel>` mit verlustfreien PNG und `session.json`;
+    eine neue Sitzung ueberschreibt die vorige nicht mehr."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="calib_archive_test_"))
+        self.calibration_path = self.root / "cam_flange.json"
+        self.config = replace(
+            FAST_CONFIG,
+            calibration_capture_dir=self.root / "cam_flange_captures",
+            calibration_path=self.calibration_path,
+            frame_id="cam_flange",
+        )
+
+    def _session(self, **overrides):
+        saved: list = []
+        kwargs = dict(save_capture_image=lambda path, image: saved.append(path), now=lambda: _T0)
+        kwargs.update(overrides)
+        session, camera, _, _ = make_session(self.config, **kwargs)
+        return session, camera, saved
+
+    async def test_session_json_describes_board_and_active_calibration(self):
+        self.calibration_path.write_text(json.dumps({"cameraMatrix": [[1, 0, 2], [0, 3, 4], [0, 0, 1]]}))
+        session, _, _ = self._session()
+        session.start()
+
+        self.assertEqual(session.archive_dir, self.config.calibration_capture_dir / "20261110T091500Z")
+        meta = json.loads((session.archive_dir / "session.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["schema"], "adp.calibration.captures/1")
+        self.assertEqual(meta["frameId"], "cam_flange")
+        self.assertEqual(meta["startedAt"], "2026-11-10T09:15:00Z")
+        self.assertEqual((meta["imageFormat"], meta["pendingFormat"]), ("png", "jpg"))
+        self.assertEqual(meta["board"], {
+            "type": self.config.calibration_board_type,
+            "cols": self.config.calibration_board_cols,
+            "rows": self.config.calibration_board_rows,
+            "squareSizeM": self.config.calibration_board_square_size_m,
+            "markerSizeM": self.config.calibration_board_marker_size_m,
+            "dictionary": self.config.calibration_board_dictionary,
+        })
+        self.assertEqual(meta["model"], self.config.calibration_model)
+        self.assertEqual(meta["activeCalibration"]["cameraMatrix"][0], [1, 0, 2])
+        self.assertEqual(session.progress["archiveDir"], str(session.archive_dir))
+
+    async def test_two_sessions_in_the_same_second_do_not_overwrite_each_other(self):
+        session, camera, saved = self._session()
+        camera.push()
+        session.start()
+        first = session.archive_dir
+        await session.capture()
+        await session.abort()
+        session.start()
+        second = session.archive_dir
+        await session.capture()
+        await session.wait_for_pending_saves()
+
+        self.assertEqual(first.name, "20261110T091500Z")
+        self.assertEqual(second.name, "20261110T091500Z_2")
+        archived = [p for p in saved if p.suffix == ".png"]
+        self.assertEqual(archived, [first / "kalib_001.png", second / "kalib_001.png"])
+        self.assertTrue((first / "session.json").exists())
+        self.assertTrue((second / "session.json").exists())
+
+    async def test_unreadable_active_calibration_keeps_the_archive(self):
+        self.calibration_path.write_text("kein json")
+        session, _, _ = self._session()
+        session.start()
+
+        self.assertIsNotNone(session.archive_dir)
+        meta = json.loads((session.archive_dir / "session.json").read_text(encoding="utf-8"))
+        self.assertIsNone(meta["activeCalibration"])
+
+    async def test_archive_failure_does_not_break_the_calibration(self):
+        # Archivpfad ist eine Datei -> Ordner kann nicht angelegt werden.
+        self.config.calibration_capture_dir.write_text("blockiert")
+        session, camera, saved = self._session()
+        with self.assertLogs("vision_server.calibration_session", level="WARNING"):
+            session.start()
+        camera.push()
+        self.assertTrue(await session.capture())
+        await session.wait_for_pending_saves()
+
+        self.assertIsNone(session.archive_dir)
+        self.assertIsNone(session.progress["archiveDir"])
+        self.assertEqual([p.suffix for p in saved], [".jpg"])
+
+    async def test_without_capture_dir_no_archive(self):
+        session = make_session(FAST_CONFIG)[0]
+        session.start()
+        self.assertIsNone(session.archive_dir)
+        self.assertIsNone(session.progress["archiveDir"])
+
+
+class SaveCaptureImageFormatTest(unittest.TestCase):
+    """`_save_capture_image` waehlt das Format nach Endung: PNG verlustfrei,
+    sonst JPEG."""
+
+    def setUp(self) -> None:
+        try:
+            import cv2  # noqa: F401
+        except Exception:
+            self.skipTest("cv2 nicht verfuegbar")
+        if np is None:
+            self.skipTest("numpy nicht verfuegbar")
+        self.dir = Path(tempfile.mkdtemp(prefix="calib_save_test_"))
+        rng = np.random.default_rng(0)
+        self.image = rng.integers(0, 256, size=(48, 64, 3), dtype=np.uint8)
+
+    def test_png_is_lossless(self):
+        import cv2
+
+        path = self.dir / "sub" / "kalib_001.png"
+        _save_capture_image(path, self.image)
+        self.assertEqual(path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertTrue(np.array_equal(cv2.imread(str(path)), self.image))
+
+    def test_jpg_stays_jpeg(self):
+        path = self.dir / "kalib_001.jpg"
+        _save_capture_image(path, self.image)
+        self.assertEqual(path.read_bytes()[:3], b"\xff\xd8\xff")

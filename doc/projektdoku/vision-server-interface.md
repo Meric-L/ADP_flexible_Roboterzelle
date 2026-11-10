@@ -1409,6 +1409,8 @@ Datei bleibt als Protokoll stehen, weil sie zeigt, wie sich das Problem
 schrittweise eingegrenzt hat, nicht weil der beschriebene Mechanismus noch
 so läuft.
 
+**Nachtrag 10.11.2026: Archiv verlustfrei je Sitzung.** Das Archiv liegt nun unter `data/calibration/<frame_id>_captures/<UTC-Stempel>/` (Stempel `YYYYmmddTHHMMSSZ`, bei Kollision Suffix `_2`, `_3`) und schreibt die Aufnahmen als PNG (`kalib_NNN.png`, verlustfrei) statt als JPEG. Jede Sitzung hat ihren eigenen Ordner mit einer `session.json` (Schema `adp.calibration.captures/1`, u. a. Brett, Modell und die aktive Kalibrierdatei zum Sitzungsstart), sodass frühere Sitzungen nicht mehr überschrieben werden. Der Arbeitsordner `data/calibration/<frame_id>_pending/` bleibt bei JPEG, damit die Online-Auswertung schnell bleibt. Zum Vorgehen und zu den Schnittstellen siehe den Arbeitsplan [`arbeitsplaene/kalibrier-aufnahmen-roh.md`](arbeitsplaene/kalibrier-aufnahmen-roh.md).
+
 ### 12.10 Linsenmodell je Kamera (seit 2026-09-29)
 
 Jede Kamera wird mit dem Linsenmodell kalibriert, das in den Bildtests am
