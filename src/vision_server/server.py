@@ -131,6 +131,15 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # aber falsche IDs. Messung: doc/projektdoku/kamera-und-detektor-analyse.md.
         # Zum Ausprobieren VISION_APRILTAG_DETECTOR_PARAMS setzen.
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
+        # Subpixel-Ecken an (Verfahren subpix, seit 10.11.2026). Ohne sie
+        # liefert ArUco ganzzahlige Ecken; ein Modultag ist auf 1,6 m nur etwa
+        # 85 px gross, die Rundung zittert als 0,6-1,1 px Eckenrauschen und
+        # 5-10 mm in der Tiefe (Helligkeitstest 09.11.). subpix verfeinert
+        # nur ein Fenster um jede gefundene Ecke: gleiche Treffer, ~3 % mehr
+        # Rechenzeit. NICHT "apriltag" -- das sucht das ganze 12-MP-Bild neu
+        # ab, kostet ~46 % CPU und verliert Tags (kamera-und-detektor-analyse.md).
+        "subpixel_corner_refinement": True,
+        "corner_refinement_method": "subpix",
     },
     "cam_flange": {
         # Subpixel-Ecken an (Verfahren subpix): Die Handkamera misst Tags zum
@@ -250,7 +259,8 @@ def merged_json_object_env(name: str, preset: dict | None) -> dict:
 def subpixel_corner_settings(preset: dict) -> dict:
     """`subpixel_corner_refinement` und `corner_refinement_method` aus Preset und Umgebung.
 
-    Preset-Vorgabe (`cam_flange`: an, Verfahren `"subpix"`; sonst aus).
+    Preset-Vorgabe (`cam_ceiling` und `cam_flange`: an, Verfahren `"subpix"`;
+    ein Preset ohne Eintrag: aus).
     `VISION_SUBPIXEL_CORNER_REFINEMENT` uebersteuert: `0`/`none` aus, `1`
     an mit dem Verfahren des Presets, `apriltag`/`subpix` an mit diesem
     Verfahren. Unbekannte Werte werfen `ValueError` beim Start.
@@ -328,8 +338,8 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
             if os.getenv("VISION_SAVE_CALIBRATION_CAPTURES") == "1"
             else None
         ),
-        # Default aus, siehe AprilTagProfileConfig.subpixel_corner_refinement.
-        # Env-Var bleibt als Schalter fuer Layer 2/Kalibrierung.
+        # Aus dem Preset (beide Pis: an, subpix), siehe subpixel_corner_settings().
+        # VISION_SUBPIXEL_CORNER_REFINEMENT uebersteuert pro Pi.
         **subpixel,
         # Diagnose-/Tuning-Schalter (2026-09-24): auf dem Pi mit echten
         # Tag-Distanzen und py-spy ausprobieren, bevor sich ein produktiver

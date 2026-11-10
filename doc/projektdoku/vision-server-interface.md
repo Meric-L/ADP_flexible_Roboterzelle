@@ -792,7 +792,7 @@ Es läuft höchstens eine gleichzeitig, und keine, solange ein Job oder eine
 Kamera-Kalibrierung läuft. Das ist dasselbe Signal, mit dem die
 Zellen-Überwachung pausiert. Sie nutzt den Stream-Detektor: dieselben
 Parameter wie der Job, nur ohne Eckenverfeinerung (bei `cam_ceiling` ist sie
-auch im Job aus). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
+im Job seit 10.11.2026 an, Verfahren `subpix`). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
 selbst und zeigt nur Ergebnisse von Job, Zellen-Überwachung und Messung.
 
 Die Pixel-Ecken werden von der Auflösung des Ergebnisses auf die Stream-Größe
@@ -1749,7 +1749,7 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
   ```
 
 - **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
-- **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+- **Subpixel-Ecken:** Die Presets `cam_flange` und `cam_ceiling` (seit 10.11.2026, Arbeitsplan [`deckenkamera-subpixel-ecken.md`](arbeitsplaene/deckenkamera-subpixel-ecken.md)) nutzen sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 

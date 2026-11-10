@@ -189,3 +189,28 @@ Gemessen auf Bild 12 und vier weiteren Bildern aus C, unter starker künstlicher
 - Am Pi läuft OpenCV 4.x, die Messungen am PC mit 5.0. Die Parameternamen sind gleich, ein Gegentest am Pi steht aus.
 - Die Kalibrierung (`data/calibration/cam_ceiling.json`) entstand vor dem Fokussieren. Eine Neukalibrierung mit den finalen Kamera-Einstellungen ist nötig, weil Fokus die Brennweite leicht verändert.
 - Auswerteskripte (nicht im Repo): Ground Truth, Bitfehler, Stresstests, Parameter-Sweeps. Die Kennzahlen dieses Berichts stammen daraus.
+
+## 8. Nachtrag 10.11.2026: Subpixel-Ecken (`subpix`) gegen Pose-Zittern
+
+Abschnitt 5 hat Subpixel mit dem Blick auf die **Trefferzahl** bewertet. Für die
+**Ruhe der Pose** zeigt der Helligkeitstest vom 09.11. ein anderes Bild. Ohne
+Verfeinerung liefert ArUco auf der Decke ganzzahlige Ecken. Ein 80-mm-Tag ist
+auf 1,6 m nur etwa 85 px groß.
+
+| Licht | Ecken-sd ArUco, ganzzahlig | Ecken-sd pupil_apriltags, subpixelgenau | z-sd | Drehung RMS |
+| --- | --- | --- | --- | --- |
+| 100 % | 0,68 px | 0,08 px | 5,9 mm | 8,7° |
+| 80 % | 1,00 px | 0,11 px | 6,4 mm | 8,9° |
+| 50 % | 1,07 px | 0,24 px | 8,0 mm | 9,1° |
+
+Die 0,1–0,3 px aus Abschnitt 5 sind also 5- bis 8-mal weniger Rauschen als der
+Ist-Zustand. `CORNER_REFINE_SUBPIX` auf 19 echten 12-MP-Bildern (alle
+Lichtstufen, PC, OpenCV 5.0) findet dieselben IDs wie ohne Verfeinerung. Die
+Laufzeit steigt um 3 % (Median 86,7 → 89,0 ms). Die Warnung zu Reichweite und
+CPU betrifft nur `CORNER_REFINE_APRILTAG`.
+
+- **Entscheidung:** Preset `cam_ceiling` mit `subpix` an
+  (Arbeitsplan [`deckenkamera-subpixel-ecken.md`](arbeitsplaene/deckenkamera-subpixel-ecken.md)).
+- **Offen:** Bestätigung am Pi mit einer Helligkeitstest-Reihe. Die
+  Drehungs-Streuung kommt zu einem großen Teil aus der IPPE-Mehrdeutigkeit
+  (etwa 2/3 der Bilder `ambiguous`). Subpixel allein beseitigt sie vermutlich nicht.
