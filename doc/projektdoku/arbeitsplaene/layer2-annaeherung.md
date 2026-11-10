@@ -172,6 +172,8 @@ Die Prüfung ist strenger. Manche Sichtpunkte nah am Wagen werden ausgelassen (�
 
 ## Nachtrag 27.10.2026: Jeden Tag aus 3 Ansichten messen und vereinen
 
+> **Ersetzt am 10.11.2026** durch den Nachtrag „Eine Pose aus 30–45° Schrägansicht“ weiter unten. Mehrere Ansichten werden in Layer 2 nicht mehr gemittelt.
+
 ### Anlass
 
 - Bisher maß die Layer-2-Fahrt jeden Tag nur aus der zentrierten Stellung: eine Ansicht, 2–8 Bilder.
@@ -245,3 +247,60 @@ Eingang sind die zentrierte Messung und die Ansichten.
 
 - Am Roboter noch nicht geprüft.
 - Erwartung: Wiederholgenauigkeit der Modulposition ~1–3 mm, Drehung ~0,3°.
+
+## Nachtrag 10.11.2026: Eine Pose aus 30–45° Schrägansicht
+
+### Grundsatz
+
+> Je Tag wird genau eine Pose ausgewertet: Der Roboter fährt zum Tag, stellt sich 30–45° schräg zur Tag-Normale so nah, dass der Tag maximal groß im Bild liegt, und misst von dort. Mehrere Ansichten werden nicht zusammengefasst oder gemittelt.
+
+### Warum
+
+- Ein planarer Tag frontal gesehen ist in der Orientierung mehrdeutig (Spiegel-Lösung, `ambiguous`).
+- Aus 30–45° ist die Lösung eindeutig. Der Tag ist noch groß genug für eine genaue Position.
+- Mitteln verteilte Fehler der Hand-Auge-Kalibrierung und der Gelenkstellungen auf eine Zahl. Eine gute Einzelmessung war darin nicht zu erkennen.
+- Der kurze Arm erreichte oft nur 1–2 Ansichten. Das Mittel stand dann auf wenig Basis.
+
+### Ablauf
+
+1. Sichtpunkt aus der Planung anfahren, Tag zentrieren.
+2. Entlang der Blickachse nah heranfahren (`closeStandoffM`):
+   - schwarzes Quadrat ≈ 75 % der Bildhöhe,
+   - nie näher als 0,12 m,
+   - Greiferspitze ≥ 5 cm vor dem Tag.
+3. Schräge Ansicht um die Tag-Mitte anfahren, Kippwinkel 30–45° zur Tag-Normale:
+   - Erster Versuch: die Seite, auf der die Kamera schon steht, mit dem aktuellen Winkel auf 30–45° begrenzt.
+   - Danach 35°, 30°, 40°, 45° je Richtung.
+   - Richtungen in dieser Reihenfolge um die Tag-Normale: 0°, ±45°, ±90°, ±135°, 180°.
+   - Die erste Ansicht, die erreichbar ist und den Tag sieht, gilt.
+4. Abstand der schrägen Ansicht: `obliqueStandoffM` = nahe Abstand + halbe Tag-Kante · sin(Kippwinkel). So erscheint die vordere Tag-Kante nicht größer als frontal. Die Greiferspitze bleibt ≥ 5 cm vor der Tag-Ebene.
+5. Liegt der Tag neben der Bildmitte, wird einmal seitlich nachgeregelt (`recentre`). Fehlt er im Bild, fährt die Kamera 30 % zurück (`backOff`).
+6. Diese eine Messung (2–8 Bilder derselben Roboterstellung) ergibt `T_base_tag = FK(gelesene Gelenke) · T_Flansch_Kamera · T_Kamera_Tag`.
+
+### Übernahme
+
+- **Position:** aus der einen Pose.
+- **Drehung (Modul):** wird übernommen, wenn die Messung eindeutig ist (`ambiguous: false`). Sonst bleibt die Drehung aus Layer 1.
+- **Anker (Welttag):** Basiskorrektur aus der einen Pose. Der Kurs wird nur bei eindeutiger Messung übernommen.
+
+### Fallback
+
+- Ist keine schräge Ansicht erreichbar oder sieht keine den Tag, gilt die nahe frontale Messung als die eine Pose.
+- Die Zeile sagt dann „schräg nicht erreichbar — frontale Messung“.
+
+### Anzeige
+
+- Statuszeile, z. B. „1 Pose, 37° schräg, 0,17 m“.
+
+### Umsetzung
+
+- Repo `webskillcomposition`, Branch `layer2-nah-ran-2`.
+- `frontend/src/features/cell-modules/components/ApproachPlanPanel.tsx`
+- `frontend/src/features/cell-modules/model/tagViews.ts` (`obliqueViews`)
+- `frontend/src/features/cell-modules/model/tagServo.ts` (`obliqueStandoffM`, `OBLIQUE_VIEW_MIN_DEG = 30`, `OBLIQUE_VIEW_MAX_DEG = 45`)
+- Die Roboter-Tags (`robotTagRun.ts`) messen weiter aus mehreren Ansichten.
+
+### Offen
+
+- Am echten Aufbau prüfen, wie oft 30–45° erreichbar ist.
+- Prüfen, ob die Wiederholgenauigkeit der Einzelpose an die gemittelte heranreicht.
