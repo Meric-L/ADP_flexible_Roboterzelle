@@ -61,10 +61,21 @@ class FlangeCameraTest(unittest.TestCase):
 
     def test_keeps_its_settings(self):
         config = config_for("cam_flange", "realsense")
-        self.assertEqual(config.apriltag.resolution, (640, 480))
+        # Seit 10.11.2026 volle Aufloesung des D415-Farbsensors.
+        self.assertEqual(config.apriltag.resolution, (1920, 1080))
         self.assertIsNone(config.camera_stream.preview_resolution)
         self.assertIsNone(config.camera_stream.buffer_count)
         self.assertFalse(config.apriltag.allow_resolution_mismatch)
+
+    def test_detection_resolution_matches_the_realsense_frames(self):
+        """Die Frames kommen in `realsense_resolution` an; die Erkennung muss
+        dieselbe Aufloesung erwarten, sonst scheitert der erste Job erst zur
+        Laufzeit ("Kalibrierung gilt fuer ...")."""
+        config = config_for("cam_flange", "realsense")
+        self.assertEqual(config.apriltag.resolution, config.camera_stream.realsense_resolution)
+        self.assertEqual(config.camera_stream.realsense_resolution, (1920, 1080))
+        # Ueber USB 2 bietet die D415 1920x1080 nur mit 8 Hz an.
+        self.assertEqual(config.camera_stream.realsense_fps, 8)
 
     def test_keeps_the_default_overlay_timeout(self):
         """Erkennungsaufloesung hat sich fuer cam_flange nicht geaendert
