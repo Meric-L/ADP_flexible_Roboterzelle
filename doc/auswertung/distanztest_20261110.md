@@ -34,3 +34,18 @@ Gleiche Session, Bilder `r_041`–`r_087`, Kamera ~0,34 m. Brettkante gegen eine
 - Während des Seitentests stand der Roboter in Ruhestellung (Motoren aus, nur Bremsen). Er meldete dieselben Gelenkwinkel wie eingeschaltet (Kamera rechnerisch auf z 347,72 mm), das Brett erschien an derselben Stelle (Basis x ~408, y ~9) aber 10 mm höher (z 11,2 statt 1,0 mm) und 1,2° stärker geneigt (1,5° statt 0,35°): Die Kamera ist um diesen Betrag abgesackt und gekippt, ohne dass die gemeldeten Gelenkwinkel es zeigen.
 - Für den Seitentest unschädlich (Kamera stand während der Reihe still, gezählt wird die Verschiebung in der Brettebene). Für Hand-Auge-Aufnahmen, Layer 2 und jede Rückrechnung in Roboterkoordinaten darf der Roboter nicht in Ruhestellung stehen (~10 mm unsichtbarer Fehler); Langzeitmessungen durchgehend im selben Zustand.
 - In Roboterkoordinaten treffen die Distanzstück-Höhen absolut 19,35 / 39,43 / 59,10 mm (soll 19,9 / 39,8 / 59,7), einschließlich Hand-Auge und Roboterpose. Lauf 0 (z 1,0 mm) stand mit 1,6 mm anderer Kamerahöhe (Gelenke bis 0,004 rad anders).
+
+## AprilTag in der Ausgangsstellung (Session `2026-11-10_153201`)
+
+10 Rohbilder (1920×1080), Tag ID 0 (tag36h11, 80 mm), offline erkannt (Subpixel-Ecken, IPPE_SQUARE, aktive Kalibrierung); die Live-Messung des Pi war leer (Panel stand auf ChArUco). Roboter eingeschaltet in der Ausgangsstellung (Gelenke ~ −0,3 / −14,0 / 0,1 / −137,7 / 0,0 / 123,0 / 44,4°).
+
+| | Wert | σ |
+|---|---|---|
+| Tag-Mitte in Kamera | 17,6 / −16,6 / 349,9 mm | 10 / 23 / 77 µm |
+| Tag-Mitte in Roboterbasis | x 421,9 / y 16,3 / z −2,2 mm | 23 / 10 / 77 µm |
+| Gierwinkel der Tag-x-Achse in Basis | −90,12° | 0,013° |
+
+- Präzision mit 4 Ecken: seitlich 10–23 µm, Tiefe 77 µm (Brett: ~6 µm).
+- z −2,2 mm passt zur Tischebene (Brett 0–1 mm): Roboter nicht abgesackt.
+- Tag auf 0,12° parallel zu den Roboterachsen; Neigung des Einzeltags 2,5° (schwach bestimmt).
+- Handmessung (Nutzer): Tag 310,8 mm von der dem Roboter zugewandten Tischkante (Richtung vom Roboter weg), 312,2 mm von der linken Kante. Daraus folgen die Kanten in Roboterbasis: zugewandte Kante bei x = 111,1 mm, linke Kante bei y = 328,5 mm. Prüfung offen: Abstand Roboterachse (Gelenk 1) zu diesen Kanten messen.
