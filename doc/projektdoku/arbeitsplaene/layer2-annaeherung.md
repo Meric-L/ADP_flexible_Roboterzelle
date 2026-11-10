@@ -250,32 +250,33 @@ Eingang sind die zentrierte Messung und die Ansichten.
 
 ## Nachtrag 10.11.2026: Eine Pose aus 30–45° Schrägansicht
 
+Stand 10.11.2026 nachmittags: Soll-Abstand 0,35 m, bevorzugt 30°, ohne nahes Heranfahren.
+
 ### Grundsatz
 
-> Je Tag wird genau eine Pose ausgewertet: Der Roboter fährt zum Tag, stellt sich 30–45° schräg zur Tag-Normale so nah, dass der Tag maximal groß im Bild liegt, und misst von dort. Mehrere Ansichten werden nicht zusammengefasst oder gemittelt.
+> Je Tag wird genau eine Pose ausgewertet: Der Roboter fährt zum Tag und stellt sich in etwa 0,35 m Abstand möglichst 30° schräg zur Tag-Normale (höchstens 45°), und misst von dort. Mehrere Ansichten werden nicht zusammengefasst oder gemittelt.
 
 ### Warum
 
 - Ein planarer Tag frontal gesehen ist in der Orientierung mehrdeutig (Spiegel-Lösung, `ambiguous`).
-- Aus 30–45° ist die Lösung eindeutig. Der Tag ist noch groß genug für eine genaue Position.
+- Ab 30° ist die Lösung eindeutig. Der Tag ist noch groß genug für eine genaue Position.
+- 30° ist der kleinste Winkel, der die Orientierung sicher eindeutig macht. Flacher ist die Position genauer.
 - Mitteln verteilte Fehler der Hand-Auge-Kalibrierung und der Gelenkstellungen auf eine Zahl. Eine gute Einzelmessung war darin nicht zu erkennen.
 - Der kurze Arm erreichte oft nur 1–2 Ansichten. Das Mittel stand dann auf wenig Basis.
 
 ### Ablauf
 
-1. Sichtpunkt aus der Planung anfahren, Tag zentrieren.
-2. Entlang der Blickachse nah heranfahren (`closeStandoffM`):
-   - schwarzes Quadrat ≈ 75 % der Bildhöhe,
-   - nie näher als 0,12 m,
-   - Greiferspitze ≥ 5 cm vor dem Tag.
-3. Schräge Ansicht um die Tag-Mitte anfahren, Kippwinkel 30–45° zur Tag-Normale:
-   - Erster Versuch: die Seite, auf der die Kamera schon steht, mit dem aktuellen Winkel auf 30–45° begrenzt.
-   - Danach 35°, 30°, 40°, 45° je Richtung.
-   - Richtungen in dieser Reihenfolge um die Tag-Normale: 0°, ±45°, ±90°, ±135°, 180°.
-   - Die erste Ansicht, die erreichbar ist und den Tag sieht, gilt.
-4. Abstand der schrägen Ansicht: `obliqueStandoffM` = nahe Abstand + halbe Tag-Kante · sin(Kippwinkel). So erscheint die vordere Tag-Kante nicht größer als frontal. Die Greiferspitze bleibt ≥ 5 cm vor der Tag-Ebene.
-5. Liegt der Tag neben der Bildmitte, wird einmal seitlich nachgeregelt (`recentre`). Fehlt er im Bild, fährt die Kamera 30 % zurück (`backOff`).
-6. Diese eine Messung (2–8 Bilder derselben Roboterstellung) ergibt `T_base_tag = FK(gelesene Gelenke) · T_Flansch_Kamera · T_Kamera_Tag`.
+1. Sichtpunkt aus der Planung anfahren, Tag im geplanten Abstand zentrieren.
+2. Schräge Ansicht um die Tag-Mitte anfahren, Kippwinkel möglichst 30° zur Tag-Normale:
+   - Reihenfolge: zuerst 30° in allen 8 Richtungen, danach 35°, 40°, 45°. Das sind 32 Kandidaten.
+   - Richtungen um die Tag-Normale: 0°, ±45°, ±90°, ±135°, 180°, ab der Seite, auf der die Kamera steht. Steht die Kamera frontal, ab der Richtung zur Roboterbasis.
+   - Die erste erreichbare Ansicht, die den Tag sieht, gilt.
+3. Abstand der schrägen Ansicht: `obliqueStandoffM` = max(0,35 m; Abstand, bei dem die vordere Tag-Kante höchstens 90 % der Bildhöhe einnimmt, `OBLIQUE_VIEW_MAX_FILL = 0.9`; 0,12 m Fixfokus; Greiferspitze ≥ 5 cm vor der Tag-Ebene).
+   - 8-cm-Modultag: immer 0,35 m.
+   - 20-cm-Welttag: 0,35 m bei 30–35°, bei 40–45° 0,354–0,36 m.
+   - Ohne Tag-Größe: 0,35 m.
+4. Liegt der Tag neben der Bildmitte, wird einmal seitlich nachgeregelt (`recentre`). Fehlt er im Bild, fährt die Kamera 30 % zurück (`backOff`).
+5. Diese eine Messung (2–8 Bilder derselben Roboterstellung) ergibt `T_base_tag = FK(gelesene Gelenke) · T_Flansch_Kamera · T_Kamera_Tag`.
 
 ### Übernahme
 
@@ -285,7 +286,7 @@ Eingang sind die zentrierte Messung und die Ansichten.
 
 ### Fallback
 
-- Ist keine schräge Ansicht erreichbar oder sieht keine den Tag, gilt die nahe frontale Messung als die eine Pose.
+- Ist keine schräge Ansicht erreichbar oder sieht keine den Tag, gilt die zentrierte Messung im geplanten Abstand als die eine Pose.
 - Die Zeile sagt dann „schräg nicht erreichbar — frontale Messung“.
 
 ### Anzeige
@@ -294,13 +295,13 @@ Eingang sind die zentrierte Messung und die Ansichten.
 
 ### Umsetzung
 
-- Repo `webskillcomposition`, Branch `layer2-nah-ran-2`.
 - `frontend/src/features/cell-modules/components/ApproachPlanPanel.tsx`
-- `frontend/src/features/cell-modules/model/tagViews.ts` (`obliqueViews`)
-- `frontend/src/features/cell-modules/model/tagServo.ts` (`obliqueStandoffM`, `OBLIQUE_VIEW_MIN_DEG = 30`, `OBLIQUE_VIEW_MAX_DEG = 45`)
+- `frontend/src/features/cell-modules/model/tagViews.ts` (`obliqueViews`, `OBLIQUE_VIEW_TILTS_DEG = [30, 35, 40, 45]`)
+- `frontend/src/features/cell-modules/model/tagServo.ts` (`obliqueStandoffM`, `OBLIQUE_VIEW_STANDOFF_M = 0.35`, `OBLIQUE_VIEW_MAX_FILL = 0.9`)
+- Commits `7cd0105`, `a3057c8` (`webskillcomposition`, Branch `layer2-nah-ran-2`). `closeStandoffM` und `CLOSE_TAG_FILL` sind entfernt.
 - Die Roboter-Tags (`robotTagRun.ts`) messen weiter aus mehreren Ansichten.
 
 ### Offen
 
-- Am echten Aufbau prüfen, wie oft 30–45° erreichbar ist.
+- Am echten Aufbau prüfen, wie oft 30° (bzw. bis 45°) erreichbar ist.
 - Prüfen, ob die Wiederholgenauigkeit der Einzelpose an die gemittelte heranreicht.

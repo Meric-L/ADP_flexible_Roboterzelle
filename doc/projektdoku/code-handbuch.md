@@ -1853,7 +1853,7 @@ Die größte Datei des Bereichs ist `ModuleCatalogModal.tsx` mit 1642 Zeilen, ge
 
 - `LAYER2_DRIVE_MAX_SPEED = AUTO_DRIVE_MAX_SPEED` = 0,1 (`model/robotHold.ts`): Fahrten mit `go_to` und `max_speed` 0,1. Auf `ungetestet-aufraeumen` die eingestellte Geschwindigkeit (D18).
 - `AT_HOME_RAD = 0.01`: Toleranz je Gelenk, ab der der Arm als in der Ausgangsstellung gilt.
-- `DEFAULT_APPROACH_STANDOFF_M`, `DEFAULT_ANCHOR_STANDOFF_M` (`model/approachPlan`); `OBLIQUE_VIEW_MIN_DEG = 30`, `OBLIQUE_VIEW_MAX_DEG = 45`, `obliqueStandoffM` (`model/tagServo`); `OBLIQUE_VIEW_TILTS_DEG`, `OBLIQUE_VIEW_AZIMUTHS_DEG` (`model/tagViews`). Seit 10.11.2026 wertet Layer 2 je Tag genau eine Pose aus 30–45° Schrägansicht aus, statt mehrere Ansichten zu mitteln (`LAYER2_MIN_MEASUREMENTS`, `LAYER2_HEADING_MAX_SPREAD_DEG` und `CLOSE_VIEW_DISTANCE_FACTOR` sind entfernt; siehe `arbeitsplaene/layer2-annaeherung.md`, Nachtrag 10.11.2026).
+- `DEFAULT_APPROACH_STANDOFF_M`, `DEFAULT_ANCHOR_STANDOFF_M` (`model/approachPlan`); `OBLIQUE_VIEW_MIN_DEG = 30`, `OBLIQUE_VIEW_MAX_DEG = 45`, `OBLIQUE_VIEW_STANDOFF_M = 0.35`, `OBLIQUE_VIEW_MAX_FILL = 0.9`, `obliqueStandoffM` (`model/tagServo`); `OBLIQUE_VIEW_TILTS_DEG`, `OBLIQUE_VIEW_AZIMUTHS_DEG` (`model/tagViews`). Seit 10.11.2026 wertet Layer 2 je Tag genau eine Pose aus etwa 0,35 m und möglichst 30° Schrägansicht (höchstens 45°) aus, statt mehrere Ansichten zu mitteln (`LAYER2_MIN_MEASUREMENTS`, `LAYER2_HEADING_MAX_SPREAD_DEG`, `CLOSE_VIEW_DISTANCE_FACTOR`, `closeStandoffM` und `CLOSE_TAG_FILL` sind entfernt; siehe `arbeitsplaene/layer2-annaeherung.md`, Nachtrag 10.11.2026).
 - Eingabegrenzen: 10 bis 100 cm für den Modul-Tag, 10 bis 200 cm für den Welt-Tag.
 
 **Tests**
