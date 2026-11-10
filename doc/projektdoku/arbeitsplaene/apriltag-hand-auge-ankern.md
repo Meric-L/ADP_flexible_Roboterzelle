@@ -233,3 +233,37 @@ Kamera-KS. Kein Raten.
 gemessen. Bis `data/handeye/cam_flange.json` existiert, wirkt nur der optische
 Weg — ohne Welttag im Bild bleiben die Posen im Kamera-KS. `auto_execute` bleibt
 `False`, bis die Kalibrierung am Roboter belegt ist.
+
+## Nachtrag 10.11.2026: Anker nach neuem Layer-1-Scan immer neu, Modul-Drehung immer aus Layer 2
+
+**Ablauf (Frontend-Layer-2, `ApproachPlanPanel.tsx` in webskillcomposition):**
+
+- Deckenkamera (Layer 1) liefert grobe Basis und Module in Welt.
+- Layer 2 ankert die Roboterbasis an einem Welttag mit der Handkamera (geplant 1,0 m, `DEFAULT_ANCHOR_STANDOFF_M`): `T_base_tag = FK(q) · T_flange_cam · T_cam_tag`.
+- `baseCorrection`: Basis in Welt = `T_world_tag · inv(T_base_tag)`, nur x, y und Gierwinkel; die Höhe kommt aus dem Katalog.
+- Module werden bei 0,35 m (`DEFAULT_APPROACH_STANDOFF_M`) direkt im Roboterbasis-Rahmen gemessen und mit der Ankerbasis in die Welt geschrieben (`measuredModule`).
+- Pick & Place rechnet mit der Basis des Zwillings zurück (`usePickPlaceRun`).
+- Ist es dieselbe Basis, kürzt sich der Anker-/Weltfehler für die Relativlage Roboter↔Modul heraus. Es zählen dann nur Hand-Auge bei 0,35 m, Roboterpose, Tag-Messung und der Katalogversatz Tag→Modul.
+
+**Behobener Fehler:**
+
+- Nach einem neuen Layer-1-Scan setzte der Scan den Zwilling auf die grobe Layer-1-Basis.
+- Layer 2 behielt aber die alte Ankerkorrektur, wenn der Roboter laut Layer 1 höchstens 5 cm und 5° am alten Ort stand (`robotStayedPut`, `ROBOT_STILL_DISTANCE_M` / `ROBOT_STILL_YAW_RAD` in `layer2.ts`).
+- Dann wurde kein Anker angefahren, und der Vorschlag enthielt keinen Roboter.
+- Folge: Module lagen auf der Ankerbasis, der Zwilling auf der Layer-1-Basis. Die ganze frühere Basiskorrektur ging als Fehler ins Greifen ein.
+
+**Neu:**
+
+1. Jeder neue Layer-1-Scan verwirft die Ankerkorrektur. Der nächste Layer-2-Lauf fährt den Anker immer neu an, die ganze Kette läuft neu.
+2. Werden Module mit der Ankerbasis abgelegt, enthält der Vorschlag immer auch den Roboter auf dieser Basis. Nach „Übernehmen“ passen Zwilling und Module zusammen.
+3. Der Gierwinkel eines Moduls kommt immer aus Layer 2, auch wenn die Messung als mehrdeutig gilt. Die IPPE-Mehrdeutigkeit betrifft die Kippung; übernommen wird nur der Gierwinkel (`levelModulePose`). Mehrdeutigkeit steht nur noch als Hinweis im Fortschrittstext.
+   - Der Anker selbst übernimmt den Gierwinkel weiterhin nur bei eindeutiger Messung.
+
+**Wo umgesetzt:** webskillcomposition, Branches `handauge-schachbrett-offline` (`5cebd68`) und `layer2-nah-ran-2` (`999c80d`). Das Remote ist archiviert, die Commits liegen lokal. Zusätzlich entfallen `robotStayedPut`, `ROBOT_STILL_DISTANCE_M` und `ROBOT_STILL_YAW_RAD` (`layer2.ts`); neu ist `robotOriginsEqual` (gleiche Roboter-Origin auf 0,1 mm bzw. 0,1 mrad).
+
+**Bleibende Fehlerquellen Roboter↔Modul:**
+
+- Hand-Auge bei 0,35 m: Laufvergleich vom 10.11. zeigt einen gemessenen Punkt in Bildmitte mit 0,4–0,9 mm Abweichung zwischen Kalibrierläufen.
+- Roboterpose.
+- Tag-Messung.
+- Systematischer Katalogversatz Tag→Modul, siehe Plan `modellfehler-pruefung.md`.
