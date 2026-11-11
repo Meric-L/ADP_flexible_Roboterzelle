@@ -333,3 +333,29 @@ Stand 10.11.2026 nachmittags: Soll-Abstand 0,35 m, bevorzugt 30°, ohne nahes He
   - Die Prüfung tastet den Gelenkweg ab.
 - Tests: `homeViaLift.test.ts` (10 Tests).
 - Am Roboter noch nicht geprüft.
+
+## Nachtrag 11.11.2026 (b): Ein Foto aus ≈ 0,35 m, möglichst frontal (Branch handauge-schachbrett-offline)
+
+- Gilt für webskillcomposition `handauge-schachbrett-offline`, Commit `36f28b0` (nur lokal, Remote archiviert).
+- Unabhängig vom Nachtrag „Eine Pose aus 30–45° Schrägansicht“ (der liegt auf `layer2-nah-ran-2`).
+- Grundsatz: „Je Tag wird ein Foto ausgewertet: aus einer Stellung, deren Abstand zum Tag möglichst genau 0,35 m ist (sonst mit der kleinsten Abweichung) und die den Tag dabei möglichst frontal von oben anschaut. Mehrere Ansichten werden nicht gemittelt.“
+- Planung (`frontend/src/features/cell-modules/model/approachPlan.ts`, `planApproach`):
+  - Abstand vor Kippung.
+  - `standoffCandidates(0.35)`: 0,35; 0,375; 0,325; 0,40; 0,30; 0,425; 0,275; 0,45; 0,25; 0,475; 0,50; 0,55 … (2,5 cm bis 0,5 m, 5 cm bis 1 m, 10 cm bis 2 m, nie unter 0,25 m = `MIN_STANDOFF_M`, bei gleicher Abweichung der größere zuerst).
+  - Je Abstand Kippungen 0–75° in 5°-Schritten (`PLAN_TILTS_DEG`, zur Roboterbasis hin), je Kippung Rollwinkel 0/90/−90/180°.
+  - Die erste erreichbare Pose (IK + Wagen/Boden frei) gewinnt. Das ist die mit kleinster Abstandsabweichung und dort kleinster Kippung.
+  - Reichweiten-Vorfilter ohne IK: Flansch weiter als `REACH_LIMIT_M` = 0,855 + 0,15 m von der Schulter (0, 0, 0,333) → übersprungen (nur FR3; Option `reach`).
+  - `ApproachStop.standoffM` = Abstand der gewählten Pose.
+  - `approximate` nur noch, wenn gar nichts erreichbar ist (Notlösung wie bisher).
+- Welt-Tags (Anker):
+  - Soll ebenfalls 0,35 m (`DEFAULT_ANCHOR_STANDOFF_M` 1,0 → 0,35, Eingabefeld Standard 35 cm).
+  - Meist nicht erreichbar → so nah wie möglich, leichte Kippung in Ordnung.
+  - Ankerwahl: kleinste Abstandsabweichung, dann kleinste Kippung.
+- Lauf (`components/ApproachPlanPanel.tsx`):
+  - Sichtpunkt anfahren, `centreOnTag` auf `stop.standoffM` (bis 3 Korrekturen; die Kamera verschiebt sich bei gleicher Blickrichtung).
+  - Danach zählt nur dessen letzte Messung: eine Stellung, ein `MeasureTags`-Aufruf (der Pi mittelt 3 Bilder derselben Stellung).
+  - Entfallen: nah heranfahren (`closeStandoffM` entfernt), Zusatzansichten (`measureTagViews`) und Mittelung (`fuseTagViews`, Mindestzahl 3).
+- Gierwinkel: wird immer übernommen (Modul und Anker, `useHeading: true`). „mehrdeutig“ steht nur als Hinweis in der Zeile. Die IPPE-Mehrdeutigkeit betrifft die Kippung, nicht die Position.
+- Statuszeile (`model/layer2Photo.ts`, `describeLayer2Photo`): z. B. „1 Foto aus 0,35 m, 0° schräg, mittig 3 mm, 1 Korr.“. Kippung = Winkel zwischen Blickachse und Tag-Normale aus der Messung.
+- Tests: `approachPlan.test.ts` (Abstand vor Kippung, 5° statt 15°, ferner Welt-Tag, Ankerwahl, Vorfilter), `layer2Photo.test.ts`; 798 Tests grün.
+- Am Roboter noch nicht geprüft.
