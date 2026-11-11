@@ -87,3 +87,14 @@ Ergebnisse werden nicht automatisch aktiv. Keine neuen Ports oder Dienste.
 Konfigurierten RealSense-Strom und zugehörige Intrinsikdatei gegen die
 tatsächliche Auflösung prüfen; die Software kann diese Prüfung ohne Gerät
 nicht durchführen.
+
+## Nachtrag 11.11.2026: Gesamtkalibrierung auf dem Pi (`fullCalibration`)
+
+1. **Gesamtkalibrierung:** `StartHandEyeCalibration` mit `fullCalibration: true` nimmt Rohbilder auf wie `captureOnly`. `FinishHandEyeCalibration` rechnet auf dem Pi die Intrinsik (`cv2.calibrateCamera`, volles Modell) und danach das Hand-Auge (Park, dann gemeinsame Reprojektions-Verfeinerung mit scipy). Beide Ergebnisse werden mit `.bak`-Sicherung zusammen nach `data/calibration/cam_flange.json` und `data/handeye/cam_flange.json` geschrieben und live übernommen. Scheitert das Schreiben, werden beide wiederhergestellt. Details: [vision-server-interface.md](../vision-server-interface.md), Abschnitt 15.6.
+2. **Brettmaße frei:** Schachbrett und ChArUco haben frei eintragbare Felder, Maße und Dictionary (Abschnitt 15.7 der Schnittstellendoku). Das Labor-Brett wird mit den nachgemessenen Werten (Feld 24,982 mm, Marker 18,487 mm) ohne Skalierungsfaktor verwendet. Das Frontend (`webskillcomposition`, Branch `ungetestet-aufraeumen`) merkt sich die Angaben im Browser.
+3. **Status:** `HandEyeStatus` hat das Feld `fullCalibration`. Bei `fullCalibration` steht in `result` `kind: "intrinsicsAndHandEye"` mit Intrinsik, Hand-Auge, `excluded` und `backups`.
+4. **Abhängigkeiten:** `requirements.txt` nennt `opencv-contrib-python>=4.8.0` ohne Obergrenze `<5`, weil die Pis mit OpenCV 5 laufen. `scipy>=1.11` wird auf dem Pi gebraucht; fehlt es, lautet die Meldung „scipy fehlt auf dem Pi (pip install scipy)“.
+
+Hinweis: Die Offline-Skripte unter `tools/handeye_offline_cv4/` sind auf diesem Branch nicht übernommen. Sie liegen auf `handauge-schachbrett-offline`.
+
+Bewusst nicht verwendet werden die Kinematik-Korrektur der Flanschpose und die Werks-Intrinsik. Die Flanschpose ist die nominelle FK aus den gemessenen Gelenkwinkeln. Die Kinematik-Korrektur hat die 1080p-Sitzung verschlechtert: mit Korrektur 4,78 px statt 3,63 px ohne.
