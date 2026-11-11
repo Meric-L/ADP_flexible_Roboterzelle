@@ -47,6 +47,7 @@ nicht gibt.
 | [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
 | [`welttags-eine-quelle.md`](welttags-eine-quelle.md) | apriltag | geplant | Meric, `Agent: Welttags eine Quelle` | 30.10.2026 |
 | [`module-am-boden-ohne-hoehe.md`](module-am-boden-ohne-hoehe.md) | apriltag | fertig | Meric, `Agent: Module am Boden ohne Höhe` | 02.11.2026 |
+| [`use-case-wuerfel-auf-tag.md`](use-case-wuerfel-auf-tag.md) | apriltag | fertig | Meric, `Agent: Use Case Würfel auf Tag` | 11.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
