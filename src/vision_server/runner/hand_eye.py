@@ -8,6 +8,7 @@ from asyncua import Node, ua, uamethod
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
 from ..profiles import _REPO_ROOT
+from .calibration import _write_calibration_info
 from .uamethods import add_vision_method, code_reply
 
 
@@ -17,6 +18,7 @@ async def _install_hand_eye_session(
     apriltag_source: Any,
     methods: dict[str, Node],
     busy: Callable[[], bool],
+    annotator: Any = None,
 ) -> Any:
     """Legt die Hand-Auge-Methoden an und verdrahtet die Session.
 
@@ -28,6 +30,19 @@ async def _install_hand_eye_session(
 
     async def publish(status: str) -> None:
         await space.hand_eye_status.write_value(ua.Variant(status, ua.VariantType.String))
+
+    calibration_path = getattr(config.apriltag, "calibration_path", None)
+
+    async def apply_intrinsics(calibration: Any) -> None:
+        """Neue Intrinsik live uebernehmen, wie `_apply_live_calibration` in
+        `runner/calibration.py`: Erkennung, Overlay und Info-Knoten."""
+        if hasattr(apriltag_source, "apply_calibration"):
+            apriltag_source.apply_calibration(calibration)
+        if annotator is not None and hasattr(annotator, "apply_calibration"):
+            annotator.apply_calibration(calibration)
+        await _write_calibration_info(
+            space.active_calibration_info, calibration, calibration_path
+        )
 
     session = HandEyeSession(
         HandEyePorts(
@@ -41,6 +56,8 @@ async def _install_hand_eye_session(
             apply=apriltag_source.apply_hand_eye,
             publish=publish,
             frame_id=config.apriltag.frame_id,
+            intrinsics_path=calibration_path,
+            apply_intrinsics=apply_intrinsics if calibration_path is not None else None,
         )
     )
     await session.publish_idle()

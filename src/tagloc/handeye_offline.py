@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 from html import escape
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from . import geometry, lens
 from .boards import CHARUCO, CHESSBOARD, BoardSpec, canonical_chessboard_corners, chessboard_object_points, detect_board, matched_board_points
+from .calibration import PINHOLE, CameraCalibration, save_calibration
 from .frames import to_gray
 from .handeye import HandEye, intrinsics_from_dict, save_hand_eye, solve_hand_eye
 
@@ -78,10 +79,69 @@ def _pnp(corners, points, calibration, method):
     return ranked[0][1], ranked[0][0], ambiguity
 
 
-def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
-    """Originalbilder erneut detektieren; Ausschlussgruende und Detektion cachen."""
+def _board_from_config(config):
+    """Brett aus der `config.json` einer Rohbild-Sitzung."""
+    board_data = config["board"]
+    if board_data.get("type") not in (CHESSBOARD, CHARUCO):
+        raise ValueError("Unbekannter Bretttyp")
+    return BoardSpec(type=board_data["type"], cols=int(board_data["cols"]),
+                     rows=int(board_data["rows"]), square_size_m=float(board_data["squareSizeM"]),
+                     marker_size_m=float(board_data.get("markerSizeM", 0.022)),
+                     dictionary=board_data.get("dictionary", "DICT_4X4_50"))
+
+
+def _read_pose_state(path: Path):
+    """Roboterzustand einer Pose pruefen: `(state, Flanschpose)`; ValueError/KeyError/OSError."""
+    state = json.loads((path / "robot_state.json").read_text(encoding="utf-8"))
+    quality_path = path / "quality.json"
+    if quality_path.exists():
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        if quality.get("valid") is False:
+            raise ValueError(f"Nach Aufnahme verworfen: {quality.get('reason', '')}")
+    if state["poseId"] != path.name:
+        raise ValueError("Pose-ID stimmt nicht mit dem Ordner ueberein")
+    flange = np.asarray(state["T_base_flange"], dtype=np.float64).reshape(4, 4)
+    if not np.all(np.isfinite(flange)) or not np.allclose(flange[3], [0, 0, 0, 1]):
+        raise ValueError("Flanschpose ungueltig")
+    if not np.allclose(flange[:3, :3].T @ flange[:3, :3], np.eye(3), atol=1e-4):
+        raise ValueError("Flanschrotation nicht orthonormal")
+    joints = np.asarray(state["jointAnglesRad"], dtype=np.float64)
+    if joints.shape != (7,) or not np.all(np.isfinite(joints)):
+        raise ValueError("Sieben gemessene Gelenkwinkel erforderlich")
+    return state, flange
+
+
+def _read_gray(path: Path):
     import cv2
 
+    image = cv2.imread(str(path / "camera.png"), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise ValueError("Rohbild fehlt")
+    return image, to_gray(image)
+
+
+def _detect_corners(gray, board, points, min_charuco):
+    """Brett im Bild finden: `(Bildecken, Objektpunkte, IDs | None)`.
+
+    ChArUco: mindestens `min_charuco` Ecken; Schachbrett: vollstaendiges Raster.
+    ValueError mit Klartext sonst.
+    """
+    sample = detect_board(gray, board)
+    if sample is None:
+        raise ValueError("Brett nicht erkannt")
+    if board.type == CHARUCO:
+        if sample.count() < min_charuco:
+            raise ValueError(f"Weniger als {min_charuco} ChArUco-Ecken erkannt")
+        object_points, corners = matched_board_points(sample, board)
+        return corners, object_points, sample.ids.reshape(-1)
+    if sample.count() != len(points):
+        raise ValueError("Vollstaendiges Schachbrett nicht erkannt")
+    corners = canonical_chessboard_corners(gray, sample.corners, board).reshape(-1, 2)
+    return corners, points, None
+
+
+def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
+    """Originalbilder erneut detektieren; Ausschlussgruende und Detektion cachen."""
     folder = Path(folder)
     config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
     if config.get("schema") != "wsc.vision.handeye.raw/1":
@@ -90,53 +150,17 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
         raise ValueError("Bild und Intrinsik des konfigurierten Kamerastroms erforderlich")
     if config.get("intrinsicsSource") != "calibration":
         raise ValueError("Sitzung nutzt keine eigene, kalibrierte Kameraintrinsik")
-    board_data = config["board"]
-    if board_data.get("type") not in (CHESSBOARD, CHARUCO):
-        raise ValueError("Unbekannter Bretttyp")
-    board = BoardSpec(type=board_data["type"], cols=int(board_data["cols"]),
-                      rows=int(board_data["rows"]), square_size_m=float(board_data["squareSizeM"]),
-                      marker_size_m=float(board_data.get("markerSizeM", 0.022)),
-                      dictionary=board_data.get("dictionary", "DICT_4X4_50"))
+    board = _board_from_config(config)
     calibration = intrinsics_from_dict(config["intrinsics"])
     points = chessboard_object_points(board) if board.type == CHESSBOARD else None
     observations, excluded, cache = [], [], []
     for path in sorted((folder / "poses").glob("pose_*")):
         try:
-            state = json.loads((path / "robot_state.json").read_text(encoding="utf-8"))
-            quality_path = path / "quality.json"
-            if quality_path.exists():
-                quality = json.loads(quality_path.read_text(encoding="utf-8"))
-                if quality.get("valid") is False:
-                    raise ValueError(f"Nach Aufnahme verworfen: {quality.get('reason', '')}")
-            if state["poseId"] != path.name:
-                raise ValueError("Pose-ID stimmt nicht mit dem Ordner ueberein")
-            flange = np.asarray(state["T_base_flange"], dtype=np.float64).reshape(4, 4)
-            if not np.all(np.isfinite(flange)) or not np.allclose(flange[3], [0, 0, 0, 1]):
-                raise ValueError("Flanschpose ungueltig")
-            if not np.allclose(flange[:3, :3].T @ flange[:3, :3], np.eye(3), atol=1e-4):
-                raise ValueError("Flanschrotation nicht orthonormal")
-            joints = np.asarray(state["jointAnglesRad"], dtype=np.float64)
-            if joints.shape != (7,) or not np.all(np.isfinite(joints)):
-                raise ValueError("Sieben gemessene Gelenkwinkel erforderlich")
-            image = cv2.imread(str(path / "camera.png"), cv2.IMREAD_UNCHANGED)
-            if image is None:
-                raise ValueError("Rohbild fehlt")
+            state, flange = _read_pose_state(path)
+            image, gray = _read_gray(path)
             if (image.shape[1], image.shape[0]) != calibration.image_size:
                 raise ValueError("Bildaufloesung passt nicht zur Intrinsik")
-            gray = to_gray(image)
-            sample = detect_board(gray, board)
-            if sample is None:
-                raise ValueError("Brett nicht erkannt")
-            if board.type == CHARUCO:
-                if sample.count() < 25:
-                    raise ValueError("Weniger als 25 ChArUco-Ecken erkannt")
-                object_points, corners = matched_board_points(sample, board)
-                ids = sample.ids.reshape(-1)
-            else:
-                if sample.count() != len(points):
-                    raise ValueError("Vollstaendiges Schachbrett nicht erkannt")
-                corners = canonical_chessboard_corners(gray, sample.corners, board).reshape(-1, 2)
-                object_points, ids = points, None
+            corners, object_points, ids = _detect_corners(gray, board, points, 25)
             pose, error, ambiguity = _pnp(corners, object_points, calibration, pnp)
             if pnp == "ippe" and ambiguity is not None and ambiguity < 1.2:
                 raise ValueError(f"Planare PnP-Lage mehrdeutig (Fehlerverhaeltnis {ambiguity:.3f})")
@@ -161,6 +185,148 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
         json.dumps({"pnp": pnp, "valid": cache, "excluded": excluded}, indent=2) + "\n",
         encoding="utf-8")
     return observations, excluded, calibration, points
+
+
+@dataclass(frozen=True)
+class SessionCalibration:
+    """Ergebnis von `calibrate_session`: Intrinsik und Hand-Auge aus denselben Bildern."""
+
+    calibration: CameraCalibration
+    #: `T_flange_camera` (4x4, m), das verfeinerte Hand-Auge.
+    hand_eye_pose: np.ndarray
+    intrinsic_rms_px: float
+    intrinsic_image_count: int
+    handeye_reprojection_rms_px: float
+    board_spread_rms_mm: float
+    board_spread_rms_deg: float
+    handeye_pose_count: int
+    initial_method: str
+    #: Posen, die in die Hand-Auge-Rechnung nicht eingingen: `{"poseId", "reason"}`.
+    excluded: list = field(default_factory=list)
+    report: dict = field(default_factory=dict)
+
+
+def calibrate_session(folder, *, frame_id=None, min_intrinsic_images=10, min_handeye_poses=10,
+                      max_pnp_rms_px=1.5) -> SessionCalibration:
+    """Kamera-Intrinsik und Hand-Auge aus den Rohbildern einer Sitzung rechnen.
+
+    Ohne Werks-Intrinsik und ohne Kinematik-Korrektur: Die Intrinsik kommt aus
+    `cv2.calibrateCamera` (volles Modell k1, k2, p1, p2, k3, kein Startwert),
+    die Flanschposen sind die nominellen `T_base_flange`. Danach PnP je Pose und
+    die robuste gemeinsame Reprojektion (`solve_subset`). Schreibt
+    `results/intrinsics_pi.json` und `results/handeye_pi.json`, aktiviert nichts.
+    ValueError mit Klartext, wenn etwas fehlt oder nicht konvergiert.
+    """
+    import cv2
+
+    try:
+        import scipy.optimize  # noqa: F401
+    except ImportError as error:
+        raise ValueError("scipy fehlt auf dem Pi (pip install scipy)") from error
+
+    folder = Path(folder)
+    config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
+    if config.get("schema") != "wsc.vision.handeye.raw/1":
+        raise ValueError("Unbekanntes Rohbild-Schema")
+    board = _board_from_config(config)
+    frame = frame_id or config.get("frameId") or "cam_flange"
+    points = chessboard_object_points(board) if board.type == CHESSBOARD else None
+    min_intrinsic_corners = 12
+
+    # a) alle gueltigen Posen laden und das Brett erkennen (ohne Intrinsik)
+    detections, excluded, image_size = [], [], None
+    for path in sorted((folder / "poses").glob("pose_*")):
+        try:
+            _, flange = _read_pose_state(path)
+            image, gray = _read_gray(path)
+            size = (int(image.shape[1]), int(image.shape[0]))
+            if image_size is None:
+                image_size = size
+            elif size != image_size:
+                raise ValueError(f"Bildgroesse {size[0]}x{size[1]} weicht von "
+                                 f"{image_size[0]}x{image_size[1]} ab")
+            corners, object_points, ids = _detect_corners(gray, board, points, min_intrinsic_corners)
+            detections.append({"poseId": path.name, "flange": flange, "corners": corners,
+                               "objectPoints": object_points, "ids": ids})
+        except (ValueError, KeyError, OSError) as error:
+            excluded.append({"poseId": path.name, "reason": str(error)})
+    if any("weicht von" in item["reason"] for item in excluded):
+        raise ValueError("Bilder der Sitzung haben unterschiedliche Groessen: "
+                         + "; ".join(f"{i['poseId']}: {i['reason']}" for i in excluded
+                                     if "weicht von" in i["reason"]))
+    if len(detections) < min_intrinsic_images:
+        raise ValueError(f"Nur {len(detections)} Bilder mit erkanntem Brett "
+                         f"(mindestens {min_intrinsic_images} fuer die Intrinsik)")
+
+    # b) Intrinsik: volles Modell, kein Startwert
+    rms, matrix, distortion, _, _ = cv2.calibrateCamera(
+        [np.asarray(d["objectPoints"], dtype=np.float32).reshape(-1, 1, 3) for d in detections],
+        [np.asarray(d["corners"], dtype=np.float32).reshape(-1, 1, 2) for d in detections],
+        image_size, None, None, flags=0)
+    distortion = np.asarray(distortion, dtype=np.float64).reshape(-1)[:5]
+    session_name = folder.name
+    calibration = CameraCalibration(
+        camera_matrix=np.asarray(matrix, dtype=np.float64), distortion=distortion,
+        image_size=image_size, frame_id=frame,
+        calibration_id=f"{frame}@{session_name}-pi", rms_reprojection_error=float(rms),
+        sample_count=len(detections), board=board.as_dict(), model=PINHOLE)
+
+    # c) Hand-Auge: PnP je Pose mit der neuen Intrinsik
+    observations, not_used = [], []
+    for item in detections:
+        try:
+            if board.type == CHARUCO and len(item["corners"]) < 25:
+                raise ValueError("Weniger als 25 ChArUco-Ecken erkannt")
+            pose, error, ambiguity = _pnp(item["corners"], item["objectPoints"], calibration,
+                                          "iterative")
+            if error > max_pnp_rms_px:
+                raise ValueError(f"PnP-Reprojektion {error:.3f} px > {max_pnp_rms_px:.3f} px")
+            observations.append(Observation(item["poseId"], "", item["flange"], pose,
+                                            item["corners"], error, ambiguity,
+                                            item["objectPoints"], item["ids"]))
+        except ValueError as error:
+            not_used.append({"poseId": item["poseId"], "reason": str(error)})
+    excluded = sorted(excluded + not_used, key=lambda item: item["poseId"])
+    if len(observations) < min_handeye_poses:
+        raise ValueError(f"Nur {len(observations)} brauchbare Posen fuer Hand-Auge "
+                         f"(mindestens {min_handeye_poses})")
+    solved = solve_subset(observations, calibration, points, optimize=True)
+    if "error" in solved:
+        raise ValueError(f"Hand-Auge nicht berechenbar: {solved['error']}")
+    optimized = solved.get("optimized")
+    if optimized is None or not optimized["converged"]:
+        raise ValueError("Hand-Auge-Optimierung nicht konvergiert")
+
+    pose = np.asarray(optimized["T_flange_camera"], dtype=np.float64)
+    report = {
+        "schema": "wsc.vision.handeye.session-calibration/1",
+        "sessionPath": str(folder), "frameId": frame, "board": board.as_dict(),
+        "intrinsics": {
+            "imageSize": list(image_size), "fx": float(matrix[0, 0]), "fy": float(matrix[1, 1]),
+            "cx": float(matrix[0, 2]), "cy": float(matrix[1, 2]),
+            "distortion": distortion.tolist(), "rmsPx": float(rms),
+            "sampleCount": len(detections), "calibrationId": calibration.calibration_id},
+        "handEye": {
+            "translationMm": optimized["translationMm"], "rotationDeg": optimized["rotationDeg"],
+            "reprojectionRmsPx": optimized["reprojectionRmsPx"],
+            "boardSpreadRmsMm": optimized["boardSpreadRmsMm"],
+            "boardSpreadRmsDeg": optimized["boardSpreadRmsDeg"],
+            "sampleCount": len(observations), "initialMethod": solved["initialMethod"],
+            "T_flange_camera": pose.tolist()},
+        "maxPnpRmsPx": max_pnp_rms_px, "excluded": excluded,
+    }
+    results = folder / "results"
+    results.mkdir(exist_ok=True)
+    save_calibration(results / "intrinsics_pi.json", calibration)
+    (results / "handeye_pi.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return SessionCalibration(
+        calibration=calibration, hand_eye_pose=pose, intrinsic_rms_px=float(rms),
+        intrinsic_image_count=len(detections),
+        handeye_reprojection_rms_px=float(optimized["reprojectionRmsPx"]),
+        board_spread_rms_mm=float(optimized["boardSpreadRmsMm"]),
+        board_spread_rms_deg=float(optimized["boardSpreadRmsDeg"]),
+        handeye_pose_count=len(observations), initial_method=solved["initialMethod"],
+        excluded=excluded, report=report)
 
 
 def _base_board(flanges, boards, handeye):

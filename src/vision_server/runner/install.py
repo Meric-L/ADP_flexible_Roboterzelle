@@ -98,6 +98,7 @@ async def _install_hand_pi_sessions(wiring: Wiring) -> None:
         wiring.hand_eye_session = await _install_hand_eye_session(
             space, config, source, wiring.methods,
             lambda: wiring.jobs.busy or wiring.calibration_busy() or wiring.layer2_active(),
+            annotator=wiring.annotator,
         )
     annotator = wiring.annotator
     if annotator is not None and hasattr(annotator, "set_overlay_paused") and source is not None:

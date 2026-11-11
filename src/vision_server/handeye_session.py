@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import math
+import re
 import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ from typing import Any
 
 import numpy as np
 
+from tagloc.calibration import CameraCalibration, load_calibration, save_calibration
 from tagloc.boards import CHARUCO, CHESSBOARD, BoardSpec, chessboard_is_unambiguous
 from tagloc.geometry import (
     Pose,
@@ -63,7 +65,7 @@ from tagloc.handeye import (
     session_payload,
     solve_hand_eye_robust,
 )
-from tagloc.handeye_offline import POSE_GROUPS
+from tagloc.handeye_offline import POSE_GROUPS, calibrate_session
 from tagloc.jsonio import finite_or_none, utc_stamp
 
 from .errors import VisionErrorCode
@@ -123,6 +125,11 @@ class HandEyePorts:
     sessions_dir: Path | None = None
     capture_board_raw: Callable[[BoardSpec], Awaitable[tuple]] | None = None
     raw_sessions_dir: Path | None = None
+    #: Volle Kalibrierung (`fullCalibration`): Ziel der neuen Kamera-Intrinsik
+    #: (`data/calibration/<frame>.json`) und ihre Uebernahme in die laufende
+    #: Quelle samt Overlay. Ohne beides gibt es `finish` nicht mit `fullCalibration`.
+    intrinsics_path: Path | None = None
+    apply_intrinsics: Callable[[CameraCalibration], Awaitable[None]] | None = None
 
 
 @dataclass
@@ -174,7 +181,14 @@ class _State:
     #: Ordnername des Datensatzes (UTC), gesetzt beim Start.
     stamp: str = ""
     capture_only: bool = False
+    #: Rohaufnahme wie `capture_only`, am Ende aber Intrinsik und Hand-Auge rechnen.
+    full_calibration: bool = False
     session_path: str | None = None
+
+    @property
+    def raw(self) -> bool:
+        """Rohbilder aufnehmen (`captureOnly` oder `fullCalibration`)."""
+        return self.capture_only or self.full_calibration
 
 
 def _intrinsics_warnings(source: str | None) -> list[str]:
@@ -289,7 +303,8 @@ def _write_raw_capture(folder: Path, state: _State, sample: _Sample,
                        "T_flange_camera": "camera in flange"},
             "board": state.board.as_dict(),
             "intrinsics": intrinsics_to_dict(calibration) if calibration is not None else None,
-            "intrinsicsSource": state.intrinsics_source,
+            "intrinsicsSource": None if state.full_calibration else state.intrinsics_source,
+            "fullCalibration": state.full_calibration,
         }
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     pose_folder = folder / "poses" / sample.pose_id
@@ -316,6 +331,40 @@ def _invalidate_raw_capture(folder: Path, pose_id: str, reason: str) -> None:
     path = folder / "poses" / pose_id / "quality.json"
     path.write_text(json.dumps({"poseId": pose_id, "valid": False, "reason": reason},
                                indent=2) + "\n", encoding="utf-8")
+
+
+def _restore(path: Path, backup: Path | None) -> None:
+    """Datei aus ihrer Sicherung zurueckholen; ohne Sicherung gab es sie vorher nicht."""
+    if backup is not None:
+        shutil.copy2(backup, path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _save_pair(intrinsics_path: Path, calibration: CameraCalibration,
+               hand_eye_path: Path, hand_eye: HandEye):
+    """Intrinsik und Hand-Auge mit Sicherung schreiben und zurueckladen -- nur
+    beides zusammen: Scheitert etwas, kommen beide Dateien aus der Sicherung
+    zurueck. Liefert `((Sicherung Intrinsik | None, Sicherung Hand-Auge | None),
+    geladene Kalibrierung, geladenes Hand-Auge)`."""
+    intrinsics_backup = None
+    if intrinsics_path.is_file():
+        intrinsics_backup = intrinsics_path.with_name(f"{intrinsics_path.name}.{utc_stamp()}.bak")
+        shutil.copy2(intrinsics_path, intrinsics_backup)
+    hand_eye_backup = None
+    try:
+        save_calibration(intrinsics_path, calibration)
+        hand_eye_backup = save_with_backup(hand_eye_path, hand_eye)
+        loaded_calibration = load_calibration(intrinsics_path)
+        loaded_hand_eye = load_hand_eye(hand_eye_path)
+    except Exception:
+        _restore(intrinsics_path, intrinsics_backup)
+        if hand_eye_backup is not None:
+            _restore(hand_eye_path, hand_eye_backup)
+        raise
+    return ((str(intrinsics_backup) if intrinsics_backup else None,
+             str(hand_eye_backup) if hand_eye_backup else None),
+            loaded_calibration, loaded_hand_eye)
 
 
 def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
@@ -524,15 +573,17 @@ class HandEyeSession:
             return VisionErrorCode.BUSY
         try:
             tag_id, tag_in_base, board = parse_start(options_json)
-            capture_only = _load(options_json, START_SCHEMA).get("captureOnly", False)
-            if not isinstance(capture_only, bool) or (capture_only and board is None):
-                raise ValueError("captureOnly erfordert ein Kalibrierbrett und einen Bool-Wert")
-            if capture_only and board.type == CHESSBOARD and (board.cols, board.rows, board.square_size_m) != (7, 10, 0.023):
-                raise ValueError("Schachbrett-Rohaufnahme erfordert 7x10 Innenecken mit 23 mm Feldgroesse")
-            if capture_only and board.type == CHARUCO and (
-                board.cols, board.rows, board.square_size_m, board.marker_size_m, board.dictionary
-            ) != (11, 7, 0.025, 0.0185, "DICT_5X5_100"):
-                raise ValueError("ChArUco-Rohaufnahme erfordert 11x7 Felder, 25/18,5 mm und DICT_5X5_100")
+            options = _load(options_json, START_SCHEMA)
+            capture_only = options.get("captureOnly", False)
+            full_calibration = options.get("fullCalibration", False)
+            if not isinstance(capture_only, bool) or not isinstance(full_calibration, bool):
+                raise ValueError("captureOnly und fullCalibration muessen Bool-Werte sein")
+            if capture_only and full_calibration:
+                raise ValueError("captureOnly und fullCalibration schliessen sich aus")
+            if (capture_only or full_calibration) and board is None:
+                raise ValueError("captureOnly und fullCalibration erfordern ein Kalibrierbrett")
+            if capture_only or full_calibration:
+                check_raw_board(board)
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
@@ -543,8 +594,9 @@ class HandEyeSession:
             board=board,
             stamp=utc_stamp(),
             capture_only=capture_only,
+            full_calibration=full_calibration,
         )
-        if capture_only:
+        if capture_only or full_calibration:
             from uuid import uuid4
             root = self._ports.raw_sessions_dir or (Path(__file__).resolve().parents[2] /
                                                      "data" / "rohbilder" / "calibration")
@@ -563,7 +615,7 @@ class HandEyeSession:
             return VisionErrorCode.INVALID_STATE
         if self._measuring or self._ports.busy():
             return VisionErrorCode.BUSY
-        if s.capture_only:
+        if s.raw:
             try:
                 command = _load(sample_json, SAMPLE_SCHEMA)
             except ValueError:
@@ -585,7 +637,7 @@ class HandEyeSession:
         try:
             flange_in_base = parse_sample(sample_json)
             metadata = _load(sample_json, SAMPLE_SCHEMA)
-            if s.capture_only:
+            if s.raw:
                 pose_id = metadata.get("poseId")
                 joints = metadata.get("jointAnglesRad")
                 if not isinstance(pose_id, str) or not pose_id.startswith("pose_") or not pose_id[5:].isdigit():
@@ -618,10 +670,10 @@ class HandEyeSession:
             cam_to_tag,
             detail,
             reprojection_error_px=finite_or_none(info.get("reprojectionErrorPx")),
-            pose_id=metadata.get("poseId") if s.capture_only else None,
-            joints_rad=metadata.get("jointAnglesRad") if s.capture_only else None,
+            pose_id=metadata.get("poseId") if s.raw else None,
+            joints_rad=metadata.get("jointAnglesRad") if s.raw else None,
             captured_at=info.get("capturedAt"),
-            pose_group=metadata.get("poseGroup") if s.capture_only else None,
+            pose_group=metadata.get("poseGroup") if s.raw else None,
         )
         sample.image = info.get("image")
         if s.capture_only:
@@ -650,10 +702,11 @@ class HandEyeSession:
         if cam_to_tag is not None and info.get("corners") is not None:
             sample.corners_px = np.asarray(info["corners"], dtype=np.float64).reshape(-1, 2)
         s.samples.append(sample)
-        if s.capture_only:
+        if s.raw:
             try:
                 _write_raw_capture(Path(s.session_path), s, sample,
-                                   s.calibration, self._ports.frame_id)
+                                   None if s.full_calibration else s.calibration,
+                                   self._ports.frame_id)
             except Exception:
                 _log.exception("Rohaufnahme %s konnte nicht gespeichert werden", sample.pose_id)
                 s.samples.pop()
@@ -677,6 +730,8 @@ class HandEyeSession:
             s.message = f"{sum(x.accepted for x in s.samples)} Rohaufnahmen gespeichert: {s.session_path}"
             await self._publish()
             return VisionErrorCode.OK
+        if s.full_calibration:
+            return await self._finish_full(s)
         accepted = _Accepted.of(s.samples)
         refusal = _axes_refusal(accepted.flanges)
         if refusal is not None:
@@ -740,6 +795,81 @@ class HandEyeSession:
         await self._publish()
         return VisionErrorCode.OK
 
+    async def _finish_full(self, s: _State) -> VisionErrorCode:
+        """`fullCalibration`: aus den Rohbildern erst die Intrinsik, dann Hand-Auge
+        rechnen, beide Dateien schreiben und beide live uebernehmen."""
+        ports = self._ports
+        if ports.intrinsics_path is None or ports.apply_intrinsics is None:
+            s.message = "Nicht berechnet: Dieser Server kann die Intrinsik nicht speichern"
+            await self._publish()
+            return VisionErrorCode.INVALID_STATE
+        s.state = SOLVING
+        s.message = "Berechne Intrinsik und Hand-Auge aus den Rohbildern"
+        await self._publish()
+        try:
+            if not (Path(s.session_path) / "config.json").is_file():
+                raise ValueError("Keine Rohaufnahme gespeichert")
+            result = await asyncio.to_thread(
+                calibrate_session, Path(s.session_path), frame_id=ports.frame_id)
+        except ValueError as error:
+            s.state = CAPTURING
+            s.message = f"Nicht berechnet: {error}"
+            await self._publish()
+            return VisionErrorCode.INVALID_STATE
+        except Exception as error:
+            _log.exception("Volle Kalibrierung fehlgeschlagen")
+            s.state = FAILED
+            s.message = f"Berechnung fehlgeschlagen: {error}"
+            await self._publish()
+            return VisionErrorCode.INTERNAL
+        hand_eye = HandEye(
+            pose_flange_cam=result.hand_eye_pose,
+            frame_id=ports.frame_id,
+            calibration_id=result.calibration.calibration_id,
+            rms_position_m=result.board_spread_rms_mm / 1000,
+            rms_rotation_deg=result.board_spread_rms_deg,
+            sample_count=result.handeye_pose_count,
+            refined_reprojection_rms_px=result.handeye_reprojection_rms_px,
+            intrinsics_source="calibration",
+        )
+        try:
+            backups, loaded_calibration, loaded_hand_eye = await asyncio.to_thread(
+                _save_pair, ports.intrinsics_path, result.calibration, ports.path, hand_eye)
+        except Exception as error:
+            _log.exception("Volle Kalibrierung nicht gespeichert")
+            s.state = FAILED
+            s.message = f"Berechnet, aber nicht gespeichert: {error}"
+            await self._publish()
+            return VisionErrorCode.INTERNAL
+        try:
+            await ports.apply_intrinsics(loaded_calibration)
+            ports.apply(loaded_hand_eye)
+        except Exception as error:
+            _log.exception("Volle Kalibrierung nicht uebernommen")
+            s.state = FAILED
+            s.message = f"Gespeichert, aber nicht live uebernommen: {error}"
+            await self._publish()
+            return VisionErrorCode.INTERNAL
+        report = result.report
+        s.result = {
+            "kind": "intrinsicsAndHandEye",
+            "sessionPath": s.session_path,
+            "intrinsics": report["intrinsics"],
+            "handEye": {key: value for key, value in report["handEye"].items()
+                        if key != "T_flange_camera"},
+            "excluded": result.excluded,
+            "backups": {"intrinsics": backups[0], "handEye": backups[1]},
+        }
+        s.state = FINISHED
+        s.message = (
+            f"Intrinsik {result.intrinsic_rms_px:.2f} px aus {result.intrinsic_image_count} Bildern, "
+            f"Hand-Auge {result.handeye_reprojection_rms_px:.1f} px aus "
+            f"{result.handeye_pose_count} Posen -- aktiviert"
+        )
+        _log.info("Volle Kalibrierung: %s", s.message)
+        await self._publish()
+        return VisionErrorCode.OK
+
     async def _solve(self, accepted: _Accepted) -> tuple[BoardRefinement | None, HandEyeSolution]:
         """Die Loesung: mit Brett die Verfeinerung, sonst (oder wenn sie nicht
         moeglich ist) Park-Martin mit Ausreisserpruefung. `ValueError`, wenn die
@@ -770,7 +900,7 @@ class HandEyeSession:
         self._s.state = IDLE
         self._s.message = (
             f"abgebrochen, Rohaufnahmen bleiben unter {self._s.session_path}"
-            if self._s.capture_only else "abgebrochen, nichts gespeichert"
+            if self._s.raw else "abgebrochen, nichts gespeichert"
         )
         _log.info("Hand-Auge-Kalibrierung abgebrochen")
         await self._publish()
@@ -784,7 +914,7 @@ class HandEyeSession:
         `(Pose, Grund)` liefern."""
         if s.board is None:
             result = await self._ports.measure_tag(s.tag_id)
-        elif s.capture_only and self._ports.capture_board_raw is not None:
+        elif s.raw and self._ports.capture_board_raw is not None:
             result = await self._ports.capture_board_raw(s.board)
         elif self._ports.measure_board is None:
             return None, "Dieser Server kann kein Schachbrett messen", {}
@@ -901,6 +1031,7 @@ class HandEyeSession:
                 #: `placeholder` oder `null` (unbekannt).
                 "intrinsicsSource": self._intrinsics_source(),
                 "sessionPath": s.session_path,
+                "fullCalibration": s.full_calibration,
                 "acceptedCount": len(flanges),
                 "rotationSpreadDeg": spread_deg,
                 "rotationAxes": axes,
@@ -972,8 +1103,9 @@ def _parse_board(raw: Any) -> BoardSpec:
         dictionary = raw.get("dictionary")
         if not isinstance(marker, (int, float)) or isinstance(marker, bool) or not 0 < marker < size:
             raise ValueError("board.markerSizeM muss kleiner als squareSizeM und positiv sein.")
-        if not isinstance(dictionary, str) or dictionary != "DICT_5X5_100":
-            raise ValueError("board.dictionary: DICT_5X5_100 erwartet.")
+        if not isinstance(dictionary, str):
+            raise ValueError("board.dictionary: Name des ArUco-Woerterbuchs erwartet.")
+        _check_dictionary(dictionary, cols * rows // 2)
         return BoardSpec(type=CHARUCO, cols=cols, rows=rows, square_size_m=float(size),
                          marker_size_m=float(marker), dictionary=dictionary)
     spec = BoardSpec(type=CHESSBOARD, cols=cols, rows=rows, square_size_m=float(size))
@@ -983,6 +1115,39 @@ def _parse_board(raw: Any) -> BoardSpec:
             "sonst ist das Brett um 180 Grad gedreht nicht vom Original zu unterscheiden."
         )
     return spec
+
+
+#: Erlaubte ArUco-Woerterbuecher fuer ChArUco-Bretter.
+ALLOWED_DICTIONARIES = tuple(
+    f"DICT_{size}_{count}" for size in ("4X4", "5X5", "6X6", "7X7") for count in (50, 100, 250, 1000)
+)
+
+
+def check_raw_board(board: BoardSpec) -> None:
+    """Plausibilitaet eines Bretts fuer Rohaufnahme und volle Kalibrierung.
+
+    Die Masse sind die real nachgemessenen und gehen unveraendert ein.
+    ValueError mit Klartext.
+    """
+    if board.cols < 3 or board.rows < 3:
+        what = "Innenecken" if board.type == CHESSBOARD else "Felder"
+        raise ValueError(f"board: mindestens 3x3 {what}")
+    if not 0.005 <= board.square_size_m <= 0.1:
+        raise ValueError("board.squareSizeM: Feldkante zwischen 5 und 100 mm")
+    if board.type == CHARUCO:
+        if not 0 < board.marker_size_m < board.square_size_m:
+            raise ValueError("board.markerSizeM muss positiv und kleiner als squareSizeM sein")
+        _check_dictionary(board.dictionary, board.cols * board.rows // 2)
+
+
+def _check_dictionary(name: str, markers: int) -> None:
+    if name not in ALLOWED_DICTIONARIES:
+        raise ValueError(f"board.dictionary: {name!r} nicht erlaubt "
+                         f"(erlaubt: {', '.join(ALLOWED_DICTIONARIES)})")
+    capacity = int(re.search(r"_(\d+)$", name).group(1))
+    if markers > capacity:
+        raise ValueError(f"board.dictionary {name} hat nur {capacity} Marker, "
+                         f"das Brett braucht {markers}")
 
 
 def parse_sample(text: str) -> Pose:
