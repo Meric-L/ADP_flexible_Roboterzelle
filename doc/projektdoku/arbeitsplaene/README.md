@@ -53,6 +53,7 @@ nicht gibt.
 | [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
 | [`roboter-wiederholgenauigkeit.md`](roboter-wiederholgenauigkeit.md) | vision | fertig | Meric, `Agent: Roboter-Wiederholgenauigkeit` | 09.11.2026 |
 | [`experiment-tag-anfahren.md`](experiment-tag-anfahren.md) | apriltag | fertig | Meric, `Agent: Experiment Tag anfahren` | 10.11.2026 |
+| [`experiment-kinematik-tag.md`](experiment-kinematik-tag.md) | vision | in Arbeit | Meric, `Agent: Experiment Kinematik-Test` | 11.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
