@@ -82,6 +82,16 @@ class TrialMeasurement:
     sheet_edges_refined: int = 0
     #: Verwendeter Aufkleber-Versatz im Markersystem (mm).
     sticker_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    #: Bezug der Messung: "sheet" (Zielscheibe) oder "tag" (Aussenrand eines
+    #: schwarzen Tag-Quadrats, Mitte = Ursprung).
+    reference: str = "sheet"
+    #: Nur im Tag-Modus: Kantenlaenge (mm), erwartete ID, Kanten verfeinert?,
+    #: Rohecken im (verzerrten) Bild in der gewaehlten Reihenfolge (oben-links,
+    #: oben-rechts, unten-rechts, unten-links im Tag-System).
+    tag_size_mm: float | None = None
+    tag_id: int | None = None
+    tag_edges_refined: bool | None = None
+    tag_corners_px: list | None = None
     #: Bildpunkte fuer `annotate`; nicht Teil von `to_dict`.
     overlay: dict | None = field(default=None, repr=False, compare=False)
 
@@ -288,12 +298,131 @@ def _distort(undistorted_px: np.ndarray, calibration) -> np.ndarray:
     return project_points(rays, np.zeros(3), np.zeros(3), calibration)
 
 
+#: Tag-Modus: Standardkante (m), Mindestflaeche gegenueber dem Wuerfelmarker,
+#: Hoechstanteil der Bildflaeche, erlaubtes Seitenverhaeltnis und Mindest-
+#: Rechteckigkeit (Konturflaeche / Flaeche der konvexen Huelle).
+TAG_DEFAULT_SIZE_M = 0.08
+_TAG_MIN_AREA_FACTOR = 6.0
+_TAG_MAX_IMAGE_FRACTION = 0.6
+_TAG_MAX_SIDE_RATIO = 1.5
+_TAG_MIN_FILL = 0.9
+
+
+def _find_tag_quad(gray: np.ndarray, marker_raw: np.ndarray) -> np.ndarray | None:
+    """Aussenviereck des dunklen Tag-Quadrats um den Wuerfelmarker, `(4, 2)` roh; sonst `None`.
+
+    Otsu-Schwelle (dunkel = Vordergrund), nur aeussere Konturen (das Innenmuster
+    und der Wuerfel liegen im Inneren und stoeren nicht), konvexe Vierecke, die
+    die Markermitte enthalten. Unter den plausiblen (Flaeche, Seitenverhaeltnis)
+    gewinnt das kleinste.
+    """
+    import cv2
+
+    blurred = cv2.GaussianBlur(np.asarray(gray, dtype=np.uint8), (0, 0), 1.5)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    marker_area = float(cv2.contourArea(marker_raw.astype(np.float32)))
+    image_area = float(gray.shape[0] * gray.shape[1])
+    centre = (float(marker_raw[:, 0].mean()), float(marker_raw[:, 1].mean()))
+    best, best_area = None, None
+    for contour in contours:
+        area = float(cv2.contourArea(contour))
+        if area < _TAG_MIN_AREA_FACTOR * marker_area or area > _TAG_MAX_IMAGE_FRACTION * image_area:
+            continue
+        hull = cv2.convexHull(contour)
+        hull_area = float(cv2.contourArea(hull))
+        if hull_area <= 0 or area / hull_area < _TAG_MIN_FILL:
+            continue
+        perimeter = cv2.arcLength(hull, True)
+        quad = None
+        for factor in (0.01, 0.02, 0.03, 0.05):
+            approx = cv2.approxPolyDP(hull, factor * perimeter, True)
+            if len(approx) == 4:
+                quad = approx.reshape(4, 2).astype(np.float64)
+                break
+        if quad is None:
+            continue
+        quad32 = quad.astype(np.float32).reshape(-1, 1, 2)
+        if not cv2.isContourConvex(quad32) or cv2.pointPolygonTest(quad32, centre, False) < 0:
+            continue
+        sides = np.linalg.norm(quad - np.roll(quad, -1, axis=0), axis=1)
+        if sides.min() <= 0 or sides.max() / sides.min() > _TAG_MAX_SIDE_RATIO:
+            continue
+        quad_area = float(cv2.contourArea(quad32))
+        if best_area is None or quad_area < best_area:
+            best, best_area = quad, quad_area
+    return best
+
+
+def _tag_pose(gray, marker_raw, calibration, camera_matrix, reference, refine_edges):
+    """Pose Tag -> Kamera aus dem Aussenrand des Tag-Quadrats.
+
+    Tag-System: Ursprung in der Tag-Mitte, z nach oben (zur Kamera), x entlang
+    der Kante, die am besten zu `reference["tagXInImage"]` (Einheitsvektor im
+    Bild, x rechts, y unten; ohne Angabe Bild-+x) passt, y so, dass das System
+    rechtshaendig ist (bei Blick von oben also Bild-"oben" fuer x = Bild-rechts).
+    Eckenreihenfolge: (-s/2, +s/2), (+s/2, +s/2), (+s/2, -s/2), (-s/2, -s/2),
+    wie `target.marker_corners`.
+
+    Liefert `(rvec, tvec, rms, extra)` oder ein fehlgeschlagenes `TrialMeasurement`.
+    """
+    import cv2
+
+    from tagloc.lens import undistort_points
+
+    try:
+        size_mm = float(reference.get("tagSizeM", TAG_DEFAULT_SIZE_M)) * 1000.0
+    except (TypeError, ValueError):
+        size_mm = TAG_DEFAULT_SIZE_M * 1000.0
+    tag_id = reference.get("tagId")
+    tag_id = int(tag_id) if isinstance(tag_id, (int, float)) and not isinstance(tag_id, bool) else None
+    quad = _find_tag_quad(gray, marker_raw)
+    if quad is None:
+        return _fail("Tag-Rand nicht gefunden (kein Viereck um den Wuerfelmarker)", reference="tag")
+    # Umlaufsinn im Bild (y unten): oben-links -> oben-rechts -> unten-rechts = positive Flaeche.
+    x, y = quad[:, 0], quad[:, 1]
+    if 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) < 0:
+        quad = quad[::-1]
+    try:
+        axis = np.asarray(reference.get("tagXInImage"), dtype=np.float64).reshape(2)
+        axis = axis / np.linalg.norm(axis)
+        if not np.all(np.isfinite(axis)):
+            raise ValueError
+    except (TypeError, ValueError):
+        axis = np.array([1.0, 0.0])
+    edges = np.roll(quad, -1, axis=0) - quad
+    edges = edges / np.linalg.norm(edges, axis=1)[:, None]
+    start = int(np.argmax(edges @ axis))
+    raw = np.roll(quad, -start, axis=0)  # Kante 0 -> 1 ist die Tag-+x-Kante
+
+    refined = _refine_quad(gray.astype(np.float32), raw, calibration) if refine_edges else None
+    pixels = refined if refined is not None else undistort_points(raw, calibration)
+    half = size_mm / 2.0
+    object_points = np.array(
+        [[-half, half, 0.0], [half, half, 0.0], [half, -half, 0.0], [-half, -half, 0.0]]
+    )
+    ok, rvec, tvec = cv2.solvePnP(object_points, pixels, camera_matrix, None, flags=cv2.SOLVEPNP_IPPE)
+    if not ok:
+        return _fail("Tag-Pose nicht berechenbar (solvePnP)", reference="tag")
+    rvec, tvec = cv2.solvePnPRefineLM(object_points, pixels, camera_matrix, None, rvec, tvec)
+    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
+    rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - pixels) ** 2, axis=1))))
+    extra = {
+        "tag_size_mm": size_mm,
+        "tag_id": tag_id,
+        "tag_edges_refined": refined is not None,
+        "tag_corners_px": raw.tolist(),
+    }
+    return rvec, tvec, rms, extra
+
+
 def measure_trial(
     image,
     calibration,
     cube_marker_offset_mm: Sequence[float] = (0.0, 0.0),
     *,
     refine_edges: bool = True,
+    reference: dict | None = None,
 ) -> TrialMeasurement:
     """Misst die Wuerfelablage in `image`.
 
@@ -304,15 +433,19 @@ def measure_trial(
     `refine_edges`: Marker-Ecken zusaetzlich aus den Aussenkanten bestimmen
     (genauer als die ArUco-Ecken); bei Misserfolg gelten die ArUco-Ecken, das
     steht in `cube_edge_refined`/`sheet_edges_refined`.
+    `reference`: `None` = Zielscheibe (Blattmarker). `{"kind": "tag", "tagSizeM":
+    0.08, "tagId": 3, "tagXInImage": [ux, uy] | None}`: Bezug ist der schwarze
+    Aussenrand eines Tag-Quadrats um den Wuerfel (siehe `_tag_pose`), der Tag wird
+    nicht dekodiert; Ursprung = Tag-Mitte.
     Wirft nie; Fehler stehen in `ok`/`grund`.
     """
     try:
-        return _measure(image, calibration, cube_marker_offset_mm, refine_edges)
+        return _measure(image, calibration, cube_marker_offset_mm, refine_edges, reference)
     except Exception as error:  # Messfehler duerfen nie den Aufrufer treffen
         return _fail(f"Messung fehlgeschlagen: {type(error).__name__}: {error}")
 
 
-def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
+def _measure(image, calibration, offset, refine_edges=True, reference=None) -> TrialMeasurement:
     import cv2
 
     from tagloc.lens import project_points, undistort_points
@@ -336,37 +469,54 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
                 return refined, True
         return undistort_points(raw, calibration), False
 
-    sheet_ids = sorted(i for i in found if i in target.SHEET_MARKERS)
-    if target.CUBE_MARKER_ID not in found:
-        return _fail("Kein Wuerfelmarker (ID 10) erkannt", sheet_markers=sheet_ids)
-    if len(sheet_ids) < MIN_SHEET_MARKERS:
-        return _fail(
-            f"Nur {len(sheet_ids)} Blattmarker erkannt, mindestens {MIN_SHEET_MARKERS} noetig",
-            sheet_markers=sheet_ids,
-        )
-
     camera_matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
-    object_points = np.vstack([target.sheet_marker_corners(i) for i in sheet_ids])
-    sheet_results = [undistorted_corners(found[i]) for i in sheet_ids]
-    sheet_px = np.vstack([corners for corners, _ in sheet_results])
-    sheet_refined = sum(1 for _, refined in sheet_results if refined)
+    tag_mode = isinstance(reference, dict) and reference.get("kind") == "tag"
+    extra: dict[str, Any] = {}
+    if tag_mode:
+        sheet_ids = []
+        sheet_refined = 0
+        if target.CUBE_MARKER_ID not in found:
+            return _fail("Kein Wuerfelmarker (ID 10) erkannt", reference="tag")
+        pose = _tag_pose(
+            gray, found[target.CUBE_MARKER_ID], calibration, camera_matrix, reference, refine_edges
+        )
+        if isinstance(pose, TrialMeasurement):
+            return pose
+        rvec, tvec, rms, extra = pose
+    else:
+        sheet_ids = sorted(i for i in found if i in target.SHEET_MARKERS)
+        if target.CUBE_MARKER_ID not in found:
+            return _fail("Kein Wuerfelmarker (ID 10) erkannt", sheet_markers=sheet_ids)
+        if len(sheet_ids) < MIN_SHEET_MARKERS:
+            return _fail(
+                f"Nur {len(sheet_ids)} Blattmarker erkannt, mindestens {MIN_SHEET_MARKERS} noetig",
+                sheet_markers=sheet_ids,
+            )
 
-    ok, rvec, tvec = cv2.solvePnP(
-        object_points, sheet_px, camera_matrix, None, flags=cv2.SOLVEPNP_IPPE
-    )
-    if not ok:
-        return _fail("Blattpose nicht berechenbar (solvePnP)", sheet_markers=sheet_ids)
-    rvec, tvec = cv2.solvePnPRefineLM(object_points, sheet_px, camera_matrix, None, rvec, tvec)
-    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
-    rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - sheet_px) ** 2, axis=1))))
+        object_points = np.vstack([target.sheet_marker_corners(i) for i in sheet_ids])
+        sheet_results = [undistorted_corners(found[i]) for i in sheet_ids]
+        sheet_px = np.vstack([corners for corners, _ in sheet_results])
+        sheet_refined = sum(1 for _, refined in sheet_results if refined)
+
+        ok, rvec, tvec = cv2.solvePnP(
+            object_points, sheet_px, camera_matrix, None, flags=cv2.SOLVEPNP_IPPE
+        )
+        if not ok:
+            return _fail("Blattpose nicht berechenbar (solvePnP)", sheet_markers=sheet_ids)
+        rvec, tvec = cv2.solvePnPRefineLM(object_points, sheet_px, camera_matrix, None, rvec, tvec)
+        projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
+        rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - sheet_px) ** 2, axis=1))))
 
     rotation, _ = cv2.Rodrigues(rvec)  # Blatt -> Kamera
     camera_center = -rotation.T @ tvec.reshape(3)  # Kamera im Blattsystem
     if camera_center[2] <= target.CUBE_TOP_Z_MM:
         return _fail(
-            "Blattpose unplausibel (Kamera nicht ueber dem Blatt)",
+            "Tag-Pose unplausibel (Kamera nicht ueber dem Tag)"
+            if tag_mode
+            else "Blattpose unplausibel (Kamera nicht ueber dem Blatt)",
             sheet_markers=sheet_ids,
             reprojection_rms_px=rms,
+            reference="tag" if tag_mode else "sheet",
         )
     axis_sheet = rotation.T @ np.array([0.0, 0.0, 1.0])  # optische Achse im Blattsystem
     tilt = math.degrees(math.acos(float(np.clip(-axis_sheet[2], -1.0, 1.0))))
@@ -413,7 +563,8 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         nadir_offset = None
 
     overlay = _build_overlay(
-        calibration, rvec, tvec, sheet_ids, found, cube_raw, corners, project_points
+        calibration, rvec, tvec, sheet_ids, found, cube_raw, corners, project_points,
+        tag_size_mm=extra.get("tag_size_mm"),
     )
     return TrialMeasurement(
         ok=True,
@@ -433,6 +584,11 @@ def _measure(image, calibration, offset, refine_edges=True) -> TrialMeasurement:
         marker_center_mm=marker_center.tolist(),
         marker_yaw_deg=float(yaw_full % 360.0),
         sticker_offset_mm=offset_vec.tolist(),
+        reference="tag" if tag_mode else "sheet",
+        tag_size_mm=extra.get("tag_size_mm"),
+        tag_id=extra.get("tag_id"),
+        tag_edges_refined=extra.get("tag_edges_refined"),
+        tag_corners_px=extra.get("tag_corners_px"),
         overlay=overlay,
     )
 
@@ -442,8 +598,10 @@ def _rot90(vector: np.ndarray) -> np.ndarray:
     return np.array([-vector[1], vector[0]])
 
 
-def _build_overlay(calibration, rvec, tvec, sheet_ids, found, cube_raw, cube_corners, project_points):
-    """Bildpunkte fuers Kontrollbild (Blattmarker, Wuerfelmarker, Wuerfelumriss, Kreise)."""
+def _build_overlay(
+    calibration, rvec, tvec, sheet_ids, found, cube_raw, cube_corners, project_points, tag_size_mm=None
+):
+    """Bildpunkte fuers Kontrollbild (Blattmarker bzw. Tag-Quadrat, Wuerfelmarker, Wuerfelumriss, Kreise)."""
     outline = np.column_stack([cube_corners, np.full(4, target.CUBE_TOP_Z_MM)])
     angles = np.radians(np.arange(0, 360, 5.0))
     circles = {}
@@ -452,8 +610,14 @@ def _build_overlay(calibration, rvec, tvec, sheet_ids, found, cube_raw, cube_cor
             [radius * np.cos(angles), radius * np.sin(angles), np.zeros(len(angles))]
         )
         circles[zone] = project_points(ring, rvec, tvec, calibration)
+    tag_quad = None
+    if tag_size_mm is not None:
+        half = tag_size_mm / 2.0
+        quad = np.array([[-half, half, 0.0], [half, half, 0.0], [half, -half, 0.0], [-half, -half, 0.0]])
+        tag_quad = project_points(quad, rvec, tvec, calibration)
     return {
         "sheet": {i: found[i] for i in sheet_ids},
+        "tag": tag_quad,
         "cube": cube_raw,
         "outline": project_points(outline, rvec, tvec, calibration),
         "circles": circles,
@@ -475,6 +639,8 @@ def annotate(image, measurement: TrialMeasurement):
             cv2.polylines(canvas, [np.round(ring).astype(np.int32)], True, zone_colors[zone], 1)
         for corners in overlay["sheet"].values():
             cv2.polylines(canvas, [np.round(corners).astype(np.int32)], True, (255, 160, 0), 1)
+        if overlay.get("tag") is not None:
+            cv2.polylines(canvas, [np.round(overlay["tag"]).astype(np.int32)], True, (255, 160, 0), 1)
         cv2.polylines(canvas, [np.round(overlay["cube"]).astype(np.int32)], True, (255, 0, 255), 1)
         cv2.polylines(canvas, [np.round(overlay["outline"]).astype(np.int32)], True, (0, 255, 255), 1)
     if measurement.ok:

@@ -179,6 +179,14 @@ def render_trial(
     )
     if not with_cube:
         return image
+    return _paint_cube(
+        image, calibration, pose, cube_dx_mm, cube_dy_mm, cube_dtheta_deg, sticker_offset_mm
+    )
+
+
+def _paint_cube(image, calibration, pose, cube_dx_mm, cube_dy_mm, cube_dtheta_deg, sticker_offset_mm):
+    """Zeichnet die Wuerfeloberseite (20 mm) samt Marker (18 mm) in `image` (Rueckabbildung)."""
+    import cv2
 
     # Wuerfeloberseite: 20-mm-Flaeche mit 18-mm-Marker (Mitte um den Versatz verschoben).
     cube_x, cube_y = _plane_points(calibration, pose, target.CUBE_TOP_Z_MM)
@@ -199,3 +207,95 @@ def render_trial(
     )
     top = np.where(np.isnan(cube_x), 255, top)
     return np.where(on_cube & ~np.isnan(cube_x), top, image).astype(np.uint8)
+
+
+#: Raster der Tag-Textur (Zellen je Kante inkl. Rand wie tag36h11: 8, Innenmuster 6x6).
+TAG_CELLS = 8
+
+
+def _tag_texture(tag_size_mm: float, pattern_seed: int) -> np.ndarray:
+    """Weisse Tischflaeche mit schwarzem Tag-Quadrat, Mitte = Texturmitte.
+
+    Aussenrand eine Zelle breit schwarz, innen ein zufaelliges 6x6-Bitmuster
+    (`pattern_seed`); der Tag ist nicht dekodierbar gemeint, nur ein Muster.
+    """
+    import cv2
+
+    half_px = int(round(SHEET_HALF_WIDTH_MM * TEXTURE_PX_PER_MM))
+    texture = np.full((2 * half_px, 2 * half_px), 255, dtype=np.uint8)
+    cell = tag_size_mm * TEXTURE_PX_PER_MM / TAG_CELLS
+    bits = np.random.default_rng(pattern_seed).integers(0, 2, size=(TAG_CELLS, TAG_CELLS))
+    bits[0, :] = bits[-1, :] = bits[:, 0] = bits[:, -1] = 0  # 0 = schwarz
+    x0 = half_px - cell * TAG_CELLS / 2.0
+    texture[
+        int(round(x0)) : int(round(x0 + cell * TAG_CELLS)),
+        int(round(x0)) : int(round(x0 + cell * TAG_CELLS)),
+    ] = 0
+    for row in range(TAG_CELLS):
+        for col in range(TAG_CELLS):
+            if bits[row, col]:
+                texture[
+                    int(round(x0 + row * cell)) : int(round(x0 + (row + 1) * cell)),
+                    int(round(x0 + col * cell)) : int(round(x0 + (col + 1) * cell)),
+                ] = 255
+    return cv2.GaussianBlur(texture, (0, 0), TEXTURE_BLUR_SIGMA)
+
+
+def render_tag_scene(
+    calibration,
+    camera_pose_in_sheet,
+    cube_dx_mm: float = 0.0,
+    cube_dy_mm: float = 0.0,
+    cube_dtheta_deg: float = 0.0,
+    sticker_offset_mm=(0.0, 0.0),
+    tag_size_mm: float = 80.0,
+    pattern_seed: int = 1,
+    with_cube: bool = True,
+    supersample: int = 1,
+):
+    """Rendert ein Graubild (uint8): schwarzes Tag-Quadrat auf weissem Tisch, Wuerfel darauf.
+
+    Bezugssystem wie bei `render_trial` (`look_down_pose`): Ursprung = Tag-Mitte,
+    Kanten parallel zu den Achsen, x nach rechts, y bei `yaw_deg = 0` im Bild nach
+    oben. Wuerfelmitte (`cube_dx_mm`, `cube_dy_mm`) und Gierwinkel gelten in diesem
+    System; der Wuerfel (20 mm, Marker ID 10) liegt auf der Tag-Ebene (Oberseite
+    z = 20 mm). Das 6x6-Innenmuster ist zufaellig (`pattern_seed`).
+    `supersample`: wie bei `render_trial`.
+    """
+    import cv2
+
+    if supersample > 1:
+        from tagloc.calibration import CameraCalibration
+
+        n = int(supersample)
+        matrix = np.asarray(calibration.camera_matrix, dtype=np.float64).copy()
+        matrix[:2, :2] *= n
+        matrix[0, 2] = (calibration.camera_matrix[0][2] + 0.5) * n - 0.5
+        matrix[1, 2] = (calibration.camera_matrix[1][2] + 0.5) * n - 0.5
+        big = CameraCalibration(
+            camera_matrix=matrix,
+            distortion=np.asarray(calibration.distortion, dtype=np.float64),
+            image_size=(calibration.image_size[0] * n, calibration.image_size[1] * n),
+            model=calibration.model,
+            calibration_id=calibration.calibration_id,
+        )
+        image = render_tag_scene(
+            big, camera_pose_in_sheet, cube_dx_mm, cube_dy_mm, cube_dtheta_deg,
+            sticker_offset_mm, tag_size_mm, pattern_seed, with_cube,
+        )
+        return cv2.resize(image, tuple(calibration.image_size), interpolation=cv2.INTER_AREA)
+
+    pose = np.asarray(camera_pose_in_sheet, dtype=np.float64)
+    texture = _tag_texture(tag_size_mm, pattern_seed)
+    half_px = texture.shape[0] / 2.0
+    plane_x, plane_y = _plane_points(calibration, pose, 0.0)
+    map_x = (half_px + plane_x * TEXTURE_PX_PER_MM - 0.5).astype(np.float32)
+    map_y = (half_px - plane_y * TEXTURE_PX_PER_MM - 0.5).astype(np.float32)
+    image = cv2.remap(
+        texture, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255
+    )
+    if not with_cube:
+        return image
+    return _paint_cube(
+        image, calibration, pose, cube_dx_mm, cube_dy_mm, cube_dtheta_deg, sticker_offset_mm
+    )
