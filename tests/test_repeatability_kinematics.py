@@ -4,7 +4,6 @@ Rechenlogik an synthetischen Matrizen, Ende-zu-Ende an synthetischen Tag-Bildern
 import csv
 import json
 import math
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,10 +20,15 @@ try:
         pose_table,
         render_report,
         rotation_angle_deg,
+        measure_session_from_json,
         summarize_poses,
+        write_session_report,
         yaw_deg,
     )
+    from repeatability_eval.apriltag import build_apriltag_detector, pose_from_client
+    from repeatability_eval.live import AprilTagLive, measure_for_save
     from tagloc.calibration import CameraCalibration
+    from vision_server.kinematics_autorun import KINEMATICS_SESSION_SUFFIX, SessionRunCoalescer
     from vision_server.repeatability_image import save_repeatability_image
 except Exception:  # pragma: no cover - numpy/OpenCV fehlen
     np = None
@@ -185,6 +189,9 @@ PI_APRILTAG = {
     "detector_parameters": {},
 }
 IDENTITY = {"position": [0.0, 0.0, 0.0], "orientation": [0.0, 0.0, 0.0, 1.0]}
+#: Hand-Auge mit Drehung (90 Grad um z) und Versatz: prueft Quaternion-Reihenfolge und Verkettung.
+HAND_EYE = {"position": [-0.047, -0.034, 0.060], "orientation": [0.0, 0.0, math.sqrt(0.5), math.sqrt(0.5)]}
+SESSION = "2026-11-11_100000_kinematik"
 
 
 def tag_image(tag_id=5):
@@ -197,23 +204,50 @@ def tag_image(tag_id=5):
     return cv2.warpAffine(img, matrix, SIZE, flags=cv2.INTER_CUBIC, borderValue=255)
 
 
+def calibration():
+    return CameraCalibration(
+        camera_matrix=np.array([[FX, 0, (SIZE[0] - 1) / 2], [0, FX, (SIZE[1] - 1) / 2], [0, 0, 1]]),
+        distortion=np.zeros(5),
+        image_size=SIZE,
+        calibration_id="synthetisch",
+    )
+
+
 def intrinsics_meta():
     return {
         "source": "calibration",
         "calibrationId": "synthetisch",
         "imageSize": list(SIZE),
-        "cameraMatrix": [[FX, 0, (SIZE[0] - 1) / 2], [0, FX, (SIZE[1] - 1) / 2], [0, 0, 1]],
+        "cameraMatrix": calibration().camera_matrix.tolist(),
         "distortionCoefficients": [0.0] * 5,
         "distortionModel": "pinhole",
     }
 
 
+def run_cli(args):
+    """CLI `tools/wiederholgenauigkeit/kinematik.py` im Prozess; stdout/stderr verschluckt."""
+    import contextlib
+    import importlib.util
+    import io
+
+    spec = importlib.util.spec_from_file_location("kinematik_cli", _TOOLS / "kinematik.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        return cli.main([str(a) for a in args])
+
+
+def read_pose_csv(path):
+    with Path(path).open(encoding="utf-8-sig") as fh:
+        return list(csv.reader(fh, delimiter=";"))
+
+
 @unittest.skipIf(np is None, "numpy/OpenCV fehlen")
 class KinematicsSessionTest(unittest.TestCase):
-    """Gleiches Bild aus jeder Pose; Pose 2 meldet einen um 10 mm in x versetzten Flansch.
+    """Gleiches Bild aus jeder Pose, gespeichert wie auf dem Pi (Live-Messung im JSON).
 
-    Genau so saehe ein Kinematikfehler aus: die Kamera sieht den Tag gleich, die gemeldete
-    Flanschpose stimmt aber nicht -> 10 mm Abweichung in der Basis.
+    Pose 2 meldet einen um 10 mm in x versetzten Flansch -- so saehe ein Kinematikfehler aus:
+    die Kamera sieht den Tag gleich, die gemeldete Flanschpose stimmt aber nicht.
     """
 
     @classmethod
@@ -221,18 +255,22 @@ class KinematicsSessionTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         base_dir = Path(cls.tmp.name)
         pi = {"apriltag": PI_APRILTAG, "intrinsics": intrinsics_meta(),
-              "hand_eye": {"content": {"poseFlangeCam": IDENTITY, "calibrationId": "he-synth"}}}
+              "hand_eye": {"content": {"poseFlangeCam": HAND_EYE, "calibrationId": "he-synth"}}}
+        live = AprilTagLive(build_apriltag_detector(PI_APRILTAG), calibration=calibration,
+                            pose_flange_cam=lambda: pose_from_client(HAND_EYE))
         img = tag_image()
 
-        def save(phase, pose_index, burst, flange=IDENTITY, moved=False, cycle=None):
-            client = {
-                "test": "kinematik", "poseIndex": pose_index, "poseLabel": "Referenz" if pose_index == 0 else f"Pose {pose_index}",
+        def save(phase, pose_index, burst, flange=IDENTITY, moved=False, cycle=None, measured=True):
+            client = json.dumps({
+                "test": "kinematik", "poseIndex": pose_index,
+                "poseLabel": "Referenz" if pose_index == 0 else f"Pose {pose_index}",
                 "cycle": cycle if cycle is not None else pose_index, "burstIndex": burst, "burstCount": 2,
                 "target": {"type": "apriltag", "tagId": None, "tagSizeM": TAG_M}, "board": None,
                 "actual": {"joints": [0.0, -0.2, 0.0, -2.4, 0.0, 2.1, 0.8 + 0.1 * pose_index],
                            "flangeInBase": flange, "settled": True, "movedDuringCapture": moved},
-            }
-            save_repeatability_image(img, base_dir, "2026-11-11_100000_kinematik", phase, json.dumps(client), pi, None)
+            })
+            measurement = measure_for_save(img, client, live) if measured else None
+            save_repeatability_image(img, base_dir, SESSION, phase, client, pi, measurement)
 
         for k in (1, 2, 3):
             save("rauschen", 0, 1, cycle=k)
@@ -241,32 +279,50 @@ class KinematicsSessionTest(unittest.TestCase):
         shifted = {"position": [0.01, 0.0, 0.0], "orientation": [0.0, 0.0, 0.0, 1.0]}
         save("zyklen_hand", 2, 1, flange=shifted)
         save("zyklen_hand", 2, 2, flange=shifted, moved=True)
-        cls.folder = base_dir / "2026-11-11_100000_kinematik"
-        cls.measured = measure_session(cls.folder)
-        cls.result = summarize_poses(cls.measured.images)
+        # Ohne Pi-Messung im JSON (z. B. alte Software): fuer die JSON-Quelle nicht nutzbar.
+        save("zyklen_hand", 3, 1, measured=False)
+        cls.folder = base_dir / SESSION
+        cls.from_json = measure_session_from_json(cls.folder)
+        cls.from_images = measure_session(cls.folder)
+        cls.result = summarize_poses(cls.from_json.images)
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
     def test_images_poses_and_labels(self):
-        m = self.measured
-        self.assertEqual(len(m.images), 7)
-        self.assertEqual(sorted({im.pose for im in m.images}), [0, 1, 2])
+        m = self.from_json
+        self.assertEqual(len(m.images), 8)
+        self.assertEqual(sorted({im.pose for im in m.images}), [0, 1, 2, 3])
         self.assertEqual(m.tag_id, 5)
         self.assertEqual(m.labels[0], "Referenz")
         self.assertEqual(m.labels[2], "Pose 2")
         self.assertEqual(m.calibration_id, "synthetisch")
         self.assertIn("he-synth", m.hand_eye_id)
-        moved = [im for im in m.images if not im.usable]
-        self.assertEqual(len(moved), 1)
-        self.assertEqual(moved[0].pose, 2)
+        unused = sorted((im.pose, im.reason) for im in m.images if not im.usable)
+        self.assertEqual([pose for pose, _ in unused], [2, 3])
+        self.assertEqual(unused[1][1], "keine Pi-Messung")
+
+    def test_json_chain_matches_the_pi_base_position(self):
+        # Keine Warnung "weicht von tagInBaseM ab": Quaternion-Reihenfolge und Verkettung stimmen.
+        self.assertFalse(any("tagInBaseM" in w for w in self.from_json.warnings), self.from_json.warnings)
+        for doc_path in sorted(self.folder.glob("*/*.json")):
+            doc = json.loads(doc_path.read_text(encoding="utf-8"))
+            image = next(im for im in self.from_json.images if im.name.endswith(doc_path.stem) or doc_path.stem in im.name)
+            if image.t_base_tag is not None and doc["messung"]:
+                np.testing.assert_allclose(image.t_base_tag[:3, 3], doc["messung"]["tagInBaseM"], atol=1e-9)
+
+    def test_json_and_offline_redetection_agree(self):
+        a = summarize_poses(self.from_json.images)["poses"]
+        b = summarize_poses(self.from_images.images)["poses"]
+        for nr in (0, 1, 2):
+            np.testing.assert_allclose(a[nr]["positionMm"], b[nr]["positionMm"], atol=1e-6)
+        self.assertIsNone(a[3]["positionMm"])  # ohne Messung im JSON
+        self.assertIsNotNone(b[3]["positionMm"])  # offline aus dem Bild erkannt
 
     def test_tag_distance_from_size(self):
         # Abstand FX * 0,08 / 160 = 0,4 m.
-        ref = self.result["poses"][0]
-        self.assertAlmostEqual(ref["positionMm"][2], 400.0, delta=1.0)
-        self.assertAlmostEqual(ref["camera"]["distanceMm"], 400.0, delta=1.0)
+        self.assertAlmostEqual(self.result["poses"][0]["camera"]["distanceMm"], 400.0, delta=1.0)
 
     def test_same_view_same_flange_no_delta(self):
         d = self.result["poses"][1]["delta"]
@@ -281,36 +337,105 @@ class KinematicsSessionTest(unittest.TestCase):
         self.assertAlmostEqual(d["maxJointDeg"], math.degrees(0.2), places=6)
         self.assertEqual(d["maxJointIndex"], 6)
 
-    def test_cli_writes_report_series_and_plot(self):
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("kinematik_cli", _TOOLS / "kinematik.py")
-        cli = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cli)
+    def test_write_session_report_into_the_session_folder(self):
         with tempfile.TemporaryDirectory() as out:
             out = Path(out)
-            args = [str(self.folder), "--out", str(out / "b.md"), "--csv-posen", str(out / "p.csv"),
-                    "--plot", str(out / "p.png"), "--csv", str(out / "bilder.csv")]
-            stderr = sys.stderr
-            try:
-                sys.stderr = open(out / "stderr.txt", "w")
-                self.assertEqual(cli.main(args), 0)
-            finally:
-                sys.stderr.close()
-                sys.stderr = stderr
-            report = (out / "b.md").read_text(encoding="utf-8")
-            self.assertIn("2026-11-11_100000_kinematik", report)
+            paths = write_session_report(self.folder, out=out / "b.md", csv_posen=out / "p.csv", plot=out / "p.png")
+            report = Path(paths["report"]).read_text(encoding="utf-8")
+            self.assertIn(SESSION, report)
             self.assertIn("Messreihe", report)
-            with (out / "p.csv").open(encoding="utf-8-sig") as fh:
-                rows = list(csv.reader(fh, delimiter=";"))
-            self.assertEqual(len(rows), 4)  # Kopf + 3 Posen
+            self.assertIn("Quelle: Pi-Messung aus den JSONs", report)
+            rows = read_pose_csv(paths["csvPosen"])
+            self.assertEqual(len(rows), 5)  # Kopf + Referenz + 3 Posen
             self.assertEqual(rows[3][rows[0].index("Δx [mm]")], "10,000")
+            self.assertEqual(list(out.glob("*.tmp*")), [])  # atomar geschrieben, nichts liegen geblieben
+            with self.assertRaises(ValueError):
+                write_session_report(self.folder, source="unbekannt")
+
+    def test_cli_defaults_to_the_json_and_can_redetect(self):
+        with tempfile.TemporaryDirectory() as out:
+            out = Path(out)
+            common = ["--out", out / "b.md", "--csv-posen", out / "p.csv", "--plot", out / "p.png"]
+            self.assertEqual(run_cli([self.folder, *common, "--csv", out / "bilder.csv"]), 0)
+            rows = read_pose_csv(out / "p.csv")
+            self.assertEqual(rows[3][rows[0].index("Δx [mm]")], "10,000")
+            self.assertEqual(rows[4][rows[0].index("Bilder gültig/gesamt")], "0/1")
             self.assertTrue((out / "bilder.csv").exists())
             try:
                 import matplotlib  # noqa: F401
             except ImportError:
-                return
-            self.assertTrue((out / "p.png").stat().st_size > 0)
+                pass
+            else:
+                self.assertGreater((out / "p.png").stat().st_size, 0)
+
+            self.assertEqual(run_cli([self.folder, *common, "--neu-erkennen", "--tag-size-mm", "80"]), 0)
+            rows = read_pose_csv(out / "p.csv")
+            self.assertEqual(rows[3][rows[0].index("Δx [mm]")], "10,000")
+            self.assertEqual(rows[4][rows[0].index("Bilder gültig/gesamt")], "1/1")
+            self.assertIn("Offline neu erkannt", (out / "b.md").read_text(encoding="utf-8"))
+
+    def test_cli_fails_cleanly_without_a_session(self):
+        with tempfile.TemporaryDirectory() as empty:
+            self.assertEqual(run_cli([empty, "--stdout"]), 1)
+
+
+@unittest.skipIf(np is None, "numpy/OpenCV fehlen")
+class SessionRunCoalescerTest(unittest.TestCase):
+    """Auswertung auf dem Pi: je Session ein Lauf, Anstoesse waehrenddessen -> genau ein Folgelauf."""
+
+    def test_coalesces_triggers_per_session(self):
+        import asyncio
+        import threading
+
+        runs = []
+        first_started = threading.Event()
+        release = threading.Event()
+
+        def run(session):
+            runs.append(session)
+            if len(runs) == 1:
+                first_started.set()
+                release.wait(5)
+
+        async def scenario():
+            coalescer = SessionRunCoalescer(run)
+            coalescer.trigger("a")
+            await asyncio.to_thread(first_started.wait, 5)
+            for _ in range(5):
+                coalescer.trigger("a")  # waehrend des Laufs: nur vormerken
+            coalescer.trigger("b")  # andere Session laeuft unabhaengig
+            release.set()
+            await coalescer.wait_idle()
+
+        asyncio.run(scenario())
+        self.assertEqual(runs.count("a"), 2)
+        self.assertEqual(runs.count("b"), 1)
+        self.assertEqual(runs[0], "a")
+
+    def test_errors_are_logged_and_the_next_trigger_runs_again(self):
+        import asyncio
+
+        runs = []
+
+        def run(session):
+            runs.append(session)
+            raise RuntimeError("kaputt")
+
+        async def scenario():
+            coalescer = SessionRunCoalescer(run)
+            with self.assertLogs(level="ERROR"):
+                coalescer.trigger("a")
+                await coalescer.wait_idle()
+            with self.assertLogs(level="ERROR"):
+                coalescer.trigger("a")
+                await coalescer.wait_idle()
+
+        asyncio.run(scenario())
+        self.assertEqual(runs, ["a", "a"])
+
+    def test_only_kinematics_sessions_are_evaluated(self):
+        self.assertTrue("2026-11-11_101500_kinematik".endswith(KINEMATICS_SESSION_SUFFIX))
+        self.assertFalse("2026-11-11_101500_apriltag".endswith(KINEMATICS_SESSION_SUFFIX))
 
 
 if __name__ == "__main__":

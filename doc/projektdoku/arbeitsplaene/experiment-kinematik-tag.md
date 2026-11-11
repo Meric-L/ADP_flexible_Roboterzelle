@@ -22,15 +22,17 @@ Dieses Repo (ADP):
 
 - `doc/projektdoku/arbeitsplaene/experiment-kinematik-tag.md` (neu, dieser Plan)
 - `doc/projektdoku/arbeitsplaene/README.md` (eine Zeile im Index)
-- `src/repeatability_eval/kinematics.py` (neu): Auswertung einer Session
-- `tools/wiederholgenauigkeit/kinematik.py` (neu): CLI
-- `tests/test_repeatability_kinematics.py` (neu, 16 Tests)
+- `src/repeatability_eval/kinematics.py` (neu): Auswertung einer Session (JSON-Quelle, Bericht; PNG-Neuerkennung)
+- `src/vision_server/kinematics_autorun.py` (neu): Hintergrundlauf je Session (`SessionRunCoalescer`)
+- `src/vision_server/runner/save_repeatability_image.py` (geändert, Hand-Pi): stößt nach jedem Bild einer `_kinematik`-Session die Auswertung an; Signatur und Rückgabe unverändert
+- `tools/wiederholgenauigkeit/kinematik.py` (neu): CLI, Standard JSON-Quelle, `--neu-erkennen` für Offline-Neuerkennung
+- `tests/test_repeatability_kinematics.py` (neu, 23 Tests inkl. Coalescing)
 
 webskillcomposition (Frontend, `frontend/src/features/cell-modules/`):
 
 - `model/kinematicsTest.ts` (neu): reine Logik (`kinematicsSessionName`, `evaluateSeries`, `evaluatePose`, `summarizePoses`, `messreiheCsv`)
 - `model/useKinematicsTest.ts` (neu): Hook
-- `components/KinematicsTestPanel.tsx` (neu): Panel „Kinematik-Test“ in der Autolocate-Spalte
+- `components/KinematicsTestPanel.tsx` (neu): Panel „Kinematik-Test“ in der Autolocate-Spalte; zeigt Session-Ordner auf dem Hand-Pi und die drei Dateinamen der Auswertung (Commit 0e4efe9)
 - `model/repeatabilityPi.ts` (neu): aus `useRepeatabilityRun.ts` herausgezogene Pi-Aufrufe, ohne Verhaltensänderung
 - `model/repeatabilityRecord.ts`: optionales Feld `extra`
 - `model/kinematicsTest.test.ts` (neu, 16 Tests)
@@ -39,7 +41,7 @@ webskillcomposition (Frontend, `frontend/src/features/cell-modules/`):
 
 ### OPC UA
 
-Keine Änderung. Genutzt wird die vorhandene Methode `SaveRepeatabilityImage` auf dem Hand-Pi. Die Pi-Software bleibt unverändert.
+Keine Änderung an Methodensignatur, Argumenten oder Rückgabe. Genutzt wird die vorhandene Methode `SaveRepeatabilityImage` auf dem Hand-Pi. Intern startet nach dem Speichern eines Bildes einer `_kinematik`-Session ein Hintergrundlauf der Auswertung (siehe Nachtrag); die Methodenantwort wartet nicht darauf.
 
 | Element | NodeId / BrowsePath | Typ | Richtung | Bedeutung |
 | --- | --- | --- | --- | --- |
@@ -61,6 +63,7 @@ Keine Änderung. Genutzt wird die vorhandene Methode `SaveRepeatabilityImage` au
 
 ```python
 # Modul: src/repeatability_eval/kinematics.py
+# Neuerkennung aus den PNGs (CLI --neu-erkennen)
 def measure_session(session_dir: Path, tag_id: int | None = None,
                     tag_size_m: float = 0.08, calibration=None,
                     hand_eye=None) -> SessionMeasurement:
@@ -71,11 +74,34 @@ def measure_session(session_dir: Path, tag_id: int | None = None,
 
 def summarize_poses(images) -> dict: ...
 # Weitere Funktionen des Moduls: pose_table, render_report, plot_deltas, csv_rows
+
+# Standardquelle: JSONs (kein PNG, keine Erkennung)
+def measure_session_from_json(session_dir: Path) -> SessionMeasurement:
+    """T_cam_tag aus messung.tagInCamM + messung.tagInCamQuat [x,y,z,w];
+    T_base_tag = T_base_flange(client.actual.flangeInBase) · T_flange_cam(pi.hand_eye.content.poseFlangeCam) · T_cam_tag.
+    Warnung bei Abweichung > 0,01 mm von messung.tagInBaseM.
+    Bilder ohne messung.ok: Ausschlussgrund messung.grund bzw. "keine Pi-Messung"."""
+
+def write_session_report(session_dir: Path, *, source: str,  # "json" | "bilder"
+                         tag_id: int | None = None, tag_size_m: float = 0.08,
+                         calibration=None, hand_eye=None, out=None, csv_posen=None,
+                         plot=None, csv_bilder=None, decimal_comma: bool = True) -> dict:
+    """Rückgabe: {summary, report, csvPosen, plot, csvBilder}.
+    Wirft ValueError bei unbekannter Quelle oder Session ohne Aufnahmen."""
+
+# Modul: src/vision_server/kinematics_autorun.py (Hand-Pi)
+KINEMATICS_SESSION_SUFFIX = "_kinematik"
+
+class SessionRunCoalescer:
+    def __init__(self, run): ...
+    def trigger(self, session: str) -> None:
+        """Kehrt sofort zurück; Lauf in asyncio.to_thread. Je Session höchstens ein Lauf;
+        Anstöße während eines Laufs ergeben genau einen Folgelauf. Fehler werden nur geloggt."""
 ```
 
 ### Daten / Payload
 
-Record `wsc.repeatability.record/1` mit zusätzlichen Feldern auf oberster Ebene:
+Record `wsc.repeatability.record/1` (Argument `MetadataJson`) mit zusätzlichen Feldern auf oberster Ebene. Der Pi legt ihn in der Bild-JSON (`adp.repeatability.image/1`) unverändert unter `client` ab, daneben `pi` (Intrinsik, Hand-Auge) und `messung` (Live-Messung) — daher `client.actual.flangeInBase` in der Auswertung:
 
 ```json
 {
@@ -95,14 +121,14 @@ Record `wsc.repeatability.record/1` mit zusätzlichen Feldern auf oberster Ebene
 }
 ```
 
-`actual.*` wie beim Wiederholgenauigkeitstest. Der Pi rechnet `tagInBaseM` aus `actual.flangeInBase`.
+`actual.*` wie beim Wiederholgenauigkeitstest. Der Pi rechnet `tagInBaseM` aus `actual.flangeInBase`. Die Auswertung aus den JSONs liest zusätzlich `messung.tagInCamM`, `messung.tagInCamQuat`, `messung.tagInBaseM`, `messung.ok`, `messung.grund` und `pi.hand_eye.content.poseFlangeCam`.
 
 **Ablage auf dem Pi:** `data/rohbilder/roboterwiederholgenauigkeit/<session>/`
 
 - Referenzbilder: Phase `rauschen`, Ordner `02_rauschen`, `cycle` = laufende Bildnummer.
 - Posen: Phase `zyklen_hand`, Ordner `04_zyklen_hand`, `cycle` = Posennummer (1, 2, …), `burstIndex` / `burstCount` = Bild innerhalb der Pose.
 
-**Auswertung (ADP):** Ausgabe im Session-Ordner, Standard:
+**Auswertung (ADP):** Ausgabe im Session-Ordner, Standard (Quelle: JSONs). Der Pi schreibt dieselben drei Dateien nach jeder Aufnahme selbst (siehe Nachtrag):
 
 - `kinematik_bericht.md`: Kopf (Session, Tag, Datum, Kalibrier- und Hand-Auge-ID), Messreihe je Pose, Δ gegen Referenz in Position und Winkel (inkl. Gieren um Basis-z), Zusammenfassung (RMS und max |Δ|, Spannweite je Achse), Pearson-Korrelation Gelenk-Δ gegen Δ ab 4 Posen.
 - `kinematik_posen.csv`: eine Zeile je Pose, Semikolon, Dezimalkomma.
@@ -113,16 +139,18 @@ CLI:
 ```
 PYTHONPATH=src .venv/bin/python tools/wiederholgenauigkeit/kinematik.py <session_ordner> \
   [--tag-id N] [--tag-size-mm 80] [--out] [--csv-posen] [--plot] [--csv] \
-  [--dezimalpunkt] [--stdout] [--calibration cam.json] [--handeye he.json]
+  [--dezimalpunkt] [--stdout] [--calibration cam.json] [--handeye he.json] [--neu-erkennen]
 ```
 
-**CSV des Frontend-Panels:** Semikolon, Dezimalkomma. Spalten: Pose-Nr, Label, Zeit, Aufnahmen gültig/gesamt, q1..q7 [Grad], Flansch x/y/z [mm], Tag Basis x/y/z [mm], Δx/Δy/Δz/|Δ| [mm], Streuung [µm], bewegt, Tag Kamera x/y/z [mm]. Live-Werte nur Position, der Pi liefert keine Orientierung zurück.
+Standard ist die JSON-Quelle. Mit `--neu-erkennen` werden die Tags offline aus den PNGs neu erkannt; dann gelten `--tag-id`, `--tag-size-mm`, `--calibration` und `--handeye`.
+
+**CSV des Frontend-Panels:** Semikolon, Dezimalkomma. Der Export-Knopf heißt „Messreihe als CSV (lokal)“. Spalten: Pose-Nr, Label, Zeit, Aufnahmen gültig/gesamt, q1..q7 [Grad], Flansch x/y/z [mm], Tag Basis x/y/z [mm], Δx/Δy/Δz/|Δ| [mm], Streuung [µm], bewegt, Tag Kamera x/y/z [mm]. Live-Werte nur Position, der Pi liefert keine Orientierung zurück.
 
 **Session-Name im Frontend:** `YYYY-MM-DD_HHMMSS_kinematik`. Einstellungen in localStorage `wsc.kinematicsTest.settings/1`, Session in `wsc.kinematicsTest.session/1`.
 
 ### Netz / Betrieb
 
-Keine neuen Ports, Services oder systemd-Units. Die Frontend-Seite nutzt den bestehenden Pi-Zugriff.
+Keine neuen Ports, Services oder systemd-Units. Die Frontend-Seite nutzt den bestehenden Pi-Zugriff. Damit die Automatik wirkt, muss der Hand-Pi diesen Branch haben: `git pull` im Repo-Checkout, dann `sudo systemctl restart opcua-server.service` (siehe `deploy/README.md`).
 
 ### Fehlerfälle
 
@@ -132,6 +160,8 @@ Keine neuen Ports, Services oder systemd-Units. Die Frontend-Seite nutzt den bes
 - Referenz ohne Tag in der Basis: Fehlermeldung, keine Referenz wird gesetzt.
 - Arm bewegt sich beim Aufnehmen: Pose wird als „bewegt“ markiert.
 - Auswertung: `ValueError` bei fehlenden Bildern oder Detektor-Einstellungen.
+- Bild ohne Pi-Messung (`messung.ok` falsch): wird von der JSON-Auswertung mit Grund ausgeschlossen.
+- Hintergrundauswertung auf dem Pi schlägt fehl: nur Log-Eintrag; die Antwort von `SaveRepeatabilityImage` bleibt unverändert.
 
 Der Roboter fährt in diesem Panel nie; es werden nur Gelenkwinkel gelesen.
 
@@ -143,9 +173,9 @@ Der Roboter fährt in diesem Panel nie; es werden nur Gelenkwinkel gelesen.
 4. Arm so stellen, dass der Tag gut im Bild ist, dann „Referenz hier messen“ (Standard 10 Bilder).
 5. Arm von Hand führen und loslassen, dann „Pose hier aufnehmen“ (2 s Beruhigung, Standard 5 Bilder). Das Panel zeigt Δx/Δy/Δz/|Δ| zur Referenz sowie die Abstands- und seitliche Abweichung der Kamerasicht auf den Tag.
 6. Schritt 5 wiederholen, sinnvoll mit mindestens 4 Posen (dann rechnet die Auswertung zusätzlich die Korrelation mit den Gelenken).
-7. „Messreihe als CSV“ exportieren, dann `tools/wiederholgenauigkeit/kinematik.py` auf dem Session-Ordner ausführen.
+7. Die Auswertung entsteht automatisch auf dem Pi (siehe Nachtrag). „Messreihe als CSV (lokal)“ ist nur ein lokaler Export. `tools/wiederholgenauigkeit/kinematik.py` nur bei Bedarf auf dem Session-Ordner ausführen.
 
-Ergebnis kommt nach `doc/auswertung/`.
+Ergebnis liegt im Session-Ordner auf dem Pi (`kinematik_bericht.md`, `kinematik_posen.csv`, `kinematik_posen.png`). Übernahme nach `doc/auswertung/` wie geplant.
 
 ## Offene Fragen
 
@@ -155,10 +185,44 @@ Ergebnis kommt nach `doc/auswertung/`.
 
 ## Abweichungen vom Plan
 
-Noch keine. Wird nach der Messung am Roboter gefüllt.
+- Auswertung läuft automatisch auf dem Pi (nicht im ursprünglichen Plan), siehe Nachtrag.
+- Standardquelle der Auswertung sind die JSONs statt der PNGs; die PNG-Erkennung ist nur noch über `--neu-erkennen`.
+
+Wird nach der Messung am Roboter ergänzt.
 
 ## Nach Abschluss
 
 - Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
 - Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/` übernommen (nicht nur hier im Plan stehen lassen).
+
+## Nachtrag 11.11.2026: Auswertung automatisch auf dem Pi
+
+**Wunsch:** Die Messreihe entsteht automatisch, sobald im Frontend getestet wird, ohne manuellen Aufruf auf dem Pi. Die Auswertung liegt neben jedem Bild.
+
+**Ablauf auf dem Pi:**
+
+- `SaveRepeatabilityImage` (`src/vision_server/runner/save_repeatability_image.py`): Signatur und Rückgabe unverändert. Nach jedem erfolgreich gespeicherten Bild einer Session mit Namensende `_kinematik` wird im Hintergrund `write_session_report(<session-ordner>, source="json")` angestoßen. Die Methodenantwort wartet nicht darauf.
+- `src/vision_server/kinematics_autorun.py`: `KINEMATICS_SESSION_SUFFIX = "_kinematik"`, `SessionRunCoalescer(run)` mit `trigger(session)`. Kehrt sofort zurück, der Lauf läuft in `asyncio.to_thread`. Je Session höchstens ein Lauf gleichzeitig; Anstöße während eines Laufs ergeben genau einen Folgelauf. Fehler werden nur geloggt.
+
+**Ergebnis** im Session-Ordner `data/rohbilder/roboterwiderholgenauigkeit/<session>/`, nach jeder Aufnahme aktuell, atomar geschrieben (`.tmp` + `os.replace`):
+
+- `kinematik_bericht.md`: Kopf mit „Quelle: Pi-Messung aus den JSONs“ und „Stand: <Zeit>“.
+- `kinematik_posen.csv`
+- `kinematik_posen.png`: nur wenn matplotlib auf dem Pi installiert ist, sonst übersprungen.
+
+**Auswertung aus den JSONs** (`src/repeatability_eval/kinematics.py`):
+
+- `measure_session_from_json(session_dir) -> SessionMeasurement`: kein PNG, keine Erkennung. Siehe Schnittstellen.
+- `write_session_report(session_dir, *, source="json"|"bilder", ...) -> dict`: Rückgabe `summary`, `report`, `csvPosen`, `plot`, `csvBilder`. `ValueError` bei unbekannter Quelle oder Session ohne Aufnahmen.
+
+**Frontend** (webskillcomposition, Commit 0e4efe9): Das Panel zeigt den Session-Ordner auf dem Hand-Pi (aus dem `fileName` der ersten Aufnahme, Funktion `sessionFolderOf`) mit den drei Dateinamen. Der CSV-Knopf heißt „Messreihe als CSV (lokal)“.
+
+**Betrieb:** Der Hand-Pi muss diesen Branch haben: `git pull` im Repo-Checkout, dann `sudo systemctl restart opcua-server.service` (siehe `deploy/README.md`).
+
+**Prüfung:**
+
+- JSON-Quelle und Offline-Neuerkennung liefern an synthetischen Bildern, die über den echten Pi-Speicherweg abgelegt wurden (Hand-Auge mit 90°-Drehung und Versatz), dieselben Pose-Mittel (≤ 1e-6 mm).
+- Gemeldeter 10-mm-Flanschversatz erscheint als Δx = 10,000 mm.
+- `tests/test_repeatability_kinematics.py`: 23 Tests inkl. Coalescing.
+- Session `2026-11-10_153201`: Die JSON-Quelle meldet korrekt 10/10 Bilder ohne Pi-Messung (damals Ziel ChArUco eingestellt). `--neu-erkennen` liefert 421,83 / 16,20 / −2,34 mm. Im Kinematik-Panel ist das Ziel immer AprilTag, der Fall tritt dort nicht auf.

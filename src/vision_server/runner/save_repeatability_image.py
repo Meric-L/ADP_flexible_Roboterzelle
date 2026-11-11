@@ -11,6 +11,7 @@ from asyncua import Node, ua, uamethod
 from ..address_space import VisionAddressSpace
 from ..config import VisionServerConfig
 from ..errors import VisionErrorCode
+from ..kinematics_autorun import KINEMATICS_SESSION_SUFFIX, SessionRunCoalescer
 from ..repeatability_image import PHASES, SESSION_RE
 from .save_use_case_image import _build_use_case_pi_meta, _wait_for_fresh_frame
 from .uamethods import add_vision_method, repo_relative
@@ -31,7 +32,9 @@ async def _install_save_repeatability_image(
     `rauschen`, `zyklen_auto`, `zyklen_hand`) und `MetadataJson` (String, vom
     Client); Ausgaben `FileName` (relativ zum Repo), `ResultJson` (Live-Messung
     (kalibrierfrei, bei AprilTag zusaetzlich Kamera/Basis), bei Fehlercodes leer) und `Error`. Ein Messfehler laesst das
-    Speichern nie scheitern.
+    Speichern nie scheitern. Endet die Session auf `_kinematik`, wird nach dem Speichern
+    die Kinematik-Auswertung (`write_session_report`, Quelle JSON) im Hintergrund aktualisiert,
+    ohne die Antwort zu verzoegern.
     """
     from repeatability_eval.live import AprilTagLive, measure_for_save
 
@@ -41,6 +44,16 @@ async def _install_save_repeatability_image(
         config.apriltag.frame_id if config.apriltag is not None else config.vision_system_name
     )
     base_dir = config.repeatability_dir
+
+    def run_report(session: str) -> None:
+        from repeatability_eval.kinematics import write_session_report
+
+        try:
+            write_session_report(base_dir / session, source="json")
+        except ValueError as error:  # z. B. noch keine auswertbaren Aufnahmen
+            _log.info("Kinematik-Auswertung %s uebersprungen: %s", session, error)
+
+    report_runs = SessionRunCoalescer(run_report)
 
     # AprilTag-Live-Messung: Detektor einmalig bauen (wie die AprilTag-Quelle),
     # Intrinsik und Hand-Auge bei jedem Aufruf frisch von der Quelle lesen.
@@ -120,6 +133,8 @@ async def _install_save_repeatability_image(
             return reply("", VisionErrorCode.INTERNAL)
         name = repo_relative(path)
         _log.info("Wiederholgenauigkeits-Bild gespeichert: %s", name)
+        if session.endswith(KINEMATICS_SESSION_SUFFIX):
+            report_runs.trigger(session)
         return reply(name, VisionErrorCode.OK, json.dumps(measurement, ensure_ascii=False))
 
     await add_vision_method(

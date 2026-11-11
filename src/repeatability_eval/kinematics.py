@@ -4,12 +4,17 @@ Ein fester AprilTag wird aus mehreren Roboterstellungen aufgenommen (Pose 0 = Re
 aus der Phase `rauschen`, Pose 1..n = Phase `zyklen_hand`). Je Bild
 `T_base_tag = T_base_flange @ T_flange_cam @ T_cam_tag`; je Pose gemittelt und gegen die
 Referenz verglichen. Die Rechenlogik (`summarize_poses`, `render_report`) arbeitet auf
-fertigen Matrizen und ist unabhaengig von der Bildverarbeitung (`measure_session`).
+fertigen Matrizen und ist unabhaengig von der Bildverarbeitung. Quellen: `measure_session_from_json`
+(Standard, nutzt die Pi-Messung aus den JSONs neben den Bildern) oder `measure_session`
+(Offline-Neuerkennung aus den PNGs). `write_session_report` schreibt Bericht/CSV/Plot atomar.
 """
 
 from __future__ import annotations
 
+import csv
 import math
+import os
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -430,6 +435,98 @@ def measure_session(session_dir: Path, tag_id: int | None = None, tag_size_m: fl
     return out
 
 
+def measure_session_from_json(session_dir: Path) -> SessionMeasurement:
+    """Wie `measure_session`, nutzt aber die Pi-Messung aus den Bild-JSONs (kein PNG, keine Erkennung).
+
+    `T_cam_tag` aus `messung.tagInCamM/tagInCamQuat`, `T_base_tag = T_base_flange @
+    T_flange_cam @ T_cam_tag` mit `client.actual.flangeInBase` und `pi.hand_eye`. Weicht die
+    Position um mehr als 0,01 mm von `messung.tagInBaseM` ab, gibt es eine Warnung.
+    """
+    from tagloc.geometry import from_position_quaternion
+
+    from .apriltag import pose_from_client
+    from .session import _load_records
+
+    records, warnings = _load_records(Path(session_dir))
+    out = SessionMeasurement(warnings=list(warnings))
+    records = [r for r in records if pose_number(r["phase"], r["client"]) is not None]
+    if not records:
+        raise ValueError("Keine Aufnahmen der Phasen rauschen/zyklen_hand gefunden")
+    n_mismatch = 0
+    max_mismatch_mm = 0.0
+    for rec in records:
+        client, pi = rec["client"], rec["doc"].get("pi") or {}
+        nr = pose_number(rec["phase"], client)
+        if client.get("poseLabel"):
+            out.labels.setdefault(nr, str(client["poseLabel"]))
+        actual = client.get("actual") if isinstance(client.get("actual"), dict) else {}
+        messung = rec["doc"].get("messung") if isinstance(rec["doc"].get("messung"), dict) else {}
+        out.date = out.date or str(rec["doc"].get("gespeichert") or "")
+        if not out.hand_eye_id:
+            try:
+                he_doc = pi["hand_eye"]["content"]
+                out.hand_eye_id = f"{he_doc.get('calibrationId', '')} ({he_doc.get('createdAt', '')})"
+            except (KeyError, TypeError):
+                pass
+        if not out.calibration_id:
+            try:
+                out.calibration_id = str(pi["intrinsics"]["calibrationId"] or "")
+            except (KeyError, TypeError):
+                pass
+        im = ImageMeasurement(name=rec["name"], pose=nr, burst=int(client.get("burstIndex") or 0))
+        out.images.append(im)
+        try:
+            im.joints = np.asarray(actual["joints"], dtype=np.float64).reshape(-1)
+            if not np.all(np.isfinite(im.joints)):
+                im.joints = None
+        except (KeyError, TypeError, ValueError):
+            im.joints = None
+        im.moved = bool(actual.get("movedDuringCapture"))
+        if im.moved:
+            im.reason = "Roboter bewegt waehrend Aufnahme"
+        if not messung.get("ok"):
+            im.reason = im.reason or str(messung.get("grund") or "keine Pi-Messung")
+            continue
+        try:
+            cam_tag = np.asarray(
+                from_position_quaternion(messung["tagInCamM"], messung["tagInCamQuat"]), dtype=np.float64)
+        except (KeyError, TypeError, ValueError, IndexError):
+            cam_tag = None
+        if cam_tag is None or not np.all(np.isfinite(cam_tag)):
+            im.reason = im.reason or "Tag-Pose in Kamera fehlt"
+            continue
+        try:
+            he = pose_from_client(pi["hand_eye"]["content"]["poseFlangeCam"])
+        except (KeyError, TypeError):
+            he = None
+        flange = pose_from_client(actual.get("flangeInBase"))
+        if he is None or flange is None:
+            im.reason = im.reason or "Hand-Auge oder Flanschpose fehlt"
+            continue
+        im.t_cam_tag = cam_tag
+        im.t_base_tag = np.asarray(flange, dtype=np.float64) @ np.asarray(he, dtype=np.float64) @ cam_tag
+        if out.tag_id is None and messung.get("tagId") is not None:
+            try:
+                out.tag_id = int(messung["tagId"])
+            except (TypeError, ValueError):
+                pass
+        try:
+            pi_pos = np.asarray(messung["tagInBaseM"], dtype=np.float64).reshape(3)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.all(np.isfinite(pi_pos)):
+            diff_mm = float(np.linalg.norm(im.t_base_tag[:3, 3] - pi_pos) * 1000.0)
+            if diff_mm > 0.01:
+                n_mismatch += 1
+                max_mismatch_mm = max(max_mismatch_mm, diff_mm)
+    if n_mismatch:
+        out.warnings.append(
+            f"{n_mismatch} Bilder: nachgerechnete Tag-Position weicht um mehr als 0,01 mm von "
+            f"`messung.tagInBaseM` ab (max. {max_mismatch_mm:.3f} mm) - Quaternion-Konvention oder "
+            "Hand-Auge pruefen")
+    return out
+
+
 def csv_rows(images: list[ImageMeasurement]) -> tuple[list[str], list[list[Any]]]:
     """Kopfzeile und Zeilen je Bild (Position mm, Gelenke Grad) fuer die CSV."""
     header = ["bild", "pose", "burst", "genutzt", "grund", "x_mm", "y_mm", "z_mm", "tag_dist_mm"] + [
@@ -503,3 +600,97 @@ def plot_deltas(result: dict[str, Any], path: Path) -> bool:
     fig.savefig(path, dpi=150)
     plt.close(fig)
     return True
+
+
+# ----------------------------------------------------------------------------- Schreiben
+def _atomic_write(path: Path, writer) -> None:
+    """Schreibt ueber `<datei>.tmp` und `os.replace`, damit Leser nie eine halbe Datei sehen."""
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        writer(tmp)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _write_csv(path: Path, header: list[str], rows: list[list[Any]], delimiter: str, encoding: str) -> None:
+    def write(tmp: Path) -> None:
+        with tmp.open("w", newline="", encoding=encoding) as fh:
+            w = csv.writer(fh, delimiter=delimiter)
+            w.writerow(header)
+            w.writerows(rows)
+
+    _atomic_write(path, write)
+
+
+def write_session_report(session_dir: Path, *, source: str = "json", tag_id: int | None = None,
+                         tag_size_m: float = 0.08, calibration: Any = None, hand_eye: Any = None,
+                         out: Path | None = None, csv_posen: Path | None = None,
+                         plot: Path | None = None, csv_bilder: Path | None = None,
+                         decimal_comma: bool = True) -> dict[str, Any]:
+    """Wertet eine Session aus und schreibt Bericht, Posen-CSV, Plot (und optional CSV je Bild).
+
+    `source="json"`: Pi-Messung aus den JSONs (`tag_id`/`tag_size_m`/`calibration`/`hand_eye`
+    wirkungslos); `"bilder"`: Offline-Neuerkennung (`measure_session`). Standardpfade in der
+    Session: `kinematik_bericht.md`, `kinematik_posen.csv`, `kinematik_posen.png`. Alles atomar.
+    Rueckgabe: `{"summary", "report", "csvPosen", "plot" (None ohne), "csvBilder" (None ohne)}`.
+    `ValueError`, wenn keine Aufnahmen da sind.
+    """
+    sd = Path(session_dir)
+    if source == "json":
+        res = measure_session_from_json(sd)
+    elif source == "bilder":
+        res = measure_session(sd, tag_id, tag_size_m, calibration, hand_eye)
+    else:
+        raise ValueError(f"unbekannte Quelle: {source!r}")
+    summary = summarize_poses(res.images)
+    tag_text = f"ID {res.tag_id if res.tag_id is not None else '-'}"
+    if source == "bilder":
+        tag_text += f", {tag_size_m * 1000.0:g} mm".replace(".", ",")
+    info = [f"Session: `{sd.name}`",
+            "Quelle: " + ("Pi-Messung aus den JSONs" if source == "json" else "Offline neu erkannt"),
+            f"Stand: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Tag: {tag_text}",
+            f"Datum: {res.date or '-'}",
+            "Kalibrierung: " + ("Datei" if calibration is not None else "aus den Records")
+            + f" (ID `{res.calibration_id or '-'}`)",
+            "Hand-Auge: " + ("Datei" if hand_eye is not None else "aus den Records")
+            + (f" (ID `{res.hand_eye_id}`)" if res.hand_eye_id and hand_eye is None else "")]
+    if res.labels:
+        info.append("Posen: " + ", ".join(f"{k} = {v}" for k, v in sorted(res.labels.items())))
+    bad = [im for im in res.images if not im.usable]
+    warnings = list(res.warnings)
+    if bad:
+        warnings.append(f"{len(bad)} von {len(res.images)} Bildern nicht genutzt: "
+                        + "; ".join(f"{im.name} ({im.reason or 'unbekannt'})" for im in bad[:10])
+                        + (" ..." if len(bad) > 10 else ""))
+    text = render_report(summary, info=info, warnings=warnings, labels=res.labels)
+    written: dict[str, Any] = {"summary": summary, "report": None, "csvPosen": None, "plot": None,
+                               "csvBilder": None}
+    report_path = Path(out) if out else sd / "kinematik_bericht.md"
+    _atomic_write(report_path, lambda tmp: tmp.write_text(text, encoding="utf-8"))
+    written["report"] = report_path
+    header, rows = pose_table(summary, res.labels, decimal_comma=decimal_comma)
+    posen = Path(csv_posen) if csv_posen else sd / "kinematik_posen.csv"
+    _write_csv(posen, header, rows, ";" if decimal_comma else ",", "utf-8-sig")
+    written["csvPosen"] = posen
+    png = Path(plot) if plot else sd / "kinematik_posen.png"
+    if _atomic_plot(summary, png):
+        written["plot"] = png
+    if csv_bilder:
+        header, rows = csv_rows(res.images)
+        _write_csv(Path(csv_bilder), header, rows, ",", "utf-8")
+        written["csvBilder"] = Path(csv_bilder)
+    return written
+
+
+def _atomic_plot(summary: dict[str, Any], path: Path) -> bool:
+    """`plot_deltas` ueber Temp-Datei (Endung `.png` bleibt fuer matplotlib erhalten)."""
+    tmp = path.with_name(path.stem + ".tmp" + path.suffix)
+    try:
+        if not plot_deltas(summary, tmp):
+            return False
+        os.replace(tmp, path)
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
