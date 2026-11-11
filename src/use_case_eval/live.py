@@ -66,19 +66,21 @@ def calibration_from_meta(meta: dict):
     )
 
 
-def measure_for_save(image: Any, calibration: Any, sticker_offset_mm=(0.0, 0.0)) -> tuple[dict, Any]:
+def measure_for_save(
+    image: Any, calibration: Any, sticker_offset_mm=(0.0, 0.0), reference: dict | None = None
+) -> tuple[dict, Any]:
     """Misst `image`; liefert `(messung_dict, kontrollbild_oder_None)`, wirft nie.
 
     Ohne Kalibrierung: `{"ok": False, "grund": ...}`. Das Kontrollbild gibt es auch
     bei fehlgeschlagener Messung (mit Grund im Text), ausser die Annotation selbst
-    scheitert.
+    scheitert. `reference`: siehe `measure_trial` (None = Zielscheibe).
     """
     if calibration is None:
         return {"ok": False, "grund": "Keine Kamerakalibrierung verfuegbar"}, None
     try:
         from .measure import annotate, measure_trial
 
-        measurement = measure_trial(image, calibration, sticker_offset_mm)
+        measurement = measure_trial(image, calibration, sticker_offset_mm, reference=reference)
         result = measurement.to_dict()
     except Exception as error:
         return {"ok": False, "grund": f"Messung fehlgeschlagen: {type(error).__name__}: {error}"}, None

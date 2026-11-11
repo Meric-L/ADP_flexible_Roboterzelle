@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import math
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -104,6 +105,40 @@ def _build_use_case_pi_meta(
     return meta
 
 
+def _reference_from_metadata(metadata_json: str) -> dict | None:
+    """Messbezug aus dem Client-`MetadataJson`: Feld `reference` mit `kind` "tag".
+
+    Liefert `{"kind": "tag", "tagSizeM", "tagId", "tagXInImage"}` mit geprueften
+    Werten (`tagSizeM` 0,01-0,5, sonst 0,08; `tagXInImage` zwei endliche Zahlen
+    oder None), sonst `None` (Zielscheibe). Wirft nie.
+    """
+    try:
+        parsed = json.loads(metadata_json or "")
+    except (TypeError, ValueError):
+        return None
+    ref = parsed.get("reference") if isinstance(parsed, dict) else None
+    if not isinstance(ref, dict) or ref.get("kind") != "tag":
+        return None
+
+    def number(value: Any) -> float | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value) if math.isfinite(value) else None
+
+    size = number(ref.get("tagSizeM"))
+    if size is None or not 0.01 <= size <= 0.5:
+        size = 0.08
+    tag_id = ref.get("tagId")
+    tag_id = tag_id if isinstance(tag_id, int) and not isinstance(tag_id, bool) else None
+    axis = ref.get("tagXInImage")
+    if isinstance(axis, (list, tuple)) and len(axis) == 2:
+        ux, uy = number(axis[0]), number(axis[1])
+        axis = [ux, uy] if ux is not None and uy is not None and (ux or uy) else None
+    else:
+        axis = None
+    return {"kind": "tag", "tagSizeM": size, "tagId": tag_id, "tagXInImage": axis}
+
+
 async def _wait_for_fresh_frame(camera_source: Any) -> Any:
     """Wartet auf ein Bild, das mindestens `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand.
 
@@ -178,8 +213,9 @@ async def _install_save_use_case_image(
         # Erst messen, dann speichern: die Messung steht so schon in der einmalig
         # exklusiv angelegten JSON, nichts wird nachtraeglich umgeschrieben.
         sticker_offset = await asyncio.to_thread(load_sticker_offset, base_dir)
+        reference = _reference_from_metadata(metadata_json)
         measurement, annotated = await asyncio.to_thread(
-            measure_for_save, frame.image, calibration, sticker_offset
+            measure_for_save, frame.image, calibration, sticker_offset, reference
         )
         try:
             path, _trial = await asyncio.to_thread(
