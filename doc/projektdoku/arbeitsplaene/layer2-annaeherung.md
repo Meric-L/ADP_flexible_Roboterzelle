@@ -305,3 +305,31 @@ Stand 10.11.2026 nachmittags: Soll-Abstand 0,35 m, bevorzugt 30°, ohne nahes He
 
 - Am echten Aufbau prüfen, wie oft 30° (bzw. bis 45°) erreichbar ist.
 - Prüfen, ob die Wiederholgenauigkeit der Einzelpose an die gemittelte heranreicht.
+
+## Nachtrag 11.11.2026: Weg in die Ausgangsstellung erst 30 cm senkrecht hoch
+
+- Anlass:
+  - Der direkte Gelenkweg von dort, wo ein Lauf den Arm gelassen hat, in die Ausgangsstellung berührte oft den Wagen.
+  - Meldung: „Weg zur Ausgangsstellung würde den Wagen berühren“.
+- Neu: `frontend/src/features/cell-modules/model/homeViaLift.ts` (webskillcomposition, Branch `handauge-schachbrett-offline`, Commit `4c4ec2b`).
+  - `planHomeViaLift({ kinematics, from, home, clearance, liftsM, maxJointStepRad })` (rein):
+    - Hebt den Flansch mit gleicher Orientierung um `HOME_LIFT_M = 0.3` m in Basis-z. IK mit den aktuellen Gelenken als Startwert.
+    - Gültig, wenn:
+      - die IK konvergiert,
+      - die Gelenkgrenzen eingehalten sind,
+      - kein Gelenk mehr als 1,2 rad dreht (kein Umklappen),
+      - Hub-Stellung, Weg dorthin und Weg vom Hub nach Hause frei von Wagen und Boden sind.
+    - Sonst Versuch mit 0,2 m, dann 0,1 m (`HOME_LIFT_FALLBACKS_M`).
+    - Keiner gültig: direkt fahren, wenn der direkte Weg frei ist. Sonst `ok: false` mit „… auch über 30/20/10 cm Anheben nicht frei. Den Arm von Hand freifahren.“ Dann wird nicht gefahren.
+    - Schon in der Ausgangsstellung (alle Gelenke < 0,01 rad): keine Fahrt.
+  - `driveHomeViaLift(deps, home, from, { clearance, onPhase })`: fährt erst den Hub, dann die Ausgangsstellung. Scheitert der Hub, wird nicht weitergefahren.
+- Wo es gilt:
+  - Layer 2: vor jedem Ziel und am Ende, mit Wagen- und Bodenprüfung. Anzeige: „fährt erst 30 cm hoch…“, „fährt dann in die Ausgangsstellung…“.
+  - Pick & Place: Start, Ende und die Rückweg-Prüfung der Route. Dort wie bisher ohne Wagenprüfung.
+  - Hand-Auge-Automatik und Brett-Kalibrierung: ohne Wagenprüfung, weil es dort keine gibt.
+  - Der Knopf „Ausgangsstellung“ im Viewport bewegt nur den Zwilling und bleibt unverändert.
+- Hinweis:
+  - Fahrten sind Gelenkraum-Fahrten. Der Hub ist deshalb nur näherungsweise senkrecht (IK-Toleranz 2 mm / 1°).
+  - Die Prüfung tastet den Gelenkweg ab.
+- Tests: `homeViaLift.test.ts` (10 Tests).
+- Am Roboter noch nicht geprüft.
