@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -15,6 +16,17 @@ from ..state_machine import VisionStateMachines
 from .uamethods import add_vision_method, json_method, text_reply
 
 _log = logging.getLogger(__package__)
+
+
+class _Sized:
+    """Eine `TagPose` mit der Groesse, mit der sie geschaetzt wurde (fuer die Ecken im Raum)."""
+
+    def __init__(self, pose, size_m: float) -> None:
+        self.pose_cam_tag = pose.pose_cam_tag
+        self.tag_id = pose.tag_id
+        self.size_m = size_m
+        observation = getattr(pose, "observation", None)
+        self.corners_px = observation.corners if observation is not None else [[0.0, 0.0]] * 4
 
 
 class ArucoFloorDetector:
@@ -100,6 +112,25 @@ def floor_frame(source: Any, image: Any, request, aruco: "ArucoFloorDetector | N
         }
 
     reference_ids = set(tag_map.reference_poses()) if tag_map is not None else set()
+    if request.reference == "camera":
+        from ..floortags import measure_frame_camera
+
+        # Ohne Welttags: nur die Lineal-Marker, mit der angegebenen Groesse.
+        if request.markers == "aruco":
+            floor_markers = [m for m in aruco.detect(gray) if outside(m, observations)] if aruco else []
+        else:
+            floor_markers = [o for o in observations if int(o.tag_id) not in reference_ids]
+        size = request.tag_size_m or config.tag_size_m
+
+        def estimate(calibration, chosen):
+            sized = [dataclasses.replace(o) for o in chosen]
+            poses = estimate_tag_poses(sized, calibration, tag_map=None, default_size_m=size)
+            # Nur gut geloeste Marker bestimmen die Ebene: ein verunglueckter (fast frontal, zwei gleiche
+            # IPPE-Loesungen) wuerde sie sonst kippen. Geschnitten werden trotzdem alle.
+            limit = max(2.0, float(config.max_reproj_error_px))
+            return [_Sized(p, size) for p in poses if p.reprojection_error_px <= limit]
+
+        return measure_frame_camera(floor_markers, calibrations, estimate, request.tag_ids)
     if request.markers == "aruco":
         # Eigene Familie: ihre IDs haben mit den Welttags nichts zu tun.
         floor_markers = [m for m in aruco.detect(gray) if outside(m, observations)] if aruco else []
@@ -165,6 +196,8 @@ async def install_measure_floor_tags(
             "intrinsicsSource": getattr(source, "intrinsics_source", None),
             "imageSize": image_size,
             "markers": request.markers,
+            "reference": request.reference,
+            "tagSizeM": request.tag_size_m,
             "arucoDictionary": aruco.dictionary if aruco is not None else None,
             **summarize(frames, request.frames),
             "error": error,
@@ -178,7 +211,8 @@ async def install_measure_floor_tags(
                     kept,
                     {**result, "request": {"frames": request.frames, "heightM": request.height_m,
                                            "tagIds": sorted(request.tag_ids) if request.tag_ids else None,
-                                           "markers": request.markers, "arucoDictionary": request.aruco_dictionary}},
+                                           "markers": request.markers, "arucoDictionary": request.aruco_dictionary,
+                                           "reference": request.reference, "tagSizeM": request.tag_size_m}},
                 )
                 from pathlib import Path
 

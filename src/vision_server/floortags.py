@@ -18,6 +18,14 @@ Die Kamerapose kommt immer aus den Welttags (AprilTag). Gleiche IDs werden
 nach ihrer Lage getrennt: Messungen einer ID, die weiter als
 `CLUSTER_RADIUS_M` auseinanderliegen, sind verschiedene Marker ("7", "7b").
 
+Bezug `camera` (ohne Welttags): Die Ebene der Marker (z. B. ein Tisch)
+kommt aus den Markern selbst -- jeder Marker per PnP mit der angegebenen
+Groesse, eine Ebene durch alle ihre Ecken --, die Ecken werden als
+Sehstrahl mit ihr geschnitten. Koordinaten in dieser Ebene, Ursprung dort,
+wo die optische Achse sie trifft: x/y die Bildachsen, in die Ebene gelegt.
+Der Abstand eines Markers vom Ursprung ist sein Abstand von der Bildmitte;
+der Massstab haengt an der angegebenen Marker-Groesse.
+
 Hier steckt kein asyncua und keine Kamera: Bilder, Detektionen und die
 Kamerapose kommen als Daten herein (`runner/measure_floor_tags.py`).
 """
@@ -75,6 +83,11 @@ class FloorRequest:
     aruco_dictionary: str = "auto"
     #: So viele der Bilder werden mit dem Ergebnis abgelegt (0 = keine Ablage).
     save_images: int = DEFAULT_SAVE_IMAGES
+    #: "world": Kamerapose aus den Welttags, Ebene z = `height_m`. "camera": ohne Welttags,
+    #: Ebene aus den Markern, Koordinaten in ihr ab der optischen Achse.
+    reference: str = "world"
+    #: Kantenlaenge der Marker (schwarzes Quadrat) fuer den Bezug "camera"; `None` = Tag-Map bzw. Standard.
+    tag_size_m: float | None = None
 
 
 def _is_int(value) -> bool:
@@ -110,7 +123,116 @@ def parse_request(text: str) -> FloorRequest:
     save_images = data.get("saveImages", DEFAULT_SAVE_IMAGES)
     if not _is_int(save_images) or not 0 <= save_images <= MAX_FRAMES:
         raise ValueError(f"saveImages muss eine Ganzzahl von 0 bis {MAX_FRAMES} sein.")
-    return FloorRequest(int(frames), float(height), tag_ids, markers, dictionary, int(save_images))
+    reference = data.get("reference", "world")
+    if reference not in ("world", "camera"):
+        raise ValueError("reference muss \"world\" oder \"camera\" sein.")
+    size = data.get("tagSizeM")
+    if size is not None and (isinstance(size, bool) or not isinstance(size, (int, float)) or not size > 0):
+        raise ValueError("tagSizeM muss eine positive Zahl oder null sein.")
+    return FloorRequest(
+        int(frames), float(height), tag_ids, markers, dictionary, int(save_images), reference,
+        float(size) if size is not None else None,
+    )
+
+
+def marker_plane(corner_sets: list[np.ndarray]) -> tuple[np.ndarray, float] | None:
+    """Ebene `n . x = d` (Kamera-KS) durch alle Marker-Ecken; `n` zeigt zur Kamera (n_z < 0). `None` bei < 2 Markern."""
+    if len(corner_sets) < 2:
+        return None
+    points = np.vstack(corner_sets)
+    centre = points.mean(axis=0)
+    _, _, vt = np.linalg.svd(points - centre)
+    normal = vt[2]
+    if normal[2] > 0:
+        normal = -normal
+    return normal, float(normal @ centre)
+
+
+def plane_frame(normal: np.ndarray, d: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(Ursprung, u, v)`: wo die optische Achse die Ebene trifft, Bild-x und -y in die Ebene gelegt."""
+    origin = np.array([0.0, 0.0, d / normal[2]])
+    u = np.array([1.0, 0.0, 0.0]) - normal[0] * normal
+    u /= np.linalg.norm(u)
+    v = np.cross(normal, u)
+    if v[1] < 0:  # Bild-y nach unten bleibt +v
+        v = -v
+    return origin, u, v
+
+
+def measure_frame_camera(
+    observations,
+    calibrations: dict[str, Any],
+    estimate: Callable[[Any, list], list],
+    tag_ids: frozenset[int] | None,
+) -> dict[str, dict]:
+    """Wie `measure_frame`, aber ohne Welttags: Ebene aus den Markern, Koordinaten in ihr ab der optischen Achse.
+
+    `estimate(calibration, observations)` liefert die Marker-Posen (`TagPose`) mit genau dieser Kalibrierung.
+    """
+    from tagloc.pose import tag_object_points
+
+    chosen = [o for o in observations if tag_ids is None or int(o.tag_id) in tag_ids]
+    # Die Ebene EINMAL, aus der ersten Variante (entzerrt) -- die beste Schaetzung der echten Lage.
+    # Bestimmte jede Variante ihre eigene, glichen die Marker-Groessen im Rohbild die Verzeichnung
+    # fast ganz aus (Marker und Abstaende sind aussen gleich gestaucht); so zeigt "roh", wie weit
+    # die unkorrigierten Sehstrahlen auf dem echten Tisch daneben liegen.
+    first = next(iter(calibrations.values()))
+    corner_sets = []
+    scale_tag = None
+    matrix_k = np.asarray(first.camera_matrix, dtype=np.float64)
+    principal = matrix_k[:2, 2]
+    for pose in estimate(first, chosen):
+        matrix = np.asarray(pose.pose_cam_tag, dtype=np.float64)
+        size = float(getattr(pose, "size_m", 0) or 0)
+        if size <= 0:
+            continue
+        points = tag_object_points(size)
+        corners = (matrix[:3, :3] @ points.T).T + matrix[:3, 3]
+        corner_sets.append(corners)
+        # Der Marker am naechsten an der Bildmitte: dort ist die Verzeichnung am kleinsten.
+        offset = float(np.linalg.norm(np.mean(np.asarray(pose.corners_px, dtype=np.float64), axis=0) - principal))
+        if scale_tag is None or offset < scale_tag[0]:
+            scale_tag = (offset, int(pose.tag_id), corners.mean(axis=0))
+    plane = marker_plane(corner_sets)
+    if plane is not None and scale_tag is not None:
+        # Neigung aus allen Markern, Abstand (Massstab) allein aus dem mittleren.
+        plane = (plane[0], float(plane[0] @ scale_tag[2]))
+    result: dict[str, dict] = {}
+    for name, calibration in calibrations.items():
+        entry: dict = {
+            "camera": {
+                "solver": "plane",
+                "worldTagIds": [],
+                "markersForPlane": len(corner_sets),
+                "scaleTagId": scale_tag[1] if scale_tag else None,
+            },
+            "tags": [],
+        }
+        if plane is not None:
+            normal, d = plane
+            origin, u, v = plane_frame(normal, d)
+            entry["camera"].update(
+                {
+                    # Die Kamera ueber dem Ursprung, im Ebenen-KS: von hier zaehlt "nach aussen".
+                    "positionInWorld": np.array([0.0, 0.0, float(np.linalg.norm(origin))]),
+                    "planeDistanceM": float(abs(d)),
+                    "tiltDeg": float(np.degrees(np.arccos(min(1.0, abs(normal[2]))))),
+                }
+            )
+            from tagloc.lens import undistort_points
+
+            inverse = np.linalg.inv(np.asarray(calibration.camera_matrix, dtype=np.float64))
+            for observation in chosen:
+                pixels = undistort_points(np.asarray(observation.corners, dtype=np.float64), calibration)
+                rays = (inverse @ np.c_[pixels, np.ones(len(pixels))].T).T
+                t = d / (rays @ normal)
+                if np.any(t <= 0):
+                    continue
+                points = rays * t[:, None] - origin
+                in_plane = np.c_[points @ u, points @ v, np.zeros(len(points))]
+                entry["tags"].append({"tagId": int(observation.tag_id), **tag_on_floor(in_plane), "world": False})
+        result[name] = entry
+    return result
 
 
 def save_measurement(base_dir, images: list, document: dict) -> tuple[str, list[str]]:
@@ -272,9 +394,13 @@ def summarize(frames: list[dict[str, dict]], frames_requested: int) -> dict:
                     "count": len(seen),
                 }
             )
+        planes = [c for c in cameras if c.get("planeDistanceM") is not None]
         variants[name] = {
             "camera": {
                 "frames": len(cameras),
+                "planeDistanceM": finite_or_none(float(np.mean([c["planeDistanceM"] for c in planes])), 6) if planes else None,
+                "tiltDeg": finite_or_none(float(np.mean([c["tiltDeg"] for c in planes])), 4) if planes else None,
+                "scaleTagId": next((c.get("scaleTagId") for c in planes if c.get("scaleTagId") is not None), None),
                 "positionInWorld": _round(np.mean([c["positionInWorld"] for c in cameras], axis=0)) if cameras else None,
                 "reprojectionErrorPx": finite_or_none(float(np.mean(errors)), 4) if errors else None,
                 "solvers": sorted({str(c.get("solver")) for c in cameras}),

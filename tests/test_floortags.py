@@ -27,9 +27,9 @@ WORLD_TAGS = {583: (0.0, 0.0), 584: (1.6, 0.0), 585: (1.6, 1.75), 586: (0.0, 1.7
 RULER = {10 + k: (0.8 + 0.25 * k, 0.9) for k in range(4)}
 
 
-def observation(tag_id, xy, size):
+def observation(tag_id, xy, size, world_cam=None):
     world_tag = from_rotation_translation(np.eye(3), [xy[0], xy[1], 0.0])
-    cam_tag = invert(WORLD_CAM) @ world_tag
+    cam_tag = invert(WORLD_CAM if world_cam is None else world_cam) @ world_tag
     import cv2
 
     rvec, _ = cv2.Rodrigues(cam_tag[:3, :3])
@@ -53,9 +53,9 @@ def tag_map():
 
 
 class FakeSource:
-    def __init__(self):
-        observations = [observation(i, xy, 0.2) for i, xy in WORLD_TAGS.items()]
-        observations += [observation(i, xy, 0.08) for i, xy in RULER.items()]
+    def __init__(self, world_cam=None):
+        observations = [observation(i, xy, 0.2, world_cam) for i, xy in WORLD_TAGS.items()]
+        observations += [observation(i, xy, 0.08, world_cam) for i, xy in RULER.items()]
         self._detector = types.SimpleNamespace(detect=lambda gray: observations)
         self._tag_map = tag_map()
         self._config = types.SimpleNamespace(tag_size_m=0.08, max_reproj_error_px=3.0)
@@ -155,6 +155,37 @@ class ClusterTest(unittest.TestCase):
         self.assertEqual([t["count"] for t in tags], [2, 2, 2])
         self.assertAlmostEqual(tags[0]["position"][0], 1.001, places=6)
         self.assertAlmostEqual(tags[1]["position"][0], 1.501, places=6)
+
+
+class CameraReferenceTest(unittest.TestCase):
+    """Bezug "camera": ohne Welttags, Ebene aus den Lineal-Markern, Abstaende ab der optischen Achse."""
+
+    def setUp(self):
+        image = np.zeros((1520, 2028, 3), np.uint8)
+        request = parse_request('{"reference": "camera", "tagSizeM": 0.08}')
+        # 3 Grad geneigt wie eine echte Kamera: genau frontal waeren die beiden IPPE-Loesungen gleich.
+        tilt = np.radians(3.0)
+        rotation = np.diag([1.0, -1.0, -1.0]) @ np.array([[1, 0, 0], [0, np.cos(tilt), -np.sin(tilt)], [0, np.sin(tilt), np.cos(tilt)]])
+        frame = floor_frame(FakeSource(from_rotation_translation(rotation, [0.8, 0.9, 2.5])), image, request)
+        self.summary = summarize([frame], 1)["variants"]
+
+    def test_measures_from_the_optical_axis_without_world_tags(self):
+        tags = {t["tagId"]: np.array(t["position"]) for t in self.summary["entzerrt"]["tags"]}
+        self.assertEqual(sorted(tags), sorted(RULER))  # keine Welttags
+        camera = self.summary["entzerrt"]["camera"]
+        self.assertAlmostEqual(camera["planeDistanceM"], 2.5, delta=0.003)
+        self.assertAlmostEqual(camera["tiltDeg"], 3.0, delta=0.2)
+        self.assertEqual(camera["scaleTagId"], 10)  # der Marker an der Bildmitte gibt den Massstab
+        # Die Tags je 25 cm auseinander, in der Ebene gemessen.
+        for k, tag_id in enumerate(sorted(RULER)[1:], start=1):
+            gap = float(np.hypot(*(tags[tag_id][:2] - tags[tag_id - 1][:2])))
+            self.assertAlmostEqual(gap, 0.25, delta=0.002)
+        # Die optische Achse trifft die Ebene 2,5 m * tan 3 Grad neben dem Punkt unter der Kamera (Tag 10).
+        self.assertAlmostEqual(float(np.hypot(*tags[10][:2])), 2.5 * np.tan(np.radians(3.0)), delta=0.004)
+
+    def test_the_raw_picture_still_measures_short_outwards(self):
+        tags = {t["tagId"]: np.array(t["position"]) for t in self.summary["roh"]["tags"]}
+        self.assertGreater(abs(float(np.hypot(*(tags[13][:2] - tags[10][:2]))) - 0.75), 0.002)
 
 
 class SaveMeasurementTest(unittest.TestCase):
