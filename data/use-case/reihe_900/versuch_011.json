@@ -1,0 +1,382 @@
+{
+  "schema": "adp.usecase.trial/1",
+  "reihe": 900,
+  "versuch": 11,
+  "bild": "versuch_011.png",
+  "gespeichert": "2026-11-13T18:05:53",
+  "pi": {
+    "frame_timestamp": 25545.052902587,
+    "frame_age_s": 0.022,
+    "image_shape": [
+      1080,
+      1920,
+      3
+    ],
+    "frame_id": "cam_flange",
+    "vision_system_name": "VisionMachine",
+    "vision_system_id": "vision-flange-01",
+    "hostname": "ADP-HandInEye-Kamera-Pi",
+    "endpoint": "opc.tcp://10.10.38.109:4840/raspi/server/",
+    "camera_stream": {
+      "backend": "realsense",
+      "stream_enabled": true,
+      "camera_index": 0,
+      "resolution": [
+        1280,
+        720
+      ],
+      "preview_resolution": null,
+      "buffer_count": null,
+      "camera_controls": {},
+      "warmup_s": 2.0,
+      "capture_fps": 15.0,
+      "stream_fps": 5.0,
+      "realsense_resolution": [
+        1920,
+        1080
+      ],
+      "realsense_fps": 8,
+      "jpeg_quality": 70,
+      "max_stream_width": 960,
+      "http_port": 8080,
+      "http_fps": 15.0,
+      "http_port_node_name": "CameraStreamHttpPort",
+      "node_name": "LatestCameraFrame",
+      "mode_node_name": "CameraStreamMode",
+      "overlay_mode": "apriltag",
+      "overlay_interval_s": 0.5,
+      "overlay_detect_interval_s": 5.0,
+      "frame_timeout_s": 3.0,
+      "max_capture_failures": 3,
+      "max_reopen_attempts": 2,
+      "stale_frame_s": 2.0,
+      "overlay_timeout_s": 2.0,
+      "health_interval_s": 0.5
+    },
+    "intrinsics": {
+      "source": "calibration",
+      "calibrationId": "cam_flange@2026-11-10T10:41:51Z-offline",
+      "imageSize": [
+        1920,
+        1080
+      ],
+      "cameraMatrix": [
+        [
+          1356.7430406983472,
+          0.0,
+          988.3169311205968
+        ],
+        [
+          0.0,
+          1357.3197411590656,
+          547.5686828799409
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "distortionCoefficients": [
+        0.13824703251719886,
+        -0.427233488375535,
+        -0.0019531256910768975,
+        0.0010097910551485332,
+        0.3666283056193733
+      ],
+      "distortionModel": "pinhole"
+    },
+    "apriltag": {
+      "resolution": [
+        1920,
+        1080
+      ],
+      "calibration_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "tag_map_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/config/tagmap.json",
+      "hand_eye_path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "tag_family": "tag36h11",
+      "tag_size_m": 0.08,
+      "capture_timeout_s": 5.0,
+      "samples_per_job": 5,
+      "max_reproj_error_px": 1.5,
+      "frame_id": "cam_flange",
+      "frame_convention": "z_forward_x_right_y_down",
+      "detector_backend": "aruco",
+      "subpixel_corner_refinement": true,
+      "corner_refinement_method": "subpix",
+      "apriltag_quad_decimate": 0.0,
+      "detector_parameters": {},
+      "allow_resolution_mismatch": false,
+      "allow_placeholder_calibration": false,
+      "calibration_board_type": "chessboard",
+      "calibration_board_cols": 7,
+      "calibration_board_rows": 10,
+      "calibration_board_square_size_m": 0.023,
+      "calibration_board_marker_size_m": 0.022,
+      "calibration_board_dictionary": "DICT_4X4_50",
+      "calibration_min_samples": 15,
+      "calibration_model": "pinhole",
+      "calibration_capture_dir": null
+    },
+    "calibration": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/calibration/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.calibration/2",
+        "calibrationId": "cam_flange@2026-11-10T10:41:51Z-offline",
+        "frameId": "cam_flange",
+        "distortionModel": "pinhole",
+        "imageSize": [
+          1920,
+          1080
+        ],
+        "cameraMatrix": [
+          [
+            1356.7430406983472,
+            0.0,
+            988.3169311205968
+          ],
+          [
+            0.0,
+            1357.3197411590656,
+            547.5686828799409
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "distortionCoefficients": [
+          0.13824703251719886,
+          -0.427233488375535,
+          -0.0019531256910768975,
+          0.0010097910551485332,
+          0.3666283056193733
+        ],
+        "rmsReprojectionError": 0.274,
+        "sampleCount": 59,
+        "board": {
+          "type": "charuco",
+          "cols": 11,
+          "rows": 7,
+          "squareSizeM": 0.024981818181818185,
+          "markerSizeM": 0.018486545454545453,
+          "dictionary": "DICT_5X5_100"
+        },
+        "createdAt": "2026-11-10T11:08:57.259154+00:00"
+      }
+    },
+    "hand_eye": {
+      "path": "/home/adp-kamera-in-hand/Desktop/opcua-server/data/handeye/cam_flange.json",
+      "exists": true,
+      "content": {
+        "schema": "wsc.vision.handeye/1",
+        "frameId": "cam_flange",
+        "calibrationId": "cam_flange@2026-11-10T10:41:51Z-offline",
+        "poseFlangeCam": {
+          "position": [
+            -0.047324027463541724,
+            -0.03423746326331575,
+            0.06025688889855275
+          ],
+          "orientation": [
+            0.002997402543365742,
+            0.0009185619518615105,
+            0.7103040471117759,
+            0.7038880113189638
+          ]
+        },
+        "rmsPositionM": 0.001412,
+        "rmsRotationDeg": 0.257336,
+        "maxPositionM": 0.002893,
+        "maxRotationDeg": 0.455374,
+        "sampleCount": 59,
+        "createdAt": "2026-11-10T11:08:57Z",
+        "refinedReprojectionRmsPx": 3.628034,
+        "boardScale": 0.999273,
+        "intrinsicsSource": "calibration"
+      }
+    }
+  },
+  "client": {
+    "schema": "wsc.optical-axis-test/1",
+    "angleDeg": 180,
+    "wristTurnDeg": -180,
+    "calibrationId": "cam_flange@2026-11-10T10:41:51Z-offline",
+    "referenceCameraInBase": {
+      "position": [
+        0.42873229946238134,
+        -0.017046034272265503,
+        0.34659110404653365
+      ],
+      "orientation": [
+        0.6959344981702142,
+        -0.7180451211117475,
+        -0.008108744822861537,
+        -0.00454164745281578
+      ]
+    },
+    "reachedFlangeInBase": {
+      "position": [
+        0.3824369558297448,
+        0.01791821523512821,
+        0.4064257459009404
+      ],
+      "orientation": [
+        0.013650154606636173,
+        0.9998513478438514,
+        0.01052619839350456,
+        -0.0003932447446103572
+      ]
+    },
+    "reachedJoints": [
+      0.021777966991066933,
+      -0.4803779423236847,
+      0.021499082446098328,
+      -2.622136354446411,
+      0.03684867545962334,
+      2.1419057846069336,
+      -2.3079655170440674
+    ],
+    "targetObservation": {
+      "markerIds": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "imageSize": [
+        960,
+        540
+      ],
+      "centerPx": [
+        503.66385595598035,
+        277.3396038697154
+      ],
+      "errorPx": [
+        23.663855955980353,
+        7.339603869715404
+      ],
+      "targetInCameraM": [
+        0.012071066186569888,
+        0.0037415176475382103,
+        0.35619833652053223
+      ]
+    },
+    "visualServoAfterCentering": false,
+    "skippedAngles": []
+  },
+  "messung": {
+    "ok": false,
+    "grund": "Kein Wuerfelmarker (ID 10) erkannt",
+    "dx_mm": null,
+    "dy_mm": null,
+    "dtheta_deg": null,
+    "r_mm": null,
+    "zone": null,
+    "sheet_markers": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "reprojection_rms_px": null,
+    "camera_height_mm": null,
+    "camera_tilt_deg": null,
+    "nadir_offset_mm": null,
+    "cube_corners_mm": null,
+    "marker_center_mm": null,
+    "marker_yaw_deg": null,
+    "cube_edge_refined": false,
+    "sheet_edges_refined": 0,
+    "sticker_offset_mm": [
+      0.0,
+      0.0
+    ],
+    "zwischenwerte": {
+      "marker": {
+        "0": {
+          "eckenRohPx": [
+            [
+              1213.231201171875,
+              332.7275390625
+            ],
+            [
+              1215.9298095703125,
+              410.0616149902344
+            ],
+            [
+              1138.9954833984375,
+              413.03106689453125
+            ],
+            [
+              1135.7025146484375,
+              336.0948181152344
+            ]
+          ]
+        },
+        "1": {
+          "eckenRohPx": [
+            [
+              1228.3660888671875,
+              684.2545166015625
+            ],
+            [
+              1231.716796875,
+              762.3070678710938
+            ],
+            [
+              1153.959228515625,
+              765.29931640625
+            ],
+            [
+              1150.503173828125,
+              687.3421630859375
+            ]
+          ]
+        },
+        "2": {
+          "eckenRohPx": [
+            [
+              875.4847412109375,
+              698.647705078125
+            ],
+            [
+              878.5098876953125,
+              777.1793823242188
+            ],
+            [
+              799.8726806640625,
+              780.6240234375
+            ],
+            [
+              796.9963989257812,
+              701.9872436523438
+            ]
+          ]
+        },
+        "3": {
+          "eckenRohPx": [
+            [
+              861.729248046875,
+              345.56884765625
+            ],
+            [
+              864.8480224609375,
+              423.0245361328125
+            ],
+            [
+              786.665283203125,
+              426.05810546875
+            ],
+            [
+              783.4942626953125,
+              348.43609619140625
+            ]
+          ]
+        }
+      }
+    }
+  }
+}
