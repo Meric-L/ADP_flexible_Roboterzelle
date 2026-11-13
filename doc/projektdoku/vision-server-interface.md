@@ -1887,6 +1887,17 @@ Wie gut ein fest montierter Tag bei abnehmendem Licht noch erkannt wird. Das Fro
 - **Ablage:** `data/Helligkeitstest/reihe_NNN/stufe_NNN.json` (Schema `wsc.vision.lighttest.level/1`, mit allen Einzelbildern) und `stufe_NNN_bild_NN.png` (Standard: das erste Bild der Stufe; mehrere gleichmäßig verteilt). Der Status liefert dieselbe JSON ohne die Einzelbilder, dazu `file` und `folder`.
 - **Belichtung:** Picamera2 setzt `AeEnable`/`AwbEnable` aus und `ExposureTime`, `AnalogueGain`, `ColourGains` auf die Werte aus den Metadaten; RealSense schaltet `enable_auto_exposure`/`enable_auto_white_balance` aus. Die Antwort trägt die mittlere Bildhelligkeit vor und nach dem Umschalten (`imageMeanBefore`/`imageMeanAfter`): bleibt sie gleich, hat das Einfrieren gehalten. Ein Neu-Öffnen der Kamera (Watchdog) hebt das Einfrieren auf; jede Stufe hält die Werte am Anfang und Ende fest (`camera.exposureStart`/`exposureEnd`).
 
+## 18d. MeasureFloorTags: Marker auf dem Boden, entzerrt und im Rohbild (Lineal-Test, Deckenkamera)
+
+`MeasureFloorTags(RequestJson: String) -> (ResultJson: String, Error: Int32)`, an beiden Pis, gedacht für die Decke. Antwortet nach der Messung (wenige Bilder). Code: `vision_server/floortags.py`, `runner/measure_floor_tags.py`.
+
+- **Anfrage** (`wsc.vision.floortags.request/1`): `frames` (1–30, Standard 5), `heightM` (Höhe der Marker-Oberfläche, Boden 0), `tagIds` (optional), `markers` (`"apriltag"` oder `"aruco"`), `arucoDictionary` (`"auto"` oder `DICT_...`), `saveImages` (0–30, Standard 1).
+- **Je Bild, zwei Varianten:** `entzerrt` (Kalibrierung mit Verzeichnung) und `roh` (dieselbe Kameramatrix, Verzeichnung null). Je Variante die Kamerapose aus den Welttags (gemeinsames PnP) und jede Marker-Ecke als Sehstrahl geschnitten mit z = `heightM`; Mitte der vier Bodenpunkte = Position, mittlere Kante = gemessene Markergröße. Die eingetragene Tag-Größe geht nicht ein.
+- **ArUco:** eigener Detektor (Subpixel-Ecken); `"auto"` nimmt aus 4x4/5x5/6x6/7x7_1000, Original und MIP 36h12 das Wörterbuch mit den meisten Treffern im ersten Bild (`arucoDictionary` im Ergebnis). Marker, deren Mitte in einem AprilTag liegt, werden verworfen.
+- **Gleiche IDs:** Messungen einer ID mehr als 5 cm auseinander sind verschiedene Marker, `label` `"7"`, `"7b"`, ...
+- **Ergebnis** (`wsc.vision.floortags.result/1`): je Variante `camera` (Position, Reprojektionsfehler, Solver, Welttags) und `tags` (`tagId`, `label`, `world`, `position`, `sdMm`, `spreadM`, `edgeM`, `count`).
+- **Ablage:** `data/Linealtest/messung_NNN/bild_NN.png` (die ersten `saveImages` Bilder) und `messung.json` (Anfrage und Ergebnis); Pfad in `savedFolder`.
+
 ## 19. Tag-Position einmessen: MeasureTagReference / PlanTagReferenceView (nur Hand-Pi)
 
 Die Hand-Kamera misst die Lage eines Modul-Tags relativ zu zwei Bezugskanten des Moduls, die im selben Bild liegen. Sie ersetzt den Zollstock. Die Steuerung fragt mit `PlanTagReferenceView`, wohin die Kamera soll (rechnet nur, kein Bild), fährt dorthin und ruft `MeasureTagReference` auf. Ablauf und Begründung stehen im Arbeitsplan [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), das Verfahren in [`apriltag-referenz.md`](apriltag-referenz.md) (Abschnitt 14).
