@@ -1,17 +1,16 @@
-"""Kamerakalibrierung als Daten: lesen, schreiben, pruefen. Ohne OpenCV.
+"""Camera calibration as data: read, write, validate. No OpenCV required.
 
-Bewusst JSON statt OpenCV-FileStorage-YAML:
+JSON is used instead of the OpenCV FileStorage YAML format, for these reasons:
 
-* ohne `cv2` lesbar -- der Vision-Server baut die `configurationId`, ohne
-  OpenCV zu laden, und die Tests laufen ueberall
-* Platz fuer `rms`, Bildgroesse und Brettgeometrie. Der Prototyp
-  (`src/apriltag/calibrate_camera.py`, am 2026-10-30 entfernt) gab `rms` nur
-  auf stdout aus und schrieb `image_width`/`image_height`, ohne sie je wieder
-  zu lesen
-* vergleichbar (diff) und im Fehlerfall von Hand lesbar
+* It can be read without ``cv2``. The vision server builds the ``configurationId``
+  without loading OpenCV, and the tests run everywhere.
+* It has room for ``rms``, the image size and the board geometry. The prototype
+  (``src/apriltag/calibrate_camera.py``, removed on 2026-10-30) only printed ``rms``
+  to stdout and wrote ``image_width``/``image_height`` without ever reading them back.
+* It can be diffed and read by hand when something fails.
 
-Die Datei gehoert zu **einer physischen Kamera**, nicht ins Repo. Sie liegt
-unter `data/`, per `.gitignore` ausgeschlossen -- jeder Pi erzeugt seine eigene.
+A calibration file belongs to **one physical camera** and is not part of the repo.
+It lives under ``data/``, excluded by ``.gitignore``. Every Pi creates its own.
 """
 
 import json
@@ -26,28 +25,28 @@ import numpy as np
 from .identity import calibration_identity
 
 SCHEMA = "wsc.vision.calibration/2"
-#: Vor dem Linsenmodell-Feld (2026-09-29). Wird weiter gelesen und gilt als
-#: `PINHOLE` -- das war damals das einzige Modell. Geschrieben wird nur noch
-#: `SCHEMA`: ein alter Code-Stand lehnt eine neue Datei damit laut ab, statt
-#: Fisheye-Koeffizienten stumm als Pinhole zu deuten.
+#: Predates the lens-model field (2026-09-29). Still read, and treated as
+#: ``PINHOLE``, the only model at that time. Only ``SCHEMA`` is written now, so an old
+#: code version rejects a new file loudly instead of silently reading fisheye
+#: coefficients as pinhole.
 LEGACY_SCHEMA = "wsc.vision.calibration/1"
 
-#: OpenCV-Standardmodell (Brown-Conrady), 5 Koeffizienten k1, k2, p1, p2, k3.
+#: OpenCV standard model (Brown-Conrady), 5 coefficients k1, k2, p1, p2, k3.
 PINHOLE = "pinhole"
-#: OpenCV-Fisheye-Modell (Kannala-Brandt), 4 Koeffizienten k1..k4.
+#: OpenCV fisheye model (Kannala-Brandt), 4 coefficients k1..k4.
 FISHEYE = "fisheye"
 DISTORTION_MODELS = (PINHOLE, FISHEYE)
 
-#: Grobe Annahme fuer `default_calibration` -- typischer Wert fuer Pi-Kamera-
-#: und RealSense-Farbsensoren, aber nicht das tatsaechliche Sichtfeld einer
-#: bestimmten Kamera. Nur ein Ausgangspunkt, keine Messung.
+#: Rough assumption for ``default_calibration``. A typical value for Pi camera and
+#: RealSense color sensors, but not the actual field of view of a specific camera.
+#: A starting point only, not a measurement.
 DEFAULT_HORIZONTAL_FOV_DEG = 70.0
 PLACEHOLDER_CALIBRATION_ID = "placeholder-unkalibriert"
 
 
 @dataclass(frozen=True)
 class CameraCalibration:
-    """Intrinsik und Verzeichnung einer Kamera, mit Herkunft."""
+    """Intrinsics and distortion of a camera, with provenance."""
 
     camera_matrix: np.ndarray
     distortion: np.ndarray
@@ -57,15 +56,14 @@ class CameraCalibration:
     rms_reprojection_error: float = float("nan")
     sample_count: int = 0
     board: dict[str, Any] = field(default_factory=dict)
-    #: Linsenmodell, zu dem `distortion` gehoert (`PINHOLE` oder `FISHEYE`).
-    #: Entscheidet, welche OpenCV-Funktionen entzerren und projizieren --
-    #: siehe `tagloc.lens`. Die Koeffizienten allein verraten es nicht
-    #: eindeutig, deshalb steht es ausdruecklich in der Datei.
+    #: Lens model that ``distortion`` belongs to (``PINHOLE`` or ``FISHEYE``).
+    #: Decides which OpenCV functions undistort and project; see ``tagloc.lens``.
+    #: The coefficients alone do not identify the model, so it is stored explicitly.
     model: str = PINHOLE
 
     @property
     def camera_params(self) -> tuple[float, float, float, float]:
-        """Liefert `(fx, fy, cx, cy)`, das Format, das Tag-Detektoren erwarten."""
+        """Return ``(fx, fy, cx, cy)``, the format tag detectors expect."""
         matrix = np.asarray(self.camera_matrix, dtype=np.float64)
         return (
             float(matrix[0, 0]),
@@ -76,7 +74,7 @@ class CameraCalibration:
 
 
 def save_calibration(path: Path, calibration: CameraCalibration) -> None:
-    """Schreibt die Kalibrierung als JSON und legt fehlende Ordner an."""
+    """Write the calibration as JSON, creating missing parent folders."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -99,7 +97,7 @@ def save_calibration(path: Path, calibration: CameraCalibration) -> None:
 
 
 def load_calibration(path: Path) -> CameraCalibration:
-    """Liest eine Kalibrierdatei. Fehlt etwas, meldet die Ausnahme den Pfad."""
+    """Read a calibration file. If a field is missing, the exception names the path."""
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Kalibrierung nicht gefunden: {path}")
@@ -131,10 +129,10 @@ def load_calibration(path: Path) -> CameraCalibration:
 
 
 def _checked_model(model: Any, path: Path) -> str:
-    """Gibt `model` zurueck, wenn es ein bekanntes Linsenmodell ist.
+    """Return ``model`` if it is a known lens model.
 
-    Ein unbekanntes Modell ist ein Fehler, kein Rueckfall auf Pinhole: mit
-    falschem Modell entzerrt, liegen alle Posen plausibel daneben.
+    An unknown model is an error, not a fallback to pinhole. With the wrong model,
+    undistortion is wrong and every pose is off in a plausible-looking way.
     """
     if model not in DISTORTION_MODELS:
         raise ValueError(
@@ -145,16 +143,14 @@ def _checked_model(model: Any, path: Path) -> str:
 
 
 def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> CameraCalibration:
-    """Grob geschaetzte Kalibrierung, wenn (noch) keine echte existiert.
+    """Return a rough estimated calibration for when no real one exists yet.
 
-    **Kein Ersatz fuer eine echte Kalibrierfahrt** (Testplan Abschnitt 3.3) --
-    die Intrinsik ist aus einer angenommenen Sichtfeldbreite gerechnet, nicht
-    gemessen. Posen damit sind plausibel orientiert, aber nicht masshaltig:
-    Distanzen und Groessen koennen deutlich daneben liegen. Nur dafuer da,
-    die AprilTag-Erkennung ohne Kalibrierdatei lauffaehig zu halten, damit
-    Detektor, Overlay und Job-Pfad sich pruefen lassen, waehrend die echte
-    Kalibrierung noch aussteht. `calibration_id` markiert das im Ergebnis
-    unuebersehbar.
+    **Not a replacement for a real calibration run** (test plan section 3.3). The
+    intrinsics come from an assumed horizontal field of view, not from a measurement.
+    Poses are plausibly oriented but not metric: distances and sizes can be far off.
+    This exists only to keep AprilTag detection runnable without a calibration file,
+    so that the detector, overlay and job path can be checked while the real
+    calibration is still pending. ``calibration_id`` marks this clearly in the result.
     """
     width, height = resolution
     focal_length = width / (2.0 * math.tan(math.radians(DEFAULT_HORIZONTAL_FOV_DEG) / 2.0))
@@ -179,12 +175,11 @@ def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> Came
 
 
 def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]) -> None:
-    """Wirft, wenn die Kalibrierung zu einer anderen Aufloesung gehoert.
+    """Raise if the calibration belongs to a different resolution.
 
-    Ohne diese Pruefung ist jede Pose um den Skalierungsfaktor daneben --
-    plausibel daneben, also unbemerkt. Das kommt in der Praxis vor:
-    `AprilTagProfileConfig.resolution` ist 2028x1520, eine Kalibrierung ueber
-    `cv2.VideoCapture(0)` endet leicht bei 640x480.
+    Without this check every pose is off by the scale factor, plausibly but unnoticed.
+    This happens in practice: ``AprilTagProfileConfig.resolution`` is 2028x1520, while
+    a calibration made via ``cv2.VideoCapture(0)`` easily ends up at 640x480.
     """
     expected = (int(calibration.image_size[0]), int(calibration.image_size[1]))
     actual = (int(image_size[0]), int(image_size[1]))
@@ -198,13 +193,11 @@ def check_resolution(calibration: CameraCalibration, image_size: tuple[int, int]
 def scale_to_resolution(
     calibration: CameraCalibration, image_size: tuple[int, int]
 ) -> CameraCalibration:
-    """Skaliert die Intrinsik auf eine andere Aufloesung.
+    """Scale the intrinsics to a different resolution.
 
-    Nur fuer denselben Bildausschnitt und dasselbe Seitenverhaeltnis gueltig
-    (reines Verkleinern, kein Zuschneiden). Die Verzeichnungskoeffizienten
-    beziehen sich auf normierte Koordinaten und bleiben unveraendert -- fuer
-    das Pinhole- wie das Fisheye-Modell, daher wird `model` unveraendert
-    uebernommen.
+    Only valid for the same image section and aspect ratio (pure downscaling, no
+    cropping). The distortion coefficients refer to normalized coordinates and stay
+    unchanged, for both pinhole and fisheye. ``model`` is therefore copied as is.
     """
     source = (int(calibration.image_size[0]), int(calibration.image_size[1]))
     target = (int(image_size[0]), int(image_size[1]))
@@ -231,9 +224,8 @@ def scale_to_resolution(
     )
 
 
-#: `calibration_identity` wird hier erneut ausgegeben, damit Aufrufer nicht in
-#: einem zweiten Modul suchen muessen. Es steht in `identity`, weil jenes
-#: Modul ohne numpy funktionieren muss.
+#: ``calibration_identity`` is re-exported here so callers do not have to search a
+#: second module. It lives in ``identity`` because that module must work without numpy.
 __all__ = [
     "DISTORTION_MODELS",
     "FISHEYE",

@@ -1,16 +1,15 @@
-"""Von den Bildecken zur Pose: `T_cam_tag` samt Guetemassen.
+"""From the image corners to the pose: `T_cam_tag` together with quality measures.
 
-Der Prototyp (`src/apriltag/detect_apriltags.py`, am 2026-10-30 entfernt) macht
-zwei Dinge schlechter:
+The prototype (`src/apriltag/detect_apriltags.py`, removed on 2026-10-30) did two
+things worse:
 
-1. Keine Entzerrung. `D` ging dort nur an `drawFrameAxes`; die Pose wurde am
-   verzerrten Bild gerechnet (doc/projektdoku/altlasten.md, "Was nicht hier
-   steht"). Hier werden die Ecken zuerst entzerrt und dann mit einem idealen
-   Pinhole-Modell geloest.
-2. Keine Angabe der Mehrdeutigkeit. Ein quadratischer Marker, unter flachem
-   Winkel gesehen, hat zwei fast gleich gute Loesungen; `solvePnPGeneric`
-   liefert beide, und das Verhaeltnis ihrer Restfehler ist die ehrlichste
-   Warnung, die es gibt.
+1. No undistortion. There `D` was only passed to `drawFrameAxes`; the pose was
+   computed on the distorted image (doc/projektdoku/altlasten.md, "Was nicht hier
+   steht"). Here the corners are first undistorted and then solved with an ideal
+   pinhole model.
+2. No statement of ambiguity. A square marker seen at a shallow angle has two
+   almost equally good solutions; `solvePnPGeneric` returns both, and the ratio of
+   their residual errors is the most honest warning there is.
 """
 
 import logging
@@ -28,11 +27,11 @@ _log = logging.getLogger(__name__)
 
 
 def tag_object_points(size_m: float) -> np.ndarray:
-    """Liefert die vier Tag-Ecken im Tag-KS, in Metern.
+    """Return the four tag corners in the tag frame, in metres.
 
-    Die Reihenfolge passt zu `TagObservation.corners` (im Uhrzeigersinn, oben
-    links zuerst) und zu dem, was `SOLVEPNP_IPPE_SQUARE` erwartet. Der
-    Tag-Ursprung liegt in der Mitte, +Z zeigt aus dem Tag heraus.
+    The order matches `TagObservation.corners` (clockwise, top-left first) and what
+    `SOLVEPNP_IPPE_SQUARE` expects. The tag origin lies at the centre, +Z points
+    out of the tag.
     """
     half = float(size_m) / 2.0
     return np.array(
@@ -47,11 +46,11 @@ def tag_object_points(size_m: float) -> np.ndarray:
 
 
 def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
-    """Entzerrt Bildecken auf das ideale Pinhole-Modell.
+    """Undistort image corners to the ideal pinhole model.
 
-    `P=K` bringt das Ergebnis zurueck in Pixel, sodass danach mit
-    Verzeichnung null geloest werden kann -- unabhaengig vom Linsenmodell der
-    Kalibrierung (Pinhole oder Fisheye, siehe `tagloc.lens`).
+    `P=K` brings the result back to pixels, so that the pose can afterwards be
+    solved with zero distortion -- independent of the lens model of the
+    calibration (pinhole or fisheye, see `tagloc.lens`).
     """
     from . import lens
 
@@ -59,7 +58,7 @@ def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray:
 
 
 def _reprojection_error_px(object_points, image_points, rvec, tvec, camera_matrix) -> float:
-    """Liefert den RMS-Abstand zwischen gemessenen und reprojizierten Ecken."""
+    """Return the RMS distance between measured and reprojected corners."""
     import cv2
 
     projected, _ = cv2.projectPoints(
@@ -76,7 +75,7 @@ def _solve_tag_pose(
     camera_matrix: np.ndarray,
     no_distortion: np.ndarray,
 ) -> TagPose:
-    """Löst eine Tag-Pose aus bereits vorbereiteten Punkten und Kameradaten."""
+    """Solve a tag pose from already prepared points and camera data."""
     import cv2
 
     flags = cv2.SOLVEPNP_IPPE_SQUARE
@@ -85,9 +84,9 @@ def _solve_tag_pose(
     )
     if not found:
         raise ValueError(f"Keine Pose fuer Tag {observation.tag_id} loesbar")
-    # IPPE liefert beide Kandidaten ohne Nachschaerfung. Beide mit
-    # Levenberg-Marquardt verfeinern und den mit der kleineren
-    # Reprojektion nehmen -- wie `boards.estimate_board_pose`.
+    # IPPE returns both candidates without refinement. Refine both with
+    # Levenberg-Marquardt and take the one with the smaller reprojection error --
+    # like `boards.estimate_board_pose`.
     candidates = []
     for candidate_rvec, candidate_tvec in zip(rvecs, tvecs):
         candidate_rvec = np.array(candidate_rvec, dtype=np.float64)
@@ -112,16 +111,16 @@ def _solve_tag_pose(
     _, rvec, tvec = min(candidates, key=lambda candidate: candidate[0])
     ambiguity = 0.0
     if errors is not None and len(errors) >= 2:
-        # Das Verhaeltnis kommt bewusst aus den **rohen** IPPE-Fehlern, nicht
-        # aus den verfeinerten: Nach der Verfeinerung erklaeren beide Loesungen
-        # ein Tag mit nur vier Ecken fast gleich gut, das Verhaeltnis stiege
-        # ueber `AMBIGUITY_THRESHOLD` (0,6), und `measure_tag` verwuerfe
-        # eindeutige Tags. Die Schwelle ist am rohen Verhaeltnis gemessen.
+        # The ratio is deliberately taken from the **raw** IPPE errors, not from the
+        # refined ones: after refinement, both solutions explain a tag with only four
+        # corners almost equally well, the ratio would rise above `AMBIGUITY_THRESHOLD`
+        # (0.6), and `measure_tag` would reject unambiguous tags. The threshold is
+        # measured on the raw ratio.
         best = float(np.asarray(errors).reshape(-1)[0])
         second = float(np.asarray(errors).reshape(-1)[1])
-        # In (0, 1]: nahe 1 heisst, beide Loesungen erklaeren das Bild
-        # gleich gut. Ein zweiter Fehler von 0 kommt nur vor, wenn auch der
-        # erste 0 ist -- das waere eine entartete Anordnung.
+        # In (0, 1]: close to 1 means both solutions explain the image equally well.
+        # A second error of 0 only occurs if the first one is 0 too -- that would be
+        # a degenerate arrangement.
         ambiguity = best / second if second > 1e-12 else 1.0
 
     error_px = _reprojection_error_px(
@@ -140,7 +139,7 @@ def _solve_tag_pose(
 def estimate_tag_pose(
     observation: TagObservation, size_m: float, calibration: CameraCalibration
 ) -> TagPose:
-    """Schaetzt `T_cam_tag` fuer einen einzelnen Tag."""
+    """Estimate `T_cam_tag` for a single tag."""
     return _solve_tag_pose(
         observation,
         tag_object_points(size_m),
@@ -158,14 +157,14 @@ def estimate_tag_poses(
     default_size_m: float = 0.05,
     max_reprojection_error_px: float | None = None,
 ) -> list[TagPose]:
-    """Schaetzt die Posen aller gefundenen Tags.
+    """Estimate the poses of all detected tags.
 
-    Die Tag-Groesse kommt **je Tag aus der Karte**, nicht als globale
-    Konstante: Welttafel- und Modul-Tags sind verschieden gross, und eine
-    falsche Groesse skaliert den Abstand linear, ohne sonst aufzufallen.
+    The tag size comes **per tag from the map**, not as a global constant:
+    world-sheet and module tags differ in size, and a wrong size scales the
+    distance linearly without otherwise standing out.
 
-    Tags ueber `max_reprojection_error_px` werden verworfen und protokolliert,
-    nicht stumm durchgereicht.
+    Tags above `max_reprojection_error_px` are discarded and logged, not passed
+    through silently.
     """
     import cv2
 
@@ -197,8 +196,8 @@ def estimate_tag_poses(
     if not prepared:
         return []
 
-    # OpenCV kann alle Ecken eines Bildes in einem Aufruf entzerren. Bei einem
-    # defekten Punkt bleibt der bisherige Einzel-Tag-Fehlerpfad erhalten.
+    # OpenCV can undistort all corners of an image in one call. If one point is
+    # defective, the previous single-tag error path is kept.
     try:
         points = np.concatenate([item[2] for item in prepared])
         undistorted = lens.undistort_points(points, calibration).reshape(-1, 4, 2)
@@ -232,11 +231,11 @@ def estimate_tag_poses(
 
 
 def _solver_exceptions() -> tuple[type[BaseException], ...]:
-    """Liefert die Ausnahmen, die eine einzelne Beobachtung plausibel ausloesen kann.
+    """Return the exceptions that a single observation can plausibly raise.
 
-    Bewusst eng: ein `AttributeError` oder `TypeError` waere ein Fehler im
-    Code und kaehme fuer jeden Tag in jedem Bild wieder -- eine wiederholte
-    Logzeile statt eines klaren Absturzes. Solche Fehler sollen durchlaufen.
+    Deliberately narrow: an `AttributeError` or `TypeError` would be a bug in the
+    code and would recur for every tag in every image -- a repeated log line instead
+    of a clear crash. Such errors should propagate.
     """
     try:
         import cv2
@@ -248,12 +247,12 @@ def _solver_exceptions() -> tuple[type[BaseException], ...]:
 
 @dataclass(frozen=True)
 class JointCameraPose:
-    """`T_cam_world` aus einem PnP ueber alle Ecken mehrerer Welttags."""
+    """`T_cam_world` from one PnP over all corners of several world tags."""
 
     pose_cam_world: Pose
-    #: RMS ueber alle Ecken aller beteiligten Tags, Pixel.
+    #: RMS over all corners of all involved tags, in pixels.
     reprojection_error_px: float
-    #: Je Tag der RMS seiner vier Ecken unter der gemeinsamen Pose.
+    #: RMS of the four corners of each tag under the joint pose, per tag.
     tag_errors_px: dict[int, float]
     tag_ids: tuple[int, ...]
 
@@ -265,25 +264,24 @@ def solve_camera_from_world_tags(
     calibration: CameraCalibration,
     initial_pose_cam_world: Pose | None = None,
 ) -> JointCameraPose | None:
-    """Kamerapose aus **allen** Ecken aller Welttags in einem PnP.
+    """Camera pose from **all** corners of all world tags in one PnP.
 
-    Je Tag ein eigenes PnP aus vier Ecken auf 20 cm Basis ist aus 2-3 m
-    Abstand in der Neigung schlecht bestimmt -- 1 Grad Kippfehler sind am
-    Boden 5 cm. Das Mittel solcher Einzelschaetzungen erbt das. Ein PnP ueber
-    die Ecken aller Welttags hat dagegen die ganze Zelle als Basis.
+    A separate PnP per tag, from four corners of a 20 cm base, is poorly determined
+    at 2-3 m distance in tilt -- a 1 degree tilt error amounts to 5 cm on the floor.
+    The mean of such individual estimates inherits this. A PnP over the corners of
+    all world tags, in contrast, has the whole cell as its base.
 
-    Die Ecken werden wie beim Einzel-Tag entzerrt (Linsenmodell aus
-    `tagloc.lens`) und dann mit idealem Pinhole geloest. Startwerte: die
-    uebergebene Schaetzung (typisch das Mittel der Einzel-Tags) und
-    `SOLVEPNP_SQPNP` bzw. `IPPE`; jede wird mit Levenberg-Marquardt
-    verfeinert, die mit dem kleineren Fehler gewinnt.
+    The corners are undistorted as for a single tag (lens model from `tagloc.lens`)
+    and then solved with ideal pinhole. Starting values: the passed-in estimate
+    (typically the mean of the single tags) and `SOLVEPNP_SQPNP` or `IPPE`; each
+    is refined with Levenberg-Marquardt, and the one with the smaller error wins.
 
-    Mehrdeutige Tags zaehlen **mit**: die Mehrdeutigkeit gehoert zur
-    Einzel-Tag-Loesung aus vier Ecken (zwei Kippstellungen erklaeren sie
-    gleich gut), nicht zu den Ecken selbst. Gerade ein frontal von oben
-    gesehener Tag ist oft "mehrdeutig" -- im gemeinsamen PnP ueber alle Ecken
-    verschwindet das. Tags ohne Weltpose bleiben aussen vor. Unter zwei Tags
-    `None` -- dann gibt es nichts zu verbinden.
+    Ambiguous tags **are included**: the ambiguity belongs to the single-tag
+    solution from four corners (two tilts explain it equally well), not to the
+    corners themselves. A tag seen straight on from above is often "ambiguous" --
+    in the joint PnP over all corners this disappears. Tags without a world pose
+    are left out. Fewer than two usable tags returns `None` -- then there is
+    nothing to connect.
     """
     import cv2
 
@@ -335,7 +333,9 @@ def _world_correspondences(
     sizes_m: dict[int, float],
     calibration: CameraCalibration,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    """Je Tag die vier Ecken im Welt-KS und die entzerrten Bildecken, in gleicher Reihenfolge."""
+    """For each tag, return the four corners in the world frame and the undistorted
+    image corners, in the same order.
+    """
     object_points = []
     image_points = []
     for tag_pose in used:
@@ -356,10 +356,10 @@ def _pnp_starts(
     no_distortion: np.ndarray,
     initial_pose_cam_world: Pose | None,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Startwerte `(rvec, tvec)` fuer das gemeinsame PnP.
+    """Return starting values `(rvec, tvec)` for the joint PnP.
 
-    Zuerst die uebergebene Schaetzung, dann die erste Loesung von `SQPNP` bzw.
-    `IPPE`, die OpenCV liefert. Leer, wenn keine zustande kommt.
+    First the passed-in estimate, then the first solution of `SQPNP` or `IPPE`
+    that OpenCV returns. Empty if none is obtained.
     """
     import cv2
 
@@ -382,13 +382,14 @@ def _pnp_starts(
 
 
 def _translation(point) -> Pose:
+    """Return a pose that is a pure translation by `point`."""
     pose = np.eye(4, dtype=np.float64)
     pose[:3, 3] = point
     return pose
 
 
 def poses_by_tag(tag_poses: Sequence[TagPose]) -> dict[int, Pose]:
-    """Liefert `{tag_id: T_cam_tag}`, das Eingabeformat von `tagmap.place_tags`."""
+    """Return `{tag_id: T_cam_tag}`, the input format of `tagmap.place_tags`."""
     return {tag_pose.tag_id: tag_pose.pose_cam_tag for tag_pose in tag_poses}
 
 

@@ -1,11 +1,11 @@
-"""Testclient: interaktive Kalibrierung ueber StartCalibration/FinishCalibration/
-AbortCalibration ausloesen, Fortschritt live mitloggen.
+"""Test client: run an interactive calibration via StartCalibration/FinishCalibration/
+AbortCalibration and log the progress live.
 
-Fuer Pis, an denen das Frontend die Kalibrierung noch nicht anbietet -- ruft
-dieselben additiven Methoden wie ein spaeteres Frontend, siehe
-doc/projektdoku/vision-server-interface.md Abschnitt 12. Laeuft, bis Strg+C gedrueckt
-wird; das beendet die Session per `FinishCalibration` (Standard) oder mit
-`--abort` ohne zu speichern.
+For Pis where the frontend does not offer the calibration yet. It calls the same
+additive methods that a later frontend will use, see
+doc/projektdoku/vision-server-interface.md section 12. It runs until Ctrl+C is
+pressed; this ends the session via `FinishCalibration` (default), or with
+`--abort` without saving.
 """
 
 import argparse
@@ -20,17 +20,19 @@ from asyncua import Client, ua
 
 _log = logging.getLogger("calibration-client")
 
-#: Fehlercodes aus doc/projektdoku/vision-server-interface.md ("Fehlercodes (Error)") --
-#: kein Import aus `vision_server`, dieses Skript bleibt ein reiner
-#: OPC-UA-Client, unabhaengig vom Server-Code.
+#: Error codes from doc/projektdoku/vision-server-interface.md ("Fehlercodes (Error)") --
+#: not imported from `vision_server`; this script stays a pure OPC UA client,
+#: independent of the server code.
 BUSY = 3
 
 
 async def _start_session(vision, start_node, abort_node) -> int:
-    """Ruft `StartCalibration`; bei `BUSY` einmal `AbortCalibration` +
-    Retry, falls das die hängengebliebene Session eines frueher
-    abgestuerzten Clients ist (die Session lebt im Server-Prozess, nicht im
-    Client -- ein hart beendeter Client raeumt sie nicht auf)."""
+    """Call `StartCalibration`; on `BUSY`, call `AbortCalibration` once and retry.
+
+    This handles a session left hanging by an earlier client that crashed. The
+    session lives in the server process, not in the client, so a hard-killed
+    client does not clean it up.
+    """
     error = await vision.call_method(start_node)
     if error == BUSY:
         print("StartCalibration -> BUSY: vermutlich eine haengengebliebene")
@@ -41,7 +43,7 @@ async def _start_session(vision, start_node, abort_node) -> int:
 
 
 async def run(args: argparse.Namespace) -> int:
-    """Startet eine Session, loggt den Fortschritt, beendet sie bei Strg+C."""
+    """Start a session, log its progress, and end it on Ctrl+C."""
     async with Client(url=args.url) as client:
         own_idx = await client.get_namespace_index(args.namespace)
         vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
@@ -63,17 +65,17 @@ async def run(args: argparse.Namespace) -> int:
             "(FinishCalibration; mit --abort ohne zu speichern/auszuwerten).\n"
         )
 
-        # Strg+C waehrend `asyncio.sleep` wird von `asyncio.run()` VOR dieser
-        # Coroutine abgefangen -- eine `except KeyboardInterrupt` hier drin
-        # wird nie erreicht, der Prozess stirbt sofort ohne FinishCalibration.
-        # Ein echter Signal-Handler setzt stattdessen nur ein Event, auf das
-        # der Loop reagieren kann.
+        # Ctrl+C during `asyncio.sleep` is caught by `asyncio.run()` BEFORE this
+        # coroutine sees it -- an `except KeyboardInterrupt` here would never be
+        # reached, and the process would die at once without FinishCalibration.
+        # A real signal handler instead only sets an event, which the loop can
+        # react to.
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         try:
             loop.add_signal_handler(signal.SIGINT, stop.set)
         except NotImplementedError:
-            pass  # z. B. Windows -- Strg+C bricht dann wie zuvor hart ab
+            pass  # e.g. Windows -- Ctrl+C then aborts hard, as before
 
         while not stop.is_set():
             progress = json.loads(await progress_node.read_value())
@@ -93,10 +95,9 @@ async def run(args: argparse.Namespace) -> int:
         if error != 0:
             return 1
 
-        # `FinishCalibration` stoesst die Auswertung nur an und kehrt sofort
-        # zurueck (siehe calibration_session.py) -- das eigentliche Ergebnis
-        # kommt ueber `CalibrationProgress`, sobald `processing` wieder
-        # `False` wird.
+        # `FinishCalibration` only starts the evaluation and returns at once (see
+        # calibration_session.py) -- the actual result arrives via
+        # `CalibrationProgress` once `processing` is `False` again.
         print("Auswertung laeuft im Hintergrund ...")
         result = None
         while result is None:
@@ -110,7 +111,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Liest die Kommandozeile und fuehrt die Kalibrier-Session aus."""
+    """Parse the command line and run the calibration session."""
     parser = argparse.ArgumentParser(description="Interaktive Kalibrierung gegen den Vision-Server")
     parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
     parser.add_argument("--namespace", default="http://launch-rm.de/vision")

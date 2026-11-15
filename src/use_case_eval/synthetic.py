@@ -1,27 +1,26 @@
-"""Synthetische Testbilder der Zielscheibe mit Wuerfelmarker bei bekannter Wahrheit.
+"""Synthetic test images of the target with a cube marker and known ground truth.
 
-Rueckwaertsabbildung per `cv2.remap`: jeder Bildpunkt wird entzerrt, als Strahl
-mit der Blattebene (und der Wuerfeloberseite z = 20 mm) geschnitten und dort aus
-einer Textur gelesen. Damit stimmen auch Bilder mit Linsenverzeichnung exakt zur
-Kalibrierung. Gerendert werden nur die vier Blattmarker, die Toleranzkreise und
-der Wuerfel, nicht die Winkelskala.
+Inverse mapping via `cv2.remap`: each image pixel is undistorted, intersected as a ray
+with the sheet plane (and the cube top at z = 20 mm), and read from a texture there.
+This way, images with lens distortion also match the calibration exactly. Only the four
+sheet markers, the tolerance circles and the cube are rendered, not the angle scale.
 """
 
 import numpy as np
 
 from . import target
 
-#: Texturaufloesung in Pixel je mm.
+#: Texture resolution in pixels per mm.
 TEXTURE_PX_PER_MM = 12.0
-#: Weichzeichner (Texel) als Ersatz fuer die Pixelflaeche der Kamera; unterdrueckt Aliasing.
+#: Blur (texels) as a substitute for the camera's pixel area; suppresses aliasing.
 TEXTURE_BLUR_SIGMA = 2.0
-#: Ausdehnung der Blattstextur um die Scheibenmitte (mm).
+#: Extent of the sheet texture around the target center (mm).
 SHEET_HALF_WIDTH_MM = 110.0
 SHEET_HALF_HEIGHT_MM = 160.0
 
 
 def make_calibration(fx: float = 466.0, size=(640, 480), distortion=None):
-    """Pinhole-Kalibrierung mit Bildmitte als Hauptpunkt (Standard: RealSense-aehnlich)."""
+    """Pinhole calibration with the image center as principal point (default: RealSense-like)."""
     from tagloc.calibration import PINHOLE, CameraCalibration
 
     width, height = size
@@ -36,11 +35,11 @@ def make_calibration(fx: float = 466.0, size=(640, 480), distortion=None):
 
 
 def look_down_pose(x_mm=0.0, y_mm=0.0, height_mm=200.0, yaw_deg=0.0, tilt_deg=0.0) -> np.ndarray:
-    """Kamerapose im Blattsystem (4x4, `T_sheet_cam`) mit Blick senkrecht nach unten.
+    """Return the camera pose in the sheet frame (4x4, `T_sheet_cam`), looking straight down.
 
-    Kamera-x zeigt nach Blatt-x, Kamera-y nach Blatt-(-y) (Bild oben = Blatt oben),
-    Kamera-z nach Blatt-(-z). `yaw_deg` dreht um die Blatt-z-Achse, `tilt_deg` kippt
-    um die Kamera-x-Achse.
+    Camera x points along sheet x, camera y points along sheet -y (image top = sheet top),
+    camera z points along sheet -z. `yaw_deg` rotates around the sheet z-axis, `tilt_deg`
+    tilts around the camera x-axis.
     """
     base = np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]])
     yaw, tilt = np.radians(yaw_deg), np.radians(tilt_deg)
@@ -53,18 +52,18 @@ def look_down_pose(x_mm=0.0, y_mm=0.0, height_mm=200.0, yaw_deg=0.0, tilt_deg=0.
 
 
 def _marker_texture(marker_id: int, size_mm: float) -> np.ndarray:
-    """Marker als Graubild (schwarz/weiss), exakt `size_mm * TEXTURE_PX_PER_MM` gross."""
+    """Return a marker as a grayscale image (black/white), exactly `size_mm * TEXTURE_PX_PER_MM` wide."""
     import cv2
 
     pixels = int(round(size_mm * TEXTURE_PX_PER_MM))
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    # Ganzzahlige Zellgroesse (Vielfaches von 6): sonst wandern die Modulkanten.
+    # Integer cell size (multiple of 6): otherwise the module edges would drift.
     image = cv2.aruco.generateImageMarker(dictionary, marker_id, pixels)
     return cv2.GaussianBlur(image, (0, 0), TEXTURE_BLUR_SIGMA)
 
 
 def _sheet_texture() -> np.ndarray:
-    """Weisses Blatt mit Markern (samt Ruhezone), Toleranzkreisen und Fadenkreuz."""
+    """Return a white sheet with markers (incl. quiet zone), tolerance circles and crosshair."""
     import cv2
 
     width = int(2 * SHEET_HALF_WIDTH_MM * TEXTURE_PX_PER_MM)
@@ -89,7 +88,7 @@ def _sheet_texture() -> np.ndarray:
 
 
 def _plane_points(calibration, pose_sheet_cam: np.ndarray, z_mm: float):
-    """Blatt-x/-y (mm) der Ebene z = `z_mm` fuer jeden Bildpunkt; `NaN` ohne Schnitt."""
+    """Return sheet x/y (mm) on the plane z = `z_mm` for each image pixel; `NaN` if no intersection."""
     from tagloc.lens import undistort_points
 
     width, height = calibration.image_size
@@ -124,17 +123,17 @@ def render_trial(
     with_sheet_markers=None,
     supersample: int = 1,
 ):
-    """Rendert ein Graubild (uint8) von Blatt und Wuerfel.
+    """Render a grayscale image (uint8) of the sheet and the cube.
 
-    `camera_pose_in_sheet`: 4x4 `T_sheet_cam` (siehe `look_down_pose`).
-    Wuerfelmitte (`cube_dx_mm`, `cube_dy_mm`) und Gierwinkel (`cube_dtheta_deg`,
-    gegen den Uhrzeigersinn) gelten im Blattsystem. `sticker_offset_mm`: Lage
-    der Markermitte relativ zur Wuerfelmitte im Wuerfel-/Markersystem.
-    `supersample` > 1: mit dem n-fachen Raster rendern und per `INTER_AREA`
-    verkleinern (Intrinsik skaliert, Hauptpunkt `(c + 0.5) * n - 0.5`) -- die
-    Pixelflaeche statt Punktabtastung, wie bei einer echten Kamera.
-    `with_sheet_markers`: Liste der Blatt-IDs, die gezeichnet werden (Standard: alle);
-    `with_cube=False` laesst den Wuerfel weg.
+    `camera_pose_in_sheet`: 4x4 `T_sheet_cam` (see `look_down_pose`).
+    Cube center (`cube_dx_mm`, `cube_dy_mm`) and yaw angle (`cube_dtheta_deg`,
+    counterclockwise) are given in the sheet frame. `sticker_offset_mm`: position of the
+    marker center relative to the cube center in the cube/marker frame.
+    `supersample` > 1: render on an n-times finer grid and downscale with `INTER_AREA`
+    (intrinsics scaled, principal point `(c + 0.5) * n - 0.5`). This integrates over the
+    pixel area instead of point sampling, as a real camera does.
+    `with_sheet_markers`: list of sheet IDs to draw (default: all); `with_cube=False`
+    omits the cube.
     """
     import cv2
 
@@ -185,10 +184,10 @@ def render_trial(
 
 
 def _paint_cube(image, calibration, pose, cube_dx_mm, cube_dy_mm, cube_dtheta_deg, sticker_offset_mm):
-    """Zeichnet die Wuerfeloberseite (20 mm) samt Marker (18 mm) in `image` (Rueckabbildung)."""
+    """Paint the cube top (20 mm) with its marker (18 mm) into `image` (inverse mapping)."""
     import cv2
 
-    # Wuerfeloberseite: 20-mm-Flaeche mit 18-mm-Marker (Mitte um den Versatz verschoben).
+    # Cube top: 20 mm area with an 18 mm marker (center shifted by the offset).
     cube_x, cube_y = _plane_points(calibration, pose, target.CUBE_TOP_Z_MM)
     rel = np.stack([cube_x - cube_dx_mm, cube_y - cube_dy_mm], axis=-1)
     local = rel @ target.rotation_2d(cube_dtheta_deg)  # == R(-theta) * rel
@@ -209,15 +208,15 @@ def _paint_cube(image, calibration, pose, cube_dx_mm, cube_dy_mm, cube_dtheta_de
     return np.where(on_cube & ~np.isnan(cube_x), top, image).astype(np.uint8)
 
 
-#: Raster der Tag-Textur (Zellen je Kante inkl. Rand wie tag36h11: 8, Innenmuster 6x6).
+#: Grid of the tag texture (cells per edge including the border, as tag36h11: 8, inner pattern 6x6).
 TAG_CELLS = 8
 
 
 def _tag_texture(tag_size_mm: float, pattern_seed: int) -> np.ndarray:
-    """Weisse Tischflaeche mit schwarzem Tag-Quadrat, Mitte = Texturmitte.
+    """Return a white table surface with a black tag square, centered on the texture.
 
-    Aussenrand eine Zelle breit schwarz, innen ein zufaelliges 6x6-Bitmuster
-    (`pattern_seed`); der Tag ist nicht dekodierbar gemeint, nur ein Muster.
+    The outer border is one cell wide and black; the inside is a random 6x6 bit pattern
+    (`pattern_seed`). The tag is not meant to be decodable, it is only a pattern.
     """
     import cv2
 
@@ -225,7 +224,7 @@ def _tag_texture(tag_size_mm: float, pattern_seed: int) -> np.ndarray:
     texture = np.full((2 * half_px, 2 * half_px), 255, dtype=np.uint8)
     cell = tag_size_mm * TEXTURE_PX_PER_MM / TAG_CELLS
     bits = np.random.default_rng(pattern_seed).integers(0, 2, size=(TAG_CELLS, TAG_CELLS))
-    bits[0, :] = bits[-1, :] = bits[:, 0] = bits[:, -1] = 0  # 0 = schwarz
+    bits[0, :] = bits[-1, :] = bits[:, 0] = bits[:, -1] = 0  # 0 = black
     x0 = half_px - cell * TAG_CELLS / 2.0
     texture[
         int(round(x0)) : int(round(x0 + cell * TAG_CELLS)),
@@ -253,14 +252,14 @@ def render_tag_scene(
     with_cube: bool = True,
     supersample: int = 1,
 ):
-    """Rendert ein Graubild (uint8): schwarzes Tag-Quadrat auf weissem Tisch, Wuerfel darauf.
+    """Render a grayscale image (uint8): black tag square on a white table, with the cube on it.
 
-    Bezugssystem wie bei `render_trial` (`look_down_pose`): Ursprung = Tag-Mitte,
-    Kanten parallel zu den Achsen, x nach rechts, y bei `yaw_deg = 0` im Bild nach
-    oben. Wuerfelmitte (`cube_dx_mm`, `cube_dy_mm`) und Gierwinkel gelten in diesem
-    System; der Wuerfel (20 mm, Marker ID 10) liegt auf der Tag-Ebene (Oberseite
-    z = 20 mm). Das 6x6-Innenmuster ist zufaellig (`pattern_seed`).
-    `supersample`: wie bei `render_trial`.
+    Reference frame as in `render_trial` (`look_down_pose`): origin = tag center,
+    edges parallel to the axes, x to the right, y up in the image when `yaw_deg = 0`.
+    Cube center (`cube_dx_mm`, `cube_dy_mm`) and yaw angle are given in this frame; the
+    cube (20 mm, marker ID 10) lies on the tag plane (top at z = 20 mm). The inner 6x6
+    pattern is random (`pattern_seed`).
+    `supersample`: as in `render_trial`.
     """
     import cv2
 

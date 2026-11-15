@@ -1,4 +1,4 @@
-"""Das fertig verdrahtete Vision-System (`VisionMachine`) und sein Herunterfahren."""
+"""The fully wired vision system (`VisionMachine`) and its shutdown."""
 
 import asyncio
 import logging
@@ -32,11 +32,11 @@ LOOP_LAG_WARN_S = 0.75
 async def _watch_loop_lag(
     interval: float = LOOP_LAG_INTERVAL_S, warn: float = LOOP_LAG_WARN_S
 ) -> None:
-    """Loggt, wenn der Event-Loop blockiert war.
+    """Log a warning when the event loop was blocked.
 
-    Vergisst eine Quelle `run_blocking`, sieht man es hier statt als
-    unerklaerlichen Verbindungsabbruch woanders. Ersetzt `RaspiDevice/Counter`
-    als Referenzsignal (doc/projektdoku/altlasten.md A3/A5).
+    If a source forgets `run_blocking`, this shows it here. Otherwise it would
+    surface as an unexplained connection drop somewhere else. Replaces
+    `RaspiDevice/Counter` as the reference signal (doc/projektdoku/altlasten.md A3/A5).
     """
     loop = asyncio.get_running_loop()
     while True:
@@ -53,7 +53,7 @@ async def _watch_loop_lag(
 
 @dataclass(frozen=True)
 class VisionMachine:
-    """Das fertig verdrahtete Vision-System eines Servers."""
+    """The fully wired vision system of one server."""
 
     config: VisionServerConfig
     states: VisionStateMachines
@@ -63,31 +63,31 @@ class VisionMachine:
     jobs: JobRunner
     lag_watchdog: asyncio.Task | None = None
     camera_stream: CameraStreamPublisher | None = None
-    #: MJPEG-Livestream ueber HTTP; `None`, wenn aus oder der Port belegt war.
+    #: MJPEG live stream over HTTP; `None` if disabled or the port was in use.
     camera_http: MjpegServer | None = None
-    #: Anlagensicht nach OPC 40100-2; `None`, wenn Part 2 nicht konfiguriert ist.
+    #: Plant view per OPC 40100-2; `None` if Part 2 is not configured.
     assets: VisionAssetNodes | None = None
-    #: Schreibt `DeviceHealth` der Anlagensicht; `None` ohne Part 2, ohne
-    #: Zustandsknoten oder ohne geoeffnete Kamera.
+    #: Writes `DeviceHealth` of the plant view; `None` without Part 2, without
+    #: state nodes, or without an open camera.
     camera_health: CameraHealthPublisher | None = None
-    #: Part-10-Programm als generische Bedienoberflaeche auf denselben Jobs.
+    #: Part 10 program as a generic operator interface on the same jobs.
     program: VisionProgram | None = None
-    #: `None`, wenn `config.apriltag` nicht gesetzt ist -- kein
+    #: `None` if `config.apriltag` is not set. Then there is no
     #: `StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
     #: `AbortCalibration`.
     calibration_session: CalibrationSession | None = None
-    #: Layer-2-Lauf (`layer2/run.py`); `None` ausser auf dem Hand-Pi.
+    #: Layer 2 run (`layer2/run.py`); `None` except on the hand Pi.
     layer2_run: Any = None
-    #: Hand-Auge-Kalibrierung (`handeye_session.py`); `None` ausser auf dem Hand-Pi.
+    #: Hand-eye calibration (`handeye_session.py`); `None` except on the hand Pi.
     hand_eye_session: Any = None
-    #: Zellen-Ueberwachung (`cellwatch.py`); `None` ausser auf der Deckenkamera.
+    #: Cell watch (`cellwatch.py`); `None` except on the ceiling camera.
     cell_watch: Any = None
 
     async def aclose(self) -> None:
-        """Faehrt Watchdog, Livestream, laufenden Job und Quelle herunter.
+        """Shut down the watchdog, live stream, running job and sources.
 
-        Best-Effort und idempotent; braucht im Aufrufer einen Signal-Handler,
-        sonst laeuft es unter systemd nicht.
+        Best effort and idempotent. The caller needs a signal handler, otherwise
+        this does not run under systemd.
         """
         if self.calibration_session is not None and self.calibration_session.running:
             await self.calibration_session.abort()
@@ -97,9 +97,9 @@ class VisionMachine:
             await self.hand_eye_session.abort()
         if self.cell_watch is not None:
             await self.cell_watch.aclose()
-        # Vor Stream und Quellen: das geordnete Schliessen der Kamera schlaege
-        # sonst als Haenger durch, und der letzte Wert im Adressraum waere
-        # OFF_SPEC statt des letzten echten Zustands.
+        # Before the stream and sources: an orderly camera close would otherwise
+        # time out as a hang, and the last value in the address space would be
+        # OFF_SPEC instead of the last real state.
         if self.camera_health is not None:
             await self.camera_health.stop()
         await cancel_and_wait(self.lag_watchdog)

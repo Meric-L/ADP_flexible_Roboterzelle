@@ -1,12 +1,12 @@
-"""Der Job der AprilTag-Quelle: Bilder aufnehmen, Module lokalisieren, Detektionen bauen.
+"""The job of the AprilTag source: capture images, locate modules, build detections.
 
-`JobMixin` ist `acquire_and_detect` (die Schnittstelle von `DetectionSource`)
-samt dem Auswerten eines einzelnen Bilds (`_locate`). Dazu die Funktionen, die
-Job-Eingaben lesen (`robot_pose_from_parameters`) und Job-Ergebnisse fuer das
-Payload aufbereiten (Welttags, Kamera-Lokalisierung). Der Mixin erwartet am
-Objekt `_config`, `_detector`, `_tag_map`, `_hand_eye`, `_anchor`, `_drift`,
-`_localization`, `_world_tag_sample`, `world_tags`, `camera_localization` und
-`frame_id` sowie die Methoden von `CaptureMixin`.
+`JobMixin` holds `acquire_and_detect` (the `DetectionSource` interface) and the
+evaluation of a single image (`_locate`). It also has the functions that read job
+inputs (`robot_pose_from_parameters`) and prepare job results for the payload
+(world tags, camera localization). The mixin expects these attributes on the
+object: `_config`, `_detector`, `_tag_map`, `_hand_eye`, `_anchor`, `_drift`,
+`_localization`, `_world_tag_sample`, `world_tags`, `camera_localization` and
+`frame_id`. It also relies on the methods of `CaptureMixin`.
 """
 
 import logging
@@ -20,30 +20,29 @@ from ..base import Detection, DetectionRequest
 
 _log = logging.getLogger(__package__)
 
-#: Stellen, auf die Zahlen im Payload der Erkennung gerundet werden.
+#: Digits to which numbers in the detection payload are rounded.
 PAYLOAD_DIGITS = 4
 
-#: Frame id -> welche der beiden Kameras das ist. Spiegelt die Rahmen, die
-#: `vision_server.server.PI_IDENTITIES` je Pi vergibt. Bewusst einfache
-#: Zeichenketten und nicht `tagloc.localize.SOURCE_*`: dieses Modul muss ohne
-#: numpy importierbar bleiben, `tagloc` wird deshalb nur in Methoden
-#: importiert. Ein unbekannter Rahmen ergibt eine leere Quelle, die
-#: `merge_locations` dann hinter beide bekannten Kameras einsortiert, statt zu
-#: raten.
+#: Frame id -> which of the two cameras it belongs to. It mirrors the frames that
+#: `vision_server.server.PI_IDENTITIES` assigns per Pi. Plain strings are used on
+#: purpose, not `tagloc.localize.SOURCE_*`. This module must stay importable
+#: without numpy, so `tagloc` is only imported inside methods. An unknown frame
+#: gives an empty source. `merge_locations` then sorts it behind both known
+#: cameras instead of guessing.
 SOURCE_BY_FRAME = {"cam_ceiling": "ceiling", "cam_flange": "flange"}
 
 
 def robot_pose_from_parameters(parameters) -> Any | None:
-    """Liefert `T_base_flansch` aus den Job-Parametern, oder `None`.
+    """Return `T_base_flange` from the job parameters, or ``None``.
 
-    Sieben Floats: `(x, y, z, qx, qy, qz, qw)` -- Meter und Quaternion xyzw wie
-    ueberall im Projekt. Der Roboter steht waehrend der Aufnahmen still, also
-    gilt eine Pose fuer den ganzen Job; ein Zeitstempel-Abgleich mit dem
-    einzelnen Frame eruebrigt sich damit.
+    Seven floats: `(x, y, z, qx, qy, qz, qw)`. Meters and a quaternion in xyzw,
+    as everywhere in the project. The robot stands still during the captures, so
+    one pose applies to the whole job. That makes a timestamp match with each
+    single frame unnecessary.
 
-    Fehlt der Parameter oder ist er unbrauchbar, kommt `None` zurueck und der
-    Anker bleibt ungenutzt. Es wird nicht geraten -- eine falsche Roboterpose
-    verschiebt jede Modulpose, ohne dass man es dem Ergebnis ansieht.
+    If the parameter is missing or unusable, ``None`` is returned and the anchor
+    stays unused. Nothing is guessed. A wrong robot pose shifts every module pose,
+    and the result does not show it.
     """
     if not parameters or len(parameters) < 7:
         return None
@@ -66,13 +65,15 @@ def robot_pose_from_parameters(parameters) -> Any | None:
 
 
 def _observed_world_tags(tag_poses, tag_map, localization) -> list:
-    """Wo dieses Bild die Welttags sieht:
-    `(tag_id, T_world_tag, Reprojektionsfehler, mehrdeutig, Eckenfehler unter der gemeinsamen Pose)`.
+    """Return where this image sees the world tags.
 
-    `T_world_cam · T_cam_tag` mit der zusammengefuehrten Kamerapose. Die
-    Abweichung von der Weltpose in der Tag-Map ist das Fehlermass der Karte
-    -- `locate_modules` laesst Welttags bewusst aus, sie sind keine Module.
-    Nur mit Kamerapose; ohne sie gibt es kein Welt-KS.
+    Each entry is `(tag_id, T_world_tag, reprojection_error, ambiguous,
+    corner_error_under_joint_pose)`.
+
+    `T_world_cam · T_cam_tag` uses the merged camera pose. The deviation from the
+    world pose in the tag map is the error measure of the map. `locate_modules`
+    deliberately leaves world tags out, because they are not modules. This needs
+    a camera pose. Without one there is no world frame.
     """
     from tagloc.geometry import compose
 
@@ -89,8 +90,8 @@ def _observed_world_tags(tag_poses, tag_map, localization) -> list:
                 compose(localization.pose_world_cam, tag_pose.pose_cam_tag),
                 tag_pose.reprojection_error_px,
                 tag_pose.is_ambiguous,
-                # Fehler der Ecken dieses Tags unter der gemeinsamen Pose --
-                # zeigt, welcher Welttag nicht zur Karte passt.
+                # Corner errors of this tag under the joint pose. They show
+                # which world tag does not match the map.
                 getattr(localization, "tag_errors_px", {}).get(tag_pose.tag_id),
             )
         )
@@ -98,12 +99,12 @@ def _observed_world_tags(tag_poses, tag_map, localization) -> list:
 
 
 def _localization_summary(localization) -> dict | None:
-    """`cameraLocalization` im Payload: wie die Kamerapose zustande kam.
+    """Build `cameraLocalization` for the payload: how the camera pose was obtained.
 
-    Aus dem letzten Bild des Jobs, wie die `camera*`-Attribute der
-    Detektionen -- hier aber auch ohne Detektion, fuer ein Bild nur mit
-    Welttags. Eine aus dem Anker fortgeschriebene Pose heisst `anchor` und
-    hat keinen Reprojektionsfehler: sie ist nicht gemessen.
+    It comes from the last image of the job, like the `camera*` attributes of the
+    detections. Here it is also built without any detection, for an image with
+    only world tags. A pose carried forward from the anchor is called `anchor` and
+    has no reprojection error, because it was not measured.
     """
     if localization is None:
         return None
@@ -119,17 +120,17 @@ def _localization_summary(localization) -> dict | None:
         "spreadM": finite_or_none(localization.spread_m, PAYLOAD_DIGITS),
         "spreadDeg": finite_or_none(math.degrees(localization.spread_rad), PAYLOAD_DIGITS),
         "worldTagIds": [int(tag_id) for tag_id in localization.world_tag_ids],
-        # Fuer jeden Solver: das Frontend schneidet damit den Sehstrahl zum Tag
-        # mit der bekannten Tag-Hoehe, statt der geschaetzten Tiefe zu trauen.
+        # For every solver: the frontend uses this to cut the viewing ray to the
+        # tag at its known height, instead of trusting the estimated depth.
         "cameraPositionInWorld": [
             finite_or_none(float(v), PAYLOAD_DIGITS)
             for v in np.asarray(localization.pose_world_cam)[:3, 3]
         ],
     }
     if not anchored and localization.solver == "joint":
-        # Die Pose selbst, nur wenn sie aus >= 2 Welttags gemeinsam geschaetzt
-        # ist: Die Zellen-Ueberwachung merkt sie sich, damit danach ein einziger
-        # Welttag genuegt. Dazu der Eckenfehler je Welttag als Grundlinie.
+        # The pose itself, only when it was estimated jointly from two or more
+        # world tags. The cell watch stores it, so that a single world tag is
+        # enough afterwards. The corner error per world tag is included as a baseline.
         from tagloc.geometry import pose_to_dict
 
         summary["poseInWorld"] = pose_to_dict(localization.pose_world_cam)
@@ -141,7 +142,7 @@ def _localization_summary(localization) -> dict | None:
 
 
 def _merge_world_tags(samples) -> tuple:
-    """Je Welttag ueber die Bilder eines Jobs gemittelt, JSON-fertig."""
+    """Average each world tag over the images of a job, ready for JSON."""
     from tagloc.geometry import to_position_quaternion
     from tagloc.tagmap import merge_tag_poses
 
@@ -176,10 +177,10 @@ def _merge_world_tags(samples) -> tuple:
 
 
 class JobMixin:
-    """`acquire_and_detect` und die Auswertung eines Bilds."""
+    """`acquire_and_detect` and the evaluation of one image."""
 
     def _locate(self, image, pose_base_flange=None) -> list:
-        """Wertet ein Bild aus. Laeuft im Worker-Thread, nie auf dem Loop."""
+        """Evaluate one image. Runs in the worker thread, never on the loop."""
         from tagloc import frames as frame_tools
         from tagloc.localize import locate_modules, localize_camera
         from tagloc.pose import estimate_tag_poses
@@ -193,8 +194,8 @@ class JobMixin:
             max_reprojection_error_px=self._config.max_reproj_error_px,
         )
         self._remember_tags(tag_poses, image, "job")
-        # Mit Kalibrierung: bei zwei und mehr Welttags ein gemeinsames PnP
-        # ueber alle ihre Ecken statt des Mittels der Einzel-Tags.
+        # With a calibration: for two or more world tags, one joint PnP over all
+        # their corners, instead of the mean of the single tags.
         localization = localize_camera(
             tag_poses,
             self._tag_map,
@@ -203,9 +204,9 @@ class JobMixin:
         )
         localization = self._carry_with_anchor(localization, pose_base_flange)
 
-        # Fuer `acquire_and_detect` festgehalten, das die Welttags und ihre
-        # Streuung neben den Posen meldet. Wird nur vom einen Worker-Thread
-        # geschrieben, also braucht es keine Sperre.
+        # Kept for `acquire_and_detect`, which reports the world tags and their
+        # spread next to the poses. Only the single worker thread writes these,
+        # so no lock is needed.
         self._localization = localization
         self._world_tag_sample = _observed_world_tags(tag_poses, self._tag_map, localization)
         frame_id = self._tag_map.frame_id if localization is not None else self._config.frame_id
@@ -219,12 +220,12 @@ class JobMixin:
         )
 
     def _carry_with_anchor(self, localization, pose_base_flange):
-        """Verankert die Kamerapose am Welttag oder schreibt sie vom Anker fort.
+        """Anchor the camera pose to the world tag, or carry it forward from the anchor.
 
-        Der optische Wert gewinnt immer, wenn ein Welttag im Bild liegt --
-        er ist die Messung, alles andere ist Fortschreibung. Liegt keiner
-        im Bild, traegt der Anker: genau der Fall zwischen zwei Modulen.
-        Ohne Hand-Auge oder ohne Roboterpose aendert sich nichts.
+        The optical value always wins when a world tag is in the image. It is the
+        measurement, everything else is carried forward. If no world tag is in the
+        image, the anchor carries the pose. This is the case between two modules.
+        Without hand-eye or without a robot pose nothing changes.
         """
         if self._hand_eye is None or pose_base_flange is None:
             return localization
@@ -250,7 +251,7 @@ class JobMixin:
         return localization
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
-        """Nimmt mehrere Bilder auf, mittelt die Posen und meldet die Module."""
+        """Capture several images, average the poses and report the modules."""
         from tagloc.localize import expected_but_missing, merge_by_module, merge_samples
 
         pose_base_flange = robot_pose_from_parameters(request.parameters)
@@ -258,8 +259,8 @@ class JobMixin:
 
         samples, world_samples, seen_timestamp = await self._capture_samples(pose_base_flange)
 
-        # Vor der Pruefung auf Module: ein Bild nur mit Welttags endet gleich
-        # in DETECTION_FAILED, soll die Welttags aber trotzdem melden.
+        # Before the module check: an image with only world tags ends in
+        # DETECTION_FAILED right away, but the world tags should still be reported.
         self.world_tags = _merge_world_tags(world_samples)
         self.camera_localization = _localization_summary(self._localization)
         located = merge_samples(samples)
@@ -269,18 +270,18 @@ class JobMixin:
                 f"Kein AprilTag der Familie '{self._config.tag_family}' gefunden",
             )
 
-        # Vor dem Zusammenfuehren je Modul: `expected_but_missing` vergleicht
-        # Tag-IDs, und mehrere zu einem Ergebnis verschmolzene Roboter-Tags
-        # liessen die verschluckten Tags sonst fehlen.
+        # Before merging per module: `expected_but_missing` compares tag IDs.
+        # Several robot tags merged into one result would otherwise hide the
+        # swallowed tags as missing.
         missing = expected_but_missing(self._tag_map, located)
         if missing:
             _log.info("Erwartet, aber nicht gefunden: %s", ", ".join(missing))
 
-        # Mehrere Tags am Roboter messen dieselbe Basispose.
+        # Several tags on the robot measure the same base pose.
         located = merge_by_module(located, tag_map=self._tag_map)
 
-        # Der Rahmen folgt dem, was tatsaechlich gerechnet wurde: mit
-        # Referenztags das Welt-KS, ohne sie das Kamera-KS.
+        # The frame follows what was actually computed: the world frame when
+        # reference tags are present, otherwise the camera frame.
         self.frame_id = located[0].frame_id or self._config.frame_id
 
         if self._localization is None:
@@ -292,17 +293,17 @@ class JobMixin:
         ]
 
     def _reset_job_report(self) -> None:
-        """Setzt Drift und gemeldete Welttags zurueck, bevor das erste Bild kommt.
+        """Reset drift and the reported world tags before the first image arrives.
 
-        Ein Job, der an der Kamera scheitert, darf nicht die Welttags des
-        vorigen melden.
+        A job that fails at the camera must not report the world tags of the
+        previous job.
         """
         self._drift = None
         self.world_tags = ()
         self.camera_localization = None
 
     async def _capture_samples(self, pose_base_flange) -> tuple[list, list, float | None]:
-        """Ein frisches Bild je Sample auswerten: `(Module je Bild, Welttags je Bild, letzter Zeitstempel)`."""
+        """Evaluate one fresh image per sample: `(modules per image, world tags per image, last timestamp)`."""
         samples: list[list] = []
         world_samples: list[list] = []
         seen_timestamp: float | None = None
@@ -315,12 +316,12 @@ class JobMixin:
         return samples, world_samples, seen_timestamp
 
     def _warn_no_world_tag(self, located) -> None:
-        """Warnt, warum es kein Welt-KS gibt: welche Tags gesehen wurden und welche die Karte kennt.
+        """Warn why there is no world frame: which tags were seen and which the map knows.
 
-        Ohne Welttag bleiben die Posen im Kamera-KS, und jeder Konsument
-        muss sie ablehnen -- eine Kamerapose laesst sich nicht in der
-        Zelle platzieren. Bisher stand nirgends, WARUM keiner gefunden
-        wurde; genau daran scheitert die Fehlersuche beim Aufbau.
+        Without a world tag the poses stay in the camera frame, and every consumer
+        must reject them. A camera pose cannot be placed in the cell. Until now
+        nothing said WHY no world tag was found. That is exactly what makes
+        commissioning troubleshooting hard.
         """
         known = sorted(self._tag_map.reference_poses())
         _log.warning(
@@ -337,7 +338,7 @@ class JobMixin:
         )
 
     def _build_detection(self, location, request, sample_count, seen_timestamp, missing) -> Detection:
-        """Baut die `Detection` eines Moduls samt Payload-Attributen."""
+        """Build the `Detection` of a module, including its payload attributes."""
         from tagloc.geometry import to_position_quaternion
 
         position, orientation = to_position_quaternion(location.pose)
@@ -353,9 +354,9 @@ class JobMixin:
         )
 
     def _detection_attributes(self, location, request, sample_count, seen_timestamp, missing) -> dict:
-        """Die Attribute einer Detektion: Tag, Qualitaet, Bezug zum Welttag, Kamerapose, Anker.
+        """Return the attributes of a detection: tag, quality, world tag reference, camera pose, anchor.
 
-        Namen und Reihenfolge sind Teil der Payload-Schnittstelle.
+        Names and order are part of the payload interface.
         """
         from tagloc.geometry import to_position_quaternion
 
@@ -371,8 +372,8 @@ class JobMixin:
             "role": location.role,
         }
         if location.attributes.get("tagCount"):
-            # Mehrere Tags haben dieses Modul gemessen -- sagen, welche, damit
-            # ein falscher CAD-Versatz an einem von ihnen auffindbar bleibt.
+            # Several tags measured this module. Record which ones, so that a
+            # wrong CAD offset on one of them can still be traced.
             attributes["tagIds"] = location.attributes["tagIds"]
             attributes["tagCount"] = location.attributes["tagCount"]
         if location.reference_tag_id >= 0:
@@ -392,8 +393,8 @@ class JobMixin:
             attributes["cameraSpreadDeg"] = finite_or_none(
                 math.degrees(localization.spread_rad), PAYLOAD_DIGITS
             )
-            # Ob die Kamerapose gemessen oder fortgeschrieben wurde, ist
-            # kein Detail: die beiden haben nicht dieselbe Genauigkeit.
+            # Whether the camera pose was measured or carried forward matters:
+            # the two do not have the same accuracy.
             attributes["cameraPoseOrigin"] = localization.origin
             if localization.solver:
                 attributes["cameraPoseSolver"] = localization.solver

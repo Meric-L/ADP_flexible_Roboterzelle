@@ -1,7 +1,7 @@
 """Overlay for the camera livestream: what the server marks in the image.
 
-The stream is a debugging tool. It should show not just that an image
-arrives, but what detection sees in it -- detected tags as a green box with tag ID
+The stream is a debugging tool. It should show not just that an image arrives,
+but what detection sees in it: detected tags as a green box with the tag ID
 (no axis cross, no status bar), or the found board corners in calibration mode.
 
 Two rules keep this sustainable in production:
@@ -12,15 +12,14 @@ Two rules keep this sustainable in production:
    the last result is redrawn. Invisible for a fixed-mounted camera, but not
    to the Pi's CPU.
 
-Im Modus "apriltag" gilt seit 21.10.2026 zusaetzlich: die Tags kommen aus
-einer Erkennung in **voller** Kameraaufloesung, gestreamt wird trotzdem nur
-das kleine Bild. Das Overlay erkennt dafuer nicht im Stream-Takt -- das kostete
-am Pi eine ganze Core und liess Jobs in den Timeout laufen (py-spy,
-24.09.2026) --, sondern zeichnet das neueste Ergebnis, das Job,
-Zellen-Ueberwachung oder Messung ohnehin berechnet haben
-(`AprilTagDetectionSource.latest_tags`). Nur wenn das zu alt ist, erkennt es
-selbst, selten, im Hintergrund und nie waehrend eines Jobs. Siehe
-`doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
+Since 21.10.2026, mode "apriltag" also works as follows. The tags come from a
+detection at **full** camera resolution, yet only the small image is streamed.
+The overlay does not detect at the stream tick. Doing so cost a whole core on
+the Pi and let jobs run into the timeout (py-spy, 24.09.2026). Instead, it draws
+the newest result that a job, the cell watch or a measurement has already
+computed anyway (`AprilTagDetectionSource.latest_tags`). Only if that result is
+too old does it detect by itself, rarely, in the background, and never during a
+job. See `doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
 
 Runs entirely in the publisher's worker thread -- `annotate` is never called
 directly on the event loop.
@@ -41,11 +40,10 @@ _log = logging.getLogger(__name__)
 class AprilTagStreamAnnotator:
     """Draw detection results into a stream frame.
 
-    Receives detector, calibration and tag map from outside -- typically the
-    already-loaded objects from `AprilTagDetectionSource`, so stream and job
-    are guaranteed to use the same calibration. If the stream shows
-    something different from the job result, it's not because of two
-    configurations.
+    Receives detector, calibration and tag map from outside. These are typically
+    the already-loaded objects from `AprilTagDetectionSource`, so stream and job
+    are guaranteed to use the same calibration. If the stream shows something
+    different from the job result, the cause is not two different configurations.
     """
 
     def __init__(
@@ -65,88 +63,87 @@ class AprilTagStreamAnnotator:
         self._calibration = calibration
         self._tag_map = tag_map
         self._interval_s = interval_s
-        #: Im Kalibrier-Modus wird vor `detect_board` auf diese Breite
-        #: herunterskaliert (typischerweise dieselbe wie
-        #: `CameraStreamConfig.max_stream_width`) -- Ecken-Erkennung auf dem
-        #: vollen Kamera-Frame (z. B. 2028x1520 bei cam_ceiling) dauert auf
-        #: dem Pi spuerbar lang und drueckt die Stream-Framerate. `None`
-        #: laesst den Original-Frame unangetastet.
+        #: In calibration mode the image is scaled down to this width before
+        #: `detect_board` (typically the same as `CameraStreamConfig.max_stream_width`).
+        #: Corner detection on the full camera frame (e.g. 2028x1520 for cam_ceiling)
+        #: takes noticeably long on the Pi and lowers the stream frame rate. `None`
+        #: leaves the original frame unchanged.
         self._detection_max_width = detection_max_width
-        #: Liefert das neueste `TagSnapshot` der Quelle (Job, Zellen-
-        #: Ueberwachung, Messung) oder `None`.
+        #: Returns the newest `TagSnapshot` of the source (job, cell watch,
+        #: measurement), or `None`.
         self._full_resolution_tags = full_resolution_tags
-        #: Ist das neueste Ergebnis aelter, erkennt das Overlay selbst in
-        #: voller Aufloesung. `<= 0`: nie selbst erkennen.
+        #: If the newest result is older, the overlay detects by itself at full
+        #: resolution. `<= 0`: never detect by itself.
         self._detect_interval_s = detect_interval_s
-        #: Solange das `True` liefert (Job, Kamera-Kalibrierung), startet
-        #: keine eigene Erkennung -- der Job soll die CPU fuer sich haben.
+        #: While this returns `True` (job, camera calibration), no own detection
+        #: starts -- the job should have the CPU to itself.
         self._busy: Callable[[], bool] | None = None
-        #: Solange das `True` liefert (MeasureTags laeuft, Hand-Auge-Sitzung offen),
-        #: zeichnet "apriltag" nichts und gibt das Rohbild zurueck: Die Messung
-        #: soll die CPU des Pi fuer sich haben, und der Stream bleibt nicht stehen.
+        #: While this returns `True` (MeasureTags running, hand-eye session open),
+        #: "apriltag" draws nothing and returns the raw image. The measurement
+        #: should have the Pi's CPU to itself, and the stream does not stall.
         self._overlay_paused: Callable[[], bool] | None = None
-        #: Ergebnis der eigenen Erkennung, `TagSnapshot` oder `None`.
+        #: Result of the own detection, `TagSnapshot` or `None`.
         self._own_tags: Any = None
-        #: Eigener Ein-Thread-Pool: `annotate()` wartet nie auf die
-        #: Erkennung (am Pi ~1 s auf 12 MP), der Stream stockt nicht.
+        #: Own single-thread pool: `annotate()` never waits for the detection
+        #: (about 1 s on the Pi at 12 MP), so the stream does not stall.
         self._executor: ThreadPoolExecutor | None = None
         self._pending: Future | None = None
-        #: Zeitpunkt des letzten eigenen Versuchs, auch eines gescheiterten --
-        #: sonst wuerde ein Fehler jeden Tick neu versucht.
+        #: Time of the last own attempt, including a failed one. Otherwise an
+        #: error would be retried on every tick.
         self._last_own_attempt = float("-inf")
         self._last_run = 0.0
         self._last_board = None
         self._scaled: dict[tuple[int, int], Any] = {}
-        #: Waehrend `runner.py`s `StartCalibration`/`FinishCalibration`/
-        #: `AbortCalibration` gesetzt bzw. wieder auf `None` -- siehe
-        #: `set_calibration_session`.
+        #: Set by `runner.py`'s `StartCalibration`, `FinishCalibration` and
+        #: `AbortCalibration`, and reset to `None` -- see `set_calibration_session`.
         self._calibration_session: Any = None
-        #: Entzerr-Maps je Stream-Aufloesung fuer den Modus "undistorted" --
-        #: `initUndistortRectifyMap` ist teuer, `remap` mit fertigen Maps nicht.
+        #: Undistortion maps per stream resolution for mode "undistorted".
+        #: `initUndistortRectifyMap` is expensive, `remap` with ready-made maps is not.
         self._undistort_maps: dict[tuple[int, int], Any] = {}
-        #: Einmess-Vorschau (Modus "tagreference"). Alle drei Felder sind
-        #: unveraenderliche Objekte (`tagreference_preview`), die der Event-
-        #: Loop setzt und der Overlay-Thread liest -- Attribut-Zuweisung genuegt.
+        #: Reference preview (mode "tagreference"). All three fields are immutable
+        #: objects (`tagreference_preview`) that the event loop sets and the overlay
+        #: thread reads -- a plain attribute assignment is enough.
         self._preview: Any = None
         self._view: Any = None
-        #: Zuletzt berechneter Status fuer `TagReferencePreviewStatus`; der
-        #: Publisher schreibt ihn, wenn sich das Objekt geaendert hat.
+        #: Last computed status for `TagReferencePreviewStatus`. The publisher
+        #: writes it when the object has changed.
         self.reference_preview_status: dict | None = None
-        #: Waehrend `MeasureTagReference` wertet die Vorschau nicht selbst aus:
-        #: die Messung liefert ihre Debug-Daten (`show_reference_debug`).
+        #: During `MeasureTagReference` the preview does not evaluate by itself.
+        #: The measurement supplies its debug data (`show_reference_debug`).
         self._reference_measuring = False
         self._preview_pending: Future | None = None
         self._last_preview_start = float("-inf")
         self._last_preview_error: str | None = None
-        #: `(View, Ausgabegroesse, skalierte Debug-Daten, Ecken)` des letzten Zeichnens.
+        #: `(View, output size, scaled debug data, corners)` of the last drawing.
         self._scaled_cache: tuple | None = None
 
     def apply_calibration(self, calibration: Any) -> None:
-        """Ersetzt die Kalibrierung, die das Overlay fuers Achsenkreuz nutzt
-        -- Gegenstueck zu `AprilTagDetectionSource.apply_calibration`, damit
-        Job und Livestream nach einer frischen interaktiven Kalibrierung
-        wieder dieselbe Quelle zeigen. `_scaled` muss dabei geleert werden,
-        sonst rechnet `_calibration_for` mit dem alten, jetzt falschen
-        Ergebnis von `scale_to_resolution` weiter."""
+        """Replace the calibration that the overlay uses for the axis cross.
+
+        Counterpart to `AprilTagDetectionSource.apply_calibration`. After a fresh
+        interactive calibration, job and livestream then show the same source
+        again. `_scaled` must be cleared in the process. Otherwise
+        `_calibration_for` keeps using the old, now wrong, result of
+        `scale_to_resolution`.
+        """
         self._calibration = calibration
         self._scaled = {}
         self._undistort_maps = {}
 
     def set_calibration_session(self, session: Any) -> None:
-        """Haengt eine laufende `CalibrationSession` ein oder aus (`None`).
+        """Attach or detach a running `CalibrationSession` (`None` detaches).
 
-        Aufgerufen von `runner.py`s Kalibrier-Methoden; der Publisher-Loop
-        laeuft in einem eigenen Worker-Thread, das Setzen selbst aber auf dem
-        Event-Loop -- eine einfache Attribut-Zuweisung ist dafuer sicher
-        genug, ohne dass eine Sperre noetig waere.
+        Called by the calibration methods in `runner.py`. The publisher loop runs
+        in its own worker thread, but the assignment itself happens on the event
+        loop. A plain attribute assignment is safe enough for this, without a lock.
         """
         self._calibration_session = session
 
     def set_reference_preview(self, request: Any) -> None:
-        """Schaltet die Einmess-Vorschau fuer `request` ein, `None` = aus.
+        """Turn the reference preview on for `request`; `None` turns it off.
 
-        Event-Loop-seitig aufgerufen (OPC-UA-Methoden); die Auswertung selbst
-        laeuft im Overlay-Thread, nur im Modus "tagreference".
+        Called on the event loop (OPC UA methods). The evaluation itself runs in
+        the overlay thread, and only in mode "tagreference".
         """
         from .tagreference_preview import PREVIEW_TTL_S, ReferencePreview, build_status
 
@@ -158,8 +155,8 @@ class AprilTagStreamAnnotator:
             )
             return
         self._preview = ReferencePreview(request, time.monotonic() + PREVIEW_TTL_S)
-        # Neue Anfrage (anderer Tag, andere Ebenen): das alte Bild gilt nicht
-        # mehr, die naechste Auswertung darf sofort starten.
+        # New request (other tag, other layers): the old image no longer applies,
+        # and the next evaluation may start immediately.
         self._view = None
         self._last_preview_start = float("-inf")
         self.reference_preview_status = build_status(
@@ -167,13 +164,13 @@ class AprilTagStreamAnnotator:
         )
 
     def expire_reference_preview(self, now: float | None = None) -> None:
-        """Schaltet eine abgelaufene Vorschau aus (auch ausserhalb des Modus "tagreference")."""
+        """Turn off an expired preview, also outside mode "tagreference"."""
         preview = self._preview
         if preview is not None and (time.monotonic() if now is None else now) > preview.expires_at:
             self.set_reference_preview(None)
 
     def _status_for_current_preview(self) -> None:
-        """Status passend zur aktuellen Vorschau (nach einem Wettlauf mit dem Auswerter)."""
+        """Set the status to match the current preview (after a race with the evaluator)."""
         from .tagreference_preview import build_status
 
         preview = self._preview
@@ -188,13 +185,13 @@ class AprilTagStreamAnnotator:
             )
 
     def set_reference_measuring(self, measuring: bool) -> None:
-        """`MeasureTagReference` laeuft (True) bzw. ist fertig (False)."""
+        """Record whether `MeasureTagReference` is running (True) or finished (False)."""
         self._reference_measuring = bool(measuring)
 
     def show_reference_debug(
         self, debug, corners_px, image_size, title: str, layers: dict
     ) -> None:
-        """Debug-Daten einer laufenden Messung anzeigen (aus dem Mess-Thread aufgerufen)."""
+        """Show the debug data of a running measurement (called from the measurement thread)."""
         from .tagreference_preview import MEASURE_HOLD_S, ReferenceView
 
         self._view = ReferenceView(
@@ -208,15 +205,15 @@ class AprilTagStreamAnnotator:
         )
 
     def set_busy(self, busy: Callable[[], bool] | None) -> None:
-        """Haengt das Belegt-Signal ein (`runner.py`: Job oder Kalibrierung).
+        """Attach the busy signal (`runner.py`: job or calibration).
 
-        Erst nach dem Annotator gebaut, deshalb nicht im Konstruktor.
+        It is set up only after the annotator is built, so it is not in the constructor.
         """
         self._busy = busy
 
     @property
     def calibration_progress(self) -> dict | None:
-        """Fortschritt der aktiven Session, oder `None` ohne eine."""
+        """Progress of the active session, or `None` if there is none."""
         session = self._calibration_session
         return session.progress if session is not None else None
 
@@ -240,13 +237,12 @@ class AprilTagStreamAnnotator:
     def _board_spec(self):
         """Return the board geometry from config.
 
-        Dieselbe Quelle wie `CalibrationSession._spec()` -- fruher las diese
-        Methode `self._calibration.board`, was bei einer Platzhalter-
-        Kalibrierung (kein `board`-Feld) auf den `BoardSpec()`-Default
-        (9x6/30mm) zurueckfiel und damit eine andere Geometrie annahm als die
-        tatsaechlich laufende Session: die Ecken-Erkennung im Stream fand nie
-        etwas, obwohl `CaptureCalibrationSample` (mit der Config-Geometrie)
-        das Board korrekt fand.
+        Same source as `CalibrationSession._spec()`. This method used to read
+        `self._calibration.board`. With a placeholder calibration (no `board`
+        field) it fell back to the `BoardSpec()` default (9x6/30 mm). That assumed
+        a different geometry than the session actually running, so corner
+        detection in the stream never found anything, although
+        `CaptureCalibrationSample` (using the config geometry) found the board.
         """
         from tagloc.boards import BoardSpec
 
@@ -260,7 +256,7 @@ class AprilTagStreamAnnotator:
         )
 
     def set_overlay_paused(self, paused: Callable[[], bool] | None) -> None:
-        """Haengt das Signal ein, das das Tag-Overlay anhaelt (`runner.py`)."""
+        """Attach the signal that pauses the tag overlay (`runner.py`)."""
         self._overlay_paused = paused
 
     def annotate(self, image: Any, mode: str) -> Any:
@@ -283,7 +279,7 @@ class AprilTagStreamAnnotator:
                 return self._undistorted(image)
 
             if mode == "apriltag" and self._overlay_paused is not None and self._overlay_paused():
-                return image  # Rohbild, ohne Erkennung und ohne Zeichnen
+                return image  # raw image, without detection and without drawing
 
             now = time.monotonic()
             due = now - self._last_run >= self._interval_s
@@ -293,9 +289,9 @@ class AprilTagStreamAnnotator:
                 if self._detection_max_width is not None:
                     from .camera_stream import _resize_for_stream
 
-                    # Gleiche Zielbreite wie der Stream selbst: Ecken-Koordi-
-                    # naten aus `detect_board` bleiben damit zwischen Ticks
-                    # gueltig, weil jeder Tick auf derselben Groesse zeichnet.
+                    # Same target width as the stream itself. Corner coordinates
+                    # from `detect_board` then stay valid between ticks, because
+                    # every tick draws at the same size.
                     canvas = _resize_for_stream(canvas, self._detection_max_width)
                 if due:
                     from tagloc.boards import detect_board
@@ -304,16 +300,16 @@ class AprilTagStreamAnnotator:
                         frame_tools.to_gray(canvas), self._board_spec()
                     )
                     self._last_run = now
-                # Keine kumulierte Abdeckung mehr hier: seit `capture()` nur
-                # noch den Frame merkt statt sofort zu erkennen (siehe
-                # `calibration_session.py`), ist sie erst nach der
-                # Hintergrund-Auswertung bekannt (`progress["result"]`).
-                # `self._last_board` bleibt trotzdem nuetzlich -- die
-                # Vorschau hier laeuft unabhaengig davon periodisch auf dem
-                # kleinen Bild und hilft beim Positionieren.
-                # Eckenzahl oben links, unten links eine Zeile mit dem Datum der
-                # letzten Kalibrierung (lokale Zeit); Session-Fortschritt zeigt
-                # das Frontend-Modal.
+                # No cumulative coverage here any more. Since `capture()` only
+                # records the frame instead of detecting right away (see
+                # `calibration_session.py`), coverage is known only after the
+                # background evaluation (`progress["result"]`).
+                # `self._last_board` is still useful: the preview here runs
+                # periodically on the small image, independently of that, and
+                # helps with positioning.
+                # Corner count at the top left, and at the bottom left one line
+                # with the date of the last calibration (local time). The session
+                # progress is shown by the frontend modal.
                 draw_board_overlay(canvas, self._last_board, outline=False, compact=True)
                 draw_calibration_caption(canvas, self._calibration.calibration_id)
                 return canvas
@@ -321,10 +317,10 @@ class AprilTagStreamAnnotator:
             if mode == "tagreference":
                 return self._tag_reference_view(image, now)
 
-            # Gezeichnet wird auf dem kleinen Bild, die Tags stammen aus einer
-            # Erkennung in voller Aufloesung (siehe Modul-Docstring). Bis
-            # 21.10.2026 erkannte das Overlay selbst auf dieser kleinen
-            # Leinwand -- billig, aber kein Beleg dafuer, was der Job findet.
+            # Drawing happens on the small image, but the tags come from a
+            # detection at full resolution (see module docstring). Until
+            # 21.10.2026 the overlay detected on this small canvas itself --
+            # cheap, but no evidence of what the job finds.
             if self._detection_max_width is not None:
                 from .camera_stream import _resize_for_stream
 
@@ -349,12 +345,12 @@ class AprilTagStreamAnnotator:
             return image
 
     def _tag_reference_view(self, image: Any, now: float) -> Any:
-        """Modus "tagreference": Kantensuche der Einmessung live im Stream.
+        """Mode "tagreference": edge search of the reference measurement, live in the stream.
 
-        Zeichnet die letzte Auswertung (siehe `_evaluate_reference`) auf die
-        verkleinerte Leinwand, Koordinaten vom Quellbild umgerechnet. Die
-        Auswertung selbst startet hoechstens 3 Mal je Sekunde im Hintergrund;
-        dieser Aufruf wartet nie darauf.
+        Draws the last evaluation (see `_evaluate_reference`) onto the reduced
+        canvas, with coordinates converted from the source image. The evaluation
+        itself starts at most 3 times per second in the background. This call
+        never waits for it.
         """
         from tagloc import frames as frame_tools
         from tagloc.overlay import draw_tag_boxes
@@ -373,15 +369,15 @@ class AprilTagStreamAnnotator:
         if preview is not None and self._reference_preview_due(now):
             self._start_reference_preview(image, preview, now)
 
-        # Tag-Rahmen der uebrigen Tags: wie im Modus "apriltag" aus dem neuesten
-        # Ergebnis, eigene Erkennung nur, wenn keine Vorschau-Auswertung laeuft.
+        # Tag boxes of the other tags: as in mode "apriltag", from the newest
+        # result. Own detection only if no preview evaluation is running.
         snapshot = self._newest_tags()
         evaluating = self._preview_pending is not None and not self._preview_pending.done()
         if not evaluating and self._own_detection_due(snapshot, now):
             self._start_own_detection(image, now)
 
         view = self._view
-        # Eine laufende Auswertung haelt das alte Bild: kein Flackern bei langsamer Rechnung.
+        # A running evaluation keeps the old image: no flicker during a slow computation.
         if view is not None and (now - view.taken_at <= view.hold_s or evaluating):
             debug, corners = self._scaled_view(view, output_size)
             if corners is None and snapshot is not None:
@@ -402,7 +398,10 @@ class AprilTagStreamAnnotator:
         return draw_reference_debug(canvas, [], title=title)
 
     def _scaled_view(self, view: Any, output_size: tuple) -> tuple:
-        """`(Debug, Ecken)` der View auf Stream-Groesse; je (View, Groesse) nur einmal gerechnet."""
+        """Return ``(debug, corners)`` of the view at stream size.
+
+        Computed only once per (view, size) pair.
+        """
         import numpy as np
         from tagloc.reference_overlay import scale_debug
 
@@ -419,6 +418,7 @@ class AprilTagStreamAnnotator:
         return debug, corners
 
     def _reference_preview_due(self, now: float) -> bool:
+        """Return True if a new preview evaluation may start now."""
         from .tagreference_preview import PREVIEW_INTERVAL_S
 
         if self._detector is None or self._reference_measuring:
@@ -430,10 +430,10 @@ class AprilTagStreamAnnotator:
         return not (self._busy is not None and self._busy())
 
     def _start_reference_preview(self, image: Any, preview: Any, now: float) -> None:
-        """Startet eine Vorschau-Auswertung im Hintergrund.
+        """Start a preview evaluation in the background.
 
-        Derselbe Ein-Thread-Pool wie die eigene Erkennung: der Detektor ist
-        nicht fuer zwei Threads gebaut, so laufen beide nacheinander.
+        It uses the same single-thread pool as the own detection. The detector is
+        not built for two threads, so both run one after the other.
         """
         if self._executor is None:
             self._executor = ThreadPoolExecutor(
@@ -443,7 +443,7 @@ class AprilTagStreamAnnotator:
         self._preview_pending = self._executor.submit(self._evaluate_reference, image, preview)
 
     def _evaluate_reference(self, image: Any, preview: Any) -> None:
-        """Tag erkennen, Kanten messen (mit Debug-Daten). Laeuft im Overlay-Thread."""
+        """Detect the tag and measure its edges (with debug data). Runs in the overlay thread."""
         try:
             from tagloc import frames as frame_tools
             from tagloc.pose import estimate_tag_poses
@@ -485,7 +485,7 @@ class AprilTagStreamAnnotator:
                 if tag.observation is not None:
                     corners = [list(corner) for corner in tag.observation.corners]
             if self._preview is not preview:
-                return  # inzwischen aus- oder umgeschaltet
+                return  # meanwhile switched off or to another preview
             title = (
                 f"Tag {request.tag_id} - Vorschau"
                 if tag is not None
@@ -508,18 +508,18 @@ class AprilTagStreamAnnotator:
                 layers=request.overlay,
             )
             if self._preview is not preview:
-                # Wettlauf: waehrend der Zuweisung wurde umgeschaltet (Event-Loop).
+                # Race: the event loop switched the preview during the assignment.
                 self._view = None
                 self._status_for_current_preview()
             self._last_preview_error = None
         except Exception as error:
-            # Bei 3 Hz nicht jedes Mal den ganzen Stacktrace ins Log.
+            # At 3 Hz, do not log the whole stack trace every time.
             if str(error) != self._last_preview_error:
                 self._last_preview_error = str(error)
                 _log.exception("Einmess-Vorschau fehlgeschlagen")
 
     def _newest_tags(self):
-        """Das juengere von Quellen-Ergebnis und eigener Erkennung, oder `None`."""
+        """Return the newer of the source result and the own detection, or `None`."""
         candidates = [self._own_tags]
         if self._full_resolution_tags is not None:
             candidates.append(self._full_resolution_tags())
@@ -527,7 +527,7 @@ class AprilTagStreamAnnotator:
         return max(candidates, key=lambda snapshot: snapshot.taken_at, default=None)
 
     def _own_detection_due(self, snapshot, now: float) -> bool:
-        """Selbst erkennen nur, wenn niemand sonst ein frisches Ergebnis hat."""
+        """Detect by itself only if nobody else has a fresh result."""
         if self._detect_interval_s <= 0 or self._detector is None:
             return False
         if self._pending is not None and not self._pending.done():
@@ -539,10 +539,10 @@ class AprilTagStreamAnnotator:
         return not (self._busy is not None and self._busy())
 
     def _start_own_detection(self, image: Any, now: float) -> None:
-        """Startet eine Erkennung in voller Aufloesung im Hintergrund.
+        """Start a full-resolution detection in the background.
 
-        `image` ist der geteilte Frame -- `to_gray` legt ein neues Array an,
-        der Frame selbst wird nicht veraendert.
+        `image` is the shared frame. `to_gray` creates a new array, and the frame
+        itself is not modified.
         """
         if self._executor is None:
             self._executor = ThreadPoolExecutor(
@@ -552,7 +552,7 @@ class AprilTagStreamAnnotator:
         self._pending = self._executor.submit(self._detect_full_resolution, image)
 
     def _detect_full_resolution(self, image: Any) -> None:
-        """Eigene Erkennung auf dem vollen Frame. Laeuft im Overlay-Thread."""
+        """Run the own detection on the full frame. Runs in the overlay thread."""
         try:
             from tagloc import frames as frame_tools
             from tagloc.pose import estimate_tag_poses
@@ -577,19 +577,19 @@ class AprilTagStreamAnnotator:
             _log.exception("Overlay-Erkennung in voller Aufloesung fehlgeschlagen")
 
     def close(self) -> None:
-        """Gibt den Erkennungs-Thread frei; eine laufende Erkennung endet von selbst."""
+        """Release the detection thread. A running detection ends on its own."""
         executor, self._executor = self._executor, None
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
 
     def _undistorted(self, image: Any) -> Any:
-        """Das Bild entzerrt mit der aktiven Kalibrierung, ohne Markierungen.
+        """Return the image undistorted with the active calibration, without markings.
 
-        Erst auf Stream-Breite verkleinern, dann entzerren: `remap` auf dem
-        kleinen Bild kostet einen Bruchteil, und die Maps passen zur
-        skalierten Kalibrierung. Ohne echte Kalibrierung (Platzhalter) gibt
-        es nichts zu entzerren -- dann das Rohbild mit Hinweis, damit niemand
-        ein unverzerrtes Bild fuer ein entzerrtes haelt.
+        First scale down to stream width, then undistort. `remap` on the small
+        image costs only a fraction, and the maps match the scaled calibration.
+        Without a real calibration (placeholder) there is nothing to undistort.
+        Then the raw image is returned with a hint, so that nobody mistakes an
+        uncorrected image for a corrected one.
         """
         import cv2
 
@@ -612,15 +612,15 @@ class AprilTagStreamAnnotator:
         if maps is None:
             maps = undistortion_maps(self._calibration_for(size), alpha=1.0)
             self._undistort_maps[size] = maps
-        # `remap` schreibt in ein neues Bild -- der geteilte Frame bleibt unberuehrt.
+        # `remap` writes to a new image, so the shared frame stays untouched.
         return cv2.remap(canvas, maps[0], maps[1], cv2.INTER_LINEAR)
 
 
 def _scale_corners(tag_poses, source_size, target_size) -> list:
-    """Rechnet die Pixel-Ecken von `source_size` auf `target_size` um.
+    """Scale the pixel corners from `source_size` to `target_size`.
 
-    Nur die Ecken: mehr braucht `draw_tag_boxes` nicht, die metrische Pose
-    bleibt unveraendert.
+    Only the corners are scaled. `draw_tag_boxes` needs nothing more, and the
+    metric pose stays unchanged.
     """
     if tuple(source_size) == tuple(target_size):
         return list(tag_poses)

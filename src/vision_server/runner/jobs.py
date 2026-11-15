@@ -1,9 +1,9 @@
-"""Job-Methoden des Vision-Systems: StartSingleJob, Stop, StartContinuous, Abort, Halt, Reset.
+"""Job methods of the vision system: StartSingleJob, Stop, StartContinuous, Abort, Halt, Reset.
 
-Die Knoten stammen aus dem Nodeset (`address_space.py`); hier werden nur
-Handler daran gehaengt (`link_method`). Alle sind `async`: synchrone Handler
-laufen bei asyncua in einem ThreadPoolExecutor ohne laufenden Event-Loop, dort
-scheitert das Starten des Job-Tasks.
+The nodes come from the nodeset (`address_space.py`); here only handlers are
+attached to them (`link_method`). All of them are `async`: synchronous handlers
+run in asyncua's ThreadPoolExecutor without a running event loop, where starting
+the job task fails.
 """
 
 import logging
@@ -19,17 +19,16 @@ _log = logging.getLogger(__package__)
 
 
 def _start_method(wiring: Wiring, name: str, start: Callable):
-    """Handler fuer `StartSingleJob` bzw. `StartContinuous`.
+    """Handler for `StartSingleJob` and `StartContinuous`.
 
-    `start` ist `jobs.start_single_job` oder `jobs.start_continuous`; beide
-    bleiben synchron und werden ohne `await`-Punkt aufgerufen, die Zulassung
-    bleibt atomar.
+    `start` is `jobs.start_single_job` or `jobs.start_continuous`; both stay
+    synchronous and are called without an `await` point, so the admission stays
+    atomic.
 
-    Gibt JobId und Error als String bzw. Int32 zurueck, obwohl das Nodeset
-    `JobIdDataType` deklariert -- asyncua validiert Methodenargumente nicht,
-    und ein Client koennte das ExtensionObject nicht dekodieren. Die
-    Rueckgabe muss ein Tupel sein; eine Liste wuerde asyncua als einen
-    einzigen Variant verpacken.
+    Returns JobId and Error as String and Int32, although the nodeset declares
+    `JobIdDataType` -- asyncua does not validate method arguments, and a client
+    could not decode the ExtensionObject. The return value must be a tuple; a
+    list would be packed by asyncua as a single Variant.
     """
 
     @uamethod
@@ -50,16 +49,16 @@ def _start_method(wiring: Wiring, name: str, start: Callable):
 
 
 def _stop_method(wiring: Wiring):
-    """Handler fuer `1:Stop`.
+    """Handler for `1:Stop`.
 
-    `Cause`/`CauseDescription` schickt das Frontend fire-and-forget immer
-    als 0/"" und wertet sie nicht aus; wir werten sie ebenfalls nicht aus.
+    The frontend always sends `Cause`/`CauseDescription` fire-and-forget as
+    0/"" and does not evaluate them; we do not evaluate them either.
     """
 
     @uamethod
     async def method(parent, cause, cause_description):
-        # Erst den Lauf, dann den Job: sonst wertete der Lauf den
-        # abgebrochenen Job noch aus und veroeffentlichte ein neues Ziel.
+        # First the run, then the job: otherwise the run would still evaluate
+        # the aborted job and publish a new target.
         if wiring.layer2_run is not None:
             await wiring.layer2_run.abort("Stop")
         error = await wiring.jobs.stop()
@@ -69,11 +68,11 @@ def _stop_method(wiring: Wiring):
 
 
 def _abort_method(wiring: Wiring):
-    """Handler fuer `1:Abort` -- wie Stop, aber ueber den Abort-Uebergang.
+    """Handler for `1:Abort` -- like Stop, but through the abort transition.
 
-    Fuer uns ist der Unterschied nur der Zustandsuebergang und die Meldung
-    im Ergebnis: es gibt keinen Zwischenstand, den ein Abbruch verwerfen
-    koennte. Beide melden `CANCELLED`.
+    For us the only difference is the state transition and the message in the
+    result: there is no intermediate state that an abort could discard. Both
+    report `CANCELLED`.
     """
 
     @uamethod
@@ -85,10 +84,10 @@ def _abort_method(wiring: Wiring):
 
 
 def _halt_method(wiring: Wiring):
-    """Handler fuer `1:Halt` -- laufenden Job beenden, dann keine Jobs mehr annehmen.
+    """Handler for `1:Halt` -- stop the running job, then accept no more jobs.
 
-    Aus Halted fuehrt nur `Reset` zurueck. Das ist der Sinn: Halt ist die
-    Bremse fuer den Bediener, nicht ein weiterer Betriebszustand.
+    Only `Reset` leads back from Halted. That is the point: Halt is the brake for
+    the operator, not another operating state.
     """
 
     @uamethod
@@ -107,11 +106,10 @@ def _halt_method(wiring: Wiring):
 
 
 def _reset_method(wiring: Wiring):
-    """Handler fuer `1:Reset` -- zurueck in den betriebsbereiten Zustand.
+    """Handler for `1:Reset` -- back to the operational state.
 
-    Ueber Preoperational, weil das Nodeset keinen Uebergang
-    Halted -> Operational kennt; `enter_operational` faehrt genau diesen
-    konformen Weg.
+    Goes via Preoperational, because the nodeset has no transition
+    Halted -> Operational; `enter_operational` takes exactly this conformant path.
     """
 
     @uamethod
@@ -127,7 +125,7 @@ def _reset_method(wiring: Wiring):
 
 
 def install_job_methods(wiring: Wiring) -> None:
-    """Haengt die sechs Job-Handler an die Methoden-Knoten des Nodesets."""
+    """Attach the six job handlers to the method nodes of the nodeset."""
     space, jobs = wiring.space, wiring.jobs
     link = wiring.server.link_method
     link(space.start_single_job, _start_method(wiring, "StartSingleJob", jobs.start_single_job))

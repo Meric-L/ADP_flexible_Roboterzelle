@@ -1,4 +1,8 @@
-"""Offline-Auswertung einer Rohbild-Sitzung ohne Kamera oder Roboter."""
+"""Offline evaluation of a raw-image session without camera or robot.
+
+Re-detects the boards in the stored raw captures, solves intrinsics and hand-eye
+poses, and writes the results and an HTML comparison report to the session folder.
+"""
 
 from __future__ import annotations
 
@@ -16,12 +20,14 @@ from .frames import to_gray
 from .handeye import HandEye, intrinsics_from_dict, save_hand_eye, solve_hand_eye
 
 
-#: Erlaubte Posegruppen der Rohaufnahme (F = Bildrand, 30-45 Grad gekippt, fuer die Offline-Intrinsik).
+#: Allowed pose groups of the raw capture (F = image border, tilted 30-45 degrees, for the offline intrinsics).
 POSE_GROUPS = ("A", "B", "C", "D", "E", "F")
 
 
 @dataclass(frozen=True)
 class Observation:
+    """One usable pose: the flange pose, the detected board and its PnP result."""
+
     pose_id: str
     pose_group: str
     flange: np.ndarray
@@ -80,7 +86,7 @@ def _pnp(corners, points, calibration, method):
 
 
 def _board_from_config(config):
-    """Brett aus der `config.json` einer Rohbild-Sitzung."""
+    """Build the board spec from the `config.json` of a raw-image session."""
     board_data = config["board"]
     if board_data.get("type") not in (CHESSBOARD, CHARUCO):
         raise ValueError("Unbekannter Bretttyp")
@@ -91,7 +97,10 @@ def _board_from_config(config):
 
 
 def _read_pose_state(path: Path):
-    """Roboterzustand einer Pose pruefen: `(state, Flanschpose)`; ValueError/KeyError/OSError."""
+    """Check the robot state of a pose and return `(state, flange pose)`.
+
+    Raises ValueError, KeyError or OSError if the pose is invalid.
+    """
     state = json.loads((path / "robot_state.json").read_text(encoding="utf-8"))
     quality_path = path / "quality.json"
     if quality_path.exists():
@@ -121,10 +130,10 @@ def _read_gray(path: Path):
 
 
 def _detect_corners(gray, board, points, min_charuco):
-    """Brett im Bild finden: `(Bildecken, Objektpunkte, IDs | None)`.
+    """Find the board in the image: `(image corners, object points, IDs | None)`.
 
-    ChArUco: mindestens `min_charuco` Ecken; Schachbrett: vollstaendiges Raster.
-    ValueError mit Klartext sonst.
+    ChArUco: at least `min_charuco` corners; chessboard: complete grid.
+    Raises ValueError with a plain message otherwise.
     """
     sample = detect_board(gray, board)
     if sample is None:
@@ -141,7 +150,7 @@ def _detect_corners(gray, board, points, min_charuco):
 
 
 def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
-    """Originalbilder erneut detektieren; Ausschlussgruende und Detektion cachen."""
+    """Re-detect the original images; cache exclusion reasons and detections."""
     folder = Path(folder)
     config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
     if config.get("schema") != "wsc.vision.handeye.raw/1":
@@ -189,10 +198,10 @@ def load_observations(folder: Path, *, pnp="iterative", max_pnp_rms_px=1.5):
 
 @dataclass(frozen=True)
 class SessionCalibration:
-    """Ergebnis von `calibrate_session`: Intrinsik und Hand-Auge aus denselben Bildern."""
+    """Result of `calibrate_session`: intrinsics and hand-eye from the same images."""
 
     calibration: CameraCalibration
-    #: `T_flange_camera` (4x4, m), das verfeinerte Hand-Auge.
+    #: `T_flange_camera` (4x4, m), the refined hand-eye pose.
     hand_eye_pose: np.ndarray
     intrinsic_rms_px: float
     intrinsic_image_count: int
@@ -201,21 +210,22 @@ class SessionCalibration:
     board_spread_rms_deg: float
     handeye_pose_count: int
     initial_method: str
-    #: Posen, die in die Hand-Auge-Rechnung nicht eingingen: `{"poseId", "reason"}`.
+    #: Poses that did not enter the hand-eye computation: `{"poseId", "reason"}`.
     excluded: list = field(default_factory=list)
     report: dict = field(default_factory=dict)
 
 
 def calibrate_session(folder, *, frame_id=None, min_intrinsic_images=10, min_handeye_poses=10,
                       max_pnp_rms_px=1.5) -> SessionCalibration:
-    """Kamera-Intrinsik und Hand-Auge aus den Rohbildern einer Sitzung rechnen.
+    """Compute camera intrinsics and hand-eye from the raw images of a session.
 
-    Ohne Werks-Intrinsik und ohne Kinematik-Korrektur: Die Intrinsik kommt aus
-    `cv2.calibrateCamera` (volles Modell k1, k2, p1, p2, k3, kein Startwert),
-    die Flanschposen sind die nominellen `T_base_flange`. Danach PnP je Pose und
-    die robuste gemeinsame Reprojektion (`solve_subset`). Schreibt
-    `results/intrinsics_pi.json` und `results/handeye_pi.json`, aktiviert nichts.
-    ValueError mit Klartext, wenn etwas fehlt oder nicht konvergiert.
+    Without factory intrinsics and without kinematic correction: the intrinsics
+    come from `cv2.calibrateCamera` (full model k1, k2, p1, p2, k3, no initial
+    guess), the flange poses are the nominal `T_base_flange`. Then PnP per pose
+    and the robust joint reprojection (`solve_subset`). Writes
+    `results/intrinsics_pi.json` and `results/handeye_pi.json` and activates
+    nothing. Raises ValueError with a plain message if something is missing or
+    does not converge.
     """
     import cv2
 
@@ -233,7 +243,7 @@ def calibrate_session(folder, *, frame_id=None, min_intrinsic_images=10, min_han
     points = chessboard_object_points(board) if board.type == CHESSBOARD else None
     min_intrinsic_corners = 12
 
-    # a) alle gueltigen Posen laden und das Brett erkennen (ohne Intrinsik)
+    # a) load all valid poses and detect the board (without intrinsics)
     detections, excluded, image_size = [], [], None
     for path in sorted((folder / "poses").glob("pose_*")):
         try:
@@ -258,7 +268,7 @@ def calibrate_session(folder, *, frame_id=None, min_intrinsic_images=10, min_han
         raise ValueError(f"Nur {len(detections)} Bilder mit erkanntem Brett "
                          f"(mindestens {min_intrinsic_images} fuer die Intrinsik)")
 
-    # b) Intrinsik: volles Modell, kein Startwert
+    # b) intrinsics: full model, no initial guess
     rms, matrix, distortion, _, _ = cv2.calibrateCamera(
         [np.asarray(d["objectPoints"], dtype=np.float32).reshape(-1, 1, 3) for d in detections],
         [np.asarray(d["corners"], dtype=np.float32).reshape(-1, 1, 2) for d in detections],
@@ -271,7 +281,7 @@ def calibrate_session(folder, *, frame_id=None, min_intrinsic_images=10, min_han
         calibration_id=f"{frame}@{session_name}-pi", rms_reprojection_error=float(rms),
         sample_count=len(detections), board=board.as_dict(), model=PINHOLE)
 
-    # c) Hand-Auge: PnP je Pose mit der neuen Intrinsik
+    # c) hand-eye: PnP per pose with the new intrinsics
     observations, not_used = [], []
     for item in detections:
         try:
@@ -363,7 +373,7 @@ def _residuals(values, observations, calibration, points):
 
 
 def solve_subset(observations, calibration, points, *, optimize=True):
-    """Drei klassische Verfahren und eine robuste gemeinsame Reprojektion."""
+    """Run three classic hand-eye methods, then a robust joint reprojection."""
     import cv2
 
     if len(observations) < 3:
@@ -446,7 +456,7 @@ def _information(flanges):
 
 
 def diverse_subsets(observations, count, repeats=3):
-    """Greedy D-Optimalitaet mit verschiedenen deterministischen Starts."""
+    """Greedy D-optimality with several deterministic starts."""
     if len(observations) < count:
         return []
     result = []
@@ -471,6 +481,11 @@ def diverse_subsets(observations, count, repeats=3):
 
 
 def run_experiments(folder, *, pnp="iterative", max_pnp_rms_px=1.5, repeats=3):
+    """Solve many pose subsets of a session and write the experiment report.
+
+    Writes `results/experiments_<pnp>.json`, a candidate hand-eye file (if the
+    full-set optimization converged) and `results/report_<pnp>.html`.
+    """
     observations, excluded, calibration, points = load_observations(
         folder, pnp=pnp, max_pnp_rms_px=max_pnp_rms_px)
     if len(observations) < 3:
@@ -483,7 +498,7 @@ def run_experiments(folder, *, pnp="iterative", max_pnp_rms_px=1.5, repeats=3):
                          "result": solve_subset(subset, calibration, points)})
     for label, subset in [(group, [obs for obs in observations if obs.pose_group == group])
                           for group in POSE_GROUPS]:
-        # Gruppen ohne (genug) Posen, etwa F in alten Sitzungen, werden uebersprungen.
+        # Groups without (enough) poses, e.g. F in old sessions, are skipped.
         if len(subset) >= 3:
             runs.append({"selection": f"group_{label}", "poseIds": [obs.pose_id for obs in subset],
                          "poseCount": len(subset), "result": solve_subset(subset, calibration, points)})
@@ -520,7 +535,7 @@ def run_experiments(folder, *, pnp="iterative", max_pnp_rms_px=1.5, repeats=3):
 
 
 def _html_report(report):
-    """Kompakter, ohne Abhaengigkeiten teilbarer HTML-Vergleich."""
+    """Build a compact HTML comparison that can be shared without dependencies."""
     rows, circles = [], []
     for index, run in enumerate(report["runs"]):
         solution = run["result"].get("optimized") or {}

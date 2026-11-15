@@ -1,29 +1,28 @@
-"""Part-10-Programm als generische Bedienoberflaeche des Vision-Jobs.
+"""Part 10 program as a generic operator interface for the vision job.
 
-Dies ist ein **Aufsatz**, keine zweite Implementierung: `VisionProgram` haelt
-keinen eigenen Job-Zustand, sondern ruft denselben `JobRunner`, den auch die
-40100-Methoden `StartSingleJob`/`Stop` benutzen. Beide Oberflaechen stehen
-gleichberechtigt nebeneinander und sehen jederzeit denselben Job.
+This is an **add-on**, not a second implementation. `VisionProgram` keeps no
+job state of its own. It calls the same `JobRunner` that the 40100 methods
+`StartSingleJob` and `Stop` use. Both interfaces stand side by side with equal
+rights and always see the same job.
 
-Warum ueberhaupt: `ProgramStateMachineType` liegt im Basis-Namensraum und ist
-in jedem OPC-UA-Server vorhanden. Ein Client bedient Start/Halt/Reset und liest
-den Zustand, ohne OPC 40100 zu kennen.
+Why at all: `ProgramStateMachineType` lives in the base namespace and is present
+in every OPC UA server. A client can operate start, halt and reset, and read the
+state, without knowing OPC 40100.
 
-Form nach dem Vorbild der uebrigen Zellmodule (am 2026-09-21 am Conveyor
-`opc.tcp://10.10.38.41:4840/conveyor/` nachgesehen: `RunContinuous`,
-`MoveDistance`, `MoveUntilSensor`):
+The shape follows the other cell modules (checked on 2026-09-21 at the conveyor
+`opc.tcp://10.10.38.41:4840/conveyor/`: `RunContinuous`, `MoveDistance`,
+`MoveUntilSensor`):
 
-* `Start()` nimmt **keine** Argumente.
-* Eingaben stehen als beschreibbare Variablen in `ParameterSet` und werden
-  **vor** dem Start geschrieben.
-* Ausgaben stehen in `ResultSet`.
+* `Start()` takes **no** arguments.
+* Inputs are writable variables in `ParameterSet`, and they are written
+  **before** the start.
+* Outputs are in `ResultSet`.
 
-Bewusste Abweichung von Teil 10: Ein fehlgeschlagener Job fuehrt **nicht** nach
-`Halted`, sondern zurueck nach `Ready`. Sonst muesste das Frontend nach jeder
-misslungenen Erkennung erst `Reset` aufrufen, und die beiden Automaten liefen
-auseinander -- der 40100-Automat kehrt nach einem Fehler ebenfalls nach
-`Ready`/`Operational` zurueck. Der Grund steht in `ResultSet/ErrorCode` und
-reist als `ProgramTransitionEvent`.
+Deliberate deviation from Part 10: a failed job does **not** lead to `Halted`
+but back to `Ready`. Otherwise the front end would have to call `Reset` after
+every failed detection, and the two state machines would drift apart. The
+40100 state machine also returns to `Ready`/`Operational` after an error. The
+reason is in `ResultSet/ErrorCode` and travels as a `ProgramTransitionEvent`.
 """
 
 import asyncio
@@ -38,25 +37,25 @@ from .job import JobRunner
 
 _log = logging.getLogger(__name__)
 
-#: BrowseName und String-NodeId der Programminstanz.
+#: BrowseName and string NodeId of the program instance.
 PROGRAM_NAME = "VisionProgram"
 
 PARAMETER_SET = "ParameterSet"
 RESULT_SET = "ResultSet"
 
-#: Ausfuehrungsart in `ResultSet/ExecutionMode`. Teil 10 kennt nur ein
-#: `Running` und kann Einzel- und Dauerbetrieb nicht unterscheiden; dieser
-#: Knoten holt die Information nach, die der 40100-Automat in
-#: `SingleExecution` bzw. `ContinuousExecution` ohnehin fuehrt.
+#: Execution mode in `ResultSet/ExecutionMode`. Part 10 knows only one `Running`
+#: state and cannot tell single from continuous operation. This node supplies the
+#: information that the 40100 state machine already tracks in `SingleExecution`
+#: and `ContinuousExecution`.
 MODE_IDLE = "idle"
 MODE_SINGLE = "single"
 MODE_CONTINUOUS = "continuous"
 
 
 class VisionProgram(Program):
-    """Teil-10-Sicht auf den Vision-Job."""
+    """Part 10 view of the vision job."""
 
-    # Alle Methoden ohne Eingaben -- wie bei den uebrigen Modulen der Zelle.
+    # All methods take no inputs, as with the other modules of the cell.
     reset_inputs: list = []
     halt_inputs: list = []
     suspend_inputs: list = []
@@ -68,20 +67,20 @@ class VisionProgram(Program):
         self._jobs = jobs
         self._parameters: dict[str, Node] = {}
         self._results: dict[str, Node] = {}
-        #: Gesetzt, solange ein Job auf unser eigenes Halt/Reset hin endet.
-        #: Ohne dieses Flag wuerde der Abschluss-Beobachter `Running -> Ready`
-        #: ausloesen, waehrend `_transition` gerade nach `Halted` wechselt --
-        #: zwei Zustandswechsel auf dieselbe Ursache.
+        #: Set while a job ends in response to our own halt or reset.
+        #: Without this flag, the completion observer would trigger `Running -> Ready`
+        #: while `_transition` is switching to `Halted` -- two state changes for the
+        #: same cause.
         self._expect_stop = False
         jobs.add_finish_listener(self._on_job_finished)
 
-    # ---------------------------------------------------------------- Teil 10
+    # ---------------------------------------------------------------- Part 10
 
     async def start(self) -> str | None:
-        """Startet einen Job mit dem, was in `ParameterSet` steht.
+        """Start a job with what is in `ParameterSet`.
 
-        `None` heisst angenommen (Zustand wechselt nach `Running`), ein String
-        heisst abgelehnt (Zustand bleibt, der Text reist als Event).
+        `None` means accepted (the state changes to `Running`). A string means
+        rejected (the state stays, and the text travels as an event).
         """
         recipe_id = await self._read_parameter("RecipeId", "")
         continuous = bool(await self._read_parameter("Continuous", False))
@@ -103,11 +102,11 @@ class VisionProgram(Program):
         return None
 
     async def halt(self) -> str | None:
-        """Bricht einen laufenden Job ab und geht nach `Halted`."""
+        """Abort a running job and move to `Halted`."""
         self._expect_stop = True
         try:
             code = await self._jobs.stop()
-        except Exception as error:  # pragma: no cover - defensiv
+        except Exception as error:  # pragma: no cover - defensive
             self._expect_stop = False
             return f"Halt fehlgeschlagen: {error}"
         await self._write_results(None, code, MODE_IDLE)
@@ -117,7 +116,7 @@ class VisionProgram(Program):
         return None
 
     async def reset(self) -> str | None:
-        """Macht das Programm aus `Halted` wieder betriebsbereit."""
+        """Make the program operational again from `Halted`."""
         self._expect_stop = True
         await self._jobs.cancel_running()
         self._expect_stop = False
@@ -125,21 +124,21 @@ class VisionProgram(Program):
         return None
 
     async def suspend(self) -> str:
-        """Nicht moeglich: ein Vision-Job laesst sich nicht anhalten."""
+        """Not possible: a vision job cannot be paused."""
         return "Ein Vision-Job kann nicht pausiert werden; Halt verwenden."
 
     async def resume(self) -> str:
-        """Nicht moeglich -- der Zustand `Suspended` wird nie erreicht."""
+        """Not possible: the `Suspended` state is never reached."""
         return "Ein Vision-Job kann nicht fortgesetzt werden."
 
-    # ------------------------------------------------------------ Job-Ende
+    # ------------------------------------------------------------ Job end
 
     def _on_job_finished(self, job_id: str, code: VisionErrorCode) -> None:
-        """Wird vom `JobRunner` synchron am Ende jedes Jobs gerufen.
+        """Called synchronously by the `JobRunner` at the end of every job.
 
-        Auch dann, wenn der Job ueber die 40100-Methoden gestartet wurde --
-        das Programm bildet den Zustand also unabhaengig davon ab, welche
-        Oberflaeche ihn ausgeloest hat.
+        This also applies when the job was started via the 40100 methods. The
+        program therefore mirrors the state independently of which interface
+        triggered it.
         """
         if self._expect_stop:
             self._expect_stop = False
@@ -158,18 +157,18 @@ class VisionProgram(Program):
         try:
             await self.running_to_ready(message)
         except ProgramException:
-            # Zwischenzeitlich hat ein Halt den Zustand schon verschoben.
+            # A halt has meanwhile already moved the state.
             _log.debug("Zustand bereits gewechselt, kein Running->Ready fuer %s", job_id)
 
-    # -------------------------------------------------- Parameter / Ergebnisse
+    # -------------------------------------------------- Parameters / results
 
     def attach_nodes(self, parameters: dict[str, Node], results: dict[str, Node]) -> None:
-        """Haengt die vom Installer angelegten Knoten ein."""
+        """Attach the nodes created by the installer."""
         self._parameters = parameters
         self._results = results
 
     async def _read_parameter(self, name: str, default):
-        """Liest einen Eingabeparameter; ein Lesefehler darf nicht starten lassen."""
+        """Read an input parameter. A read error must not cause a start; the default is returned instead."""
         node = self._parameters.get(name)
         if node is None:
             return default
@@ -183,7 +182,7 @@ class VisionProgram(Program):
     async def _write_results(
         self, job_id: str | None, code: VisionErrorCode, mode: str
     ) -> None:
-        """Schreibt JobId, ErrorCode und ExecutionMode, soweit vorhanden."""
+        """Write JobId, ErrorCode and ExecutionMode, where present."""
         if not self._results:
             return
         try:
@@ -207,30 +206,29 @@ async def install_vision_program(
     mirror_nodes: dict[str, Node] | None = None,
     mirror_methods: dict[str, Node] | None = None,
 ) -> VisionProgram:
-    """Haengt das Part-10-Programm neben das Vision-System.
+    """Attach the Part 10 program next to the vision system.
 
-    Parameters
-    ----------
-    parent
-        Knoten, unter dem das Programm haengt (`Objects`).
-    own_idx
-        Der Vision-Namensraum; das Programm teilt ihn mit `VisionMachine`.
-    jobs
-        Derselbe `JobRunner`, den auch die 40100-Methoden benutzen.
-    known_recipes
-        Zugelassene RecipeIds; landen als Beschreibung am Parameterknoten,
-        damit ein generischer Client sie ohne diese Doku findet.
-    mirror_nodes
-        Vorhandene Ergebnisknoten, die zusaetzlich unter `ResultSet`
-        auffindbar sein sollen. Es werden **Referenzen** gesetzt, keine
-        Kopien -- es bleibt genau ein Knoten mit genau einem Wert.
-    mirror_methods
-        Vorhandene Methodenknoten, die zusaetzlich direkt unter dem Programm
-        aufrufbar sein sollen (die Kalibriermethoden). Ebenfalls nur
-        `HasComponent`-Referenzen: eine Methode, eine Implementierung, zwei
-        Fundorte. Am 21.09.2026 gegen asyncua 2.0.1 nachgemessen -- der
-        Aufruf gelingt mit dem Programm *und* mit dem Vision-System als
-        `objectId`, ohne dass die Methode zweimal registriert wird.
+    Args:
+        server: The OPC UA server.
+        parent: Node under which the program hangs (`Objects`).
+        own_idx: The vision namespace. The program shares it with `VisionMachine`.
+        jobs: The same `JobRunner` that the 40100 methods use.
+        known_recipes: Allowed RecipeIds. They become the description of the
+            parameter node, so a generic client can find them without this
+            documentation.
+        mirror_nodes: Existing result nodes that should also be reachable under
+            `ResultSet`. **References** are set, not copies: exactly one node
+            with exactly one value remains.
+        mirror_methods: Existing method nodes that should also be callable
+            directly under the program (the calibration methods). These are
+            likewise only `HasComponent` references: one method, one
+            implementation, two places where it is found. Re-measured on
+            21.09.2026 against asyncua 2.0.1. The call succeeds with the program
+            *and* with the vision system as `objectId`, without registering the
+            method twice.
+
+    Returns:
+        The installed `VisionProgram`.
     """
     program = await VisionProgram.init(
         server,
@@ -273,7 +271,7 @@ async def install_vision_program(
             initial,
             variant,
         )
-        # Beschreibbar, sonst koennte niemand einen Parameter setzen.
+        # Writable, otherwise nobody could set a parameter.
         await node.set_writable()
         await node.write_attribute(
             ua.AttributeIds.Description,

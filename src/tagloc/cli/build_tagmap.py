@@ -1,4 +1,4 @@
-"""Verschiedene AprilTags in ein gemeinsames Koordinatensystem platzieren.
+"""Place several AprilTags in one shared coordinate system.
 
     python -m tagloc.cli.build_tagmap --source ./aufnahmen/zelle/ \
         --calibration data/calibration/cam_ceiling.json \

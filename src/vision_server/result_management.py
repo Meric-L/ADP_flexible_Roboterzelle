@@ -1,4 +1,4 @@
-"""Ergebnisablage im Adressraum."""
+"""Result storage in the address space."""
 
 import logging
 from collections import OrderedDict
@@ -20,7 +20,7 @@ RESULT_JSON_BROWSE_NAME = "LatestResultJson"
 
 @dataclass(frozen=True)
 class PublishedResult:
-    """Die Werte, die pro Job in die Ergebnisknoten geschrieben werden."""
+    """The values written to the result nodes for each job."""
 
     result_id: str
     job_id: str
@@ -34,40 +34,40 @@ class PublishedResult:
 
 
 class ResultStore:
-    """Haelt eine wiederverwendete ResultType-Instanz und einen JSON-Spiegel."""
+    """Holds a reused ResultType instance and a JSON mirror."""
 
-    #: So viele Ergebnisse haelt `result_for_job` im Speicher.
+    #: Number of results `result_for_job` keeps in memory.
     HISTORY = 20
 
     def __init__(self, result_node: Node, json_node: Node, children: dict[str, Node]) -> None:
         self._result_node = result_node
         self._json_node = json_node
         self._children = children
-        #: Die letzten Payloads je JobId -- die Zellen-Ueberwachung nimmt das
-        #: Ergebnis, das das Frontend im Viewport hat, als Referenz.
+        #: The last payloads per JobId. The cell watch uses the result that the
+        #: frontend has in its viewport as its reference.
         self._history: OrderedDict[str, str] = OrderedDict()
 
     def result_for_job(self, job_id: str) -> str | None:
-        """Payload eines der letzten `HISTORY` Ergebnisse, sonst `None`."""
+        """Return the payload of one of the last `HISTORY` results, else `None`."""
         return self._history.get(job_id)
 
     @property
     def json_node(self) -> Node:
-        """Der JSON-Spiegelknoten `LatestResultJson`.
+        """The JSON mirror node `LatestResultJson`.
 
-        Oeffentlich, weil das Part-10-Programm ihn zusaetzlich unter sich
-        verlinkt -- als Referenz auf denselben Knoten, nicht als Kopie.
+        Public because the Part 10 program additionally links it under itself --
+        as a reference to the same node, not as a copy.
         """
         return self._json_node
 
     @classmethod
     async def create(cls, space: VisionAddressSpace) -> "ResultStore":
-        """Legt die Ergebnisknoten an und macht `ResultContent` beschreibbar.
+        """Create the result nodes and make `ResultContent` writable.
 
-        `ResultContent` kommt aus dem Nodeset mit einer Null-NodeId als DataType,
-        wodurch jeder Write mit BadTypeMismatch scheitert. Der Override auf
-        `String` bei ValueRank 1 erlaubt den Array-Write und erhaelt damit die
-        `ResultContent[0]`-Semantik des Payload-Schemas.
+        `ResultContent` comes from the nodeset with a null NodeId as DataType,
+        so every write fails with BadTypeMismatch. Overriding it to `String` with
+        ValueRank 1 allows the array write and keeps the `ResultContent[0]`
+        semantics of the payload schema.
         """
         result_node = (
             await instantiate(
@@ -103,11 +103,11 @@ class ResultStore:
         return cls(result_node, json_node, children)
 
     async def publish(self, result: PublishedResult) -> None:
-        """Schreibt ein Ergebnis in alle Mandatory-Felder und den JSON-Spiegel.
+        """Write a result to all mandatory fields and the JSON mirror.
 
-        `ResultId` und `JobId` sind im Nodeset strukturtypisiert, werden hier
-        aber als String geschrieben — dieselbe bewusste Abweichung wie beim
-        `StartSingleJob`-Ausgang, damit jeder Client sie lesen kann.
+        `ResultId` and `JobId` are structure-typed in the nodeset, but are written
+        here as String. This is the same deliberate deviation as for the
+        `StartSingleJob` output, so that every client can read them.
         """
         children = self._children
         await children["ResultId"].write_value(result.result_id, ua.VariantType.String)

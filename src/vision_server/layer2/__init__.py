@@ -1,9 +1,9 @@
-"""Layer-2-Lauf des Hand-Pi: am Welttag ankern, dann jedes Modul fein messen.
+"""Layer 2 run on the hand Pi: anchor at a world tag, then measure each module precisely.
 
-`plan.py` rechnet die Fahrziele (numpy, `tagloc`), `run.py` fuehrt den Ablauf
-(asyncio, ohne asyncua). Verdrahtet wird beides in `runner/layer2.py`. Siehe
-`doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
+``plan.py`` computes the approach targets (numpy, ``tagloc``), and ``run.py`` executes the
+sequence (asyncio, without asyncua). Both are wired together in ``runner/layer2.py``. See
+``doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md``.
 
-Beide Module werden erst bei Bedarf importiert -- das Paket `vision_server`
-bleibt damit ohne numpy importierbar, wie bei `detection/apriltag.py`.
+Both modules are imported only when needed, so the ``vision_server`` package stays
+importable without numpy, as with ``detection/apriltag.py``.
 """

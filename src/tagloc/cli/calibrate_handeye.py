@@ -1,20 +1,19 @@
-"""Hand-Auge-Kalibrierung -- der einmalige Versatz Flansch -> Kamera.
+"""Hand-eye calibration -- the one-time offset flange -> camera.
 
-Die Kamera sitzt starr am Roboter, also ist `T_flansch_cam` eine Konstante der
-Hardware. Sie wird **einmal** bestimmt und danach nur noch gelesen.
+The hand camera is rigidly mounted on the robot, so ``T_flansch_cam`` is a constant of
+the hardware. It is determined **once** and only read afterwards.
 
-Aufnahme der Kalibrierfahrt (getrennt vom Rechnen, damit man sie wiederholen
-kann, ohne den Roboter noch einmal zu bewegen):
+Recording the calibration run (kept separate from the computation, so it can be
+repeated without moving the robot again):
 
-1. Einen Tag irgendwo hinlegen -- er muss waehrend der ganzen Fahrt **liegen
-   bleiben**. Welcher, ist egal; ein Welttag bietet sich an, weil er ohnehin
-   haengt.
-2. Den Roboter mindestens ein Dutzend deutlich verschiedene Posen anfahren
-   lassen, aus denen die Kamera den Tag sieht. **Um mehrere Achsen drehen** --
-   reines Verschieben genuegt nicht, dann ist die Rotation nicht bestimmt.
-3. Je Pose ein Bild speichern und die Roboterpose `T_base_flansch` notieren.
+1. Place a board somewhere. It must **stay still** for the whole run. Which board does
+   not matter; a world tag is a good choice because it is mounted anyway.
+2. Move the robot to at least a dozen clearly different poses from which the camera
+   sees the board. **Rotate around several axes**: pure translation is not enough,
+   because then the rotation is not determined.
+3. Save one image per pose and note the robot pose ``T_base_flansch``.
 
-Das ergibt eine Aufnahmeliste:
+This produces a sample list:
 
     {
       "schema": "wsc.vision.handeye.samples/1",
@@ -28,26 +27,25 @@ Das ergibt eine Aufnahmeliste:
       ]
     }
 
-Bildpfade sind relativ zur Aufnahmeliste. Dann:
+Image paths are relative to the sample list. Then run:
 
     python -m tagloc.cli.calibrate_handeye --samples fahrt/aufnahmen.json \\
         --calibration data/calibration/cam_flange.json \\
         --out data/handeye/cam_flange.json
 
-Aus einer Sitzung des Hand-Pis (`data/handeye/sessions/<Zeit>/`, geschrieben
-von `FinishHandEyeCalibration`) rechnet der Aufruf
+From a session of the hand Pi (``data/handeye/sessions/<Zeit>/``, written by
+``FinishHandEyeCalibration``), the same calibration is recomputed with
 
     python -m tagloc.cli.calibrate_handeye --session data/handeye/sessions/<Zeit> \\
         [--out data/handeye/cam_flange.json]
 
-dieselbe Kalibrierung neu: geschlossene Loesung, robust, dann die gemeinsame
-Verfeinerung gegen die Brettecken samt Leave-one-out-Vorhersagefehler. Ohne
-`--out` wird nur gerechnet und angezeigt.
+This runs a closed-form solution, a robust fit, and then a joint refinement against the
+board corners, including the leave-one-out prediction error. Without ``--out`` the
+result is only computed and displayed.
 
-Das Guetemass steht danach in der Ausgabe: der Tag lag fest, also muss er aus
-jeder Roboterpose an derselben Stelle herauskommen. Streut das, stimmt
-entweder die Kamerakalibrierung, die eingetragene Tag-Groesse oder die
-gemeldete Roboterpose nicht.
+The quality measure is printed at the end. The tag is fixed, so it must come out at the
+same position from every robot pose. If the spread is large, one of the following is
+wrong: the camera calibration, the tag size entered, or the reported robot pose.
 """
 
 import argparse
@@ -74,13 +72,13 @@ from ._common import add_decoder_arguments, describe_pose, detector_options, set
 
 SAMPLES_SCHEMA = "wsc.vision.handeye.samples/1"
 
-#: Ueber dieser Streuung taugt die Kalibrierung nicht zum Anfahren. Kein
-#: Abbruch -- die Datei wird geschrieben, damit man sie ansehen kann, aber der
-#: Hinweis muss unuebersehbar sein.
+#: Above this spread the calibration is not fit for moving the robot. Not an abort: the
+#: file is still written so it can be inspected, but the warning must be unmissable.
 SPREAD_WARNING_M = 0.005
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for this tool."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--session",
@@ -117,7 +115,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_samples(path: Path) -> tuple[int, float, list]:
-    """Liest die Aufnahmeliste. Bildpfade gelten relativ zur Liste."""
+    """Read the sample list. Image paths are resolved relative to the list.
+
+    Returns:
+        A tuple ``(tag_id, tag_size_m, samples)``, where ``samples`` is a list of
+        ``(image_path, pose_base_flange)`` pairs.
+
+    Raises:
+        SystemExit: If the schema is unknown, a sample is incomplete, or the list is
+            empty.
+    """
     path = Path(path)
     data = json.loads(path.read_text(encoding="utf-8"))
     schema = data.get("schema")
@@ -141,10 +148,21 @@ def load_samples(path: Path) -> tuple[int, float, list]:
 
 
 def solve_session(path: Path, *, estimate_scale: bool = True, out: Path | None = None) -> int:
-    """Eine gespeicherte Sitzung neu rechnen und die Kennzahlen drucken.
+    """Recompute a saved session and print the key figures.
 
-    Gerechnet wird in `tagloc.handeye` (`refine_board_session`, derselbe Weg wie
-    auf dem Hand-Pi); hier steht nur die Ausgabe.
+    The computation lives in ``tagloc.handeye`` (``refine_board_session``, the same path
+    as on the hand Pi). This function only handles the output.
+
+    Args:
+        path: Session folder or ``session.json`` file.
+        estimate_scale: Whether to also estimate the board scale during refinement.
+        out: Target file for the hand-eye calibration. If ``None``, nothing is written.
+
+    Returns:
+        Exit code ``0``.
+
+    Raises:
+        SystemExit: If the session schema is unknown.
     """
     try:
         dataset = load_session(path)
@@ -174,12 +192,12 @@ def solve_session(path: Path, *, estimate_scale: bool = True, out: Path | None =
         print("\nKeine Ecken/Intrinsik im Datensatz (Tag-Sitzung?) -- keine Verfeinerung.")
         solution = robust
     else:
-        # Ausreisser nach der Verfeinerung in Pixeln, nicht nach der
-        # Park-Martin-Streuung (ein Massstabsfehler blaeht die auf).
+        # Outliers are rejected after refinement, in pixels, not by the Park-Martin
+        # spread: a scale error would inflate that spread.
         try:
             refined = dataset.refine(estimate_scale=estimate_scale)
         except RefinementError as error:
-            # Rechenfehler laufen wie immer als Traceback der Ursache durch.
+            # Computation errors propagate as usual, as a traceback of the cause.
             raise error.__cause__ from None
         solution = refined.solution
         _print_refinement(refined)
@@ -208,7 +226,7 @@ def solve_session(path: Path, *, estimate_scale: bool = True, out: Path | None =
 
 
 def _print_refinement(refined: BoardRefinement) -> None:
-    """Die Verfeinerung einer Brett-Sitzung: Ausreisser, Lage, Vorhersagefehler."""
+    """Print the board-session refinement: outliers, pose, and prediction error."""
     refinement = refined.refinement
     print(f"\nVerworfen (Pixel-Ausreisser): {list(refined.solution.rejected) or 'keine'}")
     print(f"\nVerfeinert: {describe_pose(refinement.pose_flange_cam)}")
@@ -234,6 +252,17 @@ def _print_refinement(refined: BoardRefinement) -> None:
 
 
 def main(argv=None) -> int:
+    """Run the CLI: a saved session if ``--session`` is given, otherwise the sample run.
+
+    Args:
+        argv: Argument list, or ``None`` to use ``sys.argv``.
+
+    Returns:
+        Exit code ``0`` on success.
+
+    Raises:
+        SystemExit: If required arguments are missing or an input is invalid.
+    """
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
     if args.session is not None:

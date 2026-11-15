@@ -1,9 +1,9 @@
-"""Einbau des Vision-Systems in einen Server: `install_vision_machine`.
+"""Install the vision system into a server: `install_vision_machine`.
 
-Die Funktion baut nur die Reihenfolge der Schritte auf; jeder Schritt steht in
-einem eigenen Modul dieses Pakets (siehe `__init__`). Die Reihenfolge ist
-Teil der Schnittstelle: davon haengen die Reihenfolge der Methoden-Anlage und
-damit die Eintraege unter `VisionProgram` ab.
+The function only builds the sequence of steps; each step lives in its own
+module of this package (see `__init__`). The order is part of the interface:
+the order in which methods are created, and thus the entries under
+`VisionProgram`, depend on it.
 """
 
 import asyncio
@@ -48,10 +48,10 @@ _log = logging.getLogger(__package__)
 
 
 async def _open_sources(wiring: Wiring) -> None:
-    """Oeffnet alle Quellen und geht, wenn alle aufgingen, nach `Operational`.
+    """Open all sources; if all of them open, move to `Operational`.
 
-    Erst oeffnen, dann Operational: `Ready` soll "Hardware bereit" heissen.
-    Die Methoden bleiben verlinkt, sonst antwortet der Server BadNothingToDo.
+    Open first, then Operational: `Ready` should mean "hardware ready". The
+    methods stay linked, otherwise the server answers BadNothingToDo.
     """
     sources = wiring.sources
     wiring.opened = {profile: await _open_source(source) for profile, source in sources.items()}
@@ -68,14 +68,14 @@ async def _open_sources(wiring: Wiring) -> None:
 async def _start_services(
     wiring: Wiring, assets: VisionAssetNodes | None
 ) -> tuple[CameraHealthPublisher | None, MjpegServer | None]:
-    """Kalibrier-Session, Livestream, Kamerazustand und MJPEG-Server starten."""
+    """Start the calibration session, live stream, camera health and MJPEG server."""
     space, sources, opened = wiring.space, wiring.sources, wiring.opened
     wiring.calibration_session = _build_calibration_session(sources, opened, wiring.config)
     wiring.camera_stream, wiring.annotator = _start_camera_stream(space, sources, opened)
     annotator = wiring.annotator
     if annotator is not None and hasattr(annotator, "set_busy"):
-        # Wie die Zellen-Ueberwachung: waehrend Job oder Kalibrierung keine
-        # eigene Overlay-Erkennung, der Job soll die CPU fuer sich haben.
+        # As with the cell watch: during a job or calibration there is no
+        # separate overlay detection; the job should have the CPU to itself.
         annotator.set_busy(lambda: wiring.jobs.busy or wiring.calibration_busy())
     camera_health = await _start_camera_health(space, assets, sources, opened)
     camera_http = (
@@ -87,7 +87,7 @@ async def _start_services(
 
 
 async def _install_hand_pi_sessions(wiring: Wiring) -> None:
-    """Layer-2-Lauf und Hand-Auge-Sitzung (nur Hand-Pi), dazu die Overlay-Pause."""
+    """Layer 2 run and hand-eye session (hand-camera Pi only), plus the overlay pause."""
     space, config, source = wiring.space, wiring.config, wiring.apriltag_source
     if source is not None and space.layer2_target is not None and space.layer2_status is not None:
         wiring.layer2_run = await _install_layer2_run(
@@ -102,44 +102,43 @@ async def _install_hand_pi_sessions(wiring: Wiring) -> None:
         )
     annotator = wiring.annotator
     if annotator is not None and hasattr(annotator, "set_overlay_paused") and source is not None:
-        # Auf dem Hand-Pi wuerde das Overlay waehrend einer Messung oder
-        # Hand-Auge-Sitzung in voller Aufloesung mitrechnen, die CPU gehoert
-        # der Messung. Der Stream zeigt dann das Rohbild.
+        # On the hand-camera Pi the overlay would otherwise be computed at full
+        # resolution during a measurement or hand-eye session; the CPU belongs to
+        # the measurement. The stream then shows the raw image.
         annotator.set_overlay_paused(
             lambda: source.measure_calls > 0 or wiring.hand_eye_active()
         )
 
 
 async def _install_measurements(wiring: Wiring) -> None:
-    """MeasureBoard, MeasureTags und die Tag-Einmessung."""
+    """Install MeasureBoard, MeasureTags and the tag measurement."""
     space, config, source = wiring.space, wiring.config, wiring.apriltag_source
     if source is None:
         return
-    # MeasureBoard an beiden Pis. Es liest nur Kamerabilder und aendert keinen
-    # Zustand, laeuft deshalb auch waehrend einer Hand-Auge-Sitzung (die
-    # Steuerung zentriert das Brett damit vor `CaptureHandEyeSample`) und in
-    # der Aufnahmephase einer Kamera-Kalibrierung (die automatische
-    # Kalibrierfahrt nimmt nur auf, wenn das ganze Brett im Bild ist).
-    # Gesperrt fuer Jobs und waehrend der Auswertung der Kalibrierung.
+    # MeasureBoard runs on both Pis. It only reads camera images and changes no
+    # state, so it also runs during a hand-eye session (the controller centers
+    # the board with it before `CaptureHandEyeSample`) and during the capture
+    # phase of a camera calibration (the automatic calibration drive only
+    # records when the whole board is in view). Blocked for jobs and while the
+    # calibration is being evaluated.
     await _install_measure_board(
         space, config, source, wiring.methods, wiring.states,
         lambda: wiring.jobs.busy or wiring.calibration_processing(),
     )
     if space.last_tag_measurement is None:
         return
-    # MeasureTags und MeasureTagReference nehmen beide frische Bilder; sie
-    # sperren sich gegenseitig (und MeasureTagReference auch sich selbst).
+    # MeasureTags and MeasureTagReference both take fresh images; they block
+    # each other (and MeasureTagReference also blocks itself).
     tags_activity = _Activity()
     reference_activity = _Activity()
 
     def measuring_busy() -> bool:
         return wiring.jobs.busy or wiring.calibration_busy()
 
-    # MeasureTags laeuft auch WAEHREND einer Hand-Auge-Sitzung: Es liest nur
-    # Kamerabilder und aendert keinen Zustand. Eine haengengebliebene Sitzung
-    # soll Layer 2 nicht sperren. Gesperrt nur fuer Job und Kamera-Kalibrierung.
-    # MeasureTagReference faehrt den Roboter nicht, misst aber laenger; eine
-    # Hand-Auge-Sitzung sperrt es weiterhin.
+    # MeasureTags also runs DURING a hand-eye session: it only reads camera
+    # images and changes no state. A stuck session should not block Layer 2.
+    # Blocked only for a job and a camera calibration. MeasureTagReference does
+    # not move the robot, but it takes longer; a hand-eye session still blocks it.
     def reference_busy() -> bool:
         return measuring_busy() or wiring.hand_eye_active()
 
@@ -160,7 +159,7 @@ async def _install_measurements(wiring: Wiring) -> None:
 
 
 async def _install_image_saves(wiring: Wiring) -> None:
-    """`SaveRawImage` und `SaveUseCaseImage` (brauchen eine Kamera)."""
+    """Install `SaveRawImage` and `SaveUseCaseImage` (they need a camera)."""
     space, config = wiring.space, wiring.config
     camera_owner = _camera_owner(wiring.sources, wiring.opened)
     if camera_owner is not None and config.raw_image_dir is not None:
@@ -174,7 +173,7 @@ async def _install_image_saves(wiring: Wiring) -> None:
 
 
 async def _install_cell_watch_step(wiring: Wiring):
-    """Zellen-Ueberwachung (nur Deckenkamera); `None`, wenn es sie nicht gibt."""
+    """Install the cell watch (ceiling camera only); `None` if there is none."""
     space, source = wiring.space, wiring.apriltag_source
     if source is None or space.cell_watch_status is None:
         return None
@@ -190,16 +189,16 @@ async def _install_cell_watch_step(wiring: Wiring):
 
 
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
-    """Baut das Vision-System in einen initialisierten Server ein.
+    """Build the vision system into an initialized server.
 
-    Muss nach `server.init()` und vor `server.start()` laufen. Der Server darf
-    daneben beliebige eigene Knoten haben — Endpoint, ApplicationURI und
-    ServerName bleiben unberuehrt.
+    Must run after `server.init()` and before `server.start()`. The server may
+    have any other nodes of its own -- endpoint, ApplicationURI and ServerName
+    stay untouched.
     """
     space = await attach_vision_system(server, config)
-    # Part 2 vor den Automaten: es haengt an nichts und soll auch dann stehen,
-    # wenn der Job-Pfad spaeter nicht in Operational kommt -- gerade dann ist
-    # die Frage "welche Kamera, welcher Zustand" interessant.
+    # Part 2 before the state machines: it depends on nothing and should be up
+    # even if the job path never reaches Operational -- that is exactly when the
+    # question "which camera, which state" is interesting.
     assets = (
         await attach_asset_model(space, config.assets) if config.assets is not None else None
     )

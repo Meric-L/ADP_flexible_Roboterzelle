@@ -1,4 +1,4 @@
-"""Registry der Erkennungsprofile."""
+"""Registry of detection profiles."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -6,8 +6,8 @@ from pathlib import Path
 from ..config import VisionServerConfig
 from .base import Detection, DetectionRequest, DetectionSource
 
-#: Gesammelter Ablageort aller vom Backend aufgerufenen Job-Scripts, nicht
-#: unter vision_server, damit auch Jobs anderer Backend-Teile hierher passen.
+#: Common location of all job scripts called by the backend. It is outside
+#: ``vision_server``, so that jobs from other parts of the backend fit here too.
 JOBS_DIR = Path(__file__).resolve().parent.parent.parent / "jobs"
 
 SourceFactory = Callable[[VisionServerConfig], DetectionSource]
@@ -29,9 +29,9 @@ def _apriltag(config: VisionServerConfig) -> DetectionSource:
     )
 
 
-#: Factories importieren ihr Modul **innerhalb** der Funktion. Sonst liegt jede
-#: Abhaengigkeit einer Quelle auf der Importkette des Zellenservers, und ein
-#: `import cv2` in einem Profil macht den Server ohne OpenCV unstartbar.
+#: Factories import their module **inside** the function. Otherwise every dependency
+#: of a source ends up on the import chain of the cell server, and an ``import cv2``
+#: in one profile would make the server unstartable without OpenCV.
 DETECTION_SOURCES: dict[str, SourceFactory] = {
     "calibration": _calibration,
     "apriltag": _apriltag,
@@ -49,10 +49,9 @@ def _factory(profile_id: str) -> SourceFactory:
 
 
 def build_detection_sources(config: VisionServerConfig) -> dict[str, DetectionSource]:
-    """Eine Instanz je referenziertem Profil, damit Rezepte sich eine Kamera teilen.
+    """Create one instance per referenced profile, so that recipes share a camera.
 
-    Laeuft zur Installationszeit: ein Tippfehler im Profil bricht den
-    Serverstart, nie einen Job.
+    Runs at installation time: a typo in a profile aborts server startup, never a job.
     """
     return {profile: _factory(profile)(config) for profile in sorted(config.detection_profiles)}
 

@@ -1,9 +1,9 @@
 """Calibration boards: detect, cover, compute.
 
-Extracted from `src/apriltag/calibrate_camera.py` (prototype, removed 2026-10-30), whose calculation core was
-trapped in the keyboard loop of `main()` -- there was no way to calibrate
-from a set of existing images. That's now possible, and is the precondition
-for testing the calibration path without a camera.
+Extracted from `src/apriltag/calibrate_camera.py` (prototype, removed 2026-10-30).
+Its calculation core was trapped in the keyboard loop of `main()`, so it was not
+possible to calibrate from a set of existing images. That is possible now, and it
+is the precondition for testing the calibration path without a camera.
 
 Board type and geometry are parameters (`BoardSpec`), not module globals like
 `USE_CHARUCO` and `CHESSBOARD_SIZE`.
@@ -28,7 +28,7 @@ class BoardSpec:
     """Geometry of the calibration board.
 
     For `chessboard`, `cols`/`rows` are the **inner** corners (9x6 for a
-    10x7-square board); for `charuco`, the number of squares.
+    10x7-square board). For `charuco`, they are the number of squares.
     """
 
     type: str = CHESSBOARD
@@ -81,13 +81,13 @@ def build_board(spec: BoardSpec) -> Any:
 def detect_board(
     gray, spec: BoardSpec, board: Any = None, *, max_side: int | None = None
 ) -> BoardSample | None:
-    """Look for the board in a grayscale image. `None` if not found.
+    """Look for the board in a grayscale image. Return `None` if not found.
 
-    `max_side`: ein Schachbrett wird auf einem auf diese Kantenlaenge verkleinerten
-    Bild gesucht und die Ecken danach im vollen Bild nachgeschaerft. Das ist
-    deutlich schneller, vor allem wenn nichts zu finden ist -- ein Fehlversuch
-    kostet am vollen Bild Sekunden, und ohne Brett im Bild gibt es nur
-    Fehlversuche. Fuer Anfragen, die schnell antworten muessen.
+    `max_side`: the chessboard is searched in an image scaled down to this edge
+    length, and the corners are then refined in the full image. This is much
+    faster, especially when nothing is found: a failed attempt takes seconds on
+    the full image, and without a board in the image every attempt fails. Meant
+    for requests that must answer quickly.
     """
     import cv2
 
@@ -113,49 +113,46 @@ def detect_board(
 
     sample = _detect_chessboard(gray, spec)
     if sample is None:
-        # Helle Felder auf schwarzem Traeger, ohne helle Ruhezone: Die dunklen
-        # Randfelder verschmelzen mit dem Rahmen, und die Detektoren finden das
-        # Raster nicht. Invertiert ist der Rand hell und das Brett sieht aus
-        # wie ein gedrucktes Standardbrett. Die Ecken liegen an denselben
-        # Stellen; die Feldfarbe fuer den Ursprung liest
-        # `canonical_chessboard_corners` weiter am Originalbild.
+        # Light squares on a black carrier without a light quiet zone: the dark
+        # border squares merge with the frame, and the detectors do not find the
+        # grid. Inverted, the border is light and the board looks like a standard
+        # printed board. The corners lie at the same positions; the square colour
+        # for the origin is still read from the original image by
+        # `canonical_chessboard_corners`.
         sample = _detect_chessboard(cv2.bitwise_not(gray), spec)
     return sample
 
 
 def _detect_chessboard(gray, spec: BoardSpec) -> BoardSample | None:
-    """Ein Detektionsdurchgang fuer ein Schachbrett: SB, dann klassisch."""
+    """Run one detection pass for a chessboard: SB first, then the classic method."""
     import cv2
 
-    # Der neuere "Sector-Based"-Detektor: robuster bei schlechtem Licht,
-    # Unschaerfe und starker Neigung als die klassische Methode, und
-    # liefert die Ecken bereits subpixelgenau -- ein zusaetzliches
-    # cornerSubPix() ist hier nicht mehr noetig.
+    # The newer "Sector-Based" detector: more robust than the classic method under
+    # poor light, blur and strong tilt, and it already returns sub-pixel accurate
+    # corners -- an extra cornerSubPix() is not needed here.
     #
-    # Achtung, nicht offensichtlich: SB liefert die Ecken in **exakt
-    # umgekehrter Reihenfolge** gegenueber `findChessboardCorners`
-    # (empirisch mit einem synthetischen Testbild geprueft, 2026-09-23:
-    # nach Umkehren stimmen die Positionen auf < 0.1 px). Ungefiltert
-    # uebernommen wuerde das die Bild-zu-Weltpunkt-Zuordnung in
-    # `_chessboard_object_points` lautlos vertauschen -- die Kalibrierung
-    # liefe zwar durch, aber mit falschem Ergebnis statt eines Fehlers.
-    # BEWUSST OHNE CALIB_CB_ACCURACY: der Flag ist laut OpenCV-Doku ein
-    # "eigener, langsamerer Algorithmus" -- gemessen bei ~4000 px Breite
-    # (Deckenkamera-Format) 4,45 s gegen 0,87 s ohne (Faktor 5) bzw.
-    # 0,06 s bei der klassischen Methode (Faktor 73). Die Kalibrier-
-    # Aufnahme laeuft immer auf dem VOLLEN Kamera-Frame (12 MP an der
-    # Deckenkamera) -- mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in
-    # den Timeout ("Failed to send request"), live gefunden 2026-09-23.
+    # Note, not obvious: SB returns the corners in the **exact reverse order** of
+    # `findChessboardCorners` (checked empirically with a synthetic test image on
+    # 2026-09-23: after reversing, the positions agree to < 0.1 px). Taken
+    # unfiltered, this would silently swap the image-to-world point assignment in
+    # `_chessboard_object_points` -- the calibration would run through, but with a
+    # wrong result instead of an error.
+    # DELIBERATELY WITHOUT CALIB_CB_ACCURACY: according to the OpenCV docs the flag
+    # is an "own, slower algorithm" -- measured at ~4000 px width (ceiling camera
+    # format): 4.45 s with it versus 0.87 s without it (factor 5), and 0.06 s for the
+    # classic method (factor 73). The calibration capture always runs on the FULL
+    # camera frame (12 MP on the ceiling camera) -- with the flag, the OPC UA request
+    # on the Pi ran into the timeout ("Failed to send request"), found live on
+    # 2026-09-23.
     found, corners = cv2.findChessboardCornersSB(
         gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE
     )
     if found:
         return BoardSample(corners=np.asarray(corners)[::-1], ids=None)
 
-    # Rueckfall: SB hat das Board in diesem Frame nicht gefunden -- die
-    # klassische Methode findet manchmal Boards, die SB verpasst (und
-    # umgekehrt), ein zweiter Versuch kostet nur bei einem Fehlschlag von SB
-    # etwas.
+    # Fallback: SB did not find the board in this frame. The classic method sometimes
+    # finds boards that SB misses (and vice versa); a second attempt only costs time
+    # when SB fails.
     found, corners = cv2.findChessboardCorners(
         gray,
         (spec.cols, spec.rows),
@@ -174,8 +171,10 @@ def _detect_chessboard(gray, spec: BoardSpec) -> BoardSample | None:
 
 
 def partial_patterns(spec: BoardSpec) -> list[tuple[int, int]]:
-    """Kleinere Raster, mit denen ein nur teilweise sichtbares Brett noch zu
-    finden ist: von knapp unter `spec` bis 3x3, groesstes zuerst."""
+    """Return smaller grids with which a partly visible board can still be found.
+
+    From just below `spec` down to 3x3, largest first.
+    """
     patterns = []
     cols, rows = spec.cols - 1, spec.rows - 1
     while min(cols, rows) >= 3:
@@ -187,12 +186,12 @@ def partial_patterns(spec: BoardSpec) -> list[tuple[int, int]]:
 
 
 def detect_partial_board(gray, spec: BoardSpec, *, max_side: int | None = None):
-    """Ein Teilraster des Bretts im Bild: `(Ecken (N, 2), cols, rows)` oder `None`.
+    """Find a partial grid of the board in the image.
 
-    Fuer das Zentrieren, wenn das ganze Brett nicht im Bild ist: Die Erkennung
-    braucht das ganze Raster, aber ein kleineres passt in jeden sichtbaren
-    Teil. Der Ursprung eines Teilrasters ist beliebig -- es taugt fuer
-    Schwerpunkt und Richtung, nicht fuer eine Brettpose.
+    Returns `(corners (N, 2), cols, rows)` or `None`. Used for centering when the
+    whole board is not in the image: detection needs the full grid, but a smaller
+    grid fits any visible part. The origin of a partial grid is arbitrary -- it is
+    good for centroid and direction, not for a board pose.
     """
     if spec.type != CHESSBOARD:
         return None
@@ -204,12 +203,12 @@ def detect_partial_board(gray, spec: BoardSpec, *, max_side: int | None = None):
 
 
 def diagnose_board(gray, spec: BoardSpec) -> dict:
-    """Warum findet die Erkennung das Brett nicht? Nur fuer die Fehlersuche.
+    """Explain why detection does not find the board. Only for troubleshooting.
 
-    Probiert das angegebene Raster mit beiden Detektoren, das vertauschte
-    (Zeilen/Spalten) und Raster um die Angabe herum mit dem schnellen
-    Detektor, groesstes zuerst. `largestGrid` ist das erste gefundene.
-    Dazu Helligkeitswerte des Bilds (Belichtung, Ueberstrahlung).
+    Tries the given grid with both detectors, the swapped grid (rows/columns), and
+    grids around the given size with the fast detector, largest first.
+    `largestGrid` is the first one found. Also reports brightness values of the
+    image (exposure, overexposure).
     """
     import cv2
 
@@ -256,9 +255,9 @@ def diagnose_board(gray, spec: BoardSpec) -> dict:
 
 
 def compute_coverage(samples, image_size: tuple[int, int]) -> tuple[float, float]:
-    """Fraction of image width/height covered by all samples combined.
+    """Return the fraction of image width and height covered by all samples combined.
 
-    Carried over from `calibrate_camera.py`. More important than it looks: a
+    Carried over from `calibrate_camera.py`. It matters more than it seems: a
     calibration taken only from the image centre gets a good RMS but useless
     distortion coefficients -- and the error only shows up at the edges,
     where the modules sit.
@@ -284,14 +283,16 @@ def _chessboard_object_points(spec: BoardSpec) -> np.ndarray:
 
 
 def chessboard_object_points(spec: BoardSpec) -> np.ndarray:
-    """Die Innenecken im Board-KS, `(N, 3)` float64: Ursprung erste Ecke, +x
-    entlang der Zeile, +y zur naechsten Zeile, z = 0 -- in der Reihenfolge der
-    kanonischen Ecken (`canonical_chessboard_corners`)."""
+    """Return the inner corners in board coordinates, `(N, 3)` float64.
+
+    Origin at the first corner, +x along the row, +y to the next row, z = 0. The
+    order matches the canonical corners (`canonical_chessboard_corners`).
+    """
     return _chessboard_object_points(spec).astype(np.float64)
 
 
 def matched_board_points(sample: BoardSample, spec: BoardSpec) -> tuple[np.ndarray, np.ndarray]:
-    """Bild- und Objektpunkte eines Bretts in derselben, festen Reihenfolge."""
+    """Return image and object points of a board in the same, fixed order."""
     if spec.type == CHARUCO:
         if sample.ids is None:
             raise ValueError("ChArUco-IDs fehlen")
@@ -305,32 +306,32 @@ def matched_board_points(sample: BoardSample, spec: BoardSpec) -> tuple[np.ndarr
 
 
 def chessboard_is_unambiguous(spec: BoardSpec) -> bool:
-    """Ob sich ein Schachbrett um 180 Grad gedreht vom Original unterscheidet.
+    """Return whether a chessboard rotated by 180 degrees differs from the original.
 
-    Nur dann laesst sich die Eckenreihenfolge an der Farbe des ersten Felds
-    festmachen: um 180 Grad gedreht landet das erste Feld auf dem letzten,
-    und das hat genau dann die andere Farbe, wenn `cols + rows` (Innenecken)
-    ungerade ist -- z. B. 5x6 Innenecken bei einem Brett mit 6x7 Feldern.
+    Only then can the corner order be fixed by the colour of the first square:
+    rotated by 180 degrees, the first square lands on the last one, and that has
+    the other colour exactly when `cols + rows` (inner corners) is odd -- e.g.
+    5x6 inner corners on a board with 6x7 squares.
     """
     return spec.type == CHESSBOARD and spec.cols >= 3 and spec.rows >= 2 and (spec.cols + spec.rows) % 2 == 1
 
 
 def canonical_chessboard_corners(gray, corners, spec: BoardSpec) -> np.ndarray:
-    """Bringt die Schachbrett-Ecken in eine feste Reihenfolge, `(N, 2)`.
+    """Bring the chessboard corners into a fixed order, `(N, 2)`.
 
-    OpenCV liefert die Ecken zeilenweise, faengt aber je nach Blickwinkel an
-    einer anderen Ecke an. Fuer die Kamera-Kalibrierung ist das egal, fuer
-    die Hand-Auge-Kalibrierung nicht: dort muss das Board in **jedem** Bild
-    dasselbe Koordinatensystem haben, sonst springt es um 180 Grad oder
-    gespiegelt, und `T_flansch_cam` wird falsch statt ungenau.
+    OpenCV returns the corners row by row, but depending on the viewing angle it
+    starts at a different corner. This does not matter for the camera calibration,
+    but it does for the hand-eye calibration: there the board must have the **same**
+    coordinate system in **every** image, otherwise it jumps by 180 degrees or
+    mirrored, and `T_flange_cam` becomes wrong instead of merely imprecise.
 
-    Zwei Schritte:
-    1. Haendigkeit: +x (entlang der Zeile) und +y (zur naechsten Zeile)
-       muessen im Bild im Uhrzeigersinn liegen (Bild-y zeigt nach unten),
-       das Board-+z zeigt also von der Kamera weg. Sonst jede Zeile umdrehen.
-    2. Farbe: das Feld zwischen den ersten vier Ecken ist schwarz. Sonst die
-       ganze Liste umdrehen (180 Grad, Haendigkeit bleibt). Setzt
-       `chessboard_is_unambiguous(spec)` voraus.
+    Two steps:
+    1. Handedness: +x (along the row) and +y (to the next row) must run clockwise
+       in the image (image y points down), so the board +z points away from the
+       camera. Otherwise flip each row.
+    2. Colour: the square between the first four corners is black. Otherwise flip
+       the whole list (180 degrees, handedness stays). Requires
+       `chessboard_is_unambiguous(spec)`.
     """
     points = np.asarray(corners, dtype=np.float64).reshape(spec.rows, spec.cols, 2)
     along_row = points[0, 1] - points[0, 0]
@@ -346,8 +347,8 @@ def canonical_chessboard_corners(gray, corners, spec: BoardSpec) -> np.ndarray:
         y0, y1 = max(0, y - 2), min(height, y + 3)
         return float(np.mean(np.asarray(gray)[y0:y1, x0:x1]))
 
-    # Das Nachbarfeld hat sicher die andere Farbe: Vergleich statt Schwelle,
-    # damit Belichtung und Material (gelasertes Holz) keine Rolle spielen.
+    # The neighbouring square certainly has the other colour: compare instead of
+    # using a threshold, so that exposure and material (lasered wood) do not matter.
     if brightness(0, 0) > brightness(0, 1):
         points = points[::-1, ::-1]
     return points.reshape(-1, 2)
@@ -356,12 +357,12 @@ def canonical_chessboard_corners(gray, corners, spec: BoardSpec) -> np.ndarray:
 def estimate_board_pose(
     corners, spec: BoardSpec, calibration: CameraCalibration, *, ids=None
 ) -> tuple[np.ndarray, float]:
-    """`(T_cam_board, Reprojektionsfehler in px)` aus Brett-Ecken.
+    """Return `(T_cam_board, reprojection error in px)` from the board corners.
 
-    Board-Frame: Ursprung in der ersten Innenecke, +x entlang der Zeile,
-    +y zur naechsten Zeile, +z von der Kamera weg (ins Board). Entzerrt wird
-    vorher fuer beide Linsenmodelle gleich (`tagloc.lens`), geloest dann
-    ohne Verzeichnung -- wie bei den Tags (`tagloc.pose`).
+    Board frame: origin at the first inner corner, +x along the row, +y to the next
+    row, +z away from the camera (into the board). The undistortion is done first
+    and identically for both lens models (`tagloc.lens`); the pose is then solved
+    without distortion, as for the tags (`tagloc.pose`).
     """
     import cv2
 
@@ -383,10 +384,10 @@ def estimate_board_pose(
         error = projected.reshape(-1, 2) - image_points.reshape(-1, 2)
         return float(np.sqrt(np.mean(np.sum(error**2, axis=1))))
 
-    # IPPE liefert fuer ein ebenes Ziel beide Kandidaten; frontal betrachtet
-    # liegen sie nah beieinander und der erste ist oft um ein paar Grad
-    # gekippt (am gerenderten Brett: 2,5 Grad, 2 mm). Deshalb den besseren
-    # nehmen und mit Levenberg-Marquardt ueber alle Ecken nachschaerfen.
+    # IPPE returns both candidates for a planar target. Viewed head-on they lie close
+    # together, and the first is often tilted by a few degrees (on the rendered board:
+    # 2.5 degrees, 2 mm). So take the better one and refine it with Levenberg-Marquardt
+    # over all corners.
     candidates = []
     found, rvecs, tvecs, _ = cv2.solvePnPGeneric(
         object_points, image_points, camera_matrix, no_distortion, flags=cv2.SOLVEPNP_IPPE

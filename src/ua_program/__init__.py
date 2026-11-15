@@ -1,4 +1,4 @@
-"""OPC-UA-Programme nach Part 10 (Vorlage des Betreuers)."""
+"""OPC UA programs per part 10 (template from the supervisor)."""
 
 from .program import Program, ProgramException, ProgramStateMachine
 

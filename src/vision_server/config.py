@@ -1,30 +1,29 @@
-"""Konfiguration des Vision-Servers."""
+"""Configuration of the vision server."""
 
 from dataclasses import dataclass
 from pathlib import Path
 
 from .profiles import _REPO_ROOT, AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
-#: Die Nodesets liegen im Paket, das sie braucht -- frueher lagen sie unter
-#: `src/OPCUA/`, weil das Verzeichnis aelter war als `vision_server/`
-#: (Altlast C5, erledigt).
+#: The nodesets live in the package that needs them. They used to live under
+#: ``src/OPCUA/``, because that directory predates ``vision_server/`` (tech debt C5, done).
 _NODESET_DIR = Path(__file__).resolve().parent / "nodesets"
 
 DEFAULT_NODESET_PATH = _NODESET_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
 
-#: Part 2 und seine Abhaengigkeiten, in Importreihenfolge: DI, dann Machinery,
-#: dann AMCM. Versionen sind gepinnt, siehe nodesets/README.md.
+#: Part 2 and its dependencies, in import order: DI, then Machinery, then AMCM.
+#: Versions are pinned; see ``nodesets/README.md``.
 DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
     _NODESET_DIR / "Opc.Ua.Di.NodeSet2.xml",
     _NODESET_DIR / "Opc.Ua.Machinery.NodeSet2.xml",
     _NODESET_DIR / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
 )
 
-#: RecipeId -> Erkennungsprofil. Tupel von Paaren, weil ein dict als
-#: dataclass-Default verboten ist und ein Mapping die frozen dataclass
-#: unhashbar machen wuerde. Einzige Wahrheit fuer Zulassung *und* Routing.
-#: Bewusst ohne Eintrag fuer `""`: ein Start ohne gewaehlten Job wird mit
-#: UNKNOWN_RECIPE abgelehnt, statt stillschweigend irgendetwas zu fahren.
+#: RecipeId -> detection profile. A tuple of pairs, because a dict is not allowed as a
+#: dataclass default, and a mapping would make the frozen dataclass unhashable. The
+#: single source of truth for both admission *and* routing.
+#: Deliberately no entry for ``""``: a start without a selected job is rejected with
+#: UNKNOWN_RECIPE, instead of silently running something.
 DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
     ("calibration", "calibration"),
     ("apriltag", "apriltag"),
@@ -33,7 +32,7 @@ DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
 
 @dataclass(frozen=True)
 class VisionServerConfig:
-    """Alle Betriebsparameter einer Vision-Server-Instanz."""
+    """All operating parameters of one vision server instance."""
 
     endpoint: str = "opc.tcp://0.0.0.0:4841/vision/machine/"
     application_uri: str = "urn:launch-rm:vision:machine"
@@ -47,53 +46,52 @@ class VisionServerConfig:
     max_id_length: int = 128
     max_parameters: int = 16
     frame_id: str = "world"
-    #: Must exceed the longest job runtime. The AprilTag job is decisive:
-    #: `samples_per_job` captures, each waiting up to `capture_timeout_s`,
-    #: plus detection and margin. War 20.0 -- live auf pi1 gemessen (A/B-Test
-    #: 2026-09-24, ohne Livestream/Overlay-Konkurrenz, `subpixel_corner_
-    #: refinement=True` auf vollen 12 MP): 1 von 4 Jobs riss trotzdem den
-    #: 20s-Timeout (echter `asyncio.wait_for`-Timeout laut job.py, kein
-    #: "kein Tag im Bild"). 3 Samples je bis zu `capture_timeout_s` Wartezeit
-    #: plus Detektionszeit (py-spy: ~46% des Profils in `_locate -> detect`)
-    #: plus `warmup_s` liessen dem alten Budget zu wenig Puffer. Zusaetzliche
-    #: Sicherheitsmarge, bis `apriltag_quad_decimate` (siehe `profiles.py`)
-    #: die Detektionszeit selbst gesenkt hat -- danach ggf. wieder senken.
+    #: Must exceed the longest job runtime. The AprilTag job is the deciding one:
+    #: ``samples_per_job`` captures, each waiting up to ``capture_timeout_s``, plus
+    #: detection and a margin. It was 20.0 -- measured live on pi1 (A/B test 2026-09-24,
+    #: without livestream/overlay competition, ``subpixel_corner_refinement=True`` at
+    #: full 12 MP): 1 of 4 jobs still hit the 20 s timeout (a real ``asyncio.wait_for``
+    #: timeout according to job.py, not "no tag in image"). Three samples, each with up to
+    #: ``capture_timeout_s`` of waiting, plus detection time (py-spy: ~46% of the profile
+    #: in ``_locate -> detect``) plus ``warmup_s`` left the old budget too little buffer.
+    #: Extra safety margin, until ``apriltag_quad_decimate`` (see ``profiles.py``) has
+    #: itself reduced the detection time -- then lower it again if appropriate.
     job_timeout: float = 30.0
-    #: Frist fuer `JobRunner.stop()`, bis der Abbruch inkl. Aufraeumen und
-    #: Zustandswechsel abgeschlossen sein muss.
+    #: Deadline for ``JobRunner.stop()``: the abort, including cleanup and the state
+    #: change, must be complete by then.
     stop_timeout: float = 5.0
-    #: Pause zwischen zwei Durchlaeufen im Dauerbetrieb. Ohne Pause liefe die
-    #: Erkennung so schnell wie die Kamera Bilder gibt und belegte den Pi
-    #: vollstaendig -- der Dauerbetrieb soll beobachten, nicht verdraengen.
+    #: Pause between two runs in continuous operation. Without it, detection would run as
+    #: fast as the camera delivers images and occupy the Pi completely. Continuous mode is
+    #: meant to observe, not to crowd out other work.
     continuous_interval_s: float = 1.0
     apriltag: AprilTagProfileConfig | None = None
-    #: `None` = Part 2 nicht laden. Kostet gemessen ~13 MB RSS und ~1,6 s
-    #: Startzeit; fuer den Job-Pfad ist es nicht noetig.
+    #: ``None`` = do not load Part 2. Measured cost: about 13 MB RSS and about 1.6 s of
+    #: startup time. Not needed for the job path.
     assets: AssetConfig | None = None
     amcm_nodeset_paths: tuple[Path, ...] = DEFAULT_AMCM_NODESET_PATHS
-    #: `None` = kein Livestream-Knoten, keine geteilte Kamera geoeffnet (z. B.
-    #: lokale Entwicklung ohne Kamera). Auf dem Pi setzt `vision_server/server.py` sie.
+    #: ``None`` = no livestream node, no shared camera opened (e.g. local development
+    #: without a camera). On the Pi, ``vision_server/server.py`` sets it.
     camera_stream: CameraStreamConfig | None = None
-    #: Ablage fuer `SaveRawImage` (verlustfreie PNG-Vollbilder). `None` = die
-    #: Methode nicht anlegen.
+    #: Storage for ``SaveRawImage`` (lossless PNG full frames). ``None`` = do not create
+    #: the method.
     raw_image_dir: Path | None = _REPO_ROOT / "data" / "rohbilder"
-    #: Ablage fuer `SaveUseCaseImage` (PNG + Metadaten-JSON je Versuch unter
-    #: `reihe_NNN/versuch_NNN.*`). `None` = die Methode nicht anlegen.
+    #: Storage for ``SaveUseCaseImage`` (PNG plus metadata JSON per trial, under
+    #: ``reihe_NNN/versuch_NNN.*``). ``None`` = do not create the method.
     use_case_dir: Path | None = _REPO_ROOT / "data" / "use-case"
-    #: Mess-Protokoll von `MeasureTagReference` (siehe `tagreference_log.py`).
-    #: `None` = nichts schreiben; `GET /tagreference.jpg` liefert dann 404.
+    #: Measurement log of ``MeasureTagReference`` (see ``tagreference_log.py``).
+    #: ``None`` = write nothing; ``GET /tagreference.jpg`` then returns 404.
     tag_reference_debug_dir: Path | None = _REPO_ROOT / "data" / "tagreference"
 
     @property
     def known_recipe_ids(self) -> frozenset[str]:
-        """Zugelassene RecipeIds; Property, damit job.py unveraendert bleibt."""
+        """Return the admitted RecipeIds. A property, so that job.py stays unchanged."""
         return frozenset(recipe for recipe, _ in self.recipe_profiles)
 
     @property
     def detection_profiles(self) -> frozenset[str]:
-        """Alle referenzierten Profile."""
+        """Return all referenced profiles."""
         return frozenset(profile for _, profile in self.recipe_profiles)
 
     def profile_for(self, recipe_id: str | None) -> str:
-        """Profil zur RecipeId. Nur nach erfolgreicher Zulassung aufrufen."""
+        """Return the profile for a RecipeId. Call only after admission has succeeded."""
         return dict(self.recipe_profiles)[recipe_id or ""]

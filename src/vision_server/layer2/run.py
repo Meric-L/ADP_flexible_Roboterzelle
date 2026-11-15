@@ -1,29 +1,28 @@
-"""Ablauf des Layer-2-Laufs auf dem Hand-Pi.
+"""Flow of a Layer 2 run on the hand Pi.
 
-Ein Lauf ist eine Kette aus Schritten -- zuerst der Welttag, dann die Module.
-Je Schritt:
+A run is a chain of steps: first the world tag, then the modules. For each step:
 
-1. Der Pi veroeffentlicht das Fahrziel (`Layer2Target`).
-2. Draussen faehrt jemand den Roboter hin und meldet die **erreichte** Pose
+1. The Pi publishes the target (`Layer2Target`).
+2. Someone outside drives the robot there and reports the **reached** pose
    (`ReportRobotPose`).
-3. Der Pi startet mit dieser Pose einen gewoehnlichen AprilTag-Job -- dieselben
-   Events und dasselbe `LatestResultJson` wie `StartSingleJob`.
-4. Am Job-Ende wertet er aus und geht zum naechsten Schritt.
+3. With this pose, the Pi starts an ordinary AprilTag job -- the same events and
+   the same `LatestResultJson` as `StartSingleJob`.
+4. At the end of the job it evaluates the result and moves on to the next step.
 
-Der Anker-Schritt gilt als geglueckt, wenn der Job einen **neuen**
-`RobotAnchor` hinterlassen hat. Der Code des Jobs zaehlt dabei nicht:
-`locate_modules` ueberspringt Welttags, ein Bild nur mit dem Welttag endet
-deshalb in `DETECTION_FAILED`, obwohl geankert wurde. Danach werden die
-restlichen Schritte mit der gemessenen Basis neu geplant.
+The anchor step counts as successful if the job left a **new** `RobotAnchor`
+behind. The code of the job does not count here: `locate_modules` skips world
+tags, so an image with only the world tag ends in `DETECTION_FAILED`, even
+though an anchor was set. Afterwards the remaining steps are re-planned with
+the measured base.
 
-Annaeherung: vor jedem Anker- und Mess-Schritt faehrt der Roboter erst aus
-groesserem Abstand vor. Dessen Bild misst die Tag-Pose, und der folgende nahe
-Schritt wird daraus neu geplant. Geankert und gemessen wird erst im nahen
-Bild. Beim Welttag ist die Messung ein vorlaeufiger Anker aus dem weiten Bild
--- er dient nur dem Zielen, der Lauf uebernimmt ihn nicht.
+Approach: before each anchor and measure step, the robot first drives from a
+larger distance. Its image measures the tag pose, and the following close step
+is re-planned from it. Anchoring and measuring happen only in the close image.
+For the world tag, the measurement is a provisional anchor from the wide image.
+It only serves for aiming; the run does not adopt it.
 
-Hier steckt kein asyncua: alles, was den Server betrifft, kommt als Funktion
-herein (`Layer2Ports`). So laesst sich der Ablauf gegen Fakes testen.
+There is no asyncua here: everything that concerns the server comes in as a
+function (`Layer2Ports`). This makes it possible to test the flow against fakes.
 """
 
 from __future__ import annotations
@@ -58,21 +57,22 @@ SKIPPED = "skipped"
 
 @dataclass(frozen=True)
 class Layer2Ports:
-    """Was der Lauf vom Server braucht."""
+    """What the run needs from the server."""
 
-    #: Startet einen AprilTag-Job mit diesen Parametern: `(job_id, code)`.
+    #: Starts an AprilTag job with these parameters. Returns `(job_id, code)`.
     start_job: Callable[[list[str]], tuple[str, VisionErrorCode]]
-    #: Laeuft gerade ein Job oder eine Kalibrierung?
+    #: Is a job or a calibration running?
     busy: Callable[[], bool]
-    #: Der aktuelle `RobotAnchor` der AprilTag-Quelle, oder `None`.
+    #: The current `RobotAnchor` of the AprilTag source, or `None`.
     read_anchor: Callable[[], Any]
-    #: `T_flansch_cam` aus der Hand-Auge-Datei, oder `None` ohne Datei.
+    #: `T_flansch_cam` (camera pose in the flange frame) from the hand-eye file,
+    #: or `None` without a file.
     read_hand_eye: Callable[[], Any]
-    #: Die geladene Tag-Map.
+    #: The loaded tag map.
     read_tag_map: Callable[[], Any]
-    #: Payload des letzten Jobs (`LatestResultJson`).
+    #: Payload of the last job (`LatestResultJson`).
     read_result: Callable[[], Awaitable[str]]
-    #: Schreibt `Layer2Target` und `Layer2Status`.
+    #: Writes `Layer2Target` and `Layer2Status`.
     publish: Callable[[str, str], Awaitable[None]]
 
 
@@ -93,15 +93,17 @@ class _State:
     pose_flange_cam: Any = None
     steps: list[_Step] = field(default_factory=list)
     index: int = -1
-    #: Der Anker dieses Laufs; `None`, bis Schritt 0 geglueckt ist.
+    #: The anchor of this run; `None` until step 0 has succeeded.
     anchor: Any = None
-    #: Job, auf dessen Ende der Lauf gerade wartet.
+    #: Job whose end the run is currently waiting for.
     pending_job_id: str | None = None
-    #: Anker vor dem Anker-Job -- nur ein anderer danach zaehlt als neu.
+    #: Anchor before the anchor job -- only a different one afterwards counts as new.
     anchor_before: Any = None
 
 
 class Layer2Run:
+    """Run the step chain of a Layer 2 run and publish its state."""
+
     def __init__(self, ports: Layer2Ports) -> None:
         self._ports = ports
         self._s = _State()
@@ -110,12 +112,13 @@ class Layer2Run:
 
     @property
     def active(self) -> bool:
-        """Laeuft ein Lauf? Sperrt Kalibrierung und SetTagMap."""
+        """Whether a run is in progress. Blocks calibration and SetTagMap."""
         return self._s.state in (WAITING_FOR_ROBOT, MEASURING)
 
-    # --- Eingaenge -------------------------------------------------------
+    # --- Inputs ----------------------------------------------------------
 
     async def start(self, request_json: str) -> VisionErrorCode:
+        """Start a run from ``request_json``. Return an error code instead of raising."""
         if self.active:
             _log.warning("StartLayer2Run abgelehnt: es laeuft schon ein Lauf")
             return VisionErrorCode.BUSY
@@ -156,6 +159,7 @@ class Layer2Run:
         return VisionErrorCode.OK
 
     async def report(self, report_json: str) -> VisionErrorCode:
+        """Handle the pose the robot reports for the step that is waiting."""
         s = self._s
         if s.state != WAITING_FOR_ROBOT:
             _log.warning("ReportRobotPose ohne wartendes Ziel (Zustand %s)", s.state)
@@ -175,8 +179,8 @@ class Layer2Run:
         if not report.reached:
             reason = report.reason or "Roboter hat das Ziel nicht erreicht"
             if step.planned.spec.purpose == layer2_plan.APPROACH:
-                # Die Annaeherung ist eine Hilfe, keine Bedingung: ohne sie
-                # bleibt das nahe Ziel eben das aus der groben Pose.
+                # The approach is an aid, not a requirement: without it, the near
+                # target simply stays the one from the coarse pose.
                 await self._finish_step(
                     SKIPPED, f"nicht angefahren ({reason}) -- nahes Ziel aus grober Pose"
                 )
@@ -187,7 +191,7 @@ class Layer2Run:
         s.anchor_before = self._ports.read_anchor()
         job_id, code = self._ports.start_job(layer2_plan.pose_parameters(report.flange_in_base))
         if code != VisionErrorCode.OK:
-            # Nichts veraendert: der Aufrufer darf es noch einmal melden.
+            # Nothing changed: the caller may report again.
             _log.warning("Layer-2-Job fuer Schritt %d nicht gestartet: %s", s.index, code.name)
             return code
         s.pending_job_id = job_id
@@ -198,8 +202,10 @@ class Layer2Run:
         return VisionErrorCode.OK
 
     def on_job_finished(self, job_id: str, code: VisionErrorCode) -> None:
-        """Beobachter von `JobRunner.add_finish_listener` -- synchron, daher
-        wird die Auswertung als Task gestartet."""
+        """Observer for `JobRunner.add_finish_listener`.
+
+        It runs synchronously, so the evaluation is started as a task.
+        """
         if job_id != self._s.pending_job_id:
             return
         task = asyncio.ensure_future(self._evaluate(job_id, code))
@@ -207,7 +213,7 @@ class Layer2Run:
         task.add_done_callback(self._background.discard)
 
     async def abort(self, reason: str) -> None:
-        """Bricht einen laufenden Lauf ab; ohne Lauf passiert nichts."""
+        """Abort a running run. Does nothing if no run is active."""
         if not self.active:
             return
         s = self._s
@@ -223,15 +229,15 @@ class Layer2Run:
         await self._publish()
 
     async def publish_idle(self) -> None:
-        """Erstbelegung der Knoten nach dem Serverstart."""
+        """Initial publish of the nodes after the server starts."""
         await self._publish()
 
     async def wait_idle(self) -> None:
-        """Fuer Tests: wartet, bis alle Auswertungen durch sind."""
+        """For tests: wait until all evaluations have finished."""
         while self._background:
             await asyncio.gather(*list(self._background))
 
-    # --- Ablauf ----------------------------------------------------------
+    # --- Flow ------------------------------------------------------------
 
     async def _evaluate(self, job_id: str, code: VisionErrorCode) -> None:
         s = self._s
@@ -248,7 +254,7 @@ class Layer2Run:
             await self._evaluate_measure(step, code)
 
     def _new_anchor(self, code: VisionErrorCode) -> tuple[Any, str]:
-        """Der Anker, den der letzte Job hinterlassen hat, oder `(None, Grund)`."""
+        """Return the anchor left by the last job, or ``(None, reason)``."""
         anchor = self._ports.read_anchor()
         if anchor is not None and anchor is not self._s.anchor_before:
             return anchor, ""
@@ -257,14 +263,14 @@ class Layer2Run:
         return None, f"Job-Fehler {code.name} -- nicht geankert"
 
     async def _evaluate_approach(self, step: _Step, code: VisionErrorCode) -> None:
-        """Tag im weiten Bild gemessen -> den nahen Schritt danach neu planen."""
+        """Tag measured in the wide image: re-plan the near step that follows."""
         s = self._s
         assert s.request is not None
         near = s.steps[s.index + 1]
         if near.planned.spec.purpose == layer2_plan.ANCHOR:
-            # Ein Welttag erscheint nicht als Detection, sondern als Anker. Mit
-            # dessen Basis zielt der nahe Schritt; die Welttag-Pose bleibt die
-            # exakte aus der Tag-Map.
+            # A world tag does not show up as a detection but as an anchor. The
+            # near step aims with its base; the world tag pose stays the exact
+            # one from the tag map.
             anchor, reason = self._new_anchor(code)
             if anchor is None:
                 await self._finish_step(FAILED, f"Annaeherungsbild: {reason}")
@@ -304,7 +310,7 @@ class Layer2Run:
         )
 
     async def _seen_tag(self, tag_id: int, code: VisionErrorCode):
-        """Weltpose des Tags aus dem letzten Job, oder `(None, Grund)`."""
+        """Return the world pose of the tag from the last job, or ``(None, reason)``."""
         if code == VisionErrorCode.DETECTION_FAILED:
             return None, f"Tag {tag_id} nicht gesehen"
         if code != VisionErrorCode.OK:
@@ -367,13 +373,13 @@ class Layer2Run:
         step.status = status
         step.detail = detail
         if status == FAILED and self._leads_to_anchor(s.index):
-            # Ohne Anker entsteht keine Weltpose -- jede weitere Fahrt waere umsonst.
+            # Without an anchor there is no world pose -- every further move would be wasted.
             await self.abort(f"Anker fehlgeschlagen: {detail}")
             return
         await self._enter(s.index + 1)
 
     def _leads_to_anchor(self, index: int) -> bool:
-        """Anker-Schritt oder die Annaeherung davor -- ohne sie kein Lauf."""
+        """Return True for the anchor step, or for the approach step before it."""
         steps = self._s.steps
         purpose = steps[index].planned.spec.purpose
         if purpose == layer2_plan.APPROACH and index + 1 < len(steps):
@@ -381,18 +387,18 @@ class Layer2Run:
         return purpose == layer2_plan.ANCHOR
 
     async def _enter(self, index: int) -> None:
-        """Geht zu Schritt `index`; Ziele ausser Reichweite ohne Fahrt uebersprungen."""
+        """Move to step `index`. Targets out of reach are skipped without driving."""
         s = self._s
         while index < len(s.steps):
             step = s.steps[index]
             if step.status == SKIPPED:
-                # Schon von der Annaeherung davor abgesagt.
+                # Already cancelled by the approach before it.
                 index += 1
                 continue
             purpose = step.planned.spec.purpose
             near = s.steps[index + 1].planned if purpose == layer2_plan.APPROACH else None
             if near is not None and not near.reachable and near.spec.purpose != layer2_plan.ANCHOR:
-                # Wozu vorfahren, wenn das nahe Ziel ohnehin nicht geht.
+                # Why drive closer if the near target is unreachable anyway?
                 step.status = SKIPPED
                 step.detail = "nahes Ziel ausser Reichweite"
             elif step.planned.reachable or purpose == layer2_plan.ANCHOR:
@@ -415,7 +421,7 @@ class Layer2Run:
         await self._publish()
 
     def _replan_after(self, index: int, pose_world_base) -> None:
-        """Plant alle Schritte nach `index` mit der gemessenen Basis neu."""
+        """Re-plan all steps after `index` using the measured base."""
         s = self._s
         assert s.request is not None
         for step in s.steps[index + 1:]:
@@ -429,11 +435,12 @@ class Layer2Run:
             )
 
     def _summary(self) -> str:
+        """Return the one-line result: how many measure steps were done."""
         measured = [step for step in self._s.steps if step.planned.spec.purpose == layer2_plan.MEASURE]
         done = sum(1 for step in measured if step.status == DONE)
         return f"{done} von {len(measured)} Modulen gemessen."
 
-    # --- Knoten ----------------------------------------------------------
+    # --- Nodes -----------------------------------------------------------
 
     async def _publish(self) -> None:
         try:
@@ -442,6 +449,7 @@ class Layer2Run:
             _log.exception("Layer2Target/Layer2Status konnten nicht geschrieben werden")
 
     def target_json(self) -> str:
+        """Return the `Layer2Target` JSON of the waiting step, or an empty string."""
         s = self._s
         if s.state != WAITING_FOR_ROBOT:
             return ""
@@ -466,6 +474,7 @@ class Layer2Run:
         )
 
     def status_json(self) -> str:
+        """Return the `Layer2Status` JSON for the current run state."""
         s = self._s
         anchor = None
         if s.anchor is not None:

@@ -1,31 +1,27 @@
-"""Eine Kamera, ein Capture-Loop, mehrere Leser.
+"""One camera, one capture loop, several readers.
 
-Erkennung (`detection/apriltag.py`) und Livestream-Publisher
-(`camera_stream.py`) brauchen beide Bilder derselben physischen Kamera.
-Picamera2/libcamera **und** RealSense lassen pro Kamera aber nur einen
-offenen Zugriff gleichzeitig zu — ein zweiter Open waehrend der Stream laeuft
-wuerde fehlschlagen. Deshalb haelt genau eine `SharedCamera` die Hardware
-offen und nimmt kontinuierlich Frames auf; alle Leser bekommen ueber
-`latest_frame` denselben zwischengespeicherten Frame statt selbst die
-Hardware anzusprechen.
+Detection (`detection/apriltag.py`) and the live-stream publisher (`camera_stream.py`)
+both need images from the same physical camera. Picamera2/libcamera **and** RealSense,
+however, allow only one open handle per camera at a time -- a second open while the
+stream is running would fail. Therefore exactly one `SharedCamera` keeps the hardware
+open and captures frames continuously; all readers get the same cached frame via
+`latest_frame` instead of addressing the hardware themselves.
 
-Welche Hardware das ist, waehlt `CameraStreamConfig.backend`
-(`profiles.CAMERA_BACKENDS`) -- z. B. Picamera2 auf dem Decken-Pi, RealSense
-auf dem Hand-Pi. Alle Backends liefern denselben `CameraFrame` (BGR-Array),
-Erkennungsquelle und Stream-Publisher kennen den konkreten Backend-Typ nicht.
+Which hardware is used is chosen by `CameraStreamConfig.backend`
+(`profiles.CAMERA_BACKENDS`) -- e.g. Picamera2 on the ceiling Pi, RealSense on the hand
+Pi. All backends deliver the same `CameraFrame` (BGR array); the detection source and
+the stream publisher do not know the concrete backend type.
 
-`picamera2`/`pyrealsense2`/`cv2` werden erst in `open()` importiert, damit ein
-Server ohne `camera_stream`-Konfiguration (z. B. lokale Entwicklung, Tests)
-ohne diese Abhaengigkeiten startet.
+`picamera2`/`pyrealsense2`/`cv2` are only imported in `open()`, so that a server without
+a `camera_stream` configuration (e.g. local development, tests) starts without these
+dependencies.
 
-Watchdog: `capture_array()` kann ohne jede Fehlermeldung ewig haengen, wenn
-libcamera keinen Frame mehr liefert (so auf Pi 1 am 2026-09-22 per `py-spy`
-beobachtet). Der Capture-Loop begrenzt deshalb jede Aufnahme, oeffnet die
-Kamera bei Haengern neu und beendet als letztes Mittel den Prozess, damit
-systemd ihn neu startet. Das gilt fuer alle Backends gleich -- auch
-`wait_for_frames()` der RealSense laeuft durch denselben Timeout. Ein
-haengender Worker-Thread laesst sich in Python nicht abbrechen -- er wird
-zurueckgelassen, nicht beendet.
+Watchdog: `capture_array()` can hang forever without any error message when libcamera
+no longer delivers a frame (observed on Pi 1 on 2026-09-22 via `py-spy`). The capture
+loop therefore bounds every capture, reopens the camera on hangs and, as a last resort,
+terminates the process so that systemd restarts it. This applies equally to all
+backends -- `wait_for_frames()` of the RealSense also runs under the same timeout. A
+hanging worker thread cannot be aborted in Python -- it is left behind, not terminated.
 """
 
 import asyncio
@@ -42,22 +38,21 @@ from .profiles import CAMERA_BACKENDS, CameraStreamConfig
 _log = logging.getLogger(__name__)
 
 
-#: Hauptstrom der Pi-Kamera. Picamera2 legt `RGB888` im Speicher als B,G,R ab
-#: -- das ist bereits OpenCV-BGR, anders als der Picamera2-Standard `XBGR8888`
-#: (R,G,B,X), der je Frame eine Farbumrechnung brauchte. Bei 12 MP kostete die
-#: allein einen guten Teil eines Kerns.
+#: Main stream of the Pi camera. Picamera2 stores `RGB888` in memory as B,G,R -- that is
+#: already OpenCV BGR, unlike the Picamera2 default `XBGR8888` (R,G,B,X), which needed a
+#: colour conversion per frame. At 12 MP this alone cost a good part of a core.
 PICAMERA2_MAIN_FORMAT = "RGB888"
-#: Der `lores`-Strom kann auf dem Pi 4 nur YUV420 (Pi 5: auch RGB).
+#: The `lores` stream can only do YUV420 on the Pi 4 (Pi 5: RGB as well).
 PICAMERA2_PREVIEW_FORMAT = "YUV420"
 
 
 @dataclass(frozen=True)
 class CameraFrame:
-    """Ein aufgenommener Frame (BGR, wie von OpenCV erwartet) mit Zeitstempel.
+    """One captured frame (BGR, as expected by OpenCV) with a timestamp.
 
-    `image` ist immer das volle Bild -- Erkennung und Kalibrierung rechnen
-    darauf. `preview` ist dasselbe Bild klein, vom Kamera-ISP skaliert, fuer
-    Livestream und Overlay; `None`, wenn das Backend keinen zweiten Strom hat.
+    `image` is always the full image -- detection and calibration compute on it.
+    `preview` is the same image small, scaled by the camera ISP, for live stream and
+    overlay; `None` if the backend has no second stream.
     """
 
     image: Any
@@ -67,37 +62,37 @@ class CameraFrame:
 
 @dataclass(frozen=True)
 class CameraStatus:
-    """Momentaufnahme dessen, was der Watchdog ohnehin schon weiss.
+    """Snapshot of what the watchdog knows anyway.
 
-    Eine Datenklasse statt sieben Properties: wer den Zustand auswertet, soll
-    ein in sich stimmiges Bild sehen und nicht zwischen zwei Abfragen einen
-    Reopen erwischen. `camera_health.py` macht daraus `DeviceHealth` nach
-    OPC 40100-2; diese Datei bleibt frei von OPC UA.
+    A data class instead of seven properties: whoever evaluates the state should see a
+    self-consistent picture and not catch a reopen between two queries.
+    `camera_health.py` turns this into `DeviceHealth` per OPC 40100-2; this file stays
+    free of OPC UA.
     """
 
-    #: Der Capture-Loop laeuft (entspricht `is_open`).
+    #: The capture loop is running (corresponds to `is_open`).
     running: bool
-    #: Ein Kamera-Handle ist offen. Waehrend `_reopen` kurzzeitig False.
+    #: A camera handle is open. Briefly False during `_reopen`.
     has_handle: bool
-    #: Ergebnis der letzten Aufnahme: "none" | "ok" | "error" | "hung".
+    #: Outcome of the last capture: "none" | "ok" | "error" | "hung".
     last_outcome: str
-    #: Aufnahmefehler in Folge, zurueckgesetzt von jedem "ok".
+    #: Capture failures in a row, reset by every "ok".
     consecutive_failures: int
-    #: Neu-Oeffnungen ohne einen Frame dazwischen; 0 heisst "gesund".
+    #: Re-openings without a frame in between; 0 means "healthy".
     reopen_attempts: int
-    #: Das Reopen-Budget ist erschoepft, der Prozess beendet sich gleich.
+    #: The reopen budget is exhausted, the process terminates shortly.
     gave_up: bool
-    #: Alter des neuesten Frames in Sekunden, `None` vor dem ersten Capture.
+    #: Age of the newest frame in seconds, `None` before the first capture.
     frame_age_s: float | None
 
 
 def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
-    """Wandelt einen Picamera2-`YUV420`-Puffer (I420) in ein BGR-Bild `size` um.
+    """Convert a Picamera2 `YUV420` buffer (I420) into a BGR image of `size`.
 
-    Der Puffer hat die Form `(hoehe * 3 / 2, stride)`; `stride` kann wegen der
-    Zeilenausrichtung breiter sein als das Bild. Die Farbebenen liegen dann mit
-    `stride / 2` im selben Raster, die Umrechnung auf voller `stride`-Breite
-    ist also stimmig -- danach wird auf die echte Breite zugeschnitten.
+    The buffer has the shape `(height * 3 / 2, stride)`; `stride` can be wider than the
+    image because of row alignment. The colour planes then lie on the same grid with
+    `stride / 2`, so converting at full `stride` width is consistent -- afterwards the
+    result is cropped to the real width.
     """
     import cv2
 
@@ -111,11 +106,11 @@ def yuv420_to_bgr(array: Any, size: tuple[int, int]) -> Any:
 
 
 def realsense_color_profiles(device) -> set[tuple[int, int, int, str]]:
-    """Farb-Stream-Profile eines RealSense-Geraets als `(Breite, Hoehe, fps, Format)`.
+    """Return the colour stream profiles of a RealSense device as `(width, height, fps, format)`.
 
-    Gemeinsam fuer die Fehlermeldung in `_open_realsense` und das Werkzeug
-    `tools/list_realsense_profiles.py`. Fragt nur Faehigkeiten ab, oeffnet keine
-    Pipeline.
+    Shared by the error message in `_open_realsense` and the tool
+    `tools/list_realsense_profiles.py`. Only queries capabilities, does not open a
+    pipeline.
     """
     import pyrealsense2 as rs
 
@@ -130,10 +125,10 @@ def realsense_color_profiles(device) -> set[tuple[int, int, int, str]]:
 
 
 def _list_realsense_color_profiles() -> str:
-    """Fragt die angeschlossene RealSense nach ihren Farb-Stream-Profilen.
+    """Query the connected RealSense for its colour stream profiles.
 
-    Rein diagnostisch fuer die Fehlermeldung in `_open_realsense` -- darf
-    selbst nie werfen, sonst verschluckt sie den eigentlichen Fehler.
+    Purely diagnostic for the error message in `_open_realsense` -- it must never raise
+    itself, otherwise it would swallow the actual error.
     """
     try:
         import pyrealsense2 as rs
@@ -147,27 +142,27 @@ def _list_realsense_color_profiles() -> str:
         return ", ".join(
             f"{w}x{h}@{fps}fps({fmt})" for w, h, fps, fmt in sorted(profiles)
         )
-    except Exception as error:  # noqa: BLE001 -- rein diagnostisch, siehe Docstring
+    except Exception as error:  # noqa: BLE001 -- purely diagnostic, see docstring
         return f"Profile nicht abrufbar ({error})"
 
 
 def exit_process() -> None:
-    """Beendet den Prozess hart, damit systemd (`Restart=always`) neu startet.
+    """Terminate the process hard so that systemd (`Restart=always`) restarts it.
 
-    `os._exit` statt `sys.exit`: ein normales Beenden wartet beim Shutdown auf
-    alle Executor-Threads -- und damit auf den, der in `capture_array()`
-    haengt. Der Prozess wuerde nie enden.
+    `os._exit` instead of `sys.exit`: a normal exit waits at shutdown for all executor
+    threads -- and thus for the one that hangs in `capture_array()`. The process would
+    never end.
     """
     logging.shutdown()
     os._exit(1)
 
 
 def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
-    """Argumente fuer `Picamera2.create_video_configuration()` aus der Config.
+    """Return the arguments for `Picamera2.create_video_configuration()` from the config.
 
-    Hauptstrom in voller `resolution` fuer Jobs und Kalibrierung; mit
-    `preview_resolution` zusaetzlich ein `lores`-Strom fuer den Livestream,
-    den der ISP aus demselben Frame skaliert.
+    Main stream at full `resolution` for jobs and calibration; with `preview_resolution`
+    additionally a `lores` stream for the live stream, which the ISP scales from the same
+    frame.
     """
     arguments: dict[str, Any] = {
         "main": {"size": tuple(config.resolution), "format": PICAMERA2_MAIN_FORMAT},
@@ -183,16 +178,16 @@ def picamera2_video_configuration(config: CameraStreamConfig) -> dict[str, Any]:
     if config.buffer_count is not None:
         arguments["buffer_count"] = int(config.buffer_count)
     if config.camera_controls:
-        # Picamera2 legt seine Video-Standards (`FrameDurationLimits`,
-        # `NoiseReductionMode`) unter diese Controls: `create_video_configuration`
-        # mischt sie mit den Standards, ersetzt sie nicht. Namen und Enum-Strings
-        # sind hier noch unaufgeloest, siehe `resolve_camera_controls`.
+        # Picamera2 sets its video defaults (`FrameDurationLimits`, `NoiseReductionMode`)
+        # under these controls: `create_video_configuration` merges them with the
+        # defaults, it does not replace them. Names and enum strings are still unresolved
+        # here, see `resolve_camera_controls`.
         arguments["controls"] = dict(config.camera_controls)
     return arguments
 
 
-#: Enum-Controls, die als Name angegeben werden duerfen -> Pfad der Enum-Klasse
-#: in `libcamera.controls`. `NoiseReductionMode` liegt dort unter `draft`.
+#: Enum controls that may be given by name -> path of the enum class in
+#: `libcamera.controls`. `NoiseReductionMode` lives there under `draft`.
 CAMERA_ENUM_CONTROLS: dict[str, str] = {
     "NoiseReductionMode": "draft.NoiseReductionModeEnum",
     "AeMeteringMode": "AeMeteringModeEnum",
@@ -203,12 +198,12 @@ CAMERA_ENUM_CONTROLS: dict[str, str] = {
 
 
 def resolve_camera_controls(controls: dict[str, Any], namespace: Any) -> dict[str, Any]:
-    """Ersetzt Enum-Namen (`"Fast"`) durch die libcamera-Werte.
+    """Replace enum names (`"Fast"`) with the libcamera values.
 
-    `namespace` ist `libcamera.controls` (injizierbar, damit es ohne libcamera
-    testbar bleibt). Nur die Controls aus `CAMERA_ENUM_CONTROLS` werden
-    aufgeloest; Zahlen und alle anderen Werte bleiben unveraendert.
-    `ValueError` mit den gueltigen Namen bei einem unbekannten Enum-Namen.
+    `namespace` is `libcamera.controls` (injectable, so that this stays testable without
+    libcamera). Only the controls from `CAMERA_ENUM_CONTROLS` are resolved; numbers and
+    all other values remain unchanged. Raises `ValueError` listing the valid names for
+    an unknown enum name.
     """
     resolved = dict(controls)
     for name, path in CAMERA_ENUM_CONTROLS.items():
@@ -230,13 +225,13 @@ def resolve_camera_controls(controls: dict[str, Any], namespace: Any) -> dict[st
 def validate_camera_controls(
     controls: dict[str, Any], available: dict[str, Any]
 ) -> dict[str, Any]:
-    """Prueft die Namen gegen `Picamera2.camera_controls` und gleicht Zahlentypen an.
+    """Check the names against `Picamera2.camera_controls` and align number types.
 
-    `available` bildet Control-Name auf `(Minimum, Maximum, Standard)` ab. Ein
-    ganzzahliger Wert fuer ein Float-Control wird `float` (und umgekehrt, wenn
-    er ganzzahlig ist), `0`/`1` fuer ein Bool-Control wird `bool`; Listen aus
-    JSON werden zu Tupeln. `ValueError` mit den Namen der Kamera, wenn ein
-    Control dort nicht vorkommt -- ein Tippfehler soll beim Start auffallen.
+    `available` maps control name to `(minimum, maximum, default)`. An integer value for
+    a float control becomes `float` (and vice versa if it is integral), `0`/`1` for a
+    bool control becomes `bool`; lists from JSON become tuples. Raises `ValueError` with
+    the camera's names if a control does not occur there -- a typo should surface at
+    start-up.
     """
     unknown = sorted(name for name in controls if name not in available)
     if unknown:
@@ -265,8 +260,8 @@ def validate_camera_controls(
     return checked
 
 
-#: Metadaten, die nach dem Warmup ins Log gehen: damit waehlt man feste
-#: Belichtungswerte fuer `camera_controls`.
+#: Metadata that goes to the log after warm-up: this is how one picks fixed exposure
+#: values for `camera_controls`.
 CAMERA_METADATA_KEYS: tuple[str, ...] = (
     "ExposureTime",
     "AnalogueGain",
@@ -278,22 +273,22 @@ CAMERA_METADATA_KEYS: tuple[str, ...] = (
 
 
 def format_camera_metadata(metadata: dict[str, Any]) -> str:
-    """Die Eintraege aus `CAMERA_METADATA_KEYS`, die die Kamera meldet, als eine Zeile."""
+    """Return the entries from `CAMERA_METADATA_KEYS` that the camera reports, as one line."""
     return ", ".join(f"{key}={metadata[key]}" for key in CAMERA_METADATA_KEYS if key in metadata)
 
 
-#: `calibration_id` einer aus der RealSense gelesenen Werks-Intrinsik.
+#: `calibration_id` of a factory intrinsic read from the RealSense.
 REALSENSE_FACTORY_CALIBRATION_ID = "realsense-werksintrinsik"
 
 
 def _realsense_calibration(pipeline: Any, frame_id: str) -> Any:
-    """Werks-Intrinsik des Farb-Streams einer laufenden Pipeline.
+    """Return the factory intrinsics of the colour stream of a running pipeline.
 
-    Brown-Conrady von librealsense entspricht dem OpenCV-Pinhole-Modell. Fuer
-    andere Modelle (die Farbkamera der D4xx meldet "Inverse Brown Conrady",
-    praktisch immer mit Koeffizienten 0) werden die Koeffizienten nur
-    uebernommen, wenn sie alle 0 sind -- sonst bedeuteten sie fuer OpenCV etwas
-    anderes, und eine stumm falsche Verzeichnung waere schlimmer als keine.
+    librealsense' Brown-Conrady corresponds to the OpenCV pinhole model. For other models
+    (the D4xx colour camera reports "Inverse Brown Conrady", practically always with
+    coefficients 0) the coefficients are only taken over if they are all 0 -- otherwise
+    they would mean something different to OpenCV, and a silently wrong distortion would
+    be worse than none.
     """
     import numpy as np
     import pyrealsense2 as rs
@@ -330,7 +325,7 @@ def _realsense_calibration(pipeline: Any, frame_id: str) -> Any:
 
 
 class SharedCamera:
-    """Haelt eine Kamera offen und stellt den jeweils neuesten Frame bereit."""
+    """Keep one camera open and provide the most recent frame."""
 
     def __init__(
         self,
@@ -343,37 +338,36 @@ class SharedCamera:
         self._executor: ThreadPoolExecutor | None = None
         self._loop_task: asyncio.Task | None = None
         self._latest: CameraFrame | None = None
-        #: Austauschbar fuer Tests, die den Prozess nicht beenden duerfen, und
-        #: fuer den Runner, der vorher noch FAILURE veroeffentlichen will.
+        #: Exchangeable for tests that must not terminate the process, and for the runner,
+        #: which wants to publish a final FAILURE beforehand.
         self._on_give_up = on_give_up
-        #: Zaehlerstaende des Watchdogs. Bewusst auf Instanzebene und nicht als
-        #: lokale Variablen im Capture-Loop: sonst kennt nur die Schleife den
-        #: Zustand, und `status()` muesste ihn ein zweites Mal herleiten.
+        #: Counter states of the watchdog. Deliberately kept at instance level and not as
+        #: local variables in the capture loop: otherwise only the loop would know the
+        #: state, and `status()` would have to derive it a second time.
         self._failures = 0
         self._reopens = 0
         self._last_outcome = "none"
         self._gave_up = False
-        #: Groesse des `lores`-Stroms, sobald Picamera2 damit konfiguriert ist;
-        #: sonst `None` und jede Aufnahme liefert nur `image`.
+        #: Size of the `lores` stream once Picamera2 is configured with it; otherwise
+        #: `None` and every capture delivers only `image`.
         self._preview_size: tuple[int, int] | None = None
 
     @property
     def latest_frame(self) -> CameraFrame | None:
-        """Der zuletzt aufgenommene Frame, oder `None` vor dem ersten Capture."""
+        """The most recently captured frame, or `None` before the first capture."""
         return self._latest
 
     @property
     def is_open(self) -> bool:
-        """Ob der Capture-Loop laeuft."""
+        """Whether the capture loop is running."""
         return self._loop_task is not None
 
     def status(self, now: float) -> CameraStatus:
-        """Zustand zum Zeitpunkt `now` (derselbe `loop.time()`-Zeitstrahl).
+        """Return the state at time `now` (same `loop.time()` time axis).
 
-        `now` wird uebergeben statt selbst geholt: `CameraFrame.timestamp`
-        kommt aus `loop.time()`, und nur der Aufrufer weiss, ob er auf
-        demselben Loop laeuft. So bleibt die Methode synchron und ohne
-        laufenden Loop testbar.
+        `now` is passed in instead of fetched here: `CameraFrame.timestamp` comes from
+        `loop.time()`, and only the caller knows whether it runs on the same loop. This
+        keeps the method synchronous and testable without a running loop.
         """
         latest = self._latest
         return CameraStatus(
@@ -389,29 +383,28 @@ class SharedCamera:
     def set_give_up_handler(
         self, handler: Callable[[], Awaitable[None] | None]
     ) -> None:
-        """Ersetzt, was beim endgueltigen Aufgeben passiert.
+        """Replace what happens on final give-up.
 
-        Noetig, weil die Kamera in `build_detection_sources` entsteht -- lange
-        bevor es einen Zustandsknoten gibt, in den sich ein letztes FAILURE
-        schreiben liesse.
+        Needed because the camera is created in `build_detection_sources` -- long before
+        there is a state node into which a final FAILURE could be written.
         """
         self._on_give_up = handler
 
     async def open(self) -> None:
-        """Oeffnet die Kamera und startet den Capture-Loop. Nicht idempotent."""
+        """Open the camera and start the capture loop. Not idempotent."""
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera")
         loop = asyncio.get_running_loop()
         self._camera = await loop.run_in_executor(self._executor, self._open_camera)
         self._loop_task = asyncio.create_task(self._capture_loop())
 
     async def factory_calibration(self, frame_id: str = "") -> Any | None:
-        """Die Werks-Intrinsik der Kamera als `CameraCalibration`, sonst `None`.
+        """Return the factory intrinsics of the camera as `CameraCalibration`, otherwise `None`.
 
-        Nur die RealSense kennt ihre Intrinsik selbst (aus der Fertigung, im
-        Geraet gespeichert). Das ist kein Ersatz fuer eine eigene Kalibrierung,
-        aber weit besser als der geschaetzte Platzhalter -- Rueckfall, wenn die
-        Kalibrierdatei fehlt. Laeuft im Kamera-Thread, damit es nicht mit dem
-        Capture-Loop um die Pipeline konkurriert.
+        Only the RealSense knows its intrinsics itself (from manufacturing, stored on the
+        device). This is no replacement for an own calibration, but far better than the
+        estimated placeholder -- it is the fallback if the calibration file is missing.
+        Runs in the camera thread so that it does not compete with the capture loop for
+        the pipeline.
         """
         if self._config.backend != "realsense" or self._camera is None or self._executor is None:
             return None
@@ -425,7 +418,7 @@ class SharedCamera:
             return None
 
     def _open_camera(self) -> Any:
-        """Laeuft im Kamera-Worker-Thread: Hardware oeffnen plus Warmup."""
+        """Run in the camera worker thread: open the hardware plus warm-up."""
         import time
 
         backend = self._config.backend
@@ -453,11 +446,11 @@ class SharedCamera:
         return camera
 
     def _log_metadata(self, camera: Any) -> None:
-        """Loggt die tatsaechlichen Belichtungswerte nach dem Warmup, einmal je Oeffnung.
+        """Log the actual exposure values after warm-up, once per opening.
 
-        Laeuft im Kamera-Worker-Thread, bevor der Capture-Loop startet -- kein
-        Wettlauf um die Requests. Ein Fehler hier ist nur ein fehlendes Log,
-        kein Grund, die Kamera nicht zu nutzen.
+        Runs in the camera worker thread before the capture loop starts -- no race over
+        the requests. An error here is only a missing log line, not a reason to stop
+        using the camera.
         """
         try:
             text = format_camera_metadata(camera.capture_metadata())
@@ -480,8 +473,8 @@ class SharedCamera:
                     libcamera_controls,
                 )
             except Exception:
-                # Fehlkonfiguration (ValueError) oder libcamera fehlt: die Kamera
-                # nicht offen lassen, sonst scheitert jedes Neu-Oeffnen am Handle.
+                # Misconfiguration (ValueError) or libcamera missing: do not leave the
+                # camera open, otherwise every reopen fails on the handle.
                 camera.close()
                 raise
             _log.info("Kamera-Controls: %s", self._config.camera_controls)
@@ -495,14 +488,13 @@ class SharedCamera:
         return camera
 
     def _open_realsense(self) -> Any:
-        """Startet eine RealSense-Pipeline auf dem Farb-Stream (BGR8).
+        """Start a RealSense pipeline on the colour stream (BGR8).
 
-        `pipeline.start()` wirft `RuntimeError("Couldn't resolve requests")`,
-        wenn die angeschlossene Kamera das angeforderte Profil (Aufloesung +
-        fps + Format) nicht unterstuetzt -- z. B. weil die auf dem Pi noetige
-        RSUSB-Backend-Anbindung die Bandbreite begrenzt. Im Fehlerfall listen
-        wir die tatsaechlich unterstuetzten Farb-Profile ins Log, statt blind
-        weiter zu raten.
+        `pipeline.start()` raises `RuntimeError("Couldn't resolve requests")` if the
+        connected camera does not support the requested profile (resolution + fps +
+        format) -- e.g. because the RSUSB backend link needed on the Pi limits the
+        bandwidth. In that case we log the colour profiles the camera actually supports,
+        instead of guessing blindly.
         """
         import pyrealsense2 as rs
 
@@ -534,12 +526,12 @@ class SharedCamera:
         return camera
 
     def _read_frames(self) -> tuple[Any, Any]:
-        """Laeuft im Kamera-Worker-Thread: `(volles Bild, kleines Bild | None)`.
+        """Run in the camera worker thread: `(full image, small image | None)`.
 
-        Mit `lores`-Strom holt ein einziger Request beide Bilder -- sie
-        stammen damit garantiert aus derselben Aufnahme, und das Overlay zeigt
-        nie ein anderes Bild als das, das der Job sieht. `make_array` kopiert,
-        der Request geht also sofort an die Kamera zurueck.
+        With a `lores` stream a single request fetches both images -- they are thus
+        guaranteed to come from the same capture, and the overlay never shows a different
+        image than the one the job sees. `make_array` copies, so the request goes back to
+        the camera immediately.
         """
         if self._preview_size is None:
             return self._read_frame(), None
@@ -552,10 +544,10 @@ class SharedCamera:
         return image, yuv420_to_bgr(preview, self._preview_size)
 
     def _read_frame(self) -> Any:
-        """Laeuft im Kamera-Worker-Thread: ein Frame in BGR."""
+        """Run in the camera worker thread: one frame in BGR."""
         backend = self._config.backend
         if backend == "picamera2":
-            # Bereits BGR, siehe PICAMERA2_MAIN_FORMAT.
+            # Already BGR, see PICAMERA2_MAIN_FORMAT.
             return self._camera.capture_array("main")
         if backend == "realsense":
             import numpy as np
@@ -564,11 +556,10 @@ class SharedCamera:
             color_frame = frames.get_color_frame()
             if not color_frame:
                 raise RuntimeError("RealSense-Pipeline lieferte keinen Farbframe")
-            # Kopieren, nicht nur ansehen: `asanyarray(get_data())` haelt den
-            # Puffer von librealsense fest, solange das Array lebt. Die
-            # Hand-Auge-Sitzung hebt je Aufnahme ein Bild auf -- ohne Kopie
-            # gehen der RealSense die Puffer aus, `wait_for_frames()` haengt
-            # und der Livestream steht. 640x480 kostet die Kopie praktisch nichts.
+            # Copy, do not just view: `asanyarray(get_data())` keeps librealsense' buffer
+            # alive as long as the array lives. The hand-eye session keeps one image per
+            # capture -- without a copy the RealSense runs out of buffers, `wait_for_frames()`
+            # hangs and the live stream stops. A 640x480 copy costs practically nothing.
             return np.array(color_frame.get_data())
         ok, frame = self._camera.read()
         if not ok:
@@ -576,9 +567,9 @@ class SharedCamera:
         return frame
 
     async def _capture_once(self, loop: asyncio.AbstractEventLoop) -> str:
-        """Eine Aufnahme mit Timeout: `"ok"`, `"error"` oder `"hung"`."""
+        """One capture with a timeout: `"ok"`, `"error"` or `"hung"`."""
         if self._camera is None:
-            # Die letzte Neu-Oeffnung ist gescheitert; nichts zu lesen.
+            # The last re-opening failed; nothing to read.
             self._last_outcome = "hung"
             return "hung"
         try:
@@ -602,11 +593,11 @@ class SharedCamera:
         return "ok"
 
     async def _capture_loop(self) -> None:
-        """Nimmt Frames mit `capture_fps` auf, bis die Task abgebrochen wird.
+        """Capture frames at `capture_fps` until the task is cancelled.
 
-        Eskalation: Fehler zaehlen, ab `max_capture_failures` (ein Haenger
-        zaehlt sofort voll) die Kamera neu oeffnen, nach `max_reopen_attempts`
-        Neu-Oeffnungen ohne einen Frame dazwischen aufgeben.
+        Escalation: failures are counted; from `max_capture_failures` on (a hang counts as
+        full immediately) the camera is reopened; after `max_reopen_attempts` reopenings
+        without a frame in between, it gives up.
         """
         loop = asyncio.get_running_loop()
         interval = 1.0 / self._config.capture_fps
@@ -630,10 +621,9 @@ class SharedCamera:
                         self._config.max_reopen_attempts,
                     )
                     self._gave_up = True
-                    # Der Handler darf asynchron sein: der Runner schreibt hier
-                    # ein letztes FAILURE in die Anlagensicht, bevor der
-                    # Prozess gerissen wird. Der Standardhandler ist synchron
-                    # und kehrt ohnehin nie zurueck.
+                    # The handler may be asynchronous: the runner writes a final FAILURE
+                    # into the asset view here, before the process is torn down. The
+                    # default handler is synchronous and never returns anyway.
                     result = self._on_give_up()
                     if result is not None:
                         await result
@@ -644,11 +634,11 @@ class SharedCamera:
             await asyncio.sleep(max(0.0, interval - elapsed))
 
     async def _reopen(self, attempt: int) -> None:
-        """Gibt die Kamera frei und oeffnet sie mit frischem Worker neu.
+        """Release the camera and reopen it with a fresh worker.
 
-        Der alte Worker haengt womoeglich noch in `capture_array()`; er wird
-        samt Executor zurueckgelassen. Ein Fehlschlag laesst `_camera` auf
-        `None`, der naechste Durchlauf eskaliert dann weiter.
+        The old worker may still hang in `capture_array()`; it is left behind together
+        with its executor. A failure leaves `_camera` as `None`; the next pass then
+        escalates further.
         """
         _log.warning(
             "Kamera haengt, oeffne sie neu (Versuch %d/%d)",
@@ -674,11 +664,11 @@ class SharedCamera:
         _log.info("Kamera neu geoeffnet")
 
     async def _close_in_own_thread(self, camera: Any) -> None:
-        """Schliesst die Kamera in einem Wegwerf-Thread, mit Timeout.
+        """Close the camera in a throwaway thread, with a timeout.
 
-        Nicht im Kamera-Worker: der kann in `capture_array()` haengen, ein
-        `close` stuende dann ewig hinter ihm an. Haengt auch das Schliessen,
-        bleibt dieser Thread eben zurueck.
+        Not in the camera worker: that one may hang in `capture_array()`, and a `close`
+        would then wait forever behind it. If closing hangs too, this thread is simply
+        left behind.
         """
         closer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-camera-close")
         try:
@@ -692,7 +682,7 @@ class SharedCamera:
             closer.shutdown(wait=False, cancel_futures=True)
 
     async def close(self) -> None:
-        """Stoppt den Capture-Loop und gibt die Kamera frei. Idempotent."""
+        """Stop the capture loop and release the camera. Idempotent."""
         if self._loop_task is not None:
             await cancel_and_wait(self._loop_task)
             self._loop_task = None
@@ -704,11 +694,12 @@ class SharedCamera:
             self._executor = None
 
     def _close_camera(self, camera: Any) -> None:
+        """Stop and release the camera, using the call that matches the backend."""
         backend = self._config.backend
         if backend == "picamera2":
             camera.stop()
             camera.close()
         elif backend == "realsense":
-            camera.stop()  # `camera` ist die `rs.pipeline()`
+            camera.stop()  # `camera` is the `rs.pipeline()`
         else:
             camera.release()

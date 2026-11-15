@@ -1,8 +1,8 @@
-"""Gemeinsame Argumente, Ladepfade und Ausgabeformate fuer die CLI-Werkzeuge.
+"""Shared arguments, loading helpers and output formats for the CLI tools.
 
-Leitlinie fuer die Fehlermeldungen hier: Eine Meldung sagt, **was zu tun ist**,
-nicht nur, was fehlt. Ein Traceback aus `load_calibration` beantwortet nicht
-"und jetzt?"; `raise SystemExit` mit dem naechsten Befehl tut es.
+Guideline for the error messages here: a message says **what to do next**,
+not only what is missing. A traceback from `load_calibration` does not answer
+"what now?"; `raise SystemExit` with the next command does.
 """
 
 import argparse
@@ -14,11 +14,12 @@ from ..calibration import CameraCalibration, load_calibration
 from ..geometry import Pose, pose_from_dict, pose_to_dict
 from ..tagmap import DEFAULT_TAG_FAMILY, TagMap, empty_tag_map, load_tag_map
 
-#: Austauschformat zwischen `detect` und `transform`.
+#: Exchange format between `detect` and `transform`.
 CLI_SCHEMA = "wsc.vision.detections.cli/1"
 
 
 def setup_logging(verbose: bool = False) -> None:
+    """Configure root logging: DEBUG if ``verbose``, otherwise INFO."""
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
@@ -26,17 +27,17 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def require_cv2():
-    """Importiert OpenCV oder erklaert, wie man es bekommt.
+    """Import OpenCV, or explain how to install it.
 
-    Der Probezugriff auf `cv2.imread` ist Absicht: Eine kaputte Installation
-    bleibt als leeres Namespace-Paket importierbar und scheiterte sonst erst
-    mitten im Lauf, wenn eine Kamera schon offen ist.
+    The probe access to `cv2.imread` is intentional: a broken installation
+    still imports as an empty namespace package, and would otherwise only fail
+    in the middle of a run, after a camera is already open.
     """
     try:
         import cv2
 
         _ = cv2.imread
-    except Exception as error:  # ImportError oder AttributeError
+    except Exception as error:  # ImportError or AttributeError
         raise SystemExit(
             f"OpenCV ist nicht nutzbar ({error}).\n"
             "  Installieren mit: pip install opencv-contrib-python\n"
@@ -46,6 +47,7 @@ def require_cv2():
 
 
 def add_source_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add ``--source``, ``--resolution`` and ``-v`` to ``parser``."""
     parser.add_argument(
         "--source",
         default="camera:0",
@@ -63,7 +65,7 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def add_decoder_arguments(parser: argparse.ArgumentParser) -> None:
-    """Frei waehlbare Detektor-Parameter, ohne Angabe gilt der OpenCV-Standard."""
+    """Add the optional detector parameters. Without them, the OpenCV defaults apply."""
     parser.add_argument(
         "--detector-param",
         action="append",
@@ -77,6 +79,7 @@ def add_decoder_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the calibration, tag map, detector and filter options to ``parser``."""
     parser.add_argument(
         "--calibration", type=Path, required=True, help="Kalibrierdatei (JSON)"
     )
@@ -106,10 +109,12 @@ def add_detection_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def parse_detector_params(items) -> dict:
-    """`["NAME=WERT", ...]` -> `{NAME: WERT}`, Wert per `json.loads`, sonst Text.
+    """Parse ``["NAME=WERT", ...]`` into ``{NAME: WERT}``.
 
-    `SystemExit` mit einer Meldung, die sagt, was zu tun ist, bei einem Eintrag
-    ohne `=`.
+    Each value is parsed with ``json.loads``; if that fails, it is kept as text.
+
+    Raises:
+        SystemExit: If an entry has no ``=``. The message says what to write instead.
     """
     parameters = {}
     for item in items or []:
@@ -128,12 +133,20 @@ def parse_detector_params(items) -> dict:
 
 
 def detector_options(args) -> dict:
-    """Die Detektor-Parameter aus den CLI-Argumenten als Keywords fuer `build_detector`."""
+    """Return the detector parameters from the CLI arguments as keywords for ``build_detector``."""
     return {"detector_parameters": parse_detector_params(args.detector_param)}
 
 
 def open_source(args, *, loop: bool = False):
-    """Oeffnet das Argument `--source` und erklaert bei einem Fehler die erlaubten Formen."""
+    """Open the ``--source`` argument. On failure, list the accepted forms.
+
+    Args:
+        args: Parsed arguments with ``source`` and ``resolution``.
+        loop: Whether the source should repeat when it reaches the end.
+
+    Raises:
+        SystemExit: If the source cannot be opened.
+    """
     from .. import frames as frame_sources
 
     try:
@@ -152,11 +165,12 @@ def open_source(args, *, loop: bool = False):
 
 
 def is_camera_source(spec) -> bool:
-    """Liefert, ob `--source` eine Live-Kamera statt gespeicherter Bilder meint."""
+    """Return whether ``--source`` names a live camera instead of stored images."""
     return str(spec).startswith(("camera", "picamera", "realsense"))
 
 
 def load_calibration_or_exit(path: Path) -> CameraCalibration:
+    """Load the calibration file, or exit with the command that creates it."""
     try:
         return load_calibration(path)
     except (FileNotFoundError, ValueError, KeyError) as error:
@@ -168,6 +182,7 @@ def load_calibration_or_exit(path: Path) -> CameraCalibration:
 
 
 def load_tag_map_or_exit(path: Path) -> TagMap:
+    """Load the tag map, or exit with the command that builds it."""
     try:
         return load_tag_map(path)
     except (FileNotFoundError, ValueError, KeyError) as error:
@@ -179,18 +194,21 @@ def load_tag_map_or_exit(path: Path) -> TagMap:
 
 
 def load_inputs(args) -> tuple[CameraCalibration, TagMap]:
-    """Laedt Kalibrierung und Tag-Karte; nimmt eine leere Karte, wenn keine angegeben wurde."""
+    """Load the calibration and the tag map. Use an empty map if none was given."""
     calibration = load_calibration_or_exit(args.calibration)
     tag_map = load_tag_map_or_exit(args.tag_map) if args.tag_map else empty_tag_map()
     return calibration, tag_map
 
 
 def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
-    """Prueft die Aufloesung und skaliert nur, wenn es ausdruecklich erlaubt ist.
+    """Check the resolution. Scale only if scaling is explicitly allowed.
 
-    Eine Kalibrierung fuer die falsche Aufloesung verschiebt jede Pose um den
-    Skalierungsfaktor -- plausibel verschoben, also unbemerkt. Deshalb hier
-    ein Abbruch, nicht nur eine Warnung.
+    A calibration for the wrong resolution shifts every pose by the scale
+    factor. The shift looks plausible, so it goes unnoticed. That is why this
+    aborts instead of only warning.
+
+    Raises:
+        SystemExit: If the resolutions differ and mismatch is not allowed.
     """
     from ..calibration import check_resolution, scale_to_resolution
 
@@ -210,7 +228,7 @@ def fit_calibration(calibration: CameraCalibration, size, allow_mismatch: bool):
 
 
 def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -> dict:
-    """Liefert das Erkennungsergebnis als JSON-faehiges dict."""
+    """Return the detection result as a JSON-serializable dict."""
     entries = []
     for tag_pose in tag_poses:
         entry = tag_map.get(tag_pose.tag_id) if tag_map is not None else None
@@ -227,7 +245,11 @@ def tag_poses_to_json(tag_poses, frame_id: str, tag_map: TagMap | None = None) -
 
 
 def poses_from_json(path: Path) -> tuple[str, list[tuple[int, Pose]]]:
-    """Liest eine Datei, die `detect --json` geschrieben hat."""
+    """Read a file written by ``detect --json``.
+
+    Raises:
+        SystemExit: If the file is unreadable, has the wrong schema, or has an incomplete entry.
+    """
     path = Path(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -255,13 +277,14 @@ def poses_from_json(path: Path) -> tuple[str, list[tuple[int, Pose]]]:
 
 
 def write_json(path, payload: dict) -> None:
+    """Write ``payload`` as indented JSON, creating parent folders as needed."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def describe_pose(pose: Pose) -> str:
-    """Liefert eine Pose als kompakte Zeile."""
+    """Return a pose as a compact one-line string."""
     data = pose_to_dict(pose)
     position = " ".join(f"{value:8.4f}" for value in data["position"])
     orientation = " ".join(f"{value:7.4f}" for value in data["orientation"])

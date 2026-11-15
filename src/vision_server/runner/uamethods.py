@@ -1,15 +1,14 @@
-"""Bausteine fuer die OPC-UA-Methoden des Vision-Systems: Antworten, Anlage, JSON-Wrapper.
+"""Building blocks for the OPC UA methods of the vision system: replies, registration, JSON wrapper.
 
-Alle Methoden antworten mit `Error` (Int32) und, wo es ein Ergebnis gibt,
-davor mit einem String (JSON). Asyncua validiert die Rueckgabe nicht; sie muss
-ein Tupel aus `ua.Variant` sein -- eine Liste wuerde als ein einziger Variant
-verpackt.
+Every method replies with `Error` (Int32) and, where there is a result, a string
+(JSON) before it. Asyncua does not validate the return value. It must be a tuple
+of `ua.Variant`, because a list would be packed as one single variant.
 
-`json_method` ist der gemeinsame Rahmen der Methoden mit einer JSON-Anfrage
+`json_method` is the common frame of the methods that take a JSON request
 (`MeasureBoard`, `MeasureTags`, `MeasureTagReference`, `PlanTagReferenceView`,
-`SetTagReferencePreview`): Anfrage lesen, Betriebszustand pruefen, Sperre
-pruefen, dann die eigentliche Arbeit. Fehlertexte und Statuscodes stehen bei
-den Aufrufern; der Rahmen sorgt nur fuer die gleiche Reihenfolge der Pruefungen.
+`SetTagReferencePreview`): read the request, check the operating state, check
+the lock, then do the actual work. Error texts and status codes are defined by
+the callers; the frame only ensures the same order of checks.
 """
 
 import logging
@@ -29,12 +28,12 @@ _log = logging.getLogger(__package__)
 
 
 def code_reply(code: VisionErrorCode) -> tuple[ua.Variant]:
-    """Antwort mit nur `Error` (Int32)."""
+    """Reply with only `Error` (Int32)."""
     return (ua.Variant(int(code), ua.VariantType.Int32),)
 
 
 def text_reply(text: str, code: VisionErrorCode) -> tuple[ua.Variant, ua.Variant]:
-    """Antwort mit einem String (meist JSON) und `Error` (Int32)."""
+    """Reply with a string (usually JSON) and `Error` (Int32)."""
     return (
         ua.Variant(text, ua.VariantType.String),
         ua.Variant(int(code), ua.VariantType.Int32),
@@ -42,7 +41,7 @@ def text_reply(text: str, code: VisionErrorCode) -> tuple[ua.Variant, ua.Variant
 
 
 def repo_relative(path: Path) -> str:
-    """Pfad relativ zum Repo (POSIX); ausserhalb des Repos der absolute Pfad."""
+    """Return the path relative to the repo (POSIX). Outside the repo, the absolute path."""
     try:
         return path.relative_to(_REPO_ROOT).as_posix()
     except ValueError:
@@ -58,13 +57,13 @@ async def add_vision_method(
     inputs: list[ua.VariantType],
     outputs: list[ua.VariantType],
 ) -> Node:
-    """Legt eine Methode unter dem Vision-System an und merkt den Knoten in `methods`.
+    """Add a method under the vision system and record the node in `methods`.
 
-    Die NodeId ist `<Name des Vision-Systems>.<Methode>` im eigenen Namensraum --
-    explizit statt der laufenden Nummer, die `add_method(own_idx, ...)` vergeben
-    wuerde: die verschiebt sich, sobald jemand davor einen Knoten einfuegt, und
-    das Frontend spricht die Methoden ueber feste Adressen an. Die Eintraege von
-    `methods` erscheinen auch unter `VisionProgram`, in der Reihenfolge der Anlage.
+    The NodeId is `<vision system name>.<method>` in our own namespace. It is
+    explicit instead of the running number that `add_method(own_idx, ...)` would
+    assign. That number shifts as soon as someone inserts a node before it, and the
+    frontend addresses the methods by fixed addresses. The entries of `methods`
+    also appear under `VisionProgram`, in the order of creation.
     """
     node = await space.vision_system.add_method(
         ua.NodeId(f"{config.vision_system_name}.{name}", space.own_idx),
@@ -87,19 +86,19 @@ def json_method(
     busy: Callable[[], bool] | None = None,
     busy_message: str = "",
 ) -> Callable:
-    """Handler einer Methode mit einer JSON-Anfrage als einzigem Argument.
+    """Return the handler of a method that takes a JSON request as its only argument.
 
-    Ablauf eines Aufrufs, in genau dieser Reihenfolge:
+    The order of a call is exactly this:
 
-    1. `parse(text)` liest die Anfrage; ein `ValueError` wird mit
-       `"<name> abgelehnt: ..."` geloggt und mit `INVALID_ARGUMENT` beantwortet
-    2. nicht `Operational`: `INVALID_STATE` ("Vision-System nicht betriebsbereit")
-    3. `busy()` (falls angegeben) wahr: `BUSY` mit `busy_message`
-    4. `run(anfrage, text)` macht die Arbeit und liefert die fertige Antwort
+    1. `parse(text)` reads the request. A `ValueError` is logged as
+       `"<name> abgelehnt: ..."` and answered with `INVALID_ARGUMENT`.
+    2. Not `Operational`: `INVALID_STATE` ("Vision-System nicht betriebsbereit").
+    3. `busy()` (if given) is true: `BUSY` with `busy_message`.
+    4. `run(request, text)` does the work and returns the finished reply.
 
-    `refuse(code, message)` baut die Antwort der Ablehnungen 1 bis 3 (mit dem
-    Ergebnis-JSON der Methode oder nur dem Code). `text` ist das Argument, ein
-    fehlender Wert gilt als leerer String.
+    `refuse(code, message)` builds the reply for the rejections 1 to 3 (with the
+    result JSON of the method, or only the code). `text` is the argument. A missing
+    value counts as an empty string.
     """
 
     @uamethod

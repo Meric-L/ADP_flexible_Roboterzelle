@@ -1,37 +1,35 @@
-"""Interaktive Kalibrierung gegen die geteilte Kamera, frontend-gesteuert.
+"""Interactive calibration against the shared camera, driven by the frontend.
 
-Der bisherige Weg (`tagloc.cli.calibrate`) oeffnet die Kamera selbst und
-exklusiv -- der Server muss dafuer gestoppt sein. Diese Klasse tut das
-Gegenteil: sie liest nur aus der bereits laufenden `SharedCamera` mit, genau
-wie `AprilTagDetectionSource` und der Livestream. Damit kann ein Operator per
-Frontend kalibrieren, waehrend Server und Livestream weiterlaufen.
+The previous approach (`tagloc.cli.calibrate`) opens the camera itself and
+exclusively, so the server must be stopped for it. This class does the
+opposite: it only reads from the already running `SharedCamera`, just like
+`AprilTagDetectionSource` and the live stream. An operator can therefore
+calibrate from the frontend while the server and the live stream keep running.
 
-Aufnahmen werden manuell ausgeloest (`capture()`, z. B. per Leertaste im
-Stream-Viewer oder ein Frontend-Button) statt automatisch nach Zeitintervall
--- der Operator sieht das Live-Bild und entscheidet selbst, wann eine Pose
-gut ist, statt dass die Kamera im Sekundentakt mitschreibt.
+Captures are triggered manually (`capture()`, e.g. with the space bar in the
+stream viewer or a frontend button) instead of automatically at a time
+interval. The operator sees the live image and decides for themselves when a
+pose is good, instead of the camera recording every second.
 
-**Aufnahme und Auswertung sind entkoppelt (seit 2026-09-28).** `capture()`
-merkt sich nur noch den aktuellen Kamera-Frame -- kein `detect_board` mehr im
-RPC-Pfad von `CaptureCalibrationSample`. Grund: `detect_board` auf dem vollen
-Kamera-Frame kann auf schwaecherer Pi-Hardware (Deckenkamera, 12 MP) so lange
-dauern, dass entweder der OPC-UA-Client die Verbindung aufgibt oder --
-schlimmer -- der Aufruf gar nicht mehr zurueckkommt und damit den einzigen
-Worker der Session dauerhaft blockiert (live gefunden 2026-09-28, siehe
-`CAPTURE_DETECT_TIMEOUT_S`). `finish()` stoesst stattdessen die eigentliche
-Auswertung (Ecken-Erkennung je Aufnahme + `calibrate_from_samples`) als
-Hintergrund-Aufgabe an und kehrt sofort zurueck; das Ergebnis erscheint in
-`progress["result"]`, sobald es fertig ist (`progress["processing"]` zeigt an,
-dass noch gerechnet wird). `runner/calibration.py` pausiert dafuer den Livestream, um dem
-Pi die volle CPU zu geben.
+**Capture and evaluation are decoupled (since 2026-09-28).** `capture()` only
+remembers the current camera frame now -- there is no `detect_board` in the RPC
+path of `CaptureCalibrationSample` anymore. Reason: `detect_board` on the full
+camera frame can take so long on weaker Pi hardware (ceiling camera, 12 MP)
+that either the OPC UA client gives up the connection or, worse, the call never
+returns and permanently blocks the session's only worker (found live
+2026-09-28, see `CAPTURE_DETECT_TIMEOUT_S`). Instead, `finish()` starts the
+actual evaluation (corner detection per capture plus `calibrate_from_samples`)
+as a background task and returns immediately. The result appears in
+`progress["result"]` once it is ready, and `progress["processing"]` shows that
+the computation is still running. `runner/calibration.py` pauses the live
+stream for this, to give the Pi the full CPU.
 
-Preis dieser Entkopplung: waehrend der Aufnahme gibt es kein Live-Feedback
-mehr, ob eine bestimmte Aufnahme das Board tatsaechlich zeigt, und keine
-laufende Abdeckungsanzeige -- beides stellt sich erst nach `finish()` heraus.
-Der Live-Vorschaustream (`CameraStreamMode="calibration"`) zeigt weiterhin
-Board-Ecken auf dem kleinen Vorschaubild, unabhaengig von dieser Klasse
-(`stream_overlay.py`) -- das hilft beim Positionieren, sagt aber nichts
-darueber aus, welche Aufnahmen tatsaechlich uebernommen wurden.
+The cost of this decoupling: during capture there is no live feedback on
+whether a given capture actually shows the board, and no running coverage
+display. Both only become known after `finish()`. The live preview stream
+(`CameraStreamMode="calibration"`) still shows board corners on the small
+preview image, independent of this class (`stream_overlay.py`). That helps with
+positioning, but says nothing about which captures were actually accepted.
 """
 
 import asyncio
@@ -52,37 +50,37 @@ from .profiles import AprilTagProfileConfig
 
 _log = logging.getLogger(__name__)
 
-#: Deckt sich mit dem Abbruchkriterium aus dem Testplan ("RMS unter 0,5 px").
-#: Nur eine Anzeige-Warnung, kein Fehlschlag -- eine ungenaue, aber
-#: gespeicherte Kalibrierung ist beim ersten Funktionstest eher gewollt als
-#: ein automatischer Abbruch ohne jedes Ergebnis.
+#: Matches the abort criterion from the test plan ("RMS below 0.5 px"). This is
+#: only a display warning, not a failure: during the first functional test, an
+#: imprecise but saved calibration is preferred over an automatic abort without
+#: any result.
 RMS_WARNING_PX = 0.5
 
-#: Rechnerische Untergrenze fuer `calibrate_from_samples` (siehe
-#: `_compute_and_save`) -- unabhaengig davon, wie niedrig
-#: `calibration_min_samples` konfiguriert ist (die ist ein *empfohlener*
-#: Schwellwert, kein mathematisches Minimum). `finish()` gibt darunter sofort
-#: `DETECTION_FAILED` zurueck, ohne die (teure) Hintergrund-Auswertung
-#: ueberhaupt erst anzustossen.
+#: Computational lower bound for `calibrate_from_samples` (see
+#: `_compute_and_save`), independent of how low `calibration_min_samples` is
+#: configured. That setting is a *recommended* threshold, not a mathematical
+#: minimum. Below this bound, `finish()` returns `DETECTION_FAILED` right away,
+#: without even starting the (expensive) background evaluation.
 MIN_SAMPLES_FOR_CALIBRATION = 3
 
-#: Zeitlimit fuer einen einzelnen `detect_board`-Aufruf waehrend der
-#: Auswertung in `_process()`. Live an der Deckenkamera (12 MP) gefunden,
-#: 2026-09-28: ein Aufruf auf dem vollen Kamera-Frame kann auf der
-#: Pi-Hardware haengen bleiben (kein Fehler, kein Rueckgabewert, ueber 5
-#: Minuten beobachtet -- also nicht nur sehr langsam, echt haengend). Da
-#: `_pool()` nur einen Worker hat, wuerde das ohne Zeitlimit nicht nur diese
-#: eine Aufnahme, sondern die gesamte Auswertung fuer immer blockieren. Der
-#: haengende Thread selbst laesst sich in Python nicht abbrechen (leakt im
-#: Hintergrund weiter), aber `_process()` gibt die betroffene Aufnahme
-#: wenigstens auf (zaehlt als "Board nicht gefunden") und verwirft den Pool,
-#: damit die naechste Aufnahme der Auswertung einen frischen Worker bekommt.
+#: Time limit for a single `detect_board` call during the evaluation in
+#: `_process()`. Found live on the ceiling camera (12 MP), 2026-09-28: a call on
+#: the full camera frame can hang on the Pi hardware (no error, no return value,
+#: observed for over 5 minutes -- so not merely slow, but truly hung). Since
+#: `_pool()` has only one worker, without a time limit this would block not just
+#: this one capture but the entire evaluation forever. A hung thread cannot be
+#: aborted in Python (it keeps running in the background), but `_process()` at
+#: least gives up the affected capture (it counts as "board not found") and
+#: discards the pool, so that the next capture of the evaluation gets a fresh
+#: worker.
 CAPTURE_DETECT_TIMEOUT_S = 20.0
 
 
 def _lazy(module: str, name: str) -> Callable:
-    """Loest eine `tagloc`-Funktion erst beim Aufruf auf -- diese Datei
-    importiert `tagloc`/`cv2` nie auf Modulebene."""
+    """Resolve a `tagloc` function only at call time.
+
+    This file never imports `tagloc` or `cv2` at module level.
+    """
 
     def call(*args, **kwargs):
         return getattr(importlib.import_module(module), name)(*args, **kwargs)
@@ -90,16 +88,16 @@ def _lazy(module: str, name: str) -> Callable:
     return call
 
 
-#: JPEG statt PNG: auf der Deckenkamera (12 MP) war PNG-Schreiben auf der
-#: Pi-SD-Karte langsam genug, um selbst im Hintergrund-Pool zum Flaschenhals
-#: zu werden (live gefunden 2026-09-28). Fuer den Zweck (Ecken-Erkennung,
-#: ggf. spaeteres Nachpruefen) veraendert die verlustbehaftete Kompression
-#: die erkannten Eckenpositionen eines Schachbrettmusters nicht spuerbar.
-#: Das gilt fuer den Arbeitsordner (`_pending_dir`, Grundlage der
-#: Online-Auswertung): dort bleibt es JPEG. Das optionale Archiv
-#: (`calibration_capture_dir`) speichert seit 10.11.2026 dagegen verlustfrei
-#: als PNG je Sitzung (`_ARCHIVE_IMAGE_SUFFIX`, schnelle Kompression), damit
-#: Intrinsik-Kalibrierungen offline exakt nachgerechnet werden koennen.
+#: JPEG instead of PNG: on the ceiling camera (12 MP), writing PNG to the Pi SD
+#: card was slow enough to become the bottleneck, even in the background pool
+#: (found live 2026-09-28). For this purpose (corner detection, possibly
+#: re-checking later) the lossy compression does not noticeably change the
+#: detected corner positions of a chessboard pattern. This applies to the
+#: working folder (`_pending_dir`, the basis of the online evaluation), which
+#: stays JPEG. The optional archive (`calibration_capture_dir`), however, has
+#: stored losslessly as PNG per session since 10.11.2026
+#: (`_ARCHIVE_IMAGE_SUFFIX`, fast compression), so that intrinsics calibrations
+#: can be recomputed offline exactly.
 _CAPTURE_IMAGE_SUFFIX = ".jpg"
 _ARCHIVE_IMAGE_SUFFIX = ".png"
 _ARCHIVE_SCHEMA = "adp.calibration.captures/1"
@@ -107,8 +105,8 @@ _CAPTURE_JPEG_QUALITY = 92
 
 
 def _save_capture_image(path: Any, image: Any) -> None:
-    """Schreibt eine Aufnahme, Format nach Endung: `.png` verlustfrei (schnelle
-    Kompression), sonst JPEG. Kein `tagloc`-Bezug, deshalb kein `_lazy(...)`."""
+    """Write a capture; the format follows the extension: `.png` is lossless (fast
+    compression), anything else is JPEG. No `tagloc` dependency, hence no `_lazy(...)`."""
     import cv2
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,26 +117,28 @@ def _save_capture_image(path: Any, image: Any) -> None:
 
 
 def _load_capture_image(path: Any) -> Any:
-    """Liest eine zuvor gespeicherte Aufnahme zurueck, fuer die Auswertung
-    in `_process()`. `None`, wenn die Datei fehlt oder kein Bild ist --
-    `_process()` ueberspringt sie dann, statt abzubrechen."""
+    """Read back a previously saved capture for the evaluation in `_process()`.
+
+    Returns `None` if the file is missing or not an image. `_process()` then
+    skips it instead of aborting.
+    """
     import cv2
 
     return cv2.imread(str(path))
 
 
 class CalibrationSession:
-    """Sammelt Kamera-Frames, bis `finish()` sie im Hintergrund auswertet.
+    """Collect camera frames until `finish()` evaluates them in the background.
 
-    Wiederverwendbar: `start()` setzt den internen Zustand vollstaendig
-    zurueck, `runner/calibration.py` haelt darum eine einzige Instanz ueber mehrere
-    Start/Finish-Zyklen.
+    Reusable: `start()` resets the internal state completely, so
+    `runner/calibration.py` keeps a single instance across several start/finish
+    cycles.
 
-    Die `tagloc`-Funktionen (`detect_board`, `build_board`,
-    `calibrate_from_samples`, `compute_coverage`, `save_calibration`) sind
-    injizierbar -- Tests laufen damit ohne `cv2`, ohne Kamera und ohne
-    Kalibrierdatei, nach demselben Muster wie `AprilTagDetectionSource`s
-    `detector`/`calibration`/`tag_map`.
+    The `tagloc` functions (`detect_board`, `build_board`,
+    `calibrate_from_samples`, `compute_coverage`, `save_calibration`) can be
+    injected. Tests thus run without `cv2`, without a camera and without a
+    calibration file, following the same pattern as the `detector`,
+    `calibration` and `tag_map` parameters of `AprilTagDetectionSource`.
     """
 
     def __init__(
@@ -159,35 +159,33 @@ class CalibrationSession:
         self._camera = camera
         self._config = config
         self._out_path = config.calibration_path
-        #: Zwischenspeicher fuer die Aufnahmen der laufenden Session, bis
-        #: `finish()` sie auswertet -- bei jedem `start()` geleert (siehe
-        #: dort). Getrennt von `calibration_capture_dir` (optionales
-        #: dauerhaftes Debug-Archiv, siehe unten): dieser Ordner ist reine
-        #: Arbeitsablage, ihr Inhalt hat nach einer erfolgreichen Auswertung
-        #: keine Bedeutung mehr.
+        #: Intermediate storage for the captures of the running session, until
+        #: `finish()` evaluates them. Emptied on every `start()` (see there).
+        #: Separate from `calibration_capture_dir` (optional permanent debug
+        #: archive, see below): this folder is pure working storage, and its
+        #: content has no meaning after a successful evaluation.
         self._pending_dir = self._out_path.parent / f"{config.frame_id}_pending"
-        #: Pfade der in dieser Session gemachten Aufnahmen, in Reihenfolge.
+        #: Paths of the captures made in this session, in order.
         self._captured_paths: list[Any] = []
-        #: `None` (Standard) archiviert nichts zusaetzlich. Gesetzt, schreibt
-        #: jede Aufnahme zusaetzlich hierhin -- zum Nachpruefen abseits vom
-        #: Server, unabhaengig vom (bei jedem `start()` geleerten)
-        #: `_pending_dir`.
+        #: `None` (default) archives nothing extra. If set, every capture is
+        #: additionally written here, for re-checking away from the server,
+        #: independent of `_pending_dir` (which is emptied on every `start()`).
         self._capture_dir = config.calibration_capture_dir
-        #: Sitzungsordner des Archivs (`_capture_dir / <UTC-Stempel>`), von
-        #: `start()` gesetzt; `None`, wenn kein Archiv oder Anlegen scheiterte.
+        #: Session folder of the archive (`_capture_dir / <UTC stamp>`), set by
+        #: `start()`. `None` if there is no archive or creating it failed.
         self._archive_dir: Path | None = None
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._saved_captures = 0
         self._save_capture_image = save_capture_image or _save_capture_image
         self._load_capture_image = load_capture_image or _load_capture_image
-        #: Laufende Hintergrund-Tasks aus `_schedule_capture_save` -- Referenz
-        #: haelt sie am Leben (sonst kann der Garbage Collector eine
-        #: `asyncio.Task` ohne gehaltene Referenz vorzeitig einsammeln).
+        #: Running background tasks from `_schedule_capture_save`. Holding a
+        #: reference keeps them alive; otherwise the garbage collector may collect
+        #: an `asyncio.Task` without a held reference too early.
         self._pending_saves: set = set()
-        #: Nach erfolgreichem Speichern aufgerufen (async oder sync), mit dem
-        #: frisch berechneten `CameraCalibration`-Objekt -- `runner/calibration.py` setzt
-        #: das per `set_on_calibrated`, um Erkennung/Overlay ohne
-        #: Server-Neustart auf den neuen Stand zu bringen.
+        #: Called after a successful save (async or sync), with the freshly
+        #: computed `CameraCalibration` object. `runner/calibration.py` sets this
+        #: via `set_on_calibrated`, to bring detection and overlay to the new state
+        #: without a server restart.
         self._on_calibrated = on_calibrated
         self._detect_board = detect_board or _lazy("tagloc.boards", "detect_board")
         self._build_board = build_board or _lazy("tagloc.boards", "build_board")
@@ -198,65 +196,68 @@ class CalibrationSession:
         self._save_calibration = save_calibration or _lazy(
             "tagloc.calibration", "save_calibration"
         )
-        self._board_spec: Any = None  # lazy: braucht cv2, siehe `_spec()`
+        self._board_spec: Any = None  # lazy: needs cv2, see `_spec()`
         self._samples: list = []
         self._image_size: tuple[int, int] = (0, 0)
         self._executor: ThreadPoolExecutor | None = None
-        #: Eigener Pool nur fuer `_schedule_capture_save` -- siehe dort, warum
-        #: er sich NICHT `_executor` mit `detect_board` teilen darf.
+        #: Own pool only for `_schedule_capture_save`. See there why it must NOT
+        #: share `_executor` with `detect_board`.
         self._save_executor: ThreadPoolExecutor | None = None
         self.running = False
-        #: `True` waehrend `_process()` (der Hintergrund-Auswertung nach
-        #: `finish()`) laeuft -- siehe `busy`/`wait_for_processing`.
+        #: `True` while `_process()` (the background evaluation after `finish()`)
+        #: runs. See `busy` and `wait_for_processing`.
         self._processing = False
-        #: Gesetzt, sobald keine Hintergrund-Auswertung mehr laeuft (auch
-        #: initial). `runner/calibration.py` wartet darauf, um den pausierten Livestream
-        #: wieder freizugeben.
+        #: Set as soon as no background evaluation is running (also initially).
+        #: `runner/calibration.py` waits for this to release the paused live
+        #: stream again.
         self._processing_done = asyncio.Event()
         self._processing_done.set()
-        #: Ergebnis von `finish()`/der Hintergrund-Auswertung; `None` bis
-        #: dahin. Wird von `progress` mit ausgeliefert, damit ein Beobachter
-        #: des reinen Fortschritts-Knotens auch das Endergebnis sieht.
+        #: Result of `finish()` or of the background evaluation; `None` until
+        #: then. It is also delivered by `progress`, so that an observer of the
+        #: pure progress node sees the final result too.
         self.last_result: dict | None = None
 
     def set_on_calibrated(self, callback: Callable[[Any], Any] | None) -> None:
-        """Setzt/entfernt den `on_calibrated`-Callback nachtraeglich.
+        """Set or remove the `on_calibrated` callback afterwards.
 
-        `runner/calibration.py` braucht dafuer sowohl die Erkennungsquelle als auch den
-        Stream-Annotator, die beide erst nach der Session gebaut werden --
-        ein Setter macht das moeglich, ohne die Bau-Reihenfolge umzustellen.
+        `runner/calibration.py` needs both the detection source and the stream
+        annotator for this, and both are only built after the session. A setter
+        makes this possible without changing the build order.
         """
         self._on_calibrated = callback
 
     @property
     def archive_dir(self) -> Path | None:
-        """Archiv-Ordner der laufenden bzw. letzten Sitzung, sonst `None`."""
+        """Return the archive folder of the current or last session, otherwise `None`."""
         return self._archive_dir
 
     @property
     def processing(self) -> bool:
-        """`True` nur waehrend der Hintergrund-Auswertung nach `finish()`.
+        """`True` only during the background evaluation after `finish()`.
 
-        Fuer `MeasureBoard`: Waehrend der Aufnahmephase darf gemessen werden
-        (die automatische Kalibrierfahrt fragt vor jeder Aufnahme, ob das Brett
-        ganz im Bild ist), waehrend der Auswertung gehoert die CPU ihr.
+        For `MeasureBoard`: measuring is allowed during the capture phase (the
+        automatic calibration drive asks before each capture whether the board is
+        entirely in view). During the evaluation, the CPU belongs to it.
         """
         return self._processing
 
     @property
     def busy(self) -> bool:
-        """`True` waehrend Aufnahme ODER Hintergrund-Auswertung.
+        """`True` during a capture OR a background evaluation.
 
-        Fuer `StartCalibration`: ein neuer `start()` waehrend noch eine
-        Auswertung laeuft wuerde `_pending_dir` leeren, aus dem `_process()`
-        gerade noch liest -- das muss verhindert werden, auch wenn `running`
-        zu diesem Zeitpunkt schon `False` ist (siehe `finish()`).
+        For `StartCalibration`: a new `start()` while an evaluation is still
+        running would empty `_pending_dir`, which `_process()` is still reading
+        from. This must be prevented, even if `running` is already `False` at that
+        point (see `finish()`).
         """
         return self.running or self._processing
 
     def _spec(self):
-        """Baut `BoardSpec` aus den Skalaren der Config. Importiert `tagloc`
-        erst hier, damit `profiles.py` frei von der Abhaengigkeit bleibt."""
+        """Build `BoardSpec` from the scalar config values.
+
+        `tagloc` is imported only here, so that `profiles.py` stays free of the
+        dependency.
+        """
         if self._board_spec is None:
             from tagloc.boards import BoardSpec
 
@@ -271,9 +272,10 @@ class CalibrationSession:
         return self._board_spec
 
     def _pool(self) -> ThreadPoolExecutor:
-        """Eigener Ein-Worker-Pool fuer `detect_board`/`calibrate_from_samples`
-        -- nie auf dem Event-Loop, gleiches Muster wie
-        `DetectionSource.run_blocking`."""
+        """Own single-worker pool for `detect_board` and `calibrate_from_samples`.
+
+        Never runs on the event loop; same pattern as `DetectionSource.run_blocking`.
+        """
         if self._executor is None:
             self._executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="vision-calibration"
@@ -281,11 +283,11 @@ class CalibrationSession:
         return self._executor
 
     def _backup_existing(self) -> Path | None:
-        """Die bisherige Kalibrierdatei aufheben, bevor die neue sie ersetzt.
+        """Set the previous calibration file aside before the new one replaces it.
 
-        Kopie neben der Datei als `<name>.<UTC>.bak` (wie bei der
-        Hand-Auge-Kalibrierung); jede Sicherung bekommt ihren eigenen Namen,
-        keine wird ueberschrieben. Liefert den Pfad, `None` ohne alte Datei.
+        The copy sits next to the file as `<name>.<UTC>.bak` (as with the
+        hand-eye calibration). Each backup gets its own name, and none is
+        overwritten. Returns the path, or `None` if there was no old file.
         """
         path = Path(self._out_path)
         if not path.is_file():
@@ -304,8 +306,10 @@ class CalibrationSession:
         return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
 
     def _save_pool(self) -> ThreadPoolExecutor:
-        """Eigener Ein-Worker-Pool nur fuer Speicherungen -- getrennt von
-        `_pool()` (siehe `_schedule_capture_save`, warum das wichtig ist)."""
+        """Own single-worker pool only for saves, separate from `_pool()`.
+
+        See `_schedule_capture_save` for why this matters.
+        """
         if self._save_executor is None:
             self._save_executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="vision-calibration-save"
@@ -313,17 +317,16 @@ class CalibrationSession:
         return self._save_executor
 
     def _schedule_capture_save(self, path: Any, image: Any) -> None:
-        """Speichert eine Aufnahme im Hintergrund, ohne `capture()` darauf
-        warten zu lassen.
+        """Save a capture in the background, without making `capture()` wait for it.
 
-        Live gefunden 2026-09-23 an der Deckenkamera (12 MP): ein
-        synchrones Speichern an dieser Stelle liess `cv2.imwrite` mehrere
-        Sekunden brauchen, bevor die OPC-UA-Antwort ueberhaupt rausging.
-        Zweiter Fund, 2026-09-28: das Hintergrund-Speichern lief zunaechst
-        ueber denselben Ein-Worker-Pool wie `detect_board` -- eine noch
-        laufende Speicherung blockierte damit jede weitere Aufnahme. Beide
-        Male am Hand-Pi (640x480) nie beobachtbar. Deshalb `_save_pool()`:
-        ein eigener Pool, getrennt von allem anderen."""
+        Found live on the ceiling camera (12 MP) on 2026-09-23: a synchronous save
+        here made `cv2.imwrite` take several seconds before the OPC UA response
+        went out at all. A second finding, 2026-09-28: the background save first
+        ran on the same single-worker pool as `detect_board`, so a save still
+        running blocked every further capture. Neither was ever observable on the
+        hand-camera Pi (640x480). Hence `_save_pool()`: its own pool, separate from
+        everything else.
+        """
         task = asyncio.ensure_future(
             self._run_on_save_pool(self._save_capture_image, path, image)
         )
@@ -343,24 +346,28 @@ class CalibrationSession:
             _log.warning("Aufnahme konnte nicht gespeichert werden: %s", error)
 
     async def wait_for_pending_saves(self) -> None:
-        """Wartet auf alle im Hintergrund laufenden Speicherungen -- noetig,
-        bevor `_process()` die Dateien wieder einliest (sonst fehlen ggf.
-        noch die letzten Aufnahmen), und ein Testseam fuer Tests, die das
-        Ergebnis von `_schedule_capture_save` pruefen wollen."""
+        """Wait for all background saves to finish.
+
+        This is needed before `_process()` reads the files again, otherwise the
+        last captures may still be missing. It is also a test seam for tests that
+        check the result of `_schedule_capture_save`.
+        """
         if self._pending_saves:
             await asyncio.gather(*list(self._pending_saves), return_exceptions=True)
 
     async def wait_for_processing(self) -> None:
-        """Wartet, bis eine per `finish()` gestartete Hintergrund-Auswertung
-        fertig ist (`progress["processing"]` wird wieder `False`).
-        `runner/calibration.py` nutzt das, um den waehrend der Auswertung pausierten
-        Livestream wieder freizugeben."""
+        """Wait until a background evaluation started by `finish()` is done.
+
+        `progress["processing"]` becomes `False` again. `runner/calibration.py`
+        uses this to release the live stream that was paused during the evaluation.
+        """
         await self._processing_done.wait()
 
     def start(self) -> None:
-        """Beginnt eine neue Session: Aufnahmen zurueckgesetzt, alter
-        `_pending_dir`-Inhalt verworfen. Aufnahmen kommen ab jetzt nur noch
-        ueber `capture()`."""
+        """Begin a new session: captures are reset and old `_pending_dir` content is discarded.
+
+        From now on, captures arrive only via `capture()`.
+        """
         self._captured_paths = []
         self._samples = []
         self._image_size = (0, 0)
@@ -376,8 +383,10 @@ class CalibrationSession:
             self._start_archive()
 
     def _start_archive(self) -> None:
-        """Legt den Sitzungsordner des Archivs samt `session.json` an. Fehler
-        schalten nur das Archiv dieser Sitzung ab, nie die Kalibrierung."""
+        """Create the session folder of the archive, including `session.json`.
+
+        Errors disable only this session's archive, never the calibration.
+        """
         started = self._now()
         stamp = started.strftime("%Y%m%dT%H%M%SZ")
         try:
@@ -423,12 +432,12 @@ class CalibrationSession:
         self._archive_dir = directory
 
     async def capture(self) -> bool:
-        """Merkt sich den aktuellsten Kamera-Frame als Aufnahme.
+        """Remember the most recent camera frame as a capture.
 
-        Manuell ausgeloest, kein automatisches Zeitintervall. Prueft NICHT
-        mehr, ob das Board sichtbar ist -- das entscheidet sich erst bei
-        der Auswertung in `finish()` (siehe Moduldoc). `False` heisst hier
-        nur noch "keine Session aktiv" oder "kein Kamera-Frame verfuegbar".
+        Triggered manually, with no automatic time interval. It NO LONGER checks
+        whether the board is visible. That is decided only during the evaluation in
+        `finish()` (see the module docstring). `False` now only means "no session
+        active" or "no camera frame available".
         """
         if not self.running:
             return False
@@ -449,21 +458,19 @@ class CalibrationSession:
 
     @property
     def progress(self) -> dict:
-        """JSON-faehiges Fortschritts-Objekt fuer `CalibrationProgress`.
+        """JSON-serializable progress object for `CalibrationProgress`.
 
-        Keine `coverageX`/`coverageY` mehr waehrend der Aufnahme -- die
-        Abdeckung ist erst nach der Auswertung bekannt (siehe Moduldoc),
-        `progress["result"]` traegt sie dann als Teil des Ergebnisses,
-        genau wie bisher.
+        There are no more `coverageX`/`coverageY` values during the capture. The
+        coverage is only known after the evaluation (see the module docstring);
+        `progress["result"]` then carries it as part of the result, as before.
         """
         data = {
             "running": self.running,
             "processing": self._processing,
             "samples": len(self._captured_paths),
             "minSamples": self._config.calibration_min_samples,
-            #: Modell, mit dem diese Session rechnet (bzw. gerechnet hat) --
-            #: schon waehrend der Aufnahme bekannt, damit das Frontend es
-            #: vorab anzeigen kann.
+            #: Model with which this session computes (or has computed). It is
+            #: already known during the capture, so the frontend can show it in advance.
             "model": self._config.calibration_model,
             "archiveDir": str(self._archive_dir) if self._archive_dir is not None else None,
         }
@@ -481,13 +488,13 @@ class CalibrationSession:
             self._save_executor = None
 
     async def finish(self) -> tuple[VisionErrorCode, dict]:
-        """Beendet die Aufnahme-Phase und stoesst die Auswertung im
-        Hintergrund an -- kehrt sofort zurueck, ohne auf das Ergebnis zu
-        warten (siehe Moduldoc: eine synchrone Auswertung von N
-        Vollaufloesungs-Aufnahmen in der RPC-Antwort haette auf der
-        Deckenkamera dasselbe Timeout-Risiko wie eine einzelne haengende
-        `detect_board`-Aufnahme, live 2026-09-28 gefunden). Das Ergebnis
-        erscheint in `progress["result"]`, sobald `_process()` fertig ist.
+        """End the capture phase and start the evaluation in the background.
+
+        Returns immediately, without waiting for the result. See the module
+        docstring: a synchronous evaluation of N full-resolution captures in the
+        RPC response would carry the same timeout risk on the ceiling camera as a
+        single hanging `detect_board` call (found live on 2026-09-28). The result
+        appears in `progress["result"]` as soon as `_process()` is done.
         """
         count = len(self._captured_paths)
         if count < MIN_SAMPLES_FOR_CALIBRATION:
@@ -509,14 +516,16 @@ class CalibrationSession:
         return VisionErrorCode.OK, summary
 
     async def _process(self, paths: list) -> None:
-        """Wertet die gespeicherten Aufnahmen aus: laedt jede zurueck, sucht
-        das Board darin, rechnet danach wie zuvor `_compute_and_save`.
-        Laeuft als Hintergrund-Task, von `finish()` angestossen -- Fehler
-        hier duerfen nicht unbehandelt bleiben, sonst bliebe
-        `progress["processing"]` fuer immer `True` haengen."""
+        """Evaluate the saved captures.
+
+        Loads each capture back, searches it for the board, then computes as
+        before in `_compute_and_save`. Runs as a background task started by
+        `finish()`. Errors here must not go unhandled, otherwise
+        `progress["processing"]` would stay `True` forever.
+        """
         try:
-            # Erst alle noch laufenden Speicherungen abwarten, sonst fehlen
-            # ggf. die letzten Aufnahmen beim Wiedereinlesen.
+            # Wait for all running saves first, otherwise the last captures may be
+            # missing when the files are read back in.
             await self.wait_for_pending_saves()
 
             from tagloc import frames as frame_tools
@@ -539,9 +548,9 @@ class CalibrationSession:
                         timeout=CAPTURE_DETECT_TIMEOUT_S,
                     )
                 except TimeoutError:
-                    # Siehe CAPTURE_DETECT_TIMEOUT_S: der haengende Thread
-                    # laeuft im Hintergrund weiter, der Pool wird verworfen,
-                    # diese eine Aufnahme zaehlt als nicht gefunden.
+                    # See CAPTURE_DETECT_TIMEOUT_S: the hung thread keeps running in
+                    # the background, the pool is discarded, and this one capture
+                    # counts as not found.
                     _log.error(
                         "Auswertung: detect_board haengt seit ueber %.0f s bei %s "
                         "-- Aufnahme wird uebersprungen, Pool wird verworfen",
@@ -562,9 +571,9 @@ class CalibrationSession:
             self._samples = samples
             self._image_size = image_size
             error, summary = await self._compute_and_save()
-            # Auch im Fehlerfall, damit das Frontend z. B. "Fisheye-
-            # Kalibrierung fehlgeschlagen" anzeigen kann. Bei Erfolg steht
-            # das Modell der tatsaechlich berechneten Kalibrierung schon drin.
+            # Also set on failure, so that the frontend can show e.g. "Fisheye
+            # calibration failed". On success, the model of the calibration that
+            # was actually computed is already in there.
             summary.setdefault("model", self._config.calibration_model)
             self.last_result = {"error": int(error), **summary}
         except Exception:
@@ -579,9 +588,10 @@ class CalibrationSession:
             self._processing_done.set()
 
     async def _compute_and_save(self) -> tuple[VisionErrorCode, dict]:
-        """Rechnet aus den in `_process()` erkannten Samples und speichert.
-        Immer aufraeumend, auch bei Fehlschlag -- eine Session bleibt nie
-        unbeendet haengen."""
+        """Compute from the samples detected in `_process()` and save them.
+
+        Always cleans up, also on failure, so a session never stays unfinished.
+        """
         samples = list(self._samples)
         image_size = self._image_size
         await self._stop()
@@ -605,19 +615,19 @@ class CalibrationSession:
                 model=self._config.calibration_model,
             )
         except Exception as error:
-            # Nicht nur ValueError: cv2.calibrateCamera scheitert bei
-            # numerisch ungeeigneten Aufnahmen (z. B. zu wenig Neigungs-/
-            # Distanz-Variation trotz guter Bildabdeckung) mit `cv2.error`,
-            # keinem ValueError. `asyncio.CancelledError` faengt das nicht ab
-            # (die erbt von `BaseException`, nicht `Exception`).
+            # Not only ValueError: cv2.calibrateCamera fails with `cv2.error` on
+            # numerically unsuitable captures (e.g. too little tilt or distance
+            # variation despite good image coverage), not with a ValueError.
+            # `asyncio.CancelledError` is not caught here, because it inherits from
+            # `BaseException`, not `Exception`.
             _log.exception("Kalibrierung fehlgeschlagen (%d Aufnahmen)", len(samples))
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
         coverage = self._compute_coverage(samples, image_size)
-        # Die ID mit Zeitstempel schon hier vergeben, nicht erst beim Schreiben:
-        # sonst bekamen Erkennung und Livestream-Overlay das Objekt mit leerer
-        # ID, und das Overlay zeigte bis zum Neustart kein Datum der neuen
-        # Kalibrierung. Datei und laufender Server tragen so dieselbe ID.
+        # Assign the ID with its timestamp here already, not only when writing.
+        # Otherwise detection and the live-stream overlay would get the object with
+        # an empty ID, and the overlay would show no date for the new calibration
+        # until a restart. The file and the running server then carry the same ID.
         if dataclasses.is_dataclass(calibration) and not getattr(calibration, "calibration_id", ""):
             stamp = datetime.now(timezone.utc).isoformat()
             calibration = dataclasses.replace(
@@ -661,9 +671,11 @@ class CalibrationSession:
         return VisionErrorCode.OK, summary
 
     async def abort(self) -> None:
-        """Stoppt ohne zu speichern. Waehrend einer laufenden
-        Hintergrund-Auswertung nicht aufrufbar (siehe `busy`) -- `runner/calibration.py`
-        prueft das vor dem Aufruf."""
+        """Stop without saving.
+
+        Cannot be called while a background evaluation is running (see `busy`).
+        `runner/calibration.py` checks this before the call.
+        """
         await self._stop()
 
 

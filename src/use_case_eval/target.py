@@ -1,41 +1,41 @@
-"""Geometrie der Zielscheibe v2 und des Wuerfelmarkers -- die einzige Quelle.
+"""Geometry of the target sheet v2 and the cube marker -- the single source.
 
-Zielscheibengenerator (`tools/make_use_case_target.py`), Messung
-(`use_case_eval.measure`) und synthetische Bilder (`use_case_eval.synthetic`)
-lesen alles von hier. Nur numpy, kein OpenCV.
+The target generator (`tools/make_use_case_target.py`), the measurement
+(`use_case_eval.measure`) and the synthetic images (`use_case_eval.synthetic`)
+read everything from here. numpy only, no OpenCV.
 
-Blattkoordinaten in mm: Ursprung in der Scheibenmitte, x zeigt nach 0 Grad,
-y nach 90 Grad (also im Ausdruck nach oben), z nach oben aus dem Blatt.
-Die Ecken eines Markers stehen in der Reihenfolge von OpenCV-ArUco: oben-links,
-oben-rechts, unten-rechts, unten-links **im Markerbild**. Weil Blatt-y nach oben
-zeigt (Bild/SVG-y nach unten), liegt "oben" bei +y.
+Sheet coordinates in mm: origin at the centre of the target, x points to 0 degrees,
+y to 90 degrees (i.e. upwards on the printout), z upwards out of the sheet.
+The corners of a marker are in OpenCV ArUco order: top-left, top-right,
+bottom-right, bottom-left **in the marker image**. Because sheet y points up
+(image/SVG y points down), "top" corresponds to +y.
 """
 
 import numpy as np
 
-#: Name im `tagloc.detector.ARUCO_DICTIONARIES` (cv2.aruco.DICT_4X4_50).
+#: Name in `tagloc.detector.ARUCO_DICTIONARIES` (cv2.aruco.DICT_4X4_50).
 ARUCO_FAMILY = "aruco_4x4_50"
 
-#: Skalenring (Radien in mm).
+#: Scale ring (radii in mm).
 RING_INNER_RADIUS_MM = 80.0
 RING_OUTER_RADIUS_MM = 92.0
 
-#: Toleranzkreise: (Zone, Durchmesser mm). Wuerfeldiagonale 28,3 + 2 x 1/3/5 mm.
+#: Tolerance circles: (zone, diameter in mm). Cube diagonal 28.3 + 2 x 1/3/5 mm.
 CIRCLES = (
     ("gruen", 30.3),
     ("gelb", 34.3),
     ("rot", 38.3),
 )
-#: Zonen von innen nach aussen mit Radius in mm. Die aeusserste Wuerfelecke
-#: muss innerhalb dieses Radius liegen -- das sieht man auch auf dem Blatt.
+#: Zones from inside to outside with radius in mm. The outermost cube corner
+#: must lie within this radius -- this is also visible on the sheet.
 ZONE_RADII_MM = tuple((name, diameter / 2.0) for name, diameter in CIRCLES)
 ZONE_OUTSIDE = "ausserhalb"
 
 CUBE_SIZE_MM = 20.0
-#: Hoehe der Wuerfeloberseite ueber dem Blatt.
+#: Height of the top face of the cube above the sheet.
 CUBE_TOP_Z_MM = 20.0
 
-#: Blattmarker: ID -> Mittelpunkt (x, y) in mm. Kanten parallel zu den Blattachsen.
+#: Sheet markers: ID -> centre (x, y) in mm. Edges parallel to the sheet axes.
 SHEET_MARKER_SIZE_MM = 20.0
 SHEET_MARKERS = {
     0: (-45.0, 45.0),
@@ -44,56 +44,56 @@ SHEET_MARKERS = {
     3: (-45.0, -45.0),
 }
 
-#: Wuerfelmarker (Aufkleber auf der Oberseite).
+#: Cube marker (sticker on the top face).
 CUBE_MARKER_ID = 10
 CUBE_MARKER_SIZE_MM = 18.0
-#: Kurzform fuer die Aufrufer.
+#: Short form for the callers.
 CUBE_MARKER = {"id": CUBE_MARKER_ID, "size_mm": CUBE_MARKER_SIZE_MM}
 
-#: Mindestens eine Markerzelle weisser Rand um die Blattmarker (6 Zellen inkl. Rand).
+#: At least one marker cell of white border around the sheet markers (6 cells incl. border).
 SHEET_MARKER_QUIET_MM = SHEET_MARKER_SIZE_MM / 6.0
 
 
 def marker_corners(size_mm: float, center_xy=(0.0, 0.0), z_mm: float = 0.0) -> np.ndarray:
-    """Ecken eines achsparallelen Markers, `(4, 3)`, Reihenfolge wie OpenCV-ArUco."""
+    """Corners of an axis-parallel marker, `(4, 3)`, in OpenCV ArUco order."""
     half = size_mm / 2.0
     cx, cy = center_xy
     return np.array(
         [
-            [cx - half, cy + half, z_mm],  # oben-links
-            [cx + half, cy + half, z_mm],  # oben-rechts
-            [cx + half, cy - half, z_mm],  # unten-rechts
-            [cx - half, cy - half, z_mm],  # unten-links
+            [cx - half, cy + half, z_mm],  # top-left
+            [cx + half, cy + half, z_mm],  # top-right
+            [cx + half, cy - half, z_mm],  # bottom-right
+            [cx - half, cy - half, z_mm],  # bottom-left
         ],
         dtype=np.float64,
     )
 
 
 def sheet_marker_corners(marker_id: int) -> np.ndarray:
-    """Ecken des Blattmarkers `marker_id` in Blattkoordinaten (mm, z = 0), `(4, 3)`."""
+    """Corners of sheet marker `marker_id` in sheet coordinates (mm, z = 0), `(4, 3)`."""
     return marker_corners(SHEET_MARKER_SIZE_MM, SHEET_MARKERS[int(marker_id)])
 
 
 def cube_marker_corners() -> np.ndarray:
-    """Ecken des Wuerfelmarkers im Markersystem (Mitte = Ursprung, z = 0), `(4, 3)`."""
+    """Corners of the cube marker in marker coordinates (centre = origin, z = 0), `(4, 3)`."""
     return marker_corners(CUBE_MARKER_SIZE_MM)
 
 
 def rotation_2d(angle_deg: float) -> np.ndarray:
-    """2x2-Drehmatrix, mathematisch positiv (gegen den Uhrzeigersinn, y oben)."""
+    """Return the 2x2 rotation matrix, positive in the mathematical sense (counter-clockwise, y up)."""
     a = np.radians(angle_deg)
     return np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
 
 
 def cube_corners_xy(center_xy, yaw_deg: float) -> np.ndarray:
-    """Die vier Wuerfelecken in Blattkoordinaten (mm), `(4, 2)`."""
+    """Return the four cube corners in sheet coordinates (mm), `(4, 2)`."""
     half = CUBE_SIZE_MM / 2.0
     local = np.array([[-half, half], [half, half], [half, -half], [-half, -half]])
     return np.asarray(center_xy, dtype=np.float64) + local @ rotation_2d(yaw_deg).T
 
 
 def zone_for_radius(radius_mm: float) -> str:
-    """Zone zu einem Radius der aeussersten Wuerfelecke."""
+    """Return the zone for the radius of the outermost cube corner."""
     for name, limit in ZONE_RADII_MM:
         if radius_mm <= limit:
             return name

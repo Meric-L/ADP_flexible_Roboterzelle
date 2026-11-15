@@ -1,10 +1,10 @@
-"""Ein Bild fuer die Zellen-Ueberwachung auswerten: `observe_cell`.
+"""Evaluate one image for the cell watch: `observe_cell`.
 
-`CellObserveMixin` ist die seiteneffektfreie Auswertung eines Bilds mit einem
-eigenen Detektor der Ueberwachung (`cellwatch.py`): Module je Tag im Welt-KS,
-ohne Anker, ohne Drift, ohne `_localization`. Er erwartet am Objekt
-`_config`, `_tag_map` sowie `_calibration_for` und `_remember_tags` aus
-`CaptureMixin`.
+`CellObserveMixin` is the side-effect-free evaluation of an image with a
+dedicated detector of the watch (`cellwatch.py`): modules per tag in the world
+CS, without anchor, without drift, without `_localization`. It expects
+`_config` and `_tag_map` on the object, plus `_calibration_for` and
+`_remember_tags` from `CaptureMixin`.
 """
 
 from dataclasses import replace
@@ -12,10 +12,10 @@ from typing import Any
 
 
 def _world_tag_errors(tag_poses, tag_map, pose_world_cam, calibration) -> dict:
-    """Je sichtbarem Welttag: RMS (px) seiner Ecken unter `pose_world_cam`.
+    """For each visible world tag: RMS (px) of its corners under `pose_world_cam`.
 
-    Die Weltpose kommt aus der Tag-Map, projiziert wird mit dem Linsenmodell
-    und verglichen mit den **rohen** (verzeichneten) Ecken des Detektors.
+    The world pose comes from the tag map. It is projected with the lens model
+    and compared with the **raw** (distorted) corners from the detector.
     """
     import numpy as np
 
@@ -44,32 +44,32 @@ def _world_tag_errors(tag_poses, tag_map, pose_world_cam, calibration) -> dict:
 
 
 class CellObserveMixin:
-    """Ein Bild fuer die Zellen-Ueberwachung auswerten."""
+    """Evaluate one image for the cell watch."""
 
     def observe_cell(self, image, detector: Any, stored_world_cam=None):
-        """Ein Bild fuer die Zellen-Ueberwachung:
-        `(Modul-Orte je Tag, Lokalisierung, alle erkannten Tag-IDs)`.
+        """Evaluate one image for the cell watch.
 
-        Mit `stored_world_cam` (die frueher aus mindestens zwei Welttags
-        geschaetzte Pose der fest montierten Kamera) rechnet das Bild auch dann
-        im Welt-KS, wenn nur ein Welttag zu sehen ist: Die Pose aus einem
-        einzelnen Tag ist aus 2,5 m um Zentimeter ungenau (gekippte Loesungen),
-        die gespeicherte nicht. Die Lokalisierung hat dann `solver="stored"`,
-        und `tag_errors_px` sagt je sichtbarem Welttag, wie weit seine Ecken
-        unter dieser Pose von den gesehenen liegen -- die Konsistenzpruefung.
+        Returns ``(module positions per tag, localization, all detected tag IDs)``.
 
-        Dieselbe Rechnung wie ein Job -- Tag-Posen, gemeinsames PnP ueber die
-        Welttags, `locate_modules` --, aber **ohne Seiteneffekte**: kein Anker,
-        keine Drift, kein `_localization`, kein `world_tags`. Und nicht
-        zusammengefasst, damit jeder Tag fuer sich verglichen werden kann.
+        With `stored_world_cam` (the pose of the fixed camera, estimated earlier
+        from at least two world tags), the image is also evaluated in the world
+        CS when only one world tag is visible. A pose from a single tag is off by
+        centimetres at 2.5 m (flipped solutions), while the stored pose is not.
+        The localization then has `solver="stored"`. `tag_errors_px` gives, for
+        each visible world tag, how far its corners under this pose are from the
+        observed ones -- the consistency check.
 
-        `detector` ist eine eigene Instanz der Ueberwachung: sie laeuft in
-        einem eigenen Thread, und ein Detektor ist nicht fuer zwei Threads
-        zugleich gebaut. Laeuft blockierend -- im Worker-Thread aufrufen.
+        The same calculation as a job -- tag poses, joint PnP over the world
+        tags, `locate_modules` -- but **without side effects**: no anchor, no
+        drift, no `_localization`, no `world_tags`. Results are not aggregated,
+        so each tag can be compared on its own.
 
-        Die erkannten IDs kommen auch dann zurueck, wenn das Bild keine
-        Aussage erlaubt -- gerade dann will der Bediener sehen, welcher
-        Welttag fehlt.
+        `detector` is a separate instance for the watch. It runs in its own
+        thread, and a detector is not built for two threads at once. This call
+        blocks, so run it in the worker thread.
+
+        The detected IDs are returned even when the image allows no statement.
+        That is exactly when the operator needs to see which world tag is missing.
         """
         from tagloc import frames as frame_tools
         from tagloc.localize import locate_modules, localize_camera
@@ -110,10 +110,10 @@ class CellObserveMixin:
         )
 
     def _with_stored_pose(self, localization, tag_poses, stored_world_cam, calibration):
-        """Ersetzt eine Einzel-Tag-Pose durch die gespeicherte Kamerapose, samt Konsistenzfehlern.
+        """Replace a single-tag pose with the stored camera pose, including the consistency errors.
 
-        Nur wenn eine gespeicherte Pose da ist und das Bild keine gemeinsame
-        Pose aus mehreren Welttags hergibt; sonst bleibt `localization`.
+        Only when a stored pose is available and the image yields no joint pose
+        from several world tags. Otherwise `localization` stays as it is.
         """
         from tagloc.localize import SOLVER_JOINT, SOLVER_STORED
 

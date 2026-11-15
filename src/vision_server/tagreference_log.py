@@ -1,10 +1,10 @@
-"""Mess-Protokoll von `MeasureTagReference` auf Platte.
+"""On-disk measurement log of `MeasureTagReference`.
 
-Je Messung ein Ordner `<Ablage>/<YYYYmmdd-HHMMSS>_tag<id>/` mit `request.json`,
-`result.json`, `frame<k>.png` (Rohbilder, verlustfrei) und `overlay.jpg` (Debug-
-Ansicht des letzten Bilds). Hoechstens `MAX_FOLDERS` Ordner, die aeltesten
-werden geloescht. Fehler beim Schreiben wirft der Aufrufer nur als Warnung weiter:
-die Messung selbst darf daran nicht scheitern.
+Each measurement gets one folder `<store>/<YYYYmmdd-HHMMSS>_tag<id>/` containing
+`request.json`, `result.json`, `frame<k>.png` (raw images, lossless) and
+`overlay.jpg` (debug view of the last image). At most `MAX_FOLDERS` folders are
+kept; the oldest are deleted. Write errors are passed on by the caller only as
+a warning: the measurement itself must not fail because of them.
 """
 
 import json
@@ -17,7 +17,7 @@ from typing import Any
 
 from .raw_image import FILE_STAMP_FORMAT
 
-#: So viele Protokollordner bleiben hoechstens liegen.
+#: Maximum number of log folders kept on disk.
 MAX_FOLDERS = 50
 OVERLAY_NAME = "overlay.jpg"
 _FOLDER_PATTERN = re.compile(r"^\d{8}-\d{6}_tag\d+(_\d+)?$")
@@ -32,10 +32,10 @@ def write_protocol(
     overlay: Any | None,
     now: datetime | None = None,
 ) -> Path:
-    """Legt den Ordner an und schreibt alles hinein; gibt den Ordner zurueck.
+    """Create the folder, write all files into it, and return the folder.
 
-    Wirft `OSError` bei Schreibfehlern. Existiert der Ordnername schon (zwei
-    Messungen in derselben Sekunde), folgt `_2`, `_3`, ...
+    Raises `OSError` on write errors. If the folder name already exists (two
+    measurements in the same second), `_2`, `_3`, ... is appended.
     """
     import cv2
 
@@ -61,10 +61,10 @@ def write_protocol(
 
 
 def _own_folders(directory: Path) -> list[Path]:
-    """Eigene Protokollordner, neueste zuerst (nach mtime, Namen als Gleichstand).
+    """Return this module's log folders, newest first (by mtime, name as tie-breaker).
 
-    Nach mtime, nicht nach Namen: der Pi hat keine RTC, die Uhr kann beim Start
-    falsch stehen. Fremde Ordner zaehlen nicht.
+    Sorted by mtime, not by name: the Pi has no RTC, so the clock may be wrong
+    after a start. Foreign folders are ignored.
     """
     found = []
     for path in directory.iterdir():
@@ -77,21 +77,21 @@ def _own_folders(directory: Path) -> list[Path]:
 
 
 def prune(directory: Path, keep: int = MAX_FOLDERS, protect: Path | None = None) -> None:
-    """Loescht die aeltesten eigenen Protokollordner, bis hoechstens `keep` bleiben.
+    """Delete the oldest log folders until at most `keep` remain.
 
-    `protect` (der gerade angelegte Ordner) wird nie geloescht; fremde Ordner auch nicht.
+    `protect` (the folder just created) is never deleted; foreign folders are not either.
     """
     folders = [path for path in _own_folders(directory) if path != protect]
-    # Der geschuetzte Ordner zaehlt mit, bleibt aber immer.
+    # The protected folder counts toward the limit but is always kept.
     for old in folders[max(0, keep - (1 if protect is not None else 0)) :]:
         shutil.rmtree(old, ignore_errors=True)
 
 
 def latest_overlay(directory: Path | None) -> Path | None:
-    """`overlay.jpg` der NEUESTEN Messung, sonst `None`.
+    """Return the `overlay.jpg` of the NEWEST measurement, otherwise `None`.
 
-    Hat die neueste Messung kein Bild (z. B. Tag nicht gesehen), gibt es kein
-    Bild: ein aelteres einer anderen Messung waere irrefuehrend.
+    If the newest measurement has no image (e.g. the tag was not seen), there is
+    no image: an older one from another measurement would be misleading.
     """
     if directory is None or not directory.is_dir():
         return None

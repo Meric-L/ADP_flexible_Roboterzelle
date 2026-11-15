@@ -1,4 +1,4 @@
-"""Hand-Auge-Kalibrierung (Hand-Pi): vier Methoden und die Session."""
+"""Hand-eye calibration (hand Pi): four methods and the session."""
 
 from collections.abc import Callable
 from typing import Any
@@ -20,12 +20,12 @@ async def _install_hand_eye_session(
     busy: Callable[[], bool],
     annotator: Any = None,
 ) -> Any:
-    """Legt die Hand-Auge-Methoden an und verdrahtet die Session.
+    """Create the hand-eye methods and wire up the session.
 
-    Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Siehe
+    Only on the hand Pi (node only with `hand_eye_path`). See
     `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
     """
-    # Erst hier: die Session braucht numpy, der Rest des Servers nicht.
+    # Only here: the session needs numpy, the rest of the server does not.
     from ..handeye_session import HandEyePorts, HandEyeSession
 
     async def publish(status: str) -> None:
@@ -34,8 +34,9 @@ async def _install_hand_eye_session(
     calibration_path = getattr(config.apriltag, "calibration_path", None)
 
     async def apply_intrinsics(calibration: Any) -> None:
-        """Neue Intrinsik live uebernehmen, wie `_apply_live_calibration` in
-        `runner/calibration.py`: Erkennung, Overlay und Info-Knoten."""
+        """Apply new intrinsics live, like `_apply_live_calibration` in
+        `runner/calibration.py`: detection, overlay and info node.
+        """
         if hasattr(apriltag_source, "apply_calibration"):
             apriltag_source.apply_calibration(calibration)
         if annotator is not None and hasattr(annotator, "apply_calibration"):
@@ -64,22 +65,22 @@ async def _install_hand_eye_session(
 
     @uamethod
     async def start_hand_eye(parent, options_json: str):
-        """1:StartHandEyeCalibration -- Tag waehlen, Sitzung oeffnen."""
+        """1:StartHandEyeCalibration -- select tag, open session."""
         return code_reply(await session.start(options_json or ""))
 
     @uamethod
     async def capture_hand_eye(parent, sample_json: str):
-        """1:CaptureHandEyeSample -- gemeldete Flanschpose, Tag messen."""
+        """1:CaptureHandEyeSample -- reported flange pose, measure tag."""
         return code_reply(await session.capture(sample_json or ""))
 
     @uamethod
     async def finish_hand_eye(parent):
-        """1:FinishHandEyeCalibration -- rechnen, speichern, aktivieren."""
+        """1:FinishHandEyeCalibration -- compute, save, activate."""
         return code_reply(await session.finish())
 
     @uamethod
     async def abort_hand_eye(parent):
-        """1:AbortHandEyeCalibration -- verwerfen, nichts speichern."""
+        """1:AbortHandEyeCalibration -- discard, save nothing."""
         return code_reply(await session.abort())
 
     for name, handler, inputs in (

@@ -1,35 +1,34 @@
-"""Fahrziele des Layer-2-Laufs: wohin der Flansch muss, damit die Handkamera
-einen Tag sieht.
+"""Approach targets of the layer 2 run: where the flange must go so that the hand camera sees a tag.
 
-Welttag und Modultag gehen durch **dieselbe** Rechnung (`plan_step`). Sie
-unterscheiden sich nur darin, woher die Tag-Pose im Welt-KS kommt:
+A world tag and a module tag go through the **same** calculation (``plan_step``). They
+differ only in where the tag pose in the world frame comes from:
 
-* Welttag: aus der Tag-Map, exakt -- er definiert die Welt.
-* Modultag: grobe Modulpose aus Layer 1 mal Tag-Lage aus dem Modulkatalog.
+* World tag: from the tag map, exact -- it defines the world.
+* Module tag: rough module pose from layer 1 times the tag position from the module
+  catalog.
 
-Die Kette je Ziel::
+The chain for each target::
 
-    T_tag_cam      = 180 Grad um x, `standoff_m` entlang +z des Tags
+    T_tag_cam      = 180 degrees around x, ``standoff_m`` along +z of the tag
     T_world_cam    = T_world_tag · T_tag_cam
     T_world_flange = T_world_cam · inv(T_flansch_cam)
-    T_base_flange  = inv(T_world_base) · T_world_flange     <- Fahrziel
+    T_base_flange  = inv(T_world_base) · T_world_flange     <- approach target
 
-`T_world_base` ist vor dem Ankern die grobe Basis aus Layer 1, danach die
-gemessene aus `RobotAnchor` -- daher wird nach dem Ankern neu geplant.
+``T_world_base`` is the rough base from layer 1 before anchoring, and the measured one
+from ``RobotAnchor`` afterwards. That is why planning is repeated after anchoring.
 
-Vor jedem Anker- und Mess-Schritt steht ein Annaeherungsschritt (`approach`):
-dieselbe Rechnung mit `approach_standoff_m`, also aus groesserem Abstand. Sein
-Bild liefert die gemessene Tag-Pose, aus der der folgende nahe Schritt neu
-geplant wird -- die grobe Pose aus Layer 1 reicht so nur noch fuer den weiten
-Blick, nicht mehr fuer das nahe Bild.
+Before each anchor or measurement step there is an approach step (``approach``): the
+same calculation with ``approach_standoff_m``, that is from a larger distance. Its image
+provides the measured tag pose, from which the following close step is planned again. So
+the rough pose from layer 1 is only needed for the wide view, not for the close image.
 
-Schraeg statt frontal (Arbeitsplan `layer2-schraege-ansicht.md`): liegt der
-frontale Blick ausser Reichweite -- ein Welttag am Boden, die Basis einen Meter
-hoeher auf dem Wagen --, kippt die Kamera um die Tag-Mitte zur Basis hin, in
-Stufen bis `max_tilt_deg`. Genommen wird der frontalste Blick in Reichweite.
+Oblique instead of frontal (work plan ``layer2-schraege-ansicht.md``): if the frontal
+view is out of reach -- a world tag on the floor, the base a metre higher on the cart --
+the camera tilts around the tag centre towards the base, in steps up to
+``max_tilt_deg``. The most frontal view within reach is chosen.
 
-Tag-Frame wie in `tagloc.pose`: +x rechts, +y zur Oberkante des Drucks, +z aus
-dem Tag heraus. Kamera-Frame OpenCV: +z nach vorn, +x rechts, +y unten.
+Tag frame as in ``tagloc.pose``: +x right, +y towards the top edge of the print, +z out
+of the tag. Camera frame in OpenCV convention: +z forward, +x right, +y down.
 """
 
 from __future__ import annotations
@@ -56,95 +55,104 @@ REPORT_SCHEMA = "wsc.vision.layer2.report/1"
 TARGET_SCHEMA = "wsc.vision.layer2.target/1"
 STATUS_SCHEMA = "wsc.vision.layer2.status/1"
 
-#: Abstand der Kamera vor dem Tag. Der Wert, mit dem der Hand-Auge-Plan
-#: arbeitet: nah genug fuer einen 50-mm-Tag, weit genug fuer die Schaerfe.
+#: Distance of the camera in front of the tag. The value the hand-eye plan works with:
+#: close enough for a 50 mm tag, far enough for sharpness.
 DEFAULT_STANDOFF_M = 0.3
-#: Reichweite des Flanschs um die Basis -- UR5e 0,85 m, FR3 0,855 m. Nur ein
-#: Hinweis: ein Ziel ausserhalb wird gezeigt und uebersprungen, nicht versteckt.
+#: Reach of the flange around the base -- UR5e 0.85 m, FR3 0.855 m. A note only: a target
+#: outside this range is shown and skipped, not hidden.
 DEFAULT_REACH_M = 0.85
-#: Abstand des Annaeherungsbilds. Doppelt so weit wie das nahe Bild: die grobe
-#: Pose aus Layer 1 darf um einige Zentimeter danebenliegen, und der Tag soll
-#: trotzdem im Bild sein. `0` schaltet die Annaeherung ab.
+#: Distance of the approach image. Twice as far as the close image: the rough pose from
+#: layer 1 may be off by a few centimetres, and the tag should still be in the image.
+#: ``0`` disables the approach.
 DEFAULT_APPROACH_STANDOFF_M = 0.6
 
-#: Bis zu dieser Neigung (Grad aus der Senkrechten auf den Tag) darf die Kamera
-#: schraeg auf einen Tag schauen. Ab etwa 60 Grad wird ein Tag im Bild so
-#: schmal, dass seine Pose unsicher wird.
+#: Up to this tilt (degrees from the perpendicular to the tag) the camera may look at a
+#: tag obliquely. From about 60 degrees on, a tag in the image becomes so narrow that its
+#: pose becomes uncertain.
 DEFAULT_MAX_TILT_DEG = 60.0
-#: Die Stufen, in denen der Planer die Neigung probiert.
+#: The steps in which the planner tries the tilt.
 _TILT_STEPS_DEG = (0.0, 15.0, 30.0, 45.0, 60.0, 75.0)
-#: Bevorzugt wird ein Ziel mit etwas Luft zur Reichweite -- am Rand findet die
-#: IK oft keine Stellung mit der verlangten Orientierung.
+#: A target with some margin to the reach limit is preferred -- at the edge the IK often
+#: finds no configuration with the requested orientation.
 _COMFORTABLE_REACH = 0.9
 
 ANCHOR = "anchor"
 MEASURE = "measure"
-#: Vorfahrt aus `approach_standoff_m`; steht immer direkt vor dem Anker- oder
-#: Mess-Schritt, fuer den sie die Tag-Pose misst.
+#: Precedence from ``approach_standoff_m``; always placed directly before the anchor or
+#: measurement step whose tag pose it measures.
 APPROACH = "approach"
 
-#: Kamera schaut auf den Tag: 180 Grad um x dreht +z des Tags gegen die
-#: Blickrichtung der Kamera.
+#: Camera looks at the tag: a 180-degree rotation around x turns the +z of the tag against
+#: the viewing direction of the camera.
 _FACING = np.diag([1.0, -1.0, -1.0])
 
 
 @dataclass(frozen=True)
 class TagRequest:
+    """A tag on a module, with its pose in the module frame."""
+
     tag_id: int
-    #: `T_module_tag` aus dem Modulkatalog.
+    #: ``T_module_tag`` from the module catalog.
     pose_in_module: Pose
 
 
 @dataclass(frozen=True)
 class ModuleRequest:
+    """A module to measure, with its rough pose and its tags."""
+
     module_id: str
     name: str
-    #: `T_world_module` aus Layer 1, grob.
+    #: ``T_world_module`` from layer 1, rough.
     pose_world_module: Pose
     tags: tuple[TagRequest, ...]
 
 
 @dataclass(frozen=True)
 class RunRequest:
-    #: `T_world_base` aus Layer 1, grob.
+    """A complete layer 2 run request: base pose, modules and planning options."""
+
+    #: ``T_world_base`` from layer 1, rough.
     robot_base: Pose
     modules: tuple[ModuleRequest, ...]
     standoff_m: float = DEFAULT_STANDOFF_M
     reach_m: float = DEFAULT_REACH_M
-    #: `0` = ohne Annaeherung.
+    #: ``0`` = without approach.
     approach_standoff_m: float = DEFAULT_APPROACH_STANDOFF_M
-    #: `0` = immer frontal, wie vor dem 13.10.2026.
+    #: ``0`` = always frontal, as before 13.10.2026.
     max_tilt_deg: float = DEFAULT_MAX_TILT_DEG
 
     def standoff_for(self, purpose: str) -> float:
+        """Return the standoff distance for a step purpose."""
         return self.approach_standoff_m if purpose == APPROACH else self.standoff_m
 
 
 @dataclass(frozen=True)
 class RobotReport:
+    """The robot's answer to one step."""
+
     step_index: int
     reached: bool
-    #: Die Pose, die der Roboter **meldet** -- nie das Ziel. `None` ohne Fahrt.
+    #: The pose the robot **reports** -- never the target. ``None`` without a move.
     flange_in_base: Pose | None = None
     reason: str = ""
 
 
 @dataclass(frozen=True)
 class StepSpec:
-    """Was ein Schritt ansieht -- unabhaengig davon, wo die Basis steht."""
+    """What a step looks at -- independent of where the base is."""
 
     purpose: str
     name: str
     module_id: str = ""
-    #: Welttag: seine eine Pose. Modul: `None`, die Tags kommen aus `module`.
+    #: World tag: its single pose. Module: ``None``, the tags come from ``module``.
     world_tag: tuple[int, Pose] | None = None
     module: ModuleRequest | None = None
-    #: Der Tag samt Weltpose, wie ihn das Annaeherungsbild gemessen hat. Ersetzt
-    #: die grobe Pose aus Layer 1; `None`, solange nicht gemessen.
+    #: The tag with its world pose, as measured by the approach image. Replaces the rough
+    #: pose from layer 1; ``None`` until measured.
     seen_tag: tuple[int, Pose] | None = None
 
     def tag_candidates(self) -> list[tuple[int, Pose]]:
-        """Alle Tags dieses Schritts mit ihrer Pose im Welt-KS."""
+        """Return all tags of this step with their pose in the world frame."""
         if self.seen_tag is not None:
             return [self.seen_tag]
         if self.world_tag is not None:
@@ -158,17 +166,21 @@ class StepSpec:
 
 @dataclass(frozen=True)
 class ViewTarget:
+    """A camera pose from which the tag is seen, with the matching flange pose and reach."""
+
     camera_in_world: Pose
     flange_in_world: Pose
     flange_in_base: Pose
-    #: Abstand des Flanschs von der Basis, Meter.
+    #: Distance of the flange from the base, in metres.
     reach_m: float
-    #: Wie schraeg die Kamera auf den Tag schaut, Grad; 0 = frontal.
+    #: How obliquely the camera looks at the tag, in degrees; 0 = frontal.
     tilt_deg: float = 0.0
 
 
 @dataclass(frozen=True)
 class PlannedStep:
+    """A planned step: the chosen tag, its world pose, the target, and whether it is reachable."""
+
     spec: StepSpec
     tag_id: int
     tag_in_world: Pose
@@ -183,15 +195,15 @@ def view_target(
     standoff_m: float,
     tilt_deg: float = 0.0,
 ) -> ViewTarget:
-    """Wo Kamera und Flansch stehen muessen, um den Tag zu sehen.
+    """Compute where the camera and flange must be to see the tag.
 
-    `tilt_deg` kippt die Kamera um die Tag-Mitte zur Roboterbasis hin: sie
-    bleibt `standoff_m` vom Tag und schaut weiter genau auf seine Mitte, nur
-    schraeg statt senkrecht. 0 = frontal.
+    ``tilt_deg`` tilts the camera around the tag centre towards the robot base. It stays
+    ``standoff_m`` from the tag and keeps looking at the centre of the tag, only obliquely
+    instead of perpendicularly. 0 = frontal.
     """
     pose_tag_cam = from_rotation_translation(_FACING, [0.0, 0.0, standoff_m])
     if tilt_deg:
-        # Basis im Tag-Frame, in die Tag-Ebene gelegt: dorthin kippt +z.
+        # Base in the tag frame, projected into the tag plane: the +z tilts towards it.
         towards_base = (invert(pose_world_tag) @ np.append(pose_world_base[:3, 3], 1.0))[:3]
         towards_base[2] = 0.0
         length = float(np.linalg.norm(towards_base))
@@ -215,10 +227,10 @@ def view_target(
 def tag_facing_base(
     candidates: list[tuple[int, Pose]], base_position
 ) -> tuple[int, Pose]:
-    """Der Tag, dessen Flaeche am meisten zur Basis zeigt.
+    """Return the tag whose face points most towards the base.
 
-    Ein Tag auf der Rueckseite hiesse, um das Modul herumzufahren; einer oben
-    auf dem Modul ist von oben gut zu sehen.
+    A tag on the back would mean driving around the module; one on top of the module can
+    be seen well from above.
     """
     base_position = np.asarray(base_position, dtype=np.float64)
     best: tuple[float, int, Pose] | None = None
@@ -241,11 +253,11 @@ def plan_step(
     reach_m: float,
     max_tilt_deg: float = 0.0,
 ) -> PlannedStep:
-    """Ein Schritt, gleich ob Welttag oder Modul.
+    """Plan one step, whether it is a world tag or a module.
 
-    Der frontalste Blick mit Luft zur Reichweite; gibt es keinen, der
-    frontalste in Reichweite; sonst der naechste an der Basis (dann
-    `reachable = False`, der Schritt wird uebersprungen).
+    The most frontal view with margin to the reach; if there is none, the most frontal
+    one within reach; otherwise the nearest one to the base (then ``reachable = False``
+    and the step is skipped).
     """
     tag_id, tag_in_world = tag_facing_base(spec.tag_candidates(), pose_world_base[:3, 3])
     tilts = [tilt for tilt in _TILT_STEPS_DEG if tilt <= max_tilt_deg] or [0.0]
@@ -269,16 +281,16 @@ def plan_step(
 def plan_run(
     request: RunRequest, tag_map: TagMap, pose_flange_cam: Pose
 ) -> list[PlannedStep]:
-    """Schritt 0 am Welttag, danach die Module, das naechste zuerst.
+    """Step 0 at the world tag, then the modules, nearest first.
 
-    Mit Annaeherung steht vor jedem dieser Schritte einer mit `purpose`
-    `approach`: Annaeherung Welttag, Anker, Annaeherung Modul A, Modul A, ...
+    With approach, each of these steps is preceded by one with ``purpose`` ``approach``:
+    approach world tag, anchor, approach module A, module A, and so on.
 
-    Geplant mit der groben Basis aus Layer 1; nach dem Ankern plant der Lauf
-    die restlichen Schritte mit `plan_step` neu.
+    Planned with the rough base from layer 1; after anchoring, the run plans the remaining
+    steps again with ``plan_step``.
 
     Raises:
-        ValueError: die Tag-Map kennt keinen vermessenen Welttag.
+        ValueError: The tag map knows no measured world tag.
     """
     nearest = nearest_world_tag(tag_map, request.robot_base)
     if nearest is None:
@@ -311,8 +323,8 @@ def plan_run(
         for module in request.modules
         if module.tags
     ]
-    # Vom Nahen ins Weite: der Roboter arbeitet sich nach aussen, statt
-    # kreuz und quer durch die Zelle zu fahren.
+    # From near to far: the robot works its way outwards, instead of driving criss-cross
+    # through the cell.
     modules.sort(key=lambda step: step.target.reach_m)
     steps = plan + modules
     if request.approach_standoff_m <= 0:
@@ -334,8 +346,11 @@ def plan_run(
 
 
 def find_detection(detections, tag_id: int) -> dict | None:
-    """Die Detection, die diesen Tag enthaelt -- allein oder mit anderen
-    Tags desselben Moduls zusammengefasst (`tagIds`)."""
+    """Return the detection that contains this tag.
+
+    The tag may be a detection on its own or be merged with other tags of the same module
+    (``tagIds``).
+    """
     for detection in detections:
         attributes = detection.get("attributes") or {}
         if attributes.get("tagId") == tag_id or tag_id in (attributes.get("tagIds") or []):
@@ -344,14 +359,14 @@ def find_detection(detections, tag_id: int) -> dict | None:
 
 
 def tag_in_world_from_detection(detection: dict, tag_id: int, tag_map: TagMap) -> Pose:
-    """Weltpose des Tags `tag_id` aus einer Detection im Welt-KS.
+    """Return the world pose of tag ``tag_id`` from a detection in the world frame.
 
-    Kennt die Tag-Map den Tag, ist die gemeldete Pose die des **Moduls**
-    (`T_world_tag · tag_to_module`); der CAD-Versatz wird zurueckgerechnet.
-    Unbekannte Tags kommen ohne Versatz, als `TAG-<id>`.
+    If the tag map knows the tag, the reported pose is that of the **module**
+    (``T_world_tag · tag_to_module``), so the CAD offset is calculated back. Unknown tags
+    come without an offset, as ``TAG-<id>``.
 
     Raises:
-        ValueError: Pose fehlt oder ist kaputt.
+        ValueError: The pose is missing or invalid.
     """
     pose = _pose(
         {"position": detection.get("position"), "orientation": detection.get("orientation")},
@@ -367,6 +382,7 @@ def tag_in_world_from_detection(detection: dict, tag_id: int, tag_map: TagMap) -
 
 
 def _pose(value, where: str) -> Pose:
+    """Parse a JSON pose dict, raising ``ValueError`` with the location ``where`` on error."""
     if not isinstance(value, dict):
         raise ValueError(f"{where}: Pose fehlt (position, orientation).")
     position = value.get("position")
@@ -379,6 +395,7 @@ def _pose(value, where: str) -> Pose:
 
 
 def _numbers(value, count: int) -> bool:
+    """Return True if ``value`` is a list of ``count`` finite real numbers (no bools)."""
     return (
         isinstance(value, list)
         and len(value) == count
@@ -390,6 +407,7 @@ def _numbers(value, count: int) -> bool:
 
 
 def _load(text: str, schema: str) -> dict:
+    """Parse JSON text and check that its ``schema`` field matches."""
     try:
         data = json.loads(text or "")
     except json.JSONDecodeError as error:
@@ -400,7 +418,7 @@ def _load(text: str, schema: str) -> dict:
 
 
 def parse_run_request(text: str) -> RunRequest:
-    """`wsc.vision.layer2.run/1` lesen; ValueError mit Klartext."""
+    """Read ``wsc.vision.layer2.run/1``; raises ``ValueError`` with a plain message."""
     data = _load(text, RUN_SCHEMA)
     robot_base = _pose(data.get("robotBase"), "robotBase")
     raw_modules = data.get("modules", [])
@@ -449,13 +467,14 @@ def parse_run_request(text: str) -> RunRequest:
 
 
 def _positive(value, where: str) -> float:
+    """Return ``value`` as float if it is a positive number, else raise ``ValueError``."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
         raise ValueError(f"{where} muss eine positive Zahl sein.")
     return float(value)
 
 
 def parse_report(text: str) -> RobotReport:
-    """`wsc.vision.layer2.report/1` lesen; ValueError mit Klartext."""
+    """Read ``wsc.vision.layer2.report/1``; raises ``ValueError`` with a plain message."""
     data = _load(text, REPORT_SCHEMA)
     step_index = data.get("stepIndex")
     if not isinstance(step_index, int) or isinstance(step_index, bool):
@@ -469,7 +488,9 @@ def parse_report(text: str) -> RobotReport:
 
 
 def pose_parameters(pose: Pose) -> list[str]:
-    """Die Roboterpose als Job-Parameter: sieben Strings x, y, z, qx, qy, qz, qw
-    -- das Format von `detection.apriltag.robot_pose_from_parameters`."""
+    """Return the robot pose as job parameters: seven strings x, y, z, qx, qy, qz, qw.
+
+    This is the format expected by ``detection.apriltag.robot_pose_from_parameters``.
+    """
     data = pose_to_dict(pose)
     return [repr(float(value)) for value in data["position"] + data["orientation"]]

@@ -1,4 +1,4 @@
-"""Strategie-Schnittstelle der Erkennungsstufe (Teil 4.5 des Plans)."""
+"""Strategy interface for the detection stage (part 4.5 of the plan)."""
 
 import asyncio
 import functools
@@ -13,7 +13,7 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Detection:
-    """Ein erkanntes Modul mit Pose in Metern und Quaternion xyzw."""
+    """A detected module with its pose in meters and a quaternion in xyzw order."""
 
     module_id: str
     instance_id: str
@@ -21,15 +21,15 @@ class Detection:
     orientation: tuple[float, float, float, float]
     confidence: float
     attributes: dict[str, Any] = field(default_factory=dict)
-    bounding_box: tuple[float, ...] | None = None  # 2D-Profil, Teil 4.5
+    bounding_box: tuple[float, ...] | None = None  # 2D profile, part 4.5
 
 
 @dataclass(frozen=True)
 class DetectionRequest:
-    """Job-Eingaben fuer eine Erkennungsquelle.
+    """Job inputs for a detection source.
 
-    Objekt statt Positionsargumenten, damit ein neues Feld keine brechende
-    Aenderung ueber alle Quellen ist.
+    A single object instead of positional arguments, so that adding a field
+    does not break every source.
     """
 
     job_id: str
@@ -42,62 +42,62 @@ class DetectionRequest:
 
 
 class DetectionSource(ABC):
-    """Liefert Detektionen fuer einen Job; kennt keine OPC-UA-Details.
+    """Provides detections for a job. Knows nothing about OPC UA details.
 
-    Darf zustandsbehaftet sein — die Instanz lebt die ganze Prozesslaufzeit,
-    eine Kamera bleibt also ueber Jobs hinweg offen.
+    May keep state. The instance lives for the whole process runtime, so a
+    camera stays open across jobs.
     """
 
     profile_id: str
 
-    #: Steuert `IsSimulated`. Eine echte Kameraquelle setzt `False`.
+    #: Controls `IsSimulated`. A real camera source sets `False`.
     is_simulated: bool = True
 
-    #: Bezugsrahmen der Posen; `""` = Wert aus der Serverkonfiguration.
+    #: Reference frame of the poses. `""` means the value from the server configuration.
     frame_id: str = ""
 
-    #: Wohin +Z zeigt, z. B. "z_forward_x_right_y_down".
+    #: Direction +Z points in, e.g. "z_forward_x_right_y_down".
     frame_convention: str = ""
 
-    #: Identitaet der wirksamen Konfiguration, z. B. Kalibrierdatei plus mtime.
+    #: Identity of the active configuration, e.g. calibration file plus mtime.
     configuration_id: str = ""
 
-    #: Im letzten Job beobachtete Welttags, JSON-fertig (`worldTags` im
-    #: Payload). Leer bei Quellen ohne Welt-KS. Gilt auch fuer einen
-    #: fehlgeschlagenen Job: ein Bild nur mit Welttags endet in
-    #: `DETECTION_FAILED`, ist aber genau das Bild zum Nachpruefen der Karte.
+    #: World tags seen in the last job, ready for JSON (`worldTags` in the payload).
+    #: Empty for sources without a world frame. Also applies to a failed job: an
+    #: image with only world tags ends in `DETECTION_FAILED`, but it is exactly
+    #: the image needed to check the map.
     world_tags: tuple = ()
 
-    #: Wie die Kamerapose des letzten Jobs bestimmt wurde, JSON-fertig
-    #: (`cameraLocalization` im Payload); `None` ohne Kamerapose. Wie
-    #: `world_tags` auch fuer einen fehlgeschlagenen Job.
+    #: How the camera pose of the last job was determined, ready for JSON
+    #: (`cameraLocalization` in the payload); ``None`` without a camera pose.
+    #: Like `world_tags`, also kept for a failed job.
     camera_localization: dict | None = None
 
     _executor: ThreadPoolExecutor | None = None
 
     @abstractmethod
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
-        """Fuehrt Aufnahme und Erkennung aus; wirft VisionJobError bei Erkennungsfehlern."""
+        """Capture and detect. Raises VisionJobError on detection failure."""
 
     async def open(self) -> None:
-        """Belegt Betriebsmittel. Idempotent.
+        """Acquire resources. Idempotent.
 
-        Laeuft vor dem Uebergang nach Operational; wirft sie, bleibt der Automat
-        in Preoperational und Jobs bekommen INVALID_STATE.
+        Runs before the transition to Operational. If it raises, the state
+        machine stays in Preoperational and jobs get INVALID_STATE.
         """
 
     async def close(self) -> None:
-        """Gibt Betriebsmittel frei. Idempotent, auch nach fehlgeschlagenem `open()`."""
+        """Release resources. Idempotent, also after a failed `open()`."""
         await self.shutdown_executor()
 
     async def run_blocking(self, func, /, *args) -> Any:
-        """Blockierende Arbeit im eigenen Thread. **Jede** OpenCV-Operation hierdurch.
+        """Run blocking work in a dedicated thread. Every OpenCV call goes through this.
 
-        Direkt auf dem Loop friert es Automaten, Events und die 1-Hz-Schleife
-        des Zellenservers ein. Eigener Ein-Worker-Pool statt `asyncio.to_thread`,
-        weil letzterer den Default-Executor teilt und Kamerazugriffe nicht
-        serialisiert. Ein haengender Worker blockiert dieses Profil dauerhaft —
-        eine Quelle braucht zusaetzlich eigene Aufnahme-Timeouts.
+        Running it directly on the loop would freeze the state machine, the events
+        and the 1 Hz loop of the cell server. A private single-worker pool is used
+        instead of `asyncio.to_thread`, because that shares the default executor
+        and does not serialize camera access. A hung worker blocks this profile
+        for good, so a source also needs its own capture timeouts.
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._pool(), functools.partial(func, *args))
@@ -110,7 +110,7 @@ class DetectionSource(ABC):
         return self._executor
 
     async def shutdown_executor(self) -> None:
-        """Faehrt den Worker-Thread herunter, falls einer existiert."""
+        """Shut down the worker thread, if there is one."""
         executor, self._executor = self._executor, None
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)

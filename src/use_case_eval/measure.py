@@ -1,18 +1,18 @@
-"""Bildmessung der Wuerfelablage: Abweichung (dx, dy, dtheta) zur Zielscheibenmitte.
+"""Image measurement of the cube placement: deviation (dx, dy, dtheta) from the target center.
 
-Ablauf von `measure_trial`:
+Flow of `measure_trial`:
 
-1. ArUco-Marker (4x4_50) erkennen, Ecken subpixelgenau.
-2. Blattpose per `cv2.solvePnP` aus den Ecken der Blattmarker (IDs 0-3,
-   mindestens 2), Bildpunkte vorher entzerrt (`tagloc.lens`), damit Pinhole- und
-   Fisheye-Kalibrierungen gleich laufen.
-3. Ecken des Wuerfelmarkers (ID 10) als Strahlen ins Blattsystem rechnen und mit
-   der Ebene z = 20 mm (Wuerfeloberseite) schneiden. Mitte und Gierwinkel
-   folgen aus den vier Schnittpunkten; ein Aufkleber-Versatz wird abgezogen.
+1. Detect the ArUco markers (4x4_50), corners refined to subpixel accuracy.
+2. Sheet pose via `cv2.solvePnP` from the corners of the sheet markers (IDs 0-3,
+   at least 2). Image points are undistorted beforehand (`tagloc.lens`), so that
+   pinhole and fisheye calibrations run the same way.
+3. Cast the corners of the cube marker (ID 10) as rays into the sheet frame and
+   intersect them with the plane z = 20 mm (cube top). Center and yaw angle
+   follow from the four intersection points; a sticker offset is subtracted.
 
-Fehler (kein Marker, zu wenige Blattmarker, Pose nicht loesbar) liefern
-`ok=False` mit deutschem `grund`, nie eine Ausnahme. Die Rechenfunktionen sind
-rein; OpenCV wird erst in den Funktionen importiert.
+Errors (no marker, too few sheet markers, pose not solvable) return `ok=False`
+with a German `grund` message, never an exception. The calculation functions
+are pure; OpenCV is imported only inside the functions.
 """
 
 import math
@@ -23,80 +23,81 @@ import numpy as np
 
 from . import target
 
-#: Mindestzahl erkannter Blattmarker fuer eine Blattpose.
+#: Minimum number of detected sheet markers for a sheet pose.
 MIN_SHEET_MARKERS = 2
-#: Eckenverfeinerung des ArUco-Detektors (`tagloc.detector.CORNER_METHODS`).
+#: Corner refinement method of the ArUco detector (`tagloc.detector.CORNER_METHODS`).
 CORNER_METHOD = "subpix"
 
-# Kantenverfeinerung der Marker (siehe `_refine_quad`).
-#: Querprofile: Abstand entlang der Kante (px) und Schrittweite im Profil (px).
+# Edge refinement of the markers (see `_refine_quad`).
+#: Cross profiles: spacing along the edge (px) and step size within the profile (px).
 _EDGE_STEP_PX = 0.5
 _PROFILE_SAMPLE_PX = 0.25
-#: Profilbereich senkrecht zur Kante (px): innen schwarzer Markerrahmen, aussen
-#: die weisse Randzone (beim Wuerfelaufkleber nur 1 mm, etwa 2 px breit).
+#: Profile range perpendicular to the edge (px): inside is the black marker border,
+#: outside the white margin (for the cube sticker only 1 mm, about 2 px wide).
 _PROFILE_INNER_PX = 3.0
 _PROFILE_OUTER_PX = 1.6
-#: Pegel: Schwarz = Mittel bis -2 px nach innen, Weiss = Maximum ab +0,75 px nach aussen.
+#: Levels: black = mean up to -2 px inward, white = maximum from +0.75 px outward.
 _PLATEAU_INNER_PX = 2.0
 _PLATEAU_OUTER_PX = 0.75
-#: Mindestkontrast (Grauwerte) schwarz -> weiss.
+#: Minimum contrast (gray values) black -> white.
 _MIN_CONTRAST = 60.0
-#: Mindestzahl brauchbarer Kantenpunkte je Kante und erlaubte Abweichung der
-#: verfeinerten Ecke von der Startecke im zweiten Durchgang (px).
+#: Minimum number of usable edge points per edge, and the allowed deviation of the
+#: refined corner from the start corner in the second pass (px).
 _MIN_EDGE_POINTS = 8
 _MAX_CORNER_SHIFT_PX = 1.0
-#: Dasselbe im ersten Durchgang gegen die ArUco-Ecken (bei starker Verzeichnung ungenauer).
+#: The same for the first pass, against the ArUco corners (less accurate under strong distortion).
 _MAX_FIRST_SHIFT_PX = 4.0
 
 
 @dataclass
 class TrialMeasurement:
-    """Ergebnis einer Bildmessung. Laengen in mm, Winkel in Grad."""
+    """Result of an image measurement. Lengths in mm, angles in degrees."""
 
     ok: bool
     grund: str = ""
-    #: Wuerfelmitte relativ zur Scheibenmitte (Blatt-x/-y), Aufkleber-Versatz abgezogen.
+    #: Cube center relative to the target center (sheet x/y), sticker offset subtracted.
     dx_mm: float | None = None
     dy_mm: float | None = None
-    #: Gierwinkel des Wuerfels, modulo 90 Grad auf [-45, 45) gewickelt.
+    #: Yaw angle of the cube, wrapped modulo 90 degrees to [-45, 45).
     dtheta_deg: float | None = None
     r_mm: float | None = None
-    #: "gruen" / "gelb" / "rot" / "ausserhalb" nach der aeussersten Wuerfelecke.
+    #: Zone ("gruen" / "gelb" / "rot" / "ausserhalb") based on the outermost cube corner.
     zone: str | None = None
-    #: IDs der erkannten Blattmarker.
+    #: IDs of the detected sheet markers.
     sheet_markers: list[int] = field(default_factory=list)
     reprojection_rms_px: float | None = None
     camera_height_mm: float | None = None
     camera_tilt_deg: float | None = None
-    #: Abstand des Durchstosspunkts der optischen Achse (z = 20 mm) zur Wuerfelmitte.
+    #: Distance from the point where the optical axis pierces the plane z = 20 mm
+    #: to the cube center.
     nadir_offset_mm: float | None = None
-    #: Wuerfelecken in Blattkoordinaten, `[[x, y], ...]` (oben-links beginnend).
+    #: Cube corners in sheet coordinates, `[[x, y], ...]` (starting at top-left).
     cube_corners_mm: list[list[float]] | None = None
-    #: Mitte des Markers selbst (ohne Aufkleber-Versatz) und sein voller Gierwinkel
-    #: (0..360); die Aufkleber-Kalibrierung braucht beides.
+    #: Center of the marker itself (without sticker offset) and its full yaw angle
+    #: (0..360). The sticker calibration needs both.
     marker_center_mm: list[float] | None = None
     marker_yaw_deg: float | None = None
-    #: Kanten des Wuerfelmarkers subpixelgenau verfeinert (sonst ArUco-Ecken).
+    #: Edges of the cube marker refined to subpixel accuracy (otherwise ArUco corners).
     cube_edge_refined: bool = False
-    #: Zahl der Blattmarker, deren Kanten verfeinert wurden.
+    #: Number of sheet markers whose edges were refined.
     sheet_edges_refined: int = 0
-    #: Verwendeter Aufkleber-Versatz im Markersystem (mm).
+    #: Sticker offset used, in the marker frame (mm).
     sticker_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0])
-    #: Bezug der Messung: "sheet" (Zielscheibe) oder "tag" (Aussenrand eines
-    #: schwarzen Tag-Quadrats, Mitte = Ursprung).
+    #: Reference of the measurement: "sheet" (target) or "tag" (outer edge of a
+    #: black tag square, center = origin).
     reference: str = "sheet"
-    #: Nur im Tag-Modus: Kantenlaenge (mm), erwartete ID, Kanten verfeinert?,
-    #: Rohecken im (verzerrten) Bild in der gewaehlten Reihenfolge (oben-links,
-    #: oben-rechts, unten-rechts, unten-links im Tag-System).
+    #: Tag mode only: edge length (mm), expected ID, edges refined?,
+    #: raw corners in the (distorted) image in the chosen order (top-left,
+    #: top-right, bottom-right, bottom-left in the tag frame).
     tag_size_mm: float | None = None
     tag_id: int | None = None
     tag_edges_refined: bool | None = None
     tag_corners_px: list | None = None
-    #: Bildpunkte fuer `annotate`; nicht Teil von `to_dict`.
+    #: Image points for `annotate`; not part of `to_dict`.
     overlay: dict | None = field(default=None, repr=False, compare=False)
 
     def to_dict(self) -> dict:
-        """JSON-faehiges Dict (ohne `overlay`)."""
+        """Return a JSON-serializable dict (without `overlay`)."""
         result: dict[str, Any] = {}
         for key, value in self.__dict__.items():
             if key == "overlay":
@@ -106,7 +107,7 @@ class TrialMeasurement:
 
     @classmethod
     def from_dict(cls, data: dict) -> "TrialMeasurement":
-        """Umkehrung von `to_dict`; unbekannte Schluessel werden ignoriert."""
+        """Inverse of `to_dict`. Unknown keys are ignored."""
         names = set(cls.__dataclass_fields__) - {"overlay"}
         values = {key: value for key, value in data.items() if key in names}
         values.setdefault("ok", False)
@@ -114,7 +115,7 @@ class TrialMeasurement:
 
 
 def _plain(value: Any) -> Any:
-    """numpy-Werte in reine Python-Typen wandeln."""
+    """Convert numpy values into plain Python types."""
     if isinstance(value, np.ndarray):
         return _plain(value.tolist())
     if isinstance(value, (list, tuple)):
@@ -131,12 +132,12 @@ def _fail(reason: str, **extra: Any) -> TrialMeasurement:
 
 
 def _wrap90(angle_deg: float) -> float:
-    """Winkel auf [-45, 45) wickeln (Wuerfel ist 90-Grad-symmetrisch)."""
+    """Wrap an angle to [-45, 45). The cube is symmetric under 90-degree rotation."""
     return (angle_deg + 45.0) % 90.0 - 45.0
 
 
 def _circular_mean_deg(angles_deg: Iterable[float], fold: int = 1) -> float:
-    """Zirkulaerer Mittelwert; `fold=4` mittelt modulo 90 Grad."""
+    """Circular mean. ``fold=4`` averages modulo 90 degrees."""
     a = np.radians(np.asarray(list(angles_deg), dtype=np.float64)) * fold
     return float(np.degrees(np.arctan2(np.sin(a).mean(), np.cos(a).mean())) / fold)
 
@@ -153,7 +154,7 @@ def _gray(image) -> np.ndarray:
 
 
 def _detect(gray: np.ndarray) -> dict[int, np.ndarray]:
-    """ID -> Ecken `(4, 2)` aller erkannten Marker; bei Doppelten gewinnt der erste."""
+    """Map each ID to the corners ``(4, 2)`` of all detected markers. The first one wins on duplicates."""
     from tagloc.detector import build_detector
 
     detector = build_detector(
@@ -171,14 +172,17 @@ def _detect(gray: np.ndarray) -> dict[int, np.ndarray]:
 
 
 def _fit_line(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Totale kleinste Quadrate: `(Schwerpunkt, Einheitsrichtung)`."""
+    """Fit a line by total least squares. Return ``(centroid, unit direction)``."""
     centre = points.mean(axis=0)
     _, _, vt = np.linalg.svd(points - centre, full_matrices=False)
     return centre, vt[0]
 
 
 def _fit_line_robust(points: np.ndarray):
-    """Gerade mit iterativem Ausreisserausschluss (Median-Abstand); `None` bei zu wenigen Punkten."""
+    """Fit a line with iterative outlier rejection (median distance).
+
+    Return ``None`` if too few points remain.
+    """
     keep = np.ones(len(points), dtype=bool)
     for _ in range(4):
         if keep.sum() < _MIN_EDGE_POINTS:
@@ -194,14 +198,14 @@ def _fit_line_robust(points: np.ndarray):
 
 
 def _edge_points(gray: np.ndarray, start: np.ndarray, end: np.ndarray, outward: np.ndarray):
-    """Subpixel-Kantenpunkte (verzerrte Bildpunkte) entlang der Strecke `start`-`end`.
+    """Subpixel edge points (distorted image points) along the segment `start`-`end`.
 
-    Querprofile senkrecht zur Kante (bilinear per `cv2.remap`). Die Kantenlage
-    folgt aus der Flaeche unter dem normierten Profil (innen schwarz -> aussen
-    weiss, Pegel aus den Plateaus): bei flaechig abtastender Kamera ist das
-    unabhaengig von der Phase der Kante zum Pixelraster, anders als ein
-    Gradientenmaximum (das bei fast achsparallelen Kanten ein Treppenmuster
-    zeigt). `outward` ist die Aussennormale.
+    Cross profiles perpendicular to the edge (bilinear via `cv2.remap`). The edge
+    position follows from the area under the normalized profile (inside black ->
+    outside white, levels from the plateaus). With an area-sampling camera this
+    is independent of the phase of the edge relative to the pixel grid, unlike a
+    gradient maximum (which shows a staircase pattern for nearly axis-aligned
+    edges). `outward` is the outward normal.
     """
     import cv2
 
@@ -219,12 +223,12 @@ def _edge_points(gray: np.ndarray, start: np.ndarray, end: np.ndarray, outward: 
     black = samples[:, offsets <= -_PLATEAU_INNER_PX].mean(axis=1)
     white = samples[:, offsets >= _PLATEAU_OUTER_PX].max(axis=1)
     contrast = white - black
-    # Rampe muss das Weiss erreicht haben (sonst fehlt Flaeche am Profilende).
+    # The ramp must have reached white (otherwise area is missing at the profile end).
     usable = (contrast > _MIN_CONTRAST) & (samples[:, -1] >= black + 0.95 * contrast)
     with np.errstate(divide="ignore", invalid="ignore"):
         fraction = (samples - black[:, None]) / contrast[:, None]
     fraction = np.clip(fraction, -0.1, 1.1)
-    # Innen (schwarz) ist 1 - f = 1, aussen 0: Integral(1 - f) = e - Anfang.
+    # Inside (black) 1 - f = 1, outside 0: integral(1 - f) = e - start.
     outside = 1.0 - fraction
     area = (outside.sum(axis=1) - 0.5 * (outside[:, 0] + outside[:, -1])) * _PROFILE_SAMPLE_PX
     edge = offsets[0] + area
@@ -233,12 +237,15 @@ def _edge_points(gray: np.ndarray, start: np.ndarray, end: np.ndarray, outward: 
 
 
 def _refine_quad_once(gray: np.ndarray, raw: np.ndarray, calibration, max_shift_px: float) -> np.ndarray | None:
-    """Marker-Ecken aus den vier Aussenkanten, entzerrt `(4, 2)`; `None` bei Misserfolg.
+    """Refine the marker corners from the four outer edges.
 
-    Je Kante Kantenpunkte im Originalbild, danach entzerrt (`tagloc.lens`,
-    Pinhole wie Fisheye), Gerade per robustem TLS, Ecken = Schnitte benachbarter
-    Geraden. Weicht eine Ecke um mehr als `max_shift_px` von der Startecke ab,
-    gilt die Verfeinerung als gescheitert.
+    Return the undistorted ``(4, 2)`` corners, or ``None`` on failure.
+
+    For each edge, collect edge points in the original image and undistort them
+    (`tagloc.lens`, pinhole and fisheye alike). Fit a line by robust total least
+    squares. Corners are the intersections of adjacent lines. If a corner
+    deviates from the start corner by more than `max_shift_px`, the refinement
+    counts as failed.
     """
     from tagloc.lens import undistort_points
 
@@ -262,7 +269,7 @@ def _refine_quad_once(gray: np.ndarray, raw: np.ndarray, calibration, max_shift_
         lines.append(line)
     corners = np.zeros((4, 2))
     for i in range(4):
-        (c1, d1), (c2, d2) = lines[i - 1], lines[i]  # Ecke i = Schnitt der Kanten i-1 und i
+        (c1, d1), (c2, d2) = lines[i - 1], lines[i]  # Corner i = intersection of edges i-1 and i
         matrix = np.column_stack([d1, -d2])
         if abs(np.linalg.det(matrix)) < 0.3:
             return None
@@ -274,7 +281,7 @@ def _refine_quad_once(gray: np.ndarray, raw: np.ndarray, calibration, max_shift_
 
 
 def _refine_quad(gray: np.ndarray, raw: np.ndarray, calibration) -> np.ndarray | None:
-    """Zweistufig: erst um die ArUco-Ecken, dann um die schon verfeinerte Lage."""
+    """Two-stage refinement: first around the ArUco corners, then around the refined position."""
     first = _refine_quad_once(gray, raw, calibration, _MAX_FIRST_SHIFT_PX)
     if first is None:
         return None
@@ -284,7 +291,7 @@ def _refine_quad(gray: np.ndarray, raw: np.ndarray, calibration) -> np.ndarray |
 
 
 def _distort(undistorted_px: np.ndarray, calibration) -> np.ndarray:
-    """Entzerrte Bildpunkte zurueck ins verzerrte Originalbild (Pinhole und Fisheye)."""
+    """Map undistorted image points back into the distorted original image (pinhole and fisheye)."""
     matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     rays = np.column_stack(
         [
@@ -298,9 +305,9 @@ def _distort(undistorted_px: np.ndarray, calibration) -> np.ndarray:
     return project_points(rays, np.zeros(3), np.zeros(3), calibration)
 
 
-#: Tag-Modus: Standardkante (m), Mindestflaeche gegenueber dem Wuerfelmarker,
-#: Hoechstanteil der Bildflaeche, erlaubtes Seitenverhaeltnis und Mindest-
-#: Rechteckigkeit (Konturflaeche / Flaeche der konvexen Huelle).
+#: Tag mode: default edge length (m), minimum area relative to the cube marker,
+#: maximum share of the image area, allowed side ratio and minimum
+#: rectangularity (contour area / area of the convex hull).
 TAG_DEFAULT_SIZE_M = 0.08
 _TAG_MIN_AREA_FACTOR = 6.0
 _TAG_MAX_IMAGE_FRACTION = 0.6
@@ -309,12 +316,12 @@ _TAG_MIN_FILL = 0.9
 
 
 def _find_tag_quad(gray: np.ndarray, marker_raw: np.ndarray) -> np.ndarray | None:
-    """Aussenviereck des dunklen Tag-Quadrats um den Wuerfelmarker, `(4, 2)` roh; sonst `None`.
+    """Find the outer quad of the dark tag square around the cube marker.
 
-    Otsu-Schwelle (dunkel = Vordergrund), nur aeussere Konturen (das Innenmuster
-    und der Wuerfel liegen im Inneren und stoeren nicht), konvexe Vierecke, die
-    die Markermitte enthalten. Unter den plausiblen (Flaeche, Seitenverhaeltnis)
-    gewinnt das kleinste.
+    Return the raw ``(4, 2)`` corners, or ``None``. Otsu threshold (dark =
+    foreground), outer contours only (the inner pattern and the cube lie inside
+    and do not interfere), convex quads that contain the marker center. Among
+    the plausible candidates (area, side ratio), the smallest one wins.
     """
     import cv2
 
@@ -355,16 +362,16 @@ def _find_tag_quad(gray: np.ndarray, marker_raw: np.ndarray) -> np.ndarray | Non
 
 
 def _tag_pose(gray, marker_raw, calibration, camera_matrix, reference, refine_edges):
-    """Pose Tag -> Kamera aus dem Aussenrand des Tag-Quadrats.
+    """Tag-to-camera pose from the outer edge of the tag square.
 
-    Tag-System: Ursprung in der Tag-Mitte, z nach oben (zur Kamera), x entlang
-    der Kante, die am besten zu `reference["tagXInImage"]` (Einheitsvektor im
-    Bild, x rechts, y unten; ohne Angabe Bild-+x) passt, y so, dass das System
-    rechtshaendig ist (bei Blick von oben also Bild-"oben" fuer x = Bild-rechts).
-    Eckenreihenfolge: (-s/2, +s/2), (+s/2, +s/2), (+s/2, -s/2), (-s/2, -s/2),
-    wie `target.marker_corners`.
+    Tag frame: origin at the tag center, z up (toward the camera), x along the
+    edge that best matches `reference["tagXInImage"]` (unit vector in the image,
+    x right, y down; if absent, image +x). y is chosen so that the frame is
+    right-handed. Looking from above, image "up" therefore corresponds to
+    x = image right. Corner order: (-s/2, +s/2), (+s/2, +s/2), (+s/2, -s/2),
+    (-s/2, -s/2), as in `target.marker_corners`.
 
-    Liefert `(rvec, tvec, rms, extra)` oder ein fehlgeschlagenes `TrialMeasurement`.
+    Return ``(rvec, tvec, rms, extra)``, or a failed `TrialMeasurement`.
     """
     import cv2
 
@@ -379,7 +386,7 @@ def _tag_pose(gray, marker_raw, calibration, camera_matrix, reference, refine_ed
     quad = _find_tag_quad(gray, marker_raw)
     if quad is None:
         return _fail("Tag-Rand nicht gefunden (kein Viereck um den Wuerfelmarker)", reference="tag")
-    # Umlaufsinn im Bild (y unten): oben-links -> oben-rechts -> unten-rechts = positive Flaeche.
+    # Winding order in the image (y down): top-left -> top-right -> bottom-right gives positive area.
     x, y = quad[:, 0], quad[:, 1]
     if 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) < 0:
         quad = quad[::-1]
@@ -393,7 +400,7 @@ def _tag_pose(gray, marker_raw, calibration, camera_matrix, reference, refine_ed
     edges = np.roll(quad, -1, axis=0) - quad
     edges = edges / np.linalg.norm(edges, axis=1)[:, None]
     start = int(np.argmax(edges @ axis))
-    raw = np.roll(quad, -start, axis=0)  # Kante 0 -> 1 ist die Tag-+x-Kante
+    raw = np.roll(quad, -start, axis=0)  # Edge 0 -> 1 is the tag +x edge
 
     refined = _refine_quad(gray.astype(np.float32), raw, calibration) if refine_edges else None
     pixels = refined if refined is not None else undistort_points(raw, calibration)
@@ -424,28 +431,35 @@ def measure_trial(
     refine_edges: bool = True,
     reference: dict | None = None,
 ) -> TrialMeasurement:
-    """Misst die Wuerfelablage in `image`.
+    """Measure the cube placement in `image`.
 
-    `calibration`: `tagloc.calibration.CameraCalibration` der Aufnahme.
-    `cube_marker_offset_mm`: Lage der Markermitte relativ zur Wuerfelmitte,
-    im Markersystem (x = Richtung Kante oben-links -> oben-rechts, y = nach
-    "oben" im Markerbild). Wird in Blattachsen gedreht und abgezogen.
-    `refine_edges`: Marker-Ecken zusaetzlich aus den Aussenkanten bestimmen
-    (genauer als die ArUco-Ecken); bei Misserfolg gelten die ArUco-Ecken, das
-    steht in `cube_edge_refined`/`sheet_edges_refined`.
-    `reference`: `None` = Zielscheibe (Blattmarker). `{"kind": "tag", "tagSizeM":
-    0.08, "tagId": 3, "tagXInImage": [ux, uy] | None}`: Bezug ist der schwarze
-    Aussenrand eines Tag-Quadrats um den Wuerfel (siehe `_tag_pose`), der Tag wird
-    nicht dekodiert; Ursprung = Tag-Mitte.
-    Wirft nie; Fehler stehen in `ok`/`grund`.
+    Args:
+        image: Input image (gray, BGR or BGRA).
+        calibration: `tagloc.calibration.CameraCalibration` of the capture.
+        cube_marker_offset_mm: Position of the marker center relative to the cube
+            center, in the marker frame (x = direction from the top-left to the
+            top-right corner, y = toward "up" in the marker image). It is rotated
+            into the sheet axes and subtracted.
+        refine_edges: Also determine the marker corners from the outer edges
+            (more accurate than the ArUco corners). On failure the ArUco corners
+            are used; this is recorded in `cube_edge_refined` and
+            `sheet_edges_refined`.
+        reference: ``None`` means the target (sheet markers). A dict like
+            ``{"kind": "tag", "tagSizeM": 0.08, "tagId": 3, "tagXInImage": [ux, uy] | None}``
+            means the reference is the black outer edge of a tag square around
+            the cube (see `_tag_pose`). The tag is not decoded. The origin is the
+            tag center.
+
+    Never raises. Errors are reported in `ok` and `grund`.
     """
     try:
         return _measure(image, calibration, cube_marker_offset_mm, refine_edges, reference)
-    except Exception as error:  # Messfehler duerfen nie den Aufrufer treffen
+    except Exception as error:  # Measurement errors must never reach the caller
         return _fail(f"Messung fehlgeschlagen: {type(error).__name__}: {error}")
 
 
 def _measure(image, calibration, offset, refine_edges=True, reference=None) -> TrialMeasurement:
+    """Implement `measure_trial`. May raise; the wrapper catches the errors."""
     import cv2
 
     from tagloc.lens import project_points, undistort_points
@@ -462,7 +476,7 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
     blurred = gray.astype(np.float32) if refine_edges else None
 
     def undistorted_corners(raw: np.ndarray):
-        """`(entzerrte Ecken (4, 2), verfeinert?)` eines erkannten Markers."""
+        """Return ``(undistorted corners (4, 2), refined?)`` of a detected marker."""
         if blurred is not None:
             refined = _refine_quad(blurred, raw, calibration)
             if refined is not None:
@@ -507,8 +521,8 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
         projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
         rms = float(np.sqrt(np.mean(np.sum((projected.reshape(-1, 2) - sheet_px) ** 2, axis=1))))
 
-    rotation, _ = cv2.Rodrigues(rvec)  # Blatt -> Kamera
-    camera_center = -rotation.T @ tvec.reshape(3)  # Kamera im Blattsystem
+    rotation, _ = cv2.Rodrigues(rvec)  # sheet -> camera
+    camera_center = -rotation.T @ tvec.reshape(3)  # camera in the sheet frame
     if camera_center[2] <= target.CUBE_TOP_Z_MM:
         return _fail(
             "Tag-Pose unplausibel (Kamera nicht ueber dem Tag)"
@@ -518,11 +532,11 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
             reprojection_rms_px=rms,
             reference="tag" if tag_mode else "sheet",
         )
-    axis_sheet = rotation.T @ np.array([0.0, 0.0, 1.0])  # optische Achse im Blattsystem
+    axis_sheet = rotation.T @ np.array([0.0, 0.0, 1.0])  # optical axis in the sheet frame
     tilt = math.degrees(math.acos(float(np.clip(-axis_sheet[2], -1.0, 1.0))))
 
     def to_sheet_plane(pixels: np.ndarray, z_mm: float) -> np.ndarray:
-        """Entzerrte Bildpunkte -> Punkte auf der Ebene z = `z_mm` im Blattsystem."""
+        """Map undistorted image points onto the plane z = `z_mm` in the sheet frame."""
         normalized = np.column_stack(
             [
                 (pixels[:, 0] - camera_matrix[0, 2]) / camera_matrix[0, 0],
@@ -530,7 +544,7 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
                 np.ones(len(pixels)),
             ]
         )
-        directions = normalized @ rotation  # == (R^T d) je Zeile
+        directions = normalized @ rotation  # == (R^T d) per row
         scale = (z_mm - camera_center[2]) / directions[:, 2]
         return camera_center + directions * scale[:, None]
 
@@ -539,8 +553,8 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
     cube_pts = to_sheet_plane(cube_px, target.CUBE_TOP_Z_MM)
     xy = cube_pts[:, :2]
 
-    # Kantenrichtungen: oben-links->oben-rechts und unten-links->unten-rechts liegen
-    # bei theta, die Quer-Kanten bei theta - 90 (daher + 90).
+    # Edge directions: top-left -> top-right and bottom-left -> bottom-right lie at
+    # theta, the cross edges at theta - 90 (hence + 90).
     edges = [
         xy[1] - xy[0],
         xy[2] - xy[3],
@@ -555,7 +569,7 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
     corners = target.cube_corners_xy(center, yaw_full)
     max_radius = float(np.max(np.hypot(corners[:, 0], corners[:, 1])))
 
-    # Durchstosspunkt der optischen Achse mit der Wuerfeloberseite fuer die Qualitaet.
+    # Point where the optical axis pierces the cube top, used as a quality measure.
     if axis_sheet[2] < -1e-6:
         hit = camera_center + axis_sheet * ((target.CUBE_TOP_Z_MM - camera_center[2]) / axis_sheet[2])
         nadir_offset = float(np.hypot(hit[0] - center[0], hit[1] - center[1]))
@@ -594,14 +608,14 @@ def _measure(image, calibration, offset, refine_edges=True, reference=None) -> T
 
 
 def _rot90(vector: np.ndarray) -> np.ndarray:
-    """Vektor um +90 Grad drehen (Blatt, y oben)."""
+    """Rotate a vector by +90 degrees (sheet frame, y up)."""
     return np.array([-vector[1], vector[0]])
 
 
 def _build_overlay(
     calibration, rvec, tvec, sheet_ids, found, cube_raw, cube_corners, project_points, tag_size_mm=None
 ):
-    """Bildpunkte fuers Kontrollbild (Blattmarker bzw. Tag-Quadrat, Wuerfelmarker, Wuerfelumriss, Kreise)."""
+    """Image points for the control image: sheet markers or tag square, cube marker, cube outline, circles."""
     outline = np.column_stack([cube_corners, np.full(4, target.CUBE_TOP_Z_MM)])
     angles = np.radians(np.arange(0, 360, 5.0))
     circles = {}
@@ -625,7 +639,7 @@ def _build_overlay(
 
 
 def annotate(image, measurement: TrialMeasurement):
-    """Kontrollbild: Kopie von `image` mit erkannten Markern, Kreisen und Messwerten."""
+    """Control image: a copy of `image` with detected markers, circles and measured values."""
     import cv2
 
     array = np.asarray(image)
@@ -659,18 +673,18 @@ def annotate(image, measurement: TrialMeasurement):
 
 
 def _std(values: np.ndarray) -> float:
-    """Stichproben-Standardabweichung; 0 bei einem Wert."""
+    """Sample standard deviation. Return 0 for a single value."""
     return float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
 
 
 def summarize(measurements: Iterable[TrialMeasurement]) -> dict:
-    """Kennzahlen in Anlehnung an ISO 9283 ueber alle erfolgreichen Messungen.
+    """Key figures based on ISO 9283, over all successful measurements.
 
-    - Genauigkeit `AP_mm` = Abstand des Mittelpunkts aller Ablagen vom Soll
-      (Scheibenmitte), `AP_theta_deg` = |mittleres dtheta|.
-    - Wiederholgenauigkeit `RP_mm` = l_mittel + 3 * S_l mit l = Abstand der
-      Einzelablage zum Mittelpunkt; `RP_theta_deg` = 3 * S_theta.
-    Das Mittel von dtheta ist zirkulaer modulo 90 Grad.
+    - Accuracy `AP_mm` = distance of the mean of all placements from the target
+      (target center); `AP_theta_deg` = |mean dtheta|.
+    - Repeatability `RP_mm` = l_mean + 3 * S_l, where l = distance of each single
+      placement from the mean; `RP_theta_deg` = 3 * S_theta.
+    The mean of dtheta is circular modulo 90 degrees.
     """
     all_items = list(measurements)
     good = [m for m in all_items if m.ok]
@@ -713,19 +727,19 @@ def summarize(measurements: Iterable[TrialMeasurement]) -> dict:
 
 
 def sticker_offset_from_pair(m0: TrialMeasurement, m180: TrialMeasurement) -> tuple[float, float]:
-    """Aufkleber-Versatz (mm, Markersystem) aus Messungen vor/nach 180-Grad-Drehung.
+    """Sticker offset (mm, marker frame) from measurements before and after a 180-degree turn.
 
-    Der Wuerfel wird um seine Mitte gedreht, der Marker wandert dabei auf die
-    gegenueberliegende Seite: Mitte = (M0 + M1) / 2, Versatz = (M0 - M1) / 2,
-    ins Markersystem der ersten Lage zurueckgedreht. Die Messungen duerfen mit
-    oder ohne bisherigen Versatz entstanden sein (verwendet wird die
-    Markermitte). Wirft `ValueError`, wenn eine Messung fehlt oder die
-    Drehung nicht etwa 180 Grad betraegt (mehr als 30 Grad Abweichung).
+    The cube is rotated about its center, so the marker moves to the opposite
+    side. Center = (M0 + M1) / 2, offset = (M0 - M1) / 2, rotated back into the
+    marker frame of the first position. The measurements may have been taken
+    with or without a previous offset (the marker center is used). Raises
+    `ValueError` if a measurement is missing or the turn is not about 180
+    degrees (more than 30 degrees off).
     """
     for m in (m0, m180):
         if not m.ok or m.marker_center_mm is None or m.marker_yaw_deg is None:
             raise ValueError("Beide Messungen muessen erfolgreich sein (Markerlage fehlt)")
-    turn = (m180.marker_yaw_deg - m0.marker_yaw_deg + 180.0) % 360.0 - 180.0  # Soll: +-180
+    turn = (m180.marker_yaw_deg - m0.marker_yaw_deg + 180.0) % 360.0 - 180.0  # expected: +-180
     if abs(abs(turn) - 180.0) > 30.0:
         raise ValueError(f"Wuerfel wurde um {turn:.0f} statt um 180 Grad gedreht")
     yaw0 = _circular_mean_deg([m0.marker_yaw_deg, m180.marker_yaw_deg - 180.0])

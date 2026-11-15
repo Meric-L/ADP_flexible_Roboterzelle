@@ -1,21 +1,20 @@
-"""AprilTags erkennen -- an der Kamera oder auf abgelegten Bildern.
+"""Detect AprilTags -- live at the camera or in saved images.
 
     python -m tagloc.cli.detect --source camera:0 \
         --calibration data/calibration/cam_ceiling.json \
         --tag-map config/tagmap.json --overlay
 
-    # reproduzierbar, keine Hardware noetig: Bildordner statt Kamera
+    # reproducible, no hardware needed: image folder instead of camera
     python -m tagloc.cli.detect --source ./aufnahmen/szene/ \
         --calibration data/calibration/cam_ceiling.json --json posen.json
 
-Je Tag: ID, Pose (Position und Quaternion xyzw), Reprojektionsfehler und
-Mehrdeutigkeit. Mit `--tag-map` zusaetzlich die Modulzuordnung und, sobald ein
-Welttag sichtbar ist, die Weltpose und der Welttag, neben dem das Modul steht.
+Per tag: ID, pose (position and quaternion xyzw), reprojection error and
+ambiguity. With `--tag-map`, also the module assignment and, once a world tag
+is visible, the world pose and the world tag next to which the module sits.
 
-`--overlay` zeigt ein Fenster; ohne Bildschirm (Pi ueber SSH) wird das einmal
-gemeldet und der Lauf geht ohne Anzeige weiter. `--save-overlay ORDNER`
-speichert stattdessen die markierten Bilder -- der praktische Weg auf einem
-Pi ohne Bildschirm.
+`--overlay` opens a window. Without a display (Pi over SSH) this is reported
+once and the run continues without a window. `--save-overlay FOLDER` saves the
+annotated images instead, which is the practical way on a Pi without a display.
 """
 
 import argparse
@@ -124,10 +123,10 @@ def main(argv=None) -> int:
                     f"  e={tag_pose.reprojection_error_px:.2f}px{marker}"
                 )
 
-            # Ohne Welttag bleibt die Kette im Kamera-KS. Das ist der
-            # Normalbetrieb der Handkamera zwischen zwei Welttags, kein
-            # Sonderfall: Module werden trotzdem aufgeloest, nur relativ
-            # zur Kamera.
+            # Without a world tag the chain stays in the camera frame. This is
+            # the normal operation of the hand camera between two world tags,
+            # not a special case: modules are still resolved, just relative to
+            # the camera.
             localization = localize_camera(
                 tag_poses,
                 tag_map,

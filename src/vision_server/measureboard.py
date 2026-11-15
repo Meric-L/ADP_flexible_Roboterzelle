@@ -1,20 +1,19 @@
-"""MeasureBoard: das Kalibrier-Schachbrett vor der Hand-Auge-Aufnahme messen.
+"""MeasureBoard: measure the calibration chessboard before the hand-eye capture.
 
-Fuer das Zentrieren: Die Steuerung fuehrt den Roboter ueber das Brett, ruft
-`MeasureBoard` auf und regelt nach, bis das ganze Brett mittig im Bild liegt.
-Erst dann nimmt sie `CaptureHandEyeSample` auf. Wie `MeasureTags`: Der Pi
-misst nur und schickt keine Fahrbefehle.
+For centering: the controller moves the robot over the board, calls `MeasureBoard`, and
+corrects until the whole board is centered in the image. Only then does it record
+`CaptureHandEyeSample`. Like `MeasureTags`: the Pi only measures and sends no motion
+commands.
 
-* **Ganzes Brett im Bild:** `complete`, mit `T_cam_board` (Kamera-KS wie
-  OpenCV), den Ecken in Pixeln und dem Reprojektionsfehler.
-* **Brett nur teilweise im Bild:** Die Erkennung braucht das ganze Raster. Ein
-  kleineres Teilraster passt aber in jeden sichtbaren Teil. Daraus kommen der
-  Schwerpunkt der gefundenen Ecken in Pixeln und die Bildraender, denen sie
-  nahe liegen -- genug zum Zentrieren, aber keine Brettpose: Der Ursprung eines
-  Teilrasters ist beliebig.
-* **Nichts gefunden:** `found: false`, kein Fehler.
+* **Whole board in the image:** `complete`, with `T_cam_board` (camera frame as in
+  OpenCV), the corners in pixels and the reprojection error.
+* **Board only partly in the image:** detection needs the whole grid. A smaller sub-grid
+  does fit into any visible part, however. From that come the centroid of the found
+  corners in pixels and the image edges they lie close to -- enough for centering, but
+  no board pose: the origin of a sub-grid is arbitrary.
+* **Nothing found:** `found: false`, no error.
 
-Hier steckt kein asyncua und keine Kamera. Siehe
+There is no asyncua and no camera here. See
 `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
 """
 
@@ -37,35 +36,35 @@ RESULT_SCHEMA = "wsc.vision.measureboard.result/1"
 
 @dataclass(frozen=True)
 class BoardRequest:
-    #: `None` = die Brettgroesse aus der Konfiguration der Kamera.
+    #: `None` = the board size from the camera configuration.
     board: object | None
     frames: int = DEFAULT_FRAMES
-    #: Fehlersuche: dem Ergebnis `diagnosis` beilegen (kostet einige Erkennungsversuche).
+    #: Troubleshooting: attach `diagnosis` to the result (costs some detection attempts).
     diagnose: bool = False
 
 
 @dataclass(frozen=True)
 class FrameBoard:
-    """Ein ausgewertetes Bild."""
+    """One evaluated image."""
 
     captured_at: datetime
     image_size: tuple[int, int]
-    #: Ganzes Brett gefunden.
+    #: Whole board found.
     complete: bool = False
     pose: object | None = None
     reprojection_error_px: float | None = None
-    #: Alle Ecken in fester Reihenfolge, roh (verzeichnet), `(N, 2)`; nur bei `complete`.
+    #: All corners in fixed order, raw (distorted), `(N, 2)`; only when `complete`.
     corners: object | None = None
-    #: Teilraster: `(Ecken (N, 2), cols, rows)`; nur wenn nicht `complete`.
+    #: Sub-grid: `(corners (N, 2), cols, rows)`; only when not `complete`.
     partial: tuple | None = None
 
 
 def parse_request(text: str, parse_board) -> BoardRequest:
-    """`wsc.vision.measureboard.request/1` lesen; ValueError mit Klartext.
+    """Parse `wsc.vision.measureboard.request/1`; raises ValueError with plain text.
 
-    `parse_board` ist der Brett-Parser der Hand-Auge-Sitzung -- dieselben
-    Regeln, damit beide Aufrufe dasselbe Brett meinen. Leer oder `{}` ist
-    gueltig: Brett aus der Konfiguration, Standardanzahl Bilder.
+    `parse_board` is the board parser of the hand-eye session -- the same rules, so that
+    both calls mean the same board. Empty or `{}` is valid: board from the configuration,
+    default number of images.
     """
     try:
         data = json.loads(text) if text and text.strip() else {}
@@ -99,10 +98,10 @@ def build_result(
     error: str | None = None,
     message: str = "",
 ) -> dict:
-    """Das Ergebnis-JSON (`wsc.vision.measureboard.result/1`) als dict.
+    """Return the result JSON (`wsc.vision.measureboard.result/1`) as a dict.
 
-    Pose und Reprojektionsfehler: Mittel ueber die Bilder mit ganzem Brett.
-    Pixel (`cornersPx`, `centerPx`, `offsetPx`, `partial`): aus dem letzten Bild.
+    Pose and reprojection error: average over the images with the whole board.
+    Pixels (`cornersPx`, `centerPx`, `offsetPx`, `partial`): from the last image.
     """
     from tagloc.geometry import to_position_quaternion
     from tagloc.tagmap import merge_tag_poses
@@ -159,7 +158,7 @@ def build_result(
             found=True,
             complete=True,
             poseInCamera={"position": list(position), "orientation": list(orientation)},
-            # Gut genug fuer die Hand-Auge-Aufnahme? Dieselbe Schranke wie dort.
+            # Good enough for the hand-eye capture? The same threshold as there.
             poseOk=bool(mean_error is not None and mean_error <= max_error_px),
             reprojectionErrorPx=finite_or_none(mean_error),
             distanceM=float(np.linalg.norm(np.asarray(pose)[:3, 3])),
@@ -184,8 +183,8 @@ def build_result(
     if corners is not None:
         mean = corners.mean(axis=0)
         result["centerPx"] = [float(mean[0]), float(mean[1])]
-        # Vom Bildmittelpunkt zum Brett: dorthin muss die Kamera, damit das Brett
-        # in die Mitte rueckt (x nach rechts, y nach unten).
+        # From the image center to the board: the camera has to move there so that the
+        # board moves to the middle (x to the right, y down).
         result["offsetPx"] = [float(mean[0] - centre[0]), float(mean[1] - centre[1])]
         result["nearEdge"] = near_edge(corners.tolist(), (width, height))
         if result["complete"]:

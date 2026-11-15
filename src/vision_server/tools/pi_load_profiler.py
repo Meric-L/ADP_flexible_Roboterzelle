@@ -1,57 +1,54 @@
-"""Zeigt live (und als Zusammenfassung), welche Prozesse auf dem Pi wie viel
-CPU und RAM verbrauchen -- fuer den Verdacht, dass die Verarbeitung der
-12MP-Bilder (oder ein anderer Prozess) den Pi so auslastet, dass die
-effektive Framerate weit unter 1 fps faellt.
+"""Show live (and as a summary) which processes on the Pi use how much CPU and RAM.
 
-Reine stdlib-Loesung (liest `/proc/[pid]/stat`, `/proc/[pid]/status`,
-`/proc/loadavg`, `/proc/meminfo`) -- bewusst ohne `psutil` o.ae., damit auf
-einem bereits ueberlasteten/haengenden Pi kein zusaetzliches `pip install`
-noetig ist und der Profiler selbst so wenig Last wie moeglich erzeugt.
+This checks whether processing the 12 MP images (or another process) loads the
+Pi so much that the effective frame rate drops far below 1 fps.
 
-Liest zusaetzlich, falls vorhanden, CPU-Temperatur (`/sys/class/thermal`)
-und den Raspberry-Pi-Throttling-Status (`vcgencmd get_throttled`) mit --
-ein durch Unterspannung/Hitze gedrosselter Pi kann genau das Symptom
-"CPU sieht nicht mal voll ausgelastet aus, aber alles ist langsam"
-erzeugen, das eine reine CPU%-Prozessliste nicht zeigt.
+It is a pure stdlib solution. It reads `/proc/[pid]/stat`, `/proc/[pid]/status`,
+`/proc/loadavg` and `/proc/meminfo`. It deliberately avoids `psutil` and similar
+packages, so that no extra `pip install` is needed on an already overloaded or
+hung Pi, and so that the profiler itself adds as little load as possible.
 
-Sampling-basiert (Standard: alle 2s) -- sehr kurze Spitzen (< 1 Interval)
-zwischen zwei Messungen koennen dadurch unterschaetzt werden. Fuer den
-Verdacht "welches Skript / welcher Dauerprozess frisst kontinuierlich CPU"
-reicht das; fuer einzelne kurze Ausreisser ggf. --interval verkleinern.
+If available, it also reads the CPU temperature (`/sys/class/thermal`) and the
+Raspberry Pi throttling status (`vcgencmd get_throttled`). A Pi throttled by
+undervoltage or heat can show exactly the symptom "the CPU does not even look
+fully loaded, but everything is slow", which a pure CPU% process list does not
+show.
 
-Prozess-Liste allein ist nur das, was `top` auch zeigt: der `vision_server`
-laeuft als EIN Python-Prozess, der Kamera-Capture, Detection und
-OPC-UA/MJPEG in mehreren Threads erledigt (`vision-camera`,
-`vision-<profile>`, `vision-calibration`, siehe `ThreadPoolExecutor(...,
-thread_name_prefix=...)` in camera.py/detection/base.py). "python3 nimmt
-90% CPU" sagt also noch nicht, *welcher* Teil davon das Problem ist.
-Deshalb schluesselt dieses Tool zusaetzlich CPU% pro Thread innerhalb des
-`vision_server`-Prozesses auf (`/proc/[pid]/task/[tid]/stat`) -- per
-`--pid` explizit oder automatisch ueber den ersten Prozess, dessen
-Kommandozeile "vision_server" enthaelt.
+Sampling is interval-based (default: every 2 s). Very short peaks (shorter than
+one interval) between two measurements may therefore be underestimated. To find
+"which script or long-running process uses CPU continuously", this is enough.
+For single short outliers, reduce `--interval` if needed.
 
-Die Thread-Aufschluesselung zeigt aber nur TIDs + CPU%, keine sprechenden
-Namen: CPython gibt `threading.Thread(name=...)`/`thread_name_prefix`
-NICHT an den Kernel weiter, `/proc/[pid]/task/[tid]/comm` zeigt fuer jeden
-Thread nur "python3" (mit einem kleinen Testskript verifiziert). Um
-trotzdem zu sehen, welcher *Code* (Kamera-Capture, AprilTag-Detection, ...)
-die Zeit frisst, ruft `--pyspy` stattdessen `py-spy top` auf denselben
-Ziel-Prozess auf -- das liest den echten Python-Call-Stack pro Thread aus
-(ptrace-basiert, ohne vision_server-Code zu aendern). Muss separat
-installiert sein (`pip install py-spy` bzw. auf dem Pi ggf. via `pipx`/im
-venv) und braucht i. d. R. root-Rechte (`sudo py-spy ...`), da
-`ptrace_scope` auf Debian/Raspberry Pi OS Standardmaessig fremde Prozesse
-schuetzt.
+A process list alone shows only what `top` also shows. The `vision_server` runs
+as ONE Python process that handles camera capture, detection and OPC UA/MJPEG in
+several threads (`vision-camera`, `vision-<profile>`, `vision-calibration`; see
+``ThreadPoolExecutor(..., thread_name_prefix=...)`` in camera.py and
+detection/base.py). "python3 uses 90% CPU" therefore does not yet say *which*
+part of it is the problem. This tool additionally breaks CPU% down per thread
+inside the `vision_server` process (`/proc/[pid]/task/[tid]/stat`). The process
+is chosen with `--pid`, or automatically as the first process whose command
+line contains "vision_server".
 
-Nutzung auf dem Pi, z. B. waehrend der Server unter Last laeuft:
+The thread breakdown shows only TIDs and CPU%, not meaningful names. CPython
+does not pass `threading.Thread(name=...)` or `thread_name_prefix` on to the
+kernel, so `/proc/[pid]/task/[tid]/comm` shows only "python3" for every thread
+(verified with a small test script). To still see which *code* (camera capture,
+AprilTag detection, ...) uses the time, `--pyspy` runs `py-spy top` on the same
+target process instead. It reads the real Python call stack per thread
+(ptrace-based, without changing vision_server code). py-spy must be installed
+separately (`pip install py-spy`, or on the Pi possibly via `pipx` or in the
+venv). It usually needs root (`sudo py-spy ...`), because `ptrace_scope` on
+Debian and Raspberry Pi OS protects foreign processes by default.
+
+Usage on the Pi, e.g. while the server runs under load:
 
     python3 src/vision_server/tools/pi_load_profiler.py --duration 120 --csv load.csv
 
-Fuer den Funktions-Call-Stack statt reiner CPU%-Zahlen (ggf. mit sudo):
+For the function call stack instead of pure CPU% numbers (possibly with sudo):
 
     python3 src/vision_server/tools/pi_load_profiler.py --pyspy
 
-Ctrl+C beendet vorzeitig und druckt trotzdem die Zusammenfassung.
+Ctrl+C ends the run early and still prints the summary.
 """
 
 import argparse
@@ -68,6 +65,8 @@ CLOCK_TICKS = os.sysconf("SC_CLK_TCK")
 
 @dataclass
 class ProcSample:
+    """One CPU and RAM sample of a process."""
+
     pid: int
     name: str
     cpu_percent: float
@@ -76,6 +75,8 @@ class ProcSample:
 
 @dataclass
 class ProcStats:
+    """Collected CPU and RAM samples of one process."""
+
     name: str
     cpu_samples: list = field(default_factory=list)
     rss_samples: list = field(default_factory=list)
@@ -95,6 +96,8 @@ class ProcStats:
 
 @dataclass
 class ThreadSample:
+    """One CPU sample of a thread."""
+
     tid: int
     name: str
     cpu_percent: float
@@ -102,6 +105,8 @@ class ThreadSample:
 
 @dataclass
 class ThreadStats:
+    """Collected CPU samples of one thread."""
+
     name: str
     cpu_samples: list = field(default_factory=list)
 
@@ -128,8 +133,8 @@ def _read_proc_cpu_jiffies(pid: int) -> int | None:
             raw = handle.read()
     except OSError:
         return None
-    # Feld 2 (comm) kann Leerzeichen/Klammern enthalten -- ab der letzten
-    # schliessenden Klammer zaehlen, dann utime (14.) + stime (15.) Feld.
+    # Field 2 (comm) may contain spaces or parentheses, so count from the last
+    # closing parenthesis, then take utime (14th) + stime (15th) field.
     fields = raw[raw.rfind(")") + 1:].split()
     try:
         return int(fields[11]) + int(fields[12])
@@ -181,11 +186,12 @@ def _list_tids(pid: int) -> list[int]:
 
 
 def _find_vision_server_pid() -> int | None:
-    """Erster Python-Prozess, dessen Kommandozeile "vision_server" enthaelt
-    -- fuer die automatische Thread-Aufschluesselung ohne manuelles --pid.
-    Prueft zusaetzlich den Prozessnamen (nicht nur die Kommandozeile), sonst
-    matcht z. B. auch eine Shell, in deren Historie/Argumenten der Pfad
-    vorkommt."""
+    """Return the first Python process whose command line contains "vision_server", or None.
+
+    Used for the automatic thread breakdown when no ``--pid`` is given. The
+    process name is checked as well, not only the command line. Otherwise a
+    shell whose arguments or history contain the path would also match.
+    """
     for pid in _list_pids():
         name = _read_proc_name(pid)
         if not name or not name.startswith("python"):
@@ -229,11 +235,13 @@ def _read_cpu_temp_c() -> float | None:
 
 
 def _read_throttled_flags() -> str | None:
-    """`vcgencmd get_throttled` -- Bit 0/1/2/3 = aktuell (unter Spannung,
-    Frequenz gedrosselt, Throttling, Soft-Temp-Limit), Bit 16-19 = seit Boot
-    schon mal aufgetreten. Ungleich "0x0" ist ein starkes Indiz dafuer, dass
-    nicht die Bildverarbeitung selbst das Problem ist, sondern Netzteil/
-    Kuehlung den Pi drosseln."""
+    """Return the throttling flags from `vcgencmd get_throttled`, or None.
+
+    Bits 0-3 show the current state (undervoltage, frequency capped, throttled,
+    soft temperature limit). Bits 16-19 show whether it occurred since boot.
+    Any value other than "0x0" is a strong hint that the image processing itself
+    is not the problem, but that the power supply or cooling throttles the Pi.
+    """
     try:
         result = subprocess.run(
             ["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=2,
@@ -246,6 +254,11 @@ def _read_throttled_flags() -> str | None:
 
 
 def _sample_processes(prev_cpu_jiffies: dict, interval_s: float) -> tuple[list[ProcSample], dict]:
+    """Sample the CPU use of all processes since the previous snapshot.
+
+    Return the samples and the new jiffies snapshot. A process seen for the
+    first time has no delta yet and is skipped.
+    """
     cpu_jiffies: dict[int, int] = {}
     samples: list[ProcSample] = []
     tick_budget = CLOCK_TICKS * interval_s
@@ -258,7 +271,7 @@ def _sample_processes(prev_cpu_jiffies: dict, interval_s: float) -> tuple[list[P
 
         previous = prev_cpu_jiffies.get(pid)
         if previous is None:
-            continue  # erster Sample fuer diesen PID -- noch kein Delta
+            continue  # first sample for this PID -- no delta yet
 
         name = _read_proc_name(pid) or f"pid-{pid}"
         rss_kb = _read_proc_rss_kb(pid) or 0
@@ -269,6 +282,7 @@ def _sample_processes(prev_cpu_jiffies: dict, interval_s: float) -> tuple[list[P
 
 
 def _sample_threads(pid: int, prev_cpu_jiffies: dict, interval_s: float) -> tuple[list[ThreadSample], dict]:
+    """Sample the CPU use of all threads of `pid` since the previous snapshot."""
     cpu_jiffies: dict[int, int] = {}
     samples: list[ThreadSample] = []
     tick_budget = CLOCK_TICKS * interval_s
@@ -281,7 +295,7 @@ def _sample_threads(pid: int, prev_cpu_jiffies: dict, interval_s: float) -> tupl
 
         previous = prev_cpu_jiffies.get(tid)
         if previous is None:
-            continue  # erster Sample fuer diesen TID -- noch kein Delta
+            continue  # first sample for this TID -- no delta yet
 
         name = _read_thread_name(pid, tid) or f"tid-{tid}"
         cpu_percent = max(0.0, (jiffies - previous) / tick_budget * 100)
@@ -291,6 +305,7 @@ def _sample_threads(pid: int, prev_cpu_jiffies: dict, interval_s: float) -> tupl
 
 
 def _print_snapshot(samples: list[ProcSample], top_n: int, elapsed_s: float) -> None:
+    """Print the system header line and the top processes of one sample."""
     load1, load5, load15 = _read_loadavg()
     mem_percent = _read_mem_percent()
     temp_c = _read_cpu_temp_c()
@@ -312,6 +327,7 @@ def _print_snapshot(samples: list[ProcSample], top_n: int, elapsed_s: float) -> 
 
 
 def _print_thread_snapshot(pid: int, samples: list[ThreadSample], top_n: int) -> None:
+    """Print the top threads of the target process."""
     print(f"--- Threads von PID {pid} (vision_server) ---")
     if not samples:
         print("  (keine Thread-Daten -- Prozess beendet?)")
@@ -323,10 +339,12 @@ def _print_thread_snapshot(pid: int, samples: list[ThreadSample], top_n: int) ->
 
 
 def _run_pyspy(pid: int) -> int:
-    """Reicht --pid an `py-spy top` durch -- zeigt (anders als unsere eigene
-    Thread-Tabelle) den echten Python-Call-Stack pro Thread, weil py-spy
-    per ptrace direkt den Interpreter-Zustand ausliest statt sich auf
-    OS-Thread-Namen zu verlassen."""
+    """Pass the PID on to `py-spy top`.
+
+    Unlike our own thread table, it shows the real Python call stack per thread.
+    py-spy reads the interpreter state directly via ptrace, instead of relying
+    on OS thread names.
+    """
     print(f"Starte 'py-spy top --pid {pid}' (Ctrl+C zum Beenden) ...")
     try:
         result = subprocess.run(["py-spy", "top", "--pid", str(pid)])
@@ -348,6 +366,10 @@ def _run_pyspy(pid: int) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    """Run the profiler loop until Ctrl+C or the duration ends, then print summaries.
+
+    With ``--pyspy`` it hands over to `py-spy top` instead.
+    """
     stats: dict[int, ProcStats] = {}
     thread_stats: dict[int, ThreadStats] = {}
     csv_writer = None
@@ -439,6 +461,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command line and run the profiler."""
     parser = argparse.ArgumentParser(
         description="Zeigt live, welche Prozesse auf dem Pi wie viel CPU/RAM verbrauchen",
     )

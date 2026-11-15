@@ -1,4 +1,7 @@
-"""Rohbilder einer Hand-Auge-Fahrt wiederholt offline auswerten."""
+"""Re-run the offline evaluation of a hand-eye run on its raw captures.
+
+The module docstring is also used as the argparse description (CLI help).
+"""
 
 import argparse
 from pathlib import Path

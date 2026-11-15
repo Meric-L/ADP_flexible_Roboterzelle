@@ -1,9 +1,10 @@
-"""Kalibrier-Schachbrett messen: `measure_board` (Hand-Auge) und `MeasureBoard` (Zentrieren).
+"""Measure the calibration chessboard: `measure_board` (hand-eye) and `MeasureBoard` (centering).
 
-`BoardMeasureMixin` findet das Brett im Kamerabild und liefert seine Pose
-(`measure_board`) bzw. die Zentrierhilfe samt Teilraster (`measure_board_view`).
-Beides seiteneffektfrei. Er erwartet am Objekt `_config`, `_calibration`
-sowie `intrinsics_source` und die Methoden von `CaptureMixin`.
+`BoardMeasureMixin` finds the board in the camera image and returns its pose
+(`measure_board`), or the centering aid with the partial grid
+(`measure_board_view`). Both are free of side effects. It expects the object to
+provide `_config`, `_calibration`, `intrinsics_source` and the methods of
+`CaptureMixin`.
 """
 
 from dataclasses import replace
@@ -12,25 +13,25 @@ from typing import Any
 from ...errors import VisionJobError
 from .capture import captured_at
 
-#: `MeasureBoard` sucht das Brett auf einem Bild dieser laengsten Kante (siehe `_observe_board`).
+#: `MeasureBoard` searches for the board on an image with this longest edge (see `_observe_board`).
 OBSERVE_MAX_SIDE = 640
 
 
 class BoardMeasureMixin:
-    """Das Schachbrett im Kamerabild messen."""
+    """Measure the chessboard in the camera image."""
 
     async def measure_board(self, spec, *, samples: int | None = None) -> tuple[Any | None, str, dict]:
-        """`T_cam_board` eines Schachbretts aus `samples_per_job` frischen Bildern.
+        """Return `T_cam_board` of a chessboard from `samples_per_job` fresh images.
 
-        Wie `measure_tag`, nur mit einem Kalibrier-Schachbrett als festem
-        Ziel: viele Ecken statt vier, also eine genauere und eindeutige Pose.
-        Liefert `(Pose, "", Info)` oder `(None, Grund, Info)`. `Info` hat den
-        mittleren `reprojectionErrorPx` (auch fuer verworfene Bilder). Bei Erfolg
-        zusaetzlich fuer die Hand-Auge-Verfeinerung und den Datensatz:
-        `corners` (kanonische Ecken `(N, 2)` im verzerrten Bild, Mittel ueber
-        die verwendeten Bilder -- der Roboter steht), `calibration` (die dazu
-        verwendete Intrinsik), `intrinsicsSource` und `image` (das letzte
-        verwendete Bild).
+        Like `measure_tag`, but with a calibration chessboard as the fixed
+        target: many corners instead of four, so a more accurate and unambiguous
+        pose. Returns `(Pose, "", Info)` or `(None, reason, Info)`. `Info` holds
+        the mean `reprojectionErrorPx` (also for rejected images). On success it
+        also holds the data for the hand-eye refinement and the dataset:
+        `corners` (canonical corners `(N, 2)` in the distorted image, averaged
+        over the images used -- the robot is standing still), `calibration` (the
+        intrinsics used for it), `intrinsicsSource` and `image` (the last image
+        used).
         """
         import numpy as np
 
@@ -78,14 +79,15 @@ class BoardMeasureMixin:
         return None, reasons[-1] if reasons else "Board nicht gesehen", info
 
     async def capture_board_raw(self, spec):
-        """Genau ein frisches Originalbild mit Online-Pruefung aufnehmen."""
+        """Capture exactly one fresh raw image with an online check."""
         return await self.measure_board(spec, samples=1)
 
     def _measure_board(self, image, spec):
-        """Ein Bild, ein Schachbrett:
-        `(Pose | None, Grund, Reprojektionsfehler | None, Ecken | None,
-        Kalibrierung | None)`. Die Ecken sind kanonisch geordnet, im
-        verzerrten Bild. Worker-Thread."""
+        """Process one image with one chessboard.
+
+        Returns `(pose | None, reason, reprojection error | None,
+        corners | None, calibration | None)`. The corners are in canonical
+        order, in the distorted image. Runs in a worker thread."""
         from tagloc import frames as frame_tools
         from tagloc.boards import (
             CHARUCO,
@@ -109,9 +111,8 @@ class BoardMeasureMixin:
         calibration = self._calibration_for(image)
         pose, error_px = estimate_board_pose(corners, spec, calibration,
                                              ids=sample.ids if spec.type == CHARUCO else None)
-        # Ein Board mit Dutzenden Ecken passt viel besser als ein Tag;
-        # ein grosser Fehler heisst Unschaerfe, ein welliges Brett oder ein
-        # falsches Raster.
+        # A board with dozens of corners fits much better than a tag; a large
+        # error means blur, a warped board, or a wrong grid.
         if error_px > self._config.max_reproj_error_px:
             return None, (
                 f"Board-Pose passt schlecht ({error_px:.1f} px) -- Feldgroesse und "
@@ -120,7 +121,7 @@ class BoardMeasureMixin:
         return pose, "", error_px, corners, calibration
 
     def default_board_spec(self):
-        """Das Brett aus der Konfiguration der Kamera."""
+        """Return the board from the camera configuration."""
         from tagloc.boards import BoardSpec
 
         return BoardSpec(
@@ -133,11 +134,11 @@ class BoardMeasureMixin:
         )
 
     async def measure_board_view(self, request) -> dict:
-        """`MeasureBoard`: das Brett fuer das Zentrieren messen, ohne Fahrbefehle.
+        """`MeasureBoard`: measure the board for centering, without motion commands.
 
-        Nur Bilder nach dem Aufruf. Ganzes Brett: Pose und Ecken. Nur teilweise
-        sichtbar: Schwerpunkt und Bildraender eines Teilrasters. Siehe
-        `vision_server.measureboard`. Seiteneffektfrei.
+        Only images taken after the call. Whole board: pose and corners. Only
+        partly visible: centroid and image edges of a partial grid. See
+        `vision_server.measureboard`. Free of side effects.
         """
         from ...measureboard import NO_FRAME, build_result
 
@@ -154,8 +155,8 @@ class BoardMeasureMixin:
                 break
             seen_timestamp = frame.timestamp
             last_image = frame.image
-            # Das Teilraster braucht nur das letzte Bild -- und die Suche ist der
-            # teuerste Teil, wenn das Brett nicht ganz im Bild ist.
+            # The partial grid only needs the last image -- and the search is the
+            # most expensive part when the board is not fully in the image.
             observed = await self.run_blocking(
                 self._observe_board, frame.image, spec, index == request.frames - 1
             )
@@ -178,19 +179,19 @@ class BoardMeasureMixin:
         return result
 
     def _diagnose_board(self, image, spec):
-        """Erkennungsversuche am letzten Bild, nur auf Anfrage. Worker-Thread."""
+        """Run detection attempts on the last image, only on request. Runs in a worker thread."""
         from tagloc import frames as frame_tools
         from tagloc.boards import diagnose_board
 
         return diagnose_board(frame_tools.to_gray(image), spec)
 
     def _observe_board(self, image, spec, with_partial: bool = True):
-        """Ein Bild fuer `MeasureBoard`: ganzes Brett, Teilraster oder nichts. Worker-Thread.
+        """Process one image for `MeasureBoard`: whole board, partial grid or nothing.
 
-        Gesucht wird auf einem auf `OBSERVE_MAX_SIDE` (laengste Kante) verkleinerten Bild, damit die
-        Antwort auch ohne Brett im Bild schnell kommt (ein Fehlversuch kostet am
-        vollen Bild Sekunden, am Pi ein Vielfaches). Die Ecken werden danach im
-        vollen Bild nachgeschaerft."""
+        Searches on an image scaled down to `OBSERVE_MAX_SIDE` (longest edge), so
+        the answer comes quickly even without a board in view (a failed attempt
+        costs seconds on the full image, many times more on the Pi). The corners
+        are then refined on the full image. Runs in a worker thread."""
         from datetime import datetime, timezone
 
         from tagloc import frames as frame_tools

@@ -1,22 +1,22 @@
-"""Hand-Auge-Kalibrierung per OPC UA: `T_flansch_cam` auf dem Hand-Pi.
+"""Hand-eye calibration over OPC UA: `T_flange_cam` on the hand Pi.
 
-Dasselbe Muster wie die Kamera-Kalibrierung (Start / Aufnahme / Fertig /
-Abbruch), nur mit einem Partner draussen: der Roboter faehrt, das Frontend
-meldet je Aufnahme die **gemeldete** Flanschpose (FK aus den echten
-Gelenkwinkeln), und der Pi misst dazu das Ziel im Kamera-KS: einen Tag oder
-ein Kalibrier-Schachbrett (`handeye-schachbrett-automatik.md`).
+Same pattern as the camera calibration (start / capture / finish / abort), only
+with a partner outside: the robot moves, and for each capture the frontend reports
+the **reported** flange pose (forward kinematics from the real joint angles). The
+Pi measures the target in camera coordinates: a tag or a calibration chessboard
+(`handeye-schachbrett-automatik.md`).
 
-Am Ende loest `tagloc.handeye.solve_hand_eye` (Park-Martin) ueber alle Paare.
-Die Lage des Tags muss dafuer nicht bekannt sein, nur fest. Ist sie bekannt
-(`tagInBase` aus dem Modulkatalog), dient sie als **Gegenprobe**, nicht als
-Eingang -- die Kalibrierung soll nicht so genau sein wie der Katalog, sondern
-so genau wie die Messung.
+At the end, `tagloc.handeye.solve_hand_eye` (Park-Martin) solves over all pairs.
+The tag's position does not need to be known for this, only that it is fixed. If
+it is known (`tagInBase` from the module catalogue), it serves as a **cross-check**,
+not as an input -- the calibration is not meant to be as accurate as the catalogue,
+but as accurate as the measurement.
 
-Ergebnis nach `data/handeye/<frame>.json`, die alte Datei vorher daneben
-gesichert; danach sofort aktiv, ohne Neustart.
+The result goes to `data/handeye/<frame>.json`; the old file is kept beside it as a
+backup first. It becomes active immediately, without a restart.
 
-Hier steckt kein asyncua: Kamera, Datei und Knoten kommen als Funktionen
-herein (`HandEyePorts`). Siehe
+No asyncua is used here: the camera, the file and the nodes are passed in as
+functions (`HandEyePorts`). See
 `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
 """
 
@@ -83,51 +83,52 @@ SOLVING = "solving"
 FINISHED = "finished"
 FAILED = "failed"
 
-#: Empfehlung an den Bediener -- `MIN_SAMPLES` ist nur das rechnerische Minimum.
+#: Recommendation for the operator -- `MIN_SAMPLES` is only the computational minimum.
 RECOMMENDED_SAMPLES = 8
-#: `finish` verlangt Drehung um so viele Achsen (`rotation_diversity`); bei
-#: weniger ist `T_flansch_cam` nicht bestimmt, selbst wenn der Solver rechnet.
+#: `finish` requires rotation about this many axes (`rotation_diversity`); with
+#: fewer, `T_flange_cam` is not determined, even if the solver still computes.
 REQUIRED_AXES = 3
-#: Ab dieser Abweichung des geschaetzten Brettmassstabs vom Nennmass
-#: (0,3 %) gibt es einen Hinweis: Feldgroesse oder Intrinsik stimmen nicht.
+#: If the estimated board scale deviates from the nominal size by more than this
+#: (0.3 %), a warning is issued: the square size or the intrinsics are wrong.
 SCALE_WARNING = BOARD_SCALE_WARNING
-#: Werte von `intrinsicsSource`, bei denen die Intrinsik nicht von uns stammt.
+#: Values of `intrinsicsSource` for which the intrinsics do not come from us.
 FACTORY_INTRINSICS = "realsense_factory"
 PLACEHOLDER_INTRINSICS = "placeholder"
 
 
 @dataclass(frozen=True)
 class HandEyePorts:
-    """Was die Session vom Server braucht."""
+    """What the session needs from the server."""
 
-    #: Misst `T_cam_tag`: `(Pose, "")` oder `(None, Grund)`, optional mit einem
-    #: dritten Element `Info` (`reprojectionErrorPx`).
+    #: Measures `T_cam_tag`: `(Pose, "")` or `(None, reason)`, optionally with a
+    #: third element `Info` (`reprojectionErrorPx`).
     measure_tag: Callable[[int], Awaitable[tuple]]
-    #: Laeuft ein Job, eine Kamera-Kalibrierung oder ein Layer-2-Lauf?
+    #: Is a job, a camera calibration or a layer-2 run active?
     busy: Callable[[], bool]
-    #: Ziel der Kalibrierdatei.
+    #: Target of the calibration file.
     path: Path
-    #: Uebernimmt die neue Kalibrierung in die laufende Quelle.
+    #: Applies the new calibration to the running source.
     apply: Callable[[HandEye], None]
-    #: Schreibt `HandEyeStatus`.
+    #: Writes `HandEyeStatus`.
     publish: Callable[[str], Awaitable[None]]
     frame_id: str = "cam_flange"
-    #: Misst `T_cam_board` eines Schachbretts; `None`: kann der Server nicht.
-    #: Das dritte Element (`Info`) darf zusaetzlich `corners` (kanonische Ecken
-    #: `(N, 2)` im verzerrten Bild), `calibration` (`CameraCalibration`),
-    #: `intrinsicsSource` und `image` enthalten -- ohne sie gibt es keine
-    #: Verfeinerung, nur die Park-Martin-Loesung.
+    #: Measures `T_cam_board` of a chessboard; `None`: the server cannot do it.
+    #: The third element (`Info`) may additionally contain `corners` (canonical
+    #: corners `(N, 2)` in the distorted image), `calibration` (`CameraCalibration`),
+    #: `intrinsicsSource` and `image` -- without them there is no refinement, only
+    #: the Park-Martin solution.
     measure_board: Callable[[BoardSpec], Awaitable[tuple]] | None = None
-    #: Woher die Intrinsik der Kamera stammt (`calibration`,
-    #: `realsense_factory`, `placeholder`); `None`: unbekannt.
+    #: Where the camera intrinsics come from (`calibration`,
+    #: `realsense_factory`, `placeholder`); `None`: unknown.
     intrinsics_source: Callable[[], str | None] | None = None
-    #: Wohin die Datensaetze der Sitzungen kommen; `None`: `sessions/` neben `path`.
+    #: Where the session datasets go; `None`: `sessions/` next to `path`.
     sessions_dir: Path | None = None
     capture_board_raw: Callable[[BoardSpec], Awaitable[tuple]] | None = None
     raw_sessions_dir: Path | None = None
-    #: Volle Kalibrierung (`fullCalibration`): Ziel der neuen Kamera-Intrinsik
-    #: (`data/calibration/<frame>.json`) und ihre Uebernahme in die laufende
-    #: Quelle samt Overlay. Ohne beides gibt es `finish` nicht mit `fullCalibration`.
+    #: Full calibration (`fullCalibration`): target of the new camera intrinsics
+    #: (`data/calibration/<frame>.json`) and their adoption into the running source,
+    #: including the overlay. Without both, `finish` does not exist with
+    #: `fullCalibration`.
     intrinsics_path: Path | None = None
     apply_intrinsics: Callable[[CameraCalibration], Awaitable[None]] | None = None
 
@@ -137,21 +138,21 @@ class _Sample:
     flange_in_base: Pose
     cam_to_tag: Pose | None
     detail: str
-    #: Mittlerer Reprojektionsfehler der Bilder dieser Aufnahme, auch wenn sie
-    #: verworfen wurde (z. B. weil er zu gross war). `None`, wenn nichts gefunden wurde.
+    #: Mean reprojection error of the images of this capture, even if the capture
+    #: was discarded (e.g. because the error was too large). `None` if nothing was found.
     reprojection_error_px: float | None = None
-    #: Nach `finish`: Abweichung der Brettlage dieser Aufnahme vom Mittel der
-    #: verwendeten, und ob sie als Ausreisser verworfen wurde. Vorher `None`.
+    #: After `finish`: deviation of this capture's board position from the mean of
+    #: the used captures, and whether it was discarded as an outlier. `None` before.
     residual_m: float | None = None
     residual_deg: float | None = None
     rejected: bool | None = None
-    #: Brett-Modus: kanonische Ecken `(N, 2)` im verzerrten Bild, Mittel ueber
-    #: die verwendeten Bilder der Aufnahme. `None` bei Tags.
+    #: Board mode: canonical corners `(N, 2)` in the distorted image, averaged over
+    #: the images used for this capture. `None` for tags.
     corners_px: np.ndarray | None = None
-    #: Ein Bild der Aufnahme fuer den Datensatz, nicht im Status.
+    #: One image of the capture for the dataset, not in the status.
     image: Any = None
-    #: Nach `finish`: Vorhersagefehler der Verfeinerung ohne diese Aufnahme
-    #: (px; m im Kamera-KS). `None` vorher, bei Tags und bei Ausreissern.
+    #: After `finish`: prediction error of the refinement without this capture
+    #: (px; m in camera coordinates). `None` before that, for tags and for outliers.
     loo_error_px: float | None = None
     loo_error_m: float | None = None
     pose_id: str | None = None
@@ -171,28 +172,28 @@ class _State:
     message: str = ""
     tag_id: int = -1
     tag_in_base: Pose | None = None
-    #: Gesetzt, wenn statt eines Tags ein Schachbrett gemessen wird.
+    #: Set when a chessboard is measured instead of a tag.
     board: BoardSpec | None = None
     samples: list[_Sample] = field(default_factory=list)
     result: dict | None = None
-    #: Intrinsik und ihre Herkunft, wie sie die Brett-Messung verwendet hat.
+    #: Intrinsics and their origin, as used by the board measurement.
     calibration: Any = None
     intrinsics_source: str | None = None
-    #: Ordnername des Datensatzes (UTC), gesetzt beim Start.
+    #: Folder name of the dataset (UTC), set at start.
     stamp: str = ""
     capture_only: bool = False
-    #: Rohaufnahme wie `capture_only`, am Ende aber Intrinsik und Hand-Auge rechnen.
+    #: Raw capture like `capture_only`, but at the end the intrinsics and hand-eye are computed too.
     full_calibration: bool = False
     session_path: str | None = None
 
     @property
     def raw(self) -> bool:
-        """Rohbilder aufnehmen (`captureOnly` oder `fullCalibration`)."""
+        """Capture raw images (`captureOnly` or `fullCalibration`)."""
         return self.capture_only or self.full_calibration
 
 
 def _intrinsics_warnings(source: str | None) -> list[str]:
-    """Hinweise zur Herkunft der Intrinsik."""
+    """Return hints about the origin of the intrinsics."""
     if source == FACTORY_INTRINSICS:
         return [
             "Intrinsik: Werkswerte der Kamera, keine eigene Kalibrierung -- "
@@ -203,7 +204,7 @@ def _intrinsics_warnings(source: str | None) -> list[str]:
     return []
 
 
-#: Meldung im Log je gescheitertem Schritt von `refine_board_session`.
+#: Log message for each failed step of `refine_board_session`.
 _REFINEMENT_FAILURES = {
     STAGE_REFINEMENT: "Gemeinsame Verfeinerung fehlgeschlagen",
     STAGE_LEAVE_ONE_OUT: "Leave-one-out fehlgeschlagen",
@@ -213,11 +214,11 @@ _REFINEMENT_FAILURES = {
 def _refine_board(
     spec: BoardSpec, calibration, samples: list[_Sample], flanges: list[Pose], tags: list[Pose]
 ) -> BoardRefinement | None:
-    """`tagloc.handeye.refine_board_session` ueber die angenommenen Aufnahmen.
+    """Run `tagloc.handeye.refine_board_session` over the accepted captures.
 
-    Liefert `None`, wenn nicht moeglich (fehlende Ecken/Intrinsik, Rechenfehler;
-    der Fehler steht im Log). `ValueError` (Posen zu aehnlich) geht an den
-    Aufrufer. Thread-tauglich.
+    Returns `None` if this is not possible (missing corners or intrinsics, or a
+    computation error; the error is in the log). A `ValueError` (poses too similar)
+    is passed on to the caller. Safe to run in a thread.
     """
     if calibration is None or not samples or any(sample.corners_px is None for sample in samples):
         return None
@@ -231,7 +232,7 @@ def _refine_board(
 
 
 def _write_sample_images(folder: Path, samples: list[_Sample]) -> dict[int, str]:
-    """Ein PNG je Aufnahme mit Bild; `{Index: Dateiname}`. Fehler nur ins Log."""
+    """Write one PNG per capture that has an image; return `{index: filename}`. Errors go to the log only."""
     images: dict[int, str] = {}
     try:
         import cv2
@@ -251,13 +252,13 @@ def _write_sample_images(folder: Path, samples: list[_Sample]) -> dict[int, str]
 def _write_session_dataset(
     folder: Path, state: _State, outcome: str, intrinsics_source: str | None, frame_id: str
 ) -> None:
-    """`session.json` plus ein PNG je Aufnahme mit Bild nach `folder` schreiben.
+    """Write `session.json` and one PNG per capture with an image into `folder`.
 
-    Ein Ordner je Sitzung (Zeit des Starts); ein zweiter Versuch derselben
-    Sitzung ueberschreibt ihn. Die Datei reicht, um mit
-    `calibrate_handeye --session` neu zu rechnen: gemeldete Flanschposen,
-    gemessene Brettposen, Ecken, Intrinsik und Brettgeometrie. Format und
-    Leser: `tagloc.handeye.session_payload` / `load_session`.
+    One folder per session (time of the start); a second attempt of the same
+    session overwrites it. The file is enough to recompute with
+    `calibrate_handeye --session`: reported flange poses, measured board poses,
+    corners, intrinsics and board geometry. Format and reader:
+    `tagloc.handeye.session_payload` / `load_session`.
     """
     folder.mkdir(parents=True, exist_ok=True)
     images = _write_sample_images(folder, state.samples)
@@ -288,7 +289,7 @@ def _write_session_dataset(
 
 def _write_raw_capture(folder: Path, state: _State, sample: _Sample,
                        calibration, frame_id: str) -> None:
-    """Ein Bild und seinen Roboterzustand unter derselben Pose-ID ablegen."""
+    """Store one image and its robot state under the same pose ID."""
     from tagloc.handeye import intrinsics_to_dict
 
     folder.mkdir(parents=True, exist_ok=True)
@@ -327,14 +328,14 @@ def _write_raw_capture(folder: Path, state: _State, sample: _Sample,
 
 
 def _invalidate_raw_capture(folder: Path, pose_id: str, reason: str) -> None:
-    """Qualitaetsentscheidung getrennt vom unveraenderten Rohzustand speichern."""
+    """Store the quality decision separately from the unchanged raw state."""
     path = folder / "poses" / pose_id / "quality.json"
     path.write_text(json.dumps({"poseId": pose_id, "valid": False, "reason": reason},
                                indent=2) + "\n", encoding="utf-8")
 
 
 def _restore(path: Path, backup: Path | None) -> None:
-    """Datei aus ihrer Sicherung zurueckholen; ohne Sicherung gab es sie vorher nicht."""
+    """Restore a file from its backup; without a backup the file did not exist before."""
     if backup is not None:
         shutil.copy2(backup, path)
     else:
@@ -343,10 +344,12 @@ def _restore(path: Path, backup: Path | None) -> None:
 
 def _save_pair(intrinsics_path: Path, calibration: CameraCalibration,
                hand_eye_path: Path, hand_eye: HandEye):
-    """Intrinsik und Hand-Auge mit Sicherung schreiben und zurueckladen -- nur
-    beides zusammen: Scheitert etwas, kommen beide Dateien aus der Sicherung
-    zurueck. Liefert `((Sicherung Intrinsik | None, Sicherung Hand-Auge | None),
-    geladene Kalibrierung, geladenes Hand-Auge)`."""
+    """Write intrinsics and hand-eye with backups, then load them back -- always both together.
+
+    If anything fails, both files are restored from their backups. Returns
+    `((backup of intrinsics | None, backup of hand-eye | None),
+    loaded calibration, loaded hand-eye)`.
+    """
     intrinsics_backup = None
     if intrinsics_path.is_file():
         intrinsics_backup = intrinsics_path.with_name(f"{intrinsics_path.name}.{utc_stamp()}.bak")
@@ -368,9 +371,9 @@ def _save_pair(intrinsics_path: Path, calibration: CameraCalibration,
 
 
 def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
-    """Schreibt die Kalibrierung; eine vorhandene Datei wird vorher kopiert.
+    """Write the calibration; an existing file is copied first.
 
-    Liefert den Pfad der Sicherung, `None` ohne alte Datei.
+    Returns the path of the backup, or `None` if there was no old file.
     """
     backup = None
     if path.is_file():
@@ -383,16 +386,16 @@ def save_with_backup(path: Path, hand_eye: HandEye) -> Path | None:
 
 @dataclass(frozen=True)
 class _Accepted:
-    """Die angenommenen Aufnahmen einer Sitzung, in der Reihenfolge der Aufnahme."""
+    """The accepted captures of a session, in capture order."""
 
-    #: Indizes in `samples[]` -- der Status zaehlt alle Aufnahmen, auch verworfene.
+    #: Indices into `samples[]` -- the status counts all captures, including discarded ones.
     indices: list[int]
     samples: list[_Sample]
 
     @classmethod
     def of(cls, samples: list[_Sample]) -> _Accepted:
-        # Indizes statt Vergleichen: `_Sample` haelt numpy-Posen, `==` und
-        # `list.index` wuerden daran scheitern.
+        # Indices instead of comparisons: `_Sample` holds numpy poses, so `==` and
+        # `list.index` would fail on them.
         indices = [index for index, sample in enumerate(samples) if sample.accepted]
         return cls(indices, [samples[index] for index in indices])
 
@@ -406,11 +409,11 @@ class _Accepted:
 
 
 def _axes_refusal(flanges: list[Pose]) -> str | None:
-    """Meldung, wenn die Flanschposen um zu wenige Achsen drehen, sonst `None`.
+    """Return a message if the flange poses rotate about too few axes, else `None`.
 
-    Der Solver rechnet auch bei zwei Achsen -- aber mit einer Rotation, die das
-    Rauschen mitbestimmt. Lieber weiter aufnehmen. Unter `MIN_SAMPLES` Posen
-    sagt der Solver selbst, was fehlt.
+    The solver also computes with two axes, but then the rotation is partly
+    determined by noise. Better to keep capturing. Below `MIN_SAMPLES` poses the
+    solver itself says what is missing.
     """
     _, axes = rotation_diversity(flanges)
     if len(flanges) >= MIN_SAMPLES and axes < REQUIRED_AXES:
@@ -426,10 +429,10 @@ def _axes_refusal(flanges: list[Pose]) -> str | None:
 def _annotate_samples(
     accepted: _Accepted, used: _Accepted, solution: HandEyeSolution, refined: BoardRefinement | None
 ) -> None:
-    """Residuen, Verworfen-Flag und Vorhersagefehler in die Aufnahmen schreiben.
+    """Write residuals, the discarded flag and prediction errors into the captures.
 
-    Verworfene Aufnahmen gehen nicht in die Kalibrierung, ihr Residuum steht
-    trotzdem im Status -- damit man sieht, welche Pose schlecht war.
+    Discarded captures do not go into the calibration, but their residual still
+    appears in the status -- so that one can see which pose was bad.
     """
     rejected_positions = set(solution.rejected)
     for position, (sample, (residual_m, residual_deg)) in enumerate(
@@ -448,7 +451,7 @@ def _result_warnings(
     refined: BoardRefinement | None,
     used: _Accepted,
 ) -> list[str]:
-    """Hinweise im Ergebnis: Herkunft der Intrinsik, fehlende Verfeinerung, Brettmassstab."""
+    """Return the warnings for the result: intrinsics origin, missing refinement, board scale."""
     warnings = _intrinsics_warnings(intrinsics_source)
     if board is not None and refined is None and used.samples:
         warnings.append(
@@ -476,14 +479,14 @@ def _result_payload(
     path: Path,
     backup: Path | None,
 ) -> dict:
-    """`result` des Status: Kennzahlen, Gegenprobe, Verfeinerung, Hinweise.
+    """Build the `result` of the status: key figures, cross-check, refinement, warnings.
 
-    `sessionPath` bleibt `None` -- den Datensatz schreibt erst `_persist`, der den
-    Wert nachtraegt.
+    `sessionPath` stays `None` -- the dataset is only written by `_persist`, which
+    fills in the value afterwards.
     """
     pose_flange_cam = solution.pose_flange_cam
-    # Wo das Brett/der Tag im Basis-KS liegt: Mittel von F·X·C bzw. das
-    # verfeinerte `T_base_brett`, Position in m.
+    # Where the board/tag lies in the base frame: the mean of F·X·C, or the refined
+    # `T_base_brett`, position in m.
     reconstructed = None
     if refined is None or tag_in_base is not None:
         reconstructed = average_poses(
@@ -491,27 +494,27 @@ def _result_payload(
         )
     result = {
         "poseFlangeCam": pose_to_dict(pose_flange_cam),
-        # Echtes RMS der Abweichung der Brettlage ueber die verwendeten
-        # Aufnahmen; das Maximum steht getrennt daneben.
+        # True RMS of the deviation of the board position over the used captures;
+        # the maximum is listed separately next to it.
         "rmsPositionM": solution.rms_position_m,
         "rmsRotationDeg": solution.rms_rotation_deg,
         "maxPositionM": solution.max_position_m,
         "maxRotationDeg": solution.max_rotation_deg,
         "sampleCount": solution.used_count,
         "rejectedCount": len(solution.rejected),
-        #: Indizes in `samples[]`, in der Reihenfolge des Verwerfens.
+        #: Indices into `samples[]`, in the order they were discarded.
         "rejectedSamples": [accepted.indices[i] for i in solution.rejected],
         "knownTagCheckM": None,
         "knownTagCheckDeg": None,
         "path": str(path),
         "backupPath": str(backup) if backup is not None else None,
-        # Nur mit Brett und Verfeinerung, sonst `null`. Reprojektion aller
-        # Brettecken nach der gemeinsamen Verfeinerung (px).
+        # Only with board and refinement, otherwise `null`. Reprojection of all
+        # board corners after the joint refinement (px).
         "refinedReprojectionRmsPx": None,
-        #: Brettmassstab gegen das Nennmass (1.0 = Brett wie angegeben).
+        #: Board scale relative to the nominal size (1.0 = board as specified).
         "boardScale": None,
-        #: Vorhersagefehler ohne die jeweilige Aufnahme (RMS ueber alle):
-        #: der ehrliche Genauigkeitswert, px und m (Kamera-KS).
+        #: Prediction error without the respective capture (RMS over all): the honest
+        #: accuracy value, px and m (camera coordinates).
         "looErrorRmsPx": None,
         "looErrorRmsM": None,
         "refinementConverged": None,
@@ -535,7 +538,7 @@ def _result_payload(
 
 
 def _summary_message(solution: HandEyeSolution, refined: BoardRefinement | None) -> str:
-    """Die Statusmeldung nach erfolgreichem `finish`."""
+    """Return the status message after a successful `finish`."""
     dropped = f", {len(solution.rejected)} Ausreisser verworfen" if solution.rejected else ""
     message = (
         f"Gespeichert und aktiv: RMS {solution.rms_position_m * 1000:.1f} mm / "
@@ -553,16 +556,16 @@ class HandEyeSession:
     def __init__(self, ports: HandEyePorts) -> None:
         self._ports = ports
         self._s = _State()
-        #: Eine Aufnahme misst ueber mehrere Bilder; eine zweite gleichzeitig
-        #: haette ihre Flanschpose zum falschen Bild.
+        #: A capture measures over several images; a second one running at the same
+        #: time would attach its flange pose to the wrong image.
         self._measuring = False
 
     @property
     def active(self) -> bool:
-        """Sperrt Layer-2-Lauf, Kamera-Kalibrierung und SetTagMap."""
+        """Return whether the session blocks a layer-2 run, camera calibration and SetTagMap."""
         return self._s.state in (CAPTURING, SOLVING)
 
-    # --- Eingaenge -----------------------------------------------------------
+    # --- Inputs --------------------------------------------------------------
 
     async def start(self, options_json: str) -> VisionErrorCode:
         if self.active:
@@ -607,9 +610,9 @@ class HandEyeSession:
         return VisionErrorCode.OK
 
     async def capture(self, sample_json: str) -> VisionErrorCode:
-        """Misst das Ziel zur gemeldeten Flanschpose. Antwortet erst danach:
-        `OK` = Aufnahme angenommen, `DETECTION_FAILED` = verworfen (Grund
-        im Status)."""
+        """Measure the target for the reported flange pose. Replies only afterwards:
+        `OK` = capture accepted, `DETECTION_FAILED` = discarded (reason in the
+        status)."""
         s = self._s
         if s.state != CAPTURING:
             return VisionErrorCode.INVALID_STATE
@@ -657,13 +660,13 @@ class HandEyeSession:
         self._measuring = True
         try:
             cam_to_tag, reason, info = await self._measure(s)
-        except Exception as error:  # Kamera weg -- Bericht, kein Absturz
+        except Exception as error:  # camera gone -- report, do not crash
             _log.exception("Hand-Auge-Aufnahme fehlgeschlagen")
             cam_to_tag, reason, info = None, f"Messung fehlgeschlagen: {error}", {}
         finally:
             self._measuring = False
         if self._s is not s or s.state != CAPTURING:
-            return VisionErrorCode.CANCELLED  # waehrend der Messung abgebrochen
+            return VisionErrorCode.CANCELLED  # aborted during the measurement
         detail = reason if cam_to_tag is None else f"{self._target_label()} gemessen"
         sample = _Sample(
             flange_in_base,
@@ -720,8 +723,8 @@ class HandEyeSession:
         return VisionErrorCode.DETECTION_FAILED
 
     async def finish(self) -> VisionErrorCode:
-        """Rechnet, speichert, aktiviert. Zu wenige oder zu aehnliche Posen:
-        `INVALID_STATE`, die Sitzung bleibt offen fuer weitere Aufnahmen."""
+        """Compute, save and activate. Too few or too similar poses: `INVALID_STATE`;
+        the session stays open for further captures."""
         s = self._s
         if s.state != CAPTURING or self._measuring:
             return VisionErrorCode.INVALID_STATE
@@ -796,8 +799,8 @@ class HandEyeSession:
         return VisionErrorCode.OK
 
     async def _finish_full(self, s: _State) -> VisionErrorCode:
-        """`fullCalibration`: aus den Rohbildern erst die Intrinsik, dann Hand-Auge
-        rechnen, beide Dateien schreiben und beide live uebernehmen."""
+        """Handle `fullCalibration`: compute the intrinsics from the raw images first,
+        then the hand-eye, write both files, and apply both live."""
         ports = self._ports
         if ports.intrinsics_path is None or ports.apply_intrinsics is None:
             s.message = "Nicht berechnet: Dieser Server kann die Intrinsik nicht speichern"
@@ -871,10 +874,10 @@ class HandEyeSession:
         return VisionErrorCode.OK
 
     async def _solve(self, accepted: _Accepted) -> tuple[BoardRefinement | None, HandEyeSolution]:
-        """Die Loesung: mit Brett die Verfeinerung, sonst (oder wenn sie nicht
-        moeglich ist) Park-Martin mit Ausreisserpruefung. `ValueError`, wenn die
-        Posen nicht reichen. Das verfeinerte `X` ersetzt Park-Martin
-        (`BoardRefinement.solution` ist dafuer gerechnet)."""
+        """Compute the solution: with a board, the refinement; otherwise (or if it is not
+        possible) Park-Martin with outlier checks. Raises `ValueError` if the poses are
+        not sufficient. The refined `X` replaces Park-Martin (`BoardRefinement.solution`
+        is computed for this purpose)."""
         s = self._s
         flanges, tags = accepted.flanges, accepted.tags
         refined = None
@@ -887,8 +890,10 @@ class HandEyeSession:
         return None, await asyncio.to_thread(solve_hand_eye_robust, flanges, tags)
 
     async def _save(self, hand_eye: HandEye) -> Path | None:
-        """Datei mit Sicherung schreiben, zurueckladen und der Quelle uebergeben.
-        Liefert den Pfad der Sicherung (`None` ohne alte Datei)."""
+        """Write the file with a backup, load it back and hand it to the source.
+
+        Returns the path of the backup (`None` without an old file).
+        """
         backup = await asyncio.to_thread(save_with_backup, self._ports.path, hand_eye)
         loaded = await asyncio.to_thread(load_hand_eye, self._ports.path)
         self._ports.apply(loaded)
@@ -910,8 +915,8 @@ class HandEyeSession:
         await self._publish()
 
     async def _measure(self, s: _State) -> tuple[Any, str, dict]:
-        """`(Pose | None, Grund, Info)`. Die Messfunktionen duerfen auch nur
-        `(Pose, Grund)` liefern."""
+        """Return `(Pose | None, reason, info)`. The measuring functions may also return
+        only `(Pose, reason)`."""
         if s.board is None:
             result = await self._ports.measure_tag(s.tag_id)
         elif s.raw and self._ports.capture_board_raw is not None:
@@ -923,8 +928,8 @@ class HandEyeSession:
         return result[0], result[1], (result[2] if len(result) > 2 else {})
 
     def _intrinsics_source(self) -> str | None:
-        """Herkunft der Intrinsik: erst die Quelle des Servers, sonst was die
-        Messungen gemeldet haben; `None`, wenn unbekannt."""
+        """Return the origin of the intrinsics: first the server's source, otherwise what
+        the measurements reported; `None` if unknown."""
         if self._ports.intrinsics_source is not None:
             try:
                 source = self._ports.intrinsics_source()
@@ -936,8 +941,8 @@ class HandEyeSession:
         return self._s.intrinsics_source
 
     async def _persist(self, outcome: str) -> str | None:
-        """Datensatz der Sitzung schreiben; Fehler nur ins Log (nie ein Grund,
-        die Kalibrierung scheitern zu lassen). Liefert den Ordner oder `None`."""
+        """Write the session dataset. Errors go to the log only (never a reason to let the
+        calibration fail). Returns the folder, or `None`."""
         s = self._s
         folder = (self._ports.sessions_dir or self._ports.path.parent / "sessions") / s.stamp
         try:
@@ -983,9 +988,9 @@ class HandEyeSession:
             _log.exception("HandEyeStatus konnte nicht geschrieben werden")
 
     def _current(self) -> dict | None:
-        """Die Kalibrierung, die gerade in der Datei steht -- auch nach einem
-        Neustart, wenn keine Sitzung ein `result` hat. Damit kann das Frontend
-        die Kamera am Flansch zeigen. `None` ohne (lesbare) Datei."""
+        """Return the calibration currently in the file -- also after a restart, when no
+        session has a `result`. This lets the frontend show the camera at the flange.
+        `None` without a (readable) file."""
         try:
             hand_eye = load_hand_eye(self._ports.path)
         except Exception as error:
@@ -1027,8 +1032,8 @@ class HandEyeSession:
                     if s.board is not None
                     else {"type": "tag", "tagId": s.tag_id}
                 ),
-                #: Herkunft der Intrinsik: `calibration`, `realsense_factory`,
-                #: `placeholder` oder `null` (unbekannt).
+                #: Origin of the intrinsics: `calibration`, `realsense_factory`,
+                #: `placeholder` or `null` (unknown).
                 "intrinsicsSource": self._intrinsics_source(),
                 "sessionPath": s.session_path,
                 "fullCalibration": s.full_calibration,
@@ -1045,14 +1050,14 @@ class HandEyeSession:
                         "camToTag": (
                             pose_to_dict(sample.cam_to_tag) if sample.cam_to_tag is not None else None
                         ),
-                        # Mittel der Bilder dieser Aufnahme, auch bei verworfenen.
+                        # Mean over the images of this capture, also for discarded ones.
                         "reprojectionErrorPx": sample.reprojection_error_px,
-                        # Erst nach `FinishHandEyeCalibration`, sonst `null`.
+                        # Only after `FinishHandEyeCalibration`, otherwise `null`.
                         "residualM": sample.residual_m,
                         "residualDeg": sample.residual_deg,
                         "rejected": sample.rejected,
-                        # Vorhersagefehler ohne diese Aufnahme (Brett-Modus,
-                        # nach `finish`, nicht bei Ausreissern), sonst `null`.
+                        # Prediction error without this capture (board mode, after
+                        # `finish`, not for outliers), otherwise `null`.
                         "looErrorPx": sample.loo_error_px,
                         "looErrorM": sample.loo_error_m,
                     }
@@ -1070,10 +1075,10 @@ class HandEyeSession:
 
 
 def parse_start(text: str) -> tuple[int, Pose | None, BoardSpec | None]:
-    """`wsc.vision.handeye.start/1` lesen: `(tagId, tagInBase, Board)`.
+    """Parse `wsc.vision.handeye.start/1` and return `(tagId, tagInBase, board)`.
 
-    Genau eins von `tagId` und `board`; mit Board ist `tagId` -1.
-    ValueError mit Klartext.
+    Exactly one of `tagId` and `board` must be given; with a board, `tagId` is -1.
+    Raises ValueError with a plain-language message.
     """
     data = _load(text, START_SCHEMA)
     has_tag = data.get("tagId") is not None
@@ -1117,17 +1122,17 @@ def _parse_board(raw: Any) -> BoardSpec:
     return spec
 
 
-#: Erlaubte ArUco-Woerterbuecher fuer ChArUco-Bretter.
+#: Allowed ArUco dictionaries for ChArUco boards.
 ALLOWED_DICTIONARIES = tuple(
     f"DICT_{size}_{count}" for size in ("4X4", "5X5", "6X6", "7X7") for count in (50, 100, 250, 1000)
 )
 
 
 def check_raw_board(board: BoardSpec) -> None:
-    """Plausibilitaet eines Bretts fuer Rohaufnahme und volle Kalibrierung.
+    """Check that a board is plausible for raw capture and full calibration.
 
-    Die Masse sind die real nachgemessenen und gehen unveraendert ein.
-    ValueError mit Klartext.
+    The dimensions are the ones measured on the real board and are used unchanged.
+    Raises ValueError with a plain-language message.
     """
     if board.cols < 3 or board.rows < 3:
         what = "Innenecken" if board.type == CHESSBOARD else "Felder"
@@ -1151,5 +1156,5 @@ def _check_dictionary(name: str, markers: int) -> None:
 
 
 def parse_sample(text: str) -> Pose:
-    """`wsc.vision.handeye.sample/1` lesen; ValueError mit Klartext."""
+    """Parse `wsc.vision.handeye.sample/1`; raises ValueError with a plain-language message."""
     return _pose(_load(text, SAMPLE_SCHEMA).get("flangeInBase"), "flangeInBase")

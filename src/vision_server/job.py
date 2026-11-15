@@ -1,4 +1,4 @@
-"""Validierung und Ausfuehrung von Einzeljobs."""
+"""Validation and execution of single jobs (and of continuous operation)."""
 
 import asyncio
 import contextlib
@@ -21,13 +21,13 @@ from .state_machine import VisionStateMachines
 
 _log = logging.getLogger(__name__)
 
-#: So lange wartet `cancel_running` auf das Ende des abgebrochenen Jobs.
+#: How long `cancel_running` waits for the end of the cancelled job.
 _CANCEL_WAIT_S = 2.0
 
 
 @dataclass(frozen=True)
 class JobRequest:
-    """Die validierten Eingaben eines StartSingleJob-Aufrufs."""
+    """The validated inputs of a StartSingleJob call."""
 
     meas_id: str | None
     part_id: str | None
@@ -37,7 +37,7 @@ class JobRequest:
     profile_id: str = ""
 
     def to_detection_request(self, job_id: str) -> DetectionRequest:
-        """Uebergabe an die Erkennungsquelle; haelt OPC UA aus `detection/` heraus."""
+        """Build the request for the detection source; keeps OPC UA out of `detection/`."""
         return DetectionRequest(
             job_id=job_id,
             recipe_id=self.recipe_id or "",
@@ -49,11 +49,11 @@ class JobRequest:
 
 
 def coerce_id(value: Any, field: str, max_length: int) -> str | None:
-    """Normalisiert eine Id-Eingabe zu einem String.
+    """Normalise an id input to a string.
 
-    Die Ids sind im Nodeset als Strukturen deklariert; ein Client kann sie ohne
-    `load_data_type_definitions()` nicht bauen und schickt daher Strings, leere
-    Werte oder Variants. Alle drei Formen werden akzeptiert.
+    The ids are declared as structures in the nodeset; a client cannot build them
+    without `load_data_type_definitions()` and therefore sends strings, empty values
+    or Variants. All three forms are accepted.
     """
     if value is None:
         return None
@@ -78,7 +78,7 @@ def coerce_id(value: Any, field: str, max_length: int) -> str | None:
 
 
 def _coerce_parameters(value: Any, config: VisionServerConfig) -> tuple[Any, ...]:
-    """Normalisiert die Parameterliste zu einem Tupel aus Skalaren."""
+    """Normalise the parameter list to a tuple of scalars."""
     if value is None:
         return ()
     if isinstance(value, ua.Variant):
@@ -108,7 +108,7 @@ def _coerce_parameters(value: Any, config: VisionServerConfig) -> tuple[Any, ...
 def build_job_request(
     config: VisionServerConfig, meas_id, part_id, recipe_id, product_id, parameters
 ) -> JobRequest:
-    """Validiert die StartSingleJob-Eingaben; wirft VisionJobError."""
+    """Validate the StartSingleJob inputs; raises VisionJobError."""
     request = JobRequest(
         meas_id=coerce_id(meas_id, "MeasId", config.max_id_length),
         part_id=coerce_id(part_id, "PartId", config.max_id_length),
@@ -131,7 +131,7 @@ def build_job_request(
 
 
 class JobRunner:
-    """Fuehrt Einzeljobs aus und haelt Zustaende und Ergebnisknoten konsistent."""
+    """Run single jobs and keep states and result nodes consistent."""
 
     def __init__(
         self,
@@ -150,36 +150,38 @@ class JobRunner:
         self._busy = False
         self._job_counter = 0
         self._task: asyncio.Task | None = None
-        #: Von `stop(abort=True)` gesetzt. Der abgebrochene Task erfaehrt nur
-        #: `CancelledError` und kann sonst nicht wissen, welches Kommando ihn
-        #: getroffen hat -- Stop und Abort nehmen aber verschiedene Uebergaenge.
+        #: Set by `stop(abort=True)`. The aborted task only receives `CancelledError`
+        #: and otherwise cannot know which command hit it -- but Stop and Abort take
+        #: different transitions.
         self._aborting = False
-        #: Beobachter des Job-Endes. Gebraucht von Aufsaetzen, die einen
-        #: eigenen Zustandsautomaten fuehren -- etwa das Part-10-Programm in
-        #: `vision_program.py`, das aus `Running` zurueck nach `Ready` muss.
+        #: Observers of the job end. Needed by layers that run their own state machine --
+        #: e.g. the Part-10 program in `vision_program.py`, which has to return from
+        #: `Running` to `Ready`.
         self._finish_listeners: list[Callable[[str, VisionErrorCode], None]] = []
 
     @property
     def busy(self) -> bool:
-        """Laeuft gerade ein Job? Fuer Aufsaetze, die sich denselben Detektor/
-        dieselbe Kamera teilen (z. B. `CalibrationSession`) und sich damit
-        gegenseitig ausschliessen muessen."""
+        """Return whether a job is running right now.
+
+        For layers that share the same detector/camera (e.g. `CalibrationSession`)
+        and therefore must exclude each other.
+        """
         return self._busy
 
     def add_finish_listener(
         self, listener: Callable[[str, VisionErrorCode], None]
     ) -> None:
-        """Meldet einen Beobachter fuer das Ende eines Jobs an.
+        """Register an observer for the end of a job.
 
-        Der Beobachter wird **synchron** aufgerufen, weil das Job-Ende im
-        `finally` eines moeglicherweise gerade abgebrochenen Tasks liegt: ein
-        `await` an dieser Stelle koennte sofort erneut `CancelledError`
-        werfen. Wer asynchron arbeiten muss, startet sich selbst einen Task.
+        The observer is called **synchronously**, because the job end lies in the
+        `finally` of a possibly just-cancelled task: an `await` at this point could
+        immediately raise `CancelledError` again. Whoever has to work asynchronously
+        starts a task of their own.
         """
         self._finish_listeners.append(listener)
 
     def _notify_finished(self, job_id: str, code: VisionErrorCode) -> None:
-        """Ruft alle Beobachter; ein Fehler dort darf den Job nicht beruehren."""
+        """Call all observers; an error there must not affect the job."""
         for listener in self._finish_listeners:
             try:
                 listener(job_id, code)
@@ -187,11 +189,11 @@ class JobRunner:
                 _log.exception("Abschluss-Beobachter von Job %s fehlgeschlagen", job_id)
 
     async def cancel_running(self) -> None:
-        """Bricht einen noch laufenden Job ab; fuer das Herunterfahren.
+        """Cancel a job that is still running; used for shutdown.
 
-        Best-Effort: Fehler beim Abbruch werden verschluckt, der Prozess
-        faehrt ohnehin gerade herunter. Fuer die `Stop`-Methode stattdessen
-        `stop()` verwenden, die den Fehlschlag als `VisionErrorCode` meldet.
+        Best effort: errors during the cancellation are swallowed, since the process
+        is shutting down anyway. For the `Stop` method use `stop()` instead, which
+        reports the failure as a `VisionErrorCode`.
         """
         task = self._task
         if task is None or task.done():
@@ -201,14 +203,13 @@ class JobRunner:
             await asyncio.wait_for(task, _CANCEL_WAIT_S)
 
     async def stop(self, *, abort: bool = False) -> VisionErrorCode:
-        """Bricht einen laufenden Job ab; OK, wenn gerade keiner laeuft.
+        """Cancel a running job; OK if none is running.
 
-        Fire-and-forget vom Frontend, unabhaengig vom aktuellen Zustand --
-        anders als `start_single_job` gibt es hier bewusst **keinen**
-        `is_ready()`-Guard. Wartet auf den vollstaendigen Abbruch (inkl.
-        Zustandswechsel zurueck nach `Ready` in `_cancel`), damit ein
-        `StartSingleJob` direkt danach nicht auf einen noch aufraeumenden
-        Job trifft.
+        Fire-and-forget from the frontend, regardless of the current state -- unlike
+        `start_single_job`, there is deliberately **no** `is_ready()` guard here. Waits
+        for the complete abort (including the state transition back to `Ready` in
+        `_cancel`), so that a `StartSingleJob` right after it does not hit a job that
+        is still cleaning up.
         """
         task = self._task
         if task is None or task.done():
@@ -233,13 +234,12 @@ class JobRunner:
     def start_single_job(
         self, meas_id, part_id, recipe_id, product_id, parameters
     ) -> tuple[str, VisionErrorCode]:
-        """Prueft Zustand und Eingaben synchron und startet den Job als Task.
+        """Check state and inputs synchronously and start the job as a task.
 
-        Die Methode ist absichtlich synchron: zwischen der Busy-Pruefung und dem
-        Setzen des Flags liegt kein `await`, wodurch die Zulassung auf dem
-        Event-Loop atomar ist. Eine `async def`-Variante mit `Lock.locked()`
-        waere kein Schutz, weil ein zweiter Aufruf an jedem `await` dazwischen
-        durchkommen koennte.
+        The method is deliberately synchronous: there is no `await` between the busy
+        check and setting the flag, which makes the admission atomic on the event loop.
+        An `async def` variant with `Lock.locked()` would not protect, because a second
+        call could slip through at every `await` in between.
         """
         if self._busy:
             return "", VisionErrorCode.BUSY
@@ -263,10 +263,10 @@ class JobRunner:
     def start_continuous(
         self, meas_id, part_id, recipe_id, product_id, parameters
     ) -> tuple[str, VisionErrorCode]:
-        """Wie `start_single_job`, aber der Job endet erst auf Stop oder Abort.
+        """Like `start_single_job`, but the job only ends on Stop or Abort.
 
-        Dieselbe atomare Zulassung: synchron, kein `await` zwischen Pruefung
-        und Setzen von `_busy`.
+        The same atomic admission: synchronous, with no `await` between the check and
+        setting `_busy`.
         """
         if self._busy:
             return "", VisionErrorCode.BUSY
@@ -288,13 +288,12 @@ class JobRunner:
         return job_id, VisionErrorCode.OK
 
     async def _run_continuous(self, job_id: str, request: JobRequest) -> None:
-        """Erkennt fortlaufend, bis der Task abgebrochen wird.
+        """Detect continuously until the task is cancelled.
 
-        Jeder Durchlauf veroeffentlicht ein eigenes Ergebnis unter einer
-        eigenen Id (`<job>-0001`, `-0002`, ...), damit ein Client die Folge
-        auseinanderhalten kann. Ein einzelner fehlgeschlagener Durchlauf
-        beendet den Dauerbetrieb -- das ist Absicht: liefe er weiter, wuerde
-        dieselbe Stoerung im Sekundentakt dieselbe Fehlermeldung erzeugen.
+        Each pass publishes its own result under its own id (`<job>-0001`, `-0002`, ...),
+        so that a client can tell the sequence apart. A single failed pass ends continuous
+        operation -- this is intentional: if it kept running, the same fault would produce
+        the same error message at one-second intervals.
         """
         source = self._sources[request.profile_id]
         cycle = 0
@@ -360,17 +359,17 @@ class JobRunner:
             self._notify_finished(job_id, outcome)
 
     async def _run(self, job_id: str, request: JobRequest) -> None:
-        """Durchlaeuft einen Einzeljob inklusive Events und Ergebnisablage."""
+        """Run a single job, including events and result storage."""
         source = self._sources[request.profile_id]
         outcome = VisionErrorCode.OK
         try:
             async with self._lock:
                 await self._states.to_single_execution()
                 await self._events.job_started.trigger(message=job_id)
-                # Ohne Timeout bliebe `_busy` bei einer haengenden Kamera fuer
-                # immer gesetzt: jeder weitere Aufruf BUSY, Abort nicht
-                # verlinkt, Rettung nur per Serviceneustart. wait_for bricht
-                # die Koroutine ab, kann den Worker-Thread aber nicht toeten.
+                # Without a timeout `_busy` would stay set forever when the camera hangs:
+                # every further call would get BUSY, Abort would not be linked to it, and
+                # the only rescue would be a service restart. wait_for aborts the coroutine,
+                # but cannot kill the worker thread.
                 detections = await asyncio.wait_for(
                     source.acquire_and_detect(request.to_detection_request(job_id)),
                     self._config.job_timeout,
@@ -398,10 +397,10 @@ class JobRunner:
                 await self._events.ready.trigger(message=job_id)
                 _log.info("Job %s abgeschlossen", job_id)
         except asyncio.CancelledError:
-            # `stop()` bricht diesen Task ab (`Stop`-Methode). Aufraeumen und
-            # den Automaten zurueckfahren, bevor die Cancellation weiter nach
-            # oben durchgereicht wird -- sonst bliebe der Automat fuer immer
-            # in SingleExecution haengen und jeder weitere Job schluege fehl.
+            # `stop()` cancels this task (`Stop` method). Clean up and roll the automaton
+            # back before the cancellation is propagated further up -- otherwise the
+            # automaton would stay stuck in SingleExecution forever and every further job
+            # would fail.
             outcome = VisionErrorCode.CANCELLED
             await self._cancel(source, request, job_id)
             raise
@@ -439,7 +438,7 @@ class JobRunner:
         result_state: int,
         payload: str,
     ) -> None:
-        """Schreibt die Ergebnisknoten und feuert das ResultReadyEvent."""
+        """Write the result nodes and fire the ResultReadyEvent."""
         await self._results.publish(
             PublishedResult(
                 result_id=result_id,
@@ -469,10 +468,10 @@ class JobRunner:
         error: VisionJobError,
         continuous: bool = False,
     ) -> None:
-        """Meldet den Fehler als Ergebnis und fuehrt den Automaten zurueck.
+        """Report the error as a result and roll the state machine back.
 
-        Auch ein fehlgeschlagener Job feuert ein ResultReadyEvent — sonst
-        erfaehrt ein eventgetriebener Client den Fehler nur per Timeout.
+        A failed job also fires a ResultReadyEvent -- otherwise an event-driven client
+        would only learn of the error through a timeout.
         """
         _log.error("Job %s fehlgeschlagen: %s (%s)", job_id, error.message, error.code.name)
         try:
@@ -511,11 +510,11 @@ class JobRunner:
         job_id: str,
         continuous: bool = False,
     ) -> None:
-        """Meldet den Nutzerabbruch als Ergebnis und fuehrt den Automaten zurueck.
+        """Report the user abort as a result and roll the state machine back.
 
-        Anders als `_fail`: kein Ausflug nach `Error` — ein `Stop` ist ein
-        gewolltes Kommando, kein Fehlerzustand. Laeuft, waehrend `_busy` noch
-        gesetzt ist (siehe `_run`), also ohne Konkurrenz zu einem neuen Job.
+        Unlike `_fail`: no detour to `Error` -- a `Stop` is a deliberate command, not an
+        error state. Runs while `_busy` is still set (see `_run`), so there is no
+        competition with a new job.
         """
         _log.info(
             "Job %s durch %s abgebrochen", job_id, "Abort" if self._aborting else "Stop"

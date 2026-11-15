@@ -1,4 +1,4 @@
-"""Kamerakalibrierung -- interaktiv an der Kamera oder headless aus Bildern.
+"""Camera calibration -- interactively at the camera or headless from images.
 
     # interactive: SPACE = capture, C = compute + save, Q = quit
     python -m tagloc.cli.calibrate --source camera:0 --board charuco \
@@ -35,6 +35,8 @@ MIN_SAMPLES = 15
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for the calibration tool."""
+    # The first line of the module docstring is the CLI description shown by --help.
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_source_arguments(parser)
     parser.add_argument("--board", choices=(CHESSBOARD, CHARUCO), default=CHESSBOARD)
@@ -60,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _spec(args) -> BoardSpec:
+    """Build a BoardSpec from the parsed arguments."""
     return BoardSpec(
         type=args.board,
         cols=args.cols,
@@ -71,6 +74,7 @@ def _spec(args) -> BoardSpec:
 
 
 def _finish(samples, size, spec, board, args) -> int:
+    """Compute and save the calibration from the collected samples. Return the exit code."""
     if len(samples) < args.min_samples:
         print(
             f"Nur {len(samples)} von {args.min_samples} Aufnahmen -- "
@@ -97,6 +101,7 @@ def _finish(samples, size, spec, board, args) -> int:
 
 
 def main(argv=None) -> int:
+    """Run the calibration tool and return the exit code."""
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
     spec = _spec(args)

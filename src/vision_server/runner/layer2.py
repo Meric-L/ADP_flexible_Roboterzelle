@@ -1,4 +1,4 @@
-"""Layer-2-Lauf (Hand-Pi): `StartLayer2Run` und `ReportRobotPose`."""
+"""Layer 2 run (hand-camera Pi): `StartLayer2Run` and `ReportRobotPose`."""
 
 from collections.abc import Callable
 from typing import Any
@@ -22,14 +22,14 @@ async def _install_layer2_run(
     methods: dict[str, Node],
     calibration_busy: Callable[[], bool],
 ) -> Any:
-    """Legt StartLayer2Run/ReportRobotPose an und verdrahtet den Lauf.
+    """Create StartLayer2Run and ReportRobotPose and wire up the run.
 
-    Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Jeder Schritt
-    startet einen gewoehnlichen AprilTag-Job ueber den JobRunner -- gleiche
-    Events, gleiches `LatestResultJson`, `Stop` wirkt wie gewohnt. Siehe
+    Only on the hand-camera Pi (nodes exist only with `hand_eye_path`). Each step
+    starts an ordinary AprilTag job via the JobRunner -- same events, same
+    `LatestResultJson`, and `Stop` works as usual. See
     `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
     """
-    # Erst hier: `layer2` braucht numpy, der Rest des Servers nicht.
+    # Imported here only: `layer2` needs numpy, the rest of the server does not.
     from ..layer2.run import Layer2Ports, Layer2Run
 
     async def publish(target: str, status: str) -> None:
@@ -58,12 +58,12 @@ async def _install_layer2_run(
 
     @uamethod
     async def start_layer2_run(parent, run_json: str):
-        """1:StartLayer2Run -- Lauf mit den groben Posen aus Layer 1 starten."""
+        """1:StartLayer2Run -- start a run with the coarse poses from Layer 1."""
         return code_reply(await layer2_run.start(run_json or ""))
 
     @uamethod
     async def report_robot_pose(parent, report_json: str):
-        """1:ReportRobotPose -- erreichte Flanschpose melden, Messung starten."""
+        """1:ReportRobotPose -- report the reached flange pose and start the measurement."""
         return code_reply(await layer2_run.report(report_json or ""))
 
     for name, handler in (

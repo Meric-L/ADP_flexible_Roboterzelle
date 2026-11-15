@@ -1,14 +1,14 @@
-"""Veroeffentlicht Frames der geteilten Kamera als Base64-JPEG in einem Knoten.
+"""Publish frames of the shared camera as Base64 JPEG in one node.
 
-Transportweg laut Backend-Absprache: das Backend abonniert diesen Knoten
-ganz normal ueber die bestehende `subscribeNode`-Infrastruktur, keine neue
-Backend-Logik noetig. Dieses Modul kennt daher nur den Knoten, keine
-WebSocket- oder Backend-Details.
+Transport as agreed with the backend: the backend subscribes to this node in
+the usual way through the existing `subscribeNode` infrastructure, so no new
+backend logic is needed. This module therefore knows only the node, not the
+WebSocket or backend details.
 
-The stream can be annotated: an `annotator` draws detected AprilTags or
-board corners onto the image, and a second, **writable** node selects the
-mode ("off", "apriltag", "calibration", "undistorted"). The publisher itself knows neither
-OpenCV nor detection -- it only passes mode and image along.
+The stream can be annotated: an `annotator` draws detected AprilTags or board
+corners onto the image, and a second, **writable** node selects the mode
+("off", "apriltag", "calibration", "undistorted"). The publisher itself knows
+neither OpenCV nor detection -- it only passes the mode and the image along.
 """
 
 import asyncio
@@ -31,11 +31,11 @@ _log = logging.getLogger(__name__)
 
 
 def _encode_jpeg_base64(image, quality: int) -> str | None:
-    """Laeuft im Worker-Thread: JPEG-Encode plus Base64. `None` bei Encode-Fehler.
+    """Run in the worker thread: JPEG encode plus Base64. `None` on encode failure.
 
-    Import bewusst hier drin statt auf Modulebene, damit ein Import dieses
-    Moduls (z. B. ueber `runner/`) kein `cv2` braucht, solange kein Stream
-    laeuft.
+    The import is deliberately inside the function instead of at module level, so
+    that importing this module (e.g. via `runner/`) does not need `cv2` while no
+    stream is running.
     """
     import cv2
 
@@ -46,11 +46,11 @@ def _encode_jpeg_base64(image, quality: int) -> str | None:
 
 
 def _no_calibration_hint(image):
-    """Rohbild mit Hinweis, fuer "undistorted" ohne Annotator.
+    """Return the raw image with a hint, for "undistorted" without an annotator.
 
-    Ohne Annotator gibt es keine geladene Kalibrierung -- die AprilTag-Quelle
-    ist nicht aufgegangen oder gar nicht konfiguriert. Kein Fehler, kein
-    Abbruch: das Bild geht raus, nur eben sichtbar unentzerrt.
+    Without an annotator no calibration is loaded: the AprilTag source either
+    did not come up or is not configured at all. Not an error and not an abort:
+    the image is sent out, just visibly undistorted.
     """
     from tagloc.modes import NO_CALIBRATION_HINT
     from tagloc.overlay import draw_status_bar
@@ -59,12 +59,12 @@ def _no_calibration_hint(image):
 
 
 def _resize_for_stream(image, max_width: int):
-    """Skaliert nur fuers Publizieren herunter, falls breiter als `max_width`.
+    """Downscale only for publishing, if wider than `max_width`.
 
-    Erkennung und Kalibrierung sehen weiter den vollen Kamera-Frame -- diese
-    Funktion laeuft erst nach dem Overlay, auf einer Kopie fuers Encoding.
-    Ohne das kostet z. B. cam_ceiling (2028x1520) pro Tick ein JPEG-Encode
-    eines ~3-MP-Bildes, was die Stream-Framerate spuerbar drueckt.
+    Detection and calibration still see the full camera frame. This function
+    runs only after the overlay, on a copy for encoding. Without it, cam_ceiling
+    (2028x1520), for example, would JPEG-encode a ~3 MP image on every tick,
+    noticeably lowering the stream frame rate.
     """
     import cv2
 
@@ -76,21 +76,20 @@ def _resize_for_stream(image, max_width: int):
 
 
 class CameraStreamPublisher:
-    """Schreibt periodisch den neuesten Kamera-Frame in einen String-Knoten.
+    """Periodically write the newest camera frame into a String node.
 
-    Oeffnet und schliesst die Kamera **nicht** selbst — die gehoert der
-    Erkennungsquelle, die dieselbe `SharedCamera`-Instanz reicht (siehe
-    `runner/livestream.py`). Schreibt bewusst jeden Tick, auch bei einem unveraenderten
-    Frame: das Frontend soll ein einfaches "Bild kommt an / kommt nicht an"
-    sehen, keine Diff-Logik.
+    Does **not** open or close the camera itself. The camera belongs to the
+    detection source, which passes the same `SharedCamera` instance (see
+    `runner/livestream.py`). Deliberately writes on every tick, even for an
+    unchanged frame: the frontend should see a simple "image arrives / does not
+    arrive" signal, not diff logic.
 
-    **Keine Ueberwachung hier.** Ob die Kamera lebt, beantwortet allein
-    `Health/DeviceHealth` nach OPC 40100-2 (`camera_health.py`), gespeist aus
-    dem Watchdog in `camera.py`. Dieser Publisher hat frueher zusaetzlich das
-    Bildalter geprueft und den Knoten geleert -- zwei Wahrheiten ueber
-    dieselbe Frage, von denen eine am Standard vorbeilief. Bei haengender
-    Kamera steht das Livebild deshalb jetzt still; dass es steht, sagt die
-    Zustandsampel, nicht das fehlende Bild.
+    **No health monitoring here.** Whether the camera is alive is answered solely
+    by `Health/DeviceHealth` per OPC 40100-2 (`camera_health.py`), fed from the
+    watchdog in `camera.py`. This publisher used to check the image age as well
+    and clear the node -- two sources of truth for the same question, one of
+    which was off the standard. With a hung camera the live image therefore now
+    freezes; the status indicator says that it froze, not the missing image.
     """
 
     def __init__(
@@ -108,35 +107,35 @@ class CameraStreamPublisher:
         self._camera = camera
         self._node = node
         self._config = config
-        #: Austauschbar fuer Tests, die ohne `cv2` laufen sollen.
+        #: Replaceable for tests that should run without `cv2`.
         self._encode_frame = encode_frame
         #: Draws detection results onto the image; `None` = always raw frame.
         self._annotator = annotator
         #: Writable node through which the frontend selects the mode.
         self._mode_node = mode_node
-        #: `CalibrationProgress`-Knoten; nur beschrieben, wenn der Annotator
-        #: gerade eine `CalibrationSession` haengen hat (siehe
+        #: `CalibrationProgress` node; written only while the annotator has a
+        #: `CalibrationSession` attached (see
         #: `AprilTagStreamAnnotator.calibration_progress`).
         self._progress_node = progress_node
-        #: `TagReferencePreviewStatus`-Knoten; geschrieben wird nur, wenn der
-        #: Annotator einen neuen Stand hat (`reference_preview_status`).
+        #: `TagReferencePreviewStatus` node; written only when the annotator has
+        #: a new state (`reference_preview_status`).
         self._preview_status_node = preview_status_node
         self._preview_status_written: Any = None
         self._mode = normalise_mode(config.overlay_mode)
         self._task: asyncio.Task | None = None
-        #: Der letzte Overlay-Lauf; haengt er noch, wird kein neuer gestartet.
+        #: The last overlay run; while it is still running, no new one is started.
         self._overlay_run: asyncio.Future | None = None
-        #: Das zuletzt kodierte Bild (Base64) samt laufender Nummer. Knoten und
-        #: MJPEG-Server lesen beide hier -- jeder Frame wird nur einmal
-        #: markiert und kodiert, egal wie viele Abnehmer es gibt.
+        #: The last encoded image (Base64) with its sequence number. The node and
+        #: the MJPEG server both read it here -- each frame is marked up and
+        #: encoded only once, no matter how many consumers there are.
         self._latest: str | None = None
         self._seq = 0
-        #: (Frame-Zeitstempel, Modus) des zuletzt kodierten Bildes; gleicher
-        #: Schluessel = kein neuer Frame, nichts neu zu kodieren.
+        #: (frame timestamp, mode) of the last encoded image; the same key means
+        #: no new frame, nothing to re-encode.
         self._encoded_key: tuple | None = None
         self._frame_ready = asyncio.Condition()
-        #: Laufende MJPEG-Verbindungen; ohne sie tickt der Loop nur mit
-        #: `stream_fps`, um die CPU des Pi zu schonen.
+        #: Running MJPEG connections; without them the loop ticks only at
+        #: `stream_fps`, to spare the Pi's CPU.
         self._viewers = 0
         self._next_node_write = 0.0
 
@@ -164,12 +163,12 @@ class CameraStreamPublisher:
 
     @property
     def latest(self) -> tuple[int, str] | None:
-        """Laufende Nummer und Base64-JPEG des neuesten Bildes.
+        """Sequence number and Base64 JPEG of the newest image.
 
-        Bewusst ohne Altersgrenze: ob die Kamera lebt, sagt `DeviceHealth`
-        nach OPC 40100-2 (camera_health.py), nicht dieser Publisher. Ein
-        Standbild ist ein Bild, kein Gesundheitssignal -- zwei Wahrheiten
-        darueber waeren eine zu viel.
+        Deliberately without an age limit: whether the camera is alive is said by
+        `DeviceHealth` per OPC 40100-2 (camera_health.py), not by this publisher.
+        A still image is an image, not a health signal -- two truths about it
+        would be one too many.
         """
         if self._latest is None:
             return None
@@ -177,7 +176,7 @@ class CameraStreamPublisher:
 
     @contextlib.asynccontextmanager
     async def viewer(self):
-        """Meldet einen MJPEG-Zuschauer an; solange er da ist, tickt der Loop schneller."""
+        """Register an MJPEG viewer; while one is connected, the loop ticks faster."""
         self._viewers += 1
         try:
             yield
@@ -185,11 +184,11 @@ class CameraStreamPublisher:
             self._viewers -= 1
 
     async def next_frame(self, after_seq: int, timeout: float) -> tuple[int, str] | None:
-        """Wartet auf ein Bild mit hoeherer Nummer als `after_seq`.
+        """Wait for an image with a higher number than `after_seq`.
 
-        `None` nach `timeout` -- etwa, weil die Kamera haengt und der Frame
-        veraltet ist. Wer langsam liest, verpasst Bilder statt einen Rueckstau
-        aufzubauen: es gibt immer nur das neueste.
+        Returns `None` after `timeout` -- for example because the camera hangs and
+        the frame is stale. A slow reader misses images instead of building up a
+        backlog: there is always only the newest one.
         """
         async with self._frame_ready:
             try:
@@ -204,21 +203,21 @@ class CameraStreamPublisher:
             return self.latest
 
     async def _annotate(self, loop: asyncio.AbstractEventLoop, image, mode: str):
-        """Overlay mit Timeout; bei Timeout oder noch laufendem Lauf das Rohbild.
+        """Run the overlay with a timeout; on timeout or a run still going, return the raw image.
 
-        Gibt `(bild, vollstaendig)` zurueck; `False` heisst, das Rohbild ging
-        ersatzweise raus und darf nicht als fertig markiertes Bild gelten.
+        Returns `(image, complete)`; `False` means the raw image went out as a
+        stand-in and must not count as a fully marked-up image.
 
-        Ein haengender Lauf blockiert einen Thread des Default-Executors, der
-        sich nicht abbrechen laesst. Deshalb startet kein neuer, bevor er
-        fertig ist -- sonst liefe der Executor Tick fuer Tick voll.
+        A hung run blocks a thread of the default executor, which cannot be
+        cancelled. So no new run starts until the previous one has finished --
+        otherwise the executor would fill up tick after tick.
         """
         if self._overlay_run is not None and not self._overlay_run.done():
             return image, False
         # In the worker thread: detection and drawing are blocking and have no
         # business on the event loop. The annotator works on a copy.
         run = loop.run_in_executor(None, self._annotator.annotate, image, mode)
-        # Holt die Exception eines abgehaengten Laufs ab, sonst meldet asyncio
+        # Retrieve the exception of a detached run, otherwise asyncio reports
         # "Future exception was never retrieved".
         run.add_done_callback(lambda done: done.cancelled() or done.exception())
         self._overlay_run = run
@@ -235,29 +234,29 @@ class CameraStreamPublisher:
         return annotated, True
 
     async def _encoded(self, loop: asyncio.AbstractEventLoop, frame) -> str | None:
-        """Markiert und kodiert einen Frame, aber nur, wenn er neu ist."""
+        """Mark up and encode a frame, but only if it is new."""
         mode = await self._read_mode()
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # "apriltag" und "off" gehen vom vollen Frame aus, nicht von der
-        # kleinen ISP-Vorschau:
-        # - "apriltag" bekommt den vollen Frame als Eingabe und zeichnet auf
-        #   eine auf `detection_max_width` verkleinerte Leinwand. Die Tags
-        #   stammen aus einer Erkennung in voller Aufloesung -- meist der
-        #   des Jobs oder der Zellen-Ueberwachung, sonst einer seltenen
-        #   eigenen im Hintergrund (seit 21.10.2026, siehe stream_overlay.py).
-        #   Im Stream-Takt auf dem vollen Frame zu erkennen kostete auf pi1
-        #   laut py-spy ~102% einer Core und liess Jobs in den Timeout laufen.
-        # - "off" ist das Debug-Rohbild: soll genau das zeigen, was der Pi
-        #   tatsaechlich sieht (Fokus, Belichtung, Bildausschnitt pruefen),
-        #   nicht die verkleinerte Vorschau. Kostet kaum mehr als vorher --
-        #   ohne Erkennung/Overlay ist hier nur der groessere Encode neu.
-        # "calibration" bleibt beim kleinen Vorschaubild: dort geht es nicht
-        # um Erkennungstreue, und die Session hat ohnehin ein eigenes, separat
-        # getuntes Downscale vor `detect_board` (`detection_max_width`).
-        # "undistorted" ebenfalls vom vollen Frame: die Kalibrierung gehoert
-        # zum Sensorbild, nicht zur ISP-Vorschau mit eigenem Ausschnitt.
+        # "apriltag" and "off" work from the full frame, not from the small ISP
+        # preview:
+        # - "apriltag" gets the full frame as input and draws on a canvas scaled
+        #   down to `detection_max_width`. The tags come from a detection at full
+        #   resolution -- usually that of the job or the cell watch, otherwise a
+        #   separate rare one in the background (since 2026-10-21, see
+        #   stream_overlay.py). Detecting on the full frame at stream rate cost
+        #   about 102% of one core on pi1 according to py-spy and made jobs run
+        #   into the timeout.
+        # - "off" is the debug raw image: it must show exactly what the Pi really
+        #   sees (to check focus, exposure, framing), not the downscaled preview.
+        #   It costs barely more than before -- without detection/overlay only the
+        #   larger encode is new.
+        # "calibration" stays with the small preview image: there detection
+        # fidelity does not matter, and the session has its own separately tuned
+        # downscale before `detect_board` (`detection_max_width`).
+        # "undistorted" also uses the full frame: the calibration belongs to the
+        # sensor image, not to the ISP preview with its own crop.
         if mode in ("apriltag", "off", "undistorted", "tagreference"):
             source = frame.image
         else:
@@ -270,13 +269,11 @@ class CameraStreamPublisher:
         elif mode == "undistorted":
             image = await loop.run_in_executor(None, _no_calibration_hint, source)
         if self._config.max_stream_width is not None:
-            # Nach dem Overlay und nur fuers Publizieren -- beide Wege
-            # (MJPEG und Knoten) bekommen dasselbe verkleinerte Bild. Im
-            # "apriltag"-Modus hat `annotate()` selbst schon auf
-            # `detection_max_width` (== `max_stream_width`) verkleinert --
-            # `_resize_for_stream` ist hier also ein No-Op (Breite passt
-            # bereits), fuer "off" (voller Frame) macht es die eigentliche
-            # Arbeit.
+            # After the overlay, and only for publishing -- both paths (MJPEG and
+            # node) get the same downscaled image. In "apriltag" mode `annotate()`
+            # has already downscaled to `detection_max_width` (== `max_stream_width`)
+            # itself, so `_resize_for_stream` is a no-op here (the width already
+            # fits). For "off" (full frame) it does the real work.
             image = await loop.run_in_executor(
                 None, _resize_for_stream, image, self._config.max_stream_width
             )
@@ -287,17 +284,17 @@ class CameraStreamPublisher:
             return None
         self._latest = encoded
         self._seq += 1
-        # Ein Ersatz-Rohbild wird beim naechsten Tick neu versucht.
+        # A stand-in raw image is retried on the next tick.
         self._encoded_key = key if complete else None
         async with self._frame_ready:
             self._frame_ready.notify_all()
         return encoded
 
     async def _publish_progress(self) -> None:
-        """Schreibt den Kalibrier-Fortschritt, im Takt des Knotens.
+        """Write the calibration progress, at the node's rate.
 
-        Unabhaengig vom gewaehlten `mode` -- der Fortschritt soll auch sichtbar
-        sein, wenn der Viewer gerade "off" zeigt.
+        Independent of the selected `mode` -- the progress should also be visible
+        while the viewer is showing "off".
         """
         if self._progress_node is None or self._annotator is None:
             return
@@ -314,7 +311,7 @@ class CameraStreamPublisher:
             _log.exception("Kalibrier-Fortschritt konnte nicht veroeffentlicht werden")
 
     async def _publish_preview_status(self) -> None:
-        """Schreibt den Stand der Einmess-Vorschau, wenn er neu ist (im Event-Loop)."""
+        """Write the state of the referencing preview, if it is new (in the event loop)."""
         if self._preview_status_node is None or self._annotator is None:
             return
         expire = getattr(self._annotator, "expire_reference_preview", None)
@@ -330,10 +327,10 @@ class CameraStreamPublisher:
             _log.exception("TagReferencePreviewStatus konnte nicht geschrieben werden")
 
     async def _publish_loop(self) -> None:
-        """Tickt mit `http_fps`, solange MJPEG-Zuschauer da sind, sonst mit `stream_fps`.
+        """Tick at `http_fps` while MJPEG viewers are connected, otherwise at `stream_fps`.
 
-        Der Knoten wird unabhaengig davon hoechstens mit `stream_fps`
-        beschrieben -- er ist der Rueckfallweg, kein Videokanal.
+        The node is written at most at `stream_fps`, regardless -- it is the
+        fallback path, not a video channel.
         """
         loop = asyncio.get_running_loop()
         node_interval = 1.0 / self._config.stream_fps
@@ -351,8 +348,8 @@ class CameraStreamPublisher:
                 except Exception:
                     _log.exception("Kamera-Frame konnte nicht veroeffentlicht werden")
             if node_due:
-                # Fester Takt statt "seit dem letzten Schreiben", sonst sinkt
-                # die Rate bei schnellem Tick unter stream_fps.
+                # Fixed schedule instead of "since the last write", otherwise the
+                # rate drops below stream_fps when the tick is fast.
                 self._next_node_write = max(self._next_node_write + node_interval, started)
                 await self._publish_progress()
             interval = live_interval if self._viewers else node_interval
@@ -363,7 +360,7 @@ class CameraStreamPublisher:
         if self._task is not None:
             await cancel_and_wait(self._task)
             self._task = None
-        # Der Annotator haelt einen eigenen Erkennungs-Thread (stream_overlay.py).
+        # The annotator holds its own detection thread (stream_overlay.py).
         close = getattr(self._annotator, "close", None)
         if close is not None:
             close()

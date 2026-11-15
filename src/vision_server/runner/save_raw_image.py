@@ -1,4 +1,4 @@
-"""SaveRawImage: das aktuelle Kamera-Vollbild als PNG ablegen."""
+"""SaveRawImage: store the current full camera frame as PNG."""
 
 import asyncio
 import logging
@@ -22,11 +22,10 @@ async def _install_save_raw_image(
     methods: dict[str, Node],
     busy: Callable[[], bool],
 ) -> None:
-    """Legt `SaveRawImage` an: aktuelles Kamera-Vollbild als PNG speichern.
+    """Create the `SaveRawImage` method: save the current full frame as PNG.
 
-    Waehrend eines Jobs abgelehnt: das PNG-Encoding eines 12-MP-Bilds soll
-    den Job-Timeout nicht gefaehrden. Siehe
-    `doc/projektdoku/arbeitsplaene/rohbild-speichern.md`.
+    Rejected while a job is running: PNG encoding of a 12 MP image must not
+    endanger the job timeout. See `doc/projektdoku/arbeitsplaene/rohbild-speichern.md`.
     """
     from ..raw_image import save_raw_image
 

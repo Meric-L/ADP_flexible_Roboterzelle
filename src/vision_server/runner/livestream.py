@@ -1,4 +1,4 @@
-"""Livestream: Overlay (Annotator), Publisher und MJPEG-Server."""
+"""Live stream: overlay (annotator), publisher and MJPEG server."""
 
 import logging
 from collections.abc import Mapping
@@ -16,26 +16,24 @@ _log = logging.getLogger(__package__)
 
 
 def _build_annotator(source: DetectionSource):
-    """Baut das Stream-Overlay zu einer Quelle, falls sie eines liefern kann.
+    """Build the stream overlay for a source, if it can provide one.
 
-    Stream und Job nutzen dieselbe geladene Kalibrierung und Tag-Map -- zeigt
-    das Bild etwas anderes als das Job-Ergebnis, liegt es nicht an zwei
-    Konfigurationen. Der Detektor ist bewusst NICHT derselbe: Job und
-    Stream liefen bis 2026-09-24 auf einer geteilten Instanz, beide mit
-    `subpixel_corner_refinement` aus der Config (aktuell `True` -- Layer 1
-    braucht das, siehe `AprilTagProfileConfig`). Live auf pi1 gemessen
-    (py-spy-Dump): der Job-Thread (`vision-apriltag_0`) und der
-    Overlay-Thread liefen dabei GLEICHZEITIG in `detector.detect()` mit
-    aktivem `CORNER_REFINE_APRILTAG` -- zusammen genug CPU-Konkurrenz, um
-    den 20s-Job-Timeout wieder reissen zu lassen. Der Stream braucht die
-    Verfeinerung nicht (Demo-Bild, kleinere Aufloesung als der Job) --
-    deshalb bekommt er eine EIGENE Detektor-Instanz mit der Verfeinerung
-    fest aus, unabhaengig vom Config-Wert fuer den Job-Pfad.
+    Stream and job use the same loaded calibration and tag map -- if the image shows
+    something different from the job result, it is not due to two configurations. The
+    detector is deliberately NOT the same: until 2026-09-24 the job and the stream ran on
+    a shared instance, both with `subpixel_corner_refinement` from the config (currently
+    `True` -- layer 1 needs it, see `AprilTagProfileConfig`). Measured live on pi1
+    (py-spy dump): the job thread (`vision-apriltag_0`) and the overlay thread ran
+    `detector.detect()` AT THE SAME TIME with `CORNER_REFINE_APRILTAG` active -- together
+    enough CPU contention to make the 20 s job timeout trip again. The stream does not
+    need the refinement (demo image, lower resolution than the job), so it gets its OWN
+    detector instance with the refinement permanently off, independent of the config value
+    for the job path.
 
-    Seit 21.10.2026 zeichnet das Overlay die Tags aus der Erkennung in voller
-    Aufloesung (`source.latest_tags`) und erkennt nur noch selten selbst, im
-    Hintergrund und nicht waehrend eines Jobs (`set_busy`). Der eigene
-    Detektor bleibt dafuer -- ein Detektor ist nicht fuer zwei Threads gebaut.
+    Since 21.10.2026 the overlay draws the tags from detection at full resolution
+    (`source.latest_tags`) and only rarely detects itself, in the background and not during
+    a job (`set_busy`). The own detector remains for this -- a detector is not built for
+    two threads.
     """
     job_detector = getattr(source, "_detector", None)
     calibration = getattr(source, "_calibration", None)
@@ -48,10 +46,10 @@ def _build_annotator(source: DetectionSource):
 
     from ..stream_overlay import AprilTagStreamAnnotator
 
-    # Detektor-Parameter wie beim Job, sonst zeigt das Overlay andere Tags --
-    # bis auf die Eckenverfeinerung: sie bleibt im Stream bewusst aus (siehe
-    # oben, CPU-Konkurrenz zum Job), auch wenn `cornerRefinementMethod`
-    # ausdruecklich in den Parametern steht.
+    # Detector parameters as in the job, otherwise the overlay would show other tags --
+    # except for corner refinement: it is deliberately left out of the stream (see above,
+    # CPU contention with the job), even if `cornerRefinementMethod` is explicitly in the
+    # parameters.
     stream_parameters = {
         name: value
         for name, value in config.detector_parameters.items()
@@ -81,12 +79,12 @@ def _start_camera_stream(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
 ) -> tuple[CameraStreamPublisher | None, Any]:
-    """Startet den Livestream-Publisher, falls konfiguriert und Kamera bereit.
+    """Start the live stream publisher, if configured and the camera is ready.
 
-    Nutzt dieselbe `SharedCamera`, die auch die Erkennung offen haelt — eine
-    zweite Kamera lohnt sich hier nicht, siehe `camera.py`. Gibt den
-    Annotator zusaetzlich zurueck, damit `install_vision_machine` ihm spaeter
-    eine laufende `CalibrationSession` anhaengen kann (`set_calibration_session`).
+    Uses the same `SharedCamera` that detection also holds open -- a second camera is not
+    worth it here, see `camera.py`. Additionally returns the annotator, so that
+    `install_vision_machine` can later attach a running `CalibrationSession` to it
+    (`set_calibration_session`).
     """
     if space.latest_camera_frame is None:
         return None, None
@@ -123,12 +121,11 @@ def _start_camera_stream(
 async def _start_mjpeg_server(
     space: VisionAddressSpace, stream: CameraStreamPublisher
 ) -> MjpegServer | None:
-    """Startet den MJPEG-Stream und nennt seinen Port im Adressraum.
+    """Start the MJPEG stream and publish its port in the address space.
 
-    Scheitert das Binden (Port belegt), laeuft der Server ohne weiter: der
-    Knoten bleibt auf 0 und das Frontend faellt auf `LatestCameraFrame`
-    zurueck. Der Livestream ist ein Debugwerkzeug, kein Grund fuer einen
-    Startabbruch.
+    If binding fails (port in use), the server continues without it: the node stays at 0
+    and the frontend falls back to `LatestCameraFrame`. The live stream is a debugging
+    tool, not a reason to abort the startup.
     """
     config = space.config.camera_stream
     if config is None or config.http_port <= 0 or space.camera_stream_http_port is None:

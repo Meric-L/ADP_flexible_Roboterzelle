@@ -1,15 +1,14 @@
-"""Tag-Erkennung hinter einem Protokoll: cv2.aruco oder pupil_apriltags.
+"""Tag detection behind one interface: cv2.aruco or pupil_apriltags.
 
-Der Prototyp nutzte `pupil_apriltags`; die Zielarchitektur laut
-`vision_server/profiles.py` und doc/projektdoku/altlasten.md D3 ist `cv2.aruco`.
-Statt jetzt zu entscheiden und spaeter umzuschreiben, stehen beide hinter
-derselben Schnittstelle. Die Posenschaetzung liegt bewusst in `pose.py` und
-nicht hier -- sonst haenge die Posenguete vom Backend ab, und die beiden
-waeren nicht vergleichbar.
+The prototype used `pupil_apriltags`; the target architecture per
+`vision_server/profiles.py` and doc/projektdoku/altlasten.md D3 is `cv2.aruco`.
+Instead of deciding now and rewriting later, both sit behind the same
+interface. Pose estimation deliberately lives in `pose.py` and not here --
+otherwise pose quality would depend on the backend, and the two would not be
+comparable.
 
-`cv2` wird nur in Konstruktoren importiert, nie auf Modulebene. Der Import
-dieses Moduls bleibt damit billig, und der Vision-Server kann ohne OpenCV
-starten.
+`cv2` is only imported in constructors, never at module level. Importing this
+module stays cheap, and the vision server can start without OpenCV.
 """
 
 import logging
@@ -23,9 +22,9 @@ from .tagmap import DEFAULT_TAG_FAMILY
 
 _log = logging.getLogger(__name__)
 
-#: Tag-Familie -> Name der `cv2.aruco.DICT_*`-Konstante. Die Zeichenkette
-#: kommt aus `AprilTagProfileConfig.tag_family` und wird nur hier aufgeloest,
-#: damit die Konfiguration eine schlichte Stdlib-Dataclass bleiben kann.
+#: Tag family -> name of the `cv2.aruco.DICT_*` constant. The string comes from
+#: `AprilTagProfileConfig.tag_family` and is only resolved here, so the
+#: configuration can stay a plain stdlib dataclass.
 ARUCO_DICTIONARIES = {
     "tag36h11": "DICT_APRILTAG_36h11",
     "tag25h9": "DICT_APRILTAG_25h9",
@@ -40,12 +39,12 @@ ARUCO_DICTIONARIES = {
 
 @runtime_checkable
 class TagDetector(Protocol):
-    """Findet Tags in einem Graustufenbild."""
+    """Find tags in a grayscale image."""
 
     family: str
 
     def detect(self, gray: Any) -> list[TagObservation]:
-        """Liefert alle gefundenen Tags, oder eine leere Liste, wenn keiner da ist."""
+        """Return all detected tags, or an empty list if none are found."""
         ...
 
 
@@ -55,10 +54,10 @@ def _as_corner_tuple(corners) -> tuple[tuple[float, float], ...]:
 
 
 def predefined_dictionary(name: str):
-    """Loest einen `DICT_*`-Namen zum cv2-Dictionary-Objekt auf.
+    """Resolve a `DICT_*` name to the cv2 dictionary object.
 
-    Setzt OpenCV >= 4.8 voraus (`getPredefinedDictionary`). Auch ausserhalb
-    des Detektors noetig, fuer alles, was Marker **erzeugt**, z. B.
+    Requires OpenCV >= 4.8 (`getPredefinedDictionary`). Also needed outside the
+    detector, for anything that **generates** markers, e.g.
     `tools/make_synthetic_scene.py`.
     """
     import cv2
@@ -74,7 +73,7 @@ def predefined_dictionary(name: str):
 
 
 def aruco_dictionary(family: str = DEFAULT_TAG_FAMILY):
-    """Dasselbe fuer einen Familiennamen aus der Konfiguration."""
+    """Same as `predefined_dictionary`, for a family name from the configuration."""
     name = ARUCO_DICTIONARIES.get(family)
     if name is None:
         known = ", ".join(sorted(ARUCO_DICTIONARIES))
@@ -85,12 +84,12 @@ def aruco_dictionary(family: str = DEFAULT_TAG_FAMILY):
 def apply_detector_parameters(
     parameters: Any, values: Mapping[str, Any] | None
 ) -> dict[str, tuple[Any, Any]]:
-    """Setzt `values` (Attributname -> Wert) auf ein `DetectorParameters`-Objekt.
+    """Set `values` (attribute name -> value) on a `DetectorParameters` object.
 
-    Der Wert wird auf den Typ des vorhandenen Attributs gebracht (bool, int,
-    float). `ValueError` bei unbekanntem Namen oder einem Wert, der nicht in
-    diesen Typ passt. Rueckgabe: nur die Eintraege, die vom bisherigen Wert
-    abweichen, als `{name: (vorher, nachher)}` -- fuers Start-Log.
+    The value is converted to the type of the existing attribute (bool, int,
+    float). Raises `ValueError` for an unknown name or a value that does not fit
+    that type. Returns only the entries that differ from the previous value, as
+    `{name: (before, after)}` -- for the start log.
     """
     changed: dict[str, tuple[Any, Any]] = {}
     for name, value in (values or {}).items():
@@ -115,8 +114,8 @@ def apply_detector_parameters(
 
 
 def _as_type_of(current: Any, value: Any) -> Any:
-    """Bringt `value` auf den Typ von `current`; `ValueError`/`TypeError` sonst."""
-    if isinstance(current, bool):  # vor int: bool ist ein int
+    """Convert `value` to the type of `current`; raise `ValueError`/`TypeError` otherwise."""
+    if isinstance(current, bool):  # before int: bool is an int
         if isinstance(value, bool):
             return value
         if isinstance(value, int) and value in (0, 1):
@@ -133,7 +132,7 @@ def _as_type_of(current: Any, value: Any) -> Any:
     return value
 
 
-#: Verfahren der Eckenverfeinerung (`corner_refinement_method`).
+#: Corner refinement methods (`corner_refinement_method`).
 CORNER_METHOD_APRILTAG = "apriltag"
 CORNER_METHOD_SUBPIX = "subpix"
 CORNER_METHOD_NONE = "none"
@@ -145,10 +144,10 @@ _CORNER_REFINE_CONSTANTS = {
 
 
 class ArucoTagDetector:
-    """Erkennung ueber `cv2.aruco`. Der Standardweg.
+    """Detection via `cv2.aruco`. The default path.
 
-    Setzt OpenCV >= 4.8 voraus (`ArucoDetector`, `getPredefinedDictionary`);
-    beide Pis und der Entwicklungsrechner laufen mit OpenCV 5.0.
+    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); both
+    Pis and the development machine run OpenCV 5.0.
     """
 
     def __init__(
@@ -161,14 +160,14 @@ class ArucoTagDetector:
         detector_parameters: Mapping[str, Any] | None = None,
         corner_refinement_method: str = CORNER_METHOD_APRILTAG,
     ) -> None:
-        """`detector_parameters`: Attributname von `cv2.aruco.DetectorParameters`
-        -> Wert, z. B. `{"errorCorrectionRate": 0.8}`; `None`/leer = OpenCV-
-        Standard. Unbekannter Name oder unpassender Wert wirft `ValueError`.
-        Die Eintraege werden NACH `subpixel_corner_refinement` gesetzt und
-        gewinnen damit, z. B. ein ausdrueckliches `cornerRefinementMethod`.
-        `corner_refinement_method` waehlt bei aktiver Verfeinerung das
-        Verfahren: `"apriltag"` (CORNER_REFINE_APRILTAG), `"subpix"`
-        (CORNER_REFINE_SUBPIX) oder `"none"`.
+        """`detector_parameters`: attribute name of `cv2.aruco.DetectorParameters`
+        -> value, e.g. `{"errorCorrectionRate": 0.8}`; `None`/empty = OpenCV
+        default. An unknown name or an unfitting value raises `ValueError`.
+        The entries are set AFTER `subpixel_corner_refinement`, so they win, e.g.
+        an explicit `cornerRefinementMethod`.
+        `corner_refinement_method` selects the method when refinement is active:
+        `"apriltag"` (CORNER_REFINE_APRILTAG), `"subpix"` (CORNER_REFINE_SUBPIX)
+        or `"none"`.
         """
         import cv2
 
@@ -186,37 +185,36 @@ class ArucoTagDetector:
         else:
             self._parameters = aruco.DetectorParameters()
 
-        # Subpixel-accurate corners: kann die Pose-Qualitaet auf Distanz
-        # verbessern, kostet aber messbar CPU-Zeit (py-spy auf pi1: ~46% des
-        # Profils in `_locate -> detect` auf vollen 12 MP). Fuer
-        # Dekodierbarkeit nicht noetig (Historie siehe
-        # `AprilTagProfileConfig.subpixel_corner_refinement`, Default aus).
-        # Konstruktor-Default bleibt bewusst konservativ (aus), Aufrufer
-        # sollen explizit entscheiden.
+        # Subpixel-accurate corners: can improve pose quality at distance, but
+        # measurably costs CPU time (py-spy on pi1: ~46% of the profile in
+        # `_locate -> detect` on full 12 MP). Not needed for decodability
+        # (history: `AprilTagProfileConfig.subpixel_corner_refinement`, default
+        # off). The constructor default stays deliberately conservative (off);
+        # callers should decide explicitly.
         if subpixel_corner_refinement and corner_refinement_method != CORNER_METHOD_NONE:
             refine = getattr(cv2.aruco, _CORNER_REFINE_CONSTANTS[corner_refinement_method], None)
             if refine is not None:
                 try:
                     self._parameters.cornerRefinementMethod = refine
-                except Exception:  # pragma: no cover - je nach Build schreibgeschuetzt
+                except Exception:  # pragma: no cover - read-only in some builds
                     _log.debug("cornerRefinementMethod nicht setzbar")
-            # `aprilTagQuadDecimate` (Standard-AprilTag-Parameter): laesst die
-            # Verfeinerungssuche auf einer verkleinerten Kopie laufen --
-            # kostet Reichweite/Robustheit bei sehr kleinen/entfernten Tags,
-            # spart aber CPU-Zeit im Job-Erkennungs-Thread (py-spy auf pi1:
-            # ~46% des Profils in detect() mit Verfeinerung auf vollem
-            # 12-MP-Frame). `0.0` = keine Dezimierung, wirkt nur zusammen mit
+            # `aprilTagQuadDecimate` (standard AprilTag parameter): lets the
+            # refinement search run on a downscaled copy. Costs range and
+            # robustness for very small or distant tags, but saves CPU time in
+            # the job detection thread (py-spy on pi1: ~46% of the profile in
+            # detect() with refinement on the full 12 MP frame). `0.0` = no
+            # decimation; it only takes effect together with
             # `cornerRefinementMethod == CORNER_REFINE_APRILTAG`.
             if apriltag_quad_decimate:
                 try:
                     self._parameters.aprilTagQuadDecimate = apriltag_quad_decimate
-                except Exception:  # pragma: no cover - je nach Build schreibgeschuetzt
+                except Exception:  # pragma: no cover - read-only in some builds
                     _log.debug("aprilTagQuadDecimate nicht setzbar")
 
-        # Frei waehlbare Detektor-Parameter (Preset, Umgebungsvariable, CLI).
-        # Bewusst streng: ein Tippfehler im Namen soll beim Start auffallen
-        # und nicht stumm wirkungslos bleiben.
-        #: Vom Standard abweichende Eintraege `{name: (vorher, nachher)}`, fuers Log.
+        # User-selectable detector parameters (preset, environment variable, CLI).
+        # Deliberately strict: a typo in the name should show at startup and not
+        # silently have no effect.
+        #: Entries that differ from the default, as `{name: (before, after)}`, for the log.
         self.changed_parameters = apply_detector_parameters(
             self._parameters, detector_parameters
         )
@@ -236,12 +234,11 @@ class ArucoTagDetector:
 
 
 class PupilAprilTagDetector:
-    """Erkennung ueber `pupil_apriltags`. Fuer Vergleichsmessungen.
+    """Detection via `pupil_apriltags`. For comparison measurements.
 
-    Die Bibliothek liefert die Ecken gegen den Uhrzeigersinn, unten links
-    zuerst; hier werden sie in die kanonische Reihenfolge gedreht (im
-    Uhrzeigersinn, oben links zuerst), damit `pose.py` fuer beide Backends
-    gleich rechnet.
+    The library returns the corners counter-clockwise, starting bottom left;
+    here they are rotated into the canonical order (clockwise, starting top
+    left) so that `pose.py` computes the same result for both backends.
     """
 
     def __init__(self, family: str = DEFAULT_TAG_FAMILY, *, nthreads: int = 1) -> None:
@@ -254,7 +251,7 @@ class PupilAprilTagDetector:
         found = []
         for detection in self._detector.detect(gray, estimate_tag_pose=False):
             corners = list(_as_corner_tuple(detection.corners))
-            corners.reverse()  # gegen den Uhrzeigersinn ab unten links -> im Uhrzeigersinn ab oben links
+            corners.reverse()  # counter-clockwise from bottom left -> clockwise from top left
             found.append(
                 TagObservation(
                     tag_id=int(detection.tag_id),
@@ -274,15 +271,15 @@ def build_detector(
     detector_parameters: Mapping[str, Any] | None = None,
     corner_refinement_method: str = CORNER_METHOD_APRILTAG,
 ) -> TagDetector:
-    """Baut den Detektor fuer die gewuenschte Familie.
+    """Build the detector for the requested family.
 
-    `backend="auto"` versucht zuerst `cv2.aruco` und weicht auf
-    `pupil_apriltags` aus, wenn diese OpenCV-Version die Familie nicht kennt.
+    `backend="auto"` tries `cv2.aruco` first and falls back to
+    `pupil_apriltags` if this OpenCV version does not know the family.
 
-    `subpixel_corner_refinement`/`apriltag_quad_decimate` gelten nur fuer
-    `"aruco"`/`"auto"` -- `pupil_apriltags` hat keine aequivalente Einstellung.
-    Dasselbe gilt fuer `detector_parameters` (Attributname von
-    `cv2.aruco.DetectorParameters` -> Wert, `None` = OpenCV-Standard).
+    `subpixel_corner_refinement`/`apriltag_quad_decimate` only apply to
+    `"aruco"`/`"auto"` -- `pupil_apriltags` has no equivalent setting. The same
+    holds for `detector_parameters` (attribute name of
+    `cv2.aruco.DetectorParameters` -> value, `None` = OpenCV default).
     """
     backend = backend.lower()
     aruco_options = dict(

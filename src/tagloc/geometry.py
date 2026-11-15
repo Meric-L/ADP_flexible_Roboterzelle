@@ -1,20 +1,18 @@
-"""Posen, Komposition, Quaternionen. Reine Mathematik, kein OpenCV.
+"""Poses, composition, quaternions. Pure mathematics, no OpenCV.
 
-Konventionen im ganzen Projekt:
+Conventions used throughout the project:
 
-* Eine Pose ist ein `np.ndarray` der Form `(4, 4)`, `float64`, homogen.
-  Kein eigener Typ -- numpy genuegt, und jeder Funktionsname sagt, welches
-  Koordinatensystem gemeint ist.
-* `T_a_b` bedeutet "Pose von b, ausgedrueckt in a". Komposition:
+* A pose is a homogeneous `np.ndarray` of shape `(4, 4)`, `float64`.
+  There is no dedicated type -- numpy is sufficient, and each function name
+  states which coordinate system is meant.
+* `T_a_b` means "pose of b, expressed in a". Composition:
   `T_a_c = compose(T_a_b, T_b_c)`.
-* Laengen in **Metern**, Winkel in **Radiant**, ohne Ausnahme.
-* Quaternionen in der Reihenfolge **xyzw** -- passend zur Deklaration der
-  Nutzdaten (`"rotation": "quaternion_xyzw"`) und zu dem, was three.js
-  erwartet. Nicht wxyz.
+* Lengths in **metres**, angles in **radians**, without exception.
+* Quaternions in the order **xyzw** -- matching the declaration of the payload
+  (`"rotation": "quaternion_xyzw"`) and what three.js expects. Not wxyz.
 
-Rodrigues ist hier ausgeschrieben, statt `cv2.Rodrigues` aufzurufen, damit
-dieses Modul ohne OpenCV importierbar bleibt und die Mathematik ueberall
-testbar ist.
+Rodrigues is written out here instead of calling `cv2.Rodrigues`, so that this
+module stays importable without OpenCV and the mathematics stays testable everywhere.
 """
 
 import math
@@ -22,20 +20,20 @@ from collections.abc import Sequence
 
 import numpy as np
 
-#: Eine homogene 4x4-Transformation.
+#: A homogeneous 4x4 transformation.
 Pose = np.ndarray
 
-#: Unterhalb dieses Drehwinkels wird die Kleinwinkelnaeherung benutzt.
+#: Below this rotation angle the small-angle approximation is used.
 _ANGLE_EPS = 1e-12
 
 
 def identity() -> Pose:
-    """Liefert die Identitaetspose."""
+    """Return the identity pose."""
     return np.eye(4, dtype=np.float64)
 
 
 def from_rotation_translation(rotation, translation) -> Pose:
-    """Baut eine Pose aus einer 3x3-Rotationsmatrix und einem Translationsvektor."""
+    """Build a pose from a 3x3 rotation matrix and a translation vector."""
     rotation = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
     translation = np.asarray(translation, dtype=np.float64).reshape(3)
     pose = np.eye(4, dtype=np.float64)
@@ -45,7 +43,7 @@ def from_rotation_translation(rotation, translation) -> Pose:
 
 
 def skew(vector) -> np.ndarray:
-    """Liefert die schiefsymmetrische Matrix eines 3-Vektors."""
+    """Return the skew-symmetric matrix of a 3-vector."""
     x, y, z = np.asarray(vector, dtype=np.float64).reshape(3)
     return np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]], dtype=np.float64)
 
@@ -55,7 +53,7 @@ def rotation_from_rvec(rvec) -> np.ndarray:
     rvec = np.asarray(rvec, dtype=np.float64).reshape(3)
     theta = float(np.linalg.norm(rvec))
     if theta < _ANGLE_EPS:
-        # Kleinwinkelnaeherung; konvergiert gegen die Identitaet fuer theta -> 0.
+        # Small-angle approximation; converges to the identity for theta -> 0.
         return np.eye(3, dtype=np.float64) + skew(rvec)
     axis = rvec / theta
     k = skew(axis)
@@ -63,10 +61,10 @@ def rotation_from_rvec(rvec) -> np.ndarray:
 
 
 def rvec_from_rotation(rotation) -> np.ndarray:
-    """Kehrt `rotation_from_rvec` um.
+    """Invert `rotation_from_rvec`.
 
-    Theta nahe pi wird getrennt behandelt: Der schiefsymmetrische Anteil
-    verschwindet dort, und die uebliche Formel verliert die Achse.
+    Theta near pi is handled separately: the skew-symmetric part vanishes there,
+    and the usual formula loses the axis.
     """
     rotation = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
     cos_theta = (np.trace(rotation) - 1.0) / 2.0
@@ -75,7 +73,7 @@ def rvec_from_rotation(rotation) -> np.ndarray:
     if theta < 1e-8:
         return np.zeros(3, dtype=np.float64)
     if math.pi - theta < 1e-6:
-        # Achse aus der Diagonale von R + I; das Vorzeichen ist bei pi ohnehin frei.
+        # Axis from the diagonal of R + I; the sign is free at pi anyway.
         diagonal = np.clip((np.diag(rotation) + 1.0) / 2.0, 0.0, None)
         axis = np.sqrt(diagonal)
         largest = int(np.argmax(axis))
@@ -100,23 +98,23 @@ def rvec_from_rotation(rotation) -> np.ndarray:
 
 
 def from_rvec_tvec(rvec, tvec) -> Pose:
-    """Baut eine Pose aus dem rvec/tvec-Paar, das solvePnP liefert."""
+    """Build a pose from the rvec/tvec pair returned by solvePnP."""
     return from_rotation_translation(rotation_from_rvec(rvec), np.asarray(tvec).reshape(3))
 
 
 def to_rvec_tvec(pose: Pose) -> tuple[np.ndarray, np.ndarray]:
-    """Zerlegt eine Pose in `(rvec, tvec)`, wie `cv2.drawFrameAxes` es erwartet."""
+    """Split a pose into `(rvec, tvec)`, as expected by `cv2.drawFrameAxes`."""
     pose = np.asarray(pose, dtype=np.float64)
     return rvec_from_rotation(pose[:3, :3]), pose[:3, 3].copy()
 
 
 def quaternion_from_rotation(rotation) -> np.ndarray:
-    """Rotationsmatrix -> Quaternion xyzw, Vorzeichen auf `w >= 0` normiert.
+    """Convert a rotation matrix to a quaternion xyzw, with the sign normalised to `w >= 0`.
 
-    Ohne Vorzeichennormierung wuerden zwei mathematisch gleiche Rotationen
-    verschiedene Zahlen liefern, was Vergleiche gegen einen Referenzwert
-    bricht. Nutzt das Verfahren von Shepperd: Immer den groessten der vier
-    Nenner waehlen, um die Division durch nahezu null zu vermeiden.
+    Without sign normalisation, two mathematically equal rotations would yield
+    different numbers, which breaks comparisons against a reference value. Uses
+    Shepperd's method: always pick the largest of the four denominators to avoid
+    division by a value close to zero.
     """
     rotation = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
     trace = float(np.trace(rotation))
@@ -152,7 +150,7 @@ def quaternion_from_rotation(rotation) -> np.ndarray:
 
 
 def rotation_from_quaternion(quaternion) -> np.ndarray:
-    """Wandelt ein Quaternion xyzw in eine Rotationsmatrix um."""
+    """Convert a quaternion xyzw into a rotation matrix."""
     x, y, z, w = np.asarray(quaternion, dtype=np.float64).reshape(4)
     norm = math.sqrt(x * x + y * y + z * z + w * w)
     if norm < _ANGLE_EPS:
@@ -169,14 +167,14 @@ def rotation_from_quaternion(quaternion) -> np.ndarray:
 
 
 def from_position_quaternion(position, orientation_xyzw) -> Pose:
-    """Baut eine Pose aus einer Position (m) und einem Quaternion xyzw."""
+    """Build a pose from a position (m) and a quaternion xyzw."""
     return from_rotation_translation(rotation_from_quaternion(orientation_xyzw), position)
 
 
 def to_position_quaternion(
     pose: Pose,
 ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
-    """Zerlegt eine Pose in die Felder `position` und `orientation` der Nutzdaten."""
+    """Split a pose into the `position` and `orientation` fields of the payload."""
     pose = np.asarray(pose, dtype=np.float64)
     position = tuple(float(value) for value in pose[:3, 3])
     orientation = tuple(float(value) for value in quaternion_from_rotation(pose[:3, :3]))
@@ -184,7 +182,7 @@ def to_position_quaternion(
 
 
 def compose(*poses: Pose) -> Pose:
-    """Verkettet Posen von links nach rechts: `compose(T_a_b, T_b_c) == T_a_c`."""
+    """Chain poses from left to right: `compose(T_a_b, T_b_c) == T_a_c`."""
     result = identity()
     for pose in poses:
         result = result @ np.asarray(pose, dtype=np.float64)
@@ -192,10 +190,10 @@ def compose(*poses: Pose) -> Pose:
 
 
 def invert(pose: Pose) -> Pose:
-    """Invertiert eine Pose analytisch statt ueber `np.linalg.inv`.
+    """Invert a pose analytically instead of via `np.linalg.inv`.
 
-    Exakt und guenstiger fuer eine starre Transformation: Die Inverse einer
-    Rotationsmatrix ist ihre Transponierte.
+    Exact and cheaper for a rigid transform: the inverse of a rotation matrix
+    is its transpose.
     """
     pose = np.asarray(pose, dtype=np.float64)
     rotation = pose[:3, :3]
@@ -207,7 +205,7 @@ def invert(pose: Pose) -> Pose:
 
 
 def translation_distance_m(first: Pose, second: Pose) -> float:
-    """Liefert den Abstand der beiden Urspruenge in Metern."""
+    """Return the distance between the origins of two poses in metres."""
     first = np.asarray(first, dtype=np.float64)
     second = np.asarray(second, dtype=np.float64)
     return float(np.linalg.norm(first[:3, 3] - second[:3, 3]))
@@ -220,13 +218,12 @@ def point_on_ray_at_height(
     *,
     min_slope: float = 0.2,
 ) -> tuple[float, float, float] | None:
-    """Schnitt des Strahls `origin -> through` mit der Ebene `z = height_m`.
+    """Intersect the ray `origin -> through` with the plane `z = height_m`.
 
-    `origin` ist die Kameraposition, `through` der gemessene Punkt (Tag-Mitte),
-    beide im Welt-KS in Metern. Liefert `None`, wenn der Strahl zu flach
-    verlaeuft (`|dz| / |d| < min_slope`, z. B. ein Tag fast auf Kamerahoehe),
-    die Ebene hinter der Kamera liegt (`t <= 0`) oder die Richtung null ist.
-    Wirft nicht.
+    `origin` is the camera position, `through` the measured point (tag centre),
+    both in the world frame in metres. Returns `None` if the ray is too flat
+    (`|dz| / |d| < min_slope`, e.g. a tag almost at camera height), if the plane
+    lies behind the camera (`t <= 0`), or if the direction is zero. Does not raise.
     """
     try:
         start = np.asarray(origin, dtype=np.float64).reshape(3)
@@ -247,7 +244,7 @@ def point_on_ray_at_height(
 
 
 def rotation_distance_rad(first: Pose, second: Pose) -> float:
-    """Liefert den verbleibenden Drehwinkel zwischen zwei Posen in Radiant."""
+    """Return the remaining rotation angle between two poses in radians."""
     first = np.asarray(first, dtype=np.float64)
     second = np.asarray(second, dtype=np.float64)
     relative = first[:3, :3].T @ second[:3, :3]
@@ -256,23 +253,21 @@ def rotation_distance_rad(first: Pose, second: Pose) -> float:
 
 
 def average_poses(poses: Sequence[Pose], weights: Sequence[float] | None = None) -> Pose:
-    """Mittelt mehrere Posen desselben Objekts.
+    """Average several poses of the same object.
 
-    Translation arithmetisch, Rotation nach Markley: Eigenvektor zum
-    groessten Eigenwert von `sum(w q qT)`. Quaternionen komponentenweise zu
-    mitteln waere falsch -- das Ergebnis waere nicht normiert, und `q` und
-    `-q` (dieselbe Rotation) wuerden sich gegenseitig ausloeschen.
+    Translation is averaged arithmetically, rotation following Markley: the
+    eigenvector of the largest eigenvalue of `sum(w q qT)`. Averaging quaternion
+    components would be wrong -- the result would not be normalised, and `q` and
+    `-q` (the same rotation) would cancel each other out.
 
-    `weights` ist optional und gewichtet standardmaessig gleich, sodass jeder
-    bestehende Aufrufer sein exaktes Ergebnis behaelt. Es existiert wegen der
-    vier Welttags: Sie werden aus sehr verschiedenen Abstaenden und Winkeln
-    gesehen, und ein ungewichtetes Mittel laesst den schlechtesten von ihnen
-    die Kamerapose ziehen.
+    `weights` is optional and equal by default, so every existing caller keeps
+    its exact result. It exists because of the four world tags: they are seen
+    from very different distances and angles, and an unweighted mean lets the
+    worst of them pull the camera pose.
 
-    Negative oder nicht endliche Gewichte werden abgelehnt, und Gewichte mit
-    Summe null fallen auf Gleichgewichtung zurueck -- ein entarteter
-    Gewichtsvektor darf nicht still eine Pose ergeben, die bloss der
-    numerisch groesste Rest ist.
+    Negative or non-finite weights are rejected, and weights that sum to zero
+    fall back to equal weighting -- a degenerate weight vector must not silently
+    yield a pose that is merely the numerically largest residue.
     """
     if not poses:
         raise ValueError("average_poses braucht mindestens eine Pose")
@@ -295,9 +290,9 @@ def average_poses(poses: Sequence[Pose], weights: Sequence[float] | None = None)
     quaternions = np.array(
         [quaternion_from_rotation(np.asarray(p, dtype=np.float64)[:3, :3]) for p in poses]
     )
-    # Keine Vorzeichenangleichung noetig: `q` und `-q` sind dieselbe Rotation,
-    # und der Akkumulator ist dagegen unempfindlich, da `q qT == (-q)(-q)T` --
-    # anders als ein komponentenweises Mittel, weshalb das hier eigenvektorbasiert bleiben muss.
+    # No sign alignment needed: `q` and `-q` are the same rotation, and the accumulator
+    # is insensitive to the sign since `q qT == (-q)(-q)T` -- unlike a component-wise
+    # mean, which is why this must stay eigenvector-based.
     accumulator = (quaternions * weight_vector[:, None]).T @ quaternions
     eigenvalues, eigenvectors = np.linalg.eigh(accumulator)
     mean_quaternion = eigenvectors[:, int(np.argmax(eigenvalues))]
@@ -309,11 +304,11 @@ def average_poses(poses: Sequence[Pose], weights: Sequence[float] | None = None)
 
 
 def pose_to_dict(pose: Pose) -> dict[str, list[float]]:
-    """Wandelt eine Pose fuer JSON in `{"position": [...], "orientation": [x, y, z, w]}` um."""
+    """Convert a pose into `{"position": [...], "orientation": [x, y, z, w]}` for JSON."""
     position, orientation = to_position_quaternion(pose)
     return {"position": list(position), "orientation": list(orientation)}
 
 
 def pose_from_dict(data) -> Pose:
-    """Kehrt `pose_to_dict` um."""
+    """Invert `pose_to_dict`."""
     return from_position_quaternion(data["position"], data["orientation"])

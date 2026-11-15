@@ -1,14 +1,15 @@
-"""Draws detection results onto the image -- for livestream and CLI.
+"""Draw detection results onto the image, for the live stream and the CLI.
 
-Standard marker rendering is an **axis cross in the tag** (red X, green Y,
-blue Z), plus the outline and ID. That's exactly what `draw_tag_overlay`
+The standard marker rendering is an **axis cross in the tag** (red X, green Y,
+blue Z), plus the outline and ID. That is exactly what `draw_tag_overlay`
 does: the outline shows *that* something was detected, the axis cross shows
 *how* the pose sits -- a twisted cross is obvious at a glance, a wrong number
 is not.
 
-Der Livestream (Modus `apriltag`) nutzt dagegen die schlanke Variante
-`draw_tag_boxes`: nur gruener Kasten und Tag-ID, ohne Achsenkreuz und
-Statusleiste. Die ausfuehrliche Variante bleibt der CLI (`python -m tagloc.cli.detect --overlay`).
+The live stream (mode `apriltag`) instead uses the slimmer variant
+`draw_tag_boxes`: only a green box and the tag ID, without the axis cross and
+status bar. The detailed variant stays with the CLI
+(`python -m tagloc.cli.detect --overlay`).
 
 One rule for this module: it only draws, it never computes. Poses arrive
 already finished. That lets the same code run for the stream, a CLI window,
@@ -39,20 +40,20 @@ COLOR_BOARD = (255, 190, 60)
 
 _log = logging.getLogger(__name__)
 
-#: Auf ~640 px Bildbreite abgestimmt (Hand-Pi, bzw. frueher ueberall der
-#: verkleinerte Stream). "apriltag"/"off" zeichnen seit 2026-09-22 auf dem
-#: vollen Frame (bis 4056 px an der Deckenkamera, siehe camera_stream.py) --
-#: ohne Skalierung wurde ein 2-px-Strich dort beim Reinzoomen unlesbar statt
-#: deutlicher. `_scale_for` haelt Strichstaerke/Schriftgroesse/Abstaende
-#: proportional zur tatsaechlichen Bildbreite, nie kleiner als die
-#: Referenzwerte -- die sind schon das Minimum fuer Lesbarkeit.
+#: Tuned for an image width of about 640 px (hand-camera Pi, or formerly the
+#: scaled-down stream everywhere). Modes "apriltag" and "off" have drawn on the
+#: full frame since 2026-09-22 (up to 4056 px on the ceiling camera, see
+#: camera_stream.py). Without scaling, a 2-px line there became unreadable when
+#: zoomed in, instead of clearer. `_scale_for` keeps stroke width, font size and
+#: spacing proportional to the actual image width, never smaller than the
+#: reference values -- those already are the minimum for legibility.
 _REFERENCE_WIDTH = 640
 _FONT_SCALE = 0.5
 _THICKNESS = 2
 
 
 def _scale_for(image) -> float:
-    """Faktor Bildbreite / `_REFERENCE_WIDTH`, nach unten auf 1 begrenzt."""
+    """Return the image width divided by `_REFERENCE_WIDTH`, but at least 1."""
     width = np.asarray(image).shape[1]
     return max(1.0, width / _REFERENCE_WIDTH)
 
@@ -60,7 +61,7 @@ def _scale_for(image) -> float:
 def _put_text(
     image, text: str, origin: tuple[int, int], color=COLOR_TEXT, *, outline: bool = True
 ) -> None:
-    """Draw text, by default with a dark outline -- otherwise unreadable on a light background.
+    """Draw text, by default with a dark outline so it stays readable on light backgrounds.
 
     `outline=False` draws plain text only (status bar: the outline read as a
     doubled, shadowed font there).
@@ -96,21 +97,20 @@ def draw_tag_outline(image, tag_pose: TagPose, color) -> None:
     cv2.circle(image, first, max(2, round(5 * scale)), color, -1)
 
 
-#: Breite des gruenen Tag-Rahmens in `draw_tag_boxes`, Pixel.
+#: Width of the green tag frame in `draw_tag_boxes`, in pixels.
 _TAG_BOX_PX = 2
-#: Versatz fuer den 1-px-Rand der Tag-ID in `draw_tag_boxes`.
+#: Offset for the 1-px border of the tag ID in `draw_tag_boxes`.
 _ONE_PX_RING = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)]
 
 
 def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
-    """Schlankes Stream-Overlay: je Tag nur gruener Umriss und "#<id>".
+    """Draw a slim stream overlay: per tag only a green outline and "#<id>".
 
-    Kein Achsenkreuz, kein Eck-Punkt, keine Distanz, kein Reprojektionsfehler;
-    mehrdeutige Posen werden nicht anders gefaerbt. Das Label sitzt knapp ueber
-    der linken oberen Ecke der Bounding-Box, bleibt aber im Bild. Der Rahmen ist
-    genau 2 px breit, die Zahl hat einen 1 px breiten
-    schwarzen Rand. Posen ohne `observation` werden uebersprungen. Aendert
-    `image` in-place.
+    No axis cross, no corner dot, no distance and no reprojection error;
+    ambiguous poses are not colored differently. The label sits just above the
+    top-left corner of the bounding box but stays inside the image. The frame is
+    exactly 2 px wide, and the number has a 1 px black border. Poses without
+    `observation` are skipped. Modifies `image` in-place.
     """
     import cv2
 
@@ -123,9 +123,9 @@ def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
         if tag_pose.observation is None:
             continue
         corners = np.asarray(tag_pose.observation.corners, dtype=np.int32).reshape(-1, 1, 2)
-        # Rahmen genau `_TAG_BOX_PX` breit: 1-px-Linie mehrfach um je 1 px
-        # versetzt. Ueber `thickness` geht das nicht -- OpenCV rastert
-        # Strichstaerke t als 2t-1 Pixel (2 -> 3 px).
+        # Frame exactly `_TAG_BOX_PX` wide: a 1-px line drawn several times,
+        # each offset by 1 px. A `thickness` value cannot do this -- OpenCV
+        # rasterizes stroke width t as 2t-1 pixels (2 -> 3 px).
         for dx in range(_TAG_BOX_PX):
             for dy in range(_TAG_BOX_PX):
                 cv2.polylines(
@@ -134,9 +134,9 @@ def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
         x = int(corners[:, 0, 0].min())
         y = max(text_height, int(corners[:, 0, 1].min()) - margin)
         label = f"#{tag_pose.tag_id}"
-        # Schwarzer Rand genau 1 px: die Schrift schwarz um je 1 px in alle
-        # acht Richtungen versetzt, dann gruen darueber. Nicht ueber eine
-        # dickere Strichstaerke -- OpenCV 5 ignoriert die bei putText.
+        # Black border exactly 1 px: the text is drawn in black, offset by 1 px
+        # in each of the eight directions, then green on top. Not via a thicker
+        # stroke -- OpenCV 5 ignores that in putText.
         for dx, dy in _ONE_PX_RING:
             cv2.putText(
                 image, label, (x + dx, y + dy), cv2.FONT_HERSHEY_SIMPLEX, font_scale,
@@ -155,15 +155,15 @@ def draw_tag_axes(
 
     `cv2.drawFrameAxes` projects with the pinhole model only. For a fisheye
     calibration the axis ends are projected via `tagloc.lens` and drawn as
-    lines, same colours -- otherwise the cross would sit visibly off the tag
-    towards the image edge.
+    lines, in the same colors -- otherwise the cross would sit visibly off the
+    tag towards the image edge.
     """
     import cv2
 
     thickness = max(1, round(_THICKNESS * _scale_for(image)))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
-    # getattr: Aufrufer (und Test-Fakes) duerfen ein Objekt ohne `model`
-    # uebergeben -- das ist dann, wie vor dem Fisheye-Modell, Pinhole.
+    # getattr: callers (and test fakes) may pass an object without `model`;
+    # it is then treated as pinhole, as before the fisheye model was added.
     if getattr(calibration, "model", None) == FISHEYE:
         from .lens import project_points
 
@@ -244,12 +244,13 @@ def draw_board_overlay(
     """Mark the found board corners -- the stream's calibration mode.
 
     Lets the frontend see *what* the calibration sees: whether the board is
-    detected at all, where in the image it sits, and where samples are
-    still missing.
+    detected at all, where in the image it sits, and where samples are still
+    missing.
 
-    `outline=False` zeichnet Text ohne dunkle Kontur. `compact=True` schreibt
-    oben links nur "{n} Ecken" (ohne "Board:"-Praefix, ohne Abdeckungszeile)
-    und zeichnet die Ecken etwas groesser (Stream im Kalibriermodus).
+    `outline=False` draws text without a dark outline. `compact=True` writes
+    only "{n} Ecken" at the top left (without the "Board:" prefix and without
+    the coverage line) and draws the corners slightly larger (stream in
+    calibration mode).
     """
     import cv2
 
@@ -279,21 +280,21 @@ def draw_board_overlay(
     return image
 
 
-#: Anzeige-Zeitzone der Kalibrier-Zeile (Anwender sitzen in Deutschland).
+#: Display time zone of the calibration line (users are in Germany).
 _DISPLAY_TIMEZONE = "Europe/Berlin"
-#: Steht statt des Datums, wenn es keine (lesbare) Kalibrierung gibt.
+#: Shown instead of the date when there is no (readable) calibration.
 NO_CALIBRATION_STAMP = "\u2013"
 CALIBRATION_CAPTION_PREFIX = "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: "
 
 
 def format_calibration_stamp(calibration_id: str | None) -> str:
-    """Datum einer Kalibrier-ID als "TT.MM.JJJJ, HH:MM Uhr" in Europe/Berlin.
+    """Return the date of a calibration ID as "TT.MM.JJJJ, HH:MM Uhr" in Europe/Berlin.
 
-    Die ID ist `<Kamera>@<ISO-8601-Zeitstempel>`; `scale_to_resolution` kann
-    weitere Teile anhaengen (`...@1280x720`), deshalb zaehlt der erste Teil
-    nach dem "@", der als Zeitstempel mit Zeitzone lesbar ist. Ohne ID, ohne
-    lesbaren oder ohne zeitzonenbehafteten Zeitstempel kommt "\u2013"
-    zurueck -- nie ein Fehler und nie der rohe String.
+    The ID is `<camera>@<ISO-8601 timestamp>`; `scale_to_resolution` may append
+    further parts (`...@1280x720`), so the first part after the "@" that parses
+    as a timestamp with a time zone is used. Without an ID, or without a readable
+    timestamp that has a time zone, "\u2013" is returned -- never an error and
+    never the raw string.
     """
     for part in str(calibration_id or "").split("@")[1:]:
         try:
@@ -312,20 +313,19 @@ def format_calibration_stamp(calibration_id: str | None) -> str:
 
 
 def draw_calibration_caption(image, calibration_id: str | None) -> Any:
-    """Eine Zeile unten links: "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
+    """One line at the bottom left: "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
 
-    Das Datum ist das der Kamera-Kalibrierung (Intrinsik), nicht das der
-    Hand-Auge-Kalibrierung -- bis 02.11.2026 stand hier faelschlich
-    "Hand-Auge-Kalibrierung".
+    The date is that of the camera calibration (intrinsics), not that of the
+    hand-eye calibration. Until 02.11.2026 this line wrongly showed
+    "Hand-Auge-Kalibrierung" instead.
 
-    Rein weisse Schrift mit genau 1 px schwarzem Rand, ohne Balken, Schatten
-    oder Transparenz. Position und Schriftgroesse wie bei `draw_status_bar`.
+    Pure white text with a 1 px black border, without bar, shadow or
+    transparency. Position and font size are as in `draw_status_bar`.
 
-    Der Rand kommt aus einer Textmaske, die um einen Pixel aufgeweitet wird,
-    nicht aus einem zweiten `putText` mit groesserer Strichstaerke: OpenCV 5
-    rendert die Staerken 2 und 4 fast gleich breit, das Weiss deckte das
-    Schwarz dann vollstaendig zu. Die Maske ist binaer, es gibt also nur
-    Weiss, Schwarz und das unveraenderte Bild.
+    The border comes from a text mask that is dilated by one pixel, not from a
+    second `putText` with a thicker stroke: OpenCV 5 renders stroke widths 2 and
+    4 almost equally wide, so the white covered the black completely. The mask
+    is binary, so there are only white, black and the unchanged image.
     """
     import cv2
 
@@ -334,13 +334,13 @@ def draw_calibration_caption(image, calibration_id: str | None) -> Any:
     margin = round(12 * scale)
     text = CALIBRATION_CAPTION_PREFIX + format_calibration_stamp(calibration_id)
     if int(cv2.__version__.split(".")[0]) < 5:
-        # Die Hershey-Schrift von OpenCV 4 kennt nur ASCII und malt sonst "?".
+        # The Hershey font of OpenCV 4 only knows ASCII and otherwise draws "?".
         text = text.replace("\u00b7", "-").replace("\u2013", "-")
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = _FONT_SCALE * scale
     thickness = max(1, round(_THICKNESS * scale))
     (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-    pad = 3  # Platz fuer den Rand rund um die Glyphen
+    pad = 3  # Room for the border around the glyphs
     x0, y0 = max(0, margin - pad), max(0, shape[0] - margin - text_h - pad)
     x1 = min(shape[1], margin + text_w + pad)
     y1 = min(shape[0], shape[0] - margin + baseline + pad)
@@ -371,15 +371,15 @@ def draw_status_bar(image, lines: Sequence[str]) -> Any:
 
 
 class Window:
-    """A display window that doesn't crash without a screen.
+    """A display window that does not crash without a screen.
 
     `cv2.imshow` raises on a headless Pi or in an SSH session without X
     forwarding -- and only on the first frame, i.e. mid-run. The error is
     reported once here, then execution continues without a window: the
     point of the call is detection, not the picture.
 
-    `wait_ms=0` waits for a keypress. The sensible default in image-folder
-    mode: otherwise images fly by too fast to hit the abort key.
+    `wait_ms=0` waits for a keypress. A sensible choice in image-folder mode:
+    otherwise images fly by too fast to hit the abort key.
     """
 
     def __init__(self, title: str, *, enabled: bool = True) -> None:
@@ -395,7 +395,7 @@ class Window:
     def show(self, image, wait_ms: int = 1) -> str:
         """Show the image and return the pressed key, lowercased.
 
-        Empty string means "no key" -- also when no window is open at all.
+        An empty string means no key was pressed, including when no window is open.
         """
         if not self._enabled:
             return ""
@@ -439,7 +439,7 @@ def has_display() -> bool:
 
 
 def summarise(tag_poses: Sequence[TagPose], tag_map: Any = None) -> str:
-    """Return a one-liner about what was detected -- for status line and log."""
+    """Return a one-line summary of the detections, for the status line and the log."""
     if not tag_poses:
         return "keine Tags erkannt"
     parts = []

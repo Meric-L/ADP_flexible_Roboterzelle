@@ -1,4 +1,4 @@
-"""Aufbau des Adressraums: Nodeset-Import und VisionSystem-Instanz."""
+"""Build the address space: nodeset import and the VisionSystem instance."""
 
 import logging
 import re
@@ -24,7 +24,7 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class VisionAddressSpace:
-    """Die beim Aufbau aufgeloesten Knoten des Vision-Systems."""
+    """The vision system nodes resolved while building the address space."""
 
     server: Server
     config: VisionServerConfig
@@ -40,47 +40,46 @@ class VisionAddressSpace:
     halt: Node
     reset: Node
     results_folder: Node
-    #: `None`, wenn `config.camera_stream` nicht gesetzt ist -- kein Livestream.
+    #: `None` if `config.camera_stream` is not set -- no live stream.
     latest_camera_frame: Node | None
     #: Writable: the frontend selects what the stream shows through this
     #: ("off", "apriltag", "calibration"). `None` without a livestream.
     camera_stream_mode: Node | None = None
-    #: Live-Fortschritt einer `CalibrationSession` (JSON-String), siehe
-    #: `runner/calibration.py`. `None`, wenn `config.apriltag` nicht gesetzt ist.
+    #: Live progress of a `CalibrationSession` (JSON string), see
+    #: `runner/calibration.py`. `None` if `config.apriltag` is not set.
     calibration_progress: Node | None = None
-    #: Die aktuell geladene Tag-Map als JSON. Nur lesen -- geschrieben wird
-    #: ueber die Methode `SetTagMap`, damit eine ungueltige Karte abgelehnt
-    #: werden kann, statt stumm im Knoten zu stehen.
+    #: The currently loaded tag map as JSON. Read-only -- it is written via the
+    #: method `SetTagMap`, so that an invalid map can be rejected instead of
+    #: silently sitting in the node.
     tag_map_json: Node | None = None
-    #: Metadaten der gerade aktiven (fuer Posen/Job genutzten) Kalibrierung
-    #: (JSON-String) -- anders als `calibration_progress` unabhaengig vom
-    #: Session-Zustand: bleibt stehen, egal ob/wann als naechstes wieder
-    #: `StartCalibration` laeuft. `None`, wenn `config.apriltag` nicht
-    #: gesetzt ist.
+    #: Metadata of the currently active calibration (used for poses and jobs),
+    #: as a JSON string. Unlike `calibration_progress`, it is independent of the
+    #: session state: it stays as is, whether or when `StartCalibration` runs
+    #: next. `None` if `config.apriltag` is not set.
     active_calibration_info: Node | None = None
     #: Int32: port of the MJPEG stream (`mjpeg_server.py`), 0 = none. The
     #: frontend builds the URL from the host it reaches OPC UA under. `None`
     #: without a livestream.
     camera_stream_http_port: Node | None = None
-    #: Naechstes Fahrziel des Layer-2-Laufs (JSON, `""` ohne Ziel) und sein
-    #: Zustand (JSON), siehe `layer2/run.py`. Nur auf dem Hand-Pi, also mit
-    #: `hand_eye_path` -- sonst `None`.
+    #: Next target of the layer-2 run (JSON, `""` without a target) and its state
+    #: (JSON), see `layer2/run.py`. Only on the hand Pi, i.e. with `hand_eye_path`;
+    #: otherwise `None`.
     layer2_target: Node | None = None
     layer2_status: Node | None = None
-    #: Zustand der Hand-Auge-Kalibrierung (JSON), siehe `handeye_session.py`.
-    #: Nur auf dem Hand-Pi, wie `layer2_*`.
+    #: State of the hand-eye calibration (JSON), see `handeye_session.py`.
+    #: Only on the hand Pi, like `layer2_*`.
     hand_eye_status: Node | None = None
-    #: Zustand der Zellen-Ueberwachung (JSON), siehe `cellwatch.py`. Nur auf
-    #: der Deckenkamera, also mit AprilTag und ohne `hand_eye_path`.
+    #: State of the cell watch (JSON), see `cellwatch.py`. Only on the ceiling
+    #: camera, i.e. with AprilTag and without `hand_eye_path`.
     cell_watch_status: Node | None = None
-    #: Ergebnis des letzten `MeasureTags` (JSON), nur zur Anzeige. Nur auf dem
-    #: Hand-Pi, wie `hand_eye_status`.
+    #: Result of the last `MeasureTags` (JSON), for display only. Only on the
+    #: hand Pi, like `hand_eye_status`.
     last_tag_measurement: Node | None = None
-    #: Ergebnis der letzten `MeasureTagReference` (JSON), nur zur Anzeige. Nur
-    #: auf dem Hand-Pi, wie `last_tag_measurement`.
+    #: Result of the last `MeasureTagReference` (JSON), for display only. Only on
+    #: the hand Pi, like `last_tag_measurement`.
     last_tag_reference: Node | None = None
-    #: Live-Auswertung der Einmess-Vorschau (JSON, hoechstens 3 Hz), siehe
-    #: `tagreference_preview.py`. Nur auf dem Hand-Pi.
+    #: Live evaluation of the measurement preview (JSON, at most 3 Hz), see
+    #: `tagreference_preview.py`. Only on the hand Pi.
     tag_reference_preview_status: Node | None = None
     #: Namespace index of OPC 40100-2 (AMCM); `None` when Part 2 was not
     #: loaded. Never hardcode it -- it shifts with every added nodeset.
@@ -88,13 +87,13 @@ class VisionAddressSpace:
 
 
 async def configure_server(server: Server, config: VisionServerConfig) -> None:
-    """Richtet einen eigenstaendigen Server fuer den Vision-Betrieb ein.
+    """Set up a standalone server for vision operation.
 
-    Wird nur gebraucht, wenn der Vision-Server als eigener Prozess laeuft.
-    Haengt er in einem bestehenden Server, hat dieser Endpoint und
-    ApplicationURI schon gesetzt — dann direkt `attach_vision_system` rufen.
-    ApplicationURI muss vor dem Nodeset-Import gesetzt sein, weil der Import
-    die Namespace-Indizes fixiert.
+    Only needed when the vision server runs as its own process. If it is attached
+    to an existing server, that server has already set the endpoint and
+    ApplicationURI -- then call `attach_vision_system` directly. The
+    ApplicationURI must be set before the nodeset import, because the import
+    fixes the namespace indices.
     """
     await server.init()
     server.set_endpoint(config.endpoint)
@@ -104,10 +103,10 @@ async def configure_server(server: Server, config: VisionServerConfig) -> None:
 
 
 async def _ensure_nodeset(server: Server, namespace_uri: str, path: Path) -> int:
-    """Importiert ein Nodeset, falls sein Namensraum noch nicht da ist.
+    """Import a nodeset if its namespace is not present yet.
 
-    Haengt das Vision-System in einem Server, der das Nodeset schon geladen
-    hat, wuerde ein zweiter Import den Adressraum verdoppeln.
+    If the vision system is attached to a server that already loaded the nodeset,
+    a second import would duplicate the address space.
     """
     try:
         return await server.get_namespace_index(namespace_uri)
@@ -121,12 +120,12 @@ async def _ensure_nodeset(server: Server, namespace_uri: str, path: Path) -> int
 
 
 async def _ensure_amcm_nodesets(server: Server, config: VisionServerConfig) -> int | None:
-    """Laedt OPC 40100-2 samt DI und Machinery, in dieser Reihenfolge.
+    """Load OPC 40100-2 together with DI and Machinery, in this order.
 
-    Nur wenn `config.assets` gesetzt ist -- Part 2 kostet gemessen ~13 MB RSS
-    und ~1,6 s Startzeit und traegt zum Job-Pfad nichts bei. Scheitert der
-    Import, laeuft der Server ohne Anlagensicht weiter: sie ist eine
-    Zusatzsicht fuer Service und Instandhaltung, kein Betriebsmittel.
+    Only if `config.assets` is set -- measured, Part 2 costs ~13 MB RSS and
+    ~1.6 s of startup time and contributes nothing to the job path. If the import
+    fails, the server keeps running without the asset view: it is an extra view
+    for service and maintenance, not an operational resource.
     """
     if config.assets is None:
         return None
@@ -140,19 +139,19 @@ async def _ensure_amcm_nodesets(server: Server, config: VisionServerConfig) -> i
 
 
 async def _vision_parent(server: Server) -> Node:
-    """`Objects/Machines`, falls Machinery geladen ist, sonst `Objects`.
+    """Return `Objects/Machines` if Machinery is loaded, otherwise `Objects`.
 
-    Warum ueberhaupt: Direkt unter `Objects` stand `VisionMachine` gleichrangig
-    neben `VisionProgram`, und wer mit UaExpert browste, sah zwei Einstiege und
-    musste raten, welcher gemeint ist. Genau das hat in der Betreuung Verwirrung
-    ausgeloest. `Machines` ist der von OPC UA Machinery dafuer vorgesehene Ort;
-    `VisionProgram` bleibt damit der einzige Punkt unter `Objects`.
+    Why at all: `VisionMachine` used to sit directly under `Objects`, next to
+    `VisionProgram`. Anyone browsing with UaExpert saw two entry points and had
+    to guess which one was meant, and that caused confusion during support.
+    `Machines` is the place OPC UA Machinery provides for this; `VisionProgram`
+    thus remains the only entry point under `Objects`.
 
-    Fuer Clients aendert sich nichts: `VisionMachine` hat eine feste
-    String-NodeId, und die haengt nicht an der Browse-Position.
+    Clients are not affected: `VisionMachine` has a fixed string NodeId, which
+    does not depend on its browse position.
 
-    Faellt ohne Machinery-Nodeset (also ohne `config.assets`) auf `Objects`
-    zurueck -- ein fehlender Ordner darf den Serverstart nicht verhindern.
+    Falls back to `Objects` without the Machinery nodeset (i.e. without
+    `config.assets`) -- a missing folder must not prevent the server from starting.
     """
     try:
         machinery_idx = await server.get_namespace_index(MACHINERY_NAMESPACE_URI)
@@ -169,11 +168,11 @@ async def _vision_parent(server: Server) -> Node:
 
 
 def _namespace_uri_for(path: Path) -> str:
-    """Liest den ModelUri aus dem Kopf eines Nodesets.
+    """Read the ModelUri from the header of a nodeset.
 
-    Billiger und ehrlicher als eine zweite Liste von URIs neben der Pfadliste:
-    die Datei sagt selbst, welchen Namensraum sie mitbringt, und kann damit
-    nicht gegen eine Konstante auseinanderlaufen.
+    Cheaper and more honest than a second list of URIs next to the path list:
+    the file itself states which namespace it brings, so it cannot drift out of
+    sync with a constant.
     """
     head = path.read_text(encoding="utf-8", errors="replace")[:4096]
     match = re.search(r'<Model\s[^>]*ModelUri="([^"]+)"', head)
@@ -183,17 +182,17 @@ def _namespace_uri_for(path: Path) -> str:
 
 
 async def attach_vision_system(server: Server, config: VisionServerConfig) -> VisionAddressSpace:
-    """Haengt Nodeset und VisionSystem-Instanz an einen initialisierten Server.
+    """Attach the nodeset and the VisionSystem instance to an initialized server.
 
-    Muss nach `server.init()` und vor `server.start()` laufen. Der eigene
-    Namespace wird nach dem Import registriert; alle NodeIds werden
-    ausschliesslich ueber die zur Laufzeit ermittelten Indizes gebildet.
+    Must run after `server.init()` and before `server.start()`. The own namespace
+    is registered after the import; all NodeIds are built exclusively from the
+    indices determined at runtime.
     """
     mv_idx = await _ensure_nodeset(
         server, MACHINE_VISION_NAMESPACE_URI, config.nodeset_path
     )
-    # Part 2 vor dem eigenen Namensraum, damit dessen Index stabil hinter allen
-    # importierten Nodesets liegt.
+    # Part 2 before the own namespace, so that its index stays stable behind all
+    # imported nodesets.
     amcm_idx = await _ensure_amcm_nodesets(server, config)
     own_idx = await server.register_namespace(config.namespace_uri)
 
@@ -226,9 +225,8 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     camera_stream_mode: Node | None = None
     camera_stream_http_port: Node | None = None
     if config.camera_stream is not None and config.camera_stream.stream_enabled:
-        # Additive Knoten, nicht Teil des 40100-Nodesets: OPC 40100 kennt
-        # keinen Livestream. Nur der Server schreibt hierhin, daher kein
-        # `set_writable()`.
+        # Additive nodes, not part of the 40100 nodeset: OPC 40100 has no
+        # live stream. Only the server writes here, so no `set_writable()`.
         # Explicit string NodeId instead of the auto-assigned numeric one:
         # `add_variable(own_idx, ...)` would produce `ns=X;i=<running number>`,
         # which shifts whenever someone adds a node before it. The backend
@@ -265,28 +263,28 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
     tag_map_json: Node | None = None
     active_calibration_info: Node | None = None
     if config.apriltag is not None:
-        # Nur lesen: die laufende `CalibrationSession` in `runner/calibration.py` schreibt
-        # hierhin, das Frontend abonniert. Nicht an `camera_stream` gekoppelt --
-        # eine Kalibrier-Session ist auch ohne Livestream denkbar (z. B. lokale
-        # Entwicklung), auch wenn sie in der Praxis immer zusammen laufen.
+        # Read-only: the running `CalibrationSession` in `runner/calibration.py` writes
+        # here, the frontend subscribes. Not coupled to `camera_stream` --
+        # a calibration session is also possible without a live stream (e.g. local
+        # development), even though in practice they always run together.
         calibration_progress = await vision_system.add_variable(
             ua.NodeId(f"{name}.CalibrationProgress", own_idx),
             ua.QualifiedName("CalibrationProgress", own_idx),
             '{"running": false, "processing": false}',
             ua.VariantType.String,
         )
-        # Bewusst nicht schreibbar: eine Tag-Map muss geprueft werden, bevor
-        # sie gilt. Das geht nur ueber eine Methode mit Rueckgabewert --
-        # ein Schreibzugriff koennte eine unbrauchbare Karte nicht ablehnen.
+        # Deliberately not writable: a tag map must be checked before it takes
+        # effect. That is only possible via a method with a return value --
+        # a write access could not reject an unusable map.
         tag_map_json = await vision_system.add_variable(
             ua.NodeId(f"{name}.TagMapJson", own_idx),
             ua.QualifiedName("TagMapJson", own_idx),
             "",
             ua.VariantType.String,
         )
-        # Leer, bis `runner/calibration.py` nach dem Oeffnen der Erkennungsquelle den
-        # ersten Wert schreibt (echte Datei oder Platzhalter) -- kein
-        # sinnvoller Default vorher, ohne die Kalibrierdatei gelesen zu haben.
+        # Empty until `runner/calibration.py` writes the first value after opening
+        # the detection source (real file or placeholder) -- there is no sensible
+        # default before that, without having read the calibration file.
         active_calibration_info = await vision_system.add_variable(
             ua.NodeId(f"{name}.ActiveCalibrationInfo", own_idx),
             ua.QualifiedName("ActiveCalibrationInfo", own_idx),
@@ -309,9 +307,9 @@ async def attach_vision_system(server: Server, config: VisionServerConfig) -> Vi
             ua.VariantType.String,
         )
     if config.apriltag is not None and config.apriltag.hand_eye_path is not None:
-        # Nur lesen: der Lauf schreibt, das Frontend abonniert. Gesteuert wird
-        # ueber StartLayer2Run/ReportRobotPose, damit jede Eingabe geprueft
-        # und mit einem Fehlercode beantwortet werden kann.
+        # Read-only: the run writes, the frontend subscribes. It is controlled via
+        # StartLayer2Run/ReportRobotPose, so that every input can be checked and
+        # answered with an error code.
         layer2_target = await vision_system.add_variable(
             ua.NodeId(f"{name}.Layer2Target", own_idx),
             ua.QualifiedName("Layer2Target", own_idx),

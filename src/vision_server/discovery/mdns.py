@@ -1,26 +1,25 @@
-"""mDNS-Ankuendigung eines OPC-UA-Servers im lokalen Netz.
+"""mDNS announcement of an OPC UA server on the local network.
 
-Setzt die Kurzanleitung des Betreuers um (die Datei liegt nicht im Repo,
-`betreuer/` wurde am 23.09.2026 entfernt):
-Dienst-Typ `_opcua-tcp._tcp.local.`, TXT-Eintraege `path` und `caps`,
-Anmeldung im laufenden Server, Abmeldung beim Beenden.
+Implements the maintainer's quick guide. The file is not in the repo, because
+`betreuer/` was removed on 23.09.2026. It uses the service type
+`_opcua-tcp._tcp.local.`, the TXT entries `path` and `caps`, registration when
+the server runs, and deregistration on shutdown.
 
-Zwei bewusste Abweichungen von der Anleitung:
+Two deliberate deviations from the guide:
 
-1. Die Anleitung schreibt eine feste IP in den Quelltext und setzt damit auch
-   den Endpoint. Hier wird die LAN-IPv4 zur Laufzeit ermittelt, und der
-   Endpoint bleibt davon unberuehrt. Der Server bindet weiter auf `0.0.0.0`
-   und ist damit ueber jede Schnittstelle **und** ueber 127.0.0.1 erreichbar;
-   angekuendigt wird trotzdem die echte LAN-Adresse, denn `0.0.0.0` waere fuer
-   einen Client wertlos. Mit DHCP-Reservierung im Router ist das stabil, ohne
-   eine statisch konfigurierte Adresse auf dem Pi.
-2. `zeroconf` ist optional. Fehlt das Paket oder scheitert die Anmeldung,
-   laeuft der Server weiter und es steht eine Warnung im Log -- ein Server,
-   den man per URL erreicht, ist mehr wert als gar keiner.
+1. The guide hard-codes an IP in the source, which also fixes the endpoint.
+   Here the LAN IPv4 is detected at runtime, and the endpoint is not changed.
+   The server still binds to `0.0.0.0`, so it is reachable on every interface
+   **and** on 127.0.0.1. The real LAN address is still announced, because
+   `0.0.0.0` is useless to a client. A DHCP reservation in the router makes this
+   stable, without a statically configured address on the Pi.
+2. `zeroconf` is optional. If the package is missing or registration fails, the
+   server keeps running and logs a warning. A server reachable by URL is worth
+   more than none.
 
-**Standardmaessig an** (seit 21.10.2026 wieder; vom 23.09. bis 21.10.2026 war
-sie aus). `OPCUA_MDNS=0` (oder `false`/`no`/`off`) schaltet die Ankuendigung
-ab; der Server laeuft dann trotzdem und ist per URL erreichbar.
+**On by default** (again since 21.10.2026; it was off from 23.09. to 21.10.2026).
+`OPCUA_MDNS=0` (or `false`/`no`/`off`) disables the announcement. The server then
+still runs and is reachable by URL.
 """
 
 import contextlib
@@ -32,41 +31,41 @@ from collections.abc import AsyncIterator
 
 _log = logging.getLogger(__name__)
 
-#: Dienst-Typ fuer OPC-UA-Server ueber TCP.
+#: Service type for OPC UA servers over TCP.
 SERVICE_TYPE = "_opcua-tcp._tcp.local."
 
-#: Ziel nur fuer die Routenwahl; es wird kein Paket gesendet (TEST-NET-1).
+#: Target used only to pick the route; no packet is sent (TEST-NET-1).
 _ROUTE_PROBE = ("192.0.2.1", 9)
 
 _NAME_ALLOWED = re.compile(r"[^A-Za-z0-9-]+")
 
 
 def enabled() -> bool:
-    """Ob angekuendigt werden soll; standardmaessig ja.
+    """Return whether to announce; yes by default.
 
-    `OPCUA_MDNS=0` (oder `false`/`no`/`off`) schaltet die Ankuendigung ab.
-    Leer oder ungesetzt zaehlt als an.
+    `OPCUA_MDNS=0` (or `false`/`no`/`off`) disables the announcement.
+    Empty or unset counts as enabled.
     """
     return os.getenv("OPCUA_MDNS", "").strip().lower() not in ("0", "false", "no", "off")
 
 
 def sanitize_instance_name(name: str) -> str:
-    """Macht aus einem beliebigen Namen einen gueltigen mDNS-Instanznamen.
+    """Turn any name into a valid mDNS instance name.
 
-    Erlaubt sind Buchstaben, Ziffern und Bindestriche. Ein leerer Rest waere
-    im Netz nicht adressierbar, deshalb faellt er auf `opcua-server` zurueck.
+    Only letters, digits and hyphens are allowed. An empty result cannot be
+    addressed on the network, so it falls back to `opcua-server`.
     """
     cleaned = _NAME_ALLOWED.sub("-", name).strip("-")
     return cleaned or "opcua-server"
 
 
 def detect_lan_ipv4() -> str | None:
-    """Ermittelt die LAN-IPv4 dieses Rechners.
+    """Detect the LAN IPv4 address of this machine.
 
-    `OPCUA_ADVERTISE_IP` hat Vorrang -- damit laesst sich die Ankuendigung auf
-    eine bestimmte Schnittstelle zwingen, etwa wenn LAN und WLAN gleichzeitig
-    haengen. Sonst entscheidet die Routing-Tabelle: ein verbundener
-    UDP-Socket verraet die Quelladresse, ohne dass etwas gesendet wird.
+    `OPCUA_ADVERTISE_IP` takes precedence. It forces the announcement onto a
+    specific interface, for example when LAN and WLAN are both connected.
+    Otherwise the routing table decides. A connected UDP socket reveals the
+    source address without sending anything.
     """
     override = os.getenv("OPCUA_ADVERTISE_IP")
     if override:
@@ -94,29 +93,22 @@ async def announce(
     address: str | None = None,
     caps: str = "DA",
 ) -> AsyncIterator[str | None]:
-    """Kuendigt den Server an und meldet ihn beim Verlassen wieder ab.
+    """Announce the server and deregister it on exit.
 
-    Parameters
-    ----------
-    name
-        Instanzname, im Netz eindeutig (wird bereinigt).
-    port
-        Port des Endpoints.
-    path
-        Pfad des Endpoints, z. B. `/raspi/server/`. Ein Client baut daraus
-        `opc.tcp://<ip>:<port><path>` -- steht hier der falsche Pfad, bauen
-        alle Clients eine unbrauchbare URL.
-    address
-        Anzukuendigende IPv4; ohne Angabe wird sie ermittelt.
-    caps
-        Server-Faehigkeiten im TXT-Eintrag `caps`. Die Kurzanleitung nennt
-        `NA`; die uebrigen Module der Zelle (CardDispenser, Conveyor) kuendigen
-        sich am 2026-09-21 mit `DA` (Data Access) an. Ein Client, der danach
-        filtert, wuerde uns mit `NA` uebersehen -- deshalb hier `DA`.
+    Args:
+        name: Instance name, unique on the network. It is sanitized.
+        port: Port of the endpoint.
+        path: Path of the endpoint, e.g. `/raspi/server/`. Clients build
+            `opc.tcp://<ip>:<port><path>` from it. A wrong path gives every
+            client an unusable URL.
+        address: IPv4 to announce. If not given, it is detected.
+        caps: Server capabilities in the TXT entry `caps`. The quick guide says
+            `NA`. The other cell modules (CardDispenser, Conveyor) announce
+            themselves with `DA` (Data Access) since 2026-09-21. A client that
+            filters on that would miss us with `NA`, so `DA` is used here.
 
-    Yields
-    ------
-    Die angekuendigte Adresse, oder `None`, wenn nicht angekuendigt wurde.
+    Yields:
+        The announced address, or ``None`` if nothing was announced.
     """
     if not enabled():
         _log.info("mDNS abgeschaltet (OPCUA_MDNS=0); keine Ankuendigung")
@@ -151,9 +143,8 @@ async def announce(
 
     mdns = None
     try:
-        # An die ermittelte Schnittstelle binden: auf einem Pi mit LAN und
-        # WLAN wuerde eine Ankuendigung auf der falschen Seite niemanden
-        # erreichen.
+        # Bind to the detected interface: on a Pi with LAN and WLAN, an
+        # announcement on the wrong side would reach nobody.
         mdns = AsyncZeroconf(interfaces=[ip], ip_version=IPVersion.V4Only)
         await (await mdns.async_register_service(info))
         _log.info(
@@ -165,8 +156,8 @@ async def announce(
         yield None
     finally:
         if mdns is not None:
-            # Abmelden, damit kein Client eine tote Adresse aus dem Cache
-            # bekommt. Greift nur, wenn der Prozess SIGTERM abfaengt.
+            # Deregister so that no client keeps a dead address in its cache.
+            # This only runs if the process catches SIGTERM.
             with contextlib.suppress(Exception):
                 await mdns.async_unregister_service(info)
             with contextlib.suppress(Exception):
