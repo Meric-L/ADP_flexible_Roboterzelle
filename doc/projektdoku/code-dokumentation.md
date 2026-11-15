@@ -192,9 +192,9 @@ Posen heißen `T_a_b` bzw. `pose_a_b`: die Pose von Frame b, ausgedrückt in Fra
      Posen ab, beim Abschluss schreibt der Pi Intrinsik und Hand-Auge, sichert die alten
      Dateien und übernimmt beide live.
 
-## 6. Frontend-Abläufe im WebSkillComposition-Stand `ungetestet-aufraeumen`
+## 6. Frontend-Abläufe im WebSkillComposition-Stand `ADP_Lokaliserung`
 
-Dieser Abschnitt beschreibt ausschließlich die im Branch `ungetestet-aufraeumen`
+Dieser Abschnitt beschreibt ausschließlich die im Branch `ADP_Lokaliserung`
 geänderten Frontend-Abläufe. Die vollständige OPC-UA-/WebSocket-Schnittstelle steht in
 `doc/projektdoku/vision-server-interface.md` und im WebSkillComposition-Repository unter
 `docs/data-and-interface-model.md`.

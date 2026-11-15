@@ -1819,7 +1819,7 @@ Die festen Brettangaben (Schachbrett 7×10 bzw. 23 mm, ChArUco 11×7 mit 25 mm b
 - **Schachbrett:** `cols`/`rows` Innenecken, mindestens 3. `cols + rows` muss ungerade sein (sonst ist die 180°-Drehung nicht eindeutig). `squareSizeM` 0,005 bis 0,100 m.
 - **ChArUco:** `cols`/`rows` Felder, mindestens 3. `squareSizeM` 0,005 bis 0,100 m. `markerSizeM` positiv und kleiner als `squareSizeM`. `dictionary` aus `DICT_4X4`, `DICT_5X5`, `DICT_6X6`, `DICT_7X7`, je mit Endung `_50`, `_100`, `_250` oder `_1000`. Die Markeranzahl `floor(cols·rows/2)` darf die Größe des Dictionarys nicht überschreiten.
 - Die eingetragenen Maße gehen **ohne Skalierungsfaktor** ein. Das Labor-Brett ist nachgemessen: Feld 24,982 mm, Marker 18,487 mm.
-- **Frontend** (`webskillcomposition`, Branch `ungetestet-aufraeumen`): Bei ChArUco sind Felder quer/hoch, Feldmaß, Markermaß und Dictionary eintragbar. Der Browser merkt sich die Angaben.
+- **Frontend** (`webskillcomposition`, Branch `ADP_Lokaliserung`): Bei ChArUco sind Felder quer/hoch, Feldmaß, Markermaß und Dictionary eintragbar. Der Browser merkt sich die Angaben.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 

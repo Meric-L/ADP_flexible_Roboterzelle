@@ -1,6 +1,6 @@
 # Layer 2 und Handkamera-Kalibrierung: Regeln
 
-Festgelegt am 15.11.2026 (Branch `ungetestet-aufraeumen`).
+Festgelegt am 15.11.2026 (Branch `ADP_Lokaliserung`).
 
 ## Layer 2: Ein Tag pro Modul
 
