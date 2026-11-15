@@ -213,5 +213,6 @@ geänderten Frontend-Abläufe. Die vollständige OPC-UA-/WebSocket-Schnittstelle
 
 Weitere fachliche Festlegungen dieses Branches stehen in `arbeitsplaene/README.md`
 und den dort referenzierten Arbeitsplänen, insbesondere zu Layer 2, Posegruppen und
-Hand-Auge-Kalibrierung. Unveränderte WebSocket-Commands und OPC-UA-Grundlagen werden
-hier nicht erneut beschrieben.
+Hand-Auge-Kalibrierung. Die konsolidierten Layer-2-Regeln liegen jetzt in
+[`layer2-regeln.md`](layer2-regeln.md). Unveränderte WebSocket-Commands und OPC-UA-
+Grundlagen werden hier nicht erneut beschrieben.
