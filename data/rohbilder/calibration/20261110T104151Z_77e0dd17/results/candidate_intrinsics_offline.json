@@ -1,0 +1,46 @@
+{
+  "schema": "wsc.vision.calibration/1",
+  "calibrationId": "cam_flange@2026-11-10-offline-20261110T104151Z_77e0dd17",
+  "frameId": "cam_flange",
+  "imageSize": [
+    1920,
+    1080
+  ],
+  "cameraMatrix": [
+    [
+      1356.7430406983472,
+      0.0,
+      988.3169311205968
+    ],
+    [
+      0.0,
+      1357.3197411590656,
+      547.5686828799409
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortionCoefficients": [
+    0.13824703251719886,
+    -0.427233488375535,
+    -0.0019531256910768975,
+    0.0010097910551485332,
+    0.3666283056193733
+  ],
+  "rmsReprojectionError": 0.274,
+  "sampleCount": 59,
+  "distortionModel": "pinhole",
+  "board": {
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.024981818181818185,
+    "markerSizeM": 0.018486545454545453,
+    "dictionary": "DICT_5X5_100"
+  },
+  "note": "Offline aus den 59 Rohbildern dieser Sitzung (inkl. Gruppe F), volles Brown-Conrady-Modell, Leave-one-out 0,277 px. Brett mit gemessenem Massstab 274,8 mm/11 Felder. NICHT aktiviert; Kandidat fuer data/calibration/cam_flange.json.",
+  "createdAt": "2026-11-10T10:51:52Z"
+}

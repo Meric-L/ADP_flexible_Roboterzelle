@@ -20,7 +20,7 @@
   "maxPositionM": 0.002893,
   "maxRotationDeg": 0.455374,
   "sampleCount": 59,
-  "createdAt": "2026-11-10T11:08:35Z",
+  "createdAt": "2026-11-10T11:06:09Z",
   "refinedReprojectionRmsPx": 3.628034,
   "boardScale": 0.999273,
   "intrinsicsSource": "calibration"

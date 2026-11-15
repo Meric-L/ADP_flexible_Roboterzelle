@@ -38,10 +38,12 @@ import asyncio
 import dataclasses
 import importlib
 import inspect
+import json
 import logging
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from .camera import SharedCamera
@@ -93,17 +95,27 @@ def _lazy(module: str, name: str) -> Callable:
 #: zu werden (live gefunden 2026-09-28). Fuer den Zweck (Ecken-Erkennung,
 #: ggf. spaeteres Nachpruefen) veraendert die verlustbehaftete Kompression
 #: die erkannten Eckenpositionen eines Schachbrettmusters nicht spuerbar.
+#: Das gilt fuer den Arbeitsordner (`_pending_dir`, Grundlage der
+#: Online-Auswertung): dort bleibt es JPEG. Das optionale Archiv
+#: (`calibration_capture_dir`) speichert seit 10.11.2026 dagegen verlustfrei
+#: als PNG je Sitzung (`_ARCHIVE_IMAGE_SUFFIX`, schnelle Kompression), damit
+#: Intrinsik-Kalibrierungen offline exakt nachgerechnet werden koennen.
 _CAPTURE_IMAGE_SUFFIX = ".jpg"
+_ARCHIVE_IMAGE_SUFFIX = ".png"
+_ARCHIVE_SCHEMA = "adp.calibration.captures/1"
 _CAPTURE_JPEG_QUALITY = 92
 
 
 def _save_capture_image(path: Any, image: Any) -> None:
-    """Schreibt eine Aufnahme als JPEG. Kein `tagloc`-Bezug, deshalb kein
-    `_lazy(...)`."""
+    """Schreibt eine Aufnahme, Format nach Endung: `.png` verlustfrei (schnelle
+    Kompression), sonst JPEG. Kein `tagloc`-Bezug, deshalb kein `_lazy(...)`."""
     import cv2
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, _CAPTURE_JPEG_QUALITY])
+    if str(path).lower().endswith(".png"):
+        cv2.imwrite(str(path), image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+    else:
+        cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, _CAPTURE_JPEG_QUALITY])
 
 
 def _load_capture_image(path: Any) -> Any:
@@ -142,6 +154,7 @@ class CalibrationSession:
         on_calibrated: Callable[[Any], Any] | None = None,
         save_capture_image: Callable | None = None,
         load_capture_image: Callable | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._camera = camera
         self._config = config
@@ -160,6 +173,10 @@ class CalibrationSession:
         #: Server, unabhaengig vom (bei jedem `start()` geleerten)
         #: `_pending_dir`.
         self._capture_dir = config.calibration_capture_dir
+        #: Sitzungsordner des Archivs (`_capture_dir / <UTC-Stempel>`), von
+        #: `start()` gesetzt; `None`, wenn kein Archiv oder Anlegen scheiterte.
+        self._archive_dir: Path | None = None
+        self._now = now or (lambda: datetime.now(timezone.utc))
         self._saved_captures = 0
         self._save_capture_image = save_capture_image or _save_capture_image
         self._load_capture_image = load_capture_image or _load_capture_image
@@ -210,6 +227,11 @@ class CalibrationSession:
         ein Setter macht das moeglich, ohne die Bau-Reihenfolge umzustellen.
         """
         self._on_calibrated = callback
+
+    @property
+    def archive_dir(self) -> Path | None:
+        """Archiv-Ordner der laufenden bzw. letzten Sitzung, sonst `None`."""
+        return self._archive_dir
 
     @property
     def processing(self) -> bool:
@@ -330,6 +352,56 @@ class CalibrationSession:
         self.running = True
         shutil.rmtree(self._pending_dir, ignore_errors=True)
         self._pending_dir.mkdir(parents=True, exist_ok=True)
+        self._archive_dir = None
+        if self._capture_dir is not None:
+            self._start_archive()
+
+    def _start_archive(self) -> None:
+        """Legt den Sitzungsordner des Archivs samt `session.json` an. Fehler
+        schalten nur das Archiv dieser Sitzung ab, nie die Kalibrierung."""
+        started = self._now()
+        stamp = started.strftime("%Y%m%dT%H%M%SZ")
+        try:
+            self._capture_dir.mkdir(parents=True, exist_ok=True)
+            directory = self._capture_dir / stamp
+            suffix = 2
+            while True:
+                try:
+                    directory.mkdir()
+                    break
+                except FileExistsError:
+                    directory = self._capture_dir / f"{stamp}_{suffix}"
+                    suffix += 1
+            cfg = self._config
+            active = None
+            try:
+                active = json.loads(cfg.calibration_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as error:
+                _log.warning("Aktive Kalibrierung nicht lesbar, Archiv ohne sie: %s", error)
+            meta = {
+                "schema": _ARCHIVE_SCHEMA,
+                "frameId": cfg.frame_id,
+                "startedAt": started.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "imageFormat": _ARCHIVE_IMAGE_SUFFIX.lstrip("."),
+                "pendingFormat": _CAPTURE_IMAGE_SUFFIX.lstrip("."),
+                "board": {
+                    "type": cfg.calibration_board_type,
+                    "cols": cfg.calibration_board_cols,
+                    "rows": cfg.calibration_board_rows,
+                    "squareSizeM": cfg.calibration_board_square_size_m,
+                    "markerSizeM": cfg.calibration_board_marker_size_m,
+                    "dictionary": cfg.calibration_board_dictionary,
+                },
+                "model": cfg.calibration_model,
+                "activeCalibration": active,
+            }
+            (directory / "session.json").write_text(
+                json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+        except (OSError, ValueError) as error:
+            _log.warning("Kalibrier-Archiv fuer diese Sitzung aus: %s", error)
+            return
+        self._archive_dir = directory
 
     async def capture(self) -> bool:
         """Merkt sich den aktuellsten Kamera-Frame als Aufnahme.
@@ -348,9 +420,9 @@ class CalibrationSession:
         path = self._pending_dir / f"kalib_{self._saved_captures:03d}{_CAPTURE_IMAGE_SUFFIX}"
         self._captured_paths.append(path)
         self._schedule_capture_save(path, frame.image)
-        if self._capture_dir is not None:
+        if self._archive_dir is not None:
             archive_path = (
-                self._capture_dir / f"kalib_{self._saved_captures:03d}{_CAPTURE_IMAGE_SUFFIX}"
+                self._archive_dir / f"kalib_{self._saved_captures:03d}{_ARCHIVE_IMAGE_SUFFIX}"
             )
             self._schedule_capture_save(archive_path, frame.image)
         _log.info("Kalibrierung: Aufnahme %d gespeichert", len(self._captured_paths))
@@ -374,6 +446,7 @@ class CalibrationSession:
             #: schon waehrend der Aufnahme bekannt, damit das Frontend es
             #: vorab anzeigen kann.
             "model": self._config.calibration_model,
+            "archiveDir": str(self._archive_dir) if self._archive_dir is not None else None,
         }
         if self.last_result is not None:
             data["result"] = self.last_result

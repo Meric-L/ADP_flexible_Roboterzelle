@@ -78,9 +78,9 @@ class FlangeCameraTest(unittest.TestCase):
         self.assertEqual(config.camera_stream.realsense_fps, 8)
 
     def test_keeps_the_default_overlay_timeout(self):
-        """Erkennungsaufloesung hat sich fuer cam_flange nicht geaendert
-        (640x480 war schon immer der volle Frame) -- der Watchdog soll seinen
-        urspruenglichen, knappen Wert behalten."""
+        """cam_flange nimmt den vollen Frame (seit 10.11.2026 1920x1080), ohne
+        zweiten Vorschaustrom -- der Watchdog behaelt seinen urspruenglichen,
+        knappen Wert."""
         config = config_for("cam_flange", "realsense")
         self.assertEqual(config.camera_stream.overlay_timeout_s, 2.0)
 

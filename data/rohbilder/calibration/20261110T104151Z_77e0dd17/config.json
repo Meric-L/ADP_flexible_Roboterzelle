@@ -1,0 +1,54 @@
+{
+  "schema": "wsc.vision.handeye.raw/1",
+  "frameId": "cam_flange",
+  "imageStream": "configured",
+  "units": "m",
+  "rotation": "quaternion_xyzw",
+  "frames": {
+    "T_base_flange": "flange in base",
+    "T_camera_board": "board in camera",
+    "T_flange_camera": "camera in flange"
+  },
+  "board": {
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.025,
+    "markerSizeM": 0.0185,
+    "dictionary": "DICT_5X5_100"
+  },
+  "intrinsics": {
+    "cameraMatrix": [
+      [
+        1358.2397738259933,
+        0.0,
+        987.9054828535814
+      ],
+      [
+        0.0,
+        1356.9754102816103,
+        545.9265828509657
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "distortionCoefficients": [
+      0.04461917954922429,
+      0.3876288988157291,
+      -0.0018276328342106273,
+      0.0004932887034709018,
+      -1.452506745564238
+    ],
+    "distortionModel": "pinhole",
+    "imageSize": [
+      1920,
+      1080
+    ],
+    "calibrationId": "cam_flange@2026-11-10T10:34:13.379598+00:00",
+    "frameId": "cam_flange"
+  },
+  "intrinsicsSource": "calibration"
+}

@@ -144,7 +144,8 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_flange": {
         # Subpixel-Ecken an (Verfahren subpix): Die Handkamera misst Tags zum
         # Anfahren, jede Eckenrundung wirkt als fester Versatz. Die CPU-Last
-        # (siehe AprilTagProfileConfig) spielt hier bei 640x480 keine Rolle.
+        # (siehe AprilTagProfileConfig) war bei 640x480 kein Thema; bei 1920x1080
+        # (seit 10.11.2026) auf dem Pi beobachten.
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
         # Muss zu CameraStreamConfig.realsense_resolution passen: Die echten
@@ -327,7 +328,7 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # Debug-Artefakt, Standard aus (2026-09-23 eingefuehrt, dann zunaechst
         # unbedingt fuer beide Pis aktiviert -- 2026-09-28 auf Env-Var
         # umgestellt): jede uebernommene interaktive Aufnahme landet
-        # zusaetzlich als JPEG hier ab, zum Nachpruefen/Neu-Rechnen abseits
+        # zusaetzlich als PNG je Sitzung hier ab, zum Nachpruefen/Neu-Rechnen abseits
         # vom Server. War live an der Deckenkamera (12 MP) selbst nach dem
         # Umzug auf einen eigenen Hintergrund-Pool (siehe
         # `calibration_session.py._schedule_capture_save`) noch spuerbar

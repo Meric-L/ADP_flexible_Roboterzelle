@@ -51,6 +51,7 @@ nicht gibt.
 | [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
 | [`modellfehler-pruefung.md`](modellfehler-pruefung.md) | apriltag | geplant | Meric | 10.11.2026 |
 | [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
+| [`kalibrier-aufnahmen-roh.md`](kalibrier-aufnahmen-roh.md) | vision | fertig | Meric, `Agent: Kalibrier-Rohbilder` | 10.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
