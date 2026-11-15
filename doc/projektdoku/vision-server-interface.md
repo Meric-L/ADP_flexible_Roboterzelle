@@ -1235,10 +1235,17 @@ Ablauf:
     "error": 0, "rms": 2.069, "model": "fisheye", "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_ceiling.json",
+    "backup": "data/calibration/cam_ceiling.json.20261115T093000Z.bak",
     "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
   }
 }
 ```
+
+**Alte Kalibrierung bleibt erhalten (seit 15.11.2026):** Die neue Kalibrierung
+ersetzt die Datei unter `path`, die bisherige wird vorher daneben als
+`<name>.<UTC>.bak` kopiert (gleiches Schema wie bei der Hand-Auge-Kalibrierung).
+Jede Sicherung bekommt einen eigenen Namen, keine wird überschrieben.
+`result.backup` nennt die Sicherung; ohne alte Datei fehlt das Feld.
 
 Zwei Zahlen können hier auseinanderfallen: `samples` (oben, im Wurzelobjekt)
 ist die Anzahl **aufgenommener** Bilder (18), `result.samples` die Anzahl

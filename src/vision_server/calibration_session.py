@@ -280,6 +280,25 @@ class CalibrationSession:
             )
         return self._executor
 
+    def _backup_existing(self) -> Path | None:
+        """Die bisherige Kalibrierdatei aufheben, bevor die neue sie ersetzt.
+
+        Kopie neben der Datei als `<name>.<UTC>.bak` (wie bei der
+        Hand-Auge-Kalibrierung); jede Sicherung bekommt ihren eigenen Namen,
+        keine wird ueberschrieben. Liefert den Pfad, `None` ohne alte Datei.
+        """
+        path = Path(self._out_path)
+        if not path.is_file():
+            return None
+        stamp = self._now().astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = path.with_name(f"{path.name}.{stamp}.bak")
+        counter = 1
+        while backup.exists():
+            backup = path.with_name(f"{path.name}.{stamp}-{counter}.bak")
+            counter += 1
+        shutil.copy2(path, backup)
+        return backup
+
     async def _run_blocking(self, func, /, *args, **kwargs):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._pool(), lambda: func(*args, **kwargs))
@@ -605,6 +624,7 @@ class CalibrationSession:
                 calibration,
                 calibration_id=f"{calibration.frame_id or self._out_path.stem}@{stamp}",
             )
+        backup = await self._run_blocking(self._backup_existing)
         await self._run_blocking(self._save_calibration, self._out_path, calibration)
         if self._on_calibrated is not None:
             outcome = self._on_calibrated(calibration)
@@ -619,6 +639,8 @@ class CalibrationSession:
             "coverageY": round(coverage[1], 3),
             "path": str(self._out_path),
         }
+        if backup is not None:
+            summary["backup"] = str(backup)
         if rms > RMS_WARNING_PX:
             summary["warning"] = (
                 f"RMS {rms} px ueber dem Zielwert {RMS_WARNING_PX} px -- "

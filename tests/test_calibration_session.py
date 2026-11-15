@@ -412,6 +412,38 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         release.set()
         await session.wait_for_processing()
 
+    async def test_new_calibration_keeps_the_old_file_as_backup(self):
+        folder = Path(tempfile.mkdtemp(prefix="calibration_backup_test_"))
+        out = folder / "cam.json"
+        out.write_text('{"calibrationId": "alt"}', encoding="utf-8")
+        clock = lambda: datetime(2026, 11, 15, 9, 30, 0, tzinfo=timezone.utc)
+        for _ in range(2):  # zweimal in derselben Sekunde: zwei getrennte Sicherungen
+            session, camera, _, save_calls = make_session(
+                config=replace(FAST_CONFIG, calibration_path=out), now=clock)
+            session.start()
+            await _capture_n(session, camera, 3)
+            await session.finish()
+            await session.wait_for_processing()
+            self.assertEqual(len(save_calls), 1)
+            self.assertEqual(save_calls[0][0], out)
+
+        result = session.progress["result"]
+        backups = sorted(p.name for p in folder.glob("cam.json.*.bak"))
+        self.assertEqual(backups, ["cam.json.20261115T093000Z-1.bak", "cam.json.20261115T093000Z.bak"])
+        self.assertEqual(result["backup"], str(folder / "cam.json.20261115T093000Z-1.bak"))
+        self.assertEqual((folder / backups[1]).read_text(encoding="utf-8"), '{"calibrationId": "alt"}')
+
+    async def test_first_calibration_has_no_backup(self):
+        folder = Path(tempfile.mkdtemp(prefix="calibration_backup_test_"))
+        session, camera, _, _ = make_session(config=replace(FAST_CONFIG, calibration_path=folder / "cam.json"))
+        session.start()
+        await _capture_n(session, camera, 3)
+        await session.finish()
+        await session.wait_for_processing()
+
+        self.assertNotIn("backup", session.progress["result"])
+        self.assertEqual(list(folder.glob("*.bak")), [])
+
     async def test_ok_and_saves_with_enough_samples(self):
         session, camera, calibrate_calls, save_calls = make_session()
         session.start()
