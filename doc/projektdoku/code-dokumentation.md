@@ -191,3 +191,22 @@ Posen heißen `T_a_b` bzw. `pose_a_b`: die Pose von Frame b, ausgedrückt in Fra
    - Hand-Pi: `StartHandEyeCalibration` mit `fullCalibration: true`. Der Roboter fährt die
      Posen ab, beim Abschluss schreibt der Pi Intrinsik und Hand-Auge, sichert die alten
      Dateien und übernimmt beide live.
+
+## 6. Frontend-Abläufe im WebSkillComposition-Stand `ungetestet-aufraeumen`
+
+Dieser Abschnitt beschreibt ausschließlich die im Branch `ungetestet-aufraeumen`
+geänderten Frontend-Abläufe. Die vollständige OPC-UA-/WebSocket-Schnittstelle steht in
+`doc/projektdoku/vision-server-interface.md` und im WebSkillComposition-Repository unter
+`docs/data-and-interface-model.md`.
+
+| Ablauf | Geänderte Frontend-Module | Verhalten dieses Branches |
+| --- | --- | --- |
+| Layer 2 | `frontend/src/features/cell-modules/model/approachPlan.ts`, `ApproachPlanPanel.tsx` | Ein geeigneter Sichtpunkt je Modul; Tag-Messung aus dem geplanten Abstand (Standard 0,35 m); nicht anfahrbare oder nicht messbare Tags werden übersprungen und der Lauf fährt fort. Abbruch, nicht lesbare Gelenke oder unsichere Rückfahrt beenden den Lauf. |
+| Handkamera-Gesamtkalibrierung | `frontend/src/features/cell-modules/model/handEye.ts`, `handEyeBoard.ts`, `handEyeOrder.ts`, `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx` | Ein vom Bediener gestarteter Kalibrierablauf übermittelt Brettgeometrie und fordert `fullCalibration` an. Die berechneten Posegruppen berücksichtigen die Bildrandabdeckung bei 1920×1080. Pi-seitige Berechnung, Sicherungen und OPC-UA-Status sind in `vision-server-interface.md` beschrieben. |
+| Kamerazustand | `frontend/src/features/opcua-server/model/useCameraHealth.ts`, `PiStatusList.tsx` | Der Status aus `DeviceHealth` (OPC 40100-2) erscheint getrennt von der Pi-Verbindung. Fehlt Knoten oder Wert, zeigt die Oberfläche „Zustand unbekannt“. |
+| Use-Case-Foto und Modulpose | `frontend/src/features/cell-modules/model/useCaseRecord.ts`, `useCaseMeasurement.ts`, `pickPlace.ts` | Der ausgewählte Messbezug kann die Mitte des Tisch-Tags statt der Tischmitte verwenden; die gemessene Tag-Gier wird beim verfügbaren Katalog-Tag in die Modulpose übernommen. |
+
+Weitere fachliche Festlegungen dieses Branches stehen in `arbeitsplaene/README.md`
+und den dort referenzierten Arbeitsplänen, insbesondere zu Layer 2, Posegruppen und
+Hand-Auge-Kalibrierung. Unveränderte WebSocket-Commands und OPC-UA-Grundlagen werden
+hier nicht erneut beschrieben.
