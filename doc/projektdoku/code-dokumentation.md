@@ -201,7 +201,7 @@ geänderten Frontend-Abläufe. Die vollständige OPC-UA-/WebSocket-Schnittstelle
 
 | Ablauf | Geänderte Frontend-Module | Verhalten dieses Branches |
 | --- | --- | --- |
-| Pi-Anbindung | WSC `frontend/src/features/opcua-server/config/piServers.ts`, `useVisionJob.ts`, `useCameraCalibration.ts`, `useHandEyeCalibration.ts` | Das Frontend ruft die beiden Vision-Pis direkt per OPC UA auf. Der Decken-Pi dient Layer 1 und Zellüberwachung; der Hand-Pi Hand-Auge, Tag-Referenzmessung und Layer 2. Namespace-Indizes werden aus Namespace-URIs aufgelöst. Der Roboterverkehr läuft über den Backend-WebSocket. |
+| Pi-Anbindung | WSC `frontend/src/features/opcua-server/config/piServers.ts`, `useVisionJob.ts`, `useCameraCalibration.ts`, `useHandEyeCalibration.ts` | Das Frontend sendet Pi- und Roboteraufrufe über den gemeinsamen Backend-WebSocket. Das Backend hält die OPC-UA-Verbindungen zu beiden Pis und den Roboter-Servern und führt die Aufrufe aus. Der Decken-Pi dient Layer 1 und Zellüberwachung; der Hand-Pi Hand-Auge, Tag-Referenzmessung und Layer 2. Namespace-Indizes werden aus Namespace-URIs aufgelöst. |
 | Modulkatalog und Tag-Map | WSC `backend/src/backend/api/module_catalog.py`, `services/module_catalog_store.py`, `frontend/src/features/cell-modules/model/catalogStore.ts`, `frontend/src/features/opcua-server/model/useTagMapSync.ts` | Der Katalog ist die Quelle für Module, Tag-Rollen, Modell-/Roboterzuordnung und Welttag-Posen. `GET/PUT /api/module-catalog` nutzt Revisionen; `409` liefert den aktuellen Stand. Welt-Tags werden je Pi über `SetTagMap` synchronisiert. Details stehen in `docs/vision-workflows.md` im WebSkillComposition-Repo. |
 | Layer 1 und Lokalisierung | WSC `AutolocateLayer1Window.tsx`, `planLayer1Import.ts`, `layer1Import.ts`, `worldTagCheck.ts` | Der Decken-Pi liefert Erkennungen und Posen. Vor dem Import werden Welttag-Abweichungen gegen den Katalog geprüft; der Import ordnet erkannte Tags Modulen zu und aktualisiert Szene, Kamera- und Welttag-Beobachtungen. |
 | Tag einmessen | WSC `TagReferencePanel.tsx`, `tagReferenceRun.ts`, `tagReferenceCall.ts`, `useTagReferenceLive.ts` | Die Oberfläche plant Referenzansichten, ruft `MeasureTagReference` am Hand-Pi auf, zeigt Vorschau und Messunsicherheit und übernimmt bestätigte Korrekturen in den Katalog. |
@@ -210,6 +210,14 @@ geänderten Frontend-Abläufe. Die vollständige OPC-UA-/WebSocket-Schnittstelle
 | Handkamera-Gesamtkalibrierung | `frontend/src/features/cell-modules/model/handEye.ts`, `handEyeBoard.ts`, `handEyeOrder.ts`, `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx` | Ein vom Bediener gestarteter Kalibrierablauf übermittelt Brettgeometrie und fordert `fullCalibration` an. Die berechneten Posegruppen berücksichtigen die Bildrandabdeckung bei 1920×1080. Pi-seitige Berechnung, Sicherungen und OPC-UA-Status sind in `vision-server-interface.md` beschrieben. |
 | Kamerazustand | `frontend/src/features/opcua-server/model/useCameraHealth.ts`, `PiStatusList.tsx` | Der Status aus `DeviceHealth` (OPC 40100-2) erscheint getrennt von der Pi-Verbindung. Fehlt Knoten oder Wert, zeigt die Oberfläche „Zustand unbekannt“. |
 | Use-Case-Foto und Modulpose | `frontend/src/features/cell-modules/model/useCaseRecord.ts`, `useCaseMeasurement.ts`, `pickPlace.ts` | Der ausgewählte Messbezug kann die Mitte des Tisch-Tags statt der Tischmitte verwenden; die gemessene Tag-Gier wird beim verfügbaren Katalog-Tag in die Modulpose übernommen. |
+
+Der Verbindungsweg für Pi-Methoden ist konkret: Frontend-Hook →
+`ApplicationController.callRawMethod()` → `WscWebSocketClient.callRawMethod()` →
+Backend `CallRawMethodCommand` in `runtime/application_service.py` →
+`AsyncUaServerConnection` → Vision-Pi. Abonnements und Ergebnisse laufen ebenfalls
+über den Backend-WebSocket. Poseplanung und Ablaufsteuerung liegen derzeit zu
+großen Teilen im Frontend, Bildverarbeitung und Kalibrierberechnung auf den Pis.
+MJPEG-Bilder lädt der Browser über eine separate HTTP-Verbindung direkt vom Pi.
 
 Weitere fachliche Festlegungen dieses Branches stehen in `arbeitsplaene/README.md`
 und den dort referenzierten Arbeitsplänen, insbesondere zu Layer 2, Posegruppen und
