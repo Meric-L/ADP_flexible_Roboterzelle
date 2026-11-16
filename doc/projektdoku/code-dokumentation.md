@@ -49,6 +49,7 @@ flowchart LR
     WSC -- "OPC UA client" --> P2
     WSC -- "OPC UA client" --> R
     FE -- "WebSocket" --> WSC
+    FE -- "HTTP MJPEG :8080<br/>/stream.mjpg, /snapshot.jpg" --> P1
     FE -- "HTTP MJPEG :8080<br/>/stream.mjpg, /snapshot.jpg" --> P2
     P1 -. "mDNS _opcua-tcp._tcp.local." .-> FE
     P2 -. "mDNS _opcua-tcp._tcp.local." .-> FE
@@ -60,8 +61,9 @@ flowchart LR
   these are in `frontend/src/features/opcua-server/config/piServers.ts`.
 - **Only the backend moves the robot.** The Pis know the robot only through the poses the
   backend passes to them (Layer 2, hand-eye captures).
-- **The browser reads the live image** directly from the hand Pi over MJPEG. All other
-  traffic goes through the backend WebSocket.
+- **The browser reads the live image** directly from each Pi over MJPEG (both Pis run the
+  server, port from `CameraStreamHttpPort`). All other traffic goes through the backend
+  WebSocket.
 
 ## 3. Connection paths
 
