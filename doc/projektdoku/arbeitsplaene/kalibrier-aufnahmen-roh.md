@@ -25,7 +25,7 @@ bleiben im Archiv.
 - `CLAUDE.md` (Abschnitt „Bevor du anfängst“, Arbeitsplan-Pflicht)
 - `doc/projektdoku/arbeitsplaene/_vorlage.md`, `doc/projektdoku/arbeitsplaene/README.md`
 - `doc/projektdoku/vision-server-interface.md`, Abschnitt 12.9 (Debug: Aufnahmen als Bilder speichern) und Abschnitt 12 (Kalibrierung, Ablauf)
-- `doc/projektdoku/code-handbuch.md`, Tabelle der Umgebungsvariablen (`VISION_SAVE_CALIBRATION_CAPTURES`) und Konfigurationsliste `calibration_capture_dir`
+- `doc/projektdoku/code-dokumentation.md`, Tabelle der Umgebungsvariablen (`VISION_SAVE_CALIBRATION_CAPTURES`) und Konfigurationsliste `calibration_capture_dir`
 
 ## Betroffene Dateien
 
@@ -34,7 +34,7 @@ Die Liste reserviert die Dateien.
 - `src/vision_server/calibration_session.py`: Archiv je Sitzung (`_start_archive()`), PNG-Aufnahme (`_ARCHIVE_IMAGE_SUFFIX = ".png"`), `archive_dir`, `progress["archiveDir"]`
 - `src/vision_server/server.py`: Kommentar an `calibration_capture_dir` (PNG je Sitzung statt JPEG), Pfad unverändert `data/calibration/<frame_id>_captures/`
 - `tests/test_calibration_session.py`: Tests für Ordnerstempel, Kollisionssuffix, `session.json`, Schreibfehler, unlesbare Kalibrierdatei
-- `doc/projektdoku/vision-server-interface.md` (Nachtrag zu 12.9), `doc/projektdoku/code-handbuch.md` (zwei Stellen)
+- `doc/projektdoku/vision-server-interface.md` (Nachtrag zu 12.9), `doc/projektdoku/code-dokumentation.md` (zwei Stellen)
 
 ## Schnittstellen
 
@@ -166,4 +166,4 @@ Noch keine. Wird bei der Umsetzung ergänzt.
 - Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
 - Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
 - Dauerhaftes Fachwissen in `doc/projektdoku/vision-server-interface.md` (12.9) und
-  `doc/projektdoku/code-handbuch.md` übernommen.
+  `doc/projektdoku/code-dokumentation.md` übernommen.

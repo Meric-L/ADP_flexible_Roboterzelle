@@ -16,7 +16,7 @@ Hinterher gibt es:
 
 1. zwei aktuelle Audits — [`../altlasten-zelle.md`](../altlasten-zelle.md) (dieses Repo, `apriltag`) und
    [`../altlasten-wsc.md`](../altlasten-wsc.md) (webskillcomposition, nur unser Anteil `origin/dev..Ungetestet`);
-2. ein Code-Handbuch [`../code-handbuch.md`](../code-handbuch.md), in dem man für jede Datei unseres
+2. ein Code-Handbuch [`../code-dokumentation.md`](../code-dokumentation.md), in dem man für jede Datei unseres
    Codes nachlesen kann, wozu sie da ist und wo die Details stehen;
 3. die Funde abgearbeitet auf eigenen Branches, die erst auf Ansage gemergt werden.
 
@@ -31,7 +31,7 @@ Hinterher gibt es:
 
 Doku (Branch `apriltag`):
 
-- `doc/projektdoku/altlasten-zelle.md`, `doc/projektdoku/altlasten-wsc.md`, `doc/projektdoku/code-handbuch.md` (neu)
+- `doc/projektdoku/altlasten-zelle.md`, `doc/projektdoku/altlasten-wsc.md`, `doc/projektdoku/code-dokumentation.md` (neu)
 - `doc/projektdoku/altlasten.md`, `doc/projektdoku/altlasten-toter-code.md` (nur Kopfhinweis „abgelöst durch …“)
 - `doc/projektdoku/arbeitsplaene/README.md` (Indexzeile, Fachdoku-Tabelle), `README.md` (Doku-Tabelle)
 
@@ -71,7 +71,7 @@ ihren eigenen Audit und ihren eigenen Handbuch-Teil**. Dadurch fassen sie nie di
 | Worktree | `/home/meric/ADP/ADP_flexible_Roboterzelle/.claude/worktrees/apriltag-aufraeumen` | `/home/meric/ADP/webskillcomposition/.claude/worktrees/ungetestet-aufraeumen` |
 | Branch (lokal, ungemergt) | `apriltag-aufraeumen` (Basis `apriltag`) | `ADP_Lokaliserung` (Basis `Ungetestet` `5812275`) |
 | Funde | [`../altlasten-zelle.md`](../altlasten-zelle.md) | [`../altlasten-wsc.md`](../altlasten-wsc.md) |
-| Handbuch | `code-handbuch.md`, nur **Teil A** | `code-handbuch.md`, nur **Teil B** |
+| Handbuch | `code-dokumentation.md`, nur **Teil A** | `code-dokumentation.md`, nur **Teil B** |
 | Status nachtragen in | `altlasten-zelle.md`, Abschnitt 12 „Umsetzungsstand“ | `altlasten-wsc.md`, Abschnitt 11 „Umsetzungsstand“ |
 | Tests | `PYTHONPATH=src /home/meric/ADP/ADP_flexible_Roboterzelle/.venv/bin/python -m unittest discover -s tests -t .` (Ausgangsstand 877 OK) | in `frontend/`: `npx tsc --noEmit`, `npx vitest run` (79 Dateien / 836 Tests); in `backend/`: `/home/meric/ADP/webskillcomposition/backend/.venv/bin/python -m pytest -q` (81 + 1 übersprungen) |
 
@@ -142,7 +142,7 @@ eigenes Feature mit eigenem Arbeitsplan).
 
 **Doku von Sitzung B** liegt im Zellen-Repo auf `apriltag`: eigenen temporären Worktree vom aktuellen
 `origin/apriltag` anlegen (nicht den von Sitzung A benutzen), nur `altlasten-wsc.md` (Abschnitt 11) und Teil B
-von `code-handbuch.md` ändern, committen, mit Rebase auf `origin/apriltag` ziehen, fast-forward pushen
+von `code-dokumentation.md` ändern, committen, mit Rebase auf `origin/apriltag` ziehen, fast-forward pushen
 (Doku-Push auf `apriltag` ist freigegeben), Worktree entfernen.
 
 
