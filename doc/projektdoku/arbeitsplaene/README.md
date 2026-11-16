@@ -90,7 +90,7 @@ Vor dem Anlegen eines Plans lesen — hier steht der dokumentierte Stand:
 | [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | Konzept der AprilTag-Lokalisierung |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag-Referenz |
 | [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | End-to-End-Testanleitung AprilTag |
-| [`../code-handbuch.md`](../code-handbuch.md) | Code-Handbuch: jede Datei unseres Codes (dieses Repo und unser Anteil an webskillcomposition) mit Zweck, Einstieg und Verweisen |
+| [`../code-dokumentation.md`](../code-dokumentation.md) | Code-Dokumentation: Überblick; Details je Bereich unter `../code/` |
 | [`../altlasten-zelle.md`](../altlasten-zelle.md) | Aufräum-Audit dieses Repos (`apriltag`): toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken |
 | [`../altlasten-wsc.md`](../altlasten-wsc.md) | Aufräum-Audit webskillcomposition, nur unser Anteil (`origin/dev..Ungetestet`) |
 | [`../altlasten.md`](../altlasten.md) | Bekannte Altlasten und Stolperfallen (Stand 21.09., abgelöst durch die beiden Audits) |
