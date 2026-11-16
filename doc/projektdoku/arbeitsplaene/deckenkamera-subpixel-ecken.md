@@ -17,7 +17,7 @@ Hinterher verfeinert der Job die Ecken mit `CORNER_REFINE_SUBPIX`.
 - `doc/projektdoku/kamera-und-detektor-analyse.md` (Abschnitt 2 und 5: `CORNER_REFINE_APRILTAG` verworfen, SUBPIX „nur 0,1–0,3 px Rauschen“)
 - `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (Subpixel 24.09. aus, ~46 % CPU — gemessen mit `CORNER_REFINE_APRILTAG`)
 - `doc/projektdoku/vision-server-interface.md` (Abschnitt 15 Subpixel-Ecken, 18c Helligkeitstest)
-- `doc/projektdoku/code-handbuch.md` (Pi-Presets, `VISION_SUBPIXEL_CORNER_REFINEMENT`)
+- `doc/projektdoku/code-dokumentation.md` (Pi-Presets, `VISION_SUBPIXEL_CORNER_REFINEMENT`)
 
 ## Ausgangslage: Messung
 
@@ -43,7 +43,7 @@ Detektor wie auf dem Pi (`perspectiveRemovePixelPerCell` 8):
 
 - `src/vision_server/server.py` (Preset `cam_ceiling`)
 - `tests/test_subpixel_settings.py`, `tests/test_server_config.py`
-- `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/code-handbuch.md`,
+- `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/code-dokumentation.md`,
   `doc/projektdoku/kamera-und-detektor-analyse.md` (neuer Abschnitt)
 
 ## Schnittstellen

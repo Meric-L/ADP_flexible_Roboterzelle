@@ -8,7 +8,7 @@ Dieses Dokument löst die WSC-Teile von [`altlasten.md`](altlasten.md) (Abschnit
 [`altlasten-toter-code.md`](altlasten-toter-code.md) (IDs W…) ab; deren offene Punkte sind neu geprüft
 und tragen hier die alte ID in der Spalte „ex-ID“. Gegenstück für dieses Repo:
 [`altlasten-zelle.md`](altlasten-zelle.md). Plan: [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
-Was jede Datei tut, steht im [`code-handbuch.md`](code-handbuch.md), Teil B.
+Was jede Datei tut, steht im [`code-dokumentation.md`](code-dokumentation.md) (Teil B: `code/webskill-*.md`).
 
 **Aufgeräumt wird auf Branch `ADP_Lokaliserung`** (webskillcomposition, lokal, ungemergt). Was davon
 umgesetzt ist, steht am Ende unter „Umsetzungsstand“.
