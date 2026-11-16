@@ -1,7 +1,6 @@
 # AprilTag-Lokalisierung und OPC 40100 — Präsentationsgrundlage
 
-Eine Folie je `##`-Abschnitt. Die Zeilen unter **Dazu sagen** sind Sprechnotizen,
-nicht Folieninhalt. **Alle Zahlen in diesem Dokument sind gemessen**, nicht
+Eine Folie je `##`-Abschnitt. **Alle Zahlen in diesem Dokument sind gemessen**, nicht
 geschätzt; wo etwas ungeprüft ist, steht es ausdrücklich dabei.
 
 Quellen je Aussage: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md),
@@ -17,25 +16,18 @@ Quellen je Aussage: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md),
 
 Zwei Kameras, zwei Raspberry Pis, ein gemeinsames Koordinatensystem.
 
-> **Dazu sagen:** Das ist der praktische Teil der Arbeit. Der theoretische Teil
-> vergleicht Lokalisierungsverfahren; hier geht es darum, eines davon so zu
-> bauen, dass die Zelle es wirklich benutzen kann.
-
 ---
 
 ## 2 — Die Leitidee
 
 > **Ein AprilTag trägt eine Nummer, keine Bedeutung.**
 
-Die Kamera liefert immer nur eine Sache: `T_cam_tag` — wo der Tag relativ zur
+Die Kamera liefert immer nur eine Sache: `T_cam_tag`, also wo der Tag relativ zur
 Kamera steht, in Metern, mit voller Orientierung.
 
-Dass Tag 7 das Modul `MOD-A` ist und dessen Ursprung 40 mm unter der Tag-Mitte
-liegt, steht in **einer Datei**, nicht im Code.
-
-> **Dazu sagen:** Das ist die Entscheidung, aus der alles andere folgt. Der Code
-> kennt nur Tags, Posen und Verkettung. Ein neues Modul heißt: ein Eintrag in
-> der Tag-Map, keine Codeänderung.
+Dass Tag 7 das Modul `MOD-A` ist und dessen Ursprung 40 mm unter der Tag-Mitte liegt,
+steht in **einer Datei**, nicht im Code. Der Code kennt nur Tags, Posen und Verkettung.
+Ein neues Modul ist damit ein Eintrag in der Tag-Map, keine Codeänderung.
 
 ---
 
@@ -44,14 +36,14 @@ liegt, steht in **einer Datei**, nicht im Code.
 | Rolle | Hardware | Pose |
 |---|---|---|
 | **Welt-Tag** | vier Tags im Randbereich der Zelle | **fest**, steht in der Karte |
-| **Roboter-Tag** | Tags am Roboter | **beweglich — wird gemessen** |
-| **Modul-Tag** | Tag am Modul | **beweglich — wird gemessen** |
+| **Roboter-Tag** | Tags am Roboter | **beweglich, wird gemessen** |
+| **Modul-Tag** | Tag am Modul | **beweglich, wird gemessen** |
 
-Nur der Welt-Tag steht fest. Der Roboter ist ein Modul wie jedes andere — nur
-dasjenige, das immer verwendet wird.
+Nur der Welt-Tag steht fest. Der Roboter ist ein Modul wie jedes andere, nur dasjenige,
+das immer verwendet wird.
 
-Referenz- und Mess-Tags durchlaufen denselben Code. Unterschied: steht die
-Weltpose in der Karte oder als `null`?
+Referenz- und Mess-Tags durchlaufen denselben Code. Der Unterschied: Steht die Weltpose
+in der Karte oder als `null`?
 
 ---
 
@@ -69,10 +61,9 @@ T_world_module = T_world_cam · T_cam_tag · T_tag_module
 ```
 
 **Genau eine Funktion im Code führt diese Verkettung aus** (`localize.locate_modules`).
-
-> **Dazu sagen:** Einheiten- und Konventionsfehler — mm gegen m, xyzw gegen
-> wxyz, `T_base_cam` gegen `T_cam_base` — sind der klassische stille Fehler in
-> solchen Systemen. Eine einzige Stelle, die verkettet, macht ihn testbar.
+Einheiten- und Konventionsfehler (mm gegen m, xyzw gegen wxyz, `T_base_cam` gegen
+`T_cam_base`) sind der klassische stille Fehler in solchen Systemen. Eine einzige Stelle
+macht ihn testbar.
 
 ---
 
@@ -85,8 +76,8 @@ T_world_module = T_world_cam · T_cam_tag · T_tag_module
 | `T_world_cam` | aus Referenz-Tags im Bild | aus der Roboterpose |
 | Ergebnis-`frameId` | `world` | `cam_flange` |
 
-**Ein Profil, eine Klasse, zwei Konfigurationen.** Die Unterschiede sind
-ausschließlich Konfiguration und die Herkunft **einer** Matrix.
+**Ein Profil, eine Klasse, zwei Konfigurationen.** Die Unterschiede sind ausschließlich
+Konfiguration und die Herkunft **einer** Matrix.
 
 ---
 
@@ -94,7 +85,7 @@ ausschließlich Konfiguration und die Herkunft **einer** Matrix.
 
 ```
 tagloc/
-  identity, modes            nur Stdlib — nicht einmal numpy
+  identity, modes            nur Stdlib, nicht einmal numpy
   geometry, calibration,
   tagmap, localize           numpy, kein OpenCV
   boards, detector, pose,
@@ -102,12 +93,12 @@ tagloc/
   cli/                       vier Werkzeuge
 ```
 
-Harte Regel, **im Test nachgemessen** (`tests/test_layering.py`, prüft
-`sys.modules` im Unterprozess):
+Harte Regel, **im Test nachgemessen** (`tests/test_layering.py`, prüft `sys.modules` im
+Unterprozess):
 
-- Der Server bildet die `configurationId`, bevor irgendetwas geladen ist
-- Die Rechenschicht ist unabhängig von der installierten OpenCV-Version
-- `tagloc` importiert **nirgends** aus `vision_server`
+- Der Server bildet die `configurationId`, bevor irgendetwas geladen ist.
+- Die Rechenschicht ist unabhängig von der installierten OpenCV-Version.
+- `tagloc` importiert **nirgends** aus `vision_server`.
 
 ---
 
@@ -119,14 +110,12 @@ Zwei Tags in **einem** Bild ergeben eine kamerafreie Relation:
 T_a_b = T_cam_a⁻¹ · T_cam_b        die Kamerapose kürzt sich heraus
 ```
 
-Diese Relationen spannen einen Graphen auf; eine Breitensuche vom Anker
-verkettet sie zu einer Karte.
+Diese Relationen spannen einen Graphen auf; eine Breitensuche vom Anker verkettet sie zu
+einer Karte. Man muss also nicht jeden Tag einzeln einmessen: Die Zelle wird so
+fotografiert, dass sich benachbarte Tags paarweise überlappen.
 
-**`residuals()` liefert die Schließfehler je Kante — die Qualitätszahl der Karte.**
-
-> **Dazu sagen:** Deshalb muss man nicht jeden Tag einzeln einmessen. Man
-> fotografiert die Zelle so, dass sich benachbarte Tags paarweise überlappen.
-> Schließt sich der Ring nicht, stimmt die Kalibrierung oder eine Tag-Größe.
+**`residuals()` liefert die Schließfehler je Kante, die Qualitätszahl der Karte.**
+Schließt sich der Ring nicht, stimmt die Kalibrierung oder eine Tag-Größe nicht.
 
 ---
 
@@ -141,10 +130,9 @@ Synthetisch gerenderte Szene, wahre Posen exakt bekannt:
 | Reprojektionsfehler | max **0,063 px** | 1 px |
 | Schließfehler der Karte | **0,00–0,02 mm / 0,000°** | 1 mm / 0,05° |
 
-> **Dazu sagen:** Der eine Winkel-Ausreißer bei 0,50° ist keine Mehrdeutigkeit —
-> die zweite IPPE-Lösung ist dort 82-fach schlechter. Es ist die
-> Pixelquantisierung des gerenderten Markers bei 34° Schrägblick. Die Schranke
-> steht deshalb begründet auf 1°, nicht auf den 0,5° aus dem Konzept.
+Der eine Winkel-Ausreißer bei 0,50° ist keine Mehrdeutigkeit (die zweite IPPE-Lösung
+ist dort 82-fach schlechter), sondern Pixelquantisierung des gerenderten Markers bei
+34° Schrägblick. Die Schranke steht deshalb begründet auf 1°.
 
 ---
 
@@ -157,20 +145,20 @@ Synthetisch gerenderte Szene, wahre Posen exakt bekannt:
 | Zielgruppe | Zelle, SPS, MES | Service und Instandhaltung |
 | Version bei uns | 1.0.0 (2019) | 1.00.0 (17.05.2024) |
 
-> **Häufiges Missverständnis:** Das „NodeSet2" im Dateinamen ist das
-> **XML-Dateiformat**, nicht die Teilnummer. Jede Companion Spec liefert
-> `*.NodeSet2.xml` aus — auch eine reine Part-1-Datei.
+> **Häufiges Missverständnis:** Das „NodeSet2" im Dateinamen ist das **XML-Dateiformat**,
+> nicht die Teilnummer. Jede Companion Spec liefert `*.NodeSet2.xml` aus, auch eine reine
+> Part-1-Datei.
 
 ---
 
 ## 10 — Part 1: was verlinkt ist
 
-Das Nodeset bringt **alle** Methoden mit der Typdefinition mit. Ob sie etwas
-tun, entscheidet `link_method`.
+Das Nodeset bringt **alle** Methoden mit der Typdefinition mit. Ob sie etwas tun,
+entscheidet `link_method`.
 
 **Verlinkt:** `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`, `Reset`
 
-**Bewusst nicht**, jeweils mit Begründung dokumentiert:
+**Bewusst nicht**, jeweils mit Begründung:
 
 | Methode | Warum nicht |
 |---|---|
@@ -178,8 +166,8 @@ tun, entscheidet `link_method`.
 | `SelectModeAutomatic` | es gibt nur eine Betriebsart |
 | Configuration- / RecipeManagement | setzt ein Rezept-Datenmodell voraus, das die Zelle nicht hat |
 
-> **Dazu sagen:** Eine verlinkte Methode, die nichts tut, wäre schlimmer als
-> eine erkennbar nicht verlinkte — die antwortet ehrlich `BadNothingToDo`.
+Eine nicht verlinkte Methode antwortet ehrlich mit `BadNothingToDo`. Eine verlinkte, die
+nichts tut, wäre schlimmer.
 
 ---
 
@@ -193,16 +181,15 @@ ns=<vision>;s=VisionMachine.VisionAsset
 └── Lenses/Lens
 ```
 
-Angelegt wird nur, was wirklich verbaut ist. **Ein leeres Modellfeld heißt
-„nicht bekannt" und erzeugt keinen Eintrag** — in einer Instandhaltungssicht ist
-eine Lücke ehrlicher als ein erfundenes Modell.
+Angelegt wird nur, was wirklich verbaut ist. **Ein leeres Modellfeld heißt „nicht bekannt"
+und erzeugt keinen Eintrag.** In einer Instandhaltungssicht ist eine Lücke ehrlicher als
+ein erfundenes Modell.
 
 ---
 
-## 12 — Part 2: erst gemessen, dann gebaut
+## 12 — Part 2: Ressourcenbedarf
 
-Part 2 bringt **DI 1.04.0** und **Machinery 1.03.0** mit — vier Nodesets statt
-einem.
+Part 2 bringt **DI 1.04.0** und **Machinery 1.03.0** mit, also vier Nodesets statt einem.
 
 | | RSS | Startzeit |
 |---|---|---|
@@ -210,12 +197,8 @@ einem.
 | mit Part 2 | 121,3 MB | +1,6 s |
 | Anlagensicht instanziiert | +2,9 MB | |
 
-**Rund 16 MB und knapp zwei Sekunden.** Abschaltbar: ohne `assets` wird nichts
-davon geladen.
-
-> **Dazu sagen:** Der Pi bedient nebenher die Kamera, deshalb war die erste
-> Frage nicht „wie baue ich das", sondern „passt das überhaupt". Das Messwerkzeug
-> liegt im Repo und läuft auf dem Pi genauso.
+**Rund 16 MB und knapp zwei Sekunden.** Abschaltbar: ohne `assets` wird nichts davon
+geladen. Das Messwerkzeug liegt im Repo und läuft auf dem Pi genauso.
 
 ---
 
@@ -223,28 +206,25 @@ davon geladen.
 
 | Fund | Konsequenz |
 |---|---|
-| **DI 1.05.0 lässt sich nicht importieren** — fordert UA-Basis 1.05.04, scheitert an asyncua mit `BadParentNodeIdInvalid` | Versionen exakt auf die `RequiredModel`-Angaben gepinnt |
-| **asyncua legt Platzhalter als echte Knoten an** (`<VisionItem>`, Modelling Rule `MandatoryPlaceholder`) | nachträgliches Löschen kostete **9 s für 26 Knoten** → jetzt wird nur aufgebaut, was gefüllt wird: ~50 statt ~700 Knoten |
-| **Der Namensraumindex verschiebt sich** von 3 auf 6 | Clients müssen ihn zur Laufzeit auflösen |
+| **DI 1.05.0 lässt sich nicht importieren**: fordert UA-Basis 1.05.04, scheitert an asyncua mit `BadParentNodeIdInvalid` | Versionen exakt auf die `RequiredModel`-Angaben gepinnt |
+| **asyncua legt Platzhalter als echte Knoten an** (`<VisionItem>`, Modelling Rule `MandatoryPlaceholder`) | Nur was gefüllt wird, wird aufgebaut: ~50 statt ~700 Knoten |
+| **Der Namensraumindex verschiebt sich** (von 3 auf 6) | Clients müssen ihn zur Laufzeit auflösen |
 
 ---
 
-## 14 — Drei Fehler, die wir unterwegs gefunden haben
+## 14 — Drei behobene Fehler, die im Betrieb schwer zu finden wären
 
-**1. Numerische NodeIds im Livestream.** Die Stream-Knoten bekamen automatisch
-vergebene Ids (`ns=3;i=1`). Die verschieben sich, sobald jemand einen Knoten
-davor anlegt — und das Backend abonniert sie fest. Jetzt explizite String-Ids.
+**1. Numerische NodeIds im Livestream.** Die Stream-Knoten bekamen automatisch vergebene
+Ids (`ns=3;i=1`). Die verschieben sich, sobald davor ein Knoten angelegt wird, und das
+Backend abonniert sie fest. Lösung: explizite String-Ids.
 
-**2. NaN hätte den Job getötet.** `nan > schranke` ist in Python `False`: der
+**2. NaN hätte den Job getötet.** `nan > schranke` ist in Python `False`: Der
 Qualitätsfilter ließ entartete Posen durch, und `payload` serialisiert mit
-`allow_nan=False`. Der Job wäre nicht als `DETECTION_FAILED` gescheitert,
-sondern als `INTERNAL`.
+`allow_nan=False`. Der Job wäre nicht als `DETECTION_FAILED` gescheitert, sondern als
+`INTERNAL`. Der Qualitätsfilter muss NaN abweisen.
 
-**3. Das Frontend bot einen Job an, den es nicht mehr gibt.** `image-recognition`
-stand nach dem QR-Ausbau weiter in der Liste und endete in `Error=4`.
-
-> **Dazu sagen:** Alle drei wären im Betrieb schwer zu finden gewesen — sie
-> scheitern still oder mit irreführender Meldung.
+**3. Das Frontend bot einen Job an, den es nicht mehr gibt.** `image-recognition` stand
+nach dem Entfernen der QR-Erkennung weiter in der Liste und endete in `Error=4`.
 
 ---
 
@@ -258,16 +238,12 @@ Umschaltbar über einen beschreibbaren OPC-UA-Knoten:
 | `apriltag` | Umriss, **Achsenkreuz im Tag**, ID, Modulname, Distanz, Reprojektionsfehler |
 | `calibration` | gefundene Board-Ecken und Bildabdeckung |
 
-Standardmäßig **aus** und hinter den Settings versteckt: er kostet auf dem Pi
-Rechenzeit und gehört nicht dauerhaft ins Bild.
+Standardmäßig **aus** und hinter den Settings versteckt: Er kostet auf dem Pi
+Rechenzeit.
 
-> **Dazu sagen:** Das Achsenkreuz ist die eigentliche Information — ein
-> verdrehtes Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
-
-> **Anmerkung, Stand 21.10.2026:** Der Livestream zeigt im Modus `apriltag`
-> jetzt nur noch einen grünen Kasten und die Tag-ID. Das Achsenkreuz (samt
-> Modulname, Distanz, Reprojektionsfehler) gibt es weiter über die CLI
-> (`python -m tagloc.cli.detect --overlay`).
+Im Modus `apriltag` zeigt der Livestream nur noch einen grünen Kasten und die Tag-ID.
+Das Achsenkreuz samt Modulname, Distanz und Reprojektionsfehler gibt es über die CLI
+(`python -m tagloc.cli.detect --overlay`).
 
 ---
 
@@ -280,9 +256,9 @@ Rechenzeit und gehört nicht dauerhaft ins Bild.
 | End-to-End auf gerendertem Bild | Detektor → Pose → Karte → Modulpose |
 | Architekturregeln | im Unterprozess an `sys.modules` gemessen |
 
-**Ungeprüft:** alles, was echte Hardware braucht. Die Zahlen sind
-Desktop-Zahlen; auf dem Pi läuft OpenCV 4.x, wofür Laufzeitweichen existieren,
-die dort noch niemand ausgeführt hat.
+**Ungeprüft:** alles, was echte Hardware braucht. Die Zahlen sind Desktop-Zahlen. Auf dem
+Pi läuft OpenCV 4.x, wofür Laufzeitweichen existieren, die dort noch nicht ausgeführt
+wurden.
 
 ---
 
@@ -290,13 +266,13 @@ die dort noch niemand ausgeführt hat.
 
 | Punkt | Stand |
 |---|---|
-| **Hand-Auge-Kalibrierung** für Layer 2 | offen — bis dahin liefert Layer 2 im Kamera-KS, `auto_execute` bleibt `False` |
+| **Hand-Auge-Kalibrierung** für Layer 2 | offen. Bis dahin liefert Layer 2 im Kamera-KS, `auto_execute` bleibt `False` |
 | Abnahme an der Pi-Kamera | Anleitung steht (`apriltag-e2e-test.md`, vier Stufen mit Abbruchkriterien) |
 | Übergabeformat Layer 1 → Layer 2 | Vorschlag: 3D-Pose im Welt-KS, Schema bleibt unverändert |
-| Stream über 5 fps | ginge nur mit anderem Transport — OPC UA deckelt bei 10 fps |
+| Stream über 5 fps | ginge nur mit anderem Transport; OPC UA deckelt bei 10 fps |
 
-> **Dazu sagen:** Die Hand-Auge-Kalibrierung ist die einzige offene Frage, die
-> Code nach sich zieht. Alles andere sind Entscheidungen, keine Untersuchungen.
+Die Hand-Auge-Kalibrierung ist die einzige offene Frage, die Code nach sich zieht. Der
+Rest sind Entscheidungen, keine Untersuchungen.
 
 ---
 
@@ -304,9 +280,8 @@ die dort noch niemand ausgeführt hat.
 
 | Dokument | Inhalt |
 |---|---|
-| `doc/apriltag-lokalisierung.md` | Konzept und Umsetzungsplan |
-| `doc/apriltag-referenz.md` | Funktions- und CLI-Referenz, Dateiformate |
-| `doc/apriltag-e2e-test.md` | Testanleitung bis zur Pi-Kamera |
-| `doc/vision-server-interface.md` | OPC-UA-Schnittstelle, Part 1 und Part 2 |
-| `doc/altlasten.md` | was warum noch offen ist |
-| `src/vision_server/nodesets/README.md` | warum die Nodeset-Versionen gepinnt sind |
+| [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | Konzept und Umsetzungsplan |
+| [`apriltag-referenz.md`](apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate |
+| [`apriltag-e2e-test.md`](apriltag-e2e-test.md) | Testanleitung bis zur Pi-Kamera |
+| [`vision-server-interface.md`](vision-server-interface.md) | OPC-UA-Schnittstelle, Part 1 und Part 2 |
+| [`../../src/vision_server/nodesets/README.md`](../../src/vision_server/nodesets/README.md) | Warum die Nodeset-Versionen gepinnt sind |
