@@ -1,14 +1,14 @@
-"""MeasureTags: Tags in Kamerakoordinaten messen, fuer die Regelung im Frontend.
+"""MeasureTags: measure tags in camera coordinates, for the frontend control loop.
 
-Layer 2 ist neu aufgeteilt: Die Steuerung (webskillcomposition) plant und
-faehrt, der Hand-Pi misst nur. Steht der Roboter, ruft die Steuerung
-`MeasureTags` auf. Der Pi nimmt nur Bilder, die **nach** dem Aufruf eintreffen,
-mittelt ueber einige davon und liefert je Tag `T_cam_tag` -- ohne Welt-KS,
-ohne CAD-Versatz, ohne Kenntnis des Roboters. Die Steuerung rechnet daraus mit
-FK und `T_flansch_cam` das naechste Flanschziel.
+Layer 2 has been split anew: the controller (webskillcomposition) plans and
+moves, and the hand Pi only measures. When the robot stands still, the
+controller calls `MeasureTags`. The Pi uses only images that arrive **after**
+the call, averages over some of them, and returns `T_cam_tag` per tag -- without
+world CS, without CAD offset, without knowledge of the robot. From this, the
+controller computes the next flange target with FK and `T_flansch_cam`.
 
-Hier steckt kein asyncua und keine Kamera: Messungen kommen als Daten herein.
-Siehe `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
+No asyncua and no camera here: measurements come in as data.
+See `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
 """
 
 from __future__ import annotations
@@ -25,15 +25,15 @@ from tagloc.jsonio import finite_or_none
 REQUEST_SCHEMA = "wsc.vision.measuretag.request/1"
 RESULT_SCHEMA = "wsc.vision.measuretag.result/1"
 
-#: OpenCV-Optikrahmen: +Z aus der Linse, +X rechts, +Y unten -- wie im
-#: Detektions-Payload (`frameConvention`).
+#: OpenCV optical frame: +Z out of the lens, +X right, +Y down -- as in the
+#: detection payload (`frameConvention`).
 FRAME_CONVENTION = "z_forward_x_right_y_down"
 
 DEFAULT_FRAMES = 3
 MAX_FRAMES = 10
-#: Ab diesem Abstand zum Bildrand (Anteil der Bildgroesse) gilt ein Tag als
-#: randnah. Ein angeschnittener Tag wird gar nicht erkannt -- der Hinweis
-#: kommt also vorher, solange er noch ganz im Bild ist.
+#: From this distance to the image edge (as a fraction of the image size) a tag
+#: counts as near the edge. A tag cut off by the edge is not detected at all, so
+#: the hint comes earlier, while the tag is still fully in the image.
 EDGE_MARGIN = 0.05
 
 NO_FRAME = "NO_FRAME"
@@ -41,28 +41,30 @@ NO_FRAME = "NO_FRAME"
 
 @dataclass(frozen=True)
 class MeasureRequest:
-    #: `None` = alle erkannten Tags.
+    """A parsed `MeasureTags` request."""
+
+    #: ``None`` = all detected tags.
     tag_ids: frozenset[int] | None
-    #: Groesse je Tag aus der Anfrage, Meter.
+    #: Size per tag from the request, in m.
     sizes_m: dict[int, float]
     frames: int = DEFAULT_FRAMES
 
 
 @dataclass(frozen=True)
 class FrameMeasurement:
-    """Ein ausgewertetes Bild."""
+    """One evaluated image."""
 
     captured_at: datetime
     image_size: tuple[int, int]
-    #: `TagPose` aus `tagloc.pose.estimate_tag_poses`, bereits auf
-    #: `tag_ids` gefiltert.
+    #: `TagPose` from `tagloc.pose.estimate_tag_poses`, already filtered to
+    #: `tag_ids`.
     tag_poses: tuple
 
 
 def parse_request(text: str) -> MeasureRequest:
-    """`wsc.vision.measuretag.request/1` lesen; ValueError mit Klartext.
+    """Parse a `wsc.vision.measuretag.request/1` document; raise ValueError with a plain message.
 
-    Leer oder `{}` ist gueltig: alle Tags, Standardanzahl Bilder.
+    An empty string or `{}` is valid: all tags, default number of images.
     """
     try:
         data = json.loads(text) if text and text.strip() else {}
@@ -102,10 +104,10 @@ def _is_int(value) -> bool:
 
 
 class SizeLookup:
-    """Tag-Groesse: Anfrage vor Tag-Map vor Rueckfall -- mit Herkunft.
+    """Tag size with precedence: request, then tag map, then fallback. Also reports the source.
 
-    Hat dieselbe Schnittstelle wie `TagMap.size_for`, damit
-    `estimate_tag_poses` sie direkt nimmt.
+    Has the same interface as `TagMap.size_for`, so `estimate_tag_poses` can
+    use it directly.
     """
 
     def __init__(self, request_sizes: dict[int, float], tag_map, default_m: float) -> None:
@@ -135,15 +137,16 @@ def build_result(
     calibration_id: str,
     error: str | None = None,
 ) -> dict:
-    """Das Ergebnis-JSON (`wsc.vision.measuretag.result/1`) als dict.
+    """Return the result JSON (`wsc.vision.measuretag.result/1`) as a dict.
 
-    Je Tag ueber alle Bilder zusammengefuehrt:
-    * Position: Mittel ueber alle Bilder, in denen der Tag zu sehen war. Sie
-      ist auch bei mehrdeutiger Orientierung verlaesslich.
-    * Orientierung: Mittel ueber die eindeutigen Bilder; nur wenn es keine
-      gibt, ueber alle -- und dann `ambiguous: true`.
-    * Pixel (`cornersPx`, `centerPx`, `decisionMargin`): aus dem letzten Bild,
-      roh wie vom Detektor (verzeichnet).
+    Merged per tag over all images:
+
+    * Position: mean over all images in which the tag was visible. It is
+      reliable even when the orientation is ambiguous.
+    * Orientation: mean over the unambiguous images; only if there are none,
+      over all of them -- and then `ambiguous: true`.
+    * Pixels (`cornersPx`, `centerPx`, `decisionMargin`): from the last image,
+      raw as the detector delivers them (distorted).
     """
     from tagloc.geometry import average_poses, to_position_quaternion
 
@@ -180,7 +183,7 @@ def build_result(
                 ),
                 "sizeM": size_m,
                 "sizeSource": size_source,
-                # Orientierung nur aus mehrdeutigen Bildern -- nicht darauf regeln.
+                # Orientation only from ambiguous images -- do not control on it.
                 "ambiguous": not clear,
                 "ambiguityRatio": float(max(t.ambiguity_ratio for t in seen)),
                 "frameCount": len(seen),
@@ -207,11 +210,11 @@ def build_result(
 
 
 def near_edge(corners, image_size, margin: float = EDGE_MARGIN) -> list[str]:
-    """Bildraender, denen der Tag naeher als `margin` kommt.
+    """Return the image edges that the tag comes closer to than ``margin``.
 
-    Fuer die Suche in der Steuerung: liegt der Tag am Rand, in diese Richtung
-    nachschwenken, statt blind zu suchen. Reihenfolge fest: left, right, top,
-    bottom (Bild-KS: x nach rechts, y nach unten).
+    For the search in the controller: if the tag is at the edge, pan in that
+    direction instead of searching blindly. The order is fixed: left, right,
+    top, bottom (image CS: x to the right, y downward).
     """
     width, height = image_size
     xs = [corner[0] for corner in corners]
@@ -229,7 +232,10 @@ def near_edge(corners, image_size, margin: float = EDGE_MARGIN) -> list[str]:
 
 
 def view_angle_deg(pose_cam_tag) -> float:
-    """Winkel zwischen Tag-Normale und Sichtlinie zur Kamera, Grad. 0 = frontal."""
+    """Return the angle in degrees between the tag normal and the line of sight to the camera.
+
+    0 means head-on.
+    """
     pose = np.asarray(pose_cam_tag, dtype=np.float64)
     distance = float(np.linalg.norm(pose[:3, 3]))
     if distance < 1e-9:
@@ -240,8 +246,10 @@ def view_angle_deg(pose_cam_tag) -> float:
 
 
 def _iso(moment: datetime) -> str:
+    """Format a timestamp as ISO 8601 with millisecond precision."""
     return moment.isoformat(timespec="milliseconds")
 
 
 def dumps(result: dict) -> str:
+    """Serialize a result dict to JSON text. NaN and infinity are rejected."""
     return json.dumps(result, allow_nan=False, default=float)

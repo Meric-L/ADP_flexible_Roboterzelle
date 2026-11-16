@@ -1,20 +1,18 @@
-"""OPC 40100-2 (AMCM): woraus dieses Vision-System besteht und wie es ihm geht.
+"""OPC 40100-2 (AMCM): what this vision system consists of and how it is doing.
 
-Teil 1 beantwortet "wie bediene ich das System", Teil 2 "woraus ist es gebaut
-und in welchem Zustand" -- Recheneinheit, Bildsensor, Objektiv, mit
-Identifikation je Komponente, dazu ein `Health`-Block mit `DeviceHealth`. In
-diesen Block schreibt `camera_health.py`, was es aus dem Kamera-Watchdog
-ableitet; dieses Modul baut nur die Knoten. Es hat keine Laufzeitkopplung an
-den Job-Pfad: nichts hier kann einen Job scheitern lassen, und ein Job kann
-hier nichts veraendern.
+Part 1 answers "how do I operate the system", part 2 answers "what is it built from
+and what state is it in" -- computing device, image sensor, lens, with identification
+per component, plus a `Health` block with `DeviceHealth`. `camera_health.py` writes
+into this block what it derives from the camera watchdog; this module only builds the
+nodes. It has no runtime coupling to the job path: nothing here can make a job fail,
+and a job cannot change anything here.
 
-Angelegt werden nur die Ordner, die wir tatsaechlich fuellen. Den Typ mit
-allen optionalen Ordnern zu instanziieren, machte auch deren
-`<Placeholder>`-Vorlagen zu echten Knoten -- ein Knoten, der woertlich
-`<ComputingDevice>` heisst, ist falsch, und sie nachtraeglich zu entfernen
-dauerte gemessen 9 s fuer 26 Loeschungen, weil asyncuas rekursives Loeschen
-krankhaft langsam ist. Aufbauen statt Abreissen hinterlaesst rund 50 statt
-rund 700 Knoten und laeuft in deutlich unter einer Sekunde.
+Only the folders that we actually fill are created. Instantiating the type with all
+optional folders would also turn their `<Placeholder>` templates into real nodes --
+a node literally named `<ComputingDevice>` is wrong, and removing them afterwards
+took 9 s for 26 deletions, because asyncua's recursive delete is painfully slow.
+Building up instead of tearing down leaves about 50 nodes instead of about 700 and
+runs in well under a second.
 """
 
 import logging
@@ -45,51 +43,49 @@ from .profiles import AssetConfig
 
 _log = logging.getLogger(__name__)
 
-#: Felder der DI-Identification, die wir ehrlich fuellen koennen. Was wir nicht
-#: wissen, bleibt leer -- eine erfundene Seriennummer ist schlimmer als eine leere.
+#: DI Identification fields that we can fill honestly. Anything we do not know stays
+#: empty -- an invented serial number is worse than an empty one.
 _IDENTIFICATION_FIELDS = ("Manufacturer", "Model", "SerialNumber", "SoftwareRevision")
 
-#: Felder, die die Spezifikation als LocalizedText statt als String typisiert.
+#: Fields that the specification types as LocalizedText instead of String.
 _LOCALIZED_FIELDS = frozenset({"Manufacturer", "Model"})
 
-#: In DIs Identification Pflicht, die Instanziierung legt sie also immer an.
+#: Mandatory in DI's Identification, so instantiation always creates them.
 _MANDATORY_FIELDS = frozenset({"Manufacturer", "SerialNumber", "ProductInstanceUri"})
 
 
 @dataclass(frozen=True)
 class VisionAssetNodes:
-    """Die Knoten der Asset-Sicht, soweit etwas anderes sie braucht."""
+    """Nodes of the asset view, as far as other code needs them."""
 
     root: Node
     computing_device: Node | None = None
     image_sensor: Node | None = None
     lens: Node | None = None
-    #: Alle `DeviceHealth`-Knoten, die denselben Kamerazustand spiegeln:
-    #: der an der Wurzel und, falls der Bildsensor bekannt ist, seiner.
-    #: Leer, wenn Part 2 fehlt oder der Block nicht anlegbar war.
+    #: All `DeviceHealth` nodes that mirror the same camera state: the one at the root
+    #: and, if the image sensor is known, one at the sensor.
+    #: Empty if part 2 is missing or the block could not be created.
     #:
-    #: Kein eigenes Feld je Komponente: fuer Recheneinheit und Objektiv gibt
-    #: es keine Zustandsquelle, und ein Knoten, den niemand schreibt, wird als
-    #: "NORMAL fuer immer" gelesen -- schlimmer als gar kein Knoten.
+    #: No separate field per component: there is no state source for the computing
+    #: device or the lens, and a node that nobody writes would be read as "NORMAL
+    #: forever" -- worse than no node at all.
     device_health: tuple[Node, ...] = ()
-    #: Die Alarmobjekte unter `VisionAsset/Health/DeviceHealthAlarms`, je
-    #: Zustand einer. Nur an der Wurzel angelegt, nicht zusaetzlich am
-    #: Bildsensor: beide Zustandsknoten tragen denselben Wert, und jede
-    #: Alarminstanz kostet 36 Knoten (gemessen). Die Ereignisse nennen die
-    #: betroffene Komponente ohnehin in `SourceNode`.
+    #: The alarm objects under `VisionAsset/Health/DeviceHealthAlarms`, one per state.
+    #: Created only at the root, not additionally at the image sensor: both state nodes
+    #: carry the same value, and each alarm instance costs 36 nodes (measured). Events
+    #: already name the affected component in `SourceNode`.
     health_alarms: dict[DeviceHealth, Node] = field(default_factory=dict)
 
 
 async def _write_identification(
     node: Node, di_idx: int, own_idx: int, values: dict[str, str]
 ) -> None:
-    """Fuellt DIs Identification und ergaenzt die optionalen Felder, die wir beantworten koennen.
+    """Fill DI's Identification and add the optional fields we can answer.
 
-    Der Typ wird ohne optionale Kinder instanziiert, daher existieren zunaechst
-    nur Manufacturer, SerialNumber und ProductInstanceUri. Model und
-    SoftwareRevision sind in DI optional -- ein Server veroeffentlicht sie,
-    wenn er sie unterstuetzt, und genau das heisst, sie hier hinzuzufuegen.
-    Felder ohne Wert fehlen, statt leer zu sein.
+    The type is instantiated without optional children, so at first only Manufacturer,
+    SerialNumber and ProductInstanceUri exist. Model and SoftwareRevision are optional
+    in DI -- a server publishes them if it supports them, and that is exactly what
+    adding them here means. Fields without a value are omitted instead of left empty.
     """
     try:
         identification = await node.get_child(f"{di_idx}:Identification")
@@ -118,11 +114,11 @@ async def _write_identification(
 async def _ensure_folder(
     server: Server, root: Node, amcm_idx: int, own_idx: int, folder_name: str, root_id: str
 ) -> Node:
-    """Der Komponentenordner, beim ersten Gebrauch angelegt."""
+    """Return the component folder, creating it on first use."""
     try:
         return await root.get_child(f"{amcm_idx}:{folder_name}")
     except Exception:
-        # Ordner fehlt noch: beim ersten Zugriff ist das der Normalfall.
+        # Folder still missing: on first access this is the normal case.
         _log.debug("Ordner '%s' nicht vorhanden, wird angelegt", folder_name)
         nodes = await instantiate(
             root,
@@ -132,12 +128,12 @@ async def _ensure_folder(
             instantiate_optional=False,
         )
         folder = nodes[0]
-        # `<VisionItem>` traegt die Modelling Rule MandatoryPlaceholder, und
-        # asyncua legt es deshalb als echten Knoten an -- unabhaengig vom
-        # Optional-Schalter. Ein Platzhalter ist aber eine Vorlage des Typs,
-        # keine Instanz: er gehoert nicht in einen laufenden Adressraum.
-        # Ein Loeschen je angelegtem Ordner, nicht ueber den ganzen Typ --
-        # asyncuas rekursives Loeschen ist teuer (gemessen ~0,35 s je Knoten).
+        # `<VisionItem>` carries the MandatoryPlaceholder modelling rule, so asyncua
+        # creates it as a real node -- regardless of the Optional switch. A placeholder
+        # is a template of the type, not an instance: it does not belong in a running
+        # address space.
+        # Delete per created folder, not across the whole type -- asyncua's recursive
+        # delete is expensive (measured about 0.35 s per node).
         for child in await folder.get_children():
             if (await child.read_browse_name()).Name.startswith("<"):
                 await child.delete(recursive=True)
@@ -155,7 +151,7 @@ async def _add_component(
     values: dict[str, str],
     root_id: str,
 ) -> Node | None:
-    """Instanziiert eine Komponente in ihren Ordner und identifiziert sie."""
+    """Instantiate a component in its folder and identify it."""
     try:
         nodes = await instantiate(
             folder,
@@ -174,26 +170,24 @@ async def _add_component(
 async def _add_health(
     server: Server, owner: Node, amcm_idx: int, di_idx: int, own_idx: int
 ) -> Node | None:
-    """Haengt `Health` an eine Komponente und gibt deren `DeviceHealth` zurueck.
+    """Attach `Health` to a component and return its `DeviceHealth` node.
 
-    Drei Eigenheiten, alle im Nodeset bzw. in asyncua begruendet:
+    Three quirks, all explained by the nodeset or by asyncua:
 
-    * `Health` ist an jedem Item optional und per `HasAddIn` referenziert.
-      asyncuas `instantiate()` setzt die Referenz aber immer auf
-      `HasComponent` (`copy_node_util._rdesc_from_node` kennt nur
-      `Organizes` fuer Ordner und sonst `HasComponent`) -- sie wird danach
-      getauscht.
-    * `VisionHealthInfoType` hat ausschliesslich optionale Kinder; der
-      instanziierte Block ist leer. `DeviceHealth` kommt einzeln dazu, genau
-      wie die optionalen Identification-Felder in `_write_identification`.
-    * Der Startwert ist CHECK_FUNCTION, nicht NORMAL: beim Aufbau des
-      Adressraums ist die Kamera noch nicht einmal geoeffnet. NORMAL waere
-      hier eine Behauptung, die genau so lange steht, bis der Publisher
-      laeuft. Der ausdrueckliche Int32-Startwert haelt ausserdem
-      `BadTypeMismatch` fern: asyncua prueft eine Schreibanfrage gegen den
-      VariantType des vorhandenen Werts.
+    * `Health` is optional on every item and referenced via `HasAddIn`.
+      asyncua's `instantiate()` always sets the reference to `HasComponent`
+      (`copy_node_util._rdesc_from_node` only knows `Organizes` for folders and
+      otherwise `HasComponent`), so it is swapped afterwards.
+    * `VisionHealthInfoType` has only optional children; the instantiated block is
+      empty. `DeviceHealth` is added separately, just like the optional Identification
+      fields in `_write_identification`.
+    * The start value is CHECK_FUNCTION, not NORMAL: while the address space is being
+      built, the camera is not even opened yet. NORMAL would be a claim that holds only
+      until the publisher runs. The explicit Int32 start value also avoids
+      `BadTypeMismatch`: asyncua checks a write request against the VariantType of the
+      existing value.
 
-    Wirft nie -- die Anlagensicht ist eine Zusatzsicht, kein Betriebsmittel.
+    Never raises -- the asset view is an additional view, not an operating resource.
     """
     base = owner.nodeid.Identifier
     try:
@@ -209,11 +203,11 @@ async def _add_health(
         return None
     health = nodes[0]
     try:
-        # Als `ua.NodeId`, nicht als blanke Zahl: asyncuas `_to_nodeid` macht
-        # aus einem int einen `TwoByteNodeId` und wirft ueber 255 -- und
-        # HasAddIn (17604) wie HasInterface (17603) liegen darueber.
-        # Erst die richtige Referenz setzen, dann die falsche loeschen: bricht
-        # es dazwischen ab, ist der Knoten doppelt erreichbar statt gar nicht.
+        # As `ua.NodeId`, not as a bare number: asyncua's `_to_nodeid` turns an int into
+        # a `TwoByteNodeId` and fails above 255 -- and HasAddIn (17604), like
+        # HasInterface (17603), lies above that.
+        # Set the correct reference first, then delete the wrong one: if it aborts in
+        # between, the node is reachable twice rather than not at all.
         await owner.add_reference(health, ua.NodeId(ua.ObjectIds.HasAddIn))
         await owner.delete_reference(health, ua.NodeId(ua.ObjectIds.HasComponent))
         await health.add_reference(
@@ -221,7 +215,7 @@ async def _add_health(
             ua.NodeId(ua.ObjectIds.HasInterface),
         )
     except Exception:
-        # Ein falscher Referenztyp macht den Knoten unschoen, nicht unbrauchbar.
+        # A wrong reference type makes the node ugly, not unusable.
         _log.debug("HasAddIn-Referenz fuer %s nicht setzbar", base, exc_info=True)
     try:
         return await health.add_variable(
@@ -236,9 +230,8 @@ async def _add_health(
         return None
 
 
-#: Welcher DI-Alarmtyp zu welchem Zustand gehoert. `NORMAL` hat keinen --
-#: es ist die Abwesenheit eines Alarms. `MAINTENANCE_REQUIRED` fehlt
-#: bewusst, siehe `nodeset_ids.py`.
+#: Which DI alarm type belongs to which state. `NORMAL` has none -- it is the absence
+#: of an alarm. `MAINTENANCE_REQUIRED` is deliberately missing, see `nodeset_ids.py`.
 _ALARM_TYPES: tuple[tuple[DeviceHealth, int, str], ...] = (
     (DeviceHealth.FAILURE, DI_FAILURE_ALARM_TYPE, "FailureAlarm"),
     (DeviceHealth.CHECK_FUNCTION, DI_CHECK_FUNCTION_ALARM_TYPE, "CheckFunctionAlarm"),
@@ -249,18 +242,17 @@ _ALARM_TYPES: tuple[tuple[DeviceHealth, int, str], ...] = (
 async def _add_health_alarms(
     server: Server, health: Node, di_idx: int, own_idx: int
 ) -> dict[DeviceHealth, Node]:
-    """Legt `DeviceHealthAlarms` an und darin die Alarme, die wir bedienen.
+    """Create `DeviceHealthAlarms` and the alarms in it that we operate.
 
-    Der zweite Teil von DIs `IDeviceHealthType`: neben der Zustandsvariablen
-    sieht die Norm echte OPC-UA-Alarme vor. Erst damit bekommt ein Client ein
-    Ereignis mit Zeitstempel, Quelle und Schweregrad, statt eine Zahl abfragen
-    zu muessen.
+    The second part of DI's `IDeviceHealthType`: besides the state variable, the
+    standard defines real OPC UA alarms. Only these give a client an event with
+    timestamp, source and severity, instead of forcing it to poll a number.
 
-    Angelegt wird nur, was auch gefeuert wird -- drei der vier Typen. Jede
-    Instanz kostet 36 Knoten (gemessen), deshalb gibt es sie einmal an der
-    Wurzel und nicht zusaetzlich je Komponente.
+    Only what is actually fired is created -- three of the four types. Each instance
+    costs 36 nodes (measured), so there is one set at the root instead of one per
+    component.
 
-    Wirft nie; ohne Alarme bleibt die Zustandsvariable der Meldeweg.
+    Never raises; without alarms the state variable remains the reporting path.
     """
     base = health.nodeid.Identifier
     try:
@@ -293,18 +285,17 @@ async def _add_health_alarms(
 async def attach_asset_model(
     space: VisionAddressSpace, config: AssetConfig
 ) -> VisionAssetNodes | None:
-    """Baut die Asset-Sicht von Teil 2 unter dem Vision-System.
+    """Build the part 2 asset view under the vision system.
 
-    Liefert `None`, wenn Teil 2 nicht geladen ist. Wirft nie: die Asset-Sicht
-    ist eine Service- und Wartungshilfe, und ihr Verlust darf den Server nicht
-    daran hindern, den Job-Pfad auszufuehren.
+    Returns `None` if part 2 is not loaded. Never raises: the asset view is a service
+    and maintenance aid, and its loss must not stop the server from running the job path.
     """
     if space.amcm_idx is None:
         return None
     server, amcm_idx, own_idx = space.server, space.amcm_idx, space.own_idx
-    # Der Praefix folgt dem Instanznamen und wird nicht danebengeschrieben:
-    # sonst haette eine umbenannte Instanz weiterhin NodeIds, die "VisionMachine"
-    # sagen -- zwei Wahrheiten ueber denselben Knoten.
+    # The prefix follows the instance name and is not written separately: otherwise a
+    # renamed instance would keep NodeIds that say "VisionMachine" -- two truths about
+    # the same node.
     root_id = f"{space.config.vision_system_name}.VisionAsset"
     try:
         di_idx = await server.get_namespace_index(DI_NAMESPACE_URI)
@@ -332,7 +323,7 @@ async def attach_asset_model(
         },
     )
 
-    # Singular je Ordner ausgeschrieben: "Lenses"[:-1] waere "Lense".
+    # Singular spelled out per folder: "Lenses"[:-1] would be "Lense".
     components: dict[str, Node | None] = {}
     for attribute, folder_name, item_name, type_identifier, model in (
         ("computing_device", "ComputingDevices", "ComputingDevice",
@@ -352,13 +343,12 @@ async def attach_asset_model(
             item_name, {"Manufacturer": config.manufacturer, "Model": model}, root_id,
         )
 
-    # Zustandsblock an der Wurzel und am Bildsensor. Die Wurzel bekommt ihn
-    # immer: ohne bekanntes Kameramodell gibt es keinen ImageSensor-Knoten,
-    # und dann bliebe gar keine Meldestelle. Beide tragen heute denselben
-    # Wert -- es gibt genau eine Zustandsquelle. Kommt eine zweite Komponente
-    # mit eigenem Zustand dazu, braucht die Wurzel eine echte Regel; die
-    # verlangt eine Rangfolge ueber die NE-107-Zustaende, die DI nicht
-    # definiert, und wird deshalb nicht vorweggenommen.
+    # Health block at the root and at the image sensor. The root always gets one: without
+    # a known camera model there is no ImageSensor node, and then there would be no
+    # reporting point at all. Both carry the same value today -- there is exactly one
+    # state source. If a second component with its own state is added, the root needs a
+    # real rule; that requires a ranking over the NE-107 states, which DI does not
+    # define, so it is not anticipated here.
     health_owners = [root]
     if components["image_sensor"] is not None:
         health_owners.append(components["image_sensor"])
@@ -370,8 +360,8 @@ async def attach_asset_model(
             continue
         device_health.append(node)
         if owner is root:
-            # Nur an der Wurzel: sie existiert immer, auch ohne bekanntes
-            # Kameramodell, und ist damit die stabile Adresse fuer Clients.
+            # Only at the root: it always exists, even without a known camera model, and is
+            # therefore the stable address for clients.
             block = await node.get_parent()
             if block is not None:
                 health_alarms = await _add_health_alarms(

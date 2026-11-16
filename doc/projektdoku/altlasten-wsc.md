@@ -10,7 +10,7 @@ und tragen hier die alte ID in der Spalte „ex-ID“. Gegenstück für dieses R
 [`altlasten-zelle.md`](altlasten-zelle.md). Plan: [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
 Was jede Datei tut, steht im [`code-handbuch.md`](code-handbuch.md), Teil B.
 
-**Aufgeräumt wird auf Branch `ungetestet-aufraeumen`** (webskillcomposition, lokal, ungemergt). Was davon
+**Aufgeräumt wird auf Branch `ADP_Lokaliserung`** (webskillcomposition, lokal, ungemergt). Was davon
 umgesetzt ist, steht am Ende unter „Umsetzungsstand“.
 
 **Methode:** TypeScript-Compiler-API (Import- und Symbolgraph mit Erreichbarkeit aus `main.tsx` und
@@ -393,7 +393,7 @@ Wirkung: Distanz T_cam_tag ∝ `size_assumed/size_true`; 0,198 statt 0,20 bedeut
 
 ## 11. Umsetzungsstand
 
-Branch `ungetestet-aufraeumen` (webskillcomposition). Wird beim Aufräumen fortgeschrieben.
+Branch `ADP_Lokaliserung` (webskillcomposition). Wird beim Aufräumen fortgeschrieben.
 
 | IDs | Stand | Commit |
 | --- | --- | --- |

@@ -35,6 +35,8 @@ nicht gibt.
 | [`layer2-measuretags.md`](layer2-measuretags.md) | apriltag | fertig | `Agent: MeasureTags auf dem Hand-Pi` | 15.10.2026 |
 | [`hand-auge-brett-zentrieren.md`](hand-auge-brett-zentrieren.md) | apriltag | fertig | `Agent: Hand-Auge-Brett zentrieren auf dem Hand-Pi` | 22.10.2026 |
 | [`handeye-genauigkeit.md`](handeye-genauigkeit.md) | apriltag | in Arbeit | Meric, `Agent: Hand-Auge-Genauigkeit` | 28.10.2026 |
+| [`handauge-schachbrett-rohdaten-offline.md`](handauge-schachbrett-rohdaten-offline.md) | apriltag | fertig (ohne Hardwarefahrt) | Meric, Codex | 09.11.2026 |
+| [`handauge-charuco-auswahl.md`](handauge-charuco-auswahl.md) | apriltag | fertig (ohne Hardwarefahrt) | Meric, Codex | 09.11.2026 |
 | [`kalibrierung-linsenmodell-je-kamera.md`](kalibrierung-linsenmodell-je-kamera.md) | vision | fertig | `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)` | 29.09.2026 |
 | [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md) | frontend | fertig | Meric, `Agent: Tag um 90° drehen` | 19.10.2026 |
 | [`rohbild-speichern.md`](rohbild-speichern.md) | vision | fertig | Meric, `Agent: Rohbild speichern` | 19.10.2026 |
@@ -47,6 +49,9 @@ nicht gibt.
 | [`aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md) | sonstiges | in Arbeit | Meric, `Agent: Aufräumen und Code-Handbuch` | 30.10.2026 |
 | [`use-case-foto.md`](use-case-foto.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Foto` | 29.10.2026 |
 | [`use-case-messung.md`](use-case-messung.md) | vision | in Arbeit | Meric, `Agent: Use-Case-Messung` | 29.10.2026 |
+| [`modellfehler-pruefung.md`](modellfehler-pruefung.md) | apriltag | geplant | Meric | 10.11.2026 |
+| [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
+| [`kalibrier-aufnahmen-roh.md`](kalibrier-aufnahmen-roh.md) | vision | fertig | Meric, `Agent: Kalibrier-Rohbilder` | 10.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`

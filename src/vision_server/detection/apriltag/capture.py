@@ -1,9 +1,9 @@
-"""Bilder der geteilten Kamera holen: Frische, Kalibrierung zur Bildgroesse, Overlay-Stand.
+"""Fetch images from the shared camera: freshness, calibration matched to the image size, overlay state.
 
-`CaptureMixin` ist der Teil der AprilTag-Quelle, den alle Messpfade (Job,
-MeasureTags, MeasureBoard, Bezugskanten, Zellen-Ueberwachung) gemeinsam
-brauchen. Er erwartet am Objekt `camera`, `_config`, `_calibration` und
-`latest_tags`; die setzt `AprilTagDetectionSource.__init__`.
+`CaptureMixin` is the part of the AprilTag source that all measurement paths
+(job, MeasureTags, MeasureBoard, reference edges, cell watch) share. It expects
+the object to provide `camera`, `_config`, `_calibration` and `latest_tags`;
+`AprilTagDetectionSource.__init__` sets them.
 """
 
 import asyncio
@@ -17,34 +17,35 @@ POLL_INTERVAL_S = 0.02
 
 
 def captured_at(frame) -> datetime:
-    """Aufnahmezeit eines Kamerabilds in UTC.
+    """Return the capture time of a camera image in UTC.
 
-    `frame.timestamp` ist die Loop-Zeit beim Eintreffen des Bilds; hier wird
-    sie ueber das Alter auf die Wanduhr umgerechnet -- der Zeitpunkt des
-    Bilds, nicht der des Aufrufs. Nur im Event-Loop aufrufen.
+    ``frame.timestamp`` is the loop time when the image arrived. It is converted
+    to wall-clock time via the image age, so the result is the time of the image,
+    not of the call. Call only inside the event loop.
     """
     age_s = asyncio.get_running_loop().time() - frame.timestamp
     return datetime.now(timezone.utc) - timedelta(seconds=age_s)
 
 
 class CaptureMixin:
-    """Auf frische Bilder warten und sie passend zur Kalibrierung auswerten."""
+    """Wait for fresh images and evaluate them against the calibration."""
 
     def _latest_timestamp(self):
-        """Zeitstempel des neuesten schon vorhandenen Bilds, oder `None`.
+        """Return the timestamp of the newest image already available, or ``None``.
 
-        Wer nur Bilder **nach** dem Aufruf will, uebergibt ihn als
-        `seen_timestamp` an `_next_frame`: Sonst kaeme als erstes das Bild, das
-        schon vor dem Aufruf im Puffer lag -- bis zu eine Bildperiode alt.
+        Callers that want only images **after** the call pass it as
+        ``seen_timestamp`` to ``_next_frame``. Otherwise the first image returned
+        would be one already in the buffer before the call, up to one frame
+        period old.
         """
         latest = self.camera.latest_frame
         return latest.timestamp if latest is not None else None
 
     async def _next_frame(self, seen_timestamp: float | None):
-        """Wartet auf ein Bild, das neuer ist als das zuletzt verarbeitete.
+        """Wait for an image newer than the last one processed.
 
-        Mit eigenem Timeout, denn der Job-Timeout des Runners kann einen
-        haengenden Worker-Thread nicht beenden (siehe `base.run_blocking`).
+        Uses its own timeout, because the runner's job timeout cannot stop a
+        hung worker thread (see ``base.run_blocking``).
         """
         deadline = time.monotonic() + self._config.capture_timeout_s
         while time.monotonic() < deadline:
@@ -58,7 +59,7 @@ class CaptureMixin:
         )
 
     def _calibration_for(self, image):
-        """Die Kalibrierung, passend zur Aufloesung dieses Bilds."""
+        """Return the calibration matching the resolution of this image."""
         from tagloc import frames as frame_tools
         from tagloc.calibration import check_resolution, scale_to_resolution
 
@@ -71,7 +72,7 @@ class CaptureMixin:
         return calibration
 
     def _remember_tags(self, tag_poses, image, origin: str) -> None:
-        """Haelt `tag_poses` als neuestes Ergebnis fuers Livestream-Overlay fest."""
+        """Store `tag_poses` as the latest result for the live stream overlay."""
         from tagloc import frames as frame_tools
 
         self.latest_tags = TagSnapshot(

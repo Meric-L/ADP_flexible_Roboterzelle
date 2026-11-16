@@ -1,17 +1,16 @@
-"""Diagnose: warum findet die Kalibrierung das Schachbrett nicht, obwohl es
-im Livestream scharf zu sehen ist?
+"""Diagnose: why calibration does not find the chessboard although it is sharp in the live stream.
 
-Holt ein unmarkiertes Rohbild vom laufenden Server (schaltet
-`CameraStreamMode` kurz auf "off", damit kein Overlay im Weg ist, und stellt
-den vorherigen Modus danach wieder her) und probiert mehrere plausible
-cols/rows-Kombinationen gegen `tagloc.boards.detect_board` -- dieselbe
-Funktion, die auch `CaptureCalibrationSample` und das Stream-Overlay nutzen.
-Gleiches Vorgehen wie beim Hand-Pi (manuell durchgespielt), hier
-automatisiert und gegen den laufenden Server statt gegen ein Einzelbild.
+Fetches an unmarked raw image from the running server. It briefly sets
+`CameraStreamMode` to "off" so that no overlay is in the way, then restores the
+previous mode. It tries several plausible cols/rows combinations against
+`tagloc.boards.detect_board` -- the same function that `CaptureCalibrationSample`
+and the stream overlay use. This follows the same procedure as on the hand Pi
+(played through manually), here automated and run against the running server
+instead of a single image.
 
-Speichert das Rohbild zusaetzlich lokal -- eine falsche cols/rows-Angabe ist
-nicht die einzig moegliche Ursache; das Bild selbst zeigt Belichtung,
-Bildausschnitt und ob das Board wirklich groß/scharf genug im Frame liegt.
+It also saves the raw image locally. A wrong cols/rows value is not the only
+possible cause. The image itself shows the exposure, the framing, and whether
+the board is large and sharp enough in the frame.
 """
 
 import argparse
@@ -25,9 +24,9 @@ from asyncua import Client, ua
 
 from tagloc.boards import BoardSpec, detect_board
 
-#: Plausible Kombinationen als erster, naheliegender Satz: zuerst das aktuelle
-#: Brett (seit 28.10.2026 7x10 innere Ecken, 23 mm/Feld), dann das vorherige
-#: (7x9, 22 mm/Feld), mit dem sich am Hand-Pi das reale Board gefunden hat.
+#: Plausible combinations as the first, obvious set: first the current board
+#: (since 28.10.2026 7x10 inner corners, 23 mm per square), then the previous one
+#: (7x9, 22 mm per square), with which the real board was found on the hand Pi.
 DEFAULT_COMBOS = [
     (7, 10), (10, 7), (7, 9), (9, 7), (6, 8), (8, 6), (6, 9), (9, 6),
     (7, 8), (8, 7), (8, 9), (9, 8),
@@ -49,7 +48,7 @@ async def run(args: argparse.Namespace) -> int:
         previous_mode = await mode_node.read_value()
         await mode_node.write_value("off")
         try:
-            await asyncio.sleep(args.settle_s)  # ein paar Stream-Ticks abwarten
+            await asyncio.sleep(args.settle_s)  # wait a few stream ticks
             encoded = await frame_node.read_value()
         finally:
             await mode_node.write_value(previous_mode)

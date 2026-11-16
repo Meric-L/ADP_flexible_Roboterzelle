@@ -1,4 +1,4 @@
-"""Kamera-Kalibrierung: Session bauen, Info-Knoten, Methoden `StartCalibration` und Co."""
+"""Camera calibration: build the session, info node and the `StartCalibration` etc. methods."""
 
 import asyncio
 import json
@@ -19,10 +19,9 @@ from .wiring import Wiring
 _log = logging.getLogger(__package__)
 
 
-#: Takt, in dem `CalibrationProgress` waehrend der Hintergrund-Auswertung
-#: geschrieben wird, solange der Livestream pausiert ist (siehe
-#: `_pause_stream_during_processing`). Ein neu verbundener Client sieht
-#: `processing: true` damit spaetestens nach dieser Zeit.
+#: Interval at which `CalibrationProgress` is written during background processing,
+#: while the live stream is paused (see `_pause_stream_during_processing`). A newly
+#: connected client then sees `processing: true` at the latest after this time.
 CALIBRATION_PROGRESS_INTERVAL_S = 1.0
 
 
@@ -31,12 +30,13 @@ def _build_calibration_session(
     opened: Mapping[str, bool],
     config: VisionServerConfig,
 ) -> CalibrationSession | None:
-    """Baut die (wiederverwendbare) Kalibrier-Session, falls moeglich.
+    """Build the reusable calibration session, if possible.
 
-    Nur wenn die `apriltag`-Quelle offen ist -- dieselbe `SharedCamera` wie
-    Job und Livestream, kein zweiter Kamera-Zugriff -- und `config.apriltag`
-    gesetzt ist (auf den echten Pis der Fall, siehe `vision_server/server.py`; lokale
-    Entwicklung/Tests ohne explizite Konfiguration lassen das Feature aus).
+    Only if the `apriltag` source is open. It uses the same `SharedCamera` as the
+    job and the live stream, so there is no second camera access. Also requires
+    `config.apriltag` to be set. This is the case on the real Pis (see
+    `vision_server/server.py`). Local development and tests without explicit
+    configuration leave the feature out.
     """
     if config.apriltag is None:
         return None
@@ -47,19 +47,18 @@ def _build_calibration_session(
 
 
 def _calibration_info_payload(calibration: Any, path: Any) -> dict:
-    """JSON-faehige Kurzfassung der gerade *aktiven* Kalibrierung.
+    """Return a short, JSON-ready summary of the *active* calibration.
 
-    Anders als `CalibrationSession.progress`/`last_result` (Fortschritt
-    *einer Session*) beschreibt das hier, was `AprilTagDetectionSource`
-    tatsaechlich fuer Posen benutzt -- direkt nach dem Laden beim Start und
-    nach jeder interaktiven Neu-Kalibrierung.
+    Unlike `CalibrationSession.progress`/`last_result`, which describe the progress
+    of one session, this describes what `AprilTagDetectionSource` actually uses for
+    poses. It is written right after loading at start-up and after every
+    interactive recalibration.
 
-    `calibrationId`/`createdAt` liest diese Funktion aus der Datei nach,
-    statt sie hier ein zweites Mal zu erzeugen: `CameraCalibration` selbst
-    kennt `createdAt` gar nicht, und `calibration_id` ist bei einem frisch
-    berechneten Objekt noch leer -- das Format entsteht erst beim Schreiben
-    in `tagloc.calibration.save_calibration`. Einzige Ausnahme: die
-    Platzhalter-Kalibrierung, zu der keine Datei existiert.
+    This function reads `calibrationId`/`createdAt` back from the file rather than
+    creating them again. `CameraCalibration` itself does not know `createdAt`, and
+    `calibration_id` is still empty on a freshly computed object. The format only
+    appears when `tagloc.calibration.save_calibration` writes it. The only
+    exception is the placeholder calibration, for which no file exists.
     """
     from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
 
@@ -86,11 +85,10 @@ def _calibration_info_payload(calibration: Any, path: Any) -> dict:
 
 
 async def _write_calibration_info(node: Node | None, calibration: Any, path: Any) -> None:
-    """Schreibt `_calibration_info_payload` in `ActiveCalibrationInfo`.
+    """Write `_calibration_info_payload` to `ActiveCalibrationInfo`.
 
-    Fehler landen nur im Log -- ein nicht schreibbarer Info-Knoten darf
-    weder den Start noch eine gerade erfolgreich gespeicherte Kalibrierung
-    zu Fall bringen.
+    Errors are only logged. A node that cannot be written must not break
+    start-up, or a calibration that was just saved successfully.
     """
     if node is None or calibration is None:
         return
@@ -101,10 +99,11 @@ async def _write_calibration_info(node: Node | None, calibration: Any, path: Any
 
 
 async def write_initial_calibration_info(wiring: Wiring) -> None:
-    """Schreibt nach dem Oeffnen der Quellen, welche Kalibrierung gerade gilt.
+    """Write which calibration is active, after the sources have been opened.
 
-    Was `open()` gerade geladen hat (echte Datei oder Platzhalter) -- ohne das
-    waere `ActiveCalibrationInfo` leer, bis zum ersten `StartCalibration`.
+    This is what `open()` just loaded, either the real file or the placeholder.
+    Without it, `ActiveCalibrationInfo` would stay empty until the first
+    `StartCalibration`.
     """
     config = wiring.config
     if config.apriltag is not None and wiring.opened.get("apriltag"):
@@ -116,15 +115,16 @@ async def write_initial_calibration_info(wiring: Wiring) -> None:
 
 
 def connect_live_calibration(wiring: Wiring) -> None:
-    """Haengt die Live-Uebernahme an die Session (falls es eine gibt)."""
+    """Hook live adoption of a new calibration into the session, if there is one."""
     session = wiring.calibration_session
     if session is None:
         return
 
     async def _apply_live_calibration(calibration: Any) -> None:
-        """Bringt Erkennung, Overlay und den Info-Knoten sofort auf den
-        neuen Stand -- kein Server-Neustart noetig, siehe
-        `AprilTagDetectionSource.apply_calibration`."""
+        """Update detection, overlay and the info node to the new calibration at once.
+
+        No server restart is needed. See `AprilTagDetectionSource.apply_calibration`.
+        """
         source, annotator = wiring.apriltag_source, wiring.annotator
         if source is not None and hasattr(source, "apply_calibration"):
             source.apply_calibration(calibration)
@@ -140,14 +140,13 @@ def connect_live_calibration(wiring: Wiring) -> None:
 
 
 async def _write_calibration_progress(wiring: Wiring) -> None:
-    """Schreibt `CalibrationProgress` direkt aus der Session.
+    """Write `CalibrationProgress` directly from the session.
 
-    Sonst schreibt nur die Publish-Schleife des Livestreams diesen
-    Knoten (`CameraStreamPublisher._publish_progress`) -- und genau
-    die ist waehrend der Auswertung pausiert. Ohne diesen eigenen
-    Schreibpfad bliebe der Knoten dann auf dem letzten Stand der
-    Aufnahme-Phase stehen, `processing: true` waere nie sichtbar
-    (gefunden 2026-09-28).
+    Otherwise only the publish loop of the live stream writes this node
+    (`CameraStreamPublisher._publish_progress`), and that loop is paused during
+    processing. Without this separate write path the node would stay at the last
+    state of the capture phase, and `processing: true` would never be visible
+    (found 2026-09-28).
     """
     try:
         await wiring.space.calibration_progress.write_value(
@@ -158,17 +157,16 @@ async def _write_calibration_progress(wiring: Wiring) -> None:
 
 
 async def _pause_stream_during_processing(wiring: Wiring) -> None:
-    """Waehrend `CalibrationSession._process()` im Hintergrund
-    rechnet, den Livestream pausieren, damit der Pi die volle CPU
-    fuer die Ecken-Erkennung hat (2026-09-28, auf Vorschlag/mit
-    Bestaetigung, nachdem die vorherige Deckenkamera-Auswertung
-    wiederholt haengen blieb). Laeuft selbst als Hintergrund-Task --
-    `FinishCalibration` darf darauf nicht warten, siehe dort.
+    """Pause the live stream while `CalibrationSession._process()` runs in the background.
 
-    `CalibrationProgress` wird in dieser Zeit hier geschrieben statt
-    vom (pausierten) Livestream: einmal sofort (`processing: true`),
-    danach im Takt `CALIBRATION_PROGRESS_INTERVAL_S` und ein letztes
-    Mal mit `result`, bevor der Livestream wieder uebernimmt.
+    This leaves the Pi the full CPU for corner detection (2026-09-28, proposed and
+    confirmed, after the earlier ceiling-camera processing kept hanging). It runs
+    as a background task itself. `FinishCalibration` must not wait for it, see there.
+
+    During this time `CalibrationProgress` is written from here instead of from the
+    (paused) live stream. It is written once immediately (`processing: true`), then
+    every `CALIBRATION_PROGRESS_INTERVAL_S`, and one last time with `result` before
+    the live stream takes over again.
     """
     stream = wiring.camera_stream
     if stream is not None:
@@ -189,12 +187,10 @@ async def _pause_stream_during_processing(wiring: Wiring) -> None:
 
 
 def _start_calibration_method(wiring: Wiring):
-    """Handler fuer `1:StartCalibration` -- setzt eine neue Session auf; Aufnahmen
-    kommen danach ausschliesslich ueber `CaptureCalibrationSample`.
+    """Handler for `1:StartCalibration`. It starts a new session. Samples come only via `CaptureCalibrationSample` after that.
 
-    Kein Kalibrierdurchlauf gegen einen laufenden Job oder eine
-    zweite Session gleichzeitig -- beide teilen sich Kamera und
-    Detektor.
+    No calibration run may run at the same time as a job or a second session.
+    Both share the camera and the detector.
     """
 
     def busy_reason() -> str | None:
@@ -205,10 +201,10 @@ def _start_calibration_method(wiring: Wiring):
         if wiring.hand_eye_active():
             return "StartCalibration waehrend Hand-Auge-Kalibrierung abgelehnt"
         if wiring.calibration_busy():
-            # `.busy` statt `.running`: eine Hintergrund-Auswertung aus
-            # einem vorherigen `FinishCalibration` liest noch aus dem
-            # `_pending_dir` der Session -- ein neuer `start()` waehrend-
-            # dessen wuerde den gerade genau darunter wegleeren.
+            # `.busy` instead of `.running`: a background evaluation from an
+            # earlier `FinishCalibration` still reads from the session's
+            # `_pending_dir`. A new `start()` in that window would empty the
+            # directory it is reading from.
             return "StartCalibration waehrend laufender Session/Auswertung abgelehnt"
         return None
 
@@ -230,14 +226,12 @@ def _start_calibration_method(wiring: Wiring):
 
 
 def _capture_calibration_method(wiring: Wiring):
-    """Handler fuer `1:CaptureCalibrationSample` -- merkt sich das aktuelle
-    Kamerabild, manuell ausgeloest (z. B. per Leertaste im
-    Stream-Viewer). Keine Board-Erkennung in diesem Aufruf, die
-    passiert erst nach `FinishCalibration` (siehe
-    `CalibrationSession.capture`). `Error=OK` heisst nur "Bild
-    gespeichert"; `INVALID_STATE` heisst keine Session aktiv oder
-    gerade kein Kamera-Frame -- die Session laeuft weiter, ein
-    erneuter Versuch ist ok.
+    """Handler for `1:CaptureCalibrationSample`. It stores the current camera image, triggered manually (e.g. with the space bar in the stream viewer).
+
+    No board detection happens in this call. It runs only after `FinishCalibration`
+    (see `CalibrationSession.capture`). `Error=OK` only means "image saved".
+    `INVALID_STATE` means no session is active, or there is no camera frame right
+    now. The session keeps running, and a retry is fine.
     """
 
     @uamethod
@@ -253,19 +247,17 @@ def _capture_calibration_method(wiring: Wiring):
 
 
 def _finish_calibration_method(wiring: Wiring):
-    """Handler fuer `1:FinishCalibration` -- beendet die Aufnahme-Phase und stoesst
-    die Auswertung im Hintergrund an; kehrt sofort zurueck, OHNE auf
-    das Ergebnis zu warten (`CalibrationSession.finish()`, siehe
-    dort -- eine synchrone Auswertung mehrerer
-    Vollaufloesungs-Aufnahmen haette auf der Deckenkamera dasselbe
-    Timeout-Risiko wie eine einzelne haengende `detect_board`-
-    Aufnahme, live 2026-09-28 gefunden). Das Frontend beobachtet das
-    Ergebnis ausschliesslich ueber `CalibrationProgress`
-    (`processing` -> `result`).
+    """Handler for `1:FinishCalibration`. It ends the capture phase and starts the evaluation in the background.
 
-    `Summary` ist immer gueltiges JSON, auch im Fehlerfall (dann mit
-    `message` statt `samples`/... ), damit das Frontend nicht
-    zwischen Erfolgs- und Fehlerform unterscheiden muss.
+    It returns at once, WITHOUT waiting for the result (see `CalibrationSession.finish()`).
+    A synchronous evaluation of several full-resolution captures would carry the
+    same timeout risk on the ceiling camera as a single hanging `detect_board`
+    capture (found live 2026-09-28). The frontend follows the result only through
+    `CalibrationProgress` (`processing` -> `result`).
+
+    `Summary` is always valid JSON, also on error. On error it holds `message`
+    instead of `samples`/..., so the frontend does not need to tell the success
+    shape from the error shape.
     """
 
     @uamethod
@@ -277,14 +269,13 @@ def _finish_calibration_method(wiring: Wiring):
                 ua.Variant(int(VisionErrorCode.INVALID_STATE), ua.VariantType.Int32),
             )
         error, summary = await session.finish()
-        # Der Annotator bleibt in beiden Faellen bewusst an der Session
-        # haengen (kein `set_calibration_session(None)` hier): der
-        # Livestream veroeffentlicht so weiter `progress` samt `result`,
-        # statt in den session-losen Zustand `{"running": false}`
-        # zurueckzufallen -- das gilt auch fuer die sofortige Ablehnung
-        # mit zu wenigen Aufnahmen, deren `result` sonst nie in
-        # `CalibrationProgress` ankaeme. Geloest wird das erst durch das
-        # naechste `StartCalibration`/`AbortCalibration`.
+        # The annotator deliberately stays attached to the session in both cases
+        # (no `set_calibration_session(None)` here). The live stream then keeps
+        # publishing `progress` with `result`, instead of falling back to the
+        # session-less state `{"running": false}`. This also holds for the
+        # immediate rejection with too few captures, whose `result` would
+        # otherwise never reach `CalibrationProgress`. Only the next
+        # `StartCalibration`/`AbortCalibration` clears it.
         if error == VisionErrorCode.OK:
             asyncio.ensure_future(_pause_stream_during_processing(wiring))
         else:
@@ -298,7 +289,7 @@ def _finish_calibration_method(wiring: Wiring):
 
 
 def _abort_calibration_method(wiring: Wiring):
-    """Handler fuer `1:AbortCalibration` -- stoppt ohne zu speichern."""
+    """Handler for `1:AbortCalibration`. It stops the session without saving."""
 
     @uamethod
     async def method(parent):
@@ -315,9 +306,9 @@ def _abort_calibration_method(wiring: Wiring):
 
 
 async def install_calibration_methods(wiring: Wiring) -> None:
-    """Legt die vier Kalibriermethoden an (nur mit Session und `CalibrationProgress`).
+    """Create the four calibration methods. Only when a session and `CalibrationProgress` exist.
 
-    Die Knoten landen in `wiring.methods` und damit auch unter `VisionProgram`.
+    The nodes go into `wiring.methods`, so they also appear under `VisionProgram`.
     """
     space = wiring.space
     if wiring.calibration_session is None or space.calibration_progress is None:

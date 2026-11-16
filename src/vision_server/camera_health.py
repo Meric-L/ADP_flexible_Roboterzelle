@@ -1,25 +1,24 @@
-"""Kamerazustand als `DeviceHealth` nach OPC 40100-2 (AMCM).
+"""Camera state as `DeviceHealth` per OPC 40100-2 (AMCM).
 
-Der Watchdog in `camera.py` weiss, ob die Kamera Bilder liefert, haengt oder
-gerade neu geoeffnet wird. Dieses Modul uebersetzt das in DI's
-`DeviceHealthEnumeration` und schreibt es in die Zustandsknoten der
-Anlagensicht (`asset_model.py`). Damit sieht ein generischer OPC-UA-Client
-ohne Kenntnis dieses Repos, ob die Kamera arbeitet.
+The watchdog in `camera.py` knows whether the camera delivers images, hangs, or is
+currently being reopened. This module translates that into DI's
+`DeviceHealthEnumeration` and writes it to the state nodes of the asset view
+(`asset_model.py`). This way a generic OPC UA client without knowledge of this repo
+can see whether the camera is working.
 
-Warum ein eigenes Modul und ein eigener Task, statt das an den Livestream zu
-haengen wie den Kalibrier-Fortschritt:
+Why a separate module and a separate task, instead of hooking this onto the live
+stream like the calibration progress:
 
-* Der Livestream ist eine Debughilfe und kann fehlen (`camera_stream` nicht
-  konfiguriert), waehrend die Erkennungsquelle sehr wohl eine Kamera haelt.
-  Eine Instandhaltungssicht darf daran nicht haengen.
-* Die Kadenzen passen nicht zusammen: der Stream schreibt bewusst jeden Tick,
-  dieser Knoten nur bei Zustandswechsel.
+* The live stream is a debugging aid and may be absent (`camera_stream` not
+  configured), while the detection source does hold a camera. A maintenance view
+  must not depend on that.
+* The cadences do not match: the stream deliberately writes on every tick, this node
+  only on a state change.
 
-Zur Aehnlichkeit mit der entfallenen Altlast A3 (`RaspiDevice/Counter`, ein
-1-Hz-Zaehler): A3 war ein Wert *ohne Quelle*, der nur bewies, dass irgendeine
-Schleife lief. Hier gibt es eine Quelle, und im Ruhezustand wird gar nichts
-geschrieben -- nach dem ersten Frame bleibt der Knoten still, bis sich der
-Zustand wirklich aendert.
+On the similarity to the retired legacy item A3 (`RaspiDevice/Counter`, a 1 Hz
+counter): A3 was a value *without a source* that merely proved some loop was running.
+Here there is a source, and in the idle state nothing at all is written -- after the
+first frame the node stays silent until the state really changes.
 """
 
 import asyncio
@@ -38,23 +37,21 @@ from .profiles import CameraStreamConfig
 
 _log = logging.getLogger(__name__)
 
-#: Zeitlimit fuer das letzte FAILURE vor dem Prozessabbruch. Wir sind auf dem
-#: Weg nach draussen -- ein haengender Schreibvorgang darf den Abbruch nicht
-#: verhindern, sonst bleibt genau der Prozess stehen, den systemd neu starten
-#: soll.
+#: Time limit for the last FAILURE write before the process is terminated. We are on the
+#: way out -- a hanging write must not prevent the termination, otherwise exactly the
+#: process that systemd is supposed to restart would stay stuck.
 GIVE_UP_WRITE_TIMEOUT_S = 1.0
 
-#: Schweregrad je Zustand (OPC UA: 1-1000). FAILURE ist der Ausfall, OFF_SPEC
-#: die gemeldete Abweichung, CHECK_FUNCTION der angekuendigte Eingriff --
-#: absteigend dringlich, damit ein HMI sie ohne Kenntnis von NE 107 sortieren
-#: kann.
+#: Severity per state (OPC UA: 1-1000). FAILURE is the failure, OFF_SPEC the reported
+#: deviation, CHECK_FUNCTION the announced intervention -- in descending urgency, so that
+#: a HMI can sort them without knowing NE 107.
 ALARM_SEVERITY: dict[DeviceHealth, int] = {
     DeviceHealth.FAILURE: 900,
     DeviceHealth.OFF_SPEC: 500,
     DeviceHealth.CHECK_FUNCTION: 300,
 }
 
-#: Klartext je Zustand fuers `Message`-Feld des Alarms.
+#: Plain-text message per state for the `Message` field of the alarm.
 ALARM_MESSAGE: dict[DeviceHealth, str] = {
     DeviceHealth.FAILURE: "Kamera liefert kein Bild",
     DeviceHealth.OFF_SPEC: "Kamerabild ist veraltet",
@@ -63,32 +60,29 @@ ALARM_MESSAGE: dict[DeviceHealth, str] = {
 
 
 def device_health(status: CameraStatus, *, stale_frame_s: float) -> DeviceHealth:
-    """Bildet den Kamerazustand auf DI's `DeviceHealthEnumeration` ab.
+    """Map the camera state to DI's `DeviceHealthEnumeration`.
 
-    Die Reihenfolge der Abfragen ist die Aussage: erst das Endgueltige, dann
-    das Voruebergehende, zuletzt der Normalfall. Begruendung je Zeile aus
-    NAMUR NE 107 bzw. OPC 10000-100:
+    The order of the checks is the statement: first the final state, then the
+    transient one, finally the normal case. Reasoning per line from NAMUR NE 107
+    resp. OPC 10000-100:
 
-    * `gave_up` -- das Reopen-Budget ist erschoepft, gleich beendet sich der
-      Prozess. Kein gueltiges Ausgangssignal, und niemand arbeitet daran:
-      FAILURE.
-    * nicht `running` -- die Kamera wurde nie geoeffnet oder die Quelle ist
-      nicht aufgegangen. Derselbe Fall, andere Ursache.
-    * kein Handle -- ein `_reopen` laeuft. NE 107 nennt CHECK_FUNCTION
-      woertlich "output signal temporarily invalid due to on-going work on
-      the device".
-    * noch kein Frame -- Warmup. Kein Fehler, nur noch kein Bild; deshalb ist
-      CHECK_FUNCTION auch der Startwert der Knoten.
-    * Frame zu alt -- der Watchdog hat einen Haenger erkannt, eskaliert aber
-      noch nicht. Die Eigendiagnose meldet eine Abweichung: OFF_SPEC.
-      FAILURE waere vertretbar, aber Haenger heilen sich nachweislich selbst
-      (siehe `test_a_frame_between_hangs_resets_the_reopen_budget`); mit
-      OFF_SPEC kann ein HMI "hakt gerade" von "tot" unterscheiden und bekommt
-      rund `frame_timeout_s` Vorwarnzeit. Wer das anders will, aendert diese
-      eine Zeile.
+    * `gave_up` -- the reopen budget is exhausted, the process terminates right
+      away. No valid output signal, and nobody is working on it: FAILURE.
+    * not `running` -- the camera was never opened or the source did not come up.
+      The same case, different cause.
+    * no handle -- a `_reopen` is in progress. NE 107 literally names CHECK_FUNCTION
+      "output signal temporarily invalid due to on-going work on the device".
+    * no frame yet -- warm-up. Not an error, just no image yet; that is why
+      CHECK_FUNCTION is also the initial value of the nodes.
+    * frame too old -- the watchdog has detected a stall but does not escalate yet.
+      The self-diagnosis reports a deviation: OFF_SPEC. FAILURE would be defensible,
+      but stalls demonstrably heal themselves (see
+      `test_a_frame_between_hangs_resets_the_reopen_budget`); with OFF_SPEC an HMI can
+      distinguish "currently stalling" from "dead" and gets roughly `frame_timeout_s`
+      of advance warning. Whoever wants it otherwise changes this one line.
 
-    `MAINTENANCE_REQUIRED` wird nie geliefert: dafuer braeuchte es einen
-    Verschleisszaehler, und `RemainingLifeTime` wird bewusst nicht angelegt.
+    `MAINTENANCE_REQUIRED` is never returned: that would need a wear counter, and
+    `RemainingLifeTime` is deliberately not created.
     """
     if status.gave_up:
         return DeviceHealth.FAILURE
@@ -104,11 +98,10 @@ def device_health(status: CameraStatus, *, stale_frame_s: float) -> DeviceHealth
 
 
 async def write_device_health(nodes: Sequence[Node], value: DeviceHealth) -> None:
-    """Schreibt denselben Wert in alle Zustandsknoten. Wirft nie.
+    """Write the same value to all state nodes. Never raises.
 
-    Ein nicht beschreibbarer Knoten ist ein Schoenheitsfehler in einer
-    Zusatzsicht -- er darf weder den Job-Pfad noch die uebrigen Knoten
-    mitreissen.
+    A node that cannot be written is a cosmetic defect in an auxiliary view -- it must
+    not take down the job path or the remaining nodes with it.
     """
     for node in nodes:
         try:
@@ -120,22 +113,21 @@ async def write_device_health(nodes: Sequence[Node], value: DeviceHealth) -> Non
 
 
 class HealthAlarms:
-    """Feuert je Zustand den passenden DI-Alarm und loescht den vorherigen.
+    """Fire the matching DI alarm for each state and clear the previous one.
 
-    Der zweite Teil von DIs `IDeviceHealthType`. Die Zustandsvariable sagt,
-    *was* gerade gilt; der Alarm meldet den Uebergang -- mit Zeitstempel,
-    Quelle, Schweregrad und Meldungstext, ohne dass ein Client abfragen muss.
+    The second part of DI's `IDeviceHealthType`. The state variable says *what*
+    currently applies; the alarm reports the transition -- with timestamp, source,
+    severity and message text, without a client having to poll.
 
-    Es ist immer hoechstens **einer** aktiv, denn der Zustand ist einer von
-    fuenf. `NORMAL` feuert keinen Alarm, es loescht nur den vorherigen.
+    At most **one** alarm is active at any time, since the state is one of five.
+    `NORMAL` fires no alarm, it only clears the previous one.
 
-    Emittiert wird vom uebergebenen `emitter` -- in der Praxis `VisionMachine`,
-    weil Clients ohnehin genau diesen Knoten abonnieren (siehe
-    `doc/projektdoku/vision-server-interface.md` 7.2). `SourceNode` nennt trotzdem die
-    Komponente, um die es geht.
+    Emitted by the passed-in `emitter` -- in practice `VisionMachine`, because clients
+    subscribe to exactly this node anyway (see
+    `doc/projektdoku/vision-server-interface.md` 7.2). `SourceNode` still names the
+    component concerned.
 
-    Wirft nie: ein fehlgeschlagener Alarm darf weder die Zustandsvariable noch
-    den Job-Pfad mitreissen.
+    Never raises: a failed alarm must not take down the state variable or the job path.
     """
 
     def __init__(
@@ -153,7 +145,7 @@ class HealthAlarms:
         self._active: DeviceHealth | None = None
 
     async def _generator(self, value: DeviceHealth):
-        """Event-Generator je Alarmtyp, beim ersten Gebrauch gebaut."""
+        """Return the event generator for an alarm type, built on first use."""
         if value not in self._generators:
             node = self._alarms[value]
             etype = await node.read_type_definition()
@@ -163,6 +155,7 @@ class HealthAlarms:
         return self._generators[value]
 
     async def _fire(self, value: DeviceHealth, *, active: bool, reason: str) -> None:
+        """Trigger the alarm for `value`, activating or clearing it."""
         if value not in self._alarms:
             return
         generator = await self._generator(value)
@@ -180,7 +173,7 @@ class HealthAlarms:
         await generator.trigger()
 
     async def set(self, value: DeviceHealth, reason: str) -> None:
-        """Uebernimmt den neuen Zustand: alten Alarm loeschen, neuen feuern."""
+        """Adopt the new state: clear the old alarm, fire the new one."""
         if value == self._active:
             return
         try:
@@ -194,10 +187,10 @@ class HealthAlarms:
 
 
 class CameraHealthPublisher:
-    """Spiegelt den Zustand einer `SharedCamera` nach `Health/DeviceHealth`.
+    """Mirror the state of a `SharedCamera` to `Health/DeviceHealth`.
 
-    Schreibt nur bei Zustandswechsel: im Normalbetrieb genau einmal, wenn der
-    erste Frame da ist, und danach Stille.
+    Writes only on state changes: in normal operation exactly once, when the first
+    frame arrives, and silence thereafter.
     """
 
     def __init__(
@@ -210,31 +203,32 @@ class CameraHealthPublisher:
         self._camera = camera
         self._nodes = tuple(nodes)
         self._config = config
-        #: Der normkonforme Ereignisweg; `None`, wenn keine Alarme angelegt
-        #: werden konnten -- dann bleibt die Variable der einzige Meldeweg.
+        #: The standard-conforming event path; `None` if no alarms could be created --
+        #: then the variable remains the only reporting path.
         self._alarms = alarms
-        #: `None` heisst "noch nichts geschrieben" -- der erste Durchlauf
-        #: schreibt deshalb immer, auch wenn er CHECK_FUNCTION ergibt und die
-        #: Knoten schon damit angelegt wurden. Ein Abonnent, der spaeter
-        #: dazukommt, soll denselben Wert bekommen wie einer von Anfang an.
+        #: `None` means "nothing written yet" -- the first pass therefore always writes,
+        #: even if it yields CHECK_FUNCTION and the nodes were already created with it.
+        #: A subscriber that joins later should get the same value as one from the start.
         self._health: DeviceHealth | None = None
         self._task: asyncio.Task | None = None
 
     @property
     def health(self) -> DeviceHealth | None:
-        """Der zuletzt geschriebene Wert, `None` vor dem ersten Durchlauf."""
+        """The last written value, `None` before the first pass."""
         return self._health
 
     def start(self) -> None:
+        """Start the background publish loop."""
         self._task = asyncio.create_task(self._publish_loop())
 
     async def stop(self) -> None:
+        """Stop the background publish loop."""
         if self._task is not None:
             await cancel_and_wait(self._task)
             self._task = None
 
     async def publish_now(self) -> None:
-        """Ein Durchlauf ausserhalb der Kadenz. Wirft nie."""
+        """Run one pass outside the regular cadence. Never raises."""
         try:
             status = self._camera.status(asyncio.get_running_loop().time())
             value = device_health(status, stale_frame_s=self._config.stale_frame_s)
@@ -261,11 +255,11 @@ class CameraHealthPublisher:
     def give_up_handler(
         self, then: Callable[[], None]
     ) -> Callable[[], Awaitable[None]]:
-        """Baut den `on_give_up`-Handler der Kamera: FAILURE, dann `then`.
+        """Build the camera's `on_give_up` handler: FAILURE, then `then`.
 
-        Noetig, weil der Standardhandler den Prozess sofort mit `os._exit`
-        reisst -- ein pollender Task saehe `gave_up` nie. Das Schreiben laeuft
-        deshalb mit Zeitlimit, und `then` wird in jedem Fall aufgerufen.
+        Needed because the default handler tears down the process immediately with
+        `os._exit` -- a polling task would never see `gave_up`. The write therefore runs
+        with a time limit, and `then` is called in any case.
         """
 
         async def handler() -> None:

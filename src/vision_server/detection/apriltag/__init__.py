@@ -1,40 +1,40 @@
-"""AprilTag-Erkennung ueber die mit dem Livestream geteilte Kamera.
+"""AprilTag detection on the camera shared with the livestream.
 
-Eine Quelle fuer beide Kameras. Die Deckenkamera und die Kamera am Roboter
-(Eye-in-Hand) nutzen dieselbe Klasse und denselben Code; sie unterscheiden sich
-nur im `AprilTagProfileConfig`, den `vision_server/server.py` je Pi setzt, und
-darin, was sie zu sehen bekommen:
+One source for both cameras. The ceiling camera and the camera on the robot
+(eye-in-hand) use the same class and the same code. They differ only in the
+`AprilTagProfileConfig` that `vision_server/server.py` sets per Pi, and in what
+they get to see:
 
-* sind Welttags aus der Karte im Bild, wird die Kamerapose daraus bestimmt,
-  und jede Modulpose wird im Welt-KS gemeldet, zusammen mit dem Welttag, dem
-  sie am naechsten steht
-* sonst bleibt alles im Kamera-KS, und `frameConvention` sagt dem Leser, wohin
-  +Z zeigt
+* if world tags from the map are in the image, the camera pose is derived from
+  them, and every module pose is reported in the world frame, together with the
+  world tag it is closest to
+* otherwise everything stays in the camera frame, and `frameConvention` tells
+  the reader where +Z points
 
-**Nur die Welttags sind fest** -- vier davon am Rand der Zelle. Der Roboter ist
-ein Modul wie jedes andere: er traegt eigene Tags und wird gemessen, nicht aus
-einer Datei gelesen. Die Deckenkamera ist die einzige, die den Roboter und die
-Welttags zugleich sieht, also beantwortet sie, neben welchem Welttag der Roboter
-steht. Die Kamera am Roboter lokalisiert sich dann optisch gegen diesen Tag --
-dafuer braucht es keine Hand-Auge-Kalibrierung.
+**Only the world tags are fixed** -- four of them at the edge of the cell. The
+robot is a module like any other: it carries its own tags and is measured, not
+read from a file. The ceiling camera is the only one that sees both the robot
+and the world tags, so it reports which world tag the robot stands next to. The
+robot camera then localizes itself optically against that tag, which needs no
+hand-eye calibration.
 
-Die eigentliche Rechnung steckt in `tagloc`; dieses Paket ist der
-OPC-UA-Adapter. Es ist nach Aufgaben in Module geteilt, die als Mixins zur
-einen Klasse `AprilTagDetectionSource` zusammengesetzt werden:
+The actual computation lives in `tagloc`; this package is the OPC UA adapter.
+It is split by task into modules that are combined as mixins into the one
+class `AprilTagDetectionSource`:
 
-| Modul | Aufgabe |
+| Module | Task |
 | --- | --- |
-| `resources.py` | Kalibrierung, Tag-Map, Hand-Auge, Detektor laden (`open`), austauschen (`apply_*`), `close` |
-| `capture.py` | auf frische Bilder warten, Kalibrierung zur Bildgroesse, Overlay-Stand |
-| `job.py` | `acquire_and_detect`: Bilder auswerten, Module lokalisieren, Detektionen bauen |
-| `tags.py` | `MeasureTags` und `measure_tag` (Hand-Auge): Tags im Kamera-KS |
-| `board.py` | `measure_board` (Hand-Auge) und `MeasureBoard`: das Schachbrett |
-| `reference.py` | `MeasureTagReference` und `PlanTagReferenceView`: Bezugskanten |
-| `cell.py` | `observe_cell`: ein Bild fuer die Zellen-Ueberwachung |
-| `snapshot.py` | `TagSnapshot` fuers Livestream-Overlay |
+| `resources.py` | Load calibration, tag map, hand-eye, detector (`open`), swap them (`apply_*`), `close` |
+| `capture.py` | Wait for fresh images, calibration matched to the image size, overlay state |
+| `job.py` | `acquire_and_detect`: evaluate images, localize modules, build detections |
+| `tags.py` | `MeasureTags` and `measure_tag` (hand-eye): tags in the camera frame |
+| `board.py` | `measure_board` (hand-eye) and `MeasureBoard`: the chessboard |
+| `reference.py` | `MeasureTagReference` and `PlanTagReferenceView`: reference edges |
+| `cell.py` | `observe_cell`: one image for the cell watch |
+| `snapshot.py` | `TagSnapshot` for the livestream overlay |
 
-Der Importpfad `vision_server.detection.apriltag` und alle bisher dort
-importierbaren Namen bleiben erhalten.
+The import path `vision_server.detection.apriltag` and all names importable
+there so far remain available.
 """
 
 from collections.abc import Callable
@@ -52,7 +52,7 @@ from .job import (
     JobMixin,
     robot_pose_from_parameters,
 )
-# Nicht in `__all__`, aber von Tests und `cellwatch` unter diesem Pfad importiert:
+# Not in `__all__`, but imported under this path by tests and `cellwatch`:
 from .job import _localization_summary, _merge_world_tags, _observed_world_tags  # noqa: F401
 from .reference import ReferenceMixin
 from .resources import ResourcesMixin
@@ -80,10 +80,10 @@ class AprilTagDetectionSource(
     CellObserveMixin,
     DetectionSource,
 ):
-    """Lokalisiert Module an ihren AprilTags.
+    """Localize modules by their AprilTags.
 
-    Haelt den Zustand der Quelle (Kamera, Detektor, Kalibrierung, Karte,
-    Anker); die Methoden stehen in den Mixins, siehe Modul-Docstring.
+    Holds the source state (camera, detector, calibration, map, anchor). The
+    methods live in the mixins; see the module docstring.
     """
 
     profile_id = "apriltag"
@@ -101,38 +101,38 @@ class AprilTagDetectionSource(
     ) -> None:
         self._config = config
         self._camera_config = camera_config or CameraStreamConfig()
-        #: Von aussen uebergeben, wenn `camera_stream.py` dasselbe Handle
-        #: braucht (siehe `runner/livestream.py`).
+        #: Passed in from outside when `camera_stream.py` needs the same handle
+        #: (see `runner/livestream.py`).
         self.camera = camera if camera is not None else SharedCamera(self._camera_config)
-        #: Einspeisbar, damit Tests ohne OpenCV und ohne Dateien laufen.
+        #: Injectable so that tests run without OpenCV and without files.
         self._detector = detector
         self._calibration = calibration
         self._tag_map = tag_map
-        #: Kamerapose des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
-        #: `None` bis zum ersten Bild und wieder, sobald kein Welttag zu sehen
-        #: war und kein Anker sie tragen konnte.
+        #: Camera pose of the last evaluated image, set by `_locate`. `None` until
+        #: the first image, and again whenever no world tag was visible and no
+        #: anchor could carry it.
         self._localization = None
-        #: Hand-Auge, einmal kalibriert -- die Kamera sitzt starr am Roboter.
+        #: Hand-eye, calibrated once -- the camera sits rigidly on the robot.
         self._hand_eye = None
-        #: Wo die Roboterbasis im Welt-KS steht. Wird beim ersten Welttag im
-        #: Bild gesetzt und traegt danach ueber alle Module hinweg, auch wenn
-        #: kein Welttag mehr zu sehen ist. Lebt bewusst ueber Jobs hinweg:
-        #: geankert wird einmal je Lokalisierungsvorgang, nicht je Modul.
+        #: Where the robot base is in the world frame. Set at the first world tag
+        #: in view, then carries over all modules even when no world tag is visible
+        #: any more. Deliberately lives across jobs: anchoring happens once per
+        #: localization run, not once per module.
         self._anchor = None
-        #: Letzte gemessene Drift gegen den Anker, `None` solange ungeprueft.
+        #: Last measured drift against the anchor, `None` while unchecked.
         self._drift = None
-        #: Welttags des zuletzt ausgewerteten Bilds, von `_locate` gesetzt.
+        #: World tags of the last evaluated image, set by `_locate`.
         self._world_tag_sample: list = []
-        #: Laufende `MeasureTags`-Aufrufe (`runner/measure_tags.py`); das Stream-Overlay haelt
-        #: solange an.
+        #: Running `MeasureTags` calls (`runner/measure_tags.py`); the stream overlay
+        #: keeps going as long as this is non-zero.
         self.measure_calls = 0
-        #: Neuestes Ergebnis in voller Aufloesung, egal aus welchem Pfad
-        #: (`TagSnapshot`). Wird nur ersetzt, nie veraendert -- das Overlay
-        #: liest es aus seinem eigenen Thread ohne Sperre.
+        #: Latest result at full resolution, whatever path produced it
+        #: (`TagSnapshot`). Only ever replaced, never modified -- the overlay reads
+        #: it from its own thread without a lock.
         self.latest_tags: TagSnapshot | None = None
-        #: Wird je gemessenem Bild von `MeasureTagReference` mit
-        #: `(debug, corners_px, image_size, title, layers)` aufgerufen (Mess-Thread),
-        #: damit der Livestream die Kantensuche live zeigt. `None` = niemand hoert zu.
+        #: Called for each measured image by `MeasureTagReference` with
+        #: `(debug, corners_px, image_size, title, layers)` (measurement thread),
+        #: so the livestream shows the edge search live. `None` = nobody listens.
         self.reference_debug_sink: Callable[..., None] | None = None
         self.frame_id = config.frame_id
         self.frame_convention = config.frame_convention

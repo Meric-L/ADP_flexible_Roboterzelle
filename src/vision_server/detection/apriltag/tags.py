@@ -1,9 +1,10 @@
-"""Einzelne Tags messen, ohne Welt-KS: `MeasureTags` und `measure_tag` (Hand-Auge).
+"""Measure single tags without the world CS: `MeasureTags` and `measure_tag` (hand-eye).
 
-`TagMeasureMixin` liefert Tag-Posen im Kamera-KS aus frischen Bildern -- ohne
-Karten-Versatz, ohne Anker, ohne Seiteneffekte ausser dem Overlay-Stand
-(`latest_tags`). Er erwartet am Objekt `_config`, `_detector`, `_calibration`,
-`_tag_map` sowie `intrinsics_source` und die Methoden von `CaptureMixin`.
+`TagMeasureMixin` provides tag poses in the camera CS from fresh images --
+without map offset, without anchor, and without side effects apart from the
+overlay state (`latest_tags`). It expects `_config`, `_detector`, `_calibration`
+and `_tag_map` on the object, as well as `intrinsics_source` and the methods of
+`CaptureMixin`.
 """
 
 import math
@@ -14,15 +15,15 @@ from .capture import captured_at
 
 
 class TagMeasureMixin:
-    """Tags in Kamerakoordinaten messen."""
+    """Measure tags in camera coordinates."""
 
     async def measure_tags(self, request) -> dict:
-        """`MeasureTags`: Tags in Kamerakoordinaten, ueber frische Bilder gemittelt.
+        """`MeasureTags`: tags in camera coordinates, averaged over fresh images.
 
-        Nur Bilder, die **nach** dem Aufruf eintreffen -- ein Bild aus der
-        Fahrt, das noch im Puffer liegt, waere eine Messung an der falschen
-        Stelle. Ohne Welt-KS, ohne CAD-Versatz, ohne Anker: genau das, was die
-        Regelung der Steuerung braucht. Seiteneffektfrei.
+        Only images that arrive **after** the call are used. An image from the
+        drive that is still in the buffer would be a measurement at the wrong
+        place. No world CS, no CAD offset, no anchor: exactly what the control
+        loop of the machine controller needs. Side-effect free.
         """
         from ...measuretag import NO_FRAME, FrameMeasurement, SizeLookup, build_result
 
@@ -40,7 +41,7 @@ class TagMeasureMixin:
             tag_poses, image_size = await self.run_blocking(
                 self._detect_in_camera, frame.image, sizes, request.tag_ids
             )
-            # Zeitpunkt des Bilds, nicht des Aufrufs.
+            # Time of the image, not of the call.
             frames.append(FrameMeasurement(captured_at(frame), image_size, tuple(tag_poses)))
         return build_result(
             frames,
@@ -53,7 +54,7 @@ class TagMeasureMixin:
         )
 
     def _detect_in_camera(self, image, sizes, tag_ids):
-        """Ein Bild: `(TagPosen, Bildgroesse)`, auf `tag_ids` gefiltert. Worker-Thread."""
+        """One image: ``(tag poses, image size)``, filtered to `tag_ids`. Runs in the worker thread."""
         from tagloc import frames as frame_tools
         from tagloc.pose import estimate_tag_poses
 
@@ -70,12 +71,12 @@ class TagMeasureMixin:
         return tag_poses, frame_tools.image_size(image)
 
     async def measure_tag(self, tag_id: int) -> tuple[Any | None, str, dict]:
-        """`T_cam_tag` eines Tags aus `samples_per_job` frischen Bildern.
+        """Return the ``T_cam_tag`` of a tag from `samples_per_job` fresh images.
 
-        Fuer die Hand-Auge-Kalibrierung: rein im Kamera-KS, ohne Tag-Map-
-        Versatz und ohne Welt-KS -- genau die Groesse, die `solve_hand_eye`
-        braucht. Liefert `(Pose, "", Info)` oder `(None, Grund, Info)`; `Info`
-        hat den mittleren `reprojectionErrorPx` aller Bilder mit dem Tag.
+        For hand-eye calibration: purely in the camera CS, without tag-map offset
+        and without world CS -- exactly the quantity `solve_hand_eye` needs.
+        Returns `(Pose, "", Info)` or `(None, reason, Info)`. `Info` holds the mean
+        `reprojectionErrorPx` over all images that show the tag.
         """
         from tagloc.tagmap import merge_tag_poses
 
@@ -96,8 +97,8 @@ class TagMeasureMixin:
             if math.isfinite(tag_pose.reprojection_error_px):
                 errors.append(tag_pose.reprojection_error_px)
             if tag_pose.is_ambiguous:
-                # Zwei gleich gute Loesungen: welche stimmt, weiss niemand --
-                # eine falsch gekippte Messung verdirbt die ganze Kalibrierung.
+                # Two equally good solutions: nobody knows which one is right.
+                # One wrongly tilted measurement would spoil the whole calibration.
                 ambiguous += 1
                 continue
             poses.append(tag_pose.pose_cam_tag)
@@ -112,7 +113,7 @@ class TagMeasureMixin:
         return None, f"Tag {tag_id} nicht gesehen", info
 
     def _measure_tag(self, image, tag_id: int):
-        """Ein Bild, ein Tag. Laeuft im Worker-Thread."""
+        """One image, one tag. Runs in the worker thread."""
         from tagloc import frames as frame_tools
         from tagloc.pose import estimate_tag_poses
 

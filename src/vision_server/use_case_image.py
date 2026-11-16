@@ -1,7 +1,7 @@
-"""Use-Case-Foto: PNG plus Metadaten-JSON pro Versuch (OPC-UA-Methode `SaveUseCaseImage`).
+"""Use-case photo: PNG plus metadata JSON per trial (OPC UA method `SaveUseCaseImage`).
 
-Ablage: `<base_dir>/reihe_<NNN>/versuch_<NNN>.png` und `versuch_<NNN>.json`,
-bei vorliegender Messung zusaetzlich `versuch_<NNN>_messung.png` (Kontrollbild).
+Layout: `<base_dir>/reihe_<NNN>/versuch_<NNN>.png` and `versuch_<NNN>.json`, and if a
+measurement is available additionally `versuch_<NNN>_messung.png` (control image).
 """
 
 import json
@@ -10,17 +10,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-#: Schema-Kennung in der JSON-Datei neben jedem Bild.
+#: Schema identifier in the JSON file next to each image.
 SCHEMA = "adp.usecase.trial/1"
 
 _TRIAL_RE = re.compile(r"^versuch_(\d+)\.(?:png|json)$")
 
 
 def next_trial_number(directory: Path) -> int:
-    """Hoechste vorhandene Versuchsnummer in `directory` plus 1 (leer/fehlend: 1).
+    """Return the highest existing trial number in `directory` plus 1 (empty/missing: 1).
 
-    Zaehlt `versuch_NNN.png` und `versuch_NNN.json`; Luecken werden nicht
-    aufgefuellt.
+    Counts `versuch_NNN.png` and `versuch_NNN.json`; gaps are not filled.
     """
     highest = 0
     if directory.is_dir():
@@ -32,7 +31,7 @@ def next_trial_number(directory: Path) -> int:
 
 
 def _client_section(client_meta: str) -> tuple[str, Any]:
-    """`("client", Objekt)` bei gueltigem JSON-Objekt, sonst `("client_raw", Text)`."""
+    """Return `("client", object)` for a valid JSON object, else `("client_raw", text)`."""
     try:
         parsed = json.loads(client_meta)
     except (TypeError, ValueError):
@@ -52,21 +51,20 @@ def save_use_case_image(
     measurement: dict | None = None,
     annotated: Any = None,
 ) -> tuple[Path, int]:
-    """Schreibt `image` als PNG samt JSON; liefert (PNG-Pfad, Versuchsnummer).
+    """Write `image` as PNG together with its JSON; return (PNG path, trial number).
 
-    `measurement` (Bildmessung, vor dem Speichern berechnet) steht unter
-    "messung" in der JSON -- so wird die Datei weiter in einem Zug exklusiv
-    angelegt und nie nachtraeglich umgeschrieben. `annotated` ist das
-    Kontrollbild, es kommt als `versuch_NNN_messung.png` daneben (best effort:
-    ein Fehler dabei laesst das Speichern nicht scheitern).
+    `measurement` (image measurement, computed before saving) is stored under
+    "messung" in the JSON -- so the file is still created exclusively in one go and never
+    rewritten afterwards. `annotated` is the control image, stored as
+    `versuch_NNN_messung.png` next to it (best effort: an error there does not make the
+    save fail).
 
-    Nie ueberschreibend: die Dateien werden exklusiv angelegt, bei einer
-    Kollision (paralleler Aufruf) wird die naechste Nummer genommen. Wirft
-    `ValueError` bei `series < 1`, `OSError` bei Schreibfehlern.
+    Never overwrites: files are created exclusively; on a collision (parallel call) the
+    next number is taken. Raises `ValueError` if `series < 1`, `OSError` on write errors.
     """
     if series < 1:
         raise ValueError(f"Reihe muss >= 1 sein, war {series}")
-    # Erst hier: der Rest des Servers soll ohne OpenCV importierbar bleiben.
+    # Only here: the rest of the server should remain importable without OpenCV.
     import cv2
 
     directory = base_dir / f"reihe_{series:03d}"
@@ -84,7 +82,7 @@ def save_use_case_image(
         png_path = directory / f"versuch_{n:03d}.png"
         json_path = directory / f"versuch_{n:03d}.json"
         try:
-            # "xb": schlaegt fehl, wenn die Datei existiert -> nie ueberschreiben.
+            # "xb": fails if the file exists -> never overwrite.
             with open(png_path, "xb") as fh:
                 fh.write(png_bytes)
         except FileExistsError:

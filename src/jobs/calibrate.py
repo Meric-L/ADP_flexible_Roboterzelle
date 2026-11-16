@@ -1,14 +1,13 @@
-"""Kalibrierpruefung als OPC-UA-Job.
+"""Calibration check as an OPC UA job.
 
-Laeuft als Subprozess ueber `ScriptDetectionSource`, seine Standardausgabe
-wird zur `attributes.message` des Ergebnisses.
+Runs as a subprocess via `ScriptDetectionSource`; its standard output becomes
+the `attributes.message` of the result.
 
-Bewusst eine **Pruefung**, keine Kalibrierung: Eine Kamera zu kalibrieren
-braucht einen Bediener, der ein Brett durchs Blickfeld bewegt -- das ist die
-Aufgabe von `python -m tagloc.cli.calibrate`. Was ein Remote-Job beantworten
-kann, ist "ist diese Zelle messbereit?": Gibt es eine Kalibrierung, zu
-welcher Kamera und Aufloesung sie gehoert, wie gut sie war und ob eine
-Tag-Karte existiert.
+This is deliberately a **check**, not a calibration: calibrating a camera needs
+an operator who moves a board through the field of view, which is the job of
+`python -m tagloc.cli.calibrate`. What a remote job can answer is "is this cell
+ready to measure?": whether a calibration exists, which camera and resolution
+it belongs to, how good it was, and whether a tag map exists.
 """
 
 import sys
@@ -19,10 +18,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 
-#: Hostname -> Rahmen-ID. Spiegelt `vision_server.server.PI_IDENTITIES` (zweites
-#: Tupelelement). Nicht importiert, weil `vision_server.server` beim Import
-#: asyncua laedt -- zu schwer fuer einen Subprozess pro Job. Dass beide Tabellen
-#: gleich bleiben, prueft `tests/test_jobs_calibrate.py`.
+#: Hostname -> frame ID. Mirrors `vision_server.server.PI_IDENTITIES` (second
+#: tuple element). Not imported, because importing `vision_server.server` loads
+#: asyncua -- too heavy for one subprocess per job. `tests/test_jobs_calibrate.py`
+#: checks that both tables stay equal.
 FRAME_BY_HOST = {
     "ADP-Roboter-Lokalisierung": "cam_ceiling",
     "ADP-HandInEye-Kamera-Pi": "cam_flange",
@@ -30,7 +29,7 @@ FRAME_BY_HOST = {
 
 
 def _frame_id() -> str:
-    """Rahmen-ID dieses Pi: `VISION_FRAME_ID`, sonst nach Hostname, sonst "world"."""
+    """Return this Pi's frame ID: `VISION_FRAME_ID`, else by hostname, else "world"."""
     import os
     import socket
 
@@ -57,7 +56,7 @@ def main() -> str:
         from tagloc.calibration import load_calibration
 
         calibration = load_calibration(calibration_path)
-    except Exception as error:  # eine kaputte Datei ist ein Befund, kein Absturz
+    except Exception as error:  # a broken file is a finding, not a crash
         return f"Rahmen {frame_id}: Kalibrierung nicht lesbar ({error})"
 
     age_days = (

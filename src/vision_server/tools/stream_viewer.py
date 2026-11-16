@@ -1,23 +1,22 @@
-"""Lokaler Live-Viewer fuer den Kamera-Stream -- fuer Pis mit angeschlossenem
-Monitor, ohne dass dafuer ein Frontend laufen muss.
+"""Local live viewer for the camera stream, for Pis with a monitor attached.
 
-Liest `LatestCameraFrame` (Base64-JPEG) und zeigt es in einem OpenCV-Fenster
-an. Setzt standardmaessig `CameraStreamMode="calibration"`, damit das Bild
-dieselbe (auf dem kleinen Vorschaubild laufende) Board-Erkennung traegt wie im
-Frontend (`stream_overlay.py`) -- praktisch, um waehrend einer laufenden
-`CalibrationSession` (gestartet z. B. per `calibration_client.py`) direkt zu
-sehen, ob das Board sichtbar ist oder ob z. B. das Bild unscharf ist. Das ist
-nur eine Positionierungshilfe: ob eine bestimmte Aufnahme tatsaechlich
-verwertbar war, stellt sich erst nach `FinishCalibration` heraus (Aufnahme
-und Auswertung sind entkoppelt, siehe `calibration_session.py`). Beide Tools
-laufen parallel, weil beide nur aus der bereits offenen `SharedCamera`
-mitlesen -- kein exklusiver Kamerazugriff wie bei `tagloc.cli.calibrate`.
+No frontend has to run for it. Reads `LatestCameraFrame` (Base64 JPEG) and
+shows it in an OpenCV window. Defaults to `CameraStreamMode="calibration"`, so
+the image carries the same board detection (running on the small preview image)
+as in the frontend (`stream_overlay.py`). Handy during a running
+`CalibrationSession` (started e.g. via `calibration_client.py`) to see directly
+whether the board is visible or, for example, the image is blurred. This is
+only a positioning aid: whether a given capture was actually usable only shows
+after `FinishCalibration` (capture and evaluation are decoupled, see
+`calibration_session.py`). Both tools can run in parallel because both only
+read from the already open `SharedCamera` -- no exclusive camera access as with
+`tagloc.cli.calibrate`.
 
-Leertaste im Fenster loest `CaptureCalibrationSample` aus -- Aufnahmen
-passieren nur auf Knopfdruck, kein automatisches Zeitintervall: der Operator
-sieht das Bild und entscheidet selbst, wann die Pose gut ist.
+Pressing the space bar in the window triggers `CaptureCalibrationSample`.
+Captures happen only on key press, never on a timer: the operator sees the
+image and decides for themselves when the pose is good.
 
-Braucht ein Display (angeschlossener Monitor + Desktopumgebung, oder `ssh -X`).
+Needs a display (a monitor attached plus a desktop environment, or `ssh -X`).
 """
 
 import argparse
@@ -34,7 +33,7 @@ SPACE = 32
 
 
 async def run(args: argparse.Namespace) -> int:
-    """Zeigt den Stream an, bis das Fenster geschlossen oder 'q' gedrueckt wird."""
+    """Show the stream until the window is closed or 'q' is pressed."""
     async with Client(url=args.url) as client:
         own_idx = await client.get_namespace_index(args.namespace)
         vision = client.get_node(ua.NodeId(args.vision_system, own_idx))
@@ -63,12 +62,12 @@ async def run(args: argparse.Namespace) -> int:
                 if key == ord("q"):
                     break
                 if key == SPACE:
-                    # `CaptureCalibrationSample` merkt sich nur noch den Frame
-                    # (kein `detect_board` mehr im RPC-Pfad, siehe
-                    # calibration_session.py) -- Error ist darum praktisch
-                    # immer OK, solange eine Session laeuft. Ob das Board
-                    # tatsaechlich sichtbar war, stellt sich erst nach
-                    # `FinishCalibration` heraus (Strg+C in diesem Tool).
+                    # `CaptureCalibrationSample` only stores the frame now (no
+                    # `detect_board` in the RPC path any more, see
+                    # calibration_session.py). The error is therefore practically
+                    # always OK while a session runs. Whether the board was
+                    # actually visible only shows after `FinishCalibration`
+                    # (Ctrl+C in this tool).
                     error = await vision.call_method(capture_node)
                     progress = json.loads(await progress_node.read_value())
                     if error == 0:
@@ -88,7 +87,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Liest die Kommandozeile und zeigt den Stream an."""
+    """Parse the command line and show the stream."""
     parser = argparse.ArgumentParser(description="Lokaler Live-Viewer des Kamera-Streams")
     parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
     parser.add_argument("--namespace", default="http://launch-rm.de/vision")

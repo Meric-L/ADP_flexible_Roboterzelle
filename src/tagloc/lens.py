@@ -1,17 +1,17 @@
-"""Linsenmodell-abhaengige OpenCV-Aufrufe, an einer Stelle.
+"""Lens-model-dependent OpenCV calls, in one place.
 
-OpenCV hat fuer das Fisheye-Modell (Kannala-Brandt) einen eigenen Namensraum
-`cv2.fisheye` mit anderen Funktionen und anderen Anforderungen an die
-Array-Formen als fuer das Standard-Pinhole-Modell (Brown-Conrady). Wer mit
-Koeffizienten des einen Modells die Funktion des anderen aufruft, bekommt
-keinen Fehler, sondern stumm falsche Punkte. Deshalb entscheidet nur dieses
-Modul anhand von `CameraCalibration.model`, was aufgerufen wird -- Pose,
-Overlay und Kalibrierung fragen hier an, statt selbst zu verzweigen.
+OpenCV has a separate namespace `cv2.fisheye` for the fisheye model (Kannala-Brandt)
+with different functions and different array-shape requirements than the standard
+pinhole model (Brown-Conrady). Calling the function of one model with the coefficients
+of the other does not raise an error; it silently returns wrong points. This module
+is therefore the only place that decides, based on `CameraCalibration.model`, what
+gets called. Pose, overlay and calibration request functions here instead of
+branching themselves.
 
-Welche Kamera welches Modell nutzt, legt die Config fest
-(`AprilTagProfileConfig.calibration_model`, siehe Arbeitsplan
-`kalibrierung-linsenmodell-je-kamera.md`): Deckenkamera Fisheye, Handkamera
-Pinhole.
+The config sets which camera uses which model
+(`AprilTagProfileConfig.calibration_model`, see work plan
+`kalibrierung-linsenmodell-je-kamera.md`): ceiling camera fisheye, hand camera
+pinhole.
 """
 
 import logging
@@ -22,24 +22,23 @@ from .calibration import DISTORTION_MODELS, FISHEYE, PINHOLE, CameraCalibration
 
 _log = logging.getLogger(__name__)
 
-#: Anzahl Koeffizienten, die `cv2.fisheye` erwartet (k1..k4).
+#: Number of coefficients that `cv2.fisheye` expects (k1..k4).
 FISHEYE_COEFFICIENTS = 4
 
-#: Abbruchkriterium fuer `cv2.fisheye.calibrate`. Der OpenCV-Standard
-#: (20 Iterationen) konvergiert bei 12-MP-Aufnahmen mit vielen Ecken nicht
-#: immer; 100 Iterationen kosten gegen die Eckensuche kaum etwas.
+#: Termination criteria for `cv2.fisheye.calibrate`. The OpenCV default (20 iterations)
+#: does not always converge for 12 MP captures with many corners; 100 iterations cost
+#: hardly anything compared to the corner search.
 _FISHEYE_CRITERIA_MAX_ITER = 100
 _FISHEYE_CRITERIA_EPS = 1e-6
 
 
 def _fisheye_flag(name: str) -> int:
-    """Liefert eine Fisheye-Kalibrierflagge, unabhaengig von der OpenCV-Version.
+    """Return a fisheye calibration flag, independent of the OpenCV version.
 
-    OpenCV 4.x fuehrt sie als `cv2.fisheye.CALIB_*` (z. B.
-    RECOMPUTE_EXTRINSIC = 2), OpenCV 5 nur noch als `cv2.CALIB_*` mit
-    **anderen Zahlenwerten** (dort 8388608). Hart kodierte Zahlen waeren
-    also auf einer der beiden Versionen still falsch -- auf dem Pi laeuft
-    eine andere Version als auf den Entwicklungsrechnern.
+    OpenCV 4.x provides them as `cv2.fisheye.CALIB_*` (e.g. RECOMPUTE_EXTRINSIC = 2),
+    OpenCV 5 only as `cv2.CALIB_*` with **different numeric values** (there 8388608).
+    Hard-coded numbers would silently be wrong on one of the two versions. The Pi runs
+    a different OpenCV version than the development machines.
     """
     import cv2
 
@@ -70,10 +69,10 @@ def _check_model(model: str) -> None:
 
 
 def undistort_points(points, calibration: CameraCalibration) -> np.ndarray:
-    """Entzerrt Bildpunkte auf das ideale Pinhole-Modell, in Pixeln (`P=K`).
+    """Undistort image points to the ideal pinhole model, in pixels (`P=K`).
 
-    Danach laesst sich mit Verzeichnung null weiterrechnen -- fuer beide
-    Linsenmodelle gleich (siehe `tagloc.pose`). Rueckgabe `(N, 2)`.
+    Afterwards the calculation can continue with zero distortion. This is the same for
+    both lens models (see `tagloc.pose`). Returns `(N, 2)`.
     """
     import cv2
 
@@ -95,7 +94,7 @@ def undistort_points(points, calibration: CameraCalibration) -> np.ndarray:
 
 
 def project_points(object_points, rvec, tvec, calibration: CameraCalibration) -> np.ndarray:
-    """Projiziert 3D-Punkte (Objekt-KS) mit Verzeichnung ins Bild, `(N, 2)`."""
+    """Project 3D points (object frame) into the image with distortion, `(N, 2)`."""
     import cv2
 
     _check_model(calibration.model)
@@ -122,20 +121,19 @@ def project_points(object_points, rvec, tvec, calibration: CameraCalibration) ->
 
 
 def undistortion_maps(calibration: CameraCalibration, alpha: float = 1.0):
-    """Vorberechnete Maps fuer `cv2.remap`, die ein ganzes Bild entzerren.
+    """Precompute maps for `cv2.remap` that undistort a whole image.
 
-    Fuer die Anzeige (Livestream-Modus "undistorted"), nicht fuer die Messung
-    -- die entzerrt nur Eckpunkte (`undistort_points`). Einmal je Aufloesung
-    und Kalibrierung rechnen: `initUndistortRectifyMap` ist teuer, `remap`
-    mit fertigen Maps nicht.
+    Used for display (live stream mode "undistorted"), not for measurement; measurement
+    only undistorts corner points (`undistort_points`). Compute once per resolution and
+    calibration: `initUndistortRectifyMap` is expensive, while `remap` with ready-made
+    maps is not.
 
-    `alpha` waehlt den Ausschnitt: 1 = alle Bildpunkte bleiben sichtbar, mit
-    den gebogenen schwarzen Raendern, an denen man die Wirkung der
-    Entzerrung sieht; 0 = beschnitten auf gueltige Pixel. Beim Fisheye
-    entspricht das `balance`.
+    `alpha` selects the crop: 1 keeps all image points visible, with the curved black
+    borders that show the effect of the undistortion; 0 crops to valid pixels. For
+    fisheye this corresponds to `balance`.
 
-    Bildgroesse = `calibration.image_size`; fuer eine andere Aufloesung
-    vorher `scale_to_resolution`. Rueckgabe `(map1, map2)`.
+    The image size is `calibration.image_size`; for a different resolution, call
+    `scale_to_resolution` first. Returns `(map1, map2)`.
     """
     import cv2
 
@@ -162,19 +160,20 @@ def undistortion_maps(calibration: CameraCalibration, alpha: float = 1.0):
 def calibrate(
     object_points, image_points, image_size: tuple[int, int], model: str = PINHOLE
 ) -> tuple[float, np.ndarray, np.ndarray]:
-    """Rechnet `(rms, K, D)` aus zugeordneten Punkten je Aufnahme.
+    """Compute `(rms, K, D)` from point correspondences per capture.
 
-    `PINHOLE`: `cv2.calibrateCamera` ohne Zusatzflags -- Brown-Conrady mit
-    genau 5 Koeffizienten (k1, k2, p1, p2, k3).
+    `PINHOLE`: `cv2.calibrateCamera` without extra flags, i.e. Brown-Conrady with
+    exactly 5 coefficients (k1, k2, p1, p2, k3).
 
-    `FISHEYE`: `cv2.fisheye.calibrate` (Kannala-Brandt, k1..k4) mit
-    `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW`. Schlaegt `CHECK_COND` an
-    (eine Aufnahme numerisch schlecht konditioniert, typisch: Board fast
-    am Bildrand oder sehr flach), wird einmal ohne diese Pruefung
-    nachgerechnet -- sonst kippt eine einzelne schlechte Aufnahme die ganze
-    Kalibrierung. Scheitert auch das, fliegt der `cv2.error` durch.
+    `FISHEYE`: `cv2.fisheye.calibrate` (Kannala-Brandt, k1..k4) with
+    `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW`. If `CHECK_COND` fails (one capture
+    is numerically badly conditioned, typically the board almost at the image edge or
+    very flat), the calibration is computed once more without this check. Otherwise a
+    single bad capture would break the whole calibration. If that also fails, the
+    `cv2.error` is propagated.
 
-    Wirft `ValueError` bei unbekanntem Modell.
+    Raises:
+        ValueError: If the model is unknown.
     """
     import cv2
 
@@ -190,10 +189,10 @@ def calibrate(
             np.asarray(distortion, dtype=np.float64).reshape(-1),
         )
 
-    # cv2.fisheye ist bei den Formen strenger als calibrateCamera: float64,
-    # (1, N, 3) bzw. (1, N, 2) je Aufnahme. (N, 1, 3) scheitert unter
-    # OpenCV 5 mit "Sizes of input arguments do not match" (gemessen
-    # 2026-09-29); (1, N, *) ist auch die Form aus den OpenCV-4-Beispielen.
+    # cv2.fisheye is stricter about shapes than calibrateCamera: float64,
+    # (1, N, 3) or (1, N, 2) per capture. (N, 1, 3) fails under
+    # OpenCV 5 with "Sizes of input arguments do not match" (measured
+    # 2026-09-29); (1, N, *) is also the shape from the OpenCV 4 examples.
     objects = [np.asarray(points, dtype=np.float64).reshape(1, -1, 3) for points in object_points]
     images = [np.asarray(points, dtype=np.float64).reshape(1, -1, 2) for points in image_points]
     criteria = (
@@ -217,10 +216,10 @@ def calibrate(
     try:
         rms, camera_matrix, distortion, _, _ = run(base_flags | _fisheye_flag("CALIB_CHECK_COND"))
     except cv2.error as error:
-        # Nur die Konditionspruefung selbst rechtfertigt den Neuversuch
+        # Only the conditioning check itself justifies the retry
         # ("CALIB_CHECK_COND - Ill-conditioned matrix for input array N").
-        # Jeder andere Fehler (Formen, zu wenige Punkte) scheiterte ohne die
-        # Flagge genauso und soll mit seiner eigenen Meldung durchfliegen.
+        # Any other error (shapes, too few points) would also have failed without
+        # the flag and should propagate with its own message.
         if "ill-conditioned" not in str(error).lower():
             raise
         _log.warning(

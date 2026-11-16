@@ -1,10 +1,10 @@
-"""Tag-Position ueber Bezugskanten einmessen: `MeasureTagReference` und `PlanTagReferenceView`.
+"""Measure tag position against reference edges: ``MeasureTagReference`` and ``PlanTagReferenceView``.
 
-`ReferenceMixin` misst die Lage eines Tags zu den Kanten einer Flaeche im
-Rohbild (`tagloc.reference_edges`) und plant die Kamerapose, aus der Tag und
-Kanten ins Bild passen. Er erwartet am Objekt `_config`, `_calibration`,
-`_tag_map`, `reference_debug_sink` sowie `intrinsics_source`, `_detect_in_camera`
-(aus `TagMeasureMixin`) und die Methoden von `CaptureMixin`.
+``ReferenceMixin`` measures the position of a tag relative to the edges of a surface in
+the raw image (``tagloc.reference_edges``), and plans the camera pose from which tag and
+edges fit into the image. It expects the object to provide ``_config``, ``_calibration``,
+``_tag_map``, ``reference_debug_sink``, ``intrinsics_source``, ``_detect_in_camera``
+(from ``TagMeasureMixin``) and the methods of ``CaptureMixin``.
 """
 
 import logging
@@ -16,33 +16,35 @@ _log = logging.getLogger(__package__)
 
 
 class ReferenceMixin:
-    """Bezugskanten-Einmessung eines Tags."""
+    """Reference-edge measurement of a tag."""
 
     async def measure_tag_reference(self, request, artifacts: dict | None = None) -> dict:
-        """`MeasureTagReference`: Tag-Position ueber Bezugskanten einmessen.
+        """``MeasureTagReference``: measure the tag position against reference edges.
 
-        Wie `measure_tags`: nur Bilder, die **nach** dem Aufruf eintreffen,
-        seiteneffektfrei, ohne Welt-KS. Je Bild wird der Tag (`request.tag_id`)
-        erkannt; aus den Bildern mit Tag entsteht eine gemeinsame Tag-Pose (der
-        Roboter steht). Darauf misst `measure_reference_lines` die Kanten im
-        Rohbild, `fit_in_plane_correction` rechnet je Bild die Korrektur,
-        `average_corrections` mittelt sie.
+        As with ``measure_tags``, only images that arrive **after** the call are used. The
+        method has no side effects and does not use the world frame. Each image is searched
+        for the tag (``request.tag_id``). The images containing the tag yield one common
+        tag pose (the robot is standing still). On that, ``measure_reference_lines``
+        measures the edges in the raw image, ``fit_in_plane_correction`` computes the
+        correction per image, and ``average_corrections`` averages them.
 
-        Mehrdeutiger Tag: Gibt es in mindestens einem Bild eine eindeutige
-        Tag-Pose, gilt deren gemittelte Drehung fuer alle Bilder (der Roboter
-        steht, die Pose ist dieselbe). Ist **kein** Bild eindeutig, ist die
-        Drehung unbelastbar (Spiegelloesung): die Korrektur uebernimmt dann nur
-        die Position, die Drehung bleibt aus dem Startwert
-        (`tagreference.keep_guess_rotation`), und es gibt eine Warnung.
+        Ambiguous tag: if at least one image has an unambiguous tag pose, its averaged
+        rotation applies to all images (the robot is standing still, so the pose is the
+        same). If **no** image is unambiguous, the rotation is unreliable (mirror solution).
+        Then the correction takes only the position, the rotation stays at the starting
+        value (``tagreference.keep_guess_rotation``), and a warning is issued.
 
-        Fehler (`error`): `NO_FRAME` (kein frisches Bild) bzw. `TAG_NOT_SEEN`
-        (Tag in keinem Bild). Nicht messbare Kanten sind kein Fehler, sie
-        senken nur `dofs`.
+        Errors (``error``): ``NO_FRAME`` (no fresh image), or ``TAG_NOT_SEEN`` (tag in no
+        image). Edges that cannot be measured are not an error; they only lower ``dofs``.
 
-        `artifacts`: ist es ein dict, fuellt die Methode es fuer das
-        Mess-Protokoll: `frames` (Rohbilder mit Tag) und `overlay` (Debug-
-        Ansicht des letzten Bilds, BGR, volle Aufloesung; fehlt, wenn die
-        Kantensuche nicht lief).
+        Args:
+            request: The measurement request.
+            artifacts: If a dict, the method fills it for the measurement log: ``frames``
+                (raw images with the tag) and ``overlay`` (debug view of the last image,
+                BGR, full resolution; missing if the edge search did not run).
+
+        Returns:
+            The result dict built by ``tagreference.build_result``.
         """
         from ...tagreference import NO_FRAME, TAG_NOT_SEEN, build_result
 
@@ -64,7 +66,7 @@ class ReferenceMixin:
         return await self._reference_result(request, seen, common, size_m, artifacts)
 
     def _reference_sizes(self, request):
-        """Tag-Groessen fuer die Einmessung: die der Anfrage, sonst Karte, sonst Standard."""
+        """Return the tag sizes for the measurement: the request's, else the map's, else the default."""
         from ...measuretag import SizeLookup
 
         return SizeLookup(
@@ -74,11 +76,11 @@ class ReferenceMixin:
         )
 
     async def _capture_reference_frames(self, request, sizes) -> list[tuple]:
-        """Frische Bilder holen und den Tag darin suchen.
+        """Fetch fresh images and search them for the tag.
 
-        Liefert je Bild `(Bild, TagPose | None, Aufnahmezeit, Bildgroesse)`.
-        Bricht ohne weiteres Bild still ab; die Aufrufer unterscheiden
-        `NO_FRAME` (keines) und `TAG_NOT_SEEN` (keines mit Tag).
+        Returns, per image, ``(image, TagPose | None, capture_time, image_size)``. Stops
+        quietly when no further image arrives. The callers distinguish ``NO_FRAME`` (none
+        at all) from ``TAG_NOT_SEEN`` (none containing the tag).
         """
         seen_timestamp = self._latest_timestamp()
         captured: list[tuple] = []
@@ -96,7 +98,7 @@ class ReferenceMixin:
         return captured
 
     async def _reference_result(self, request, seen, common, size_m, artifacts) -> dict:
-        """Aus den Bildern mit Tag Kanten und Korrektur messen und das Ergebnis bauen."""
+        """Measure edges and correction from the images containing the tag, and build the result."""
         from tagloc.reference_edges import average_corrections
 
         from ...tagreference import (
@@ -142,7 +144,11 @@ class ReferenceMixin:
     def _measure_reference(
         self, images, tag_pose, tag_ambiguous, request, size_m, artifacts=None
     ):
-        """Kanten und Korrektur je Bild: `(Messungen je Bild, Korrekturen je Bild)`. Worker-Thread."""
+        """Measure edges and correction per image.
+
+        Returns ``(measurements per image, corrections per image)``. Runs in a worker
+        thread.
+        """
         from tagloc import frames as frame_tools
         from tagloc.reference_edges import fit_in_plane_correction, measure_reference_lines
 
@@ -179,18 +185,18 @@ class ReferenceMixin:
     def _show_reference_debug(
         self, debug, image, calibration, tag_pose, size_m, request, index, total, artifacts
     ) -> None:
-        """Gibt die Debug-Ansicht der Kantensuche an Livestream und Mess-Protokoll weiter.
+        """Pass the edge-search debug view to the live stream and the measurement log.
 
-        Der Livestream (`reference_debug_sink`) bekommt jedes Bild, das
-        Mess-Protokoll (`artifacts["overlay"]`) nur das letzte. Ein Fehler hier
-        wird geloggt und verschluckt: die Anzeige darf die Messung nie stoeren.
+        The live stream (``reference_debug_sink``) gets every image. The measurement log
+        (``artifacts["overlay"]``) gets only the last one. An error here is logged and
+        swallowed: the display must never disturb the measurement.
         """
         from tagloc import frames as frame_tools
         from tagloc.reference_edges import tag_outline_px
         from tagloc.reference_overlay import draw_reference_debug
 
-        # Importe vor dem `try`: ein fehlendes Modul ist ein Installationsfehler
-        # und soll auffallen, nicht als Anzeigefehler verschluckt werden.
+        # Imports come before the ``try``: a missing module is an installation error and
+        # should surface, not be swallowed as a display error.
         try:
             title = f"Tag {request.tag_id} - Messung Bild {index}/{total}"
             corners = tag_outline_px(calibration, tag_pose, size_m, 0.0)
@@ -207,14 +213,14 @@ class ReferenceMixin:
                     layers=request.overlay,
                 )
         except Exception:
-            # Die Anzeige darf die Messung nie stoeren.
+            # The display must never disturb the measurement.
             _log.exception("Debug-Ansicht der Einmessung nicht erzeugt")
 
     def plan_tag_reference_view(self, request) -> dict:
-        """`PlanTagReferenceView`: Kamerapose im Tag-KS, aus der Tag und Kanten ins Bild passen.
+        """``PlanTagReferenceView``: plan the camera pose in the tag frame from which tag and edges fit the image.
 
-        Rechnet nur mit der Kalibrierung (Brennweite, Bildgroesse), ohne
-        Kamerabild -- kein Warten, keine Seiteneffekte.
+        Computes only from the calibration (focal length, image size), without a camera
+        image. No waiting, no side effects.
         """
         from tagloc.reference_edges import plan_reference_view
 

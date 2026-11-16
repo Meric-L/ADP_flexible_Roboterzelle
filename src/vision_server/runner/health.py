@@ -1,4 +1,4 @@
-"""Kamerazustand: Watchdog der geteilten Kamera als `DeviceHealth` der Anlagensicht."""
+"""Camera state: watchdog of the shared camera as `DeviceHealth` of the asset view."""
 
 import logging
 from collections.abc import Mapping
@@ -15,11 +15,11 @@ _log = logging.getLogger(__package__)
 
 
 def _camera_config_of(space: VisionAddressSpace, source: DetectionSource):
-    """Die Konfiguration der Kamera, die wirklich laeuft.
+    """Return the configuration of the camera that is actually running.
 
-    `space.config.camera_stream` kann `None` sein, waehrend die Quelle sehr
-    wohl eine Kamera mit eigenen Schwellen haelt (`detection/apriltag.py`
-    haelt sie in `_camera_config`). Gleiches Muster wie `_build_annotator`.
+    `space.config.camera_stream` can be `None` while the source does hold a camera with
+    its own thresholds (`detection/apriltag.py` keeps it in `_camera_config`). Same
+    pattern as `_build_annotator`.
     """
     from ..profiles import CameraStreamConfig
 
@@ -36,32 +36,31 @@ async def _start_camera_health(
     sources: Mapping[str, DetectionSource],
     opened: Mapping[str, bool],
 ) -> CameraHealthPublisher | None:
-    """Verbindet den Kamera-Watchdog mit `DeviceHealth` der Anlagensicht.
+    """Connect the camera watchdog to `DeviceHealth` of the asset view.
 
-    Der Watchdog in `camera.py` erkennt haengende Kameras, meldet das aber nur
-    ins Log. Hier wird daraus ein Wert, den ein generischer OPC-UA-Client
-    sieht -- ohne Kenntnis dieses Repos.
+    The watchdog in `camera.py` detects hanging cameras, but only reports them to the
+    log. Here it becomes a value that a generic OPC UA client can see -- without knowing
+    this repo.
 
-    Bewusst nicht an `_start_camera_stream` gehaengt: der Livestream ist eine
-    Debughilfe und kann fehlen, waehrend die Job-Quelle eine Kamera haelt.
-    Ohne Part 2 oder ohne Zustandsknoten passiert nichts.
+    Deliberately not attached to `_start_camera_stream`: the live stream is a debugging
+    aid and may be missing, while the job source holds a camera. Without part 2 or
+    without state nodes, nothing happens.
     """
     if assets is None or not assets.device_health:
         return None
     source = _camera_owner(sources, opened)
     if source is None:
-        # Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort, und sie
-        # bleibt stehen -- es gibt nichts, was sie spaeter widerlegen koennte.
+        # Nodes exist, camera does not: FAILURE is the honest answer, and it stays --
+        # nothing could later disprove it.
         _log.warning(
             "Zustandsknoten der Anlagensicht vorhanden, aber keine geoeffnete "
             "Kamera -- DeviceHealth bleibt auf FAILURE"
         )
         await write_device_health(assets.device_health, DeviceHealth.FAILURE)
         return None
-    # Der normkonforme Ereignisweg von Part 2. Emittiert wird von
-    # `VisionMachine`, weil Clients ohnehin genau diesen Knoten abonnieren;
-    # `SourceNode` nennt die Komponente, um die es geht -- den Bildsensor,
-    # falls sein Modell bekannt ist, sonst die Anlagenwurzel.
+    # The standard-conform event path of part 2. Emitted by `VisionMachine`, because
+    # clients subscribe to exactly this node anyway; `SourceNode` names the component
+    # concerned -- the image sensor if its model is known, otherwise the asset root.
     alarms = (
         HealthAlarms(
             space.server,
@@ -78,8 +77,8 @@ async def _start_camera_health(
         _camera_config_of(space, source),
         alarms=alarms,
     )
-    # Der Watchdog reisst den Prozess, wenn er aufgibt; vorher soll noch ein
-    # letztes FAILURE rausgehen.
+    # The watchdog kills the process when it gives up; a last FAILURE should still go out
+    # before that.
     source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
     publisher.start()
     _log.info(

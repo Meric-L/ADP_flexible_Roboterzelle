@@ -1,35 +1,33 @@
-"""Zellen-Ueberwachung (Layer 1, Deckenkamera): wurde ein Modul verschoben,
-hinzugefuegt oder entfernt?
+"""Cell watch (layer 1, ceiling camera): was a module moved, added or removed?
 
-Der Pi vergleicht laufend, was die Deckenkamera sieht, mit einer Referenz --
-dem Layer-1-Ergebnis, das das Frontend im Viewport hat, oder der aktuellen
-stabilen Beobachtung ("Ignorieren"). Eine Aenderung meldet er erst, wenn sie
-**bestaetigt** ist. Ein einzelnes schlechtes Bild, eine Person im Weg oder
-der Roboterarm vor einem Tag duerfen keinen Alarm ausloesen.
+The Pi continuously compares what the ceiling camera sees with a reference -- either
+the layer-1 result that the frontend holds in the viewport, or the current stable
+observation ("Ignore"). A change is only reported once it is **confirmed**. A single
+bad image, a person in the way or the robot arm in front of a tag must not trigger
+an alarm.
 
-Je Tag wird die Modulpose ueberwacht, die dieser Tag misst (Tag-Pose mal
-CAD-Versatz aus der Tag-Map, wie im Payload). Die Regeln:
+For each tag, the module pose is monitored that this tag measures (tag pose times the
+CAD offset from the tag map, as in the payload). The rules:
 
-* Nur Bilder mit gemeinsam geloester Kamerapose (`joint`) und plausiblem
-  Reprojektionsfehler zaehlen. Alle anderen gelten als "keine Aussage", nicht
-  als "Tag fehlt".
-* moved: Der Median der letzten `persist_s` Sekunden weicht laenger als
-  `persist_s` um mehr als `moved_threshold_m` bzw. `rotated_threshold_deg`
-  (Drehung um die Hochachse) ab. Bei mehrdeutigen Tags zaehlt nur die Position.
-* appeared: Ein Tag ausserhalb der Referenz ist ueber `persist_s` in der
-  Mehrzahl der Bilder zu sehen.
-* disappeared: Ein Referenz-Tag fehlt laenger als `missing_persist_s`, und
-  zwar in so vielen gueltigen Bildern hintereinander, dass Zufall bei seiner
-  bisherigen Erkennungsrate ausgeschlossen ist (`required_misses`). Ein Tag,
-  der ohnehin nur in jedem fuenften Bild erkannt wird, fehlt oft 20 s lang
-  rein zufaellig -- er gilt als `unreliable` und braucht laenger.
-* Hysterese: Eine Aenderung erlischt erst, wenn der Tag `persist_s` lang
-  stabil zurueck ist (unter dem halben Schwellwert bzw. wieder gesehen).
+* Only images with a jointly solved camera pose (`joint`) and a plausible reprojection
+  error count. All others count as "no statement", not as "tag missing".
+* moved: the median of the last `persist_s` seconds deviates by more than
+  `moved_threshold_m` or `rotated_threshold_deg` (rotation around the vertical axis)
+  for longer than `persist_s`. For ambiguous tags only the position counts.
+* appeared: a tag outside the reference is visible over `persist_s` in the majority
+  of images.
+* disappeared: a reference tag is missing for longer than `missing_persist_s`, and
+  this holds for so many consecutive valid images that chance is ruled out given its
+  past detection rate (`required_misses`). A tag that is only detected in every fifth
+  image is often missing for 20 s purely by chance -- it counts as `unreliable` and
+  needs longer.
+* Hysteresis: a change only clears once the tag has been stable back for `persist_s`
+  (below half the threshold, or seen again).
 
-Welttags werden nicht ueberwacht -- die Quelle liefert sie gar nicht erst.
+World tags are not monitored -- the source does not deliver them in the first place.
 
-Hier steckt kein asyncua und keine Kamera: Beobachtungen kommen als Daten
-herein. Siehe `doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
+There is no asyncua and no camera here: observations come in as data. See
+`doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
 """
 
 from __future__ import annotations
@@ -63,9 +61,9 @@ CHANGED = "changed"
 PAUSED = "paused"
 FAILED = "failed"
 
-#: `PauseCellWatch`: Dauer der Pause, wenn der Aufrufer keine nennt, und die
-#: laengste erlaubte -- danach geht die Ueberwachung von selbst weiter, auch
-#: wenn niemand `ResumeCellWatch` ruft (Frontend abgestuerzt, Roboter still).
+#: `PauseCellWatch`: pause duration if the caller names none, and the longest allowed.
+#: Afterwards the watch resumes on its own, even if nobody calls `ResumeCellWatch`
+#: (frontend crashed, robot stopped).
 DEFAULT_PAUSE_S = 600.0
 MAX_PAUSE_S = 3600.0
 DEFAULT_PAUSE_REASON = "Ueberwachung pausiert"
@@ -74,45 +72,42 @@ MOVED = "moved"
 APPEARED = "appeared"
 DISAPPEARED = "disappeared"
 
-#: Ein Tag gilt erst als verschwunden, wenn er in so vielen gueltigen Bildern
-#: gefehlt hat -- zwei Bilder in 20 s waeren keine Aussage.
+#: A tag only counts as gone once it has been missing in this many valid images --
+#: two images in 20 s would be no statement.
 MIN_FRAMES_FOR_MISSING = 3
-#: So unwahrscheinlich muss es sein, dass ein vorhandener Tag die geforderten
-#: Bilder hintereinander rein zufaellig verpasst. Bewusst sehr klein: geprueft
-#: wird alle 2 s, ein Tag mit 40 % Erkennungsrate (gemessen am Decken-Pi,
-#: 15.10.2026) beginnt ~700 Luecken pro Stunde. Mit 1 % gab es mehrere
-#: Fehlalarme pro Stunde, mit 0,01 % in der Simulation noch einen in zehn
-#: Stunden, mit 0,001 % keinen in 20 Stunden.
+#: How unlikely it must be that an existing tag is missed by chance for the required
+#: consecutive images. Deliberately very small: checked every 2 s, a tag with a 40 %
+#: detection rate (measured on the ceiling Pi, 15.10.2026) produces about 700 gaps per
+#: hour. With 1 % there were several false alarms per hour, with 0.01 % in simulation
+#: still one in ten hours, with 0.001 % none in 20 hours.
 MISS_BY_CHANCE = 1e-5
-#: Obergrenze der geforderten Fehlbilder -- auch ein schlecht erkannter Tag
-#: soll irgendwann als fehlend gemeldet werden koennen (bei 2 s: 2 min).
+#: Upper limit of the required misses -- even a badly detected tag should eventually be
+#: reportable as missing (at 2 s: 2 min).
 MAX_REQUIRED_MISSES = 60
-#: Unter dieser Erkennungsrate gilt ein Tag als unsicher erkannt.
+#: Below this detection rate a tag counts as unreliably detected.
 UNRELIABLE_RATE = 0.5
-#: Erst ab so vielen Bildern ist eine Erkennungsrate eine Aussage.
+#: A detection rate is only a statement from this many images on.
 MIN_FRAMES_FOR_RATE = 5
-#: Ein Modul gilt als flach liegend, wenn seine Hochachse hoechstens so weit
-#: von der Welt-Z abweicht. Dann ist sein Gierwinkel auch bei mehrdeutiger
-#: Pose verlaesslich: die beiden Loesungen unterscheiden sich nur im Kippen
-#: (simuliert, Draufsicht aus 2,5 m: 225 von 300 Posen mehrdeutig, Gierfehler
-#: beider Loesungen hoechstens 6 Grad).
+#: A module counts as lying flat if its vertical axis deviates from the world Z by at
+#: most this much. Then its yaw angle is also reliable under an ambiguous pose: the two
+#: solutions differ only in tilt (simulated, top view from 2.5 m: 225 of 300 poses
+#: ambiguous, yaw error of both solutions at most 6 degrees).
 FLAT_MAX_TILT_DEG = 30.0
 
 
 def is_flat(pose) -> bool:
-    """Liegt das Modul flach (Hochachse nahe Welt-Z, nach oben oder unten)?"""
+    """Return whether the module lies flat (vertical axis near world Z, up or down)."""
     return abs(float(np.asarray(pose, dtype=np.float64)[2, 2])) >= math.cos(
         math.radians(FLAT_MAX_TILT_DEG)
     )
 
 
 def conservative_rate(hits: int, frames: int) -> float:
-    """Untere Grenze des 95-%-Wilson-Intervalls der Erkennungsrate.
+    """Return the lower bound of the 95 % Wilson interval of the detection rate.
 
-    Die gemessene Rate aus wenigen Bildern streut stark: bei echten 40 % sind
-    60 % aus 20 Bildern nicht selten -- und eine zu hoch geschaetzte Rate
-    fordert zu wenige Fehlbilder (gefunden mit einer simulierten Stunde).
-    Die untere Grenze schaetzt vorsichtig.
+    A measured rate from few images scatters strongly: with a true 40 %, 60 % out of 20
+    images is not rare. An overestimated rate would demand too few misses (found with a
+    simulated hour). The lower bound estimates cautiously.
     """
     if frames <= 0:
         return 0.0
@@ -125,8 +120,10 @@ def conservative_rate(hits: int, frames: int) -> float:
 
 
 def required_misses(rate: float) -> int:
-    """Fehlbilder hintereinander, bevor ein Tag mit dieser Erkennungsrate als
-    verschwunden gilt: `(1 - rate)^n < MISS_BY_CHANCE`."""
+    """Return the consecutive misses before a tag with this detection rate counts as gone.
+
+    Solves `(1 - rate)^n < MISS_BY_CHANCE` for `n`, clamped to the allowed range.
+    """
     rate = min(max(rate, 0.05), 0.99)
     needed = math.ceil(math.log(MISS_BY_CHANCE) / math.log(1.0 - rate))
     return min(MAX_REQUIRED_MISSES, max(MIN_FRAMES_FOR_MISSING, needed))
@@ -138,28 +135,26 @@ class CellWatchOptions:
     rotated_threshold_deg: float = 10.0
     persist_s: float = 5.0
     missing_persist_s: float = 20.0
-    #: Abstand der Auswertungen. Erkennung auf dem vollen Deckenkamera-Frame
-    #: ist auf dem Pi teuer -- 2 s statt 1 s halbiert die Last.
+    #: Interval between evaluations. Detection on the full ceiling camera frame is
+    #: expensive on the Pi -- 2 s instead of 1 s halves the load.
     interval_s: float = 2.0
-    #: Bilder mit groesserem RMS der Kamerapose gelten als "keine Aussage".
-    #: 6 px statt 3: auf Pi 1 liegt das gemeinsame PnP bei einer Kalibrierung
-    #: mit 0,4 px stabil bei 3,3 px -- der Rest ist ~1 cm Ungenauigkeit der
-    #: Tag-Map. Das ist gegen 5 cm Verschiebe-Schwelle kein Grund, gar nichts
-    #: mehr zu sehen; ein grober Fehler (falsche Taggroesse, verschobener
-    #: Welttag) liegt weit darueber.
+    #: Images with a larger RMS of the camera pose count as "no statement".
+    #: 6 px instead of 3: on Pi 1 the joint PnP with a calibration of 0.4 px stays stable
+    #: at 3.3 px -- the rest is about 1 cm inaccuracy of the tag map. Against the 5 cm
+    #: move threshold this is no reason to see nothing at all; a gross error (wrong tag
+    #: size, shifted world tag) lies far above it.
     max_camera_error_px: float = 6.0
-    #: Mindestzahl Welttags im Bild. Ab 2 schaetzt der Pi die Kamerapose neu
-    #: (gemeinsames PnP, auf ~6 mm genau). Mit 1 nutzt er die gespeicherte
-    #: Pose der fest montierten Kamera und prueft den einen Welttag nur auf
-    #: Konsistenz -- aus einem einzelnen Tag waere die Pose aus 2,5 m um
-    #: Zentimeter ungenau (simuliert: Median 40 mm, Ausreisser bis 1,5 m durch
-    #: gekippte Loesungen, 31-38 % der Bilder ueber 5 cm). Mit 2 ist es wie
-    #: bisher: unter zwei Welttags wird pausiert.
+    #: Minimum number of world tags in the image. From 2 on, the Pi re-estimates the
+    #: camera pose (joint PnP, accurate to about 6 mm). With 1 it uses the stored pose of
+    #: the fixed camera and only checks the one world tag for consistency -- from a single
+    #: tag the pose at 2.5 m would be inaccurate by centimeters (simulated: median 40 mm,
+    #: outliers up to 1.5 m from tilted solutions, 31-38 % of images above 5 cm).
+    #: With 2 it works as before: below two world tags the watch pauses.
     min_world_tags: int = 1
-    #: So viel mehr Eckenfehler als beim Speichern der Pose darf der eine
-    #: Welttag haben, bevor "Kamera bewegt?" gilt. Gemessen: unbewegt hoechstens
-    #: ~1 px mehr, bei 5 mm Verschiebung ~1,4 px, bei 10 mm ~3,4 px, bei 0,1
-    #: Grad ~1,4 px; 2 px erkennt also Verschiebungen ab ~7 mm.
+    #: How many more corner errors than when the pose was stored the one world tag may
+    #: have before "camera moved?" applies. Measured: unmoved at most about 1 px more; at
+    #: 5 mm shift about 1.4 px, at 10 mm about 3.4 px, at 0.1 degree about 1.4 px. So
+    #: 2 px detects shifts from about 7 mm on.
     stored_pose_margin_px: float = 2.0
 
     def to_dict(self) -> dict:
@@ -177,17 +172,17 @@ class CellWatchOptions:
 
 @dataclass(frozen=True)
 class TagSighting:
-    """Ein Tag in einem gueltigen Bild: die Modulpose, die er misst."""
+    """A tag in a valid image: the module pose it measures."""
 
     position: tuple[float, float, float]
-    #: Drehung um die Hochachse des Welt-KS, Grad.
+    #: Rotation around the vertical axis of the world frame, degrees.
     yaw_deg: float
     ambiguous: bool = False
     module_id: str = ""
-    #: Flach liegend: dann zaehlt der Gierwinkel auch bei `ambiguous`.
+    #: Lying flat: then the yaw angle counts even if `ambiguous`.
     flat: bool = False
-    #: Kameraposition im Welt-KS: damit laesst sich der Sehstrahl zum Tag
-    #: auf eine feste Hoehe schneiden (die geschaetzte Tiefe streut).
+    #: Camera position in the world frame: this lets the line of sight to the tag be
+    #: intersected with a fixed height (the estimated depth scatters).
     camera_position: tuple[float, float, float] | None = None
 
     @property
@@ -200,14 +195,14 @@ class ReferenceTag:
     position: tuple[float, float, float]
     yaw_deg: float
     module_id: str = ""
-    #: Ohne verlaessliche Drehung (mehrdeutig) wird nur die Position verglichen.
+    #: Without a reliable rotation (ambiguous), only the position is compared.
     has_yaw: bool = True
 
 
 @dataclass
 class _TagState:
     exceeded_since: float | None = None
-    #: Abweichung beim letzten Bild, fuer `pending`.
+    #: Deviation at the last image, for `pending`.
     last_distance: float | None = None
     last_rotation: float | None = None
     back_since: float | None = None
@@ -218,26 +213,25 @@ class _TagState:
 
 @dataclass
 class CellWatchTracker:
-    """Wertet gueltige Bilder gegen eine Referenz aus. Rein, ohne Uhr: jede
-    Beobachtung bringt ihren Zeitpunkt mit (`t` monoton, `wall` fuer den
-    Status)."""
+    """Evaluate valid images against a reference. Pure, without a clock: every observation
+    carries its time (`t` monotonic, `wall` for the status)."""
 
     options: CellWatchOptions
     reference: dict[int, ReferenceTag]
     started_at: float
     _frames: deque = field(default_factory=deque)
     _tags: dict[int, _TagState] = field(default_factory=dict)
-    #: Letztes `(t, wall)` -- rechnet monotone Zeitpunkte in Uhrzeit um.
+    #: Last `(t, wall)` -- converts monotonic times to wall-clock time.
     _clock: tuple | None = None
 
     def carry_from(self, previous: "CellWatchTracker", *, same_reference: bool) -> None:
-        """Verlauf einer vorigen Ueberwachung uebernehmen (neu scharf schalten).
+        """Take over the history of a previous watch (when arming again).
 
-        Der Bildverlauf -- und damit die Erkennungsrate je Tag -- gilt
-        unabhaengig von der Referenz. Ohne ihn braeuchte "disappeared" nach
-        jedem Aendern einer Zeit oder Schwelle bis zu 2 min. Bei derselben
-        Referenz bleiben auch laufende Kandidaten und Meldungen bestehen; bei
-        einer neuen zaehlen fruehere Bilder nicht als "fehlt".
+        The image history -- and with it the detection rate per tag -- applies
+        regardless of the reference. Without it, "disappeared" would need up to 2 min
+        after every change of a time or threshold. With the same reference, running
+        candidates and reports also remain; with a new one, earlier images do not count
+        as "missing".
         """
         self._frames = deque(previous._frames)
         self._clock = previous._clock
@@ -246,12 +240,12 @@ class CellWatchTracker:
             self.started_at = previous.started_at
 
     def restart(self, t: float) -> None:
-        """Nach einer Pause neu anfangen: Bilder von vorher zaehlen nicht mehr,
-        alle Zeitgeber starten bei `t`, alle Tags gelten als eben gesehen.
+        """Start over after a pause: images from before do not count any more, all timers
+        start at `t`, and all tags count as just seen.
 
-        Bestaetigte Meldungen bleiben -- sie erlischt die uebliche Hysterese.
-        Kandidaten (`pending`) sind weg: Waehrend der Pause fuhr der Roboter,
-        und was er in der Zeit verschoben hat, haette man nicht gesehen.
+        Confirmed reports remain -- the usual hysteresis clears them. Candidates
+        (`pending`) are gone: during the pause the robot moved, and what it shifted in
+        that time would not have been seen.
         """
         self._frames.clear()
         self.started_at = t
@@ -269,11 +263,11 @@ class CellWatchTracker:
         return (clock_wall - timedelta(seconds=clock_t - t)).isoformat(timespec="seconds")
 
     def update(self, t: float, wall: datetime, sightings: dict[int, TagSighting]) -> None:
-        """Ein gueltiges Bild. Ungueltige Bilder kommen gar nicht erst hierher."""
+        """Process one valid image. Invalid images never get here."""
         self._clock = (t, wall)
         self._frames.append((t, sightings))
-        # Lang genug fuer die Erkennungsrate vor einer Luecke und fuer bis zu
-        # `MAX_REQUIRED_MISSES` Fehlbilder.
+        # Long enough for the detection rate before a gap and for up to
+        # `MAX_REQUIRED_MISSES` misses.
         horizon = t - max(
             4.0 * max(self.options.persist_s, self.options.missing_persist_s),
             3.0 * MAX_REQUIRED_MISSES * self.options.interval_s,
@@ -291,20 +285,20 @@ class CellWatchTracker:
                 self._update_new_tag(tag_id, state, t, wall)
 
     def detection_rate(self, tag_id: int, until: float) -> tuple[float, int]:
-        """Anteil der gueltigen Bilder mit dem Tag bis `until`, ueber den
-        ganzen behaltenen Verlauf (bis `2 * MAX_REQUIRED_MISSES` Takte):
-        `(Rate, Bilder)`."""
+        """Return the share of valid images with the tag up to `until`, over the whole
+        retained history (up to `2 * MAX_REQUIRED_MISSES` ticks): `(rate, images)`.
+        """
         frames = [sightings for frame_t, sightings in self._frames if frame_t <= until]
         if not frames:
             return 0.0, 0
         return sum(1 for sightings in frames if tag_id in sightings) / len(frames), len(frames)
 
     def visibility(self, t: float) -> list[dict]:
-        """Je Tag (Referenz und gesehene): wie oft er in den letzten
-        `missing_persist_s` Sekunden gueltiger Bilder erkannt wurde.
+        """Return per tag (reference and seen): how often it was detected in the last
+        `missing_persist_s` seconds of valid images.
 
-        Das ist die stabile Antwort auf "ist der Tag im Bild?" -- ein
-        einzelnes Bild flackert bei einem Tag an der Erkennungsgrenze.
+        This is the stable answer to "is the tag in the image?" -- a single image flickers
+        for a tag at the detection limit.
         """
         start = t - self.options.missing_persist_s
         window = [sightings for frame_t, sightings in self._frames if frame_t > start]
@@ -329,10 +323,11 @@ class CellWatchTracker:
         return result
 
     def pending(self, t: float) -> list[dict]:
-        """Was gerade nach einer Aenderung aussieht, aber noch nicht gemeldet
-        ist -- fuer die sofortige Anzeige. `confirmInS` ist die Zeit bis zur
-        Meldung, falls es so bleibt (bei "disappeared" geschaetzt: die
-        geforderte Zahl Fehlbilder haengt von der Erkennungsrate ab)."""
+        """Return what currently looks like a change but is not reported yet -- for
+        immediate display. `confirmInS` is the time until the report if it persists
+        (for "disappeared" it is an estimate: the required number of misses depends on
+        the detection rate).
+        """
         options = self.options
         window = self._window(t)
         result = []
@@ -393,9 +388,10 @@ class CellWatchTracker:
         ]
 
     def stable_observation(self, t: float) -> dict[int, ReferenceTag] | None:
-        """Die Mediane der letzten `persist_s` Sekunden als neue Referenz --
-        nur Tags, die in der Mehrzahl der Bilder zu sehen waren. `None`,
-        solange die Beobachtung noch nicht `persist_s` lang reicht."""
+        """Return the medians of the last `persist_s` seconds as the new reference -- only
+        tags that were seen in the majority of images. `None` as long as the observation
+        does not yet span `persist_s`.
+        """
         window = self._window(t)
         if not window or t - window[0][0] < self.options.persist_s * 0.8:
             return None
@@ -409,7 +405,7 @@ class CellWatchTracker:
             reference[tag_id] = ReferenceTag(position, yaw or 0.0, seen[-1].module_id, has_yaw)
         return reference
 
-    # --- Regeln -----------------------------------------------------------
+    # --- Rules ------------------------------------------------------------
 
     def _window(self, t: float) -> list:
         return [frame for frame in self._frames if frame[0] > t - self.options.persist_s]
@@ -420,11 +416,11 @@ class CellWatchTracker:
         window = self._window(t)
         seen = [sightings[tag_id] for _, sightings in window if tag_id in sightings]
 
-        # Verschwunden: lange nicht gesehen, in genug gueltigen Bildern.
+        # Disappeared: not seen for a long time, in enough valid images.
         last = state.last_seen if state.last_seen is not None else self.started_at
         missing_frames = sum(1 for frame_t, _ in self._frames if frame_t > last)
-        # Ohne Verlauf (z. B. direkt nach dem Scharfschalten) ist die
-        # vorsichtige Rate 0 -- dann gilt die Obergrenze, nicht 3 Bilder.
+        # Without history (e.g. right after arming) the cautious rate is 0 -- then the
+        # upper limit applies, not 3 images.
         rate, rated_frames = self.detection_rate(tag_id, until=last)
         needed = required_misses(conservative_rate(round(rate * rated_frames), rated_frames))
         if not seen and t - last > options.missing_persist_s and missing_frames >= needed:
@@ -432,7 +428,7 @@ class CellWatchTracker:
                 state.change = _change(tag_id, DISAPPEARED, reference, None, None, None, wall)
             return
         if state.change is not None and state.change["kind"] == DISAPPEARED:
-            # Erst zurueck, wenn er wieder in der Mehrzahl der Bilder ist.
+            # Only back once it is seen again in the majority of images.
             if len(seen) * 2 > len(window) and t - window[0][0] >= options.persist_s * 0.8:
                 state.change = None
             else:
@@ -440,8 +436,8 @@ class CellWatchTracker:
         if not seen:
             return
 
-        # Die Hoehe streut (Tiefenfehler entlang des Sehstrahls): jede Sichtung
-        # auf die Referenzhoehe projizieren, den Abstand nur waagrecht messen.
+        # The height scatters (depth error along the line of sight): project each
+        # sighting onto the reference height, and measure the distance horizontally only.
         seen = [_on_height(s, reference.position[2]) for s in seen]
         position, yaw, has_yaw = _median(seen)
         distance = math.hypot(
@@ -477,7 +473,7 @@ class CellWatchTracker:
                     state.back_since = None
             else:
                 state.back_since = None
-                # Zwischen den Schwellen: der Alarm bleibt, mit aktuellen Werten.
+                # Between the thresholds: the alarm stays, with current values.
                 since = state.change["since"]
                 state.change = _change(tag_id, MOVED, reference, position, distance, rotation, wall)
                 state.change["since"] = since
@@ -487,7 +483,7 @@ class CellWatchTracker:
         window = self._window(t)
         seen = [sightings[tag_id] for _, sightings in window if tag_id in sightings]
         if state.change is not None:
-            # Erlischt erst, wenn er `persist_s` lang nicht mehr zu sehen war.
+            # Only clears once it has not been seen for `persist_s`.
             if state.last_seen is not None and t - state.last_seen >= options.persist_s:
                 state.change = None
             elif seen:
@@ -509,8 +505,10 @@ class CellWatchTracker:
 
 
 def _on_height(sighting: TagSighting, height_m: float) -> TagSighting:
-    """Die Sichtung auf der Ebene `z = height_m`; ohne Kameraposition oder bei
-    zu flachem Strahl bleibt die gemessene Position."""
+    """Project the sighting onto the plane `z = height_m`.
+
+    Without a camera position, or if the ray is too flat, the measured position is kept.
+    """
     if sighting.camera_position is None:
         return sighting
     from tagloc.geometry import point_on_ray_at_height
@@ -520,13 +518,14 @@ def _on_height(sighting: TagSighting, height_m: float) -> TagSighting:
 
 
 def _median(seen: list[TagSighting]) -> tuple[tuple[float, float, float], float | None, bool]:
-    """Median der Position; Median der Drehung ueber die Sichtungen mit
-    verlaesslichem Gierwinkel (eindeutig, oder flach liegend)."""
+    """Return the median position and the median rotation over the sightings with a
+    reliable yaw angle (unambiguous, or lying flat).
+    """
     position = tuple(float(v) for v in np.median([s.position for s in seen], axis=0))
     yaws = [s.yaw_deg for s in seen if s.has_yaw]
     if not yaws:
         return position, None, False
-    # Um den ersten Wert herum mitteln, damit -179/+179 nicht 0 ergibt.
+    # Average around the first value, so that -179/+179 does not give 0.
     anchor = yaws[0]
     yaw = anchor + float(np.median([_wrap_deg(y - anchor) for y in yaws]))
     return position, _wrap_deg(yaw), True
@@ -562,7 +561,7 @@ def _change(tag_id, kind, reference, position, distance, rotation, wall, module_
 
 
 def yaw_deg(pose) -> float:
-    """Drehung um die Hochachse (+z des Welt-KS), Grad."""
+    """Return the rotation around the vertical axis (+z of the world frame), in degrees."""
     pose = np.asarray(pose, dtype=np.float64)
     return math.degrees(math.atan2(pose[1, 0], pose[0, 0]))
 
@@ -571,7 +570,7 @@ def yaw_deg(pose) -> float:
 
 
 def parse_start(text: str) -> tuple[str | None, CellWatchOptions]:
-    """`wsc.vision.cellwatch.start/1` lesen: `(referenceJobId, Optionen)`."""
+    """Parse `wsc.vision.cellwatch.start/1`: returns `(referenceJobId, options)`."""
     try:
         data = json.loads(text or "")
     except json.JSONDecodeError as error:
@@ -607,13 +606,13 @@ def parse_start(text: str) -> tuple[str | None, CellWatchOptions]:
 
 
 def reference_from_payload(payload_json: str, world_frame: str) -> dict[int, ReferenceTag]:
-    """Die Referenz aus einem Job-Ergebnis (`wsc.vision.detections/1`).
+    """Build the reference from a job result (`wsc.vision.detections/1`).
 
-    Je Tag die Pose der Detektion, zu der er gehoert -- bei zusammengefassten
-    Detektionen (`attributes.tagIds`) bekommt jeder Tag dieselbe.
+    For each tag, the pose of the detection it belongs to -- for merged detections
+    (`attributes.tagIds`) every tag gets the same pose.
 
     Raises:
-        ValueError: kein Erfolgsergebnis oder nicht im Welt-KS.
+        ValueError: If there is no successful result, or it is not in the world frame.
     """
     from tagloc.geometry import pose_from_dict
 
@@ -645,10 +644,10 @@ def reference_from_payload(payload_json: str, world_frame: str) -> dict[int, Ref
 
 
 def sightings_from_locations(locations, localization, options: CellWatchOptions):
-    """Aus `locate_modules` (unzusammengefasst) die Sichtungen eines Bilds.
+    """Return the sightings of one image from `locate_modules` (not merged).
 
-    `(None, Grund)`, wenn das Bild keine Aussage erlaubt: keine gemeinsam
-    geloeste Kamerapose oder ein zu grosser Reprojektionsfehler.
+    Returns `(None, reason)` if the image allows no statement: no jointly solved camera
+    pose, or a reprojection error that is too large.
     """
     from tagloc.localize import SOLVER_JOINT
 
@@ -662,13 +661,13 @@ def sightings_from_locations(locations, localization, options: CellWatchOptions)
     return _sightings(locations, _camera_position(localization)), ""
 
 
-#: Pausengrund ohne Welttag im Bild. Alle Gruende, die an der Verortung
-#: scheitern, nennen "Welt-Tag" -- daran erkennt das Frontend die Pause.
+#: Pause reason without a world tag in the image. All reasons where localization fails
+#: name "Welt-Tag" -- the frontend recognizes the pause by it.
 NO_WORLD_TAG = "kein Welt-Tag im Bild -- keine Verortung"
 
 
 def _camera_position(localization) -> tuple[float, float, float] | None:
-    """Translation von `pose_world_cam`, oder `None` ohne Verortung."""
+    """Return the translation of `pose_world_cam`, or `None` without localization."""
     pose = getattr(localization, "pose_world_cam", None)
     if pose is None:
         return None
@@ -690,40 +689,37 @@ def _sightings(locations, camera_position=None) -> dict:
 
 
 class CameraPoseKeeper:
-    """Merkt sich die Pose der fest montierten Deckenkamera und beurteilt
-    jedes Bild.
+    """Remember the pose of the fixed ceiling camera and judge each image.
 
-    * Ab zwei Welttags (gemeinsames PnP, Fehler im Rahmen) gilt die Pose aus
-      dem Bild, und sie wird gemerkt: Mittel der letzten `HISTORY` Posen, dazu
-      je Welttag sein Eckenfehler als Grundlinie (er enthaelt den Kartenfehler
-      von ~1 cm, den die gemeinsame Loesung nicht wegrechnen kann).
-    * Mit genau einem Welttag gilt die gemerkte Pose. Der Tag wird nur auf
-      Konsistenz geprueft: Liegen seine Ecken um mehr als
-      `stored_pose_margin_px` ueber der Grundlinie, hat sich die Kamera
-      vermutlich bewegt -- das Bild zaehlt nicht. Nach `BAD_FRAMES_TO_DROP`
-      solchen Bildern in Folge wird die Pose verworfen, und es braucht wieder
-      zwei Welttags.
-    * Ohne gemerkte Pose (Start, nach Verwerfen, neue Tag-Map) mit nur einem
-      Welttag: Pause, kein Raten.
+    * From two world tags on (joint PnP, error within bounds), the pose from the image
+      applies, and it is remembered: average of the last `HISTORY` poses, plus for each
+      world tag its corner error as baseline (it contains the map error of about 1 cm
+      that the joint solution cannot subtract).
+    * With exactly one world tag, the remembered pose applies. The tag is only checked
+      for consistency: if its corners lie more than `stored_pose_margin_px` above the
+      baseline, the camera has probably moved -- the image does not count. After
+      `BAD_FRAMES_TO_DROP` such images in a row, the pose is discarded and two world tags
+      are needed again.
+    * Without a remembered pose (start, after discarding, new tag map) with only one
+      world tag: pause, no guessing.
 
-    Die Pose uebersteht Neustarts: Sie liegt in `path` (erst ab
-    `SAVE_MIN_POSES` Posen, danach hoechstens alle `SAVE_INTERVAL_S`), und der
-    Referenz-Scan eines `StartCellWatch` kann sie liefern (`adopt`). Beides
-    ist durch die Konsistenzpruefung abgesichert: Wurde die Kamera waehrend
-    der Pause bewegt, passt der eine Welttag nicht mehr, und die Pose faellt
-    weg. Eine geaenderte Tag-Map entwertet sie ebenfalls.
+    The pose survives restarts: it is stored in `path` (only from `SAVE_MIN_POSES` poses
+    on, and then at most every `SAVE_INTERVAL_S`), and the reference scan of a
+    `StartCellWatch` can supply it (`adopt`). Both are protected by the consistency check:
+    if the camera was moved during the pause, the one world tag no longer fits and the
+    pose is dropped. A changed tag map invalidates it as well.
     """
 
     SCHEMA = "wsc.vision.cellwatch.camerapose/1"
     SAVE_MIN_POSES = 5
     SAVE_INTERVAL_S = 600.0
     HISTORY = 20
-    #: Weicht ein neues gemeinsames Ergebnis so weit von der gemerkten Pose ab,
-    #: wurde die Kamera bewegt: der Verlauf faengt neu an, statt zu mitteln.
+    #: If a new joint result deviates this far from the remembered pose, the camera was
+    #: moved: the history starts over instead of averaging.
     RESET_TRANSLATION_M = 0.015
     RESET_ROTATION_DEG = 0.5
     BAD_FRAMES_TO_DROP = 5
-    #: Gewicht des neuen Werts bei der Grundlinie (gleitender Mittelwert).
+    #: Weight of the new value in the baseline (moving average).
     BASELINE_ALPHA = 0.2
 
     def __init__(self, path: Path | None = None, clock=time.monotonic, wall=None) -> None:
@@ -734,9 +730,9 @@ class CameraPoseKeeper:
         self._path = Path(path) if path is not None else None
         self._clock = clock
         self._wall = wall or (lambda: datetime.now(timezone.utc))
-        #: Woher die Pose stammt: `measured` (>= 2 Welttags in einem Bild),
-        #: `file` (nach Neustart wiederhergestellt) oder `scan` (aus dem
-        #: Referenz-Scan uebernommen). `None` ohne Pose.
+        #: Where the pose comes from: `measured` (>= 2 world tags in one image), `file`
+        #: (restored after a restart) or `scan` (taken from the reference scan). `None`
+        #: without a pose.
         self._source: str | None = None
         self._saved_clock: float | None = None
         self._saved_at: str | None = None
@@ -757,8 +753,9 @@ class CameraPoseKeeper:
         self._source = None
 
     def drop(self) -> None:
-        """Pose verwerfen **und** die Datei loeschen: Die Pose gilt nicht mehr,
-        ein Neustart darf sie nicht wiederherstellen."""
+        """Discard the pose **and** delete the file: the pose no longer applies, and a
+        restart must not restore it.
+        """
         self.clear()
         self._saved_clock = None
         if self._path is not None:
@@ -768,17 +765,17 @@ class CameraPoseKeeper:
                 _log.warning("Gemerkte Kamerapose %s nicht loeschbar", self._path, exc_info=True)
 
     def info(self) -> dict:
-        """Fuer den Status: woher die Pose stammt und wie fest sie steht."""
+        """Return the status info: where the pose comes from and how firm it is."""
         return {
             "source": self._source,
             "poseCount": len(self._poses),
             "savedAt": self._saved_at,
         }
 
-    # --- Datei ------------------------------------------------------------
+    # --- File ------------------------------------------------------------
 
     def load(self) -> bool:
-        """Die gemerkte Pose aus der Datei holen. `False` ohne (brauchbare) Datei."""
+        """Load the remembered pose from the file. `False` without a (usable) file."""
         if self._path is None or not self._path.is_file():
             return False
         from tagloc.geometry import pose_from_dict
@@ -798,8 +795,8 @@ class CameraPoseKeeper:
             _log.warning("Gemerkte Kamerapose %s unbrauchbar (%s) -- ignoriert", self._path, error)
             return False
         self.clear()
-        # Mit dem Gewicht, das sie beim Speichern hatte: neue Messungen
-        # ersetzen sie nach und nach, statt sie sofort zu verdraengen.
+        # With the weight it had when saved: new measurements replace it gradually,
+        # instead of displacing it at once.
         self._poses.extend([pose] * count)
         self._baseline = baseline
         self._map_key = map_key
@@ -829,8 +826,8 @@ class CameraPoseKeeper:
             temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
             os.replace(temporary, self._path)
         except OSError:
-            # Auch ein Fehlschlag zaehlt als Versuch: sonst kaeme die Warnung
-            # mit Traceback bei jedem Bild (alle 2 s), solange der Ort kaputt ist.
+            # A failure also counts as an attempt: otherwise the warning with traceback
+            # would appear for every image (every 2 s) as long as the location is broken.
             self._saved_clock = self._clock()
             _log.warning("Kamerapose nicht gespeichert nach %s", self._path, exc_info=True)
             return
@@ -838,20 +835,21 @@ class CameraPoseKeeper:
         self._saved_at = saved_at
 
     def _maybe_save(self) -> None:
-        """Erst ab `SAVE_MIN_POSES` Posen, dann hoechstens alle `SAVE_INTERVAL_S`:
-        die Datei liegt auf einer SD-Karte, und die Pose aendert sich kaum."""
+        """Save only from `SAVE_MIN_POSES` poses on, then at most every `SAVE_INTERVAL_S`:
+        the file lies on an SD card, and the pose hardly changes.
+        """
         if self._path is None or len(self._poses) < self.SAVE_MIN_POSES:
             return
         if self._saved_clock is None or self._clock() - self._saved_clock >= self.SAVE_INTERVAL_S:
             self._save()
 
     def adopt(self, pose, baseline: dict, tag_map) -> bool:
-        """Die Kamerapose eines Referenz-Scans uebernehmen (`True`, wenn sie gilt).
+        """Take over the camera pose of a reference scan (`True` if it applies).
 
-        Der Scan hat die Kamera schon aus mehreren Welttags verortet, genau wie
-        eine Messung hier. Steht schon eine gemerkte Pose, gewinnt sie, solange
-        die beiden uebereinstimmen (sie ist ueber viele Bilder gemittelt). Weicht
-        der frische Scan deutlich ab, wurde die Kamera bewegt -- dann zaehlt er.
+        The scan has already localized the camera from several world tags, just like a
+        measurement here. If a remembered pose exists, it wins as long as both agree (it
+        is averaged over many images). If the fresh scan deviates clearly, the camera was
+        moved -- then the scan counts.
         """
         from tagloc.geometry import (
             average_poses,
@@ -859,7 +857,7 @@ class CameraPoseKeeper:
             translation_distance_m,
         )
 
-        self.stored_for(tag_map)  # prueft die Tag-Map
+        self.stored_for(tag_map)  # checks the tag map
         if self._poses:
             current = average_poses(list(self._poses))
             if (
@@ -876,8 +874,9 @@ class CameraPoseKeeper:
         return True
 
     def stored_for(self, tag_map):
-        """Die gemerkte Pose, oder `None`. Eine neue Tag-Map verwirft sie: sie
-        gilt nur gegen die Weltposen, mit denen sie geschaetzt wurde."""
+        """Return the remembered pose, or `None`. A new tag map discards it: the pose only
+        holds against the world poses it was estimated with.
+        """
         key = self._key(tag_map)
         if key != self._map_key:
             if self._poses:
@@ -891,10 +890,10 @@ class CameraPoseKeeper:
         return average_poses(list(self._poses))
 
     def judge(self, locations, localization, options: CellWatchOptions, tag_map):
-        """`(Sichtungen, "")` oder `(None, Grund)`; wie `sightings_from_locations`."""
+        """Return `(sightings, "")` or `(None, reason)`; as `sightings_from_locations`."""
         from tagloc.localize import SOLVER_JOINT, SOLVER_STORED
 
-        self.stored_for(tag_map)  # prueft die Tag-Map
+        self.stored_for(tag_map)  # checks the tag map
         if localization is None:
             return None, NO_WORLD_TAG
         if localization.solver == SOLVER_JOINT:
@@ -936,7 +935,7 @@ class CameraPoseKeeper:
         return sum(self._baseline.values()) / len(self._baseline) if self._baseline else 0.0
 
     def _remember(self, localization) -> None:
-        """Ein gutes gemeinsames Ergebnis in die gemerkte Pose uebernehmen."""
+        """Take a good joint result into the remembered pose."""
         from tagloc.geometry import (
             average_poses,
             rotation_distance_rad,
@@ -966,11 +965,11 @@ class CameraPoseKeeper:
 
 
 def camera_pose_from_payload(payload_json: str):
-    """`(Pose, Eckenfehler je Welttag)` der Kamera aus einem Job-Ergebnis, oder `None`.
+    """Return `(pose, corner error per world tag)` of the camera from a job result, or `None`.
 
-    Nur wenn die Pose im Job aus mindestens zwei Welttags gemeinsam geschaetzt
-    wurde (`cameraLocalization.solver == "joint"`): Aus einem einzelnen Tag
-    waere sie um Zentimeter ungenau.
+    Only if the pose in the job was estimated jointly from at least two world tags
+    (`cameraLocalization.solver == "joint"`): from a single tag it would be inaccurate
+    by centimeters.
     """
     from tagloc.geometry import pose_from_dict
 
@@ -990,8 +989,9 @@ def camera_pose_from_payload(payload_json: str):
 
 
 def _worst_tag(localization) -> str:
-    """Der Welttag, der am wenigsten zur gemeinsamen Pose passt -- der
-    Kandidat zum Nachmessen."""
+    """Return the world tag that fits the joint pose least -- the candidate for
+    re-measurement.
+    """
     errors = getattr(localization, "tag_errors_px", None) or {}
     if not errors:
         return ""
@@ -999,36 +999,36 @@ def _worst_tag(localization) -> str:
     return f" -- am schlechtesten passt Welt-Tag {tag_id} ({errors[tag_id]:.1f} px), nachmessen?"
 
 
-# --- Ablauf -------------------------------------------------------------------
+# --- Flow -------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class CellWatchPorts:
-    """Was die Ueberwachung vom Server braucht."""
+    """What the watch needs from the server."""
 
-    #: Wertet das neueste Kamerabild aus: `(Sichtungen, "")` fuer ein gueltiges
-    #: Bild, `(None, Grund)` fuer "keine Aussage", `(None, "")` = kein neues Bild.
-    #: Optional als drittes Element die IDs aller erkannten Tags (Welt- und
-    #: Modul-Tags) -- auch bei "keine Aussage", fuer `visibleTagIds`.
+    #: Evaluates the newest camera image: `(sightings, "")` for a valid image,
+    #: `(None, reason)` for "no statement", `(None, "")` = no new image.
+    #: Optionally a third element with the IDs of all detected tags (world and module
+    #: tags) -- also with "no statement", for `visibleTagIds`.
     observe: Callable[[CellWatchOptions], Awaitable[tuple]]
-    #: Grund, warum die Kamera gerade anderweitig gebraucht wird, sonst `""`.
+    #: Reason why the camera is currently needed elsewhere, otherwise `""`.
     busy_reason: Callable[[], str]
-    #: Payload eines Jobs der letzten Zeit, `None` wenn unbekannt.
+    #: Payload of a recent job, `None` if unknown.
     result_for_job: Callable[[str], "str | None"]
-    #: Koordinatensystem der Tag-Map ("world").
+    #: Coordinate frame of the tag map ("world").
     world_frame: Callable[[], str]
-    #: Schreibt `CellWatchStatus`.
+    #: Writes `CellWatchStatus`.
     publish: Callable[[str], Awaitable[None]]
     monotonic: Callable[[], float] = time.monotonic
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
-    #: Nimmt die Kamerapose eines Referenz-Scans entgegen: `(Pose, Eckenfehler)`.
+    #: Receives the camera pose of a reference scan: `(pose, corner errors)`.
     adopt_pose: Callable[[Any, dict], Any] | None = None
-    #: Woher die gemerkte Kamerapose stammt, fuer den Status.
+    #: Where the remembered camera pose comes from, for the status.
     pose_info: Callable[[], dict] | None = None
 
 
 class CellWatch:
-    """Start, Stopp, Takt und Status um den `CellWatchTracker`."""
+    """Start, stop, tick and status around the `CellWatchTracker`."""
 
     def __init__(self, ports: CellWatchPorts) -> None:
         self._ports = ports
@@ -1041,11 +1041,11 @@ class CellWatch:
         self._reference_source = ""
         self._counter = 0
         self._last_check: datetime | None = None
-        #: Alle im zuletzt geprueften Bild erkannten Tags; `None` vor dem ersten.
+        #: All tags detected in the most recently checked image; `None` before the first.
         self._visible: list[int] | None = None
         self._task: asyncio.Task | None = None
-        #: Von aussen verordnete Pause (`PauseCellWatch`): Grund und Ablauf
-        #: (monoton). `None` = keine.
+        #: Externally ordered pause (`PauseCellWatch`): reason and deadline (monotonic).
+        #: `None` = no pause.
         self._pause_reason: str | None = None
         self._pause_until = 0.0
 
@@ -1054,7 +1054,7 @@ class CellWatch:
         return self._state not in (OFF, FAILED)
 
     async def start(self, options_json: str, *, run_loop: bool = True) -> VisionErrorCode:
-        """Scharf schalten, oder mit neuer Referenz neu scharf schalten."""
+        """Arm the watch, or arm it again with a new reference."""
         try:
             job_id, options = parse_start(options_json)
         except ValueError as error:
@@ -1071,16 +1071,16 @@ class CellWatch:
             except (ValueError, KeyError, TypeError) as error:
                 _log.warning("StartCellWatch abgelehnt: %s", error)
                 return VisionErrorCode.INVALID_STATE
-            # Der Scan hat die Kamera schon verortet: Mit seiner Pose genuegt
-            # danach ein Welttag, auch gleich nach dem Start.
+            # The scan has already localized the camera: with its pose, one world tag is
+            # enough afterwards, even right after the start.
             scan_pose = camera_pose_from_payload(payload)
             if scan_pose is not None and self._ports.adopt_pose is not None:
                 self._ports.adopt_pose(*scan_pose)
 
         now = self._ports.monotonic()
         previous = self._tracker if self.active else None
-        # Dieselbe Referenz wie bisher -- typisch, wenn das Frontend nur eine
-        # Zeit oder Schwelle aendert und mit demselben Job neu scharf schaltet.
+        # Same reference as before -- typical when the frontend only changes a time or
+        # threshold and arms again with the same job.
         same_reference = (
             previous is not None
             and job_id is not None
@@ -1090,16 +1090,16 @@ class CellWatch:
         self._options = options
         self._reference_job_id = job_id
         if not self.active:
-            self._visible = None  # nach einem Stopp nichts Altes zeigen
+            self._visible = None  # after a stop, show nothing old
         if reference is not None:
             if same_reference:
-                # Gleiche Referenz-ID: es ist dieselbe Referenz, nur neu eingestellt.
+                # Same reference ID: it is the same reference, only reconfigured.
                 self._tracker = CellWatchTracker(options, reference, now)
             else:
                 self._set_reference(reference, "job", now)
         else:
-            # "Ignorieren": was gerade stabil zu sehen ist, wird die Referenz.
-            # Laeuft die Ueberwachung schon, reicht ihre Beobachtung meist.
+            # "Ignore": what is currently seen stably becomes the reference.
+            # If the watch is already running, its observation is usually enough.
             observed = previous.stable_observation(now) if previous is not None else None
             if observed is not None:
                 self._set_reference(observed, "observation", now)
@@ -1112,7 +1112,7 @@ class CellWatch:
         self._state = WATCHING
         self._message = "" if self._reference_id else "Referenz wird aufgenommen"
         if self._pause_reason is not None:
-            # Neu scharf schalten hebt eine verordnete Pause nicht auf.
+            # Arming again does not lift an ordered pause.
             self._state, self._message = PAUSED, self._pause_reason
         _log.info(
             "Zellen-Ueberwachung scharf (%s)",
@@ -1134,12 +1134,12 @@ class CellWatch:
         return VisionErrorCode.OK
 
     async def pause(self, reason: str, max_pause_s: float = 0.0) -> VisionErrorCode:
-        """Pausieren, solange die Zelle nicht stillsteht (Roboter faehrt).
+        """Pause while the cell is not standing still (robot is moving).
 
-        Waehrend der Pause wird kein Bild ausgewertet und nichts in den
-        Verlauf aufgenommen. `max_pause_s <= 0` heisst `DEFAULT_PAUSE_S`;
-        laenger als `MAX_PAUSE_S` geht nicht. Noch einmal rufen aendert Grund
-        und Frist. Nur bei laufender Ueberwachung.
+        During the pause no image is evaluated and nothing is added to the history.
+        `max_pause_s <= 0` means `DEFAULT_PAUSE_S`; longer than `MAX_PAUSE_S` is not
+        allowed. Calling again changes the reason and the deadline. Only while the watch
+        is running.
         """
         if not self.active:
             return VisionErrorCode.INVALID_STATE
@@ -1158,7 +1158,7 @@ class CellWatch:
         return VisionErrorCode.OK
 
     async def resume(self) -> VisionErrorCode:
-        """Pause beenden. Ohne verordnete Pause tut es nichts (`OK`)."""
+        """End the pause. Without an ordered pause it does nothing (`OK`)."""
         if not self.active:
             return VisionErrorCode.INVALID_STATE
         if self._pause_reason is not None:
@@ -1203,7 +1203,7 @@ class CellWatch:
                 await self.tick()
             except asyncio.CancelledError:
                 raise
-            except Exception as error:  # nie still sterben
+            except Exception as error:  # never die silently
                 _log.exception("Zellen-Ueberwachung fehlgeschlagen")
                 self._state = FAILED
                 self._message = f"Fehler: {error}"
@@ -1212,7 +1212,7 @@ class CellWatch:
             await asyncio.sleep(self._options.interval_s)
 
     async def tick(self) -> None:
-        """Ein Auswerteschritt. Oeffentlich fuer Tests."""
+        """Run one evaluation step. Public for tests."""
         if not self.active:
             return
         if self._pause_reason is not None:
@@ -1255,9 +1255,8 @@ class CellWatch:
         await self._publish()
 
     async def _pause(self, reason: str, *, force: bool = False) -> None:
-        # Nur bei einem Wechsel schreiben -- oder wenn sich geaendert hat,
-        # welche Tags zu sehen sind: gerade beim Pausieren will der Bediener
-        # sehen, welcher Welttag fehlt.
+        # Write only on a change -- or if the set of visible tags changed: when pausing,
+        # the operator wants to see which world tag is missing.
         if force or self._state != PAUSED or self._message != reason:
             self._state, self._message = PAUSED, reason
             await self._publish()
@@ -1283,10 +1282,10 @@ class CellWatch:
                 if tracker is not None and self.active
                 else [],
                 "options": self._options.to_dict(),
-                # Von aussen verordnete Pause, sonst `null`.
+                # Externally ordered pause, otherwise `null`.
                 "manualPause": self._manual_pause_info(),
                 "changes": tracker.changes if referenced and self.active else [],
-                # Noch nicht bestaetigt -- fuer die sofortige Anzeige.
+                # Not confirmed yet -- for immediate display.
                 "pending": tracker.pending(self._ports.monotonic())
                 if referenced and self.active
                 else [],
@@ -1312,8 +1311,9 @@ class CellWatch:
 
 
 def _unreliable_hint(visibility: list[dict]) -> str:
-    """Hinweis auf Tags an der Erkennungsgrenze -- kein Alarm, aber der
-    Grund, warum "nicht im Bild" flackert."""
+    """Return a hint about tags at the detection limit -- not an alarm, but the reason
+    why "not in the image" flickers.
+    """
     weak = [entry for entry in visibility if entry["unreliable"]]
     if not weak:
         return ""

@@ -1,15 +1,15 @@
-"""MeasureTagReference / PlanTagReferenceView: Tag-Position ueber Bezugskanten einmessen.
+"""MeasureTagReference / PlanTagReferenceView: measure the tag position via reference edges.
 
-Der Zollstock-Ersatz: Die Steuerung (webskillcomposition) schickt den
-Katalog-Startwert `T_module_tag` und die Bezugskanten des Moduls (3D-Strecken
-im Modul-KS). Der Hand-Pi nimmt frische Bilder, erkennt den Tag, misst die
-Kanten im selben Bild und liefert die in der Tag-Ebene korrigierte
-`T_module_tag` -- ohne Roboterkinematik, ohne Hand-Auge-Fehler. Die Rechnung
-steht in `tagloc.reference_edges`.
+The folding-rule replacement: the controller (webskillcomposition) sends the
+catalog start value `T_module_tag` and the module's reference edges (3D segments
+in the module frame). The hand Pi takes fresh images, detects the tag, measures
+the edges in the same image, and returns the `T_module_tag` corrected in the tag
+plane -- without robot kinematics and without hand-eye error. The math lives in
+`tagloc.reference_edges`.
 
-Hier steckt kein asyncua und keine Kamera: Anfrage parsen, Ergebnis-JSON bauen,
-dazu die kleinen reinen Helfer dazwischen (Tag-Pose ueber Bilder,
-Zusammenfassung der Kanten, Warnungen). Siehe
+This module holds no asyncua and no camera: it parses the request, builds the
+result JSON, and provides the small pure helpers in between (tag pose across
+images, edge summary, warnings). See
 `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
 """
 
@@ -35,10 +35,10 @@ DEFAULT_SEARCH_BAND_M = 0.015
 MIN_SEARCH_BAND_M = 0.003
 MAX_SEARCH_BAND_M = 0.05
 DEFAULT_LINE_EXTENT_M = 0.10
-#: Kippwinkel der Planungsansicht. Frontal (0 Grad) kippt die Tag-Pose gern in
-#: die Spiegelloesung; schon 10 Grad machen sie eindeutig.
+#: Tilt angle of the planning view. Head-on (0 degrees) the tag pose tends to flip
+#: into the mirror solution; already 10 degrees makes it unambiguous.
 DEFAULT_TILT_DEG = 10.0
-#: Obergrenze wie in `plan_reference_view` (dort: < 80 Grad).
+#: Upper limit as in `plan_reference_view` (there: < 80 degrees).
 MAX_TILT_DEG = 80.0
 MAX_LINES = 4
 MAX_LINE_EXTENT_M = 1.0
@@ -49,23 +49,23 @@ TAG_NOT_SEEN = "TAG_NOT_SEEN"
 
 @dataclass(frozen=True)
 class TagReferenceRequest:
-    """Eine geprueft gelesene Anfrage (fuer beide Methoden)."""
+    """A validated request (for both methods)."""
 
     tag_id: int
-    #: Groesse aus der Anfrage, Meter; `None` = Tag-Map bzw. Standard.
+    #: Size from the request, metres; `None` = from the tag map or the default.
     tag_size_m: float | None
-    #: Startwert `T_module_tag` als 4x4-Pose.
+    #: Start value `T_module_tag` as a 4x4 pose.
     pose_module_tag_guess: np.ndarray
-    #: `tagloc.reference_edges.ReferenceLine`, Modul-KS, Meter.
+    #: `tagloc.reference_edges.ReferenceLine` in the module frame, metres.
     lines: tuple
     search_band_m: float = DEFAULT_SEARCH_BAND_M
     frames: int = DEFAULT_FRAMES
     line_extent_m: float = DEFAULT_LINE_EXTENT_M
     tilt_deg: float = DEFAULT_TILT_DEG
-    #: Wirksame Overlay-Ebenen der Debug-Ansicht (alle Schluessel aus
-    #: `tagloc.reference_overlay.LAYER_KEYS`, fehlende = `True`).
+    #: Effective overlay layers of the debug view (all keys from
+    #: `tagloc.reference_overlay.LAYER_KEYS`; missing ones are `True`).
     overlay: dict = field(default_factory=dict)
-    #: `MeasureTagReference`: Mess-Protokoll auf Platte schreiben.
+    #: `MeasureTagReference`: write the measurement log to disk.
     save_debug: bool = True
 
 
@@ -88,11 +88,11 @@ def _vector(value, length: int, name: str) -> list[float]:
 
 
 def parse_request(text: str) -> TagReferenceRequest:
-    """`wsc.vision.tagreference.request/1` lesen; ValueError mit Klartext.
+    """Read a `wsc.vision.tagreference.request/1`; raise ValueError with a plain message.
 
-    Pflicht: `tagId`, `moduleTagGuess`, `lines` (1 bis 4). Optional:
-    `overlay` (Ebenen der Debug-Ansicht) und `saveDebug` (Mess-Protokoll).
-    Unbekannte Felder werden ignoriert.
+    Required: `tagId`, `moduleTagGuess`, `lines` (1 to 4). Optional: `overlay`
+    (debug view layers) and `saveDebug` (measurement log). Unknown fields are
+    ignored.
     """
     from tagloc.geometry import from_position_quaternion
     from tagloc.reference_edges import MIN_LINE_LENGTH_M, ReferenceLine
@@ -191,17 +191,17 @@ def parse_request(text: str) -> TagReferenceRequest:
     )
 
 
-# -- Tag-Pose ueber mehrere Bilder ---------------------------------------------
+# -- Tag pose across several images ---------------------------------------------
 
 
 def combine_tag_pose(tag_poses: Sequence) -> tuple[np.ndarray, bool]:
-    """Eine Tag-Pose aus den Bildern, in denen der Tag zu sehen war.
+    """Combine one tag pose from the images in which the tag was visible.
 
-    Der Roboter steht waehrend der Messung, die Pose ist in allen Bildern
-    dieselbe. Wie bei `MeasureTags`: Position als Mittel ueber alle Bilder,
-    Orientierung nur ueber die eindeutigen; gibt es keine, ueber alle -- und
-    dann ist der Rueckgabewert `ambiguous=True` (Spiegelloesung moeglich, die
-    Drehung ist nicht belastbar).
+    The robot stands still during the measurement, so the pose is the same in all
+    images. As in `MeasureTags`: the position is the mean over all images, the
+    orientation only over the unambiguous ones; if there are none, over all of
+    them -- and then the returned flag is `ambiguous=True` (a mirror solution is
+    possible and the rotation is not reliable).
     """
     from tagloc.geometry import average_poses
 
@@ -212,17 +212,16 @@ def combine_tag_pose(tag_poses: Sequence) -> tuple[np.ndarray, bool]:
 
 
 def keep_guess_rotation(correction, pose_module_tag_guess):
-    """Nur die Position der Korrektur uebernehmen, Drehung aus dem Startwert.
+    """Keep only the position of the correction; take the rotation from the start value.
 
-    Fuer einen mehrdeutigen Tag: Seine Drehung (und damit die Neigung der
-    Tag-Ebene) ist nicht belastbar, die Lage seines Ursprungs schon.
-    `fit_in_plane_correction` liefert `D` (Drehung `theta` um Tag-z und
-    Verschiebung `t` am Tag-Ursprung); der neue Tag-Ursprung liegt im alten
-    Tag-KS bei `s = -R(theta)^T t`. Hier bleibt die Orientierung des
-    Startwerts, nur der Ursprung wandert nach `s`:
-    `T_module_tag = T_module_tag_guess * Verschiebung(s)`. `delta_xy_m` ist
-    danach `-s` (reine Verschiebung, `delta_rot_deg = 0`), also dasselbe `D`
-    ohne Drehung. Bei `dofs == "none"` bleibt alles unveraendert.
+    For an ambiguous tag: its rotation (and hence the tilt of the tag plane) is not
+    reliable, but the location of its origin is. `fit_in_plane_correction` returns
+    `D` (rotation `theta` about tag z and translation `t` at the tag origin); the
+    new tag origin lies in the old tag frame at `s = -R(theta)^T t`. Here the
+    orientation of the start value stays, only the origin moves to `s`:
+    `T_module_tag = T_module_tag_guess * translation(s)`. `delta_xy_m` is then
+    `-s` (pure translation, `delta_rot_deg = 0`), i.e. the same `D` without
+    rotation. With `dofs == "none"` everything stays unchanged.
     """
     from tagloc.geometry import compose, from_rotation_translation
 
@@ -242,7 +241,7 @@ def keep_guess_rotation(correction, pose_module_tag_guess):
     )
 
 
-# -- Ergebnis --------------------------------------------------------------------
+# -- Result --------------------------------------------------------------------
 
 
 def _mean(values) -> float | None:
@@ -251,15 +250,15 @@ def _mean(values) -> float | None:
 
 
 def summarize_lines(per_frame: Sequence[Sequence]) -> list[dict]:
-    """Je Kante ein Eintrag ueber alle Bilder (`LineMeasurement` je Bild).
+    """One entry per edge across all images (`LineMeasurement` per image).
 
-    * `found`: in mindestens einem Bild gefunden
-    * Werte (`offsetMm`, `angleDeg`, `supportPx`, ...): Mittel ueber die Bilder,
-      in denen die Kante eindeutig war; gab es keine, ueber die gefundenen
-    * `ambiguous`: in mindestens einem Bild mehrdeutig (vorsichtig gemeldet;
-      die Korrektur nimmt die Kante nur in Bildern, in denen sie eindeutig ist)
-    * `candidates`: groesste Kandidatenzahl
-    * `reason`: nur bei nicht gefundenen Kanten, aus dem letzten Bild
+    * `found`: found in at least one image
+    * Values (`offsetMm`, `angleDeg`, `supportPx`, ...): mean over the images in
+      which the edge was unambiguous; if there were none, over the found ones
+    * `ambiguous`: ambiguous in at least one image (reported conservatively; the
+      correction only uses the edge in images where it is unambiguous)
+    * `candidates`: the largest candidate count
+    * `reason`: only for edges not found, from the last image
     """
     if not per_frame:
         return []
@@ -295,7 +294,7 @@ def reference_warnings(
     tag_ambiguous: bool,
     intrinsics_source: str,
 ) -> list[str]:
-    """Hinweise zum Ergebnis, Klartext. Leer = nichts aufgefallen."""
+    """Return plain-text notes about the result. Empty = nothing noticed."""
     warnings = []
     if intrinsics_source == "placeholder":
         warnings.append("Intrinsik ist ein Platzhalter: Messung nicht belastbar.")
@@ -343,16 +342,15 @@ def build_result(
     error: str | None = None,
     debug_dir: str | None = None,
 ) -> dict:
-    """Das Ergebnis-JSON (`wsc.vision.tagreference.result/1`) als dict.
+    """Build the result JSON (`wsc.vision.tagreference.result/1`) as a dict.
 
-    Bei `error` (oder ohne Korrektur): `correction: null`, `lines: []`. Auch
-    ein reines `build_result(error="...")` ist gueltig -- so entstehen die
-    Ablehnungen vor der Messung.
+    With `error` (or without a correction): `correction: null`, `lines: []`. A bare
+    `build_result(error="...")` is valid too -- this is how rejections before the
+    measurement are produced.
 
-    `tag_poses`: `TagPose` der verwendeten Bilder (Reprojektionsfehler);
-    `tag_pose`: die daraus gemittelte `T_cam_tag`; `line_frames`:
-    `LineMeasurement`-Listen je Bild; `correction` / `spread` wie aus
-    `average_corrections`.
+    `tag_poses`: `TagPose` of the images used (reprojection error); `tag_pose`:
+    the `T_cam_tag` averaged from them; `line_frames`: `LineMeasurement` lists per
+    image; `correction` / `spread` as returned by `average_corrections`.
     """
     from tagloc.geometry import pose_to_dict
     from tagloc.reference_edges import catalog_rpy_deg
@@ -406,9 +404,9 @@ def build_result(
 
 
 def build_view(plan=None, *, error: str | None = None) -> dict:
-    """`wsc.vision.tagreference.view/1` aus einem `ViewPlan`; ohne Plan nur `error`.
+    """Build a `wsc.vision.tagreference.view/1` from a `ViewPlan`; without a plan only `error`.
 
-    `camInTag`: Kamerapose im Tag-KS (OpenCV-Kamera-KS, +Z aus der Linse).
+    `camInTag`: camera pose in the tag frame (OpenCV camera frame, +Z out of the lens).
     """
     from tagloc.geometry import pose_to_dict
 

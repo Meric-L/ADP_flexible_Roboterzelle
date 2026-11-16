@@ -1,4 +1,4 @@
-"""MeasureBoard: das Kalibrier-Schachbrett in Kamerakoordinaten messen."""
+"""MeasureBoard: measure the calibration chessboard in camera coordinates."""
 
 from collections.abc import Callable
 from typing import Any
@@ -20,11 +20,13 @@ async def _install_measure_board(
     states: VisionStateMachines,
     busy: Callable[[], bool],
 ) -> None:
-    """Legt MeasureBoard an: das Kalibrier-Schachbrett messen, damit die
-    Steuerung es vor der Hand-Auge-Aufnahme zentrieren und die Kalibrierfahrt
-    der Deckenkamera vor jeder Aufnahme pruefen kann. An beiden Pis. Antwortet
-    erst nach der Messung, das Ergebnis kommt direkt zurueck.
-    Siehe `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
+    """Register the MeasureBoard method: measure the calibration chessboard.
+
+    This lets the controller centre the board before the hand-eye capture and
+    check the ceiling camera's calibration run before each capture. It runs on
+    both Pis. The method replies only after the measurement, and the result is
+    returned directly.
+    See `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
     """
     from ..handeye_session import _parse_board
     from ..measureboard import RESULT_SCHEMA, dumps, parse_request
@@ -34,7 +36,7 @@ async def _install_measure_board(
         return text_reply(dumps(result), code)
 
     async def measure(request, request_json: str):
-        """1:MeasureBoard -- Brett messen, nur in Kamerakoordinaten."""
+        """1:MeasureBoard -- measure the board, in camera coordinates only."""
         result = await apriltag_source.measure_board_view(request)
         code = VisionErrorCode.DETECTION_FAILED if result["error"] else VisionErrorCode.OK
         return text_reply(dumps(result), code)

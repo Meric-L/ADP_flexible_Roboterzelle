@@ -1,17 +1,17 @@
-"""Zeichnet die Zwischenergebnisse der Kantensuche (`measure_reference_lines(debug=...)`).
+"""Draw the intermediate results of the edge search (`measure_reference_lines(debug=...)`).
 
-Nur Zeichnen, nichts rechnen: die Debug-Dicts kommen fertig aus
-`tagloc.reference_edges` (Pixel im Rohbild). Farben (BGR):
+Drawing only, no computation: the debug dicts arrive ready-made from
+`tagloc.reference_edges` (pixels in the raw image). Colors (BGR):
 
-- Startwert-Kante: gelb gestrichelt, Suchband: duenne gelbe Raender
-- Kandidatenpunkte (Gradientenmaxima): cyan
-- verworfene RANSAC-Linien (Inlier): orange
-- gewaehlte Linie: gruen, bei mehrdeutiger Kante rot
-- Tag-Maske (Tag plus Rand): grau, Tag-Rahmen: gruen
+- Initial-guess edge: yellow dashed; search band: thin yellow borders
+- Candidate points (gradient maxima): cyan
+- discarded RANSAC lines (inliers): orange
+- chosen line: green; red if the edge is ambiguous
+- tag mask (tag plus margin): grey; tag frame: green
 
-Strichstaerken sind auf 640 px Bildbreite abgestimmt und wachsen mit der
-Bildbreite (`overlay._scale_for`). Die Schrift ist ASCII (OpenCV-Hershey-Font
-kennt keine Umlaute).
+Line widths are tuned for a 640 px image width and grow with the image width
+(`overlay._scale_for`). The text is ASCII (the OpenCV Hershey font has no
+umlauts).
 """
 
 from collections.abc import Mapping, Sequence
@@ -32,12 +32,12 @@ COLOR_CHOSEN = (60, 220, 60)
 COLOR_BAD = (60, 60, 255)
 COLOR_MASK = (150, 150, 150)
 
-#: Schaltbare Ebenen; fehlende Schluessel gelten als an.
+#: Toggleable layers; missing keys count as on.
 LAYER_KEYS = ("guess", "band", "candidates", "rejected", "chosen", "mask", "labels", "tagBox")
 
 
 def effective_layers(layers: Mapping | None) -> dict[str, bool]:
-    """Wirksame Ebenen: fehlende Schluessel = True, unbekannte werden ignoriert."""
+    """Return the effective layers: missing keys are True, unknown keys are ignored."""
     layers = layers or {}
     return {key: bool(layers.get(key, True)) for key in LAYER_KEYS}
 
@@ -83,7 +83,7 @@ _BOX_ALPHA = 0.6
 
 
 def _label_anchor(debug_line: dict, scale: float):
-    """Textposition (links unten der Box) ~12 px senkrecht neben der Kante, oder `None`."""
+    """Return the text position (bottom left of the box), ~12 px perpendicular to the edge, or `None`."""
     for key in ("measuredPx", "guessPx"):
         points = debug_line.get(key)
         if points:
@@ -102,7 +102,7 @@ def _label_anchor(debug_line: dict, scale: float):
 
 
 def _text_box(canvas, text: str, origin, color, scale: float) -> None:
-    """Text mit halbtransparentem dunklem Rechteck dahinter (ohne Kontur), im Bild gehalten."""
+    """Draw text on a half-transparent dark rectangle (no outline), kept inside the image."""
     import cv2
 
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -124,7 +124,7 @@ def _text_box(canvas, text: str, origin, color, scale: float) -> None:
 
 
 def _halo_polyline(canvas, points, color, thickness: int, closed: bool = False) -> None:
-    """Linie mit dunklem Saum (1-2 px breiter) darunter, damit sie auf hellem Grund sichtbar bleibt."""
+    """Draw a line over a dark halo (1-2 px wider) so it stays visible on light backgrounds."""
     import cv2
 
     pts = [_int_points(points).reshape(-1, 1, 2)]
@@ -147,9 +147,9 @@ def draw_reference_debug(
     title: str = "",
     layers: Mapping[str, bool] | None = None,
 ) -> np.ndarray:
-    """Zeichnet die Kantensuche auf eine Kopie von `image` (BGR oder Grau) und gibt sie zurueck.
+    """Draw the edge search onto a copy of `image` (BGR or grey) and return it.
 
-    `layers`: Ebenen ein/aus (`LAYER_KEYS`), `None` = alles an. Der Titel bleibt immer.
+    `layers`: layers on/off (`LAYER_KEYS`); `None` = all on. The title is always drawn.
     """
     import cv2
 
@@ -209,9 +209,9 @@ _POINT_KEYS = ("guessPx", "profilesPx", "edgePointsPx", "measuredPx", "measuredP
 
 
 def scale_debug(debug: Sequence[dict], factor_x: float, factor_y: float) -> list[dict]:
-    """Rechnet die Pixel der Debug-Dicts auf ein anderes Bild um (z. B. den verkleinerten Stream).
+    """Rescale the pixels of the debug dicts to another image (e.g. the downscaled stream).
 
-    Die Normalen bleiben unveraendert (Richtungen), `bandPx` folgt dem x-Faktor.
+    The normals stay unchanged (they are directions); `bandPx` follows the x factor.
     """
     factor = np.array([factor_x, factor_y], dtype=np.float64)
     scaled = []

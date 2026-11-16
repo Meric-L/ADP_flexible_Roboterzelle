@@ -1,51 +1,48 @@
-"""Anmeldung des OPC-UA-Servers beim Local Discovery Server der Zelle.
+"""Registration of the OPC UA server with the cell's Local Discovery Server.
 
-Ergaenzt die mDNS-Ankuendigung aus `mdns`, ersetzt sie nicht.
+Complements the mDNS announcement from `mdns`, does not replace it.
 
-Warum beides noetig ist (am 2026-09-21 im Labor gemessen):
-Der Aggregation-Server (`opc.tcp://10.10.38.27:48400/`) sammelt seine Module
-**nicht** per mDNS ein, obwohl die Kurzanleitung des Betreuers das behauptete.
-Auf demselben Rechner laeuft unter `opc.tcp://10.10.38.27:4840/` ein
-open62541-Discovery-Server, und der Aggregation-Server fuehrt genau die Server,
-die dort angemeldet sind. In diesen Bestand kommt man nur durch einen aktiven
-Aufruf; eine mDNS-Ankuendigung allein traegt sich dort nicht ein.
-Gegenprobe: der Aggregation-Server startete um 15:56 neu und nahm beim frischen
-Scan alle fuenf angemeldeten Module auf -- unsere beiden Pis, die zu dem
-Zeitpunkt seit zehn Minuten liefen und funkten, blieben aussen vor.
+Why both are needed (measured in the lab on 2026-09-21):
+The aggregation server (`opc.tcp://10.10.38.27:48400/`) does **not** collect its
+modules via mDNS, although the supervisor's quick guide claimed it did. On the same
+machine runs an open62541 discovery server at `opc.tcp://10.10.38.27:4840/`, and the
+aggregation server lists exactly the servers registered there. One only gets into
+this inventory through an active call; an mDNS announcement alone does not get in.
+Cross-check: the aggregation server restarted at 15:56 and, on the fresh scan, picked
+up all five registered modules -- our two Pis, which had been running and broadcasting
+for ten minutes at that point, were left out.
 
-Die mDNS-Ankuendigung bleibt trotzdem: Clients im Subnetz (unter anderem das
-WSC-Frontend) finden uns darueber ohne Umweg ueber den Discovery-Server.
+The mDNS announcement stays anyway: clients on the subnet (among them the WSC frontend)
+find us through it without a detour via the discovery server.
 
-Die eigentliche Arbeit macht `asyncua.Server.register_to_discovery()`: sie
-meldet an und haelt die Anmeldung mit einer eigenen Schleife frisch (bei jedem
-Durchlauf ein frischer Kanal, ueberlebt also einen LDS-Neustart). Dieses Modul
-ist nur die Klammer darum:
+The actual work is done by `asyncua.Server.register_to_discovery()`: it registers and
+keeps the registration fresh with its own loop (a fresh channel on each pass, so it
+survives an LDS restart). This module is only the wrapper around it:
 
-1. **Die angekuendigte Adresse muss stimmen.** `register_to_discovery()` traegt
-   `server.endpoint.geturl()` als DiscoveryUrl ein. Steht dort `0.0.0.0` -- der
-   naheliegende Wert, damit der Server ueber jede Schnittstelle erreichbar ist
-   --, uebernimmt der Aggregation-Server die Adresse woertlich und verbindet ins
-   Leere. Loesung ist `Server.socket_address`: der Endpoint nennt die LAN-IPv4,
-   gelauscht wird trotzdem auf `0.0.0.0`. `advertised_endpoint()` baut die URL,
-   `server.py` setzt beides. Als Netz gegen Rueckfaelle verweigert `register()`
-   die Anmeldung, wenn im Endpoint doch `0.0.0.0` steht.
-2. **Ein nicht erreichbarer LDS darf den Start nicht verhindern.**
-   `register_to_discovery()` wirft dann; hier bleibt es bei einer Warnung im
-   Log. Ein Server, den man per URL erreicht, ist mehr wert als gar keiner --
-   dieselbe Linie wie bei `mdns`.
-3. **`Server.stop()` meldet nicht ab.** Es bricht nur die Erneuerungsschleife ab
-   und trennt die Verbindung; der Eintrag bliebe bis zum Ablauf im LDS stehen,
-   und der Aggregation-Server zeigte ein Modul, das er nicht mehr erreicht.
-   Deshalb `unregister_from_discovery()` im `finally`.
+1. **The advertised address must be correct.** `register_to_discovery()` enters
+   `server.endpoint.geturl()` as DiscoveryUrl. If that contains `0.0.0.0` -- the
+   obvious value, so that the server is reachable on every interface -- the
+   aggregation server takes the address literally and connects to nothing. The fix is
+   `Server.socket_address`: the endpoint names the LAN IPv4, while listening still
+   happens on `0.0.0.0`. `advertised_endpoint()` builds the URL, `server.py` sets both.
+   As a safety net against regressions, `register()` refuses the registration if the
+   endpoint still contains `0.0.0.0`.
+2. **An unreachable LDS must not prevent startup.** `register_to_discovery()` then
+   raises; here it stays a warning in the log. A server reachable by URL is worth more
+   than none -- the same line as for `mdns`.
+3. **`Server.stop()` does not unregister.** It only cancels the renewal loop and
+   disconnects; the entry would remain in the LDS until it expires, and the aggregation
+   server would show a module it can no longer reach. Hence
+   `unregister_from_discovery()` in the `finally`.
 
-**Standardmaessig an** (seit 21.10.2026 wieder; vom 23.09. bis 21.10.2026 war
-sie aus): ohne `OPCUA_LDS_URL` meldet sich der Server bei `CELL_LDS_URL` an.
-`OPCUA_LDS_URL=""` schaltet die Anmeldung ab, eine andere URL biegt sie um.
+**On by default** (again since 21.10.2026; from 23.09. to 21.10.2026 it was off): without
+`OPCUA_LDS_URL` the server registers at `CELL_LDS_URL`. `OPCUA_LDS_URL=""` disables the
+registration, another URL redirects it.
 
-Ohne `MdnsDiscoveryConfiguration`, also per schlichtem `RegisterServer` -- so
-wie Conveyor, CardDispenser und die Roboter es tun. `caps=DA` steht ohnehin in
-der eigenen mDNS-Ankuendigung. (`register_to_discovery()` schickt die
-Konfiguration nur, wenn man sie ihr uebergibt.)
+Without `MdnsDiscoveryConfiguration`, i.e. via a plain `RegisterServer` -- just as
+Conveyor, CardDispenser and the robots do it. `caps=DA` is in any case contained in our
+own mDNS announcement. (`register_to_discovery()` only sends the configuration if it is
+passed to it.)
 """
 
 import contextlib
@@ -59,41 +56,40 @@ from . import mdns
 
 _log = logging.getLogger(__name__)
 
-#: Discovery-Server der Zelle.
+#: Discovery server of the cell.
 CELL_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 
-#: Die Anmeldung ist standardmaessig **an** (seit 21.10.2026 wieder; vom
-#: 23.09. bis 21.10.2026 war sie aus und das Frontend fand die Pis nicht).
-#: `OPCUA_LDS_URL=""` schaltet sie ab.
+#: Registration is **on** by default (again since 21.10.2026; from 23.09. to 21.10.2026
+#: it was off and the frontend could not find the Pis).
+#: `OPCUA_LDS_URL=""` disables it.
 DEFAULT_LDS_URL = CELL_LDS_URL
 
-#: Erneuerung ist noetig, nicht optional -- gemessen am 2026-09-21: der LDS
-#: startete um 15:56 neu, und Conveyor (seit 08.09. durchgehend) wie
-#: CardDispenser (seit 07.09.) standen danach wieder im Anmeldebestand, ohne
-#: selbst neu gestartet zu haben. Eine einmalige Anmeldung beim eigenen Start
-#: lag im alten LDS-Prozess und waere weg gewesen.
-#: 60 s ist auch der Standardwert von `register_to_discovery()`; wie lange ein
-#: Eintrag ohne Erneuerung tatsaechlich ueberlebt, ist nicht gemessen.
+#: Renewal is necessary, not optional -- measured on 2026-09-21: the LDS restarted at
+#: 15:56, and Conveyor (continuously since 08.09.) as well as CardDispenser (since 07.09.)
+#: were in the registration inventory again afterwards, without having restarted
+#: themselves. A one-time registration at our own start lay in the old LDS process and
+#: would have been gone.
+#: 60 s is also the default of `register_to_discovery()`; how long an entry actually
+#: survives without renewal has not been measured.
 DEFAULT_RENEW_SECONDS = 60
 
 
 def lds_url() -> str:
-    """URL des Discovery-Servers; leer bedeutet: nicht anmelden."""
+    """Return the URL of the discovery server; empty means: do not register."""
     return os.getenv("OPCUA_LDS_URL", DEFAULT_LDS_URL).strip()
 
 
 def advertised_endpoint(port: int, path: str, address: str | None = None) -> str | None:
-    """Endpoint-URL, die der Server nach aussen nennt.
+    """Return the endpoint URL that the server advertises to the outside.
 
-    Traegt die LAN-IPv4 statt `0.0.0.0`, damit die daraus gebildete
-    DiscoveryUrl fuer den Aggregation-Server brauchbar ist. Gelauscht wird
-    davon unabhaengig auf allen Schnittstellen -- siehe `Server.socket_address`
-    in `server.py`.
+    Carries the LAN IPv4 instead of `0.0.0.0`, so that the DiscoveryUrl built from it
+    is usable for the aggregation server. Listening happens on all interfaces
+    regardless -- see `Server.socket_address` in `server.py`.
 
     Returns
     -------
-    Die URL, oder `None`, wenn keine LAN-IPv4 zu ermitteln war. Dann bleibt es
-    beim bisherigen Endpoint, und `register()` meldet sich nicht an.
+    The URL, or `None` if no LAN IPv4 could be determined. The previous endpoint is
+    then kept, and `register()` does not register.
     """
     ip = address or mdns.detect_lan_ipv4()
     if ip is None:
@@ -107,23 +103,23 @@ async def register(
     url: str | None = None,
     renew_seconds: int = DEFAULT_RENEW_SECONDS,
 ) -> AsyncIterator[str | None]:
-    """Meldet den Server beim LDS an und beim Verlassen wieder ab.
+    """Register the server with the LDS and deregister again on exit.
 
     Parameters
     ----------
     server
-        Der bereits konfigurierte Server. Angemeldet werden seine
-        ApplicationUri, sein Name und `server.endpoint` als DiscoveryUrl --
-        der Endpoint muss also die LAN-IPv4 nennen, nicht `0.0.0.0`.
+        The already configured server. Its ApplicationUri, its name and
+        `server.endpoint` are registered as DiscoveryUrl -- so the endpoint must
+        name the LAN IPv4, not `0.0.0.0`.
     url
-        Discovery-Server; ohne Angabe entscheidet `lds_url()`.
+        Discovery server; if not given, `lds_url()` decides.
     renew_seconds
-        Abstand der Erneuerungen; `0` meldet einmalig an.
+        Interval between renewals; `0` registers once.
 
     Yields
     ------
-    Die angemeldete DiscoveryUrl, oder `None`, wenn nicht angemeldet wurde.
-    Wirft nichts -- Fehler landen im Log.
+    The registered DiscoveryUrl, or `None` if no registration took place.
+    Does not raise -- errors end up in the log.
     """
     target = url if url is not None else lds_url()
     if not target:
@@ -133,8 +129,8 @@ async def register(
 
     advertised = server.endpoint.geturl()
     if server.endpoint.hostname in (None, "0.0.0.0", "::"):
-        # Waere fuer den Aggregation-Server wertlos: er uebernimmt die Adresse
-        # und verbindet ins Leere. Lieber gar nicht anmelden.
+        # Would be worthless for the aggregation server: it takes over the address
+        # and connects to nothing. Better not to register at all.
         _log.warning(
             "Endpoint %s nennt keine erreichbare Adresse; LDS-Anmeldung "
             "uebersprungen",
@@ -157,8 +153,8 @@ async def register(
     try:
         yield advertised
     finally:
-        # Abmelden, damit der Aggregation-Server nicht auf eine tote Adresse
-        # verbindet. Greift nur, wenn der Prozess SIGTERM abfaengt.
+        # Deregister so that the aggregation server does not connect to a dead
+        # address. Only takes effect if the process catches SIGTERM.
         try:
             await server.unregister_from_discovery(target)
             _log.info("Beim Discovery-Server abgemeldet")

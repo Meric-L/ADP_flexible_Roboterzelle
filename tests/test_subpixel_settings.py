@@ -18,9 +18,17 @@ def settings(value=None, frame="cam_flange"):
 
 
 class SubpixelSettingsTest(unittest.TestCase):
-    def test_hand_camera_refines_with_subpix_ceiling_does_not(self):
-        self.assertEqual(settings(), {"subpixel_corner_refinement": True, "corner_refinement_method": "subpix"})
-        self.assertFalse(settings(frame="cam_ceiling")["subpixel_corner_refinement"])
+    def test_both_cameras_refine_with_subpix(self):
+        expected = {"subpixel_corner_refinement": True, "corner_refinement_method": "subpix"}
+        self.assertEqual(settings(), expected)
+        self.assertEqual(settings(frame="cam_ceiling"), expected)
+
+    def test_preset_without_entry_stays_off(self):
+        with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if k != ENV}, clear=True):
+            self.assertFalse(subpixel_corner_settings({})["subpixel_corner_refinement"])
+
+    def test_ceiling_can_be_switched_off(self):
+        self.assertFalse(settings("0", frame="cam_ceiling")["subpixel_corner_refinement"])
 
     def test_environment_overrides(self):
         for off in ("0", "none", "false"):

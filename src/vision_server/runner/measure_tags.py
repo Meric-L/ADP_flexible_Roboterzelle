@@ -1,4 +1,4 @@
-"""MeasureTags: Tags in Kamerakoordinaten messen (Hand-Pi)."""
+"""MeasureTags: measure tags in camera coordinates (hand Pi)."""
 
 import logging
 from collections.abc import Callable
@@ -16,10 +16,10 @@ _log = logging.getLogger(__package__)
 
 
 class _Activity:
-    """Merkt, ob gerade eine Messung mit frischen Bildern laeuft.
+    """Records whether a measurement with fresh images is running.
 
-    Einfaches Flag: der Server ist single-threaded (asyncio), zwischen Pruefen
-    und Setzen liegt kein `await`.
+    A simple flag: the server is single-threaded (asyncio), and there is no
+    `await` between checking and setting it.
     """
 
     def __init__(self) -> None:
@@ -37,10 +37,11 @@ async def _install_measure_tags(
     activity: _Activity | None = None,
     blocked_by: Callable[[], bool] = lambda: False,
 ) -> None:
-    """Legt MeasureTags an: Tags in Kamerakoordinaten fuer die Regelung der
-    Steuerung. Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Antwortet
-    erst nach der Messung, das Ergebnis kommt direkt zurueck; der Knoten
-    `LastTagMeasurement` ist nur zur Anzeige. Siehe
+    """Install the MeasureTags method: tags in camera coordinates for the robot control.
+
+    Only on the hand Pi (the node exists only with `hand_eye_path`). It replies
+    only after the measurement, and the result comes back directly. The node
+    `LastTagMeasurement` is for display only. See
     `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
     """
     from ..measuretag import RESULT_SCHEMA, dumps, parse_request
@@ -52,8 +53,8 @@ async def _install_measure_tags(
         return text_reply(dumps(result), code)
 
     async def measure(request, request_json: str):
-        """1:MeasureTags -- Tags messen, nur in Kamerakoordinaten."""
-        # Solange gemessen wird, haelt das Stream-Overlay an (`measure_calls`).
+        """1:MeasureTags -- measure tags, in camera coordinates only."""
+        # While measuring, the stream overlay pauses (`measure_calls`).
         apriltag_source.measure_calls += 1
         activity.active = True
         try:

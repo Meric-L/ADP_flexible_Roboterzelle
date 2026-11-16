@@ -1,9 +1,10 @@
-"""SaveUseCaseImage: Use-Case-Foto samt Messung und Metadaten ablegen."""
+"""SaveUseCaseImage: store a use-case photo together with its measurement and metadata."""
 
 import asyncio
 import dataclasses
 import json
 import logging
+import math
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -19,16 +20,16 @@ from .uamethods import add_vision_method, repo_relative
 _log = logging.getLogger(__package__)
 
 
-#: Ein Use-Case-Foto muss mindestens so viel juenger als der Methodenaufruf
-#: sein (Bewegungsunschaerfe/Nachschwingen der Hand abwarten).
+#: A use-case photo must be at least this much newer than the method call
+#: (waits for motion blur and hand vibration to settle).
 USE_CASE_MIN_FRAME_AGE_S = 0.3
-#: Nach so vielen Sekunden ohne frisches Bild gibt `SaveUseCaseImage` auf.
+#: After this many seconds without a fresh frame, `SaveUseCaseImage` gives up.
 USE_CASE_FRESH_FRAME_TIMEOUT_S = 5.0
 USE_CASE_POLL_INTERVAL_S = 0.05
 
 
 def _load_file_content(path: Path) -> Any:
-    """Inhalt einer Konfigurationsdatei: JSON/YAML geparst, sonst Text, sonst None."""
+    """Return the content of a config file: parsed JSON/YAML, else text, else None."""
     try:
         text = path.read_text(encoding="utf-8")
     except Exception:
@@ -46,7 +47,7 @@ def _load_file_content(path: Path) -> Any:
 
 
 def _file_meta(path: Any) -> dict[str, Any]:
-    """`{"path", "exists", "content"}` zu einer Datei aus der Config (defensiv)."""
+    """Return `{"path", "exists", "content"}` for a file from the config (defensive)."""
     meta: dict[str, Any] = {"path": str(path)}
     try:
         p = Path(path)
@@ -66,7 +67,7 @@ def _build_use_case_pi_meta(
     calibration: Any = None,
     intrinsics_source: str = "calibration",
 ) -> dict[str, Any]:
-    """Metadaten des Pi fuer die JSON-Datei; jedes Feld einzeln abgesichert."""
+    """Return the Pi metadata for the JSON file; each field is guarded separately."""
     meta: dict[str, Any] = {}
 
     def put(key: str, getter: Callable[[], Any]) -> None:
@@ -104,10 +105,45 @@ def _build_use_case_pi_meta(
     return meta
 
 
-async def _wait_for_fresh_frame(camera_source: Any) -> Any:
-    """Wartet auf ein Bild, das mindestens `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand.
+def _reference_from_metadata(metadata_json: str) -> dict | None:
+    """Return the measurement reference from the client's `MetadataJson`.
 
-    Gibt `None` zurueck, wenn nach `USE_CASE_FRESH_FRAME_TIMEOUT_S` keines kam.
+    Looks for the field `reference` with `kind` "tag". Returns
+    `{"kind": "tag", "tagSizeM", "tagId", "tagXInImage"}` with validated values
+    (`tagSizeM` in 0.01-0.5, otherwise 0.08; `tagXInImage` two finite numbers,
+    not both zero, or None). Otherwise returns `None` (target board). Never raises.
+    """
+    try:
+        parsed = json.loads(metadata_json or "")
+    except (TypeError, ValueError):
+        return None
+    ref = parsed.get("reference") if isinstance(parsed, dict) else None
+    if not isinstance(ref, dict) or ref.get("kind") != "tag":
+        return None
+
+    def number(value: Any) -> float | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value) if math.isfinite(value) else None
+
+    size = number(ref.get("tagSizeM"))
+    if size is None or not 0.01 <= size <= 0.5:
+        size = 0.08
+    tag_id = ref.get("tagId")
+    tag_id = tag_id if isinstance(tag_id, int) and not isinstance(tag_id, bool) else None
+    axis = ref.get("tagXInImage")
+    if isinstance(axis, (list, tuple)) and len(axis) == 2:
+        ux, uy = number(axis[0]), number(axis[1])
+        axis = [ux, uy] if ux is not None and uy is not None and (ux or uy) else None
+    else:
+        axis = None
+    return {"kind": "tag", "tagSizeM": size, "tagId": tag_id, "tagXInImage": axis}
+
+
+async def _wait_for_fresh_frame(camera_source: Any) -> Any:
+    """Wait for a frame captured at least `USE_CASE_MIN_FRAME_AGE_S` after the call.
+
+    Returns `None` if no such frame arrives within `USE_CASE_FRESH_FRAME_TIMEOUT_S`.
     """
     loop = asyncio.get_running_loop()
     t0 = loop.time()
@@ -128,14 +164,14 @@ async def _install_save_use_case_image(
     methods: dict[str, Node],
     busy: Callable[[], bool],
 ) -> None:
-    """Legt `SaveUseCaseImage` an: frisches Kamera-Vollbild + Metadaten ablegen.
+    """Create `SaveUseCaseImage`: store a fresh full camera frame with its metadata.
 
-    Eingaben `Series` (Int32, >= 1) und `MetadataJson` (String, vom Client);
-    Ausgaben `FileName` (relativ zum Repo), `ResultJson` (Bildmessung als JSON,
-    bei Fehler-Codes leer) und `Error`. Wartet auf ein Bild, das mindestens
-    `USE_CASE_MIN_FRAME_AGE_S` nach dem Aufruf entstand. Waehrend eines Jobs
-    abgelehnt (wie `SaveRawImage`). Ein Messfehler laesst das Speichern nie
-    scheitern: er steht als `{"ok": false, "grund": ...}` in der Messung.
+    Inputs: `Series` (Int32, >= 1) and `MetadataJson` (String, from the client).
+    Outputs: `FileName` (relative to the repo), `ResultJson` (image measurement as
+    JSON, empty on error codes) and `Error`. It waits for a frame captured at least
+    `USE_CASE_MIN_FRAME_AGE_S` after the call. Rejected during a job (like
+    `SaveRawImage`). A measurement error never makes the save fail: it is stored in
+    the measurement as `{"ok": false, "grund": ...}`.
     """
     from use_case_eval.live import load_sticker_offset, measure_for_save
 
@@ -175,11 +211,12 @@ async def _install_save_use_case_image(
         except Exception:
             _log.exception("Use-Case-Metadaten unvollstaendig")
             pi_meta = {}
-        # Erst messen, dann speichern: die Messung steht so schon in der einmalig
-        # exklusiv angelegten JSON, nichts wird nachtraeglich umgeschrieben.
+        # Measure first, then save: the measurement is then already part of the JSON,
+        # which is created exclusively once, so nothing is rewritten afterwards.
         sticker_offset = await asyncio.to_thread(load_sticker_offset, base_dir)
+        reference = _reference_from_metadata(metadata_json)
         measurement, annotated = await asyncio.to_thread(
-            measure_for_save, frame.image, calibration, sticker_offset
+            measure_for_save, frame.image, calibration, sticker_offset, reference
         )
         try:
             path, _trial = await asyncio.to_thread(

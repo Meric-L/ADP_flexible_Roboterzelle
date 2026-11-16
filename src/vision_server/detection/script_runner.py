@@ -1,4 +1,4 @@
-"""Erkennungsquelle, die ein externes Python-Script als Subprozess ausfuehrt."""
+"""Detection source that runs an external Python script as a subprocess."""
 
 import asyncio
 import contextlib
@@ -11,21 +11,20 @@ from .base import Detection, DetectionRequest, DetectionSource
 
 _log = logging.getLogger(__name__)
 
-#: Frist zwischen SIGTERM und SIGKILL bei einem Stop-Abbruch.
+#: Grace period between SIGTERM and SIGKILL when a stop aborts the job.
 TERMINATE_GRACE_S = 2.0
 
 
 class ScriptDetectionSource(DetectionSource):
-    """Fuehrt ein Script aus und verpackt dessen Ausgabe als Pseudo-Detektion.
+    """Run a script and wrap its output as a pseudo detection.
 
-    Platzhalter fuer Kalibrierung und Bilderkennung: das ausgefuehrte Script
-    traegt heute noch keine echte Logik, nur den Meldungstext auf stdout.
-    Spaeter wird nur der Script-Inhalt durch die echte Kalibrierungs-/
-    Erkennungslogik ersetzt, ohne dass sich diese Klasse oder der Job-Ablauf
-    aendern muss.
+    Placeholder for calibration and image detection: the executed script has no real
+    logic yet, it only prints the message text to stdout. Later, only the script
+    content is replaced by the real calibration/detection logic, without this class
+    or the job flow having to change.
     """
 
-    #: Der Subprozess laeuft ohne echte Kamera; das Ergebnis ist ein Platzhalter.
+    #: The subprocess runs without a real camera; the result is a placeholder.
     is_simulated = True
     frame_id = "world"
 
@@ -34,12 +33,12 @@ class ScriptDetectionSource(DetectionSource):
         self._script_path = script_path
 
     async def acquire_and_detect(self, request: DetectionRequest) -> list[Detection]:
-        """Startet das Script und liefert dessen stdout als Detektions-Nachricht.
+        """Start the script and return its stdout as a detection message.
 
-        Der Subprozess blockiert den Event-Loop nicht und haelt die
-        Abhaengigkeiten des Scripts aus dem Serverprozess heraus. Preis: kein
-        Zustand ueber Jobs hinweg, und pro Job ein Prozessstart -- fuer eine
-        Kamera, die offen bleiben muss, ist `run_blocking` der richtige Weg.
+        The subprocess does not block the event loop and keeps the script's
+        dependencies out of the server process. Trade-off: no state carries over
+        between jobs, and each job starts a process -- for a camera that must stay
+        open, `run_blocking` is the right way.
         """
         process = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -51,8 +50,8 @@ class ScriptDetectionSource(DetectionSource):
         try:
             stdout, stderr = await process.communicate()
         except asyncio.CancelledError:
-            # `Stop` bricht diesen `await` ab; ohne Terminate liefe das Script
-            # als verwaister Subprozess weiter (z. B. mit offener Kamera).
+            # `Stop` cancels this `await`; without terminate the script would keep
+            # running as an orphaned subprocess (e.g. with the camera still open).
             await self._terminate(process)
             raise
         if process.returncode != 0:
@@ -74,7 +73,7 @@ class ScriptDetectionSource(DetectionSource):
         ]
 
     async def _terminate(self, process: asyncio.subprocess.Process) -> None:
-        """SIGTERM, nach `TERMINATE_GRACE_S` SIGKILL, falls es nicht kooperiert."""
+        """Send SIGTERM; if the process does not exit within `TERMINATE_GRACE_S`, send SIGKILL."""
         if process.returncode is not None:
             return
         process.terminate()

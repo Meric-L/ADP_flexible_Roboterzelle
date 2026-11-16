@@ -1,4 +1,4 @@
-"""Erkennungsquellen: Kamera-Halter finden und Quellen oeffnen."""
+"""Detection sources: find the source that holds the camera and open the sources."""
 
 import asyncio
 import logging
@@ -12,11 +12,11 @@ _log = logging.getLogger(__package__)
 def _camera_owner(
     sources: Mapping[str, DetectionSource], opened: Mapping[str, bool]
 ) -> DetectionSource | None:
-    """Gibt die erste geoeffnete Quelle zurueck, die eine geteilte Kamera haelt.
+    """Return the first opened source that holds a shared camera.
 
-    Bewusst ueber das Attribut `camera` statt ueber einen Profilnamen: frueher
-    war das `sources.get("image_recognition")`, und das Umbenennen oder
-    Entfernen dieses Profils haette den Livestream still abgeschaltet.
+    Deliberately uses the `camera` attribute instead of a profile name: earlier
+    this was `sources.get("image_recognition")`, and renaming or removing that
+    profile would have silently switched off the live stream.
     """
     for profile in sorted(sources):
         if not opened.get(profile):
@@ -27,7 +27,7 @@ def _camera_owner(
 
 
 async def _open_source(source: DetectionSource) -> bool:
-    """Oeffnet eine Quelle; `False`, wenn sie nicht betriebsbereit ist."""
+    """Open a source; return `False` if it is not ready for operation."""
     started = asyncio.get_running_loop().time()
     try:
         await source.open()

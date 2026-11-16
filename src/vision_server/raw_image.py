@@ -1,23 +1,23 @@
-"""Speichern eines Kamera-Rohbilds als PNG (OPC-UA-Methode `SaveRawImage`)."""
+"""Save a raw camera image as PNG (OPC UA method ``SaveRawImage``)."""
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-#: Zeitstempel in Dateinamen (Rohbilder, Messprotokoll-Ordner): `YYYYmmdd-HHMMSS`.
+#: Timestamp in file names (raw images, measurement log folders): ``YYYYmmdd-HHMMSS``.
 FILE_STAMP_FORMAT = "%Y%m%d-%H%M%S"
 
 
 def save_raw_image(
     image: Any, directory: Path, frame_id: str, now: datetime | None = None
 ) -> Path:
-    """Schreibt `image` verlustfrei nach `<directory>/<frame_id>_<Zeit>.png`.
+    """Write ``image`` losslessly to ``<directory>/<frame_id>_<time>.png``.
 
-    Zeitstempel `YYYYmmdd-HHMMSS`. Existiert der Name schon, folgt `_2`, `_3`,
-    ... -- eine vorhandene Datei wird nie ueberschrieben. Legt das Verzeichnis
-    bei Bedarf an. Wirft `OSError`, wenn das Schreiben fehlschlaegt.
+    The timestamp is ``YYYYmmdd-HHMMSS``. If the name already exists, ``_2``, ``_3``, ...
+    is appended, so an existing file is never overwritten. The directory is created if
+    needed. Raises ``OSError`` if writing fails.
     """
-    # Erst hier: der Rest des Servers soll ohne OpenCV importierbar bleiben.
+    # Imported only here: the rest of the server should remain importable without OpenCV.
     import cv2
 
     directory.mkdir(parents=True, exist_ok=True)

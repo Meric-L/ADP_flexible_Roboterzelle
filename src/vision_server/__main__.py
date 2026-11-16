@@ -1,4 +1,4 @@
-"""Kommandozeilen-Einstiegspunkt: python -m vision_server."""
+"""Command-line entry point: ``python -m vision_server``."""
 
 import argparse
 import asyncio
@@ -13,7 +13,7 @@ DEFAULT_PORT = 4841
 
 
 def build_config(argv: list[str] | None = None) -> VisionServerConfig:
-    """Liest die Kommandozeile und baut die Serverkonfiguration."""
+    """Parse the command line and build the server configuration."""
     parser = argparse.ArgumentParser(prog="vision_server", description="OPC 40100 Vision-Server")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--endpoint")
@@ -46,7 +46,7 @@ def build_config(argv: list[str] | None = None) -> VisionServerConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Startet den Server; 0 bei sauberem Abbruch."""
+    """Start the server; return 0 on a clean shutdown."""
     config = build_config(argv)
     try:
         asyncio.run(run(config))

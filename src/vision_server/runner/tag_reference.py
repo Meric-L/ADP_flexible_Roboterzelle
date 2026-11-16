@@ -1,30 +1,29 @@
-"""Tag-Einmessung ueber Bezugskanten (Hand-Pi): Messen, Planen, Live-Vorschau.
+"""Tag reference measurement via reference edges (hand Pi): measure, plan, live preview.
 
-Damit wird die Tag-Position eines Moduls ueber Bezugskanten eingemessen. Beide
-Messmethoden antworten direkt mit dem Ergebnis; der Knoten `LastTagReference` ist
-nur zur Anzeige.
+This measures the tag position of a module via reference edges. Both measuring
+methods reply directly with the result; the node `LastTagReference` is for
+display only.
 
-Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`).
+Only on the hand Pi (nodes exist only with `hand_eye_path`).
 
-* `MeasureTagReference` braucht frische Kamerabilder: `Operational`,
-  sonst `INVALID_STATE`; `BUSY` bei Job, Kamera-Kalibrierung,
-  Hand-Auge-Sitzung, `MeasureTags` oder einer weiteren Einmessung.
-* `PlanTagReferenceView` rechnet nur mit der Kalibrierung, ohne Bild:
-  braucht `Operational` (erst dann ist die Kalibrierung geladen), ist aber
-  nie `BUSY` -- sie stoert weder Job noch Kalibrierung noch Messung.
+* `MeasureTagReference` needs fresh camera frames: `Operational`, otherwise
+  `INVALID_STATE`; `BUSY` during a job, camera calibration, hand-eye session,
+  `MeasureTags` or another tag reference measurement.
+* `PlanTagReferenceView` computes only from the calibration, without an image:
+  it needs `Operational` (only then is the calibration loaded), but it is never
+  `BUSY` -- it disturbs neither a job, a calibration nor a measurement.
 
-* `SetTagReferencePreview(RequestJson) -> Error` schaltet die Live-Vorschau
-  der Kantensuche im Livestream (Overlay-Modus `tagreference`) fuer einen
-  Tag ein; `""` schaltet sie aus. `INVALID_ARGUMENT`, `INVALID_STATE`
-  (nicht `Operational` oder kein Livestream-Overlay), nie `BUSY`.
-  `MeasureTagReference` setzt die Vorschau selbst auf ihre Anfrage und
-  schreibt, wenn `saveDebug` (Standard `true`), ein Mess-Protokoll
-  (`tagreference_log.py`, `debugDir` im Ergebnis).
+* `SetTagReferencePreview(RequestJson) -> Error` switches the live preview of the
+  edge search in the live stream (overlay mode `tagreference`) on for one tag;
+  `""` switches it off. `INVALID_ARGUMENT`, `INVALID_STATE` (not `Operational`,
+  or no live-stream overlay), never `BUSY`. `MeasureTagReference` sets the preview
+  itself to its request and, if `saveDebug` (default `true`), writes a measurement
+  log (`tagreference_log.py`, `debugDir` in the result).
 
-Siehe `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
+See `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
 
-Die numpy-abhaengigen Module `tagreference` und `tagreference_log` werden erst
-in den Funktionen importiert, der Rest des Servers braucht numpy nicht.
+The numpy-dependent modules `tagreference` and `tagreference_log` are imported
+only inside the functions, so the rest of the server does not need numpy.
 """
 
 import asyncio
@@ -46,21 +45,21 @@ _log = logging.getLogger(__package__)
 
 
 def _reply(payload: dict, code: VisionErrorCode):
-    """Antwort mit einem Ergebnis- oder Planungs-Payload als JSON."""
+    """Reply with a result or plan payload as JSON."""
     from ..tagreference import dumps
 
     return text_reply(dumps(payload), code)
 
 
 def _refusal(code: VisionErrorCode, message: str):
-    """Abgelehnte `MeasureTagReference`: leeres Ergebnis mit Fehlertext."""
+    """Reply to a refused `MeasureTagReference`: an empty result with the error text."""
     from ..tagreference import build_result
 
     return _reply(build_result(error=f"{code.name}: {message}"), code)
 
 
 def _view_refusal(code: VisionErrorCode, message: str):
-    """Abgelehnte `PlanTagReferenceView`: leere Planung mit Fehlertext."""
+    """Reply to a refused `PlanTagReferenceView`: an empty plan with the error text."""
     from ..tagreference import build_view
 
     return _reply(build_view(error=f"{code.name}: {message}"), code)
@@ -68,11 +67,11 @@ def _view_refusal(code: VisionErrorCode, message: str):
 
 async def _write_protocol(config: VisionServerConfig, request, request_json: str,
                           result: dict, artifacts: dict) -> None:
-    """Schreibt das Mess-Protokoll und traegt `debugDir` ins Ergebnis nach.
+    """Write the measurement log and add `debugDir` to the result.
 
-    Nur mit `saveDebug` in der Anfrage und gesetztem
-    `config.tag_reference_debug_dir`. Ein Fehler beim Schreiben landet im Log
-    und laesst die Messung nicht scheitern.
+    Only if `saveDebug` is set in the request and
+    `config.tag_reference_debug_dir` is set. A write error is logged and does not
+    make the measurement fail.
     """
     from ..tagreference import dumps
     from ..tagreference_log import write_protocol
@@ -94,7 +93,7 @@ async def _write_protocol(config: VisionServerConfig, request, request_json: str
             result["debugDir"] = folder.relative_to(_REPO_ROOT).as_posix()
         except ValueError:
             result["debugDir"] = folder.as_posix()
-        # result.json im Ordner kennt debugDir nicht -- nachtragen.
+        # result.json in the folder does not know debugDir yet -- write it again.
         await asyncio.to_thread(
             (folder / "result.json").write_text,
             dumps(result),
@@ -105,7 +104,7 @@ async def _write_protocol(config: VisionServerConfig, request, request_json: str
 
 
 async def _measure(space, config, apriltag_source, annotator, activity, request, request_json):
-    """1:MeasureTagReference -- Tag-Position ueber Bezugskanten einmessen."""
+    """1:MeasureTagReference -- measure the tag position via reference edges."""
     from ..tagreference import dumps
 
     activity.active = True
@@ -116,7 +115,7 @@ async def _measure(space, config, apriltag_source, annotator, activity, request,
     try:
         result = await apriltag_source.measure_tag_reference(request, artifacts)
     except ValueError as error:
-        # z. B. Bildgroesse passt nicht zur Kalibrierung
+        # e.g. image size does not match the calibration
         _log.warning("MeasureTagReference nicht moeglich: %s", error)
         return _refusal(VisionErrorCode.DETECTION_FAILED, str(error))
     finally:
@@ -134,7 +133,7 @@ async def _measure(space, config, apriltag_source, annotator, activity, request,
 
 
 async def _plan(apriltag_source, request):
-    """1:PlanTagReferenceView -- Kamerapose im Tag-KS planen, ohne Bild."""
+    """1:PlanTagReferenceView -- plan the camera pose in the tag frame, without an image."""
     try:
         view = apriltag_source.plan_tag_reference_view(request)
     except ValueError as error:
@@ -155,15 +154,15 @@ async def _install_tag_reference(
     blocked_by: Callable[[], bool] = lambda: False,
     annotator: Any = None,
 ) -> None:
-    """Legt MeasureTagReference, PlanTagReferenceView und SetTagReferencePreview an.
+    """Create MeasureTagReference, PlanTagReferenceView and SetTagReferencePreview.
 
-    Nur auf dem Hand-Pi (Knoten nur mit `hand_eye_path`). Verhalten und Fehlercodes
-    der drei Methoden stehen im Modul-Docstring.
+    Only on the hand Pi (nodes exist only with `hand_eye_path`). The behavior and
+    error codes of the three methods are described in the module docstring.
     """
     from ..tagreference import parse_request
 
     if annotator is not None and hasattr(annotator, "show_reference_debug"):
-        # Die Messung zeigt dem Livestream ihre Kantensuche Bild fuer Bild.
+        # The measurement shows its edge search on the live stream, frame by frame.
         apriltag_source.reference_debug_sink = annotator.show_reference_debug
     else:
         annotator = None
@@ -179,7 +178,7 @@ async def _install_tag_reference(
         return await _plan(apriltag_source, request)
 
     async def set_preview(request, request_json: str):
-        """1:SetTagReferencePreview -- Live-Vorschau der Kantensuche ein-/ausschalten."""
+        """1:SetTagReferencePreview -- switch the live preview of the edge search on or off."""
         if annotator is None:
             return code_reply(VisionErrorCode.INVALID_STATE)
         annotator.set_reference_preview(request)
@@ -188,7 +187,7 @@ async def _install_tag_reference(
     preview = json_method(
         "SetTagReferencePreview",
         states,
-        # Leer ist erlaubt und schaltet die Vorschau aus.
+        # Empty is allowed and switches the preview off.
         parse=lambda text: parse_request(text) if text.strip() else None,
         refuse=lambda code, message: code_reply(code),
         run=set_preview,

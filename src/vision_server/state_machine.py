@@ -1,4 +1,7 @@
-"""Bindung der beiden 40100-Zustandsautomaten an die Nodeset-Instanz."""
+"""Binds the two OPC 40100 state machines to the nodeset instance.
+
+Transitions are logged in the event message, not in a `Transition` object.
+"""
 
 import logging
 
@@ -21,21 +24,21 @@ _log = logging.getLogger(__name__)
 
 
 async def _load_state(node: Node) -> State:
-    """Liest BrowseName und StateNumber eines Zustandsknotens."""
+    """Read the BrowseName and StateNumber of a state node."""
     browse_name = (await node.read_browse_name()).Name
     state_number = await (await node.get_child(["StateNumber"])).read_value()
     return State(id=None, name=browse_name, number=state_number, node=node)
 
 
 async def _bind(server: Server, node: Node, name: str, emitting_node: Node, mv_idx: int) -> FiniteStateMachine:
-    """Bindet eine FiniteStateMachine an einen vorhandenen Automatenknoten.
+    """Bind a FiniteStateMachine to an existing state machine node.
 
-    `install()` wuerde einen zweiten Automatenbaum anlegen; stattdessen wird der
-    aus der Nodeset-Instanziierung vorhandene Knoten gesetzt und nur `init()`
-    aufgerufen. Anschliessend wird der Event-Generator umgebogen: asyncua legt
-    ihn in `init()` auf (TransitionEventType, Automatenknoten) — ein Client, der
-    auf dem VisionSystem abonniert, wuerde davon nichts sehen, weil asyncua
-    Events strikt nach exaktem `emitting_node` ausliefert.
+    `install()` would create a second state machine tree. Instead the node from
+    the nodeset instance is set and only `init()` is called. Then the event
+    generator is redirected. asyncua creates it in `init()` on (TransitionEventType,
+    state machine node). A client subscribed on the VisionSystem would not see
+    those events, because asyncua delivers events only to the exact
+    `emitting_node`.
     """
     fsm = FiniteStateMachine(server, parent=node, name=name)
     fsm._state_machine_node = node
@@ -45,12 +48,11 @@ async def _bind(server: Server, node: Node, name: str, emitting_node: Node, mv_i
 
 
 class VisionStateMachines:
-    """Fuehrt VisionStateMachine und AutomaticModeStateMachine gemeinsam.
+    """Drives the VisionStateMachine and the AutomaticModeStateMachine together.
 
-    Zustandswechsel werden ohne `Transition`-Objekt ausgefuehrt: die
-    Nodeset-Instanz besitzt keinen optionalen `LastTransition`-Knoten, asyncuas
-    `_write_transition` wuerde daran scheitern. Der Uebergangsname steht
-    stattdessen in der Event-Nachricht.
+    State changes run without a `Transition` object. The nodeset instance has no
+    optional `LastTransition` node, and asyncua's `_write_transition` would fail
+    on it. The transition name is carried in the event message instead.
     """
 
     def __init__(
@@ -69,7 +71,7 @@ class VisionStateMachines:
 
     @classmethod
     async def bind(cls, space: VisionAddressSpace) -> "VisionStateMachines":
-        """Bindet beide Automaten und loest alle Zustandsknoten auf."""
+        """Bind both state machines and resolve all state nodes."""
         vision_fsm = await _bind(
             space.server,
             space.vision_state_machine,
@@ -110,11 +112,11 @@ class VisionStateMachines:
         self._inner_state = name
 
     async def enter_operational(self) -> None:
-        """Faehrt beide Automaten in den betriebsbereiten Zustand.
+        """Move both state machines to the operational state.
 
-        Der Nodeset kennt keinen Uebergang Halted -> Operational; der konforme
-        Startpfad ist Preoperational -> Operational (PreoperationalToOperationalAuto)
-        und innen Initialized -> Ready (InitializedToReadyAuto).
+        The nodeset has no Halted -> Operational transition. The compliant start
+        path is Preoperational -> Operational (PreoperationalToOperationalAuto),
+        then Initialized -> Ready inside (InitializedToReadyAuto).
         """
         await self._set_outer("Preoperational", None)
         await self._set_outer("Operational", "PreoperationalToOperationalAuto: Preoperational -> Operational")
@@ -122,24 +124,24 @@ class VisionStateMachines:
         await self._set_inner("Ready", "InitializedToReadyAuto: Initialized -> Ready")
 
     async def to_single_execution(self) -> None:
-        """Ready -> SingleExecution (ReadyToSingleExecution)."""
+        """Transition Ready -> SingleExecution (ReadyToSingleExecution)."""
         await self._set_inner("SingleExecution", "ReadyToSingleExecution: Ready -> SingleExecution")
 
     async def to_ready(self) -> None:
-        """SingleExecution -> Ready (SingleExecutionToReadyAuto)."""
+        """Transition SingleExecution -> Ready (SingleExecutionToReadyAuto)."""
         await self._set_inner("Ready", "SingleExecutionToReadyAuto: SingleExecution -> Ready")
 
     async def to_continuous_execution(self) -> None:
-        """Ready -> ContinuousExecution (ReadyToContinuousExecution)."""
+        """Transition Ready -> ContinuousExecution (ReadyToContinuousExecution)."""
         await self._set_inner(
             "ContinuousExecution", "ReadyToContinuousExecution: Ready -> ContinuousExecution"
         )
 
     async def continuous_to_ready(self, *, stopped: bool = True) -> None:
-        """ContinuousExecution -> Ready, per Stop oder Abort.
+        """Transition ContinuousExecution -> Ready, via Stop or Abort.
 
-        Dauerbetrieb endet nie von allein -- er laeuft, bis jemand ihn beendet.
-        Deshalb gibt es hier keinen Auto-Uebergang wie bei SingleExecution.
+        Continuous execution never ends on its own. It runs until someone stops
+        it, so there is no automatic transition as there is for SingleExecution.
         """
         transition = "Stop" if stopped else "Abort"
         await self._set_inner(
@@ -148,27 +150,27 @@ class VisionStateMachines:
         )
 
     async def halt(self) -> None:
-        """Operational -> Halted: der Server nimmt keine Jobs mehr an."""
+        """Transition Operational -> Halted. The server no longer accepts jobs."""
         await self._set_outer("Halted", "OperationalToHaltedAuto: Operational -> Halted")
 
 
     async def abort_to_ready(self) -> None:
-        """SingleExecution -> Ready ueber den Abort-Uebergang."""
+        """Transition SingleExecution -> Ready via the Abort transition."""
         await self._set_inner("Ready", "SingleExecutionToReadyAbort: SingleExecution -> Ready")
 
     async def stop_to_ready(self) -> None:
-        """SingleExecution -> Ready ueber den Stop-Uebergang (Nutzerabbruch)."""
+        """Transition SingleExecution -> Ready via the Stop transition (user cancel)."""
         await self._set_inner("Ready", "SingleExecutionToReadyStop: SingleExecution -> Ready")
 
     async def to_error(self, reason: str) -> None:
-        """Operational -> Error (OperationalToErrorAuto)."""
+        """Transition Operational -> Error (OperationalToErrorAuto)."""
         await self._set_outer("Error", f"OperationalToErrorAuto: Operational -> Error ({reason})")
 
     async def recover(self, *, halt: bool = False) -> None:
-        """Error -> Operational, oder mit `halt` Error -> Halted.
+        """Transition Error -> Operational, or Error -> Halted when `halt` is set.
 
-        Halted braucht anschliessend einen Operator-`Reset`; der Server bleibt
-        dann bewusst nicht mehr betriebsbereit.
+        Halted needs an operator `Reset` afterwards. The server then deliberately
+        stays out of operation.
         """
         if halt:
             await self._set_outer("Halted", "ErrorToHaltedAuto: Error -> Halted")
@@ -176,9 +178,9 @@ class VisionStateMachines:
         await self._set_outer("Operational", "ErrorToOperationalAuto: Error -> Operational")
 
     def is_ready(self) -> bool:
-        """Prueft synchron, ob ein Einzeljob erlaubt ist."""
+        """Check synchronously whether a single job is allowed."""
         return self._outer_state == "Operational" and self._inner_state == "Ready"
 
     def state_names(self) -> tuple[str, str]:
-        """Liefert die aktuellen Zustandsnamen beider Automaten."""
+        """Return the current state names of both state machines."""
         return self._outer_state, self._inner_state

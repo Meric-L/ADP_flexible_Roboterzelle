@@ -1,4 +1,4 @@
-"""Tag-Map ueber OPC UA: Leseknoten `TagMapJson` und Methode `SetTagMap`."""
+"""Tag map over OPC UA: read node `TagMapJson` and method `SetTagMap`."""
 
 import asyncio
 import logging
@@ -13,13 +13,13 @@ _log = logging.getLogger(__package__)
 
 
 def _write_tag_map_file(path, text: str) -> None:
-    """Schreibt die Karte, Verzeichnis wird bei Bedarf angelegt."""
+    """Write the map file; create the directory if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
 
 async def _publish_tag_map(wiring: Wiring) -> None:
-    """Spiegelt die geladene Karte in den Leseknoten."""
+    """Mirror the loaded map into the read node."""
     from tagloc.tagmap import tag_map_to_json
 
     space = wiring.space
@@ -31,23 +31,23 @@ async def _publish_tag_map(wiring: Wiring) -> None:
 
 
 def _busy_reason(wiring: Wiring) -> str | None:
-    """Warum jetzt keine neue Karte gesetzt werden darf (`None` = darf)."""
+    """Return why a new map may not be set now (`None` means it may)."""
     if wiring.jobs.busy:
         return "SetTagMap waehrend laufendem Job abgelehnt"
     session = wiring.calibration_session
     if session is not None and session.running:
         return "SetTagMap waehrend laufender Kalibrierung abgelehnt"
     if wiring.layer2_active():
-        # Eine neue Karte verwirft den Anker, auf dem der Lauf steht.
+        # A new map discards the anchor the run is based on.
         return "SetTagMap waehrend laufendem Layer-2-Lauf abgelehnt"
     if wiring.hand_eye_active():
-        # Die Tag-Groesse aus der Karte skaliert jede Aufnahme.
+        # The tag size from the map scales every capture.
         return "SetTagMap waehrend Hand-Auge-Kalibrierung abgelehnt"
     return None
 
 
 async def _persist_tag_map(wiring: Wiring, tag_map) -> VisionErrorCode:
-    """Schreibt die aktive Karte als lokalen Zwischenspeicher in die Datei."""
+    """Write the active map to the file as a local cache."""
     from tagloc.tagmap import tag_map_to_json
 
     config = wiring.config
@@ -57,9 +57,9 @@ async def _persist_tag_map(wiring: Wiring, tag_map) -> VisionErrorCode:
     try:
         await asyncio.to_thread(_write_tag_map_file, path, tag_map_to_json(tag_map))
     except OSError as error:
-        # Messen geht vor Persistenz: die Karte ist bereits aktiv, nur
-        # ein Neustart faellt auf die alte Datei zurueck. Das muss der
-        # Aufrufer wissen, deshalb trotzdem ein Fehlercode.
+        # Measuring comes before persistence: the map is already active, and
+        # only a restart falls back to the old file. The caller must know that,
+        # hence an error code anyway.
         _log.error("Tag-Map konnte nicht nach %s geschrieben werden: %s", path, error)
         return VisionErrorCode.INTERNAL
     _log.info("Tag-Map gesetzt und nach %s geschrieben", path)
@@ -67,15 +67,13 @@ async def _persist_tag_map(wiring: Wiring, tag_map) -> VisionErrorCode:
 
 
 def _set_tag_map_method(wiring: Wiring):
-    """Handler fuer `1:SetTagMap` -- setzt die Tag-Map der Zelle.
+    """Handler for `1:SetTagMap` -- set the tag map of the cell.
 
-    Damit ist das Backend die Pflegestelle: eine neue Tag-Groesse oder
-    ein verschobener Welttag brauchen keinen Dateizugriff auf dem Pi
-    mehr. Die Datei bleibt trotzdem der lokale Zwischenspeicher, damit
-    der Pi ohne Backend messen kann.
+    This makes the backend the maintenance point: a new tag size or a moved
+    world tag no longer needs file access on the Pi. The file remains the local
+    cache, so the Pi can still measure without the backend.
 
-    Erst pruefen, dann uebernehmen: eine abgelehnte Karte laesst die
-    laufende unangetastet.
+    Check first, then apply: a rejected map leaves the running map untouched.
     """
     from tagloc.tagmap import tag_map_from_json
 
@@ -92,7 +90,7 @@ def _set_tag_map_method(wiring: Wiring):
             return code_reply(VisionErrorCode.INVALID_ARGUMENT)
 
         for problem in wiring.apriltag_source.apply_tag_map(tag_map):
-            # Bericht, kein Fehler -- eine Zelle im Aufbau darf messen.
+            # A report, not an error -- a cell that is still being set up may measure.
             _log.warning("Tag-Map aus SetTagMap: %s", problem)
         await _publish_tag_map(wiring)
         return code_reply(await _persist_tag_map(wiring, tag_map))
@@ -101,9 +99,9 @@ def _set_tag_map_method(wiring: Wiring):
 
 
 async def install_tag_map(wiring: Wiring) -> None:
-    """Veroeffentlicht die geladene Karte und legt `SetTagMap` an.
+    """Publish the loaded map and create `SetTagMap`.
 
-    Nur mit geoeffneter AprilTag-Quelle und `TagMapJson`-Knoten.
+    Only with an opened AprilTag source and a `TagMapJson` node.
     """
     space = wiring.space
     if wiring.apriltag_source is None or space.tag_map_json is None:

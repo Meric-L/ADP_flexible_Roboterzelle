@@ -1,24 +1,19 @@
-"""Misst, was die Kamera-Hardware an Framerate wirklich hergibt -- min, max,
-Durchschnitt.
+"""Measure the frame rate the camera hardware can really deliver: min, max, average.
 
-Wichtig: `SharedCamera._capture_loop` (camera.py) drosselt bewusst auf
-`capture_fps` (Standard 15 Hz) -- das ist die Kadenz, mit der der Server
-selbst neue Frames von der Hardware abholt (unabhaengig davon, wie oft der
-OPC-UA-Knoten oder der MJPEG-Stream daraus schreiben, siehe `stream_fps`/
-`http_fps`), nicht zwingend die Kadenz, die die Hardware maximal koennte.
-Dieses Skript umgeht die Drosselung absichtlich: es ruft dieselben Oeffnen-/
-Lese-Methoden wie `SharedCamera` (Picamera2/RealSense/OpenCV) in einer engen
-Schleife auf, ohne zu warten, um die tatsaechliche Kamera-Obergrenze zu
-finden -- z. B. um zu pruefen, ob `capture_fps` noch Luft nach oben hat.
+Note: `SharedCamera._capture_loop` (camera.py) deliberately throttles to `capture_fps`
+(default 15 Hz). That is the cadence at which the server itself fetches new frames from
+the hardware (independent of how often the OPC UA node or the MJPEG stream write from
+them, see `stream_fps`/`http_fps`), not necessarily the maximum the hardware could reach.
+This script deliberately bypasses the throttle: it calls the same open/read methods as
+`SharedCamera` (Picamera2/RealSense/OpenCV) in a tight loop, without waiting, to find
+the actual camera upper limit -- e.g. to check whether `capture_fps` still has headroom.
 
-Nutzt automatisch Backend und Aufloesung, die fuer den Pi konfiguriert sind
-(`vision_server.server.vision_config()`), damit das Ergebnis zum echten
-Setup passt -- Ueberschreiben per `--backend`/`--resolution`/`--realsense-fps`
-moeglich, z. B. um vor einer Config-Aenderung zu pruefen, ob eine hoehere
-`realsense_fps` ueberhaupt etwas bringt.
+It automatically uses the backend and resolution configured for the Pi
+(`vision_server.server.vision_config()`), so the result matches the real setup.
+Overriding via `--backend`/`--resolution`/`--realsense-fps` is possible, e.g. to check
+before a config change whether a higher `realsense_fps` makes any difference at all.
 
-**Braucht exklusiven Kamerazugriff** wie das CLI-Kalibriertool -- Server
-vorher stoppen:
+**Requires exclusive camera access**, like the CLI calibration tool -- stop the server first:
 
     sudo systemctl stop opcua-server.service
     PYTHONPATH=src python3 src/vision_server/tools/measure_framerate.py
@@ -37,8 +32,10 @@ from vision_server.server import vision_config
 
 
 async def _measure(shared: SharedCamera, executor: ThreadPoolExecutor, duration_s: float) -> list[float]:
-    """Liest Frames am Stueck, ohne zwischen Aufnahmen zu warten. Gibt die
-    Zeitstempel jedes erfolgreichen Reads zurueck."""
+    """Read frames back to back, without waiting between captures.
+
+    Return the timestamp of each successful read.
+    """
     loop = asyncio.get_running_loop()
     timestamps: list[float] = []
     deadline = time.monotonic() + duration_s
@@ -49,6 +46,7 @@ async def _measure(shared: SharedCamera, executor: ThreadPoolExecutor, duration_
 
 
 def _summarise(timestamps: list[float], duration_s: float) -> None:
+    """Print the overall average and the min, max and median frame rate."""
     if len(timestamps) < 2:
         print(f"Nur {len(timestamps)} Frame(s) in {duration_s:.1f}s -- zu wenig fuer eine Auswertung.")
         return
@@ -70,6 +68,7 @@ def _summarise(timestamps: list[float], duration_s: float) -> None:
 
 
 async def run(args: argparse.Namespace) -> int:
+    """Open the camera, measure its frame rate and print the result. Return the exit code."""
     config = vision_config().camera_stream
     if args.backend:
         config = replace(config, backend=args.backend)
@@ -110,6 +109,7 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command-line arguments and run the frame rate measurement."""
     parser = argparse.ArgumentParser(description="Misst die rohe Framerate der Kamera-Hardware")
     parser.add_argument("--backend", choices=["picamera2", "realsense", "opencv"])
     parser.add_argument("--resolution", type=int, nargs=2, metavar=("WIDTH", "HEIGHT"))

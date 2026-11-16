@@ -1,4 +1,4 @@
-"""Koordinatentransformation -- Posen von einem KS in ein anderes.
+"""Coordinate transformation -- convert poses from one frame into another.
 
 Pure computation: no camera, no OpenCV. The fastest tool to settle a
 convention question before it bites in production code.
@@ -33,6 +33,7 @@ from ._common import describe_pose, poses_from_json, setup_logging, write_json
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for this tool."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--input", type=Path, default=None, help="Datei von 'detect --json'")
     parser.add_argument("--position", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"))
@@ -56,7 +57,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _load_transform(args, poses) -> tuple:
-    """Return `(T_target_source, origin description)`."""
+    """Determine the transform from the command-line options.
+
+    The sources are tried in order: ``--camera-pose``, then ``--from-reference``.
+    If neither is given, the identity transform is returned.
+
+    Returns:
+        A tuple ``(T_target_source, origin)``, where ``origin`` is a short text for
+        the output.
+
+    Raises:
+        SystemExit: If ``--from-reference`` is set without ``--tag-map``, or no
+            reference tag is in the input.
+    """
     if args.camera_pose is not None:
         data = json.loads(Path(args.camera_pose).read_text(encoding="utf-8"))
         return pose_from_dict(data), str(args.camera_pose)
@@ -77,6 +90,17 @@ def _load_transform(args, poses) -> tuple:
 
 
 def main(argv=None) -> int:
+    """Run the CLI: transform the input poses and print (and optionally save) them.
+
+    Args:
+        argv: Argument list, or ``None`` to use ``sys.argv``.
+
+    Returns:
+        Exit code ``0`` on success.
+
+    Raises:
+        SystemExit: If neither ``--input`` nor ``--position`` is given.
+    """
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
 

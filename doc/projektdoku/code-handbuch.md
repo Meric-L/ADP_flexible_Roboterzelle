@@ -547,7 +547,7 @@ Umgebungsvariablen (16 Stück):
 | `VISION_SUBPIXEL_CORNER_REFINEMENT` | `0`, `none`, `false` schalten aus. `1`, `true` schalten an. `apriltag` oder `subpix` schalten an mit diesem Verfahren. Unbekannte Werte brechen den Start ab | `server.py`, `subpixel_corner_settings()` |
 | `VISION_CALIBRATION_MODEL` | Linsenmodell (`pinhole` oder `fisheye`), überschreibt das Preset | `server.py`, `apriltag_config()` |
 | `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` | Notausgang: Platzhalter-Intrinsik ohne Kalibrierdatei. Posen sind dann nicht maßstabsgetreu | `server.py`, `apriltag_config()` |
-| `VISION_SAVE_CALIBRATION_CAPTURES=1` | Kalibrieraufnahmen zusätzlich als JPEG archivieren | `server.py`, `apriltag_config()` |
+| `VISION_SAVE_CALIBRATION_CAPTURES=1` | Kalibrieraufnahmen zusätzlich verlustfrei als PNG je Sitzung archivieren | `server.py`, `apriltag_config()` |
 | `OPCUA_APPLICATION_URI` | ApplicationUri. Standard ist Präfix und Name aus `PI_APPLICATION_NAMES` | `server.py`, `application_uri()` |
 | `OPCUA_MDNS_NAME` | Dienstname im Netz. Standard ist die Vision-Identität | `server.py`, `mdns_instance_name()` |
 | `OPCUA_MDNS` | `0`, `false`, `no` oder `off` schalten die mDNS-Ankündigung ab | `discovery/mdns.py`, `enabled()` |
@@ -567,7 +567,7 @@ Wichtige Standardwerte in `config.py` und `profiles.py`:
 - `recipe_profiles`: RecipeId `calibration` läuft über das Profil `calibration`, `apriltag` über `apriltag`. Ein leerer RecipeId wird abgelehnt.
 - `frame_id`: `world` in `VisionServerConfig`, `cam_ceiling` in `AprilTagProfileConfig`. Die Pi-Presets setzen `cam_ceiling` oder `cam_flange`.
 - Pfade relativ zur Repo-Wurzel: `data/calibration/<Rahmen>.json` (Kamera-Kalibrierung), `data/handeye/cam_flange.json` (nur Hand-Pi), `config/tagmap.json` (Tag-Map, versioniert), `data/rohbilder/` (`SaveRawImage`), `data/tagreference/` (Mess-Protokoll). `data/` ist per `.gitignore` ausgeschlossen.
-- Pi-Presets (laut Kommentaren in `server.py`): Beide Rahmen nutzen ein Schachbrett mit 7 × 10 inneren Ecken und 23 mm Feldgröße. Die Modultags sind 80 mm groß. Decke: Backend `picamera2`, Auflösung 4056 × 3040, Linsenmodell `fisheye`, Livestream über einen 960 × 720-Strom. Hand: Backend `realsense`, Auflösung 640 × 480, Linsenmodell `pinhole`, Subpixel-Ecken an.
+- Pi-Presets (laut Kommentaren in `server.py`): Beide Rahmen nutzen ein Schachbrett mit 7 × 10 inneren Ecken und 23 mm Feldgröße. Die Modultags sind 80 mm groß. Decke: Backend `picamera2`, Auflösung 4056 × 3040, Linsenmodell `fisheye`, Livestream über einen 960 × 720-Strom, Subpixel-Ecken an (`subpix`, seit 10.11.2026). Hand: Backend `realsense`, Auflösung 640 × 480, Linsenmodell `pinhole`, Subpixel-Ecken an.
 
 Stolpersteine:
 
@@ -742,7 +742,7 @@ Eine Erkennungsquelle liefert die Erkennungen für einen Job und kennt kein OPC 
 **Konfiguration**
 
 - `AprilTagProfileConfig` (`profiles.py`): `tag_family` (Standard `tag36h11`), `detector_backend` (`aruco`), `tag_size_m`, `samples_per_job`, `max_reproj_error_px`, `capture_timeout_s`, `subpixel_corner_refinement` (Standard aus), `detector_parameters`, `resolution`, `frame_id`, `frame_convention`, `calibration_path`, `tag_map_path`, `hand_eye_path`, `allow_placeholder_calibration`, `allow_resolution_mismatch`, `apriltag_quad_decimate`.
-- Pi-Presets je Rahmen in `server.py` (`PI_APRILTAG_PRESETS`). Decke: 3 Samples je Job, Fehlergrenze 3,0 px. Hand: 5 Samples, 1,5 px, Subpixel-Ecken an.
+- Pi-Presets je Rahmen in `server.py` (`PI_APRILTAG_PRESETS`). Decke: 3 Samples je Job, Fehlergrenze 3,0 px, Subpixel-Ecken an (`subpix`, seit 10.11.2026). Hand: 5 Samples, 1,5 px, Subpixel-Ecken an.
 - Kalibrierdatei `data/calibration/<Rahmen>.json`, Tag-Map `config/tagmap.json`. Beide werden beim Start geladen. Die Konfigurations-ID der Ergebnisse setzt sich aus Tag-Familie, Kalibrier- und Tag-Map-Identität zusammen (`tagloc.identity`).
 - `JOBS_DIR` ist `src/jobs/`.
 
@@ -854,7 +854,7 @@ Die Methoden `StartCalibration`, `CaptureCalibrationSample`, `FinishCalibration`
 
 - Schachbrett (`AprilTagProfileConfig`): `calibration_board_type` (`chessboard`), `calibration_board_cols` und `calibration_board_rows` (innere Ecken), `calibration_board_square_size_m`. Pi-Wert: 7 × 10 innere Ecken, 23 mm.
 - `calibration_model`: `pinhole` (Brown-Conrady) oder `fisheye` (Kannala-Brandt). Pi: Decke `fisheye`, Hand `pinhole`. Überschreibbar mit `VISION_CALIBRATION_MODEL`. Für die Posenschätzung zählt das Modell in der geladenen Datei, nicht das Feld.
-- `calibration_capture_dir`: zusätzliches Archiv. Es ist nur mit `VISION_SAVE_CALIBRATION_CAPTURES=1` aktiv und liegt in `data/calibration/<Rahmen>_captures/`.
+- `calibration_capture_dir`: zusätzliches Archiv. Es ist nur mit `VISION_SAVE_CALIBRATION_CAPTURES=1` aktiv und liegt in `data/calibration/<Rahmen>_captures/<UTC-Stempel>/`.
 - Konstanten: `MIN_SAMPLES_FOR_CALIBRATION` = 3 (darunter Ablehnung), `CAPTURE_DETECT_TIMEOUT_S` = 20 s, `RMS_WARNING_PX` = 0,5 (nur Warnung im Log).
 
 Stolpersteine:
@@ -887,7 +887,8 @@ Bestimmt `T_flansch_cam`, also die feste Lage der Handkamera am Roboterflansch. 
 
 | Datei | Aufgabe | Wichtigste Bausteine |
 | --- | --- | --- |
-| `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()` (ruft `tagloc.handeye.refine_board_session`), `_write_session_dataset()` (baut `session.json` mit `tagloc.handeye.session_payload`), `_intrinsics_warnings()`; `finish()` in Schritten: `_axes_refusal`, `_solve`, `_annotate_samples`, `_save`, `_result_payload`, `_result_warnings`, `_summary_message` |
+| `src/vision_server/handeye_session.py` | Sitzung: Aufnahmen, Berechnung mit Ausreißerprüfung, optionale Verfeinerung am Brett, Speichern mit Sicherung, Datensatz je Sitzung | `HandEyeSession` (`start`, `capture`, `finish`, `abort`, `status_json`), `HandEyePorts`, `parse_start()`, `parse_sample()`, `save_with_backup()`, `_refine_board()` (ruft `tagloc.handeye.refine_board_session`), `_write_session_dataset()` (baut `session.json` mit `tagloc.handeye.session_payload`), `_intrinsics_warnings()`; `finish()` in Schritten: `_axes_refusal`, `_solve`, `_annotate_samples`, `_save`, `_result_payload`, `_result_warnings`, `_summary_message`; Option `fullCalibration` (Rohbilder wie `captureOnly`, Abschluss über `calibrate_session`, Schreiben beider Dateien mit `_save_pair` und Wiederherstellung) |
+| `src/tagloc/handeye_offline.py` | Gesamtkalibrierung auf dem Pi: Intrinsik und Hand-Auge aus Rohbildern einer Sitzung | `calibrate_session(folder, ...)` (`SessionCalibration`); schreibt `results/intrinsics_pi.json` und `results/handeye_pi.json` |
 | `src/vision_server/runner/hand_eye.py` | Installer und Sperren | `_install_hand_eye_session()` |
 | `src/vision_server/detection/apriltag/` (`tags.py`, `board.py`, `resources.py`) | Messung des Ziels im Kamera-Bezugsrahmen, Anwendung der neuen Kalibrierung | `measure_tag()`, `measure_board()`, `apply_hand_eye()`, `intrinsics_source()` |
 

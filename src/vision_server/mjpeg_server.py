@@ -1,22 +1,22 @@
-"""Livestream als MJPEG ueber HTTP, direkt vom Pi in den Browser.
+"""Live stream as MJPEG over HTTP, straight from the Pi to the browser.
 
-Warum nicht ueber OPC UA: dort reist jedes Bild als Base64-String (+33 %)
-durch asyncua, das Backend, eine JSON-WebSocket-Nachricht und den
-React-Store. Fuer 5 fps reicht das, fuer ein fluessiges Bild nicht. MJPEG ist
-das, was ein `<img src=...>` ohne jede Bibliothek abspielt:
-`multipart/x-mixed-replace`, ein JPEG nach dem anderen.
+Why not over OPC UA: there every image travels as a Base64 string (+33 %)
+through asyncua, the backend, a JSON WebSocket message and the React store.
+That is fine for 5 fps, but not for a smooth image. MJPEG is what an
+`<img src=...>` plays without any library: `multipart/x-mixed-replace`, one JPEG
+after another.
 
-OPC UA bleibt der Steuerweg: der Server nennt dem Frontend den Port ueber den
-Knoten `CameraStreamHttpPort`, der Overlay-Modus wird weiter ueber
-`CameraStreamMode` gewaehlt. Die Bilder kommen fertig markiert und kodiert vom
-`CameraStreamPublisher` -- dieser Server kodiert nichts selbst.
+OPC UA stays the control path: the server tells the frontend the port via the
+node `CameraStreamHttpPort`, and the overlay mode is still selected via
+`CameraStreamMode`. The images arrive already marked up and encoded from the
+`CameraStreamPublisher` -- this server encodes nothing itself.
 
-Bewusst ohne Framework (aiohttp o. ae.): zwei GET-Pfade, `asyncio.start_server`
-genuegt, und auf dem Pi kommt keine Abhaengigkeit dazu.
+Deliberately without a framework (aiohttp or similar): two GET paths,
+`asyncio.start_server` is enough, and no dependency is added on the Pi.
 
-    GET /stream.mjpg    endloser MJPEG-Stream
-    GET /snapshot.jpg   das neueste Einzelbild
-    GET /tagreference.jpg  Debug-Bild der letzten MeasureTagReference (404 ohne)
+    GET /stream.mjpg    endless MJPEG stream
+    GET /snapshot.jpg   the newest single image
+    GET /tagreference.jpg  debug image of the last MeasureTagReference (404 without)
 """
 
 import asyncio
@@ -30,10 +30,10 @@ from .camera_stream import CameraStreamPublisher
 _log = logging.getLogger(__name__)
 
 BOUNDARY = b"frame"
-#: So lange wartet ein Client auf ein neues Bild, bevor die Schleife prueft,
-#: ob die Verbindung noch lebt.
+#: How long a client waits for a new image before the loop checks
+#: whether the connection is still alive.
 FRAME_WAIT_S = 2.0
-#: Wer ein Bild nicht in dieser Zeit abnimmt, wird getrennt.
+#: A client that does not accept an image within this time is disconnected.
 WRITE_TIMEOUT_S = 5.0
 REQUEST_TIMEOUT_S = 5.0
 
@@ -46,7 +46,7 @@ _COMMON_HEADERS = (
 
 
 class MjpegServer:
-    """Liefert die Bilder eines `CameraStreamPublisher` per HTTP aus."""
+    """Serve the images of a `CameraStreamPublisher` over HTTP."""
 
     def __init__(
         self,
@@ -57,12 +57,12 @@ class MjpegServer:
         max_clients: int = 4,
         tag_reference_dir: Path | None = None,
     ) -> None:
-        #: Protokollablage der Tag-Einmessung (`tagreference_log`); `None` = 404.
+        #: Log store of the tag referencing (`tagreference_log`); `None` = 404.
         self._tag_reference_dir = tag_reference_dir
         self._publisher = publisher
         self._host = host
         self._requested_port = port
-        #: Obergrenze, damit vergessene Browser-Tabs den Pi nicht auslasten.
+        #: Upper limit, so that forgotten browser tabs do not load down the Pi.
         self._max_clients = max_clients
         self._clients = 0
         self._server: asyncio.Server | None = None
@@ -70,7 +70,7 @@ class MjpegServer:
 
     @property
     def port(self) -> int:
-        """Der tatsaechlich gebundene Port (bei `port=0` vom System vergeben)."""
+        """The port actually bound (assigned by the system when `port=0`)."""
         if self._server is None or not self._server.sockets:
             return 0
         return self._server.sockets[0].getsockname()[1]
@@ -85,7 +85,7 @@ class MjpegServer:
         if self._server is None:
             return
         self._server.close()
-        # Offene Streams enden nie von selbst; ohne Abbruch haengt wait_closed().
+        # Open streams never end on their own; without cancelling, wait_closed() hangs.
         for task in list(self._handlers):
             task.cancel()
         with contextlib.suppress(Exception):
@@ -109,7 +109,7 @@ class MjpegServer:
             else:
                 await self._respond(writer, b"404 Not Found", b"text/plain", b"not found")
         except (ConnectionError, TimeoutError, asyncio.IncompleteReadError):
-            # Browser-Tab zu, Netz weg: Alltag, kein Fehler.
+            # Browser tab closed, network gone: everyday events, not errors.
             pass
         except asyncio.CancelledError:
             pass
@@ -123,10 +123,10 @@ class MjpegServer:
                 await writer.wait_closed()
 
     async def _read_request_path(self, reader: asyncio.StreamReader) -> str | None:
-        """Liest Anfragezeile und Header; gibt den Pfad ohne Query zurueck."""
+        """Read the request line and headers; return the path without the query."""
         request_line = await asyncio.wait_for(reader.readline(), REQUEST_TIMEOUT_S)
         parts = request_line.decode("latin-1").split()
-        # Header bis zur Leerzeile verwerfen -- gebraucht wird keiner.
+        # Discard the headers up to the blank line -- none of them is needed.
         while True:
             line = await asyncio.wait_for(reader.readline(), REQUEST_TIMEOUT_S)
             if line in (b"\r\n", b"\n", b""):
@@ -195,9 +195,9 @@ class MjpegServer:
                 while True:
                     latest = await self._publisher.next_frame(seq, FRAME_WAIT_S)
                     if latest is None:
-                        # Kamera haengt oder Bild veraltet: nichts senden, der
-                        # Browser behaelt das letzte Bild. Toten Client merken
-                        # wir beim naechsten Schreiben.
+                        # Camera stalled or image stale: send nothing, the browser
+                        # keeps the last image. We notice a dead client on the
+                        # next write.
                         if writer.is_closing():
                             return
                         continue

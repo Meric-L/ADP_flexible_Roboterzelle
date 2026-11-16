@@ -792,7 +792,7 @@ Es läuft höchstens eine gleichzeitig, und keine, solange ein Job oder eine
 Kamera-Kalibrierung läuft. Das ist dasselbe Signal, mit dem die
 Zellen-Überwachung pausiert. Sie nutzt den Stream-Detektor: dieselben
 Parameter wie der Job, nur ohne Eckenverfeinerung (bei `cam_ceiling` ist sie
-auch im Job aus). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
+im Job seit 10.11.2026 an, Verfahren `subpix`). Mit `overlay_detect_interval_s = 0` erkennt das Overlay nie
 selbst und zeigt nur Ergebnisse von Job, Zellen-Überwachung und Messung.
 
 Die Pixel-Ecken werden von der Auflösung des Ergebnisses auf die Stream-Größe
@@ -1235,10 +1235,17 @@ Ablauf:
     "error": 0, "rms": 2.069, "model": "fisheye", "samples": 16,
     "coverageX": 0.84, "coverageY": 0.9,
     "path": "data/calibration/cam_ceiling.json",
+    "backup": "data/calibration/cam_ceiling.json.20261115T093000Z.bak",
     "warning": "RMS 2.069 px ueber dem Zielwert 0.5 px -- ..."
   }
 }
 ```
+
+**Alte Kalibrierung bleibt erhalten (seit 15.11.2026):** Die neue Kalibrierung
+ersetzt die Datei unter `path`, die bisherige wird vorher daneben als
+`<name>.<UTC>.bak` kopiert (gleiches Schema wie bei der Hand-Auge-Kalibrierung).
+Jede Sicherung bekommt einen eigenen Namen, keine wird überschrieben.
+`result.backup` nennt die Sicherung; ohne alte Datei fehlt das Feld.
 
 Zwei Zahlen können hier auseinanderfallen: `samples` (oben, im Wurzelobjekt)
 ist die Anzahl **aufgenommener** Bilder (18), `result.samples` die Anzahl
@@ -1408,6 +1415,8 @@ folgende Aufnahme lahm, ein Server-Neustart war der einzige Ausweg. Diese
 Datei bleibt als Protokoll stehen, weil sie zeigt, wie sich das Problem
 schrittweise eingegrenzt hat, nicht weil der beschriebene Mechanismus noch
 so läuft.
+
+**Nachtrag 10.11.2026: Archiv verlustfrei je Sitzung.** Das Archiv liegt nun unter `data/calibration/<frame_id>_captures/<UTC-Stempel>/` (Stempel `YYYYmmddTHHMMSSZ`, bei Kollision Suffix `_2`, `_3`) und schreibt die Aufnahmen als PNG (`kalib_NNN.png`, verlustfrei) statt als JPEG. Jede Sitzung hat ihren eigenen Ordner mit einer `session.json` (Schema `adp.calibration.captures/1`, u. a. Brett, Modell und die aktive Kalibrierdatei zum Sitzungsstart), sodass frühere Sitzungen nicht mehr überschrieben werden. Der Arbeitsordner `data/calibration/<frame_id>_pending/` bleibt bei JPEG, damit die Online-Auswertung schnell bleibt. Zum Vorgehen und zu den Schnittstellen siehe den Arbeitsplan [`arbeitsplaene/kalibrier-aufnahmen-roh.md`](arbeitsplaene/kalibrier-aufnahmen-roh.md).
 
 ### 12.10 Linsenmodell je Kamera (seit 2026-09-29)
 
@@ -1679,7 +1688,7 @@ Ist `tagInBase` aus dem Katalog bekannt, prüft der Pi sie nur gegen (`knownTagC
 
 ### 15.1 Schachbrett statt Tag
 
-Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. Details stehen in [`arbeitsplaene/handeye-schachbrett-automatik.md`](arbeitsplaene/handeye-schachbrett-automatik.md). Genutzt wird das gelaserte Brett mit 6×7 Feldern zu 23 mm.
+Statt eines Tags kann der Pi ein Kalibrier-Schachbrett als festes Ziel messen. Details stehen in [`arbeitsplaene/handeye-schachbrett-automatik.md`](arbeitsplaene/handeye-schachbrett-automatik.md). Genutzt wird das gelaserte Brett mit 6×7 Feldern zu 23 mm. **Stand 11.11.2026 ersetzt:** Die Brettmaße sind frei eintragbar (Abschnitt 15.7); die Zahlen hier sind nur ein Beispiel.
 
 ```json
 { "schema": "wsc.vision.handeye.start/1",
@@ -1748,7 +1757,69 @@ Gilt ab Pi-Commit `c494f71` (Branch `apriltag`) und Frontend `6e19c66`, `f5c81ba
   ```
 
 - **Tag-Pfad:** Beide IPPE-Lösungen werden mit `solvePnPRefineLM` verfeinert, die kleinere Reprojektion gewinnt. Das Mehrdeutigkeitsverhältnis bleibt aus den rohen IPPE-Fehlern berechnet.
-- **Subpixel-Ecken:** Das Preset `cam_flange` nutzt sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+- **Subpixel-Ecken:** Die Presets `cam_flange` und `cam_ceiling` (seit 10.11.2026, Arbeitsplan [`deckenkamera-subpixel-ecken.md`](arbeitsplaene/deckenkamera-subpixel-ecken.md)) nutzen sie mit Verfahren `subpix`. `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuert das: `0`, `none`, `false` aus; `1`, `true` an; `apriltag` oder `subpix` an mit diesem Verfahren. Jeder andere Wert bricht den Start mit `ValueError` ab.
+
+### 15.5 Rohbild-Aufnahme und Offline-Kalibrierung (09.11.2026)
+
+Der bestehende Frontend-Button „Kalibrierung starten“ nutzt bei einem
+Schachbrett `captureOnly: true` in `StartHandEyeCalibration`. (Seit 11.11.2026 gibt es zusätzlich `fullCalibration: true`, Abschnitt 15.6. `captureOnly` und `fullCalibration` zusammen sind ungültig.) Der Pi verwendet
+den **normal konfigurierten Kamerastream** samt dessen kalibrierter Intrinsik.
+`CaptureHandEyeSample` erhält zusätzlich `poseId: "pose_NNN"`, `poseGroup`
+(`A`–`E`) und `jointAnglesRad` (sieben Winkel); `flangeInBase` bleibt die FK
+der gemessenen Gelenkwinkel. Jede Aufnahme wird sofort unter
+`data/rohbilder/calibration/<UTC>_<ID>/poses/pose_NNN/` gespeichert:
+`camera.png` ist das unveränderte Bild, `robot_state.json` enthält Pose-ID,
+4×4-Transformation `T_base_flange`, Gelenkwinkel und Bildzeitstempel.
+`config.json` enthält Brett, Koordinatenkonventionen und Intrinsik.
+
+`HandEyeStatus.sessionPath` nennt den Sitzungsordner. In diesem Modus schließt
+`FinishHandEyeCalibration` nur die Aufnahme; weder Berechnung noch Aktivierung
+findet online statt. `AbortHandEyeCalibration` erhält die bisher geschriebenen
+Bilder. Wenn sich Gelenke während einer Aufnahme bewegen, kann
+`CaptureHandEyeSample` mit `invalidatePoseId` und `reason` dieselbe Pose als
+ungültig kennzeichnen; `quality.json` dokumentiert dies, Rohbild und
+`robot_state.json` bleiben unverändert. Die Offline-Auswertung schließt
+solche Aufnahmen aus. Die bisherigen Tag- und Brett-Aufrufe ohne
+`captureOnly` behalten ihre Semantik.
+
+Offline-Aufruf: `python -m tagloc.cli.calibrate_handeye_offline <sitzungsordner>
+[--pnp iterative|ippe]`. Ergebnisse liegen ausschließlich in `results/`:
+Detektionscache, Experiment-JSON, HTML-Vergleich und bei konvergierter
+Gesamtlösung `candidate_handeye_<pnp>.json`. Die Kandidatendatei ist mit dem
+bestehenden Hand-Auge-Dateiformat kompatibel und wird nicht automatisch aktiv.
+
+### 15.6 Gesamtkalibrierung auf dem Pi: `fullCalibration` (11.11.2026)
+
+Die Hand-Auge-Kalibrierung ist jetzt die **gesamte Kalibrierung der Handkamera**: Intrinsik und Hand-Auge werden aus denselben Rohbildern auf dem Pi gerechnet und gemeinsam übernommen.
+
+- **Start:** `StartHandEyeCalibration` mit `"fullCalibration": true` in den Optionen, zusätzlich zu `board`. Der Pi nimmt Rohbilder auf wie bei `captureOnly` (Ordner `data/rohbilder/calibration/<UTC>_<id>/`, je Pose `camera.png` und `robot_state.json`, Gruppen A–F). Ohne Kalibrierbrett ist die Angabe ungültig.
+- `captureOnly: true` gibt es weiter: Es nimmt nur auf und rechnet nichts. `captureOnly` und `fullCalibration` zusammen sind ungültig.
+- **Rechnung in `FinishHandEyeCalibration`** (auf dem Pi, ohne Werks-Intrinsik, ohne Startwert):
+  - (a) Intrinsik: `cv2.calibrateCamera` über alle Bilder mit mindestens 12 ChArUco-Ecken bzw. vollständigem Schachbrett. Volles Modell k1, k2, p1, p2, k3. Mindestens 10 Bilder.
+  - (b) Hand-Auge mit dieser Intrinsik: PnP je Pose (mindestens 25 ChArUco-Ecken bzw. volles Schachbrett, PnP-RMS höchstens 1,5 px). Startlösung Park (bzw. `park_numpy` unter OpenCV 5), danach gemeinsame Reprojektions-Verfeinerung von Hand-Auge und Brettlage mit scipy `least_squares` (Verlust `soft_l1`). Mindestens 10 Posen.
+  - Die Flanschpose ist die nominelle FK aus den gemessenen Gelenkwinkeln. Eine Kinematik-Korrektur gibt es nicht.
+  - Ergebnisse liegen zusätzlich unter `<sitzung>/results/intrinsics_pi.json` und `<sitzung>/results/handeye_pi.json`.
+- **Zu wenige Bilder oder Posen:** `INVALID_STATE`, Meldung „Nicht berechnet: …“. Die Sitzung bleibt offen, Aufnahmen können ergänzt werden. Fehlt scipy auf dem Pi, lautet die Meldung „scipy fehlt auf dem Pi (pip install scipy)“.
+- **Schreiben:** Der Pi schreibt `data/calibration/cam_flange.json` und `data/handeye/cam_flange.json`, jeweils mit `.bak`-Sicherung der alten Datei, mit gleicher `calibrationId` `cam_flange@<sitzung>-pi`, und übernimmt beide live. Beide gehören zusammen: Scheitert das Schreiben, stellt der Pi beide Dateien aus der Sicherung wieder her.
+- **`config.json` der Sitzung** enthält bei `fullCalibration` `intrinsics: null`, weil die Intrinsik erst beim Abschluss entsteht.
+- **Status:** `HandEyeStatus` hat das Feld `fullCalibration` (bool). Bei `fullCalibration` steht in `result`:
+
+  ```json
+  {"kind": "intrinsicsAndHandEye", "sessionPath": "...",
+   "intrinsics": {"imageSize", "fx", "fy", "cx", "cy", "distortion", "rmsPx", "sampleCount", "calibrationId"},
+   "handEye": {"translationMm", "rotationDeg", "reprojectionRmsPx", "boardSpreadRmsMm", "boardSpreadRmsDeg", "sampleCount", "initialMethod"},
+   "excluded": [{"poseId", "reason"}],
+   "backups": {"intrinsics", "handEye"}}
+  ```
+
+### 15.7 Brettmaße frei eintragbar (11.11.2026)
+
+Die festen Brettangaben (Schachbrett 7×10 bzw. 23 mm, ChArUco 11×7 mit 25 mm bzw. 18,5 mm) sind ersetzt. Gilt für `board` in `StartHandEyeCalibration` und für `MeasureBoard`:
+
+- **Schachbrett:** `cols`/`rows` Innenecken, mindestens 3. `cols + rows` muss ungerade sein (sonst ist die 180°-Drehung nicht eindeutig). `squareSizeM` 0,005 bis 0,100 m.
+- **ChArUco:** `cols`/`rows` Felder, mindestens 3. `squareSizeM` 0,005 bis 0,100 m. `markerSizeM` positiv und kleiner als `squareSizeM`. `dictionary` aus `DICT_4X4`, `DICT_5X5`, `DICT_6X6`, `DICT_7X7`, je mit Endung `_50`, `_100`, `_250` oder `_1000`. Die Markeranzahl `floor(cols·rows/2)` darf die Größe des Dictionarys nicht überschreiten.
+- Die eingetragenen Maße gehen **ohne Skalierungsfaktor** ein. Das Labor-Brett ist nachgemessen: Feld 24,982 mm, Marker 18,487 mm.
+- **Frontend** (`webskillcomposition`, Branch `ADP_Lokaliserung`): Bei ChArUco sind Felder quer/hoch, Feldmaß, Markermaß und Dictionary eintragbar. Der Browser merkt sich die Angaben.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)
 
@@ -1932,3 +2003,24 @@ Seit 21.10.2026 (Plan [`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/
 **Frontend** (`webskillcomposition`): `setTagReferencePreview` in `tagReferenceCall.ts` (Timeout 10 s),
 die Vorschau wird alle 60 s erneuert (`PREVIEW_RENEW_MS`). Die Schalter stehen im Fenster „Tags einmessen“
 und sind im localStorage unter `wsc.tagReference.settings` gespeichert. Details: Arbeitsplan, Abschnitt C.
+
+## Hand-Auge-Rohaufnahme: Schachbrett oder ChArUco (09.11.2026)
+
+Der vorhandene Startknopf der Hand-Auge-Kalibrierung verwendet `captureOnly: true`.
+Im selben Fenster kann das Brett gewählt werden. **Stand 11.11.2026 ersetzt:** Die Brettangaben
+unten sind nicht mehr festgelegt; Brett und Maße sind frei eintragbar (Abschnitt 15.7).
+Die bisherige Schachbrettangabe war `{"type":"chessboard","cols":7,"rows":10,"squareSizeM":0.023}`;
+`cols`/`rows` zählen hier Innenecken. Das bisherige ChArUco-Brett war
+`{"type":"charuco","cols":11,"rows":7,"squareSizeM":0.025,"markerSizeM":0.0185,"dictionary":"DICT_5X5_100"}`
+(Form unverändert, Werte seit 11.11.2026 frei wählbar); hier zählen `cols`/`rows` Felder. Diese `board`-Angabe gilt auch für
+`MeasureBoard` und wird unverändert in der Rohsitzung unter
+`data/rohbilder/calibration/<Sitzung>/config.json` gespeichert. Bilder liegen
+weiter als `poses/pose_NNN/camera.png` beim zugehörigen `robot_state.json`.
+
+Die ChArUco-Erkennung verlangt mindestens 25 zugeordnete Innenecken pro
+Aufnahme. Ihre IDs und 3D-Objektpunkte werden bei der Offline-Detektion je Pose
+gespeichert und für PnP sowie die Reprojektionsoptimierung verwendet. Kamera-
+intrinsik und Bildstrom bleiben die bereits konfigurierten Werte. Es gibt
+keine neue OPC-UA-Methode und keine automatische Aktivierung der Offline-Lösung.
+
+Seit 11.11.2026 gibt es zusätzlich `fullCalibration: true` (Abschnitt 15.6).

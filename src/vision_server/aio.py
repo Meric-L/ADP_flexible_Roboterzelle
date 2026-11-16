@@ -1,7 +1,7 @@
-"""Kleine asyncio-Helfer, die mehrere Module gleich brauchen.
+"""Small asyncio helpers that several modules need.
 
-Nur Standardbibliothek: wer von hier importiert, zieht weder asyncua noch
-Server-Code mit.
+Standard library only: importing from here pulls in neither asyncua nor
+server code.
 """
 
 import asyncio
@@ -11,11 +11,11 @@ from collections.abc import Iterable
 
 
 async def cancel_and_wait(task: asyncio.Task | None) -> None:
-    """Bricht einen Hintergrund-Task ab und wartet, bis er wirklich steht.
+    """Cancel a background task and wait until it has really stopped.
 
-    `None` ist erlaubt und tut nichts -- so bleibt der Aufrufer ohne eigene
-    Pruefung idempotent. Die `CancelledError` des Tasks wird geschluckt; ein
-    Fehler, mit dem der Task vorher schon geendet hat, nicht.
+    ``None`` is allowed and does nothing, so callers stay idempotent without
+    their own check. The task's ``CancelledError`` is swallowed. An error the
+    task had already raised before is not.
     """
     if task is None:
         return
@@ -27,16 +27,16 @@ async def cancel_and_wait(task: asyncio.Task | None) -> None:
 def stop_event_on_signals(
     signals: Iterable[signal.Signals] = (signal.SIGTERM, signal.SIGINT),
 ) -> asyncio.Event:
-    """Ein Event, das beim ersten der `signals` gesetzt wird.
+    """Return an event that is set on the first of the ``signals``.
 
-    Strg+C waehrend eines `await` faengt `asyncio.run()` sonst **vor** der
-    Coroutine ab -- ein `except KeyboardInterrupt` darin wird nie erreicht,
-    und unter systemd kommt SIGTERM ohnehin nie als Ausnahme an. Ein echter
-    Signal-Handler setzt stattdessen nur das Event, auf das der Aufrufer
-    geordnet reagiert.
+    Otherwise ``asyncio.run()`` catches Ctrl+C during an ``await`` **before**
+    the coroutine sees it. An ``except KeyboardInterrupt`` inside the coroutine
+    is then never reached, and under systemd SIGTERM never arrives as an
+    exception anyway. A real signal handler only sets the event instead, and
+    the caller reacts to it in an orderly way.
 
-    Muss im laufenden Event-Loop aufgerufen werden. Wo der Loop keine
-    Signal-Handler kann (z. B. Windows), bleibt es beim harten Abbruch.
+    Must be called inside the running event loop. Where the loop cannot install
+    signal handlers (e.g. Windows), the hard abort remains.
     """
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

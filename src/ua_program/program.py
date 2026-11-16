@@ -1,24 +1,24 @@
-"""Rudimentaere Umsetzung von OPC-UA-Programmen (Spec Part 10).
+"""Minimal implementation of OPC UA programs (Spec Part 10).
 
-Uebernommen aus der Vorlage des Betreuers (`OPC_UA_Program.py`, Robert
-Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024). Die Vorlage liegt nicht
-im Repo (`betreuer/` wurde am 23.09.2026 entfernt, die Datei war nie getrackt).
+Taken over from the supervisor's template (`OPC_UA_Program.py`, Robert
+Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024). The template is not in
+the repo (`betreuer/` was removed on 23.09.2026; the file was never tracked).
 
-Gegenueber der Vorlage geaendert -- jede Aenderung war noetig, damit sich das
-Framework ueberhaupt bzw. sauber einbauen laesst:
+Changes compared to the template. Each one was needed so that the framework
+can be used at all, or cleanly:
 
-1. `Program.__init__` ist konkret. Die Vorlage ruft in `init()`
-   `cls(server, nsid, *args, **kwargs)` auf, ihr Beispiel `testProgram.py`
-   definiert aber `__init__(self)` ohne Argumente und ruft `super().__init__()`
-   auf einer ABC ganz ohne `__init__`. In dieser Kombination war sie nicht
-   startbar.
-2. `Resume` bekommt `resume_inputs`. Die Vorlage uebergab dort `reset_inputs`.
-3. Optionale sprechende String-NodeIds (`nodeid=`). Damit bekommen Instanz und
-   Methoden stabile, ratbare Ids (`ns=4;s=VisionProgram.Start`) und ein Client
-   muss nicht browsen. Ohne `nodeid` bleibt es beim automatischen numerischen
-   Verhalten der Vorlage.
-4. Die fuenf gleichfoermigen Bloecke zum Ersetzen der Methoden sind zu einer
-   Schleife zusammengezogen. Verhalten unveraendert.
+1. `Program.__init__` is concrete. The template calls
+   `cls(server, nsid, *args, **kwargs)` in `init()`, but its example
+   `testProgram.py` defines `__init__(self)` without arguments and calls
+   `super().__init__()` on an ABC that has no `__init__` at all. In this
+   combination it could not be started.
+2. `Resume` takes `resume_inputs`. The template passed `reset_inputs` there.
+3. Optional descriptive string NodeIds (`nodeid=`). The instance and its
+   methods then get stable, guessable ids (`ns=4;s=VisionProgram.Start`), and
+   a client does not have to browse. Without `nodeid`, the template's automatic
+   numeric behavior is kept.
+4. The five identical blocks that replace the methods are merged into one
+   loop. Behavior unchanged.
 """
 
 from abc import ABC, abstractmethod
@@ -38,14 +38,14 @@ class ProgramException(Exception):
 
 
 class Program(ABC):
-    """Zugang zur Program-Funktionalitaet der UA-Spec Teil 10.
+    """Access to the Program functionality of UA Spec Part 10.
 
-    Eigene Logik haengt in `start`/`halt`/`reset`/`suspend`/`resume`. Gibt eine
-    dieser Methoden `None` zurueck, gilt sie als erfolgreich und der Automat
-    wechselt den Zustand; gibt sie einen String zurueck, bleibt der Zustand und
-    der String reist als `ProgramTransitionEvent` mit Severity 500 zum Client.
+    Custom logic goes into `start`/`halt`/`reset`/`suspend`/`resume`. If one of
+    these methods returns `None`, it counts as successful and the state machine
+    changes state. If it returns a string, the state stays and the string is
+    sent to the client as a `ProgramTransitionEvent` with severity 500.
 
-    Mit `init()` konstruieren, nicht direkt.
+    Construct with `init()`, not directly.
     """
 
     @classmethod
@@ -59,21 +59,15 @@ class Program(ABC):
         nodeid: ua.NodeId | None = None,
         **kwargs,
     ):
-        """Legt das Programm im Adressraum an.
+        """Create the program in the address space.
 
-        Parameters
-        ----------
-        server
-            Der OPC-UA-Server, dem das Programm hinzugefuegt wird.
-        parent_node
-            Knoten, unter dem das Programm als Kind haengt.
-        nsid
-            Namensraum, in den das Programm eingefuegt wird.
-        name
-            BrowseName der Instanz; ohne Angabe der Klassenname.
-        nodeid
-            Optionale feste NodeId der Instanz. Mit einer String-NodeId
-            erben alle Kinder sprechende Ids.
+        Args:
+            server: The OPC UA server the program is added to.
+            parent_node: Node under which the program is attached as a child.
+            nsid: Namespace index the program is inserted into.
+            name: BrowseName of the instance. Defaults to the class name.
+            nodeid: Optional fixed NodeId for the instance. With a string NodeId,
+                all children inherit descriptive ids.
         """
         self = cls(server, nsid, *args, **kwargs)
         await self._init(server, parent_node, nsid, name, nodeid)
@@ -88,8 +82,8 @@ class Program(ABC):
         machine_name = name if name is not None else self.__class__.__name__
 
         self.state_machine = ProgramStateMachine(server, parent_node, nsid, machine_name)
-        # Nur eine Steueraufgabe gleichzeitig: das Lock wird im Methoden-
-        # Handler genommen und in `_transition` wieder freigegeben.
+        # Only one control task at a time: the lock is taken in the method
+        # handler and released again in `_transition`.
         self._lock = asyncio.Lock()
         self._control_task = None
 
@@ -100,9 +94,9 @@ class Program(ABC):
             logger.error("ProgramStateMachine wurde nicht erfolgreich installiert!")
             raise RuntimeError("ProgramStateMachine wurde nicht erfolgreich installiert!")
 
-        # Die instanziierten Methoden tragen keine Eingabeargumente. Fuer
-        # eigene Signaturen (z. B. `Start(RecipeId, Continuous)`) muessen sie
-        # geloescht und neu angelegt werden.
+        # The instantiated methods carry no input arguments. For custom
+        # signatures (e.g. `Start(RecipeId, Continuous)`) they must be deleted
+        # and added again.
         for method_name, attr, handler, inputs in (
             ("Start", "_start_method", self._start_method, self.start_inputs),
             ("Suspend", "_suspend_method", self._suspend_method, self.suspend_inputs),
@@ -161,7 +155,7 @@ class Program(ABC):
     def resume_inputs(self) -> list: ...
 
     async def running_to_halted(self, message=None):
-        """Haelt das laufende Programm an (z. B. im Fehlerfall)."""
+        """Halt the running program (e.g. on error)."""
         if not self.state_machine._current_state.number == 13:
             raise ProgramException("Program not in running state")
         if message is None:
@@ -173,7 +167,7 @@ class Program(ABC):
         )
 
     async def running_to_ready(self, message=None):
-        """Setzt das laufende Programm zurueck auf `Ready`."""
+        """Reset the running program to `Ready`."""
         if not self.state_machine._current_state.number == 13:
             raise ProgramException("Program not in running state")
         if message is None:
@@ -185,7 +179,7 @@ class Program(ABC):
         )
 
     async def suspended_to_ready(self, message=None):
-        """Setzt das pausierte Programm zurueck auf `Ready`."""
+        """Reset the suspended program to `Ready`."""
         if not self.state_machine._current_state.number == 14:
             raise ProgramException("Program not in suspended state")
         if message is None:
@@ -197,23 +191,22 @@ class Program(ABC):
         )
 
     async def _transition(self, func, new_state, transition, *args):
-        """Laeuft im Hintergrund je Methodenaufruf.
+        """Run in the background for each method call.
 
-        Fuehrt die benutzerdefinierte Funktion aus, prueft ihren Erfolg und
-        wechselt den Zustand.
+        Runs the user-defined function, checks its result and changes the state.
         """
         try:
             try:
                 result: str | None = await func(*args)
             except Exception as e:
-                # Der Fehlertext geht als Ergebnis an den Zustandswechsel;
-                # zusaetzlich im Log festhalten, damit die Ursache nicht verloren geht.
+                # The error text is passed as the result to the state change. It
+                # is also logged, so the cause is not lost.
                 logger.warning("Programmfunktion warf einen Fehler: %s", e, exc_info=True)
                 result = str(e)
             if result is not None:
                 if not isinstance(result, str):
                     raise TypeError("Program function returns wrong type")
-                # Der Zustandswechsel hat nicht geklappt -- als Event melden.
+                # The state change did not work -- report it as an event.
                 self.state_machine._evgen.event.Message = ua.LocalizedText(
                     result, self.state_machine.locale
                 )
@@ -306,10 +299,10 @@ class Program(ABC):
 
 
 class ProgramStateMachine(FiniteStateMachine):
-    """Program State Machine nach OPC-UA Teil 10.
+    """Program state machine according to OPC UA Part 10.
 
-    Zustaende und Uebergaenge sind feste Knoten des Basis-Namensraums (ns=0);
-    es wird kein Nodeset importiert.
+    States and transitions are fixed nodes of the base namespace (ns=0). No
+    nodeset is imported.
     """
 
     def __init__(self, server=None, parent=None, idx=None, name=None):
@@ -357,11 +350,11 @@ class ProgramStateMachine(FiniteStateMachine):
         self.ready_to_halted = Transition(self.tnode9.nodeid, "ReadyToHalted", 9, self.tnode9)
 
     def method_nodeid(self, name: str):
-        """NodeId einer neu angelegten Methode.
+        """Return the NodeId of a newly added method.
 
-        Traegt die Instanz eine String-NodeId, erbt die Methode sie als
-        `<Instanz>.<Methode>` -- sonst faellt es auf die automatische
-        numerische Vergabe der Vorlage zurueck.
+        If the instance has a string NodeId, the method inherits it as
+        `<instance>.<method>`. Otherwise it falls back to the template's
+        automatic numeric assignment.
         """
         base = self._state_machine_node.nodeid
         if isinstance(base.Identifier, str):
@@ -374,7 +367,7 @@ class ProgramStateMachine(FiniteStateMachine):
         optionals: bool = False,
         nodeid: ua.NodeId | None = None,
     ):
-        """Legt alle noetigen Knoten, Zustaende und Uebergaenge an."""
+        """Create all required nodes, states and transitions."""
         self._optionals = optionals
 
         self._state_machine_node = await self._parent.add_object(
@@ -401,10 +394,10 @@ class ProgramStateMachine(FiniteStateMachine):
                 self.snode14.nodeid,
             ]
         )
-        # Nicht `set_available_transitions()`: in asyncua 2.0.1 schreibt die
-        # Methode den Wert und wirft danach **immer** ValueError, weil das
-        # `raise` nicht im else-Zweig steht (statemachine.py:357-363). Die
-        # Vorlage des Betreuers lief noch gegen eine aeltere Version.
+        # Not `set_available_transitions()`: in asyncua 2.0.1 that method writes
+        # the value and then **always** raises ValueError, because the `raise`
+        # is not in the else branch (statemachine.py:357-363). The supervisor's
+        # template still ran against an older version.
         if self._optionals:
             transitions_node = await self._state_machine_node.get_child(
                 ["AvailableTransitions"]
@@ -435,7 +428,7 @@ class ProgramStateMachine(FiniteStateMachine):
         await self.check_method_executability()
 
     async def check_method_executability(self):
-        """Markiert nur die Methoden als ausfuehrbar, die es sein duerfen."""
+        """Mark only the methods that may be executed in the current state as executable."""
         executable = {
             11: {"reset": True, "halt": False, "suspend": False, "resume": False, "start": False},
             12: {"reset": False, "halt": True, "suspend": False, "resume": False, "start": True},
@@ -462,6 +455,6 @@ class ProgramStateMachine(FiniteStateMachine):
         event_msg: Union[str, ua.LocalizedText] = None,
         severity: int = 500,
     ):
-        """Wechselt den Zustand und zieht die Ausfuehrbarkeit nach."""
+        """Change the state and update the executable flags of the methods."""
         await super().change_state(state, transition, event_msg, severity)
         await self.check_method_executability()

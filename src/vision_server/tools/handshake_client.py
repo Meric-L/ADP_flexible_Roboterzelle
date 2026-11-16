@@ -1,7 +1,7 @@
-"""Testclient: StartSingleJob aufrufen und das Ergebnis per Event abholen.
+"""Test client: call StartSingleJob and fetch the result via event.
 
-Zeigt den Handshake, den ein Backend implementieren muss: erst abonnieren, dann
-die Methode rufen, dann auf das ResultReadyEvent warten. Es wird nicht gepollt.
+Shows the handshake a backend has to implement: subscribe first, then call the method,
+then wait for the ResultReadyEvent. It does not poll.
 """
 
 import argparse
@@ -25,7 +25,7 @@ _log = logging.getLogger("handshake-client")
 
 
 class EventCollector:
-    """Sammelt eingehende Events in einer Queue."""
+    """Collect incoming events in a queue."""
 
     def __init__(self, type_names: dict[ua.NodeId, str]) -> None:
         self._type_names = type_names
@@ -33,13 +33,17 @@ class EventCollector:
         self.seen: list[str] = []
 
     def event_notification(self, event) -> None:
-        """Callback der Subscription; laeuft im Event-Loop des Clients."""
+        """Subscription callback; runs in the client's event loop."""
         name = self._type_names.get(event.EventType, str(event.EventType))
         self.seen.append(name)
         self.queue.put_nowait((name, event))
 
     async def expect(self, name: str, timeout: float):
-        """Wartet auf das naechste Event des angegebenen Typs."""
+        """Wait for the next event of the given type.
+
+        Raises:
+            TimeoutError: If no event of that type arrives within ``timeout`` seconds.
+        """
         deadline = asyncio.get_running_loop().time() + timeout
         while True:
             remaining = deadline - asyncio.get_running_loop().time()
@@ -51,7 +55,7 @@ class EventCollector:
 
 
 def _payload_of(event) -> dict:
-    """Liest das JSON-Payload aus ResultContent[0]."""
+    """Read the JSON payload from ``ResultContent[0]``."""
     content = event.ResultContent
     if isinstance(content, ua.Variant):
         content = content.Value
@@ -63,7 +67,12 @@ def _payload_of(event) -> dict:
 
 
 async def run(args: argparse.Namespace) -> int:
-    """Fuehrt einen Einzeljob aus und gibt das Ergebnis-Payload aus."""
+    """Run one single job and print the result payload.
+
+    Returns:
+        Exit code ``0`` on success, ``1`` on a rejected call, a job-id mismatch, or a
+        timeout.
+    """
     async with Client(url=args.url) as client:
         mv_idx = await client.get_namespace_index(MACHINE_VISION_NAMESPACE_URI)
         own_idx = await client.get_namespace_index(args.namespace)
@@ -114,7 +123,14 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Liest die Kommandozeile und fuehrt den Test aus."""
+    """Parse the command line and run the test.
+
+    Args:
+        argv: Argument list, or ``None`` to use ``sys.argv``.
+
+    Returns:
+        Exit code from ``run``.
+    """
     parser = argparse.ArgumentParser(description="Handshake-Test gegen den Vision-Server")
     parser.add_argument("--url", default="opc.tcp://127.0.0.1:4840/raspi/server/")
     parser.add_argument("--namespace", default="http://launch-rm.de/vision")

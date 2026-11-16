@@ -1,4 +1,8 @@
-"""Zellen-Ueberwachung (Deckenkamera): Start, Stop, Pause, Resume."""
+"""Cell watch (ceiling camera): start, stop, pause and resume.
+
+The cell watch checks the cell with the ceiling camera and exposes four OPC UA
+methods to control it.
+"""
 
 import asyncio
 from collections.abc import Callable
@@ -15,11 +19,12 @@ from .uamethods import add_vision_method, code_reply
 
 
 def _make_observe(apriltag_source: Any, detector: Any, keeper: Any):
-    """Die Beobachtung, die die Ueberwachung je Durchlauf aufruft.
+    """Build the observation function that the cell watch calls on each pass.
 
-    Liest das neueste Bild der geteilten Kamera, wertet es mit dem eigenen
-    Detektor in einem Thread aus und laesst `keeper` urteilen. Merkt sich den
-    Zeitstempel des letzten Bilds: ohne neues Bild gibt es keine Aussage.
+    Reads the newest frame of the shared camera, evaluates it with the cell
+    watch's own detector in a thread, and lets `keeper` judge the result. It
+    remembers the timestamp of the last frame: without a new frame there is no
+    verdict.
     """
     seen = {"timestamp": None}
 
@@ -28,7 +33,7 @@ def _make_observe(apriltag_source: Any, detector: Any, keeper: Any):
         if frame is None:
             return None, "kein Kamerabild"
         if frame.timestamp == seen["timestamp"]:
-            return None, ""  # kein neues Bild, keine Aussage
+            return None, ""  # no new frame, so no verdict
         seen["timestamp"] = frame.timestamp
         tag_map = apriltag_source._tag_map
         stored = keeper.stored_for(tag_map) if options.min_world_tags <= 1 else None
@@ -42,30 +47,30 @@ def _make_observe(apriltag_source: Any, detector: Any, keeper: Any):
 
 
 def _cell_watch_handlers(cell_watch: Any, states: VisionStateMachines):
-    """Die vier Handler: `(Name, Handler, Eingaben)` in der Reihenfolge der Anlage."""
+    """Return the four handlers as `(name, handler, inputs)`, in creation order."""
 
     @uamethod
     async def start_cell_watch(parent, options_json: str):
-        """1:StartCellWatch -- scharf schalten bzw. neue Referenz setzen."""
-        # Operational reicht: waehrend eines Jobs darf neu scharf geschaltet
-        # werden, die Ueberwachung pausiert dann ohnehin.
+        """1:StartCellWatch -- arm the watch, or set a new reference."""
+        # Operational is enough: the watch may be armed during a job, since it
+        # pauses during a job anyway.
         if states.state_names()[0] != "Operational":
             return code_reply(VisionErrorCode.INVALID_STATE)
         return code_reply(await cell_watch.start(options_json or ""))
 
     @uamethod
     async def stop_cell_watch(parent):
-        """1:StopCellWatch -- Ueberwachung aus."""
+        """1:StopCellWatch -- switch the watch off."""
         return code_reply(await cell_watch.stop())
 
     @uamethod
     async def pause_cell_watch(parent, reason_text: str, max_pause_s: float):
-        """1:PauseCellWatch -- pausieren, solange der Roboter faehrt."""
+        """1:PauseCellWatch -- pause while the robot is moving."""
         return code_reply(await cell_watch.pause(reason_text or "", max_pause_s))
 
     @uamethod
     async def resume_cell_watch(parent):
-        """1:ResumeCellWatch -- Pause beenden."""
+        """1:ResumeCellWatch -- end the pause."""
         return code_reply(await cell_watch.resume())
 
     return (
@@ -85,16 +90,16 @@ async def _install_cell_watch(
     states: VisionStateMachines,
     busy_reason: Callable[[], str],
 ) -> Any:
-    """Legt Start-/Stop-/Pause-/ResumeCellWatch an und verdrahtet die Ueberwachung.
+    """Create the Start/Stop/Pause/ResumeCellWatch methods and wire up the watch.
 
-    Nur auf der Deckenkamera (Knoten nur ohne `hand_eye_path`). Liest die
-    Frames der geteilten Kamera -- dieselben wie Livestream und Jobs, keine
-    eigene Aufnahme -- und rechnet mit eigenem Detektor in einem eigenen
-    Thread. Waehrend eines Jobs oder einer Kalibrierung pausiert sie, damit
-    ein Layer-1-Job jederzeit volle CPU hat. Siehe
+    Only on the ceiling camera (nodes exist only without `hand_eye_path`). It reads
+    the frames of the shared camera -- the same ones used by the live stream and
+    jobs, with no separate capture -- and computes with its own detector in its
+    own thread. It pauses during a job or a calibration, so that a layer-1 job
+    always has the full CPU. See
     `doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
     """
-    # Erst hier: die Ueberwachung braucht numpy/OpenCV, der Rest des Servers nicht.
+    # Imported only here: the watch needs numpy/OpenCV, the rest of the server does not.
     from tagloc.detector import build_detector
 
     from ..cellwatch import CameraPoseKeeper, CellWatch, CellWatchPorts
@@ -108,8 +113,8 @@ async def _install_cell_watch(
         apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
         detector_parameters=apriltag.detector_parameters,
     )
-    #: Die Pose der fest montierten Kamera, einmal aus >= 2 Welttags geschaetzt;
-    #: lebt ueber `StartCellWatch`-Aufrufe hinweg (Zeiten aendern, neue Referenz).
+    #: Pose of the fixed-mounted camera, estimated once from >= 2 world tags;
+    #: persists across `StartCellWatch` calls (changing timing, new reference).
     keeper = CameraPoseKeeper(path=apriltag.calibration_path.parent / "cellwatch_camera_pose.json")
     keeper.load()
 

@@ -3,7 +3,7 @@
 **Status:** in Arbeit — 30.10.2026
 **Verantwortlich:** Meric, `Agent: Aufräumen und Code-Handbuch`
 **Thema:** sonstiges
-**Branch:** Doku auf `apriltag`; Code auf `apriltag-aufraeumen` (dieses Repo) und `ungetestet-aufraeumen` (webskillcomposition) — beide lokal, ungemergt
+**Branch:** Doku auf `apriltag`; Code auf `apriltag-aufraeumen` (dieses Repo) und `ADP_Lokaliserung` (webskillcomposition) — beide lokal, ungemergt
 
 ## Ziel
 
@@ -54,7 +54,7 @@ müssen danach unverändert grün sein.
 
 1. Audit beider Repos (toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken), Funde mit Beleg und ID.
 2. Audits und Code-Handbuch auf `apriltag` schreiben und pushen.
-3. Aufräumen auf `apriltag-aufraeumen` bzw. `ungetestet-aufraeumen`, nach Risiko: toter Code →
+3. Aufräumen auf `apriltag-aufraeumen` bzw. `ADP_Lokaliserung`, nach Risiko: toter Code →
    Doppelungen → Richtlinien → Behelfe (nur, wenn die Abbaubedingung erfüllt ist). Dateien, an
    denen auf `apriltag` gerade viel gearbeitet wird, nur behutsam anfassen (Konfliktrisiko beim
    späteren Merge).
@@ -69,7 +69,7 @@ ihren eigenen Audit und ihren eigenen Handbuch-Teil**. Dadurch fassen sie nie di
 | | Sitzung A — Zelle | Sitzung B — webskill |
 | --- | --- | --- |
 | Worktree | `/home/meric/ADP/ADP_flexible_Roboterzelle/.claude/worktrees/apriltag-aufraeumen` | `/home/meric/ADP/webskillcomposition/.claude/worktrees/ungetestet-aufraeumen` |
-| Branch (lokal, ungemergt) | `apriltag-aufraeumen` (Basis `apriltag`) | `ungetestet-aufraeumen` (Basis `Ungetestet` `5812275`) |
+| Branch (lokal, ungemergt) | `apriltag-aufraeumen` (Basis `apriltag`) | `ADP_Lokaliserung` (Basis `Ungetestet` `5812275`) |
 | Funde | [`../altlasten-zelle.md`](../altlasten-zelle.md) | [`../altlasten-wsc.md`](../altlasten-wsc.md) |
 | Handbuch | `code-handbuch.md`, nur **Teil A** | `code-handbuch.md`, nur **Teil B** |
 | Status nachtragen in | `altlasten-zelle.md`, Abschnitt 12 „Umsetzungsstand“ | `altlasten-wsc.md`, Abschnitt 11 „Umsetzungsstand“ |
@@ -119,9 +119,9 @@ Die übrigen heißen Dateien bleiben gesperrt.
 **Entscheidung nötig:** T6/T7, T8, T12/T13, B1 (`data/` versionieren?), B11, B13, D4 und alle Zerlegungen aus
 Abschnitt 7 (erst nach Merge von `usecase-foto`; D4 nach `handeye-genauigkeit`).
 
-### Sitzung B — webskill (`ungetestet-aufraeumen`)
+### Sitzung B — webskill (`ADP_Lokaliserung`)
 
-**Vorab (Übergabe 30.10.2026):** Block 1 ist zum Teil umgesetzt — 12 Commits auf `ungetestet-aufraeumen` (T1–T16, T18–T20, Teile von B12), Gesamttests darauf noch **nicht** gelaufen. Offen und von Sitzung B zu übernehmen: **B13** ist in `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` halb bearbeitet und nicht committet (Diff ansehen, fertigstellen oder verwerfen), danach **B9** und der Rest von **B12** (u. a. `RobotRunConfirm` nach `opcua-server/components`). Erst dann alle Tests, dann Reihenfolge-Punkt 1.
+**Vorab (Übergabe 30.10.2026):** Block 1 ist zum Teil umgesetzt — 12 Commits auf `ADP_Lokaliserung` (T1–T16, T18–T20, Teile von B12), Gesamttests darauf noch **nicht** gelaufen. Offen und von Sitzung B zu übernehmen: **B13** ist in `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` halb bearbeitet und nicht committet (Diff ansehen, fertigstellen oder verwerfen), danach **B9** und der Rest von **B12** (u. a. `RobotRunConfirm` nach `opcua-server/components`). Erst dann alle Tests, dann Reihenfolge-Punkt 1.
 
 **Umgebung:** `frontend/node_modules` und die Inhalte von `frontend/public/urdf/` sind Symlinks aus dem
 Haupt-Checkout (Submodul, `info/exclude`) — nie committen, Dateien immer einzeln hinzufügen. 3D-Modelle sind
@@ -201,4 +201,4 @@ Wird während der Umsetzung gefüllt.
 ## Nach Abschluss
 
 - Status auf `fertig`, Index aktualisiert.
-- Merge von `apriltag-aufraeumen` in `apriltag` und `ungetestet-aufraeumen` in `Ungetestet` nur auf Ansage.
+- Merge von `apriltag-aufraeumen` in `apriltag` und `ADP_Lokaliserung` in `Ungetestet` nur auf Ansage.

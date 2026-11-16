@@ -1,4 +1,4 @@
-"""JSON-Payload fuer `ResultContent` (Schema aus Teil 4.3 des Plans)."""
+"""JSON payload for `ResultContent` (schema from section 4.3 of the plan)."""
 
 import json
 from collections.abc import Sequence
@@ -14,13 +14,13 @@ DEFAULT_FRAME_ID = "world"
 
 
 def _json_default(value: Any) -> Any:
-    """numpy-Werte JSON-faehig machen.
+    """Make numpy values JSON-serializable.
 
-    Entenartig statt per numpy-Import: dieses Modul liegt auf der Importkette
-    des Zellenservers. Greift nicht fuer dict-Keys (siehe `_detection_dict`).
+    Duck-typed instead of importing numpy: this module is on the import chain of
+    the cell server. It does not apply to dict keys (see `_detection_dict`).
     """
     item = getattr(value, "item", None)
-    if callable(item):  # numpy-Skalare
+    if callable(item):  # numpy scalars
         return item()
     tolist = getattr(value, "tolist", None)
     if callable(tolist):  # ndarray
@@ -33,10 +33,10 @@ def _json_default(value: Any) -> Any:
 
 
 def _dumps(payload: dict) -> str:
-    """`NaN`/`Infinity` sind bewusst ein Fehler.
+    """`NaN` and `Infinity` are deliberately an error.
 
-    Nacktes `NaN` ist kein gueltiges JSON — `JSON.parse` wirft und das Frontend
-    stuerzt. So faellt der Job stattdessen in den Fehlerpfad.
+    A bare `NaN` is not valid JSON -- `JSON.parse` throws and the frontend
+    crashes. The job therefore falls into the error path instead.
     """
     return json.dumps(payload, default=_json_default, allow_nan=False)
 
@@ -52,10 +52,10 @@ def _envelope(
     frame_convention: str = "",
     configuration_id: str = "",
 ) -> dict:
-    """Kopffelder jedes Payloads.
+    """Return the header fields of every payload.
 
-    `frameConvention`/`configurationId` nur bei nicht-leerem Wert — additiv,
-    das Schema bleibt `wsc.vision.detections/1`.
+    `frameConvention` and `configurationId` are only added if non-empty --
+    additive, the schema stays `wsc.vision.detections/1`.
     """
     envelope = {
         "schema": PAYLOAD_SCHEMA,
@@ -77,7 +77,7 @@ def _envelope(
 
 
 def _detection_dict(detection: Detection) -> dict:
-    """Attribut-Keys zu `str`, weil `default=` fuer Keys nicht greift."""
+    """Convert attribute keys to `str`, because `default=` does not apply to keys."""
     return {
         "moduleId": detection.module_id,
         "instanceId": detection.instance_id,
@@ -104,10 +104,11 @@ def build_result_payload(
     world_tags: Sequence[dict] = (),
     camera_localization: dict | None = None,
 ) -> str:
-    """Serialisiert ein erfolgreiches Ergebnis.
+    """Serialize a successful result.
 
-    `worldTags` nur, wenn Welttags beobachtet wurden, `cameraLocalization`
-    nur mit Kamerapose -- additiv, das Schema bleibt `wsc.vision.detections/1`.
+    `worldTags` is only added if world tags were observed, and
+    `cameraLocalization` only with a camera pose -- additive, the schema stays
+    `wsc.vision.detections/1`.
     """
     payload = _envelope(
         vision_system_id=vision_system_id,
@@ -141,7 +142,7 @@ def build_error_payload(
     world_tags: Sequence[dict] = (),
     camera_localization: dict | None = None,
 ) -> str:
-    """Serialisiert ein fehlgeschlagenes Ergebnis mit demselben Schema."""
+    """Serialize a failed result with the same schema."""
     payload = _envelope(
         vision_system_id=vision_system_id,
         result_id=result_id,

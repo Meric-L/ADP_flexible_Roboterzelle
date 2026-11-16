@@ -1,9 +1,9 @@
-"""Zustand und Status der Live-Vorschau beim Tag-Einmessen (Overlay-Modus `tagreference`).
+"""State and status of the live preview during tag referencing (overlay mode `tagreference`).
 
-Reine Datenobjekte und Hilfen, ohne Threads: der Annotator
-(`stream_overlay.AprilTagStreamAnnotator`) haelt sie. Alle Objekte sind
-unveraenderlich und werden nur per Attributzuweisung ausgetauscht -- so kann der
-Event-Loop (OPC-UA-Methode) sie setzen und der Overlay-Thread lesen, ohne Sperre.
+Plain data objects and helpers, no threads: the annotator
+(`stream_overlay.AprilTagStreamAnnotator`) holds them. All objects are immutable
+and are only swapped by attribute assignment. That lets the event loop (OPC UA
+method) set them and the overlay thread read them without a lock.
 """
 
 from dataclasses import dataclass
@@ -11,19 +11,19 @@ from datetime import datetime, timezone
 from typing import Any
 
 PREVIEW_SCHEMA = "wsc.vision.tagreference.preview/1"
-#: Eine Vorschau laeuft ab, wenn sie so lange nicht erneuert wurde.
+#: A preview expires if it has not been renewed for this long.
 PREVIEW_TTL_S = 120.0
-#: Hoechstens 3 Auswertungen je Sekunde.
+#: At most 3 evaluations per second.
 PREVIEW_INTERVAL_S = 1.0 / 3.0
-#: So lange wird eine Vorschau-Auswertung auf neue Frames gezeichnet.
+#: How long a preview evaluation stays drawn on new frames.
 PREVIEW_HOLD_S = 1.0
-#: Debug-Bild einer laufenden Messung: laenger gehalten, die Messung ist langsamer.
+#: Debug image of a running measurement: held longer, because the measurement is slower.
 MEASURE_HOLD_S = 5.0
 
 
 @dataclass(frozen=True)
 class ReferencePreview:
-    """Die aktive Vorschau: Anfrage (`TagReferenceRequest`) und Ablaufzeit (`time.monotonic`)."""
+    """The active preview: request (`TagReferenceRequest`) and expiry time (`time.monotonic`)."""
 
     request: Any
     expires_at: float
@@ -31,7 +31,7 @@ class ReferencePreview:
 
 @dataclass(frozen=True)
 class ReferenceView:
-    """Eine fertige Auswertung zum Zeichnen; Pixel im Bild der Groesse `image_size`."""
+    """A finished evaluation ready to draw; pixels are in an image of size `image_size`."""
 
     debug: tuple
     corners_px: Any
@@ -45,7 +45,7 @@ class ReferenceView:
 def build_status(
     *, active: bool, tag_id: int | None, tag_seen: bool, debug=(), layers: dict | None = None
 ) -> dict:
-    """Inhalt von `TagReferencePreviewStatus` (`wsc.vision.tagreference.preview/1`)."""
+    """Content of `TagReferencePreviewStatus` (`wsc.vision.tagreference.preview/1`)."""
     lines = [
         {
             "id": entry["id"],

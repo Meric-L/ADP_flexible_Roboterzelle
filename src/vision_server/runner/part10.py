@@ -1,4 +1,4 @@
-"""Part-10-Aufsatz (`VisionProgram`) auf denselben `JobRunner`."""
+"""Part 10 wrapper (`VisionProgram`) on the same `JobRunner`."""
 
 from asyncua import Node
 
@@ -7,7 +7,7 @@ from .wiring import Wiring
 
 
 def _mirror_nodes(wiring: Wiring) -> dict[str, Node]:
-    """Die Knoten, die `VisionProgram` zusaetzlich spiegelt (nur die vorhandenen)."""
+    """Return the nodes that `VisionProgram` also mirrors (only those that exist)."""
     space = wiring.space
     mirror_nodes = {"LatestResultJson": wiring.results.json_node}
     optional = (
@@ -37,11 +37,11 @@ def _mirror_nodes(wiring: Wiring) -> dict[str, Node]:
 
 
 async def install_part10_program(wiring: Wiring) -> VisionProgram:
-    """Setzt `VisionProgram` auf und spiegelt Knoten und Methoden hinein.
+    """Install `VisionProgram` and mirror its nodes and methods into it.
 
-    Muss nach den Zustaenden stehen: das Programm spiegelt den Zustand des
-    Vision-Systems und waere sonst `Ready`, bevor feststeht, ob die Quelle
-    ueberhaupt aufgeht.
+    Must run after the states are set up: the program mirrors the state of the
+    vision system and would otherwise be `Ready` before it is known whether the
+    source starts at all.
     """
     program = await install_vision_program(
         wiring.server,
@@ -53,9 +53,8 @@ async def install_part10_program(wiring: Wiring) -> VisionProgram:
         mirror_methods=wiring.methods,
     )
     if not wiring.states.is_ready():
-        # Ein generischer Client soll nicht `Ready` sehen, wenn kein Job
-        # angenommen wuerde. Teil 10 hat keinen Fehlerzustand -- `Halted` ist
-        # die einzige ehrliche Entsprechung.
+        # A generic client must not see `Ready` if no job would be accepted.
+        # Part 10 has no error state -- `Halted` is the only honest equivalent.
         sm = program.state_machine
         await sm.change_state(
             sm.halted, sm.ready_to_halted, "Vision-System nicht betriebsbereit"

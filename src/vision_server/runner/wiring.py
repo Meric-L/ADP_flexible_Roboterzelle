@@ -1,11 +1,11 @@
-"""Gemeinsamer Zustand beim Einbau des Vision-Systems (`Wiring`).
+"""Shared state while the vision system is assembled (`Wiring`).
 
-`install_vision_machine` legt die OPC-UA-Methoden an, bevor alle Teile stehen:
-die Kalibrier-Session, den Annotator, den Layer-2-Lauf und die
-Hand-Auge-Sitzung gibt es erst spaeter im Ablauf. Die Handler lesen sie erst
-beim Aufruf einer Methode, also lange danach. Frueher loeste das der
-spaete Namens-Zugriff von Closures auf lokale Variablen; seit der Zerlegung
-in Module haelt dieses Objekt die Felder, und jeder Schritt setzt seine eigenen.
+`install_vision_machine` creates the OPC UA methods before all parts exist: the
+calibration session, the annotator, the layer-2 run and the hand-eye session
+are only created later in the sequence. The handlers read them only when a
+method is called, long after that. Earlier this was solved by late name lookup
+of closures over local variables; since the split into modules, this object
+holds the fields and each step sets its own.
 """
 
 from collections.abc import Mapping
@@ -26,7 +26,7 @@ from ..state_machine import VisionStateMachines
 
 @dataclass
 class Wiring:
-    """Was die Einbau-Schritte untereinander teilen."""
+    """State shared between the assembly steps."""
 
     server: Server
     space: VisionAddressSpace
@@ -35,38 +35,36 @@ class Wiring:
     results: ResultStore
     sources: Mapping[str, DetectionSource]
     jobs: JobRunner
-    #: Je Profil: ob die Quelle geoeffnet werden konnte (siehe `install`).
+    #: Per profile: whether the source could be opened (see `install`).
     opened: dict[str, bool] = field(default_factory=dict)
-    #: Die geoeffnete AprilTag-Quelle; `None`, wenn es sie nicht gibt oder
-    #: sie nicht aufging.
+    #: The opened AprilTag source; `None` if there is none or it did not open.
     apriltag_source: Any = None
-    #: Livestream-Publisher; `None` ohne Stream-Knoten oder ohne Kamera.
+    #: Live-stream publisher; `None` without a stream node or without a camera.
     camera_stream: CameraStreamPublisher | None = None
-    #: Overlay des Livestreams (`stream_overlay.AprilTagStreamAnnotator`).
+    #: Overlay of the live stream (`stream_overlay.AprilTagStreamAnnotator`).
     annotator: Any = None
-    #: `None`, wenn `config.apriltag` nicht gesetzt ist.
+    #: `None` if `config.apriltag` is not set.
     calibration_session: CalibrationSession | None = None
-    #: Layer-2-Lauf; `None` ausser auf dem Hand-Pi.
+    #: Layer-2 run; `None` except on the hand Pi.
     layer2_run: Any = None
-    #: Hand-Auge-Sitzung; `None` ausser auf dem Hand-Pi.
+    #: Hand-eye session; `None` except on the hand Pi.
     hand_eye_session: Any = None
-    #: Zusaetzliche Methoden-Knoten nach Namen. Landen als `mirror_methods`
-    #: auch unter `VisionProgram`; die Reihenfolge der Eintraege bleibt die
-    #: Reihenfolge der Anlage.
+    #: Additional method nodes by name. They also end up as `mirror_methods`
+    #: under `VisionProgram`; the order of the entries stays the order of creation.
     methods: dict[str, Node] = field(default_factory=dict)
 
     def calibration_busy(self) -> bool:
-        """Laeuft eine Kalibrier-Session oder ihre Hintergrund-Auswertung?"""
+        """Return whether a calibration session or its background evaluation is running."""
         return self.calibration_session is not None and self.calibration_session.busy
 
     def calibration_processing(self) -> bool:
-        """Rechnet die Kalibrierung gerade im Hintergrund?"""
+        """Return whether the calibration is currently computing in the background."""
         return self.calibration_session is not None and self.calibration_session.processing
 
     def hand_eye_active(self) -> bool:
-        """Ist eine Hand-Auge-Sitzung offen?"""
+        """Return whether a hand-eye session is open."""
         return self.hand_eye_session is not None and self.hand_eye_session.active
 
     def layer2_active(self) -> bool:
-        """Laeuft ein Layer-2-Lauf?"""
+        """Return whether a layer-2 run is active."""
         return self.layer2_run is not None and self.layer2_run.active

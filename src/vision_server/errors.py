@@ -1,10 +1,10 @@
-"""Fehlercodes fuer den `Error`-Ausgang der 40100-Methoden."""
+"""Error codes for the `Error` output of the 40100 methods."""
 
 from enum import IntEnum
 
 
 class VisionErrorCode(IntEnum):
-    """Herstellerspezifische Codes; das Nodeset definiert dafuer keinen Enum."""
+    """Vendor-specific codes; the nodeset defines no enum for them."""
 
     OK = 0
     INVALID_STATE = 1
@@ -17,7 +17,7 @@ class VisionErrorCode(IntEnum):
 
 
 class VisionJobError(Exception):
-    """Fehler mit einem Code fuer den `Error`-Ausgang."""
+    """Error carrying a code for the `Error` output."""
 
     def __init__(self, code: VisionErrorCode, message: str) -> None:
         super().__init__(message)

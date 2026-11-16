@@ -1,31 +1,33 @@
-"""Tag-Position auf dem Modul aus Bezugskanten im Kamerabild einmessen.
+"""Measure the tag position on the module from reference edges in the camera image.
 
-Der Zollstock-Ersatz: Der Modulkatalog liefert `T_module_tag` als Startwert,
-dazu zwei physische Bezugskanten des Moduls (Tischkante, Profil-Stirnkante ...,
-3D-Strecken im Modul-KS). Die Hand-Kamera sieht Tag und Kanten im **selben**
-Bild, also laesst sich alles im Tag-KS messen -- ohne Roboterkinematik und
-ohne Hand-Auge-Fehler. Aus der Lage der Kanten relativ zum Tag wird
-`T_module_tag` **in der Tag-Ebene** korrigiert (x, y, Drehung um Tag-z).
-Neigung und Abstand zur Flaeche bleiben aus dem Startwert (Tag liegt buendig).
+The folding-rule replacement: the module catalog supplies `T_module_tag` as a
+start value, plus two physical reference edges of the module (table edge, profile
+end face, ...; 3D segments in the module frame). The hand camera sees the tag and
+the edges in the **same** image, so everything can be measured in the tag frame
+-- without robot kinematics and without hand-eye error. From the position of the
+edges relative to the tag, `T_module_tag` is corrected **in the tag plane** (x, y,
+rotation about tag z). Tilt and distance to the surface stay from the start value
+(the tag lies flush).
 
-Ablauf je Bild (Details am jeweiligen Baustein):
+Procedure per image (details in each step):
 
-1. `measure_reference_lines`: Kante ueber den Startwert ins Tag-KS, ins Bild
-   projizieren (mit Verzeichnung), Querprofile, Gradientenmaxima, RANSAC-Gerade,
-   Sehstrahlen mit der Kantenhoehe schneiden -> gemessene 3D-Gerade im Tag-KS.
-2. `fit_in_plane_correction`: starre 2D-Transformation `D` in der Tag-Ebene,
-   die die Startwert-Kanten auf die gemessenen abbildet.
-3. `average_corrections`: mehrere Bilder mitteln, Streuung melden.
+1. `measure_reference_lines`: project the edge from the start value into the tag
+   frame and into the image (with distortion), cross profiles, gradient maxima,
+   RANSAC line, intersect viewing rays with the edge height -> measured 3D line in
+   the tag frame.
+2. `fit_in_plane_correction`: rigid 2D transform `D` in the tag plane that maps
+   the start-value edges onto the measured ones.
+3. `average_corrections`: average several images and report the spread.
 
-`plan_reference_view` rechnet vorab die Kamerapose im Tag-KS, aus der Tag und
-Kantenstuecke ins Bild passen. `catalog_rpy_deg` wandelt eine Rotation ins
-Katalogformat (`rotationDeg`).
+`plan_reference_view` computes in advance the camera pose in the tag frame from
+which tag and edge pieces fit into the image. `catalog_rpy_deg` converts a
+rotation into the catalog format (`rotationDeg`).
 
-Konventionen wie im ganzen Projekt (`tagloc.geometry`): `T_a_b` ist die Pose
-von b im KS a, Meter, Radiant intern. Tag-KS: +X rechts, +Y Oberkante, +Z aus
-dem Tag. Kamera-KS: OpenCV (+Z aus der Linse, +X rechts, +Y unten).
+Conventions as in the whole project (`tagloc.geometry`): `T_a_b` is the pose of
+b in frame a, metres, radians internally. Tag frame: +X right, +Y top edge, +Z
+out of the tag. Camera frame: OpenCV (+Z out of the lens, +X right, +Y down).
 
-`cv2` wird nur innerhalb der Funktionen importiert.
+`cv2` is imported only inside functions.
 """
 
 import logging
@@ -47,66 +49,66 @@ from .geometry import (
 )
 from .pose import tag_object_points
 
-#: Kuerzere Bezugskanten sind als Richtungsgeber unbrauchbar.
+#: Shorter reference edges are useless as direction guides.
 MIN_LINE_LENGTH_M = 0.02
 
-#: Kanten, die weniger als so viel Grad von der Tag-Normalen abweichen,
-#: liegen "senkrecht zur Tag-Ebene": ihre Lage in der Ebene ist im
-#: Bild nicht bestimmt.
+#: Edges that deviate from the tag normal by less than this many degrees lie
+#: "perpendicular to the tag plane": their position within the plane is not
+#: determined in the image.
 PERPENDICULAR_LIMIT_DEG = 10.0
 
-#: Mindestwinkel zwischen zwei Kanten fuer die volle 3-DoF-Korrektur.
+#: Minimum angle between two edges for the full 3-DoF correction.
 MIN_ANGLE_FULL_DEG = 20.0
 
-#: Gruende fuer `LineMeasurement.reason`.
+#: Reasons for `LineMeasurement.reason`.
 REASON_NOT_VISIBLE = "NOT_VISIBLE"
 REASON_NO_EDGE = "NO_EDGE"
 REASON_PERPENDICULAR = "PERPENDICULAR_TO_TAG"
 
-# --- Parameter der Kantensuche (Bildraum) -----------------------------------
+# --- Parameters of the edge search (image space) ----------------------------
 
-#: Abstand der Querprofile entlang der projizierten Kante, in Pixeln.
+#: Spacing of the cross profiles along the projected edge, in pixels.
 _PROFILE_SPACING_PX = 4.0
-#: Schrittweite innerhalb eines Querprofils, in Pixeln.
+#: Step size within a cross profile, in pixels.
 _PROFILE_STEP_PX = 0.5
-#: Glaettung des Graubilds vor dem Ableiten (Rauschen vs. Kantenlage).
+#: Smoothing of the grey image before differentiation (noise vs. edge position).
 _SMOOTH_SIGMA_PX = 1.2
-#: Weniger sichtbare Kante (projizierte Laenge) gilt als nicht sichtbar.
+#: An edge that is less visible (projected length) counts as not visible.
 _MIN_VISIBLE_PX = 40.0
-#: Mindest-Helligkeitssprung (Graustufen, ueber +-2,5 px) fuer einen Kandidaten.
+#: Minimum brightness step (grey levels, over +-2.5 px) for a candidate.
 _MIN_CONTRAST = 8.0
-#: Hoechstens so viele Gradientenmaxima je Querprofil.
+#: At most this many gradient maxima per cross profile.
 _PEAKS_PER_PROFILE = 3
-#: Mindest-Bandbreite der Suche in Pixeln, falls die Umrechnung zu klein ausfaellt.
+#: Minimum search band width in pixels, in case the conversion comes out too small.
 _MIN_BAND_PX = 6.0
-#: Stuetzstellen der Sichtbarkeitsabtastung entlang der Kante.
+#: Sample points of the visibility scan along the edge.
 _DENSE_SAMPLES = 300
-#: Rand, den ein sichtbarer Kantenpunkt zum Bildrand halten muss.
+#: Margin that a visible edge point must keep from the image border.
 _IMAGE_MARGIN_PX = 3.0
 
 _RANSAC_ITERATIONS = 200
 _RANSAC_MIN_PAIR_PX = 15.0
 _RANSAC_SEED = 20261020
-#: Abstand eines Punkts zur Geraden, bis zu dem er als Stuetzpunkt zaehlt.
+#: Distance of a point from the line up to which it counts as an inlier.
 _INLIER_PX = 1.0
-#: Beim Suchen weiterer Kandidaten werden Punkte so nah an einer
-#: gefundenen Geraden (gleiche Polaritaet) entfernt.
+#: When searching for further candidates, points this close to an already
+#: found line (same polarity) are removed.
 _REMOVE_PX = 2.5
 _MAX_CANDIDATES = 4
-#: Ein Kandidat, dessen Richtung mehr als so viel vom Startwert abweicht,
-#: ist eine andere Kante.
+#: A candidate whose direction deviates from the start value by more than this
+#: is a different edge.
 _MAX_ANGLE_TO_GUESS_DEG = 15.0
-#: Zweiter Kandidat mit mindestens diesem Anteil der Bewertung, ...
+#: A second candidate with at least this fraction of the score, ...
 _AMBIGUITY_SCORE_RATIO = 0.7
-#: ... und mehr als so viel Pixel Abstand macht die Messung mehrdeutig.
+#: ... and more than this many pixels of distance makes the measurement ambiguous.
 _AMBIGUITY_DISTANCE_PX = 2.0
-#: Standard-Ausdehnung einer Kante, wenn die Messung keine meldet (Meter).
+#: Default extent of an edge when the measurement reports none (metres).
 _DEFAULT_EXTENT_M = 0.05
 
 
 @dataclass(frozen=True)
 class ReferenceLine:
-    """Bezugskante: 3D-Strecke im Modul-KS, in Metern."""
+    """Reference edge: 3D segment in the module frame, in metres."""
 
     id: str
     start: np.ndarray
@@ -115,16 +117,16 @@ class ReferenceLine:
 
 @dataclass(frozen=True)
 class LineMeasurement:
-    """Messergebnis einer Bezugskante, im Tag-KS.
+    """Measurement result of one reference edge, in the tag frame.
 
-    `guess_*` ist der Startwert (aus `T_module_tag_guess`), `point_tag` /
-    `direction_tag` die gemessene Gerade. `guess_point_tag` ist der Punkt der
-    Startwert-Kante, bei dem die Messung stuetzt (Mitte der Stuetzpunkte);
-    bei nicht gefundenen Kanten die Mitte des sichtbaren Teils.
-    `offset_m` ist die senkrechte Verschiebung in der Tag-Ebene bei diesem
-    Punkt (gemessen minus Startwert, positiv zur linken Normalen
-    `(-dy, dx)` der Startwert-Richtung), `angle_deg` die Drehung der
-    Richtung um Tag-z (gemessen minus Startwert).
+    `guess_*` is the start value (from `T_module_tag_guess`), `point_tag` /
+    `direction_tag` the measured line. `guess_point_tag` is the point on the
+    start-value edge that the measurement is supported at (middle of the support
+    points); for edges not found, the middle of the visible part.
+    `offset_m` is the perpendicular shift in the tag plane at this point (measured
+    minus start value, positive towards the left normal `(-dy, dx)` of the
+    start-value direction), `angle_deg` the rotation of the direction about tag z
+    (measured minus start value).
     """
 
     id: str
@@ -142,43 +144,43 @@ class LineMeasurement:
     ambiguous: bool
     #: "NOT_VISIBLE" | "NO_EDGE" | "PERPENDICULAR_TO_TAG" | None
     reason: str | None
-    #: Laenge des gemessenen Kantenstuecks in der Tag-Ebene (Meter). Gewichtet
-    #: die Drehung in der Korrektur: kurze Kante, kurzer Hebelarm.
+    #: Length of the measured edge piece in the tag plane (metres). Weights the
+    #: rotation in the correction: short edge, short lever arm.
     extent_m: float = 0.0
 
 
 @dataclass(frozen=True)
 class InPlaneCorrection:
-    """Starre Korrektur `D` in der Tag-Ebene: `x' = R(theta) x + delta_xy`.
+    """Rigid correction `D` in the tag plane: `x' = R(theta) x + delta_xy`.
 
-    `D` wirkt im Tag-KS auf die Modulgeometrie:
-    `T_tag_module_neu = D * T_tag_module_guess`.
+    In the tag frame `D` acts on the module geometry:
+    `T_tag_module_new = D * T_tag_module_guess`.
     """
 
-    #: "full" (x, y, Drehung), "partial" (nur senkrecht zur Kante + Drehung)
-    #: oder "none" (Startwert unveraendert).
+    #: "full" (x, y, rotation), "partial" (only perpendicular to the edge + rotation)
+    #: or "none" (start value unchanged).
     dofs: str
     delta_xy_m: np.ndarray
     delta_rot_deg: float
-    #: Korrigiertes `T_module_tag`.
+    #: Corrected `T_module_tag`.
     pose_module_tag: Pose
-    #: RMS der verbleibenden Punkt-zu-Gerade-Abstaende in der Tag-Ebene.
+    #: RMS of the remaining point-to-line distances in the tag plane.
     residual_m: float
 
 
 @dataclass(frozen=True)
 class ViewPlan:
-    """Kamerapose im Tag-KS, aus der Tag und Kantenstuecke ins Bild passen."""
+    """Camera pose in the tag frame from which the tag and edge pieces fit into the image."""
 
     pose_tag_cam: Pose
     standoff_m: float
     fits: bool
-    #: IDs der Kanten (ggf. "tag"), die bei `max_standoff_m` nicht ins Bild passen.
+    #: IDs of the edges (possibly "tag") that do not fit into the image at `max_standoff_m`.
     uncovered: list[str]
 
 
 # --------------------------------------------------------------------------
-# Eingaben pruefen
+# Validate inputs
 # --------------------------------------------------------------------------
 
 
@@ -210,7 +212,7 @@ def _positive(value, name: str) -> float:
 
 
 def _checked_lines(lines: Sequence[ReferenceLine]) -> list[tuple[str, np.ndarray, np.ndarray]]:
-    """Prueft die Kanten und gibt `(id, start, end)` als Arrays zurueck."""
+    """Check the edges and return `(id, start, end)` as arrays."""
     checked = []
     for line in lines:
         start = _vector3(line.start, f"Kante {line.id}: start")
@@ -239,27 +241,27 @@ def _to_tag(pose_tag_module: Pose, point_module: np.ndarray) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------
-# Kante im Bild finden
+# Find the edge in the image
 # --------------------------------------------------------------------------
 
 
 def _fit_line_2d(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Totale kleinste Quadrate: `(Schwerpunkt, Einheitsrichtung)`."""
+    """Total least squares: return `(centroid, unit direction)`."""
     centre = points.mean(axis=0)
     _, _, vt = np.linalg.svd(points - centre, full_matrices=False)
     return centre, vt[0]
 
 
 def _line_distance(points: np.ndarray, centre: np.ndarray, direction: np.ndarray) -> np.ndarray:
-    """Vorzeichenbehafteter Abstand der Punkte zur Geraden (links positiv)."""
+    """Return the signed distance of the points to the line (positive on the left)."""
     delta = points - centre
     return direction[0] * delta[:, 1] - direction[1] * delta[:, 0]
 
 
 def _ransac_one(points, signs, indices, rng):
-    """Beste Gerade (meiste Stuetzpunkte gleicher Polaritaet) unter `indices`.
+    """Return the best line (most support points of the same polarity) among `indices`.
 
-    Gibt `(Stuetzindizes, Schwerpunkt, Richtung)` zurueck oder `None`.
+    Returns `(support indices, centroid, direction)`, or `None`.
     """
     subset = points[indices]
     sub_signs = signs[indices]
@@ -301,7 +303,7 @@ def _ransac_one(points, signs, indices, rng):
 
 
 def _ransac_lines(points, signs, rng, min_inliers):
-    """Mehrere Geradenkandidaten nacheinander: `[(Stuetzindizes, Schwerpunkt, Richtung)]`."""
+    """Find several line candidates one after another: `[(support indices, centroid, direction)]`."""
     remaining = np.arange(len(points))
     found = []
     for _ in range(_MAX_CANDIDATES):
@@ -320,7 +322,7 @@ def _ransac_lines(points, signs, rng, min_inliers):
 
 
 def tag_outline_px(calibration, pose_cam_tag, tag_size_m, margin_m):
-    """Umriss der Tag-Flaeche plus Rand im Rohbild, `(N, 2)`; `None` wenn nicht projizierbar."""
+    """Return the outline of the tag area plus margin in the raw image, `(N, 2)`; `None` if not projectable."""
     half = tag_size_m / 2.0 + margin_m
     steps = 40
     along = np.linspace(-half, half, steps, endpoint=False)
@@ -344,7 +346,7 @@ def tag_outline_px(calibration, pose_cam_tag, tag_size_m, margin_m):
 
 
 def _tag_mask(calibration, pose_cam_tag, tag_size_m, margin_m, shape) -> np.ndarray:
-    """Maske der Tag-Flaeche plus Rand im Bild (True = ausgeblendet)."""
+    """Return a mask of the tag area plus margin in the image (True = masked out)."""
     import cv2
 
     mask = np.zeros(shape, dtype=np.uint8)
@@ -356,7 +358,7 @@ def _tag_mask(calibration, pose_cam_tag, tag_size_m, margin_m, shape) -> np.ndar
 
 
 def _longest_run(flags: np.ndarray) -> tuple[int, int] | None:
-    """Erster und letzter Index der laengsten Folge von True, sonst `None`."""
+    """Return the first and last index of the longest run of True, else `None`."""
     best = None
     start = None
     for index, flag in enumerate(flags):
@@ -371,7 +373,7 @@ def _longest_run(flags: np.ndarray) -> tuple[int, int] | None:
 
 
 def _band_px(calibration, pose_cam_tag, centre_tag, lateral_tag, band_m) -> float:
-    """Suchband in Pixeln: die Strecke `band_m` quer zur Kante, projiziert."""
+    """Return the search band in pixels: the segment `band_m` across the edge, projected."""
     rvec, tvec = to_rvec_tvec(pose_cam_tag)
     points = np.array(
         [centre_tag, centre_tag + band_m * lateral_tag, centre_tag - band_m * lateral_tag]
@@ -409,10 +411,10 @@ def _failed(line_id, guess_point, guess_direction, reason, candidates=0, ambiguo
 
 
 def _collect_edge_points(blurred, mask, positions, normals, band_px):
-    """Gradientenmaxima aller Querprofile, subpixelgenau.
+    """Gradient maxima of all cross profiles, at sub-pixel accuracy.
 
-    Gibt `(Bildpunkte (N, 2), Polaritaet (N,), Kontrast (N,), Profilindex (N,))`
-    zurueck, Bildpunkte noch verzeichnet.
+    Returns `(image points (N, 2), polarity (N,), contrast (N,), profile index (N,))`,
+    with the image points still distorted.
     """
     import cv2
 
@@ -471,7 +473,7 @@ def _collect_edge_points(blurred, mask, positions, normals, band_px):
 
 
 def _debug_step(step) -> None:
-    """Fuehrt einen Debug-Schritt aus; ein Fehler darin darf die Messung nie stoeren."""
+    """Run one debug step; an error in it must never disturb the measurement."""
     try:
         step()
     except Exception:
@@ -479,12 +481,12 @@ def _debug_step(step) -> None:
 
 
 def _pts(array) -> list:
-    """Bildpunkte als JSON-taugliche Liste `[[u, v], ...]` (Rohbild-Pixel)."""
+    """Return image points as a JSON-friendly list `[[u, v], ...]` (raw image pixels)."""
     return np.round(np.asarray(array, dtype=np.float64).reshape(-1, 2), 2).tolist()
 
 
 def _undistorted_to_raw(points, calibration) -> np.ndarray:
-    """Punkte des idealen (entzerrten) Bildes zurueck ins verzeichnete Rohbild."""
+    """Map points of the ideal (undistorted) image back into the distorted raw image."""
     matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
     rays = np.column_stack(
@@ -511,7 +513,7 @@ def _measure_one(
     search_band_m,
     debug=None,
 ):
-    """Eine Bezugskante messen; mit `debug` (Liste) wird ein Debug-Dict angehaengt."""
+    """Measure one reference edge; if `debug` (a list) is given, a debug dict is appended."""
     dbg = None if debug is None else {"id": line_id}
     result = _measure_one_impl(
         line_id,
@@ -555,7 +557,7 @@ def _measure_one_impl(
     search_band_m,
     dbg=None,
 ):
-    """Eine Bezugskante messen (Rechnung); `dbg` ist `None` oder ein Dict zum Befuellen."""
+    """Measure one reference edge (the computation); `dbg` is `None` or a dict to fill."""
     start_tag = _to_tag(pose_tag_module, start_module)
     end_tag = _to_tag(pose_tag_module, end_module)
     direction = end_tag - start_tag
@@ -570,7 +572,7 @@ def _measure_one_impl(
     rvec, tvec = to_rvec_tvec(pose_cam_tag)
     rotation = pose_cam_tag[:3, :3]
 
-    # Sichtbaren Teil der Kante bestimmen.
+    # Determine the visible part of the edge.
     parameters = np.linspace(0.0, 1.0, _DENSE_SAMPLES)
     dense = start_tag + parameters[:, None] * direction
     camera = dense @ rotation.T + pose_cam_tag[:3, 3]
@@ -600,7 +602,7 @@ def _measure_one_impl(
         return _failed(line_id, middle, unit, REASON_NOT_VISIBLE)
     visible_middle = start_tag + 0.5 * (parameters[first] + parameters[last]) * direction
 
-    # Querprofile alle ~4 px entlang der projizierten Kante.
+    # Cross profiles every ~4 px along the projected edge.
     count = int(total // _PROFILE_SPACING_PX) + 1
     wanted = np.linspace(0.0, total, count)
     profile_parameters = np.interp(wanted, arclength, parameters[first : last + 1])
@@ -636,7 +638,7 @@ def _measure_one_impl(
 
     undistorted = lens.undistort_points(edge_points, calibration)
 
-    # Startwert-Gerade im idealen (entzerrten) Bild, fuer Naehe und Richtung.
+    # Start-value line in the ideal (undistorted) image, for proximity and direction.
     matrix = np.asarray(calibration.camera_matrix, dtype=np.float64)
     ends = np.array([profile_points[0], profile_points[-1]]) @ rotation.T + pose_cam_tag[:3, 3]
     ideal = np.column_stack(
@@ -698,7 +700,7 @@ def _measure_one_impl(
         for other in candidates[1:]
     )
 
-    # Sehstrahlen der Stuetzpunkte mit der Ebene der Kantenhoehe schneiden.
+    # Intersect the viewing rays of the support points with the plane at the edge height.
     indices = best["indices"]
     inverse_matrix = np.linalg.inv(matrix)
     homogeneous = np.column_stack([undistorted[indices], np.ones(len(indices))])
@@ -739,7 +741,7 @@ def _measure_one_impl(
     if dbg is not None:
 
         def _measured_line():
-            # Gewaehlte Linie im idealen Bild ueber die Inlier-Ausdehnung, zurueck ins Rohbild.
+            # Chosen line in the ideal image over the inlier extent, mapped back to the raw image.
             along = (undistorted[indices] - best["centre"]) @ best["direction"]
             ts = np.linspace(float(along.min()), float(along.max()), 12)
             ideal_points = best["centre"][None, :] + ts[:, None] * best["direction"][None, :]
@@ -780,30 +782,29 @@ def measure_reference_lines(
     tag_margin_m: float = 0.01,
     debug: list | None = None,
 ) -> list[LineMeasurement]:
-    """Misst die Bezugskanten im Bild, im Tag-KS.
+    """Measure the reference edges in the image, in the tag frame.
 
-    `debug`: ist es eine Liste, wird je Kante ein Dict mit Zwischenergebnissen
-    angehaengt (Rohbild-Pixel, siehe `tagloc.reference_overlay`) und einmal
-    `{"id": "_tag", "maskOutlinePx": ...}`; die Rechnung bleibt unveraendert.
+    `debug`: if it is a list, one dict with intermediate results is appended per
+    edge (raw image pixels, see `tagloc.reference_overlay`), plus once
+    `{"id": "_tag", "maskOutlinePx": ...}`; the computation stays unchanged.
 
-    `gray`: Graubild (oder BGR), Aufloesung wie `calib`. `pose_cam_tag`:
-    `T_cam_tag` aus der Tag-Erkennung. `pose_module_tag_guess`: Startwert
-    `T_module_tag` aus dem Katalog; er bestimmt, wo im Bild gesucht wird
-    (Band +-`search_band_m` quer zur projizierten Kante). Die Tag-Flaeche plus
-    `tag_margin_m` wird ausgeblendet, weil die Tag-Raender selbst starke
-    Kanten sind.
+    `gray`: grey image (or BGR), same resolution as `calib`. `pose_cam_tag`:
+    `T_cam_tag` from the tag detection. `pose_module_tag_guess`: start value
+    `T_module_tag` from the catalog; it determines where in the image to search
+    (band +-`search_band_m` across the projected edge). The tag area plus
+    `tag_margin_m` is masked out, because the tag borders are strong edges
+    themselves.
 
-    Je Kante genau ein `LineMeasurement`, in der Reihenfolge von `lines`.
-    Nicht messbare Kanten kommen mit `found=False` und `reason` zurueck.
-    Mehrdeutige Kanten (zweite, gleich gute Kante im Band, z. B. eine
-    Item-Nut) sind `found=True, ambiguous=True` und gehen nicht in die
-    Korrektur ein.
+    Exactly one `LineMeasurement` per edge, in the order of `lines`.
+    Edges that cannot be measured come back with `found=False` and `reason`.
+    Ambiguous edges (a second, equally good edge in the band, e.g. a T-slot
+    groove) are `found=True, ambiguous=True` and do not enter the correction.
 
-    Hoehe der Kante: kommt aus dem Startwert. Ein Fehler darin verschiebt die
-    gemessene Kante seitlich um etwa `delta_h * tan(Sehwinkel)`.
+    Height of the edge: comes from the start value. An error in it shifts the
+    measured edge sideways by about `delta_h * tan(viewing angle)`.
 
-    Wirft `ValueError` bei ungueltigen Eingaben (Kante kuerzer 2 cm, Groessen
-    <= 0, nicht endliche Werte, Auflosung passt nicht zur Kalibrierung).
+    Raises `ValueError` for invalid input (edge shorter than 2 cm, sizes <= 0,
+    non-finite values, resolution not matching the calibration).
     """
     import cv2
 
@@ -852,7 +853,7 @@ def measure_reference_lines(
 
 
 # --------------------------------------------------------------------------
-# Korrektur in der Tag-Ebene
+# Correction in the tag plane
 # --------------------------------------------------------------------------
 
 
@@ -862,7 +863,7 @@ def _rotation_2d(theta: float) -> np.ndarray:
 
 
 def _in_plane_transform(theta: float, translation_xy: np.ndarray) -> Pose:
-    """`D` als 4x4: Drehung um Tag-z, Verschiebung in der Tag-Ebene."""
+    """Return `D` as a 4x4 pose: rotation about tag z, translation in the tag plane."""
     rotation = np.eye(3)
     rotation[:2, :2] = _rotation_2d(theta)
     return from_rotation_translation(rotation, [translation_xy[0], translation_xy[1], 0.0])
@@ -884,12 +885,12 @@ def _unit_xy(vector: np.ndarray) -> np.ndarray:
 
 
 def _solve_in_plane(samples, normals, offsets, pivot, normal_ref):
-    """Gauss-Newton fuer `D(q) = R(theta)(q - pivot) + pivot + shift`.
+    """Gauss-Newton for `D(q) = R(theta)(q - pivot) + pivot + shift`.
 
-    `normal_ref=None`: freie Verschiebung (x, y, theta). Sonst nur entlang
-    `normal_ref` (Unbekannte: Verschiebung `u`, theta). Residuum je Stuetzpunkt:
-    Abstand von `D(q)` zur gemessenen Geraden `normal . x = offset`.
-    Rueckgabe `(theta, Verschiebung (2,), RMS-Residuum)`.
+    `normal_ref=None`: free shift (x, y, theta). Otherwise only along
+    `normal_ref` (unknowns: shift `u`, theta). Residual per support point:
+    distance of `D(q)` to the measured line `normal . x = offset`.
+    Returns `(theta, shift (2,), RMS residual)`.
     """
     theta = 0.0
     shift = np.zeros(2)
@@ -920,24 +921,24 @@ def _solve_in_plane(samples, normals, offsets, pivot, normal_ref):
 def fit_in_plane_correction(
     measurements: Sequence[LineMeasurement], pose_module_tag_guess: Pose
 ) -> InPlaneCorrection:
-    """Korrigiert `T_module_tag` in der Tag-Ebene aus den Kantenmessungen.
+    """Correct `T_module_tag` in the tag plane from the edge measurements.
 
-    Gesucht ist die starre 2D-Transformation `D` (x, y, Drehung um Tag-z), die
-    die Startwert-Kanten auf die gemessenen abbildet (kleinste Quadrate,
-    Punkt-zu-Gerade). Die gemessene Modulgeometrie im Tag-KS ist `D` mal die
-    Startwert-Geometrie, daher
+    Sought is the rigid 2D transform `D` (x, y, rotation about tag z) that maps
+    the start-value edges onto the measured ones (least squares, point to line).
+    The measured module geometry in the tag frame is `D` times the start-value
+    geometry, hence
 
-        T_tag_module_neu = D * inv(T_module_tag_guess)
-        T_module_tag_neu = inv(T_tag_module_neu)
+        T_tag_module_new = D * inv(T_module_tag_guess)
+        T_module_tag_new = inv(T_tag_module_new)
 
-    Verwendet werden nur Kanten mit `found` und ohne `ambiguous`.
+    Only edges with `found` and without `ambiguous` are used.
 
-    * mindestens zwei Kanten, davon zwei mit >= 20 Grad Winkel: `"full"`
-    * sonst mindestens eine Kante: `"partial"` -- nur Drehung und Verschiebung
-      senkrecht zur (besten) Kante, entlang der Kante unveraendert
-    * keine: `"none"`, Startwert unveraendert
+    * at least two edges, two of them at an angle of >= 20 degrees: `"full"`
+    * otherwise at least one edge: `"partial"` -- only rotation and shift
+      perpendicular to the (best) edge; along the edge it stays unchanged
+    * none: `"none"`, start value unchanged
 
-    `delta_xy_m` und `delta_rot_deg` beschreiben `D` um den Tag-Ursprung:
+    `delta_xy_m` and `delta_rot_deg` describe `D` about the tag origin:
     `x' = R(delta_rot) x + delta_xy`.
     """
     guess = _pose(pose_module_tag_guess, "pose_module_tag_guess")
@@ -1006,15 +1007,15 @@ _DOF_RANK = {"none": 0, "partial": 1, "full": 2}
 def average_corrections(
     corrections: Sequence[InPlaneCorrection],
 ) -> tuple[InPlaneCorrection, dict[str, float]]:
-    """Mittelt die Korrekturen mehrerer Bilder.
+    """Average the corrections of several images.
 
-    Gemittelt werden nur Korrekturen mit der hoechsten Freiheitsgrad-Stufe
-    (`full` vor `partial` vor `none`): eine Teilkorrektur laesst die Verschiebung
-    entlang der Kante bei 0 und wuerde eine volle Korrektur sonst verfaelschen.
-    Streuung `{"spreadMm", "spreadDeg"}`: RMS-Abweichung der Einzelkorrekturen
-    (`delta_xy_m` bzw. `delta_rot_deg`) vom Mittel; bei einem Bild 0.
+    Only corrections with the highest degree-of-freedom level are averaged
+    (`full` before `partial` before `none`): a partial correction keeps the shift
+    along the edge at 0 and would otherwise distort a full correction.
+    Spread `{"spreadMm", "spreadDeg"}`: RMS deviation of the individual
+    corrections (`delta_xy_m` resp. `delta_rot_deg`) from the mean; 0 for one image.
 
-    Wirft `ValueError` ohne Korrektur.
+    Raises `ValueError` without a correction.
     """
     if not corrections:
         raise ValueError("average_corrections braucht mindestens eine Korrektur")
@@ -1056,29 +1057,29 @@ def plan_reference_view(
     max_standoff_m: float = 0.60,
     tilt_deg: float = 0.0,
 ) -> ViewPlan:
-    """Kamerapose im Tag-KS, aus der Tag und Kantenstuecke ins Bild passen.
+    """Plan a camera pose in the tag frame from which the tag and edge pieces fit into the image.
 
-    Frontal: die Kamera schaut entlang -Tag-z, Bild-x entspricht Tag-x, Bild-y
-    zeigt nach -Tag-y (Tag-Oberkante oben im Bild). Ziel sind die vier
-    Tag-Ecken plus das tagnahe Stueck jeder Kante der Laenge `line_extent_m`
-    (zentriert auf den Punkt der Kante, der dem Tag am naechsten liegt, und in
-    die Kante hineingeschoben). Die Kamera sitzt ueber der Mitte dieser
-    Punkte; der Abstand ist der kleinste in `[min_standoff_m, max_standoff_m]`,
-    bei dem alles mit `margin` (Anteil der Bildbreite/-hoehe) Rand im Bild liegt
-    (Projektion mit Verzeichnung).
+    Head-on: the camera looks along -tag z, image x corresponds to tag x, image y
+    points to -tag y (tag top edge at the top of the image). The targets are the
+    four tag corners plus the piece of each edge near the tag, of length
+    `line_extent_m` (centred on the point of the edge closest to the tag and
+    pushed into the edge). The camera sits above the centre of these points; the
+    distance is the smallest in `[min_standoff_m, max_standoff_m]` at which
+    everything lies in the image with a `margin` (fraction of the image width /
+    height) border (projection with distortion).
 
-    `tilt_deg`: Kippung der Kamera um die Tag-x-Achse durch den Zielpunkt
-    (positiv: Kamera wandert nach -y). Eine leichte Kippung vermeidet die
-    Spiegelmehrdeutigkeit der Tag-Pose bei frontaler Sicht.
+    `tilt_deg`: tilt of the camera about the tag x axis through the target point
+    (positive: the camera moves towards -y). A slight tilt avoids the mirror
+    ambiguity of the tag pose when viewed head-on.
 
-    Passt nicht alles bei `max_standoff_m` ins Bild: `fits=False`, `uncovered`
-    nennt die Kanten-IDs (ggf. "tag"), die fehlen. Die Pose gilt dann fuer den
-    Tag plus die Kanten, die zusammen noch passen (nach Abstand zum Tag
-    nacheinander dazugenommen) -- eine zu weit entfernte Kante zieht also nicht
-    den Tag mit aus dem Bild. `standoff_m` ist die Tiefe des Zielpunkts im
-    Kamera-KS.
+    If not everything fits into the image at `max_standoff_m`: `fits=False`, and
+    `uncovered` names the edge IDs (possibly "tag") that are missing. The pose then
+    applies to the tag plus the edges that still fit together (added one by one by
+    distance to the tag) -- so an edge too far away does not pull the tag out of
+    the image with it. `standoff_m` is the depth of the target point in the camera
+    frame.
 
-    Wirft `ValueError` bei ungueltigen Eingaben.
+    Raises `ValueError` for invalid input.
     """
     tag_size = _positive(tag_size_m, "tag_size_m")
     extent = _positive(line_extent_m, "line_extent_m")
@@ -1122,7 +1123,7 @@ def plan_reference_view(
     def camera_pose(chosen, standoff: float) -> Pose:
         everything = np.concatenate([points for _, points in chosen])
         target = 0.5 * (everything.min(axis=0) + everything.max(axis=0))
-        # Zielpunkt auf die Bildmitte legen (nicht auf den Hauptpunkt).
+        # Place the target point at the image centre (not at the principal point).
         position = np.array(
             [
                 target[0] - (width / 2.0 - matrix[0, 2]) * standoff / matrix[0, 0],
@@ -1154,10 +1155,10 @@ def plan_reference_view(
                 missing.append(group_id)
         return missing
 
-    # Der Tag kommt immer ins Bild; Kanten werden nach Abstand zum Tag
-    # nacheinander dazugenommen, solange alles bei `max_standoff_m` passt.
-    # Eine zu weit entfernte Kante soll nicht den Tag und die anderen
-    # Kanten mit aus dem Bild ziehen -- sie steht in `uncovered`.
+    # The tag always goes into the image; edges are added one by one by distance
+    # to the tag, as long as everything still fits at `max_standoff_m`. An edge
+    # that is too far away must not pull the tag and the other edges out of the
+    # image with it -- it is listed in `uncovered`.
     chosen = groups[:1]
     uncovered: list[str] = []
     if uncovered_at(chosen, maximum):
@@ -1199,14 +1200,14 @@ def plan_reference_view(
 
 
 def catalog_rpy_deg(rotation) -> np.ndarray:
-    """Rotation im Katalogformat `rotationDeg`: `[roll, pitch, yaw]` in Grad.
+    """Rotation in the catalog format `rotationDeg`: `[roll, pitch, yaw]` in degrees.
 
-    RPY um **feste** Achsen X, Y, Z: `R = Rz(yaw) * Ry(pitch) * Rx(roll)` -- die
-    URDF-`rpy`-Konvention, wie `quaternionFromRpyDeg` /
-    `rpyDegFromQuaternion` im Frontend (`tagGeometry.ts`). Bei `pitch = +-90`
-    Grad (Kardan-Sperre) geht die gesamte Drehung in `roll`, `yaw = 0`.
+    RPY about **fixed** axes X, Y, Z: `R = Rz(yaw) * Ry(pitch) * Rx(roll)` -- the
+    URDF `rpy` convention, as `quaternionFromRpyDeg` / `rpyDegFromQuaternion` in
+    the frontend (`tagGeometry.ts`). At `pitch = +-90` degrees (gimbal lock) the
+    whole rotation goes into `roll`, `yaw = 0`.
 
-    `rotation`: 3x3-Rotation oder 4x4-Pose (nur der Rotationsteil zaehlt).
+    `rotation`: 3x3 rotation or 4x4 pose (only the rotation part counts).
     """
     matrix = np.asarray(rotation, dtype=np.float64)
     if matrix.shape == (4, 4):

@@ -1,14 +1,13 @@
-"""Listet die vom Farbsensor der angeschlossenen RealSense tatsaechlich
-unterstuetzten Aufloesung/FPS/Format-Kombinationen -- statt eine hoehere
-`realsense_resolution` zu raten und auf `pipeline.start()` zu hoffen.
+"""List the resolution/FPS/format combinations the connected RealSense color sensor supports.
 
-`_open_realsense` (camera.py) fordert `bgr8` an; die sortierte Ausgabe hebt
-deshalb hervor, welche Aufloesung/FPS-Kombinationen in genau diesem Format
-verfuegbar sind -- das ist die Liste, aus der ein neuer Wert fuer
-`realsense_resolution`/`realsense_fps` kommen sollte, kein anderes Format.
+Use this instead of guessing a higher `realsense_resolution` and hoping that
+`pipeline.start()` works. `_open_realsense` (camera.py) requests `bgr8`, so the
+sorted output highlights which resolution/FPS combinations are available in
+exactly this format. Pick new values for `realsense_resolution` and
+`realsense_fps` from that list, not from other formats.
 
-Braucht keinen exklusiven Kamerazugriff -- fragt nur die Geraete-Faehigkeiten
-ab, oeffnet keine Pipeline (der Server kann parallel weiterlaufen).
+Needs no exclusive camera access. It only queries device capabilities and
+opens no pipeline, so the server can keep running in parallel.
 """
 
 import sys

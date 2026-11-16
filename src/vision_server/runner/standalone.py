@@ -1,4 +1,4 @@
-"""Standalone-Lauf: das Vision-System als eigener Prozess (`run`)."""
+"""Standalone run: the vision system as its own process (`run`)."""
 
 import logging
 
@@ -13,10 +13,10 @@ _log = logging.getLogger(__package__)
 
 
 async def run(config: VisionServerConfig) -> None:
-    """Startet den Vision-Server als eigenen Prozess und haelt ihn am Leben.
+    """Start the vision server as its own process and keep it alive.
 
-    Produktiv haengt das Vision-System im Server der Roboterzelle; dieser Weg
-    ist fuer Entwicklung und isolierte Tests.
+    In production the vision system is part of the cell's robot server; this path is for
+    development and isolated tests.
     """
     server = Server()
     await configure_server(server, config)
