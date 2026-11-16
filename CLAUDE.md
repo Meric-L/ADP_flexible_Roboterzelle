@@ -9,8 +9,13 @@ Diese Datei ist **verbindlich für alle**: für jedes Teammitglied und für jede
 Agenten (Claude-Chat, Subagent, Hintergrund-Job). Sie liegt im Repository — wer
 klont, hat sie. Claude Code lädt sie automatisch, Menschen lesen sie hier.
 
-**Sprache: Deutsch.** Alle Dateien in diesem Repo — Code-Kommentare,
-Dokumentation, Commit-Messages — werden auf Deutsch geschrieben.
+**Sprache: Deutsch, mit Ausnahme der Code-Dokumentation.** Dokumentation und
+Commit-Messages werden auf Deutsch geschrieben. Ausgenommen sind die
+Code-Dokumentation (`doc/projektdoku/code-dokumentation.md` und
+`doc/projektdoku/code/`) sowie Docstrings und Code-Kommentare: Sie sind auf
+**Englisch** (Python: PEP 257, Google-Style mit `Args:`, `Returns:`, `Raises:`).
+Log-, Fehler- und OPC-UA-Meldungen bleiben Deutsch, weil Bediener und Tests sie
+lesen.
 
 ## Bevor du anfängst
 
