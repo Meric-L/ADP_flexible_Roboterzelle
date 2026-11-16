@@ -1,19 +1,8 @@
-"""MeasureBoard: measure the calibration chessboard before the hand-eye capture.
+"""Measure the calibration chessboard for centering before the hand-eye capture.
 
-For centering: the controller moves the robot over the board, calls `MeasureBoard`, and
-corrects until the whole board is centered in the image. Only then does it record
-`CaptureHandEyeSample`. Like `MeasureTags`: the Pi only measures and sends no motion
-commands.
-
-* **Whole board in the image:** `complete`, with `T_cam_board` (camera frame as in
-  OpenCV), the corners in pixels and the reprojection error.
-* **Board only partly in the image:** detection needs the whole grid. A smaller sub-grid
-  does fit into any visible part, however. From that come the centroid of the found
-  corners in pixels and the image edges they lie close to -- enough for centering, but
-  no board pose: the origin of a sub-grid is arbitrary.
-* **Nothing found:** `found: false`, no error.
-
-There is no asyncua and no camera here. See
+The controller moves the robot until the board is centered, then records the sample.
+The Pi only measures and sends no motion commands. A partly visible board yields the
+centroid of a sub-grid, but no pose. See
 `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
 """
 
@@ -36,6 +25,8 @@ RESULT_SCHEMA = "wsc.vision.measureboard.result/1"
 
 @dataclass(frozen=True)
 class BoardRequest:
+    """Parameters of one `MeasureBoard` call."""
+
     #: `None` = the board size from the camera configuration.
     board: object | None
     frames: int = DEFAULT_FRAMES
@@ -193,6 +184,7 @@ def build_result(
 
 
 def dumps(result: dict) -> str:
+    """Serialize `result` to JSON; `NaN` and `Infinity` raise `ValueError`."""
     return json.dumps(result, allow_nan=False, default=float)
 
 

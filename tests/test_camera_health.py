@@ -1,9 +1,8 @@
-"""Kamerazustand als `DeviceHealth` (OPC 40100-2).
+"""Camera state as `DeviceHealth` (OPC 40100-2).
 
-Zwei Ebenen, getrennt geprueft: die Abbildung ist eine reine Funktion und
-braucht weder Loop noch Adressraum; der Publisher wird gegen Fakes gefahren.
-Dass die Knoten im echten Adressraum richtig liegen, prueft
-`test_asset_model.py`.
+Two levels, tested separately: the mapping is a pure function and needs neither
+loop nor address space; the publisher is driven against fakes. That the nodes
+sit correctly in the real address space is checked by `test_asset_model.py`.
 """
 
 import asyncio
@@ -26,7 +25,7 @@ FAST_CONFIG = CameraStreamConfig(stale_frame_s=STALE_S, health_interval_s=0.01)
 
 
 def status(**overrides) -> CameraStatus:
-    """Ein gesunder Zustand, punktuell veraendert."""
+    """A healthy state, with individual fields changed."""
     fields = {
         "running": True,
         "has_handle": True,
@@ -41,7 +40,7 @@ def status(**overrides) -> CameraStatus:
 
 
 class DeviceHealthMappingTest(unittest.TestCase):
-    """Je ein Test pro Zeile der Abbildungstabelle in `camera_health.py`."""
+    """One test per row of the mapping table in `camera_health.py`."""
 
     def _health(self, **overrides) -> DeviceHealth:
         return device_health(status(**overrides), stale_frame_s=STALE_S)
@@ -56,7 +55,7 @@ class DeviceHealthMappingTest(unittest.TestCase):
         self.assertEqual(DeviceHealth.CHECK_FUNCTION, self._health(has_handle=False))
 
     def test_a_stale_frame_is_off_spec(self):
-        """Ein Haenger, der sich noch selbst heilen kann -- gelb, nicht rot."""
+        """A hang that can still heal itself: yellow, not red."""
         self.assertEqual(DeviceHealth.OFF_SPEC, self._health(frame_age_s=STALE_S + 0.1))
 
     def test_a_frame_exactly_at_the_threshold_is_still_normal(self):
@@ -69,14 +68,13 @@ class DeviceHealthMappingTest(unittest.TestCase):
         )
 
     def test_an_exhausted_reopen_budget_is_failure(self):
-        """Der endgueltige Fall schlaegt jeden voruebergehenden."""
+        """The final case beats any temporary one."""
         self.assertEqual(
             DeviceHealth.FAILURE, self._health(gave_up=True, frame_age_s=0.1)
         )
 
     def test_never_reports_maintenance_required(self):
-        """Dafuer braeuchte es einen Verschleisszaehler; `RemainingLifeTime`
-        wird bewusst nicht angelegt."""
+        """That would need a wear counter; `RemainingLifeTime` is deliberately not created."""
         for overrides in (
             {},
             {"frame_age_s": None},
@@ -91,12 +89,11 @@ class DeviceHealthMappingTest(unittest.TestCase):
 
 
 class DefaultsAreConsistentTest(unittest.TestCase):
-    """Die Vorgabewerte muessen zueinander passen, sonst ist OFF_SPEC tot.
+    """The default values must match each other, otherwise OFF_SPEC is dead.
 
-    OFF_SPEC gilt ab `stale_frame_s` und endet, wenn der Watchdog nach
-    `frame_timeout_s` eskaliert. Steht die Schwelle hinter dem Timeout, wird
-    der Zustand nie gemeldet -- ein stiller Ausfall, den kein anderer Test
-    bemerken wuerde.
+    OFF_SPEC applies from `stale_frame_s` and ends when the watchdog escalates
+    after `frame_timeout_s`. If the threshold lies behind the timeout, the state
+    is never reported, a silent failure no other test would notice.
     """
 
     def setUp(self):
@@ -111,7 +108,7 @@ class DefaultsAreConsistentTest(unittest.TestCase):
 
 
 class FakeCamera:
-    """Liefert einen vorgegebenen Zustand, unabhaengig von der Uhr."""
+    """Returns a preset state, independent of the clock."""
 
     def __init__(self, value: CameraStatus) -> None:
         self.value = value
@@ -132,8 +129,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([int(DeviceHealth.NORMAL)], node.written)
 
     async def test_writes_nothing_while_the_state_stays_the_same(self):
-        """Der Unterschied zum 1-Hz-Zaehler aus Altlast A3: im Ruhezustand
-        wird gar nicht geschrieben, egal wie viele Ticks vergehen."""
+        """Nothing is written at rest, however many ticks pass."""
         camera = FakeCamera(status())
         node = RecordingNode()
 
@@ -159,7 +155,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(DeviceHealth.OFF_SPEC, publisher.health)
 
     async def test_writes_to_every_configured_node(self):
-        """Wurzel und Bildsensor tragen denselben Wert."""
+        """Root and image sensor carry the same value."""
         camera = FakeCamera(status())
         nodes = [RecordingNode("ns=6;s=Wurzel"), RecordingNode("ns=6;s=Sensor")]
 
@@ -204,8 +200,7 @@ class GiveUpHandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([True], exited)
 
     async def test_exits_even_when_the_write_hangs(self):
-        """Der Prozess muss fallen, damit systemd neu startet -- ein
-        haengender Schreibvorgang darf das nicht verhindern."""
+        """The process must die so that systemd restarts it; a hanging write must not prevent that."""
 
         class HangingNode(RecordingNode):
             async def write_value(self, value) -> None:
@@ -226,7 +221,7 @@ class GiveUpHandlerTest(unittest.IsolatedAsyncioTestCase):
 
 
 def _text(value) -> str:
-    """`LocalizedText` oder schlichter String -- Tests wollen den Text."""
+    """`LocalizedText` or plain string; the tests want the text."""
     return getattr(value, "Text", None) or str(value)
 
 
@@ -267,7 +262,7 @@ class FakeAlarmNode:
 
 
 class FakeServer:
-    """Nur das, was `HealthAlarms` vom Server braucht."""
+    """Only what `HealthAlarms` needs from the server."""
 
     def __init__(self, *, fail: bool = False) -> None:
         self.fired: list = []
@@ -296,7 +291,7 @@ def _alarms(server: FakeServer) -> HealthAlarms:
 
 
 class HealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
-    """Der normkonforme Ereignisweg: DIs DeviceHealthAlarms."""
+    """The standard-conforming event path: the DI DeviceHealthAlarms."""
 
     async def test_fires_the_matching_alarm(self):
         server = FakeServer()
@@ -311,7 +306,7 @@ class HealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("hung", message)
 
     async def test_normal_fires_nothing_when_nothing_was_active(self):
-        """NORMAL ist die Abwesenheit eines Alarms, kein eigener Alarm."""
+        """NORMAL is the absence of an alarm, not an alarm of its own."""
         server = FakeServer()
         await _alarms(server).set(DeviceHealth.NORMAL, "ok")
 
@@ -332,8 +327,7 @@ class HealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("Inactive", active)
 
     async def test_only_one_alarm_is_active_at_a_time(self):
-        """Der Zustand ist einer von fuenf -- zwei aktive Alarme waeren ein
-        Widerspruch."""
+        """The state is one of five; two active alarms would be a contradiction."""
         server = FakeServer()
         alarms = _alarms(server)
         await alarms.set(DeviceHealth.OFF_SPEC, "ok")
@@ -370,12 +364,11 @@ class HealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("ImageSensor", captured[0].event.SourceNode)
 
     async def test_a_broken_generator_does_not_raise(self):
-        """Ein fehlgeschlagener Alarm darf die Zustandsvariable nicht
-        mitreissen."""
+        """A failed alarm must not take the state variable down with it."""
         await _alarms(FakeServer(fail=True)).set(DeviceHealth.FAILURE, "hung")
 
     async def test_an_unserved_state_is_skipped(self):
-        """MAINTENANCE_REQUIRED hat keinen Alarm -- das darf nicht werfen."""
+        """MAINTENANCE_REQUIRED has no alarm; it must not raise."""
         server = FakeServer()
         await _alarms(server).set(DeviceHealth.MAINTENANCE_REQUIRED, "x")
 
@@ -412,7 +405,7 @@ class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([True], exited)
 
     async def test_works_without_alarms(self):
-        """Ohne angelegte Alarme bleibt die Variable der Meldeweg."""
+        """Without configured alarms the variable remains the reporting path."""
         node = RecordingNode()
         publisher = CameraHealthPublisher(FakeCamera(status()), [node], FAST_CONFIG)
 
@@ -423,8 +416,8 @@ class PublisherAlarmTest(unittest.IsolatedAsyncioTestCase):
 
 class WriteDeviceHealthTest(unittest.IsolatedAsyncioTestCase):
     async def test_sends_the_enumeration_as_int32(self):
-        """OPC UA uebertraegt eine Enumeration als Int32; ohne das gaebe es
-        BadTypeMismatch am echten Knoten."""
+        """OPC UA transports an enumeration as Int32; otherwise the real node
+        would answer with BadTypeMismatch."""
         from asyncua import ua
 
         captured = []

@@ -1,21 +1,9 @@
 """Tag map: what each tag is and where it sits in the shared coordinate system.
 
-Core idea of the whole concept (doc/projektdoku/apriltag-lokalisierung.md section 1):
-
-    A tag carries a number, not a meaning. That tag 7 is module MOD-A, with its
-    origin 40 mm below the tag center, is recorded here -- in a file -- not in
-    code.
-
-**Only the world tags are fixed.** Four of them sit at the edge of the cell and
-span the world CS; everything else -- modules *and the robot* -- is movable and
-gets measured. The robot is a module like any other; it is just the one that is
-always in use.
-
-Reference tags (world) and measured tags (modules, robot) go through the same
-code. They differ only in whether their world pose is in the map or ``null``
-(movable, measured).
-
-No OpenCV: ``place_tags`` works only with poses, never with images.
+A tag carries a number, not a meaning: which module a tag belongs to, and its CAD
+offset, is recorded in a JSON file rather than in code (doc/projektdoku/apriltag-lokalisierung.md,
+section 1). Only the world tags have a fixed pose; modules and the robot are movable
+and measured. No OpenCV: ``place_tags`` works only with poses, never with images.
 """
 
 import json
@@ -44,8 +32,8 @@ _log = logging.getLogger(__name__)
 
 SCHEMA = "wsc.vision.tagmap/2"
 
-#: Schema 1 knew the roles `robot_table` and `reference` as *fixed* anchors.
-#: That was the wrong concept -- see doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md.
+#: Schema 1 treated the roles `robot_table` and `reference` as fixed anchors. That
+#: concept was wrong; see doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md.
 LEGACY_SCHEMA = "wsc.vision.tagmap/1"
 
 #: The only fixed thing in the cell: a world tag at the cell edge.
@@ -263,11 +251,8 @@ def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap:
 def _migrate_role(role: str, tag_id: int, pose_in_world, path: Path):
     """Map a schema 1 role to the current one. Return ``(role, pose)``.
 
-    Not silent: every reinterpretation is reported individually. That was
-    exactly the reason old maps were originally rejected: a ``robot_table``
-    world pose stays in the file and looks valid while it is no longer used.
-    With one message per tag this is no longer a silent process, and an
-    outdated map no longer blocks the whole vision system.
+    Every reinterpretation is logged per tag. A world pose of a role that is now
+    movable is dropped.
     """
     migrated = LEGACY_ROLES[role]
     if migrated in MOVABLE_ROLES and pose_in_world is not None:
@@ -295,11 +280,8 @@ def load_tag_map(path: Path) -> TagMap:
 def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
     """Read a tag map from JSON text.
 
-    A map in the old schema is **migrated, not rejected**. Rejecting it loudly
-    sounds right, but in practice it silently stops all detection, because
-    ``AprilTagDetectionSource.open`` fails on it. Module names and CAD offsets
-    from the old map are kept this way. Changes in meaning are reported one by
-    one by ``_migrate_role``.
+    A map in the old schema is migrated, not rejected, so that module names and CAD
+    offsets are kept. Changes in meaning are reported per tag by ``_migrate_role``.
     """
     path = source
     try:

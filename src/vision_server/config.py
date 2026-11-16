@@ -5,8 +5,7 @@ from pathlib import Path
 
 from .profiles import _REPO_ROOT, AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
-#: The nodesets live in the package that needs them. They used to live under
-#: ``src/OPCUA/``, because that directory predates ``vision_server/`` (tech debt C5, done).
+#: Nodesets shipped with the package.
 _NODESET_DIR = Path(__file__).resolve().parent / "nodesets"
 
 DEFAULT_NODESET_PATH = _NODESET_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
@@ -48,14 +47,9 @@ class VisionServerConfig:
     frame_id: str = "world"
     #: Must exceed the longest job runtime. The AprilTag job is the deciding one:
     #: ``samples_per_job`` captures, each waiting up to ``capture_timeout_s``, plus
-    #: detection and a margin. It was 20.0 -- measured live on pi1 (A/B test 2026-09-24,
-    #: without livestream/overlay competition, ``subpixel_corner_refinement=True`` at
-    #: full 12 MP): 1 of 4 jobs still hit the 20 s timeout (a real ``asyncio.wait_for``
-    #: timeout according to job.py, not "no tag in image"). Three samples, each with up to
-    #: ``capture_timeout_s`` of waiting, plus detection time (py-spy: ~46% of the profile
-    #: in ``_locate -> detect``) plus ``warmup_s`` left the old budget too little buffer.
-    #: Extra safety margin, until ``apriltag_quad_decimate`` (see ``profiles.py``) has
-    #: itself reduced the detection time -- then lower it again if appropriate.
+    #: detection and ``warmup_s``. At 20 s, 1 of 4 jobs on pi1 still timed out at full
+    #: 12 MP, so the value carries extra margin until detection itself is faster
+    #: (``apriltag_quad_decimate``, see ``profiles.py``).
     job_timeout: float = 30.0
     #: Deadline for ``JobRunner.stop()``: the abort, including cleanup and the state
     #: change, must be complete by then.

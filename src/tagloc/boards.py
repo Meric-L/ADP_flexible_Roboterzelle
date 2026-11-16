@@ -1,12 +1,7 @@
-"""Calibration boards: detect, cover, compute.
+"""Calibration boards: detect chessboard or ChArUco boards and compute camera calibration.
 
-Extracted from `src/apriltag/calibrate_camera.py` (prototype, removed 2026-10-30).
-Its calculation core was trapped in the keyboard loop of `main()`, so it was not
-possible to calibrate from a set of existing images. That is possible now, and it
-is the precondition for testing the calibration path without a camera.
-
-Board type and geometry are parameters (`BoardSpec`), not module globals like
-`USE_CHARUCO` and `CHESSBOARD_SIZE`.
+Calibration works from collected board samples, so it runs without a camera.
+Board type and geometry are passed as `BoardSpec`.
 """
 
 import logging
@@ -131,19 +126,16 @@ def _detect_chessboard(gray, spec: BoardSpec) -> BoardSample | None:
     # poor light, blur and strong tilt, and it already returns sub-pixel accurate
     # corners -- an extra cornerSubPix() is not needed here.
     #
-    # Note, not obvious: SB returns the corners in the **exact reverse order** of
-    # `findChessboardCorners` (checked empirically with a synthetic test image on
-    # 2026-09-23: after reversing, the positions agree to < 0.1 px). Taken
-    # unfiltered, this would silently swap the image-to-world point assignment in
-    # `_chessboard_object_points` -- the calibration would run through, but with a
-    # wrong result instead of an error.
-    # DELIBERATELY WITHOUT CALIB_CB_ACCURACY: according to the OpenCV docs the flag
-    # is an "own, slower algorithm" -- measured at ~4000 px width (ceiling camera
-    # format): 4.45 s with it versus 0.87 s without it (factor 5), and 0.06 s for the
-    # classic method (factor 73). The calibration capture always runs on the FULL
-    # camera frame (12 MP on the ceiling camera) -- with the flag, the OPC UA request
-    # on the Pi ran into the timeout ("Failed to send request"), found live on
-    # 2026-09-23.
+    # SB returns the corners in the **exact reverse order** of
+    # `findChessboardCorners` (after reversing, the positions agree to < 0.1 px).
+    # Unfiltered, this would silently swap the image-to-world point assignment in
+    # `_chessboard_object_points`: the calibration would run through with a wrong
+    # result instead of an error.
+    # CALIB_CB_ACCURACY is deliberately not set: the OpenCV docs call it an "own,
+    # slower algorithm". Measured at ~4000 px width, it took 4.45 s versus 0.87 s
+    # without it, and 0.06 s for the classic method. The calibration capture runs on
+    # the full camera frame (12 MP), and with the flag the OPC UA request on the Pi
+    # hit its timeout ("Failed to send request").
     found, corners = cv2.findChessboardCornersSB(
         gray, (spec.cols, spec.rows), flags=cv2.CALIB_CB_NORMALIZE_IMAGE
     )
@@ -257,10 +249,9 @@ def diagnose_board(gray, spec: BoardSpec) -> dict:
 def compute_coverage(samples, image_size: tuple[int, int]) -> tuple[float, float]:
     """Return the fraction of image width and height covered by all samples combined.
 
-    Carried over from `calibrate_camera.py`. It matters more than it seems: a
-    calibration taken only from the image centre gets a good RMS but useless
-    distortion coefficients -- and the error only shows up at the edges,
-    where the modules sit.
+    Coverage matters more than it seems: a calibration taken only from the image
+    centre gets a good RMS but useless distortion coefficients, and the error only
+    shows up at the edges, where the modules sit.
     """
     points = []
     for sample in samples:

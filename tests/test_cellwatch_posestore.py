@@ -1,7 +1,7 @@
-"""Die gemerkte Kamerapose uebersteht Neustarts und kommt aus dem Referenz-Scan.
+"""The stored camera pose survives restarts and comes from the reference scan.
 
-Sonst pausiert die Ueberwachung nach jedem Neustart, bis einmal zwei Welttags
-gleichzeitig zu sehen waren -- und das war oft nicht der Fall.
+Otherwise the watch pauses after every restart until two world tags have been
+seen at the same time once, and that often did not happen.
 """
 
 import json
@@ -74,10 +74,10 @@ class KeeperFileTest(unittest.TestCase):
         touched = self.path.stat().st_mtime_ns
         self.clock.t += CameraPoseKeeper.SAVE_INTERVAL_S - 1
         self.remember(keeper, 3)
-        self.assertEqual(self.path.stat().st_mtime_ns, touched)  # nicht neu geschrieben
+        self.assertEqual(self.path.stat().st_mtime_ns, touched)  # not rewritten
         self.clock.t += 2
         self.remember(keeper, 1)
-        data = json.loads(self.path.read_text(encoding="utf-8"))  # wieder gueltig, ohne das Leerzeichen
+        data = json.loads(self.path.read_text(encoding="utf-8"))  # valid again, without the space
         self.assertGreaterEqual(data["poseCount"], 6)
         self.assertGreater(first, 0)
 
@@ -87,7 +87,7 @@ class KeeperFileTest(unittest.TestCase):
         self.assertTrue(restarted.load())
         self.assertEqual(restarted.info()["source"], "file")
         np.testing.assert_allclose(restarted.stored_for(self.tag_map)[:3, 3], [0.8, 0.0, 2.5], atol=1e-9)
-        # Ein einziger Welttag, ohne dass zwei gleichzeitig zu sehen waren.
+        # A single world tag, without two being visible at once.
         stored = localization("stored", errors={584: 3.9})
         sightings, reason = restarted.judge([location()], stored, self.options, self.tag_map)
         self.assertEqual((list(sightings), reason), ([7], ""))
@@ -96,7 +96,7 @@ class KeeperFileTest(unittest.TestCase):
         self.remember(self.keeper(), 6)
         restarted = self.keeper()
         restarted.load()
-        # Die Kamera wurde waehrend der Pause angestossen: der Welttag passt nicht mehr.
+        # The camera was bumped during the pause: the world tag no longer fits.
         for _ in range(CameraPoseKeeper.BAD_FRAMES_TO_DROP):
             sightings, reason = restarted.judge(
                 [location()], localization("stored", errors={584: 9.0}), self.options, self.tag_map
@@ -104,7 +104,7 @@ class KeeperFileTest(unittest.TestCase):
             self.assertIsNone(sightings)
         self.assertIn("verworfen", reason)
         self.assertIsNone(restarted.stored_for(self.tag_map))
-        self.assertFalse(self.path.exists())  # ein weiterer Neustart stellt sie nicht wieder her
+        self.assertFalse(self.path.exists())  # another restart does not restore it
 
     def test_a_changed_tag_map_makes_the_file_useless(self):
         self.remember(self.keeper(), 6)
@@ -130,9 +130,9 @@ class KeeperFileTest(unittest.TestCase):
         blocked.write_text("x", encoding="utf-8")
         keeper = CameraPoseKeeper(path=blocked / "pose.json", clock=self.clock.monotonic)
         with self.assertLogs("vision_server.cellwatch", level="WARNING") as logs:
-            self.remember(keeper, 20)  # Verzeichnis ist eine Datei: Speichern scheitert, kein Absturz
+            self.remember(keeper, 20)  # directory is a file: saving fails, no crash
         self.assertIsNotNone(keeper.stored_for(self.tag_map))
-        # Nur eine Warnung, nicht eine je Bild.
+        # Only one warning, not one per image.
         self.assertEqual(sum("nicht gespeichert" in line for line in logs.output), 1)
 
 
@@ -150,7 +150,7 @@ class AdoptTest(unittest.TestCase):
         self.assertEqual(self.keeper.info()["source"], "scan")
         np.testing.assert_allclose(self.keeper.stored_for(self.tag_map)[:3, 3], [0.8, 0, 2.5])
         self.assertTrue(self.path.exists())
-        # Der Eckenfehler aus dem Scan ist die Grundlinie fuer die Konsistenzpruefung.
+        # The scan's corner error is the baseline for the consistency check.
         sightings, reason = self.keeper.judge(
             [location()], localization("stored", errors={584: 3.9}), CellWatchOptions(), self.tag_map
         )
@@ -235,7 +235,7 @@ class CellWatchAdoptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(errors, {583: 3.0, 584: 3.4})
         self.assertEqual(statuses[-1]["cameraPose"]["source"], "scan")
 
-        # Ein Scan ohne gemeinsame Pose (nur ein Welttag) wird nicht uebernommen.
+        # A scan without a common pose (only one world tag) is not adopted.
         scan["cameraLocalization"] = {"solver": "single"}
         adopted.clear()
         watch._ports.result_for_job.__self__["job-000002"] = json.dumps(scan)
@@ -245,7 +245,7 @@ class CellWatchAdoptionTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class RestartSceneTest(SceneTest):
-    """Die ganze Kette an der synthetischen Zelle, mit Neustart dazwischen."""
+    """The whole chain on the synthetic cell, with a restart in between."""
 
     def test_after_a_restart_a_single_world_tag_gives_good_module_poses(self):
         from tests import test_joint_camera_pose as scene
@@ -257,7 +257,7 @@ class RestartSceneTest(SceneTest):
             self.frame(truth, {583, 584, 585, 586})
         self.assertTrue(path.exists())
 
-        # Neustart: neuer Keeper, nur noch ein Welttag im Bild.
+        # Restart: new keeper, only one world tag in view now.
         self.keeper = CameraPoseKeeper(path=path)
         self.assertTrue(self.keeper.load())
         errors = []

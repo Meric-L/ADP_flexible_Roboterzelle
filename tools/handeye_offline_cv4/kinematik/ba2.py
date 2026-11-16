@@ -1,7 +1,6 @@
-"""Kinematik-Experiment 2: identifizierbares Kinematikmodell: dq2..dq6, dd3, dd5, da4, da5, da7; alle Sitzungen, Leave-one-session-out.
+"""Fit an identifiable kinematic model (joint offsets dq2..dq6, link lengths dd3, dd5, da4, da5, da7) with leave-one-session-out validation.
 
-Aufruf aus der Repo-Wurzel: PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/ba2.py
-Ergebnis vom 09.11.2026: doc/auswertung/handeye_cv4/kinematik_ergebnis.md
+Run from the repository root: PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/ba2.py
 """
 import json, sys
 from pathlib import Path
@@ -14,8 +13,9 @@ from tagloc import geometry, lens
 from tagloc.handeye_offline import _pose_from_vector, _vector_from_pose
 from ba import E, rms
 
-QI = [1, 2, 3, 4, 5]          # Gelenke 2..6
+QI = [1, 2, 3, 4, 5]          # Joints 2..6
 def fk2(q, p):
+    """Return the flange pose for joint angles q with kinematic parameters p."""
     dq = np.zeros(7); dq[QI] = p[:5]
     dd = np.zeros(7); dd[2] = p[5]; dd[4] = p[6]
     da = np.zeros(7); da[3] = p[7]; da[4] = p[8]; da[6] = p[9]
@@ -26,6 +26,7 @@ def fk2(q, p):
 NP = 10
 
 def residual(v, data, kinfree, pfix):
+    """Return stacked reprojection residuals for all sessions."""
     X = _pose_from_vector(v[:6]); ns = len(data)
     Bs = [_pose_from_vector(v[6+6*i:12+6*i]) for i in range(ns)]
     p = v[6+6*ns:6+6*ns+NP] if kinfree else pfix
@@ -38,6 +39,7 @@ def residual(v, data, kinfree, pfix):
     return np.concatenate(out)
 
 def solve(keys, kinfree, pfix=np.zeros(NP)):
+    """Fit hand-eye pose and optionally kinematic offsets on the given sessions."""
     data = [load(k) for k in keys]
     X = np.array(json.loads((ROOT / f"doc/auswertung/handeye_cv4/{S[keys[0]]}.json").read_text())["finalSolution"]["T_flange_camera"])
     v = list(_vector_from_pose(X))

@@ -1,15 +1,11 @@
-"""MeasureTagReference / PlanTagReferenceView: measure the tag position via reference edges.
+"""MeasureTagReference and PlanTagReferenceView: measure a tag position via reference edges.
 
-The folding-rule replacement: the controller (webskillcomposition) sends the
-catalog start value `T_module_tag` and the module's reference edges (3D segments
-in the module frame). The hand Pi takes fresh images, detects the tag, measures
-the edges in the same image, and returns the `T_module_tag` corrected in the tag
-plane -- without robot kinematics and without hand-eye error. The math lives in
-`tagloc.reference_edges`.
+The controller sends a start value `T_module_tag` and the module's reference edges (3D
+segments in the module frame). The hand Pi takes fresh images, detects the tag, measures
+the edges in the same image and returns `T_module_tag` corrected in the tag plane, without
+robot kinematics or hand-eye error. The math lives in `tagloc.reference_edges`.
 
-This module holds no asyncua and no camera: it parses the request, builds the
-result JSON, and provides the small pure helpers in between (tag pose across
-images, edge summary, warnings). See
+This module has no asyncua and no camera. See
 `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
 """
 
@@ -421,4 +417,5 @@ def build_view(plan=None, *, error: str | None = None) -> dict:
 
 
 def dumps(result: dict) -> str:
+    """Serialize a result dict to JSON text. NaN and infinity are rejected."""
     return json.dumps(result, allow_nan=False, default=float)

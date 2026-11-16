@@ -1,9 +1,8 @@
-"""Brett-Messung fuer die Hand-Auge-Kalibrierung: zu kleine Rasterangabe erkennen,
-erstes Bild nach dem Aufruf, Reprojektionsfehler je Aufnahme, MeasureBoard.
+"""Board measurement for the hand-eye calibration: detection of a too small grid
+spec, first image after the call, reprojection error per capture, MeasureBoard.
 
-Die Bilder sind nachgerechnete 6x7-Bretter (7x8 Felder, 23 mm) aus 40 cm mit
-einer RealSense-aehnlichen Kamera -- gedreht, geneigt und aus dem Bild
-geschoben.
+The images are re-rendered 6x7 boards (7x8 squares, 23 mm) from 40 cm away with a
+RealSense-like camera, rotated, tilted and pushed out of the image.
 """
 
 import json
@@ -33,7 +32,7 @@ try:
 
     from tests.test_apriltag_source import FakeCamera, profile_config
     from tests.test_handeye_session import sample_json
-except Exception:  # pragma: no cover - cv2/numpy/asyncua fehlen
+except Exception:  # pragma: no cover - cv2/numpy/asyncua missing
     cv2 = None
 
 K = None if cv2 is None else np.array([[615.0, 0, 320.0], [0, 615.0, 240.0], [0, 0, 1]])
@@ -58,7 +57,7 @@ TEXTURE = None if cv2 is None else _texture()
 
 
 def render(roll_deg=0.0, tilt_deg=0.0, distance=0.40, shift=(0.0, 0.0)):
-    """Ein Bild des 6x7-Bretts (640x480, Graustufen)."""
+    """Render one image of the 6x7 board (640x480, greyscale)."""
     centre = np.array([(REAL_COLS - 1) / 2 * SQUARE, (REAL_ROWS - 1) / 2 * SQUARE, 0.0])
     pose = g.compose(
         g.from_rvec_tvec((0, 0, math.radians(roll_deg)), (shift[0], shift[1], distance)),
@@ -86,16 +85,16 @@ def spec(cols=REAL_COLS, rows=REAL_ROWS):
     return BoardSpec("chessboard", cols, rows, SQUARE)
 
 
-#: Ohne Angabe gilt die Brettgroesse aus der Konfiguration -- im Test die
-#: Standardwerte (9x6), nicht das gerenderte 6x7-Brett.
+#: Without a specification the board size from the configuration applies; in the
+#: test that is the default (9x6), not the rendered 6x7 board.
 BOARD = '"board": {"type": "chessboard", "cols": 6, "rows": 7, "squareSizeM": 0.023}'
 
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy/asyncua fehlen")
 class DetectionHelpersTest(unittest.TestCase):
     def test_board_on_a_black_carrier_is_found_on_the_inverted_image(self):
-        """Helle Felder auf schwarzem Traeger: Am Originalbild scheitert die
-        Erkennung (echtes Bild, 22.10.2026), am invertierten nicht."""
+        """Light squares on a black carrier: detection fails on the original image
+        (a real image) but not on the inverted one."""
         from unittest import mock
 
         from tagloc import boards
@@ -106,18 +105,18 @@ class DetectionHelpersTest(unittest.TestCase):
 
         def fake(gray, board_spec):
             calls.append(int(gray[0, 0]))
-            # nur das invertierte Bild (Ecke 255 - Original) liefert etwas
+            # only the inverted image (corner 255 - original) yields something
             return sentinel if int(gray[0, 0]) == 255 - int(image[0, 0]) else None
 
         with mock.patch.object(boards, "_detect_chessboard", fake):
             found = boards.detect_board(image, spec())
             self.assertIs(found, sentinel)
-        self.assertEqual(len(calls), 2)  # erst Original, dann invertiert
+        self.assertEqual(len(calls), 2)  # first the original, then the inverted
 
     def test_search_on_a_reduced_image_is_as_accurate(self):
-        """`max_side`: schneller suchen, im vollen Bild nachschaerfen. Die Pose
-        stimmt mit der aus der Suche am vollen Bild ueberein (Millimeter), der
-        Reprojektionsfehler ist nicht schlechter."""
+        """`max_side`: search faster, refine on the full image. The pose agrees with
+        the one from searching the full image (to millimetres), and the
+        reprojection error is no worse."""
         from tagloc.boards import canonical_chessboard_corners, detect_board, estimate_board_pose
 
         calibration = CameraCalibration(K, np.zeros(5), (640, 480), model=PINHOLE)
@@ -141,12 +140,12 @@ class DetectionHelpersTest(unittest.TestCase):
         self.assertEqual(partial_patterns(spec(3, 4)), [])
 
     def test_a_board_cut_by_the_image_edge_gives_a_partial_grid(self):
-        image = render(shift=(-0.19, 0.0))  # nach links aus dem Bild geschoben
+        image = render(shift=(-0.19, 0.0))  # pushed out of the image to the left
         found = detect_partial_board(image, spec())
         self.assertIsNotNone(found)
         corners, cols, rows = found
         self.assertLess(cols * rows, REAL_COLS * REAL_ROWS)
-        self.assertTrue(np.all(corners[:, 0] < 320))  # nur im sichtbaren linken Teil
+        self.assertTrue(np.all(corners[:, 0] < 320))  # only in the visible left part
 
     def test_nothing_visible_gives_nothing(self):
         self.assertIsNone(detect_partial_board(np.full((480, 640), 128, np.uint8), spec()))
@@ -170,11 +169,11 @@ class SourceTest(unittest.IsolatedAsyncioTestCase):
             source, camera = self.source(folder, [render()] * 3, samples_per_job=2)
             pose, reason, info = await source.measure_board(spec())
         self.assertEqual(reason, "")
-        # Der Ursprung ist eine Ecke des Rasters; die Brettmitte liegt auf der optischen Achse.
+        # The origin is a corner of the grid; the board centre lies on the optical axis.
         centre = pose[:3, 3] + pose[:3, :3] @ [(REAL_COLS - 1) / 2 * SQUARE, (REAL_ROWS - 1) / 2 * SQUARE, 0]
         np.testing.assert_allclose(centre, [0, 0, 0.40], atol=0.01)
         self.assertLess(info["reprojectionErrorPx"], 1.0)
-        # Das erste Bild liegt VOR dem Aufruf und zaehlt nur fuer den Zeitstempel.
+        # The first image lies BEFORE the call and only counts for the timestamp.
         self.assertEqual(len(camera.consumed), 3)
 
     async def test_a_bad_fit_still_reports_its_error(self):
@@ -210,7 +209,7 @@ class SourceTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(result["poseInCamera"])
             self.assertEqual(result["intrinsicsSource"], "calibration")
             self.assertEqual(len(result["cornersPx"]), 42)
-            # Brett mittig: kaum Abstand vom Bildmittelpunkt.
+            # Board centred: barely any distance from the image centre.
             self.assertLess(abs(result["offsetPx"][0]), 15)
             self.assertLess(abs(result["offsetPx"][1]), 15)
             self.assertEqual(result["nearEdge"], [])
@@ -222,7 +221,7 @@ class SourceTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(result["complete"])
             self.assertIsNone(result["poseInCamera"])
             self.assertIsNotNone(result["partial"])
-            self.assertLess(result["offsetPx"][0], 0)  # Brett liegt links vom Bildmittelpunkt
+            self.assertLess(result["offsetPx"][0], 0)  # board lies left of the image centre
 
         with tempfile.TemporaryDirectory() as folder:
             source, _ = self.source(folder, [np.full((480, 640), 128, np.uint8)] * 2)
@@ -230,7 +229,7 @@ class SourceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((result["found"], result["complete"], result["error"]), (False, False, None))
 
         with tempfile.TemporaryDirectory() as folder:
-            source, _ = self.source(folder, [render()])  # nur das Vorab-Bild
+            source, _ = self.source(folder, [render()])  # only the pre-call image
             result = await source.measure_board_view(parse_request('{' + BOARD + ', "frames": 1}', _parse_board))
             self.assertEqual(result["error"], "NO_FRAME")
 
@@ -258,12 +257,12 @@ class ResultTest(unittest.TestCase):
         self.assertTrue(result["complete"] and result["poseOk"])
         self.assertEqual(result["board"], {"type": "chessboard", "cols": 6, "rows": 7, "squareSizeM": SQUARE})
         self.assertAlmostEqual(result["distanceM"], 0.4)
-        # Das Brett liegt unten links: offsetPx zeigt vom Bildmittelpunkt dorthin (x rechts, y unten).
+        # The board lies bottom left: offsetPx points from the image centre there (x right, y down).
         self.assertLess(result["offsetPx"][0], 0)
         self.assertGreater(result["offsetPx"][1], 0)
         self.assertEqual(result["nearEdge"], ["left"])
         json.dumps(result, allow_nan=False)
-        # Ein schlechter Fit wird gemeldet, aber nicht als ok.
+        # A bad fit is reported, but not as ok.
         bad = self.build([self.frame(complete=True, pose=pose, reprojection_error_px=2.5, corners=corners)])
         self.assertFalse(bad["poseOk"])
 
@@ -298,7 +297,7 @@ class ResultTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy/asyncua fehlen")
 class SessionTest(unittest.IsolatedAsyncioTestCase):
-    """`CaptureHandEyeSample`: Reprojektionsfehler je Aufnahme."""
+    """`CaptureHandEyeSample`: reprojection error per capture."""
 
     async def run_capture(self, measure):
         statuses = []
@@ -336,7 +335,7 @@ class SessionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["samples"][0]["reprojectionErrorPx"], 2.5)
 
         async def two_values(spec_or_tag):
-            return g.identity(), ""  # aeltere Messfunktion ohne Info
+            return g.identity(), ""  # older measurement function without info
 
         code, status = await self.run_capture(two_values)
         self.assertEqual(code, VisionErrorCode.OK)

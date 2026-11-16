@@ -1,9 +1,6 @@
-"""Wer den Livestream speist, haengt an einem Attribut, nicht an einem Namen.
+"""Tests that the livestream camera is found by its attribute, not by profile name.
 
-`runner._start_camera_stream` holte die Kamera frueher ueber
-`sources.get("image_recognition")`. Das Umbenennen oder Entfernen dieses
-Profils haette den Livestream still abgeschaltet -- nur eine Log-Zeile. Diese
-Tests halten fest, dass die Auswahl an einer geoeffneten Kamera haengt.
+Renaming the profile used to disable the livestream silently, with only a log line.
 """
 
 import unittest
@@ -18,7 +15,7 @@ from vision_server.runner import _build_annotator, _camera_owner, _start_camera_
 
 
 class FakeCamera:
-    """Steht fuer eine Quelle, die eine Kamera haelt."""
+    """Stands in for a source that holds a camera."""
 
 
 class CameralessSource(DetectionSource):
@@ -53,7 +50,7 @@ class CameraOwnerTest(unittest.TestCase):
         self.assertIsNone(_camera_owner(sources, {"a": True}))
 
     def test_does_not_depend_on_the_profile_name(self):
-        """Der eigentliche Punkt: ein beliebig benanntes Profil wird trotzdem gefunden."""
+        """A profile with any name is still found."""
         source = CameraSource()
         source.profile_id = "voellig_anderer_name"
         self.assertIs(_camera_owner({"x": source}, {"x": True}), source)
@@ -98,8 +95,8 @@ class BuildAnnotatorTest(unittest.TestCase):
         self.assertFalse(keywords["subpixel_corner_refinement"])
 
     def test_the_stream_detector_drops_corner_refinement_from_the_parameters(self):
-        """Subpixel bleibt im Stream aus (CPU-Konkurrenz zum Job), auch wenn
-        `cornerRefinementMethod` ausdruecklich in den Parametern steht."""
+        """Subpixel refinement stays off in the stream (CPU contention with the job),
+        even if `cornerRefinementMethod` is set explicitly in the parameters."""
         from unittest.mock import patch
 
         from vision_server.profiles import AprilTagProfileConfig
@@ -120,23 +117,19 @@ class BuildAnnotatorTest(unittest.TestCase):
             build_detector.call_args.kwargs["detector_parameters"],
             {"errorCorrectionRate": 0.8},
         )
-        # Das Config-Mapping des Jobs bleibt unveraendert.
+        # The job's config mapping stays unchanged.
         self.assertIn("cornerRefinementMethod", source._config.detector_parameters)
 
     def test_the_stream_gets_its_own_detector_without_subpixel_refinement(self):
-        """Regression: Job und Stream teilten sich bis 2026-09-24 EINE
-        Detektor-Instanz. Live auf pi1 gemessen (py-spy-Dump): beide Threads
-        gleichzeitig in `detector.detect()` mit aktivem
-        `CORNER_REFINE_APRILTAG` -- genug CPU-Konkurrenz fuer erneute
-        20s-Job-Timeouts, obwohl `AprilTagProfileConfig.subpixel_corner_refinement`
-        (Job-Pfad) auf `True` steht. Der Stream muss deshalb IMMER eine eigene
-        Instanz mit der Verfeinerung aus bekommen, unabhaengig vom Config-Wert."""
+        """Regression: job and stream once shared one detector instance, and both
+        threads running `detect()` with subpixel refinement caused job timeouts.
+        The stream must always get its own instance, regardless of the config value."""
         from unittest.mock import patch
 
         from vision_server.profiles import AprilTagProfileConfig
 
         source = CameraSource()
-        source._detector = object()  # Job-Detektor, bleibt unangetastet
+        source._detector = object()  # job detector, must stay untouched
         source._calibration = object()
         source._config = AprilTagProfileConfig(subpixel_corner_refinement=True)
 
@@ -166,7 +159,7 @@ class FakeHealthNode:
 
 
 class FakeSpace:
-    """Nur das, was `_start_camera_health` von `VisionAddressSpace` liest."""
+    """Only what `_start_camera_health` reads from `VisionAddressSpace`."""
 
     def __init__(self, camera_stream=None) -> None:
         self.latest_camera_frame = None
@@ -174,12 +167,11 @@ class FakeSpace:
 
 
 class StartCameraHealthTest(unittest.IsolatedAsyncioTestCase):
-    """Der Zustandsknoten haengt an der Kamera, nicht am Livestream."""
+    """The state node depends on the camera, not on the livestream."""
 
     async def test_is_not_tied_to_the_livestream(self):
-        """Ohne konfigurierten Livestream (`latest_camera_frame is None`)
-        steigt `_start_camera_stream` aus -- der Zustand muss trotzdem
-        veroeffentlicht werden."""
+        """Without a configured livestream (`latest_camera_frame is None`) the
+        state must still be published."""
         source = CameraSource(camera=SharedCamera(CameraStreamConfig()))
         assets = VisionAssetNodes(root=None, device_health=(FakeHealthNode(),))
 
@@ -202,7 +194,7 @@ class StartCameraHealthTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_reports_failure_when_no_camera_is_open(self):
-        """Knoten da, Kamera nicht: FAILURE ist die ehrliche Antwort."""
+        """Node present, camera absent: FAILURE is the honest answer."""
         node = FakeHealthNode()
         assets = VisionAssetNodes(root=None, device_health=(node,))
 

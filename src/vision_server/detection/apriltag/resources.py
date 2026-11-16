@@ -21,9 +21,8 @@ class ResourcesMixin:
     def _build_configuration_id(self) -> str:
         """Join the tag family, calibration and tag map into one string.
 
-        Later this shows which calibration and which tag map were active behind a
-        bad pose (doc/projektdoku/altlasten.md C4). It deliberately uses no OpenCV
-        and does not read the files.
+        Recorded in every result, so that the calibration and tag map active behind
+        a bad pose can be identified. It uses no OpenCV and does not read the files.
         """
         from tagloc.identity import calibration_identity, tag_map_identity
 

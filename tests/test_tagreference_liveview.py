@@ -1,8 +1,8 @@
-"""Live-Ansicht der Tag-Einmessung: Debug-Daten, Zeichnen, Vorschau, Protokoll, HTTP.
+"""Live view of the tag measurement: debug data, drawing, preview, protocol, HTTP.
 
-Wie `test_tagreference.py` mit gerenderten Szenen (`render_reference_scene`);
-echter Detektor und echte Kantensuche, nur ohne Kamera. Ohne OpenCV/numpy/asyncua
-werden die Tests uebersprungen.
+As in `test_tagreference.py`, with rendered scenes (`render_reference_scene`); real
+detector and real edge search, only without a camera. Without OpenCV/numpy/asyncua
+the tests are skipped.
 """
 
 import asyncio
@@ -43,8 +43,8 @@ try:
     from tests.test_tagreference import OpcUaTest as _OpcUaTest
 
     _start_server = _OpcUaTest.start
-    del _OpcUaTest  # sonst sammelt der Test-Lader dessen Tests ein zweites Mal ein
-except Exception:  # pragma: no cover - numpy/cv2/asyncua fehlen
+    del _OpcUaTest  # otherwise the test loader collects its tests a second time
+except Exception:  # pragma: no cover - numpy/cv2/asyncua missing
     np = None
     SceneSource = object
 
@@ -92,7 +92,7 @@ class DebugDataTest(SceneSource, unittest.TestCase):
     def test_debug_content_is_plausible(self):
         debug = []
         self.measure(debug)
-        json.dumps(debug)  # JSON-tauglich
+        json.dumps(debug)  # JSON-compatible
         self.assertEqual([entry["id"] for entry in debug], ["_tag", "A", "B"])
         self.assertGreater(len(debug[0]["maskOutlinePx"]), 4)
         width, height = self.IMAGE_SIZE
@@ -172,10 +172,10 @@ class DebugDataTest(SceneSource, unittest.TestCase):
         self.assertTrue(np.array_equal(draw_reference_debug(image, found, layers=none), image))
         self.assertTrue(np.array_equal(draw_reference_debug(image, found, layers={}), everything))
         self.assertTrue(np.array_equal(draw_reference_debug(image, found, layers=None), everything))
-        # Titel bleibt auch ohne Ebenen.
+        # The title stays even without layers.
         titled = draw_reference_debug(image, found, title="Tag 7", layers=none)
         self.assertFalse(np.array_equal(titled, image))
-        # Eine verworfene RANSAC-Linie gibt es in der sauberen Szene nicht: eine ergaenzen.
+        # A discarded RANSAC line does not exist in the clean scene, so add one.
         found = [dict(entry) for entry in found]
         found[1]["candidates"] = found[1]["candidates"] + [
             {"inliersPx": [[300, 200], [310, 205], [320, 210]], "score": 1.0, "chosen": False}
@@ -248,7 +248,7 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         self.assertEqual(status["tagId"], TAG_ID)
         image = self.images[0]
         original = image.copy()
-        annotator.annotate(image, "tagreference")  # startet die Auswertung im Hintergrund
+        annotator.annotate(image, "tagreference")  # starts the evaluation in the background
         self.settle(annotator)
         out = annotator.annotate(image, "tagreference")
         self.assertTrue(np.array_equal(image, original))
@@ -289,7 +289,7 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         annotator.annotate(blank, "tagreference")
         self.settle(annotator)
         out = annotator.annotate(blank, "tagreference")
-        self.assertFalse(np.array_equal(out, blank))  # Titel "nicht im Bild"
+        self.assertFalse(np.array_equal(out, blank))  # title "tag not in the picture"
         status = annotator.reference_preview_status
         self.assertTrue(status["active"])
         self.assertFalse(status["tagSeen"])
@@ -331,7 +331,7 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         annotator.annotate(self.images[0], "tagreference")
         self.settle(annotator)
         first = annotator._preview_pending
-        annotator.annotate(self.images[0], "tagreference")  # < 1/3 s danach
+        annotator.annotate(self.images[0], "tagreference")  # less than 1/3 s later
         self.assertIs(annotator._preview_pending, first)
 
     def test_measurement_debug_is_shown_and_scaled_to_the_stream(self):
@@ -346,15 +346,15 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         self.assertEqual(out.shape[:2], (240, 320))
         small = cv2.resize(self.images[0], (320, 240), interpolation=cv2.INTER_AREA)
         diff = np.any(out != small, axis=2)
-        # Die gruene Linie muss im skalierten Bild liegen: Pixel nahe der Kante
-        # A (links) sind veraendert, die Ecke unten rechts nicht.
+        # The green line must lie in the scaled image: pixels near edge A (left) are
+        # changed, the corner bottom right is not.
         self.assertGreater(int(diff.sum()), 200)
         self.assertFalse(diff[-20:, -20:].any())
 
     def test_without_a_preview_the_own_detection_keeps_the_boxes_alive(self):
         annotator = self.annotator()
         annotator.annotate(self.images[0], "tagreference")
-        self.assertIsNotNone(annotator._pending)  # eigene Erkennung wie im Modus apriltag
+        self.assertIsNotNone(annotator._pending)  # own detection, as in apriltag mode
         annotator._pending.result(timeout=30)
         self.assertEqual([p.tag_id for p in annotator._own_tags.tag_poses], [TAG_ID])
 
@@ -368,7 +368,7 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         out = annotator.annotate(self.images[0], "tagreference")
         self.assertFalse(annotator.reference_preview_status["tagSeen"])
         bare = draw_reference_debug(self.images[0], [], title="Tag 99 nicht im Bild")
-        self.assertFalse(np.array_equal(out, bare))  # Rahmen von Tag 7 sind dazugekommen
+        self.assertFalse(np.array_equal(out, bare))  # boxes of tag 7 were added
 
     def test_a_running_evaluation_keeps_the_old_picture(self):
         annotator = self.annotator()
@@ -376,14 +376,14 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         annotator.annotate(self.images[0], "tagreference")
         self.settle(annotator)
         view = annotator._view
-        annotator._view = dataclasses.replace(view, taken_at=time.monotonic() - 10)  # veraltet
+        annotator._view = dataclasses.replace(view, taken_at=time.monotonic() - 10)  # outdated
         annotator._preview_pending = _Pending()
         out = annotator.annotate(self.images[0], "tagreference")
         again = annotator.annotate(self.images[0], "tagreference")
         self.assertTrue(np.array_equal(out, again))
-        self.assertIs(annotator._scaled_cache[0], annotator._view)  # gecacht
+        self.assertIs(annotator._scaled_cache[0], annotator._view)  # cached
         annotator._preview_pending = None
-        annotator.annotate(self.images[0], "tagreference")  # nun veraltet und keine Auswertung: neu
+        annotator.annotate(self.images[0], "tagreference")  # now outdated, no evaluation: recompute
 
     def test_expiry_is_checked_outside_the_mode_too(self):
         annotator = self.annotator()
@@ -399,7 +399,7 @@ class PreviewAnnotatorTest(SceneSource, unittest.TestCase):
         original = annotator._calibration_for
 
         def switch_off(size):
-            annotator.set_reference_preview(None)  # Event-Loop schaltet mitten in der Auswertung aus
+            annotator.set_reference_preview(None)  # event loop switches off in the middle of the evaluation
             return original(size)
 
         annotator._calibration_for = switch_off
@@ -470,14 +470,14 @@ class _FakeAnnotator:
 
 @unittest.skipUnless(np is not None, "numpy/cv2/asyncua fehlen")
 class OpcUaLiveViewTest(SceneSource, unittest.IsolatedAsyncioTestCase):
-    #: Server mit installierten Methoden aus `OpcUaTest` (ohne dessen Tests zu erben).
+    #: Server with methods installed by `OpcUaTest` (without inheriting its tests).
     start = _start_server
 
     async def test_set_preview_method(self):
         annotator = _FakeAnnotator()
         source = AprilTagDetectionSource.__new__(AprilTagDetectionSource)
         vision_system, _, _, _ = await self.start(
-            source, lambda: True, state="Operational", annotator=annotator  # busy: nie BUSY
+            source, lambda: True, state="Operational", annotator=annotator  # busy: never BUSY
         )
         call = vision_system.call_method
         self.assertEqual(await call(self.set_preview_method, request_text()), int(VisionErrorCode.OK))
@@ -534,7 +534,7 @@ class OpcUaLiveViewTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(folders), 1)
             protocol = folders[0]
             self.assertRegex(protocol.name, r"^\d{8}-\d{6}_tag7$")
-            self.assertEqual(result["debugDir"], protocol.as_posix())  # ausserhalb des Repos: absolut
+            self.assertEqual(result["debugDir"], protocol.as_posix())  # outside the repo: absolute
             names = {path.name for path in protocol.iterdir()}
             self.assertEqual(
                 names,
@@ -545,7 +545,7 @@ class OpcUaLiveViewTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cv2.imread(str(protocol / "frame1.png")).shape, (480, 640, 3))
             self.assertTrue(np.array_equal(cv2.imread(str(protocol / "frame1.png")), self.images[0]))
             self.assertEqual(cv2.imread(str(protocol / "overlay.jpg")).shape, (480, 640, 3))
-            # Vorschau gesetzt, Messung markiert, je Bild eine Debug-Anzeige.
+            # Preview set, measurement marked, one debug display per image.
             self.assertEqual(annotator.calls[0], ("preview", TAG_ID))
             self.assertEqual(annotator.calls[1], ("measuring", True))
             self.assertEqual(annotator.calls[-1], ("measuring", False))
@@ -553,7 +553,7 @@ class OpcUaLiveViewTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(shown), 3)
             self.assertEqual(shown[-1][3], "Tag 7 - Messung Bild 3/3")
 
-            # saveDebug=false: kein Ordner, debugDir null.
+            # saveDebug=false: no folder, debugDir null.
             feeder = asyncio.create_task(feed())
             result_json, error = await vision_system.call_method(
                 measure, json.dumps({**json.loads(request), "saveDebug": False})
@@ -567,7 +567,7 @@ class OpcUaLiveViewTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         self.make_scene()
         with tempfile.TemporaryDirectory() as folder:
             blocked = Path(folder) / "datei"
-            blocked.write_text("im Weg")  # Ordner kann darunter nicht angelegt werden
+            blocked.write_text("im Weg")  # folder cannot be created below it
             source, camera = self.source(folder)
             source._config = dataclasses.replace(source._config, capture_timeout_s=2.0)
             vision_system, _, measure, _ = await self.start(
@@ -635,12 +635,12 @@ class ProtocolFolderTest(unittest.TestCase):
                 directory, 7, "{}", {}, [], image, now=datetime(2026, 10, 21, 12, 0, 0)
             )
             self.assertEqual(tagreference_log.latest_overlay(directory), old / "overlay.jpg")
-            newer = tagreference_log.write_protocol(  # TAG_NOT_SEEN: kein Overlay
+            newer = tagreference_log.write_protocol(  # TAG_NOT_SEEN: no overlay
                 directory, 7, "{}", {}, [], None, now=datetime(2026, 10, 21, 12, 0, 5)
             )
             os.utime(old, (1000, 1000))
             self.assertTrue(newer.is_dir())
-            self.assertIsNone(tagreference_log.latest_overlay(directory))  # nicht das alte Bild
+            self.assertIsNone(tagreference_log.latest_overlay(directory))  # not the old image
 
     def test_foreign_folders_are_never_touched_or_served(self):
         image = np.zeros((4, 4, 3), dtype=np.uint8)
@@ -668,7 +668,7 @@ class ProtocolFolderTest(unittest.TestCase):
                     directory, 7, "{}", {}, [], image, now=datetime(2026, 10, 21, 12, 0, 0) + timedelta(seconds=index)
                 )
                 os.utime(path, (1_000_000 + index, 1_000_000 + index))
-            # Uhr steht nach dem Neustart auf 2000: der Name der neuen Messung sortiert VOR allen alten.
+            # Clock is at 2000 after the restart: the name of the new measurement sorts BEFORE all old ones.
             new = tagreference_log.write_protocol(
                 directory, 7, "{}", {}, [], image, now=datetime(2000, 1, 1, 0, 0, 0)
             )

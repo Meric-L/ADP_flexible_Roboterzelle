@@ -1,5 +1,5 @@
-"""Livestream im Kalibriermodus: keine dunkle Kontur, Eckenzahl oben links,
-eine Kalibrier-Zeile unten links, Ecken im Bild markiert (Wunsch 28.10.2026)."""
+"""Livestream in calibration mode: no dark outline, corner count top left, one
+calibration caption line bottom left, corners marked in the picture."""
 
 import unittest
 import unittest.mock
@@ -10,14 +10,14 @@ try:
     import numpy as np
 
     from tagloc.overlay import COLOR_BOARD
-except Exception:  # OpenCV nicht installiert
+except Exception:  # OpenCV not installed
     cv2 = None
     np = None
 
 from vision_server.profiles import AprilTagProfileConfig
 from vision_server.stream_overlay import AprilTagStreamAnnotator
 
-#: Das Brett am Aufbau: 8x11 Felder = 7x10 Innenecken.
+#: The board as set up: 8x11 squares = 7x10 inner corners.
 CONFIG = AprilTagProfileConfig(
     calibration_board_type="chessboard",
     calibration_board_cols=7,
@@ -39,7 +39,7 @@ def annotator(calibration_id="test"):
 
 
 def board_image():
-    """8 Felder quer, 11 hoch, weisser Rand; liefert Bild und Innenecken (x, y)."""
+    """8 squares across, 11 down, white border; returns image and inner corners (x, y)."""
     image = np.full((HEIGHT, WIDTH, 3), 255, dtype=np.uint8)
     left = (WIDTH - 8 * SQUARE_PX) // 2
     for row in range(11):
@@ -68,7 +68,7 @@ class CalibrationStreamOverlayTest(unittest.TestCase):
         )
         changed = np.any(result != grey, axis=2)
         self.assertTrue(changed.any(), "es muss etwas gezeichnet sein")
-        # Oben links die Eckenzahl in Brettfarbe, unten links weisse Schrift.
+        # Corner count top left in board colour, white text bottom left.
         top_left = result[: HEIGHT // 6, : WIDTH // 3]
         self.assertTrue(any(is_board_colour(p) for p in top_left.reshape(-1, 3)))
         bottom = result[HEIGHT * 5 // 6 :, :]
@@ -84,12 +84,12 @@ class CalibrationStreamOverlayTest(unittest.TestCase):
         )
         bottom = result[HEIGHT * 5 // 6 :, :]
         changed = np.any(bottom != 128, axis=2)
-        # Nur drei Werte: Hintergrund, Weiss, Schwarz -- keine Anti-Alias-Grautoene,
-        # keine Transparenz, kein Schatten.
+        # Only three values: background, white, black. No anti-alias grey tones,
+        # no transparency, no shadow.
         values = {tuple(p) for p in bottom[changed]}
         self.assertEqual(values, {(255, 255, 255), (0, 0, 0)})
-        # Jedes weisse Pixel hat ringsum nur weisse oder schwarze Nachbarn im Abstand 1:
-        # der Rand ist 1 px breit, danach folgt gleich der Hintergrund.
+        # Every white pixel has only white or black neighbours at distance 1: the
+        # border is 1 px wide, followed directly by the background.
         white = np.all(bottom == 255, axis=2)
         black = np.all(bottom == 0, axis=2)
         grown = np.zeros_like(white)
@@ -144,7 +144,7 @@ class CalibrationStampTest(unittest.TestCase):
         self.assertEqual(self.fmt("cam@2026-01-15T15:25:06+00:00"), "15.01.2026, 16:25 Uhr")
 
     def test_z_suffix_and_day_rollover(self):
-        # Handeye schreibt "Z"; 23:30 UTC im Sommer ist am Folgetag 01:30 Berlin.
+        # Handeye writes "Z"; 23:30 UTC in summer is 01:30 Berlin the next day.
         self.assertEqual(self.fmt("cam@2026-06-30T23:30:00Z"), "01.07.2026, 01:30 Uhr")
 
     def test_other_offset_is_converted(self):

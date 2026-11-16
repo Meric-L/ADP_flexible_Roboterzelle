@@ -25,8 +25,7 @@ from asyncua import Client, ua
 from tagloc.boards import BoardSpec, detect_board
 
 #: Plausible combinations as the first, obvious set: first the current board
-#: (since 28.10.2026 7x10 inner corners, 23 mm per square), then the previous one
-#: (7x9, 22 mm per square), with which the real board was found on the hand Pi.
+#: (7x10 inner corners, 23 mm per square), then the previous one (7x9, 22 mm per square).
 DEFAULT_COMBOS = [
     (7, 10), (10, 7), (7, 9), (9, 7), (6, 8), (8, 6), (6, 9), (9, 6),
     (7, 8), (8, 7), (8, 9), (9, 8),

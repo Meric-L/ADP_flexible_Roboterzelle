@@ -1,4 +1,4 @@
-"""Fahrziele des Layer-2-Laufs: eine Rechnung fuer Welttag und Modultag."""
+"""Target poses of the layer-2 run: one computation for world tags and module tags."""
 
 import json
 import math
@@ -11,11 +11,11 @@ try:
     from tagloc.tagmap import TagEntry, TagMap
     from vision_server.detection.apriltag import robot_pose_from_parameters
     from vision_server.layer2 import plan
-except Exception:  # pragma: no cover - numpy fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy missing in this environment
     np = None
 
-#: Basis leicht verdreht und verschoben -- in der Identitaet fiele ein
-#: vertauschtes inv() in der Basisumrechnung nicht auf.
+#: Base slightly rotated and shifted: with the identity, an inverted inv() in
+#: the base transform would go unnoticed.
 BASE_POSITION = (1.2, 0.8, 0.0)
 BASE_YAW_RAD = math.radians(30.0)
 FLANGE_CAM_POSITION = (0.04, -0.01, 0.09)
@@ -61,13 +61,13 @@ class ViewTargetTest(unittest.TestCase):
     def test_the_camera_looks_down_on_a_tag_lying_face_up(self):
         target = plan.view_target(geometry.identity(), geometry.identity(), geometry.identity(), 0.3)
         np.testing.assert_allclose(target.camera_in_world[:3, 3], [0, 0, 0.3], atol=1e-12)
-        # OpenCV-Kamera: +z ist die Blickrichtung -- nach unten auf den Tag.
+        # OpenCV camera: +z is the viewing direction, i.e. down onto the tag.
         np.testing.assert_allclose(target.camera_in_world[:3, 2], [0, 0, -1], atol=1e-12)
 
     def test_the_chain_closes(self):
         tag = pose((1.5, 1.4, 0.4), yaw(0.7))
         target = plan.view_target(tag, base_pose(), flange_cam(), 0.3)
-        # Flansch · T_flansch_cam = Kamera, Basis · Flansch_in_Basis = Flansch.
+        # flange · T_flange_cam = camera, base · flange_in_base = flange.
         np.testing.assert_allclose(
             geometry.compose(target.flange_in_world, flange_cam()), target.camera_in_world, atol=1e-12
         )
@@ -81,7 +81,7 @@ class ViewTargetTest(unittest.TestCase):
     def test_world_tag_and_module_tag_are_planned_alike(self):
         tag_in_world = pose((1.5, 1.4, 0.4), yaw(0.7))
         anchor = plan.StepSpec(purpose=plan.ANCHOR, name="Welttag", world_tag=(0, tag_in_world))
-        # Dasselbe Tag, einmal als Modultag: Modulpose mal Tag-Lage.
+        # The same tag, once as a module tag: module pose times tag pose.
         module_pose = pose((1.0, 1.0, 0.0))
         tag_in_module = geometry.compose(geometry.invert(module_pose), tag_in_world)
         measured = plan.StepSpec(
@@ -99,8 +99,8 @@ class ViewTargetTest(unittest.TestCase):
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class TagChoiceTest(unittest.TestCase):
     def test_the_tag_facing_the_base_wins(self):
-        # Zwei Tags an einem Modul bei x = 2: einer zeigt nach -x (zur Basis
-        # bei x = 0), einer nach +x (weg davon).
+        # Two tags on one module at x = 2: one points along -x (towards the base
+        # at x = 0), one along +x (away from it).
         facing = pose((2.0, 0, 0.2), np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]], dtype=float))
         away = pose((2.2, 0, 0.2), np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]], dtype=float))
         tag_id, _ = plan.tag_facing_base([(8, away), (7, facing)], [0, 0, 0])
@@ -121,8 +121,7 @@ class PlanRunTest(unittest.TestCase):
             flange_cam(),
         )
         self.assertEqual([step.spec.purpose for step in steps], ["anchor", "measure", "measure"])
-        # Ohne Annaeherung (approach_m=0) genau der Plan von vorher.
-        # Welttag 0 liegt naeher an der Basis als Welttag 1.
+        # Without approach (approach_m=0). World tag 0 lies nearer the base than world tag 1.
         self.assertEqual(steps[0].tag_id, 0)
         self.assertEqual([step.spec.module_id for step in steps[1:]], ["NEAR", "FAR"])
 
@@ -149,7 +148,7 @@ class PlanRunTest(unittest.TestCase):
         for approach, close in zip(steps[::2], steps[1::2]):
             self.assertEqual(approach.tag_id, close.tag_id)
             self.assertEqual(approach.spec.name, close.spec.name)
-            # Dieselbe Blickachse, nur doppelt so weit vom Tag.
+            # The same line of sight, only twice as far from the tag.
             tag = close.tag_in_world[:3, 3]
             far = approach.target.camera_in_world[:3, 3] - tag
             near_offset = close.target.camera_in_world[:3, 3] - tag
@@ -260,7 +259,7 @@ class JsonTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class TiltedViewTest(unittest.TestCase):
-    """Welttag am Boden, Roboterbasis 1 m hoeher auf dem Wagen, 0,9 m daneben."""
+    """World tag on the floor, robot base 1 m higher on the wagon, 0.9 m beside it."""
 
     def wagon_base(self):
         return geometry.from_rotation_translation(np.eye(3), (0.9, 0.0, 1.0))
@@ -276,7 +275,7 @@ class TiltedViewTest(unittest.TestCase):
         line_of_sight = camera[:3, 2]
         towards_tag = -camera[:3, 3] / np.linalg.norm(camera[:3, 3])
         np.testing.assert_allclose(line_of_sight, towards_tag, atol=1e-9)
-        # Gekippt zur Basis hin (+x) und 45 Grad aus der Senkrechten.
+        # Tilted towards the base (+x) and 45 degrees from the vertical.
         self.assertGreater(camera[0, 3], 0.0)
         self.assertAlmostEqual(math.degrees(math.acos(camera[2, 3] / 0.6)), 45.0, places=6)
         self.assertEqual(target.tilt_deg, 45.0)

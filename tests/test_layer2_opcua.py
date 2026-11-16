@@ -1,7 +1,7 @@
-"""StartLayer2Run/ReportRobotPose ueber OPC UA: Methoden, Knoten, Job-Start.
+"""StartLayer2Run/ReportRobotPose over OPC UA: methods, nodes, job start.
 
-Ohne Kamera: JobRunner, AprilTag-Quelle und Ergebnisknoten sind Fakes, der
-OPC-UA-Teil (`runner._install_layer2_run`) ist echt.
+Without a camera: JobRunner, AprilTag source and result node are fakes; the OPC
+UA part (`runner._install_layer2_run`) is real.
 """
 
 import json
@@ -19,7 +19,7 @@ try:
     from vision_server.errors import VisionErrorCode
     from vision_server.layer2 import plan
     from vision_server.runner import _install_layer2_run
-except Exception:  # pragma: no cover - asyncua oder numpy fehlen
+except Exception:  # pragma: no cover - asyncua or numpy missing
     np = None
 
 
@@ -102,8 +102,7 @@ class Layer2OpcUaTest(unittest.IsolatedAsyncioTestCase):
                     "tags": [{"tagId": 7, "poseInModule": pose_dict((0, 0, 0.2))}],
                 }
             ],
-            # Die Annaeherung hat eigene Tests (`test_layer2_run.py`); hier geht
-            # es um die Knoten.
+            # The approach has its own tests (`test_layer2_run.py`); this one is about the nodes.
             "options": {"approachStandoffM": 0},
         }
         self.assertEqual(await self.call("StartLayer2Run", json.dumps(request)), 0)
@@ -128,7 +127,7 @@ class Layer2OpcUaTest(unittest.IsolatedAsyncioTestCase):
         target = json.loads(await self.value("layer2_target"))
         self.assertEqual((target["stepIndex"], target["moduleId"], target["tagId"]), (1, "MOD-A", 7))
 
-        # Falscher Schritt: abgelehnt mit INVALID_STATE.
+        # Wrong step: rejected with INVALID_STATE.
         self.assertEqual(
             await self.call("ReportRobotPose", json.dumps({**report, "stepIndex": 0})),
             int(VisionErrorCode.INVALID_STATE),

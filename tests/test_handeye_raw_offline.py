@@ -1,4 +1,4 @@
-"""Rohaufnahme und Offline-Rechnung mit eindeutiger Pose-Zuordnung."""
+"""Raw capture and offline computation with unambiguous pose assignment."""
 
 import json
 import tempfile
@@ -69,8 +69,8 @@ class RawCaptureTest(unittest.IsolatedAsyncioTestCase):
 
 
 class PoseGroupTest(unittest.IsolatedAsyncioTestCase):
-    """Gruppe F (Bildrand, fuer die Offline-Intrinsik) ist seit 10.11.2026 erlaubt;
-    unbekannte Gruppen lehnt der Pi weiter ab."""
+    """Group F (image edge, for the offline intrinsics) is allowed; unknown
+    groups are still rejected by the Pi."""
 
     async def test_group_f_is_stored_and_unknown_group_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,7 +186,7 @@ class OfflineSolverTest(unittest.TestCase):
             self.assertEqual(len(observed), 1)
             self.assertEqual(observed[0].corners.shape, (70, 2))
             self.assertEqual(points.shape, (70, 3))
-            # Gruppe F (seit 10.11.2026) wird genauso geladen, eine unbekannte Gruppe nicht.
+            # Group F is loaded the same way; an unknown group is not.
             state_path = folder / "poses" / "pose_000" / "robot_state.json"
             for group, valid in (("F", True), ("G", False)):
                 state = json.loads(state_path.read_text())

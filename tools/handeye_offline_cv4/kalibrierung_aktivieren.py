@@ -1,10 +1,10 @@
-"""Schreibt die Offline-Kalibrierung der Sitzung 20261110T104151Z_77e0dd17 als aktive Dateien.
+"""Write the offline calibration of the session given with --sitzung as the active calibration files.
 
-data/calibration/cam_flange.json (Intrinsik) und data/handeye/cam_flange.json (Hand-Auge), mit den
-tagloc-Speicherfunktionen. --aufloesung 1920x1080 (Messaufloesung) oder 640x480: dann exakt auf den
-640x480-Strom der D415 umgerechnet (mittlerer 1440x1080-Ausschnitt, um 2,25 verkleinert:
-fx/2,25, cx'=(cx-240)/2,25, cy'=cy/2,25; Verzeichnung in normierten Koordinaten unveraendert).
-Aufruf aus der Repo-Wurzel: PYTHONPATH=src python <skript> --aufloesung 1920x1080 [--sitzung <ordner>]
+Writes data/calibration/cam_flange.json (intrinsics) and data/handeye/cam_flange.json (hand-eye) with the
+tagloc save functions. --aufloesung 1920x1080 keeps the measurement resolution; 640x480 converts exactly
+to the D415 stream (central 1440x1080 section scaled by 2.25: fx/2.25, cx'=(cx-240)/2.25, cy'=cy/2.25;
+distortion in normalised coordinates unchanged).
+Usage, from the repository root: PYTHONPATH=src python <script> --aufloesung 1920x1080 [--sitzung <folder>]
 """
 import argparse, json
 from datetime import datetime, timezone
@@ -26,7 +26,7 @@ K = np.array(ci["cameraMatrix"], float); D = np.array(ci["distortionCoefficients
 X = np.array(ch["T_flange_camera"], float)
 SCALE = 274.8 / 275.0
 
-# Brettstreuung je Pose (Messaufloesung, nominelle Kinematik) fuer die Kennzahlen der Hand-Auge-Datei.
+# Board scatter per pose (measurement resolution, nominal kinematics) for the hand-eye file's metrics.
 dic = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 board = cv2.aruco.CharucoBoard((11, 7), 0.025 * SCALE, 0.0185 * SCALE, dic); det = cv2.aruco.CharucoDetector(board)
 recon = []
@@ -69,7 +69,7 @@ he = HandEye(pose_flange_cam=X, frame_id="cam_flange", calibration_id=cal_id, rm
 Path("data/calibration").mkdir(parents=True, exist_ok=True); Path("data/handeye").mkdir(parents=True, exist_ok=True)
 save_calibration(Path("data/calibration/cam_flange.json"), calib)
 save_hand_eye(Path("data/handeye/cam_flange.json"), he)
-# Nachkontrolle: mit den Ladefunktionen des Pi lesen.
+# Read back with the loader functions the Pi uses.
 c2 = load_calibration(Path("data/calibration/cam_flange.json")); h2 = load_hand_eye(Path("data/handeye/cam_flange.json"))
 print("Intrinsik", c2.image_size, np.round(c2.camera_matrix[[0, 1, 0, 1], [0, 1, 2, 2]], 2), "D", np.round(c2.distortion, 3))
 print("Hand-Auge t mm", np.round(h2.pose_flange_cam[:3, 3] * 1000, 2), "Brettstreuung %.2f mm / %.2f Grad (max %.2f mm / %.2f Grad)" % (rmsP * 1000, rmsR, maxP * 1000, maxR))

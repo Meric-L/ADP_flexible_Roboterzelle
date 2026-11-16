@@ -1,13 +1,8 @@
-"""Calibration check as an OPC UA job.
+"""Calibration check run as an OPC UA job; its stdout becomes the result message.
 
-Runs as a subprocess via `ScriptDetectionSource`; its standard output becomes
-the `attributes.message` of the result.
-
-This is deliberately a **check**, not a calibration: calibrating a camera needs
-an operator who moves a board through the field of view, which is the job of
-`python -m tagloc.cli.calibrate`. What a remote job can answer is "is this cell
-ready to measure?": whether a calibration exists, which camera and resolution
-it belongs to, how good it was, and whether a tag map exists.
+This is a check, not a calibration: it reports whether the cell is ready to measure
+(calibration present, its identity and quality, tag map present). Calibrating needs
+an operator and is done with `python -m tagloc.cli.calibrate`.
 """
 
 import sys

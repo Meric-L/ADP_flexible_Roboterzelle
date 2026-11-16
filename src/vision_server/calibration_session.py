@@ -1,35 +1,10 @@
 """Interactive calibration against the shared camera, driven by the frontend.
 
-The previous approach (`tagloc.cli.calibrate`) opens the camera itself and
-exclusively, so the server must be stopped for it. This class does the
-opposite: it only reads from the already running `SharedCamera`, just like
-`AprilTagDetectionSource` and the live stream. An operator can therefore
-calibrate from the frontend while the server and the live stream keep running.
-
-Captures are triggered manually (`capture()`, e.g. with the space bar in the
-stream viewer or a frontend button) instead of automatically at a time
-interval. The operator sees the live image and decides for themselves when a
-pose is good, instead of the camera recording every second.
-
-**Capture and evaluation are decoupled (since 2026-09-28).** `capture()` only
-remembers the current camera frame now -- there is no `detect_board` in the RPC
-path of `CaptureCalibrationSample` anymore. Reason: `detect_board` on the full
-camera frame can take so long on weaker Pi hardware (ceiling camera, 12 MP)
-that either the OPC UA client gives up the connection or, worse, the call never
-returns and permanently blocks the session's only worker (found live
-2026-09-28, see `CAPTURE_DETECT_TIMEOUT_S`). Instead, `finish()` starts the
-actual evaluation (corner detection per capture plus `calibrate_from_samples`)
-as a background task and returns immediately. The result appears in
-`progress["result"]` once it is ready, and `progress["processing"]` shows that
-the computation is still running. `runner/calibration.py` pauses the live
-stream for this, to give the Pi the full CPU.
-
-The cost of this decoupling: during capture there is no live feedback on
-whether a given capture actually shows the board, and no running coverage
-display. Both only become known after `finish()`. The live preview stream
-(`CameraStreamMode="calibration"`) still shows board corners on the small
-preview image, independent of this class (`stream_overlay.py`). That helps with
-positioning, but says nothing about which captures were actually accepted.
+Reads from the already running `SharedCamera`, so the server and the live stream
+keep running during calibration. `capture()` only stores the current frame; there
+is no live board check during capture. `finish()` evaluates the captures in a
+background task and returns at once. The result appears in `progress["result"]`,
+and `progress["processing"]` is `True` while it is computed.
 """
 
 import asyncio
@@ -50,10 +25,8 @@ from .profiles import AprilTagProfileConfig
 
 _log = logging.getLogger(__name__)
 
-#: Matches the abort criterion from the test plan ("RMS below 0.5 px"). This is
-#: only a display warning, not a failure: during the first functional test, an
-#: imprecise but saved calibration is preferred over an automatic abort without
-#: any result.
+#: RMS reprojection error in px above which a warning is shown. Only a warning: an
+#: imprecise calibration is still saved.
 RMS_WARNING_PX = 0.5
 
 #: Computational lower bound for `calibrate_from_samples` (see
@@ -63,16 +36,10 @@ RMS_WARNING_PX = 0.5
 #: without even starting the (expensive) background evaluation.
 MIN_SAMPLES_FOR_CALIBRATION = 3
 
-#: Time limit for a single `detect_board` call during the evaluation in
-#: `_process()`. Found live on the ceiling camera (12 MP), 2026-09-28: a call on
-#: the full camera frame can hang on the Pi hardware (no error, no return value,
-#: observed for over 5 minutes -- so not merely slow, but truly hung). Since
-#: `_pool()` has only one worker, without a time limit this would block not just
-#: this one capture but the entire evaluation forever. A hung thread cannot be
-#: aborted in Python (it keeps running in the background), but `_process()` at
-#: least gives up the affected capture (it counts as "board not found") and
-#: discards the pool, so that the next capture of the evaluation gets a fresh
-#: worker.
+#: Time limit in seconds for one `detect_board` call in `_process()`. On the Pi a call
+#: on the full camera frame can hang without returning. A hung thread cannot be
+#: aborted in Python, so the capture counts as "board not found" and the pool is
+#: discarded. Without the limit the single-worker pool would block the whole evaluation.
 CAPTURE_DETECT_TIMEOUT_S = 20.0
 
 
@@ -88,16 +55,10 @@ def _lazy(module: str, name: str) -> Callable:
     return call
 
 
-#: JPEG instead of PNG: on the ceiling camera (12 MP), writing PNG to the Pi SD
-#: card was slow enough to become the bottleneck, even in the background pool
-#: (found live 2026-09-28). For this purpose (corner detection, possibly
-#: re-checking later) the lossy compression does not noticeably change the
-#: detected corner positions of a chessboard pattern. This applies to the
-#: working folder (`_pending_dir`, the basis of the online evaluation), which
-#: stays JPEG. The optional archive (`calibration_capture_dir`), however, has
-#: stored losslessly as PNG per session since 10.11.2026
-#: (`_ARCHIVE_IMAGE_SUFFIX`, fast compression), so that intrinsics calibrations
-#: can be recomputed offline exactly.
+#: Working captures (`_pending_dir`) are JPEG: PNG writes to the Pi SD card were too
+#: slow, and lossy compression does not noticeably move chessboard corners. The
+#: optional archive uses lossless PNG (`_ARCHIVE_IMAGE_SUFFIX`), so intrinsics can
+#: be recomputed offline exactly.
 _CAPTURE_IMAGE_SUFFIX = ".jpg"
 _ARCHIVE_IMAGE_SUFFIX = ".png"
 _ARCHIVE_SCHEMA = "adp.calibration.captures/1"
@@ -319,13 +280,8 @@ class CalibrationSession:
     def _schedule_capture_save(self, path: Any, image: Any) -> None:
         """Save a capture in the background, without making `capture()` wait for it.
 
-        Found live on the ceiling camera (12 MP) on 2026-09-23: a synchronous save
-        here made `cv2.imwrite` take several seconds before the OPC UA response
-        went out at all. A second finding, 2026-09-28: the background save first
-        ran on the same single-worker pool as `detect_board`, so a save still
-        running blocked every further capture. Neither was ever observable on the
-        hand-camera Pi (640x480). Hence `_save_pool()`: its own pool, separate from
-        everything else.
+        Runs on `_save_pool()`, not on `_pool()`: a slow save must not block the
+        `detect_board` worker, and the other way round.
         """
         task = asyncio.ensure_future(
             self._run_on_save_pool(self._save_capture_image, path, image)
@@ -434,10 +390,8 @@ class CalibrationSession:
     async def capture(self) -> bool:
         """Remember the most recent camera frame as a capture.
 
-        Triggered manually, with no automatic time interval. It NO LONGER checks
-        whether the board is visible. That is decided only during the evaluation in
-        `finish()` (see the module docstring). `False` now only means "no session
-        active" or "no camera frame available".
+        Does not check whether the board is visible; that is decided in `finish()`.
+        Returns `False` only if no session is active or no camera frame is available.
         """
         if not self.running:
             return False
@@ -460,9 +414,7 @@ class CalibrationSession:
     def progress(self) -> dict:
         """JSON-serializable progress object for `CalibrationProgress`.
 
-        There are no more `coverageX`/`coverageY` values during the capture. The
-        coverage is only known after the evaluation (see the module docstring);
-        `progress["result"]` then carries it as part of the result, as before.
+        Coverage is only known after the evaluation, in `progress["result"]`.
         """
         data = {
             "running": self.running,
@@ -490,11 +442,9 @@ class CalibrationSession:
     async def finish(self) -> tuple[VisionErrorCode, dict]:
         """End the capture phase and start the evaluation in the background.
 
-        Returns immediately, without waiting for the result. See the module
-        docstring: a synchronous evaluation of N full-resolution captures in the
-        RPC response would carry the same timeout risk on the ceiling camera as a
-        single hanging `detect_board` call (found live on 2026-09-28). The result
-        appears in `progress["result"]` as soon as `_process()` is done.
+        Returns immediately, without waiting for the result. A synchronous evaluation
+        would risk an RPC timeout. The result appears in `progress["result"]` once
+        `_process()` is done.
         """
         count = len(self._captured_paths)
         if count < MIN_SAMPLES_FOR_CALIBRATION:

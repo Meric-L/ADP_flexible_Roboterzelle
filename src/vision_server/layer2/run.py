@@ -1,28 +1,20 @@
-"""Flow of a Layer 2 run on the hand Pi.
+"""Step chain of a Layer 2 run on the hand Pi: anchor at a world tag, then the modules.
 
-A run is a chain of steps: first the world tag, then the modules. For each step:
+Each step:
 
 1. The Pi publishes the target (`Layer2Target`).
-2. Someone outside drives the robot there and reports the **reached** pose
-   (`ReportRobotPose`).
-3. With this pose, the Pi starts an ordinary AprilTag job -- the same events and
-   the same `LatestResultJson` as `StartSingleJob`.
-4. At the end of the job it evaluates the result and moves on to the next step.
+2. The robot is driven there and reports the reached pose (`ReportRobotPose`).
+3. The Pi starts an AprilTag job with that pose, with the same events and
+   `LatestResultJson` as `StartSingleJob`.
+4. At the end of the job the result is evaluated and the run moves on.
 
-The anchor step counts as successful if the job left a **new** `RobotAnchor`
-behind. The code of the job does not count here: `locate_modules` skips world
-tags, so an image with only the world tag ends in `DETECTION_FAILED`, even
-though an anchor was set. Afterwards the remaining steps are re-planned with
-the measured base.
+The anchor counts as set when the job leaves a new `RobotAnchor`; the remaining steps
+are then planned again from the measured base.
 
-Approach: before each anchor and measure step, the robot first drives from a
-larger distance. Its image measures the tag pose, and the following close step
-is re-planned from it. Anchoring and measuring happen only in the close image.
-For the world tag, the measurement is a provisional anchor from the wide image.
-It only serves for aiming; the run does not adopt it.
-
-There is no asyncua here: everything that concerns the server comes in as a
-function (`Layer2Ports`). This makes it possible to test the flow against fakes.
+There is no asyncua here: everything that concerns the server comes in through the
+functions of `Layer2Ports`, so the flow can be tested against fakes. The wiring is in
+`runner/layer2.py`; the run's protocol is described in
+`doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
 """
 
 from __future__ import annotations
@@ -332,6 +324,11 @@ class Layer2Run:
             return None, str(error)
 
     async def _evaluate_anchor(self, code: VisionErrorCode) -> None:
+        """Evaluate the anchor job: success means a new `RobotAnchor`, not a detection.
+
+        `locate_modules` skips world tags, so a job that sees only the world tag ends
+        with `DETECTION_FAILED` even though the anchor was set.
+        """
         s = self._s
         anchor, reason = self._new_anchor(code)
         if anchor is None:

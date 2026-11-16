@@ -1,4 +1,7 @@
-"""Intrinsik 1920x1080 offline aus einer Hand-Auge-Rohaufnahme (ChArUco, gemessener Massstab)."""
+"""Compute the offline intrinsics for 1920x1080 from a hand-eye recording (ChArUco, measured board scale).
+
+Usage: python intrinsik_1080.py <session folder> <output.json>
+"""
 import json, glob, sys
 from pathlib import Path
 import numpy as np, cv2

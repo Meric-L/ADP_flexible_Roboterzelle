@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Erzeugt doc/auswertung/handeye_warm_vergleich.html (kalt gegen aufgewaermt).
+"""Build the cold-versus-warm hand-eye comparison report (doc/auswertung/handeye_warm_vergleich.html).
 
-Vergleicht vier Hand-Auge-Sitzungen vom 09.11.2026 (S1/S2 kalt, S3/S4 nach 15 min
-Aufwaermen). Liest nur doc/auswertung/handeye_cv4/ (Ausgaben von analyse.py und
-drift.py), nichts wird veraendert. Diagramme: matplotlib, als Inline-SVG mit
-transparentem Hintergrund; die Farben sind Platzhalter, die nach dem Export durch
-CSS-Variablen ersetzt werden (Hell/Dunkel).
-Schreibt zusaetzlich handeye_cv4/warm_vergleich.json mit allen Kennzahlen.
+Compares four hand-eye sessions: S1 and S2 cold, S3 and S4 after 15 min of robot warm-up. Reads only
+the outputs of analyse.py and drift.py in doc/auswertung/handeye_cv4/ and also writes warm_vergleich.json
+there. Charts are matplotlib figures embedded as inline SVG with a transparent background; placeholder
+colours are replaced by CSS variables after export (light and dark theme).
 
-Aufruf (Repo-Wurzel, separate Umgebung):
+Usage, from the repository root (separate environment):
     PYTHONPATH=src .venv/bin/python tools/handeye_offline_cv4/warm_report.py [--out doc/auswertung/handeye_warm_vergleich.html]
 """
 from __future__ import annotations
@@ -32,7 +30,7 @@ from matplotlib.ticker import FuncFormatter  # noqa: E402
 from scipy.stats import rankdata, spearmanr  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-# Hilfsfunktionen und CSS aus dem bestehenden Driftbericht uebernehmen
+# Reuse helpers and CSS from the drift report
 from drift_report import CSS as BASE_CSS, de, details, table_html  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,8 +50,8 @@ SESSIONS = [
 GROUPS = "ABCDE"
 MINUS = "−"
 
-# ----------------------------------------------------------------- Farben
-# Platzhalter-Hexwerte im SVG -> CSS-Variablen (Ersetzung nach dem Export)
+# ----------------------------------------------------------------- Colours
+# Placeholder hex values in the SVG, replaced by CSS variables after export
 PH = {
     "#010101": "var(--muted)",
     "#020202": "var(--grid)",
@@ -83,7 +81,7 @@ a{color:var(--accent)}
 plt.rcParams.update({
     "svg.fonttype": "none",
     "svg.hashsalt": "warm-vergleich",
-    "font.family": ["DejaVu Sans"],  # im SVG durch IBM Plex Sans ersetzt (Browser)
+    "font.family": ["DejaVu Sans"],  # replaced by IBM Plex Sans in the SVG (browser)
     "font.size": 11,
     "axes.unicode_minus": True,
     "axes.edgecolor": GRIDC,
@@ -106,8 +104,9 @@ plt.rcParams.update({
 })
 
 
-# ----------------------------------------------------------------- Daten
+# ----------------------------------------------------------------- Data
 def load():
+    """Load the analysis results, pose rows and raw pose counts of all sessions."""
     drift = {d["session"]: d for d in json.loads((DATA / "drift.json").read_text())}
     out = []
     for meta in SESSIONS:
@@ -120,16 +119,18 @@ def load():
 
 
 def col(rows, key):
+    """Return column key of the CSV rows as a float numpy array."""
     return np.array([float(r[key]) for r in rows])
 
 
 def rot_angle_deg(Ra, Rb):
+    """Return the angle in degrees of the relative rotation between Ra and Rb."""
     c = (np.trace(Ra.T @ Rb) - 1) / 2
     return float(np.degrees(np.arccos(np.clip(c, -1, 1))))
 
 
 def partial_spearman(y, x, controls):
-    """Teilkorrelation der Raenge: Residuen einer linearen Regression auf [1, Raenge der Kontrollvariablen]."""
+    """Return the partial Spearman correlation of y and x, controlling for the ranks of controls."""
     A = np.column_stack([np.ones(len(y))] + [rankdata(c) for c in controls])
 
     def res(v):
@@ -139,8 +140,9 @@ def partial_spearman(y, x, controls):
     return float(np.corrcoef(res(y), res(x))[0, 1])
 
 
-# ----------------------------------------------------------------- Kennzahlen
+# ----------------------------------------------------------------- Key figures
 def compute(S):
+    """Compute per-session and pairwise key figures from the loaded sessions."""
     K = {"sessions": {}, "pairwise": {}, "kennzahlen": {}}
     finals = {}
     for s in S:
@@ -198,7 +200,7 @@ def compute(S):
                 e["driftNormMm"] = mm["driftOverSessionNormMm"]
                 e["driftDeg"] = mm["driftOverSessionDeg"]
             info["models"][name] = e
-        # Sweep (starr): je Posenzahl Teilmengen, Spannweite und Abstand zur Endloesung
+        # Rigid sweep: subsets per pose count, range and distance to the final solution
         sweep = {}
         for c in (15, 25, 40):
             sub = [np.array(e["rigid"]["translationMm"]) for e in dr["sweep"] if e["poseCount"] == c]
@@ -235,7 +237,7 @@ def compute(S):
     warm = [K["sessions"][n]["models"]["boardDrift"]["gainPct"] for n in ("S3", "S4")]
     k["boardDriftGainColdPct"], k["boardDriftGainWarmPct"] = cold, warm
     k["target05mm"] = "belegt" if k["spanMaxPairMm"] <= 0.5 else "nicht belegt"
-    # Sweep: gepoolt je Zustand
+    # Sweep: pooled per state
     for st, ns in (("kalt", ("S1", "S2")), ("warm", ("S3", "S4"))):
         v = [K["sessions"][n]["sweep"][c]["maxDistToFinalMm"] for n in ns for c in ("15", "25", "40")]
         w = [K["sessions"][n]["sweep"][c]["maxPairMm"] for n in ns for c in ("15", "25", "40")]
@@ -244,13 +246,15 @@ def compute(S):
     return K
 
 
-# ----------------------------------------------------------------- Plot-Bausteine
+# ----------------------------------------------------------------- Plot building blocks
 def fmt_axis(ax, dec=1, axis="y"):
+    """Format the ticks of the given axis with German decimal numbers."""
     f = FuncFormatter(lambda v, _: de(v, dec))
     (ax.yaxis if axis == "y" else ax.xaxis).set_major_formatter(f)
 
 
 def new_fig(w=6.4, h=4.0):
+    """Create a figure with one axes styled for the report."""
     fig, ax = plt.subplots(figsize=(w, h), layout="constrained")
     ax.tick_params(length=0)
     for sp in ("left", "bottom"):
@@ -259,6 +263,7 @@ def new_fig(w=6.4, h=4.0):
 
 
 def to_svg(fig, label):
+    """Export fig as an inline SVG with placeholder colours and fonts replaced for the page."""
     buf = io.StringIO()
     fig.savefig(buf, format="svg", metadata={"Date": None, "Creator": None})
     plt.close(fig)
@@ -278,14 +283,17 @@ def to_svg(fig, label):
 
 
 def cell(title, svg):
+    """Return a grid cell with a heading and an SVG."""
     return f'<div class="cell"><h4>{escape(title)}</h4>{svg}</div>'
 
 
 def grid(cells):
+    """Return a grid container for the given cells."""
     return '<div class="grid">' + "".join(cells) + "</div>"
 
 
 def sess_legend(S, extra=""):
+    """Return the HTML legend with the session markers and colours."""
     items = []
     for i, s in enumerate(S):
         if s["marker"] == "o":
@@ -298,11 +306,13 @@ def sess_legend(S, extra=""):
 
 
 def scatter_marker(ax, x, y, i, S, size=9, **kw):
+    """Plot the marker of session i at (x, y) on ax."""
     ax.plot([x], [y], ls="", marker=S[i]["marker"], ms=size, color=SCOL[i], mec=BG, mew=1.1, zorder=3, **kw)
 
 
-# ----------------------------------------------------------------- Diagramme
+# ----------------------------------------------------------------- Charts
 def plot_final(S, K):
+    """Return the final-translation panels, one per axis, as a grid."""
     cells = []
     for ai, ax_name in enumerate("xyz"):
         fig, ax = new_fig()
@@ -325,6 +335,7 @@ def plot_final(S, K):
 
 
 def plot_sweep(S, K):
+    """Return the rigid translation-versus-pose-count panels, one per axis, as a grid."""
     cells = []
     allv = {ai: [] for ai in range(3)}
     for s in S:
@@ -357,6 +368,7 @@ def plot_sweep(S, K):
 
 
 def plot_cumulative(S, K):
+    """Return the SVG of the cumulative distance to the final solution per session."""
     fig, ax = new_fig(6.4, 4.0)
     for si, s in enumerate(S):
         cum = K["sessions"][s["short"]]["cumulative"]
@@ -372,6 +384,7 @@ def plot_cumulative(S, K):
 
 
 def running_median(t, v, w=9):
+    """Return the times sorted ascending and the running median of v over a window of w poses."""
     o = np.argsort(t)
     ts, vs = t[o], v[o]
     h = w // 2
@@ -379,6 +392,7 @@ def running_median(t, v, w=9):
 
 
 def plot_time(S, K):
+    """Return the grid of RMS-versus-time panels, one per session, with running median."""
     ymax = max(col(s["rows"], "reprojRmsPx").max() for s in S) * 1.06
     cells = []
     for si, s in enumerate(S):
@@ -400,6 +414,7 @@ def plot_time(S, K):
 
 
 def plot_halves(S, K):
+    """Return the SVG of the first and second half RMS per session."""
     fig, ax = new_fig(6.4, 4.0)
     w = 0.36
     for si, s in enumerate(S):
@@ -417,6 +432,7 @@ def plot_halves(S, K):
 
 
 def plot_gain(S, K):
+    """Return the SVG of the RMS gain of the drift models over the rigid model per session."""
     fig, ax = new_fig(6.4, 4.0)
     w = 0.36
     for si, s in enumerate(S):
@@ -434,6 +450,7 @@ def plot_gain(S, K):
 
 
 def plot_driftmm(S, K):
+    """Return the SVG of the board drift magnitude over the session per session."""
     fig, ax = new_fig(6.4, 4.0)
     for si, s in enumerate(S):
         v = K["sessions"][s["short"]]["models"]["boardDrift"]["driftNormMm"]
@@ -447,6 +464,7 @@ def plot_driftmm(S, K):
 
 
 def box_strip(ax, data, positions, colors, rng, jitter=0.16, ms=5.5, markers=None):
+    """Draw a box plot with jittered individual points for each data series on ax."""
     bp = ax.boxplot(data, positions=positions, widths=0.5, patch_artist=True, showfliers=False,
                     boxprops=dict(facecolor="none", edgecolor=MUTED, lw=1.2),
                     whiskerprops=dict(color=MUTED, lw=1.2), capprops=dict(color=MUTED, lw=1.2),
@@ -460,6 +478,7 @@ def box_strip(ax, data, positions, colors, rng, jitter=0.16, ms=5.5, markers=Non
 
 
 def plot_boarddev(S, K):
+    """Return the SVG of the board deviation box plots per session."""
     rng = np.random.default_rng(7)
     fig, ax = new_fig(6.4, 4.2)
     data = [col(s["rows"], "boardDevMm") for s in S]
@@ -472,6 +491,7 @@ def plot_boarddev(S, K):
 
 
 def plot_boarddev_groups(S, K):
+    """Return the grid of board deviation box plots per pose group, one panel per session."""
     ymax = max(col(s["rows"], "boardDevMm").max() for s in S) * 1.06
     cells = []
     for si, s in enumerate(S):
@@ -490,8 +510,9 @@ def plot_boarddev_groups(S, K):
     return grid(cells)
 
 
-# ----------------------------------------------------------------- Seite
+# ----------------------------------------------------------------- Page
 def build(out_path: Path):
+    """Write the comparison report HTML and the key figures JSON; return the key figures."""
     S = load()
     K = compute(S)
     k = K["kennzahlen"]
@@ -499,7 +520,7 @@ def build(out_path: Path):
     pw = K["pairwise"]
     n = lambda x, d=1: de(x, d)  # noqa: E731
 
-    # ---- Diagramme
+    # ---- Charts
     svg_final = plot_final(S, K)
     svg_sweep = plot_sweep(S, K)
     svg_cum = plot_cumulative(S, K)
@@ -510,7 +531,7 @@ def build(out_path: Path):
     svg_bd = plot_boarddev(S, K)
     svg_bdg = plot_boarddev_groups(S, K)
 
-    # ---- Tabellen
+    # ---- Tables
     def dur(x):
         return f"{int(x // 60)}:{int(x % 60):02d} min"
 
@@ -591,7 +612,7 @@ def build(out_path: Path):
           n(ks[s["short"]]["boardDevRotMedianDeg"], 2)] +
          [n(ks[s["short"]]["boardDevMedianByGroup"][g], 2) for g in GROUPS] for s in S])
 
-    # ---- Texte aus den Kennzahlen
+    # ---- Text from the key figures
     gc, gw = k["boardDriftGainColdPct"], k["boardDriftGainWarmPct"]
     cross = k["crossPairsMm"]
     s1, s2, s3, s4 = (ks[x] for x in ("S1", "S2", "S3", "S4"))
@@ -619,7 +640,7 @@ def build(out_path: Path):
     A('<p class="sub">Vier Sitzungen vom 09.11.2026, offline ausgewertet: zwei kalt aufgenommen, zwei nach 15 min Aufwärmen des Roboters.</p>')
     A(kz_html)
 
-    # 1 Kurzfassung
+    # 1 Summary
     A("<h2>1. Kurzfassung</h2>")
     A("<ul>")
     A(f"<li>Die vier Endlösungen (Translation) liegen höchstens {n(k['spanMaxPairMm'], 2)} mm auseinander, die Rotationen höchstens "
@@ -639,7 +660,7 @@ def build(out_path: Path):
       "Die Übereinstimmung zwischen Sitzungen ist zudem nur Wiederholbarkeit, keine Genauigkeit; die Genauigkeit braucht eine unabhängige Messung.</li>")
     A("</ul>")
 
-    # 2 Sitzungen
+    # 2 Sessions
     A("<h2>2. Sitzungen</h2>")
     A(f'<div class="tw big">{t_sess}</div>')
     A("<p>Einzelberichte der warmen Sitzungen: "
@@ -654,7 +675,7 @@ def build(out_path: Path):
       "Zeitfenster der Gruppen (erste bis letzte Pose, Sekunden ab Sitzungsstart):</p>")
     A(f'<div class="tw big">{t_win}</div>')
 
-    # 3 Endloesungen
+    # 3 Final solutions
     A("<h2>3. Endlösungen im Vergleich</h2>")
     A("<p>Translation der Endlösung (Reprojektions-Verfeinerung) je Achse. Das graue Band ist die Spannweite der vier Sitzungen.</p>")
     A(sess_legend(S))
@@ -686,7 +707,7 @@ def build(out_path: Path):
       "die kalten Sitzungen fuhren zuerst einzelne Gruppen (S1 und S2 beginnen mit Gruppe E), die warmen decken ab der ersten Runde alle Gruppen ab. "
       "Ob das Aufwärmen selbst die Lösung stabiler macht, trennen diese Daten nicht.</p>")
 
-    # 5 Zeiteffekt
+    # 5 Time effect
     A("<h2>5. Zeiteffekt</h2>")
     A("<p>Reprojektions-RMS je Pose gegen die Aufnahmezeit. Die gestrichelte Linie ist der gleitende Median über 9 Posen; "
       "ρ ist die Spearman-Korrelation zwischen RMS und Zeit, Teil-ρ dieselbe Korrelation nach Herausrechnen von Kippung und Abstand "
@@ -703,7 +724,7 @@ def build(out_path: Path):
       f"die Kippung steigt dort mit der Zeit (ρ = {n(s3['spearmanTVsTilt'], 2)}). "
       "Die Posen kommen reihum in den Gruppen A bis E, die Kippung wächst aber von Runde zu Runde; die Reihenfolge ist daher nicht vollständig gemischt.</p>")
 
-    # 6 Driftmodelle
+    # 6 Drift models
     A("<h2>6. Driftmodelle</h2>")
     A(f'<div class="tw big">{t_models}</div>')
     A("<p>RMS-Gewinn gegenüber dem starren Modell (Brettdrift voll, Halterungsdrift hell) und Betrag der Brettdrift über die Sitzung.</p>")
@@ -716,7 +737,7 @@ def build(out_path: Path):
       "Die große Drift aus S1 ist nach dem Aufwärmen nicht wieder aufgetreten, S2 (kalt) hatte aber ebenfalls nur einen kleinen Gewinn. "
       "Aufwärmen ist damit nicht eindeutig als Ursache belegt: zwei kalte Sitzungen mit sehr verschiedenem Verhalten stehen zwei warmen gegenüber.</p>")
 
-    # 7 Brettlage-Streuung
+    # 7 Board scatter
     A("<h2>7. Brettlage-Streuung je Pose</h2>")
     A("<p>Abweichung der Brettlage je Pose von der gemittelten Brettlage (Endlösung), in mm. Box: Quartile, Strich: Median; Punkte sind einzelne Posen.</p>")
     A(sess_legend(S))
@@ -733,7 +754,7 @@ def build(out_path: Path):
       f"{n(min(v for s in (s1, s2, s3, s4) for g, v in s['boardDevMedianByGroup'].items() if g != 'E'), 2)} und "
       f"{n(max(v for s in (s1, s2, s3, s4) for g, v in s['boardDevMedianByGroup'].items() if g != 'E'), 2)} mm.</p>")
 
-    # 8 Folgerungen
+    # 8 Conclusions
     A("<h2>8. Was daraus folgt</h2>")
     A('<div class="fazit">')
     A(f"<p>Das 0,5-mm-Ziel bleibt {k['target05mm']}. Die paarweisen Abstände der vier Lösungen reichen von {n(k['minPairMm'], 2)} bis {n(k['spanMaxPairMm'], 2)} mm "
@@ -751,7 +772,7 @@ def build(out_path: Path):
       "<li>Nach der nächsten Aufnahme <code>analyse.py</code>, <code>drift.py</code> und diesen Bericht erneut erzeugen und vergleichen.</li>"
       "</ol>")
 
-    # 9 Methode
+    # 9 Method
     A("<h2>9. Methode und Daten</h2>")
     A('<div class="klein">')
     A("<p>Alle Zahlen stammen aus <code>doc/auswertung/handeye_cv4/</code> (nur gelesen). "
@@ -785,6 +806,7 @@ def build(out_path: Path):
 
 
 def main():
+    """Parse the command line and build the comparison report."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args()

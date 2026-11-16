@@ -1,4 +1,4 @@
-"""Tests fuer Zulassung und Routing der RecipeIds."""
+"""Tests for admission and routing of recipe IDs."""
 
 import unittest
 from dataclasses import replace
@@ -8,7 +8,7 @@ from vision_server.detection import build_detection_sources
 from vision_server.errors import VisionErrorCode, VisionJobError
 from vision_server.job import build_job_request
 
-#: Die Namen, die das Frontend senden kann (useVisionJob.ts), mit ihrem Profil.
+#: The names the frontend can send (useVisionJob.ts), with their profile.
 FRONTEND_RECIPES = {
     "calibration": "calibration",
     "apriltag": "apriltag",
@@ -26,7 +26,7 @@ class AdmissionTest(unittest.TestCase):
                 self.assertEqual(request(recipe_id).recipe_id, recipe_id)
 
     def test_rejects_empty_recipe(self):
-        """Kein gewaehlter Job ist ein Fehler, kein stiller Standardjob."""
+        """No job selected is an error, not a silent default job."""
         for recipe_id in ("", None):
             with self.subTest(recipe_id=recipe_id):
                 with self.assertRaises(VisionJobError) as caught:
@@ -75,7 +75,7 @@ class RoutingTest(unittest.TestCase):
 
 class SourceBuildingTest(unittest.TestCase):
     def test_builds_one_instance_per_profile(self):
-        """Zwei Rezepte auf dasselbe Profil teilen sich eine Instanz."""
+        """Two recipes on the same profile share one instance."""
         config = replace(
             VisionServerConfig(),
             recipe_profiles=(("calibration", "calibration"), ("check", "calibration")),
@@ -94,7 +94,7 @@ class SourceBuildingTest(unittest.TestCase):
         self.assertIn("appriltag", str(caught.exception))
 
     def test_every_admitted_recipe_has_a_source(self):
-        """Zulassung und Routing duerfen nicht auseinanderlaufen."""
+        """Admission and routing must not drift apart."""
         config = VisionServerConfig()
         sources = build_detection_sources(config)
         for recipe_id in config.known_recipe_ids:

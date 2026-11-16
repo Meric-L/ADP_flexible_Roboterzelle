@@ -1,4 +1,4 @@
-"""Tests fuer `SaveRawImage`: PNG-Ablage und die OPC-UA-Methode."""
+"""Tests for `SaveRawImage`: PNG storage and the OPC UA method."""
 
 import tempfile
 import types
@@ -14,7 +14,7 @@ try:
 
     from vision_server.errors import VisionErrorCode
     from vision_server.raw_image import save_raw_image
-except Exception:  # pragma: no cover - numpy/OpenCV/asyncua fehlen
+except Exception:  # pragma: no cover - numpy/OpenCV/asyncua missing
     np = None
 
 NOW = datetime(2026, 10, 19, 14, 30, 12)
@@ -96,7 +96,7 @@ class SaveRawImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.camera.latest_frame = types.SimpleNamespace(image=test_image())
         name, error = await self.call()
         self.assertEqual(error, int(VisionErrorCode.OK))
-        # Ausserhalb des Repos (Tempverzeichnis): absoluter Pfad.
+        # Outside the repo (temp directory): absolute path.
         self.assertEqual(Path(name).parent, self.directory)
         self.assertTrue(name.endswith(".png") and Path(name).name.startswith("cam_ceiling_"))
         self.assertTrue(Path(name).is_file())

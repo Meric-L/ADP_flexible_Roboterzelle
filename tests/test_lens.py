@@ -1,8 +1,8 @@
-"""Tests fuer `tagloc.lens`: Pinhole (Brown-Conrady) und Fisheye (Kannala-Brandt).
+"""Tests for `tagloc.lens`: pinhole (Brown-Conrady) and fisheye (Kannala-Brandt).
 
-Alles synthetisch, ohne Kamera und ohne Bilddateien: Punkte werden mit einem
-bekannten Modell ins Bild projiziert und muessen danach wiedergefunden werden
--- beim Entzerren, bei der Posenschaetzung und bei der Kalibrierung selbst.
+Everything is synthetic, without a camera or image files: points are projected
+into the image with a known model and must then be recovered, when undistorting,
+in pose estimation, and in calibration itself.
 """
 
 import unittest
@@ -17,10 +17,10 @@ try:
     from tagloc.boards import BoardSample, BoardSpec, calibrate_from_samples
     from tagloc.observations import TagObservation
     from tagloc.pose import estimate_tag_pose, estimate_tag_poses
-except Exception:  # cv2/numpy nicht verfuegbar
+except Exception:  # cv2/numpy not available
     cv2 = None
 
-#: Grob wie die HQ-Kamera an der Decke, auf ein handliches Format verkleinert.
+#: Roughly like the HQ camera on the ceiling, scaled down to a handy size.
 IMAGE_SIZE = (1014, 760)
 FISHEYE_D = np.array([0.08, -0.02, 0.004, -0.0006]) if cv2 is not None else None
 PINHOLE_D = np.array([-0.21, 0.05, 0.001, -0.002, 0.01]) if cv2 is not None else None
@@ -40,8 +40,7 @@ def _calibration(model):
 
 
 def _grid_points():
-    """Punkte vor der Kamera, bis weit an den Bildrand -- dort unterscheiden
-    sich die Modelle am staerksten."""
+    """Points in front of the camera, out to the image edge, where the models differ most."""
     xs, ys = np.meshgrid(np.linspace(-0.6, 0.6, 7), np.linspace(-0.45, 0.45, 5))
     return np.stack([xs.ravel(), ys.ravel(), np.full(xs.size, 1.0)], axis=1)
 
@@ -57,9 +56,8 @@ class UndistortProjectTest(unittest.TestCase):
         undistorted = lens.undistort_points(distorted, calibration)
 
         ideal, _ = cv2.projectPoints(points, zero, zero, _camera_matrix(), np.zeros(5))
-        # 0,02 px: `cv2.undistortPoints` (Pinhole) iteriert standardmaessig nur
-        # 5-mal und bleibt in den Bildecken bis ~0,01 px daneben -- das war
-        # schon vor dem Fisheye-Modell so.
+        # 0.02 px: cv2.undistortPoints (pinhole) iterates only 5 times by default
+        # and stays up to about 0.01 px off in the image corners.
         np.testing.assert_allclose(undistorted, ideal.reshape(-1, 2), atol=0.02)
 
     def test_fisheye_round_trip_lands_on_the_ideal_pinhole_image(self):
@@ -69,8 +67,8 @@ class UndistortProjectTest(unittest.TestCase):
         self._assert_round_trip(calib.PINHOLE)
 
     def test_the_two_models_really_differ(self):
-        """Sonst pruefte der Round-Trip oben nichts: gleiche Koeffizienten
-        mit dem falschen Modell muessen sichtbar andere Punkte ergeben."""
+        """Otherwise the round trip above tests nothing: the same coefficients with
+        the wrong model must give visibly different points."""
         calibration = _calibration(calib.FISHEYE)
         points = _grid_points()
         zero = np.zeros(3)
@@ -95,19 +93,19 @@ class UndistortProjectTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
 class UndistortionMapsTest(unittest.TestCase):
-    """Ganzes Bild entzerren, fuer den Livestream-Modus "undistorted"."""
+    """Undistort the whole image, for the livestream mode "undistorted"."""
 
     def _assert_straightens(self, model):
-        """Ein verzeichnet projizierter Punkt landet nach `remap` dort, wo das
-        ideale Pinhole-Bild mit der neuen Kameramatrix ihn hat -- geprueft
-        ueber die Maps selbst: `map(u, v)` zeigt auf die Quelle im Rohbild."""
+        """A distorted projected point lands after `remap` where the ideal pinhole
+        image with the new camera matrix has it. Checked via the maps themselves:
+        `map(u, v)` points to the source in the raw image."""
         calibration = _calibration(model)
         map1, map2 = lens.undistortion_maps(calibration, alpha=1.0)
         width, height = IMAGE_SIZE
         self.assertEqual(map1.shape[:2], (height, width))
 
-        # Ein weisser Punkt im Rohbild muss nach `remap` als weisser Fleck
-        # erhalten bleiben (alpha=1 schneidet nichts ab).
+        # A white point in the raw image must stay a white spot after `remap`
+        # (alpha=1 cuts nothing off).
         raw = np.zeros((height, width), dtype=np.uint8)
         point = lens.project_points(np.array([[0.4, 0.3, 1.0]]), np.zeros(3), np.zeros(3), calibration)[0]
         cv2.circle(raw, (round(point[0]), round(point[1])), 4, 255, -1)
@@ -125,15 +123,14 @@ class UndistortionMapsTest(unittest.TestCase):
         map1, map2 = lens.undistortion_maps(calibration, alpha=1.0)
         xs, ys = cv2.convertMaps(map1, map2, cv2.CV_32FC1)
         grid_x, grid_y = np.meshgrid(np.arange(IMAGE_SIZE[0]), np.arange(IMAGE_SIZE[1]))
-        # Jeder Zielpixel holt sich (fast) denselben Quellpixel.
+        # Each target pixel fetches (almost) the same source pixel.
         self.assertLess(float(np.max(np.abs(xs - grid_x))), 1.0)
         self.assertLess(float(np.max(np.abs(ys - grid_y))), 1.0)
 
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
 class FisheyePoseTest(unittest.TestCase):
-    """Eine Tag-Pose aus einem Fisheye-Bild: nur mit dem richtigen Modell
-    stimmt die Entfernung."""
+    """A tag pose from a fisheye image: the distance is only right with the correct model."""
 
     TAG_SIZE_M = 0.10
 
@@ -142,8 +139,8 @@ class FisheyePoseTest(unittest.TestCase):
         corners_3d = np.array(
             [[-half, half, 0.0], [half, half, 0.0], [half, -half, 0.0], [-half, -half, 0.0]]
         )
-        # Leicht gekippt. Keine Drehung um pi: die kehrt den Umlaufsinn der
-        # Ecken um, und IPPE_SQUARE loest dann eine gespiegelte Pose.
+        # Slightly tilted. No rotation by pi: that reverses the winding of the
+        # corners, and IPPE_SQUARE then yields a mirrored pose.
         rvec = np.array([0.2, -0.3, 0.05])
         corners = lens.project_points(corners_3d, rvec, tvec, calibration)
         return TagObservation(tag_id=7, corners=tuple(map(tuple, corners)))
@@ -172,8 +169,7 @@ class FisheyePoseTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
 class CalibrateFromSamplesTest(unittest.TestCase):
-    """Die Kalibrierung findet ein bekanntes Modell aus synthetischen
-    Schachbrett-Aufnahmen wieder."""
+    """Calibration recovers a known model from synthetic chessboard captures."""
 
     SPEC = BoardSpec(type="chessboard", cols=7, rows=9, square_size_m=0.022)
 

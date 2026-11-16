@@ -1,27 +1,19 @@
-"""Tag reference measurement via reference edges (hand Pi): measure, plan, live preview.
+"""Tag reference measurement via reference edges (hand Pi).
 
-This measures the tag position of a module via reference edges. Both measuring
-methods reply directly with the result; the node `LastTagReference` is for
-display only.
+Provides `MeasureTagReference`, `PlanTagReferenceView` and `SetTagReferencePreview`;
+the first two reply with their result directly. Error codes and BUSY rules:
 
-Only on the hand Pi (nodes exist only with `hand_eye_path`).
+* `MeasureTagReference` needs fresh camera frames. `INVALID_STATE` unless `Operational`.
+  `BUSY` during a job, a camera calibration, a hand-eye session, `MeasureTags` or
+  another tag reference measurement.
+* `PlanTagReferenceView` plans from the calibration without an image. `INVALID_STATE`
+  unless `Operational`. Never `BUSY`: it disturbs neither a job nor a measurement.
+* `SetTagReferencePreview(RequestJson)` switches the edge-search preview of the live
+  stream on for one tag; `""` switches it off. `INVALID_ARGUMENT` for a bad request,
+  `INVALID_STATE` unless `Operational` or without a live-stream overlay. Never `BUSY`.
 
-* `MeasureTagReference` needs fresh camera frames: `Operational`, otherwise
-  `INVALID_STATE`; `BUSY` during a job, camera calibration, hand-eye session,
-  `MeasureTags` or another tag reference measurement.
-* `PlanTagReferenceView` computes only from the calibration, without an image:
-  it needs `Operational` (only then is the calibration loaded), but it is never
-  `BUSY` -- it disturbs neither a job, a calibration nor a measurement.
-
-* `SetTagReferencePreview(RequestJson) -> Error` switches the live preview of the
-  edge search in the live stream (overlay mode `tagreference`) on for one tag;
-  `""` switches it off. `INVALID_ARGUMENT`, `INVALID_STATE` (not `Operational`,
-  or no live-stream overlay), never `BUSY`. `MeasureTagReference` sets the preview
-  itself to its request and, if `saveDebug` (default `true`), writes a measurement
-  log (`tagreference_log.py`, `debugDir` in the result).
-
-See `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
-
+`MeasureTagReference` writes a measurement log if `saveDebug` (default `true`) is set.
+The full contract is in `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
 The numpy-dependent modules `tagreference` and `tagreference_log` are imported
 only inside the functions, so the rest of the server does not need numpy.
 """
@@ -45,21 +37,21 @@ _log = logging.getLogger(__package__)
 
 
 def _reply(payload: dict, code: VisionErrorCode):
-    """Reply with a result or plan payload as JSON."""
+    """Return a reply with a result or plan payload as JSON."""
     from ..tagreference import dumps
 
     return text_reply(dumps(payload), code)
 
 
 def _refusal(code: VisionErrorCode, message: str):
-    """Reply to a refused `MeasureTagReference`: an empty result with the error text."""
+    """Return the reply for a refused `MeasureTagReference`: an empty result with the error text."""
     from ..tagreference import build_result
 
     return _reply(build_result(error=f"{code.name}: {message}"), code)
 
 
 def _view_refusal(code: VisionErrorCode, message: str):
-    """Reply to a refused `PlanTagReferenceView`: an empty plan with the error text."""
+    """Return the reply for a refused `PlanTagReferenceView`: an empty plan with the error text."""
     from ..tagreference import build_view
 
     return _reply(build_view(error=f"{code.name}: {message}"), code)
@@ -104,7 +96,7 @@ async def _write_protocol(config: VisionServerConfig, request, request_json: str
 
 
 async def _measure(space, config, apriltag_source, annotator, activity, request, request_json):
-    """1:MeasureTagReference -- measure the tag position via reference edges."""
+    """Measure the tag position via reference edges and return the reply."""
     from ..tagreference import dumps
 
     activity.active = True
@@ -133,7 +125,7 @@ async def _measure(space, config, apriltag_source, annotator, activity, request,
 
 
 async def _plan(apriltag_source, request):
-    """1:PlanTagReferenceView -- plan the camera pose in the tag frame, without an image."""
+    """Plan the camera pose in the tag frame from the calibration, without an image."""
     try:
         view = apriltag_source.plan_tag_reference_view(request)
     except ValueError as error:

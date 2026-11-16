@@ -1,18 +1,7 @@
 """Image measurement of the cube placement: deviation (dx, dy, dtheta) from the target center.
 
-Flow of `measure_trial`:
-
-1. Detect the ArUco markers (4x4_50), corners refined to subpixel accuracy.
-2. Sheet pose via `cv2.solvePnP` from the corners of the sheet markers (IDs 0-3,
-   at least 2). Image points are undistorted beforehand (`tagloc.lens`), so that
-   pinhole and fisheye calibrations run the same way.
-3. Cast the corners of the cube marker (ID 10) as rays into the sheet frame and
-   intersect them with the plane z = 20 mm (cube top). Center and yaw angle
-   follow from the four intersection points; a sticker offset is subtracted.
-
-Errors (no marker, too few sheet markers, pose not solvable) return `ok=False`
-with a German `grund` message, never an exception. The calculation functions
-are pure; OpenCV is imported only inside the functions.
+`measure_trial` is the entry point. It never raises; errors are reported as
+`ok=False` with a German `grund` message. OpenCV is imported only inside the functions.
 """
 
 import math

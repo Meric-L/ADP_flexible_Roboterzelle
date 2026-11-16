@@ -19,7 +19,7 @@ _log = logging.getLogger(__package__)
 
 
 def _start_method(wiring: Wiring, name: str, start: Callable):
-    """Handler for `StartSingleJob` and `StartContinuous`.
+    """Return the handler for `StartSingleJob` and `StartContinuous`.
 
     `start` is `jobs.start_single_job` or `jobs.start_continuous`; both stay
     synchronous and are called without an `await` point, so the admission stays
@@ -49,7 +49,7 @@ def _start_method(wiring: Wiring, name: str, start: Callable):
 
 
 def _stop_method(wiring: Wiring):
-    """Handler for `1:Stop`.
+    """Return the handler for `1:Stop`.
 
     The frontend always sends `Cause`/`CauseDescription` fire-and-forget as
     0/"" and does not evaluate them; we do not evaluate them either.
@@ -68,7 +68,7 @@ def _stop_method(wiring: Wiring):
 
 
 def _abort_method(wiring: Wiring):
-    """Handler for `1:Abort` -- like Stop, but through the abort transition.
+    """Return the handler for `1:Abort`, which works like Stop but uses the abort transition.
 
     For us the only difference is the state transition and the message in the
     result: there is no intermediate state that an abort could discard. Both
@@ -84,7 +84,7 @@ def _abort_method(wiring: Wiring):
 
 
 def _halt_method(wiring: Wiring):
-    """Handler for `1:Halt` -- stop the running job, then accept no more jobs.
+    """Return the handler for `1:Halt`, which stops the running job and accepts no more jobs.
 
     Only `Reset` leads back from Halted. That is the point: Halt is the brake for
     the operator, not another operating state.
@@ -106,7 +106,7 @@ def _halt_method(wiring: Wiring):
 
 
 def _reset_method(wiring: Wiring):
-    """Handler for `1:Reset` -- back to the operational state.
+    """Return the handler for `1:Reset`, which returns to the operational state.
 
     Goes via Preoperational, because the nodeset has no transition
     Halted -> Operational; `enter_operational` takes exactly this conformant path.

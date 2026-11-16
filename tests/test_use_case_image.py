@@ -1,4 +1,4 @@
-"""Tests fuer `SaveUseCaseImage`: Ablage je Versuchsreihe und die OPC-UA-Methode."""
+"""Tests for `SaveUseCaseImage`: storage per trial series and the OPC UA method."""
 
 import asyncio
 import json
@@ -20,7 +20,7 @@ try:
         next_trial_number,
         save_use_case_image,
     )
-except Exception:  # pragma: no cover - numpy/OpenCV/asyncua fehlen
+except Exception:  # pragma: no cover - numpy/OpenCV/asyncua missing
     np = None
 
 NOW = datetime(2026, 10, 29, 15, 4, 5)
@@ -55,7 +55,7 @@ class SaveUseCaseImageTest(unittest.TestCase):
     def test_trials_count_up_per_series(self):
         names = [self.save(series=1)[0].name for _ in range(3)]
         self.assertEqual(names, ["versuch_001.png", "versuch_002.png", "versuch_003.png"])
-        # Eine neue Reihe beginnt wieder bei 1.
+        # A new series starts again at 1.
         self.assertEqual(self.save(series=2), (self.base / "reihe_002" / "versuch_001.png", 1))
 
     def test_continues_after_the_highest_trial_and_never_fills_gaps(self):
@@ -75,7 +75,7 @@ class SaveUseCaseImageTest(unittest.TestCase):
         folder = self.base / "reihe_001"
         folder.mkdir(parents=True)
         (folder / "versuch_001.png").write_bytes(b"alt")
-        # Zaehlung meint, 001 sei frei: die Ablage muss trotzdem ausweichen.
+        # The count says 001 is free, but storage must still avoid it.
         with mock.patch("vision_server.use_case_image.next_trial_number", return_value=1):
             path, trial = self.save()
         self.assertEqual((path.name, trial), ("versuch_002.png", 2))
@@ -158,11 +158,11 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         return types.SimpleNamespace(image=test_image(), timestamp=timestamp)
 
     def fresh_frame(self):
-        """Ein Bild, das eindeutig nach dem Aufruf aufgenommen wurde."""
+        """An image taken unambiguously after the call."""
         return self.frame(asyncio.get_running_loop().time() + 60)
 
     async def call(self, series=1, metadata='{"series": 1}'):
-        """Ruft die Methode auf; liefert (FileName, Error) -- `ResultJson` ueberspringt dieser Helfer."""
+        """Call the method and return (FileName, Error); this helper skips `ResultJson`."""
         name, _result_json, error = await self.vision_system.call_method(
             self.method,
             ua.Variant(series, ua.VariantType.Int32),
@@ -175,7 +175,7 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.camera.latest_frame = self.fresh_frame()
         name, error = await self.call(series=4)
         self.assertEqual(error, int(VisionErrorCode.OK))
-        # Ausserhalb des Repos (Tempverzeichnis): absoluter Pfad.
+        # Outside the repo (temp directory): absolute path.
         self.assertEqual(Path(name), self.base / "reihe_004" / "versuch_001.png")
         document = read_json(Path(name))
         self.assertEqual(document["client"], {"series": 1})
@@ -227,7 +227,7 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(read_json(Path(name))["messung"]["ok"])
 
     async def test_waits_for_a_frame_taken_after_the_call(self):
-        # Das Bild von vor dem Aufruf (Roboter noch in Bewegung) zaehlt nicht.
+        # An image from before the call (robot still moving) does not count.
         self.camera.latest_frame = self.frame(0.0)
         call = asyncio.create_task(self.call())
         await asyncio.sleep(0.15)

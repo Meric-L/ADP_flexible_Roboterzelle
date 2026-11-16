@@ -319,9 +319,8 @@ class JobMixin:
         """Warn why there is no world frame: which tags were seen and which the map knows.
 
         Without a world tag the poses stay in the camera frame, and every consumer
-        must reject them. A camera pose cannot be placed in the cell. Until now
-        nothing said WHY no world tag was found. That is exactly what makes
-        commissioning troubleshooting hard.
+        must reject them. The log names the seen tags and the known world tags, so
+        the cause is visible.
         """
         known = sorted(self._tag_map.reference_poses())
         _log.warning(

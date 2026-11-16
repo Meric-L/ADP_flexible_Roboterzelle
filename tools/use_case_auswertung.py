@@ -1,13 +1,13 @@
 """Auswertung einer Use-Case-Versuchsreihe: Bildmessung und Kennzahlen (ISO 9283 angelehnt).
 
-Liest `versuch_NNN.png/.json` aus einem Reihenordner (`data/use-case/reihe_NNN`),
-nimmt die live gespeicherte Messung aus der JSON (oder misst neu), schreibt
-`auswertung.csv` und `auswertung.json` in den Reihenordner und druckt eine Kurzfassung.
-Intrinsik: `pi.intrinsics` der Versuchs-JSON, sonst `--intrinsik <Kalibrierdatei>`.
+Reads `versuch_NNN.png/.json` from a series folder (`data/use-case/reihe_NNN`), uses
+the measurement stored in the JSON (or measures again), and writes `auswertung.csv`
+and `auswertung.json` into the series folder. The intrinsics come from `pi.intrinsics`
+in the trial JSON, or from `--intrinsik <calibration file>`.
 
     python tools/use_case_auswertung.py data/use-case/reihe_001
     python tools/use_case_auswertung.py data/use-case/reihe_001 --neu-messen --bilder
-    # Aufkleber-Versatz: Wuerfel messen, von Hand um 180 Grad drehen, erneut messen
+    # Sticker offset: measure the cube, turn it by 180 degrees by hand, measure again
     python tools/use_case_auswertung.py data/use-case/reihe_001 --aufkleber-kalibrieren 1 2
 """
 
@@ -39,7 +39,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json_atomic(path: Path, data: dict) -> None:
-    """JSON ueber Temp-Datei und `os.replace` schreiben (nie halb beschrieben)."""
+    """Write JSON via a temporary file and `os.replace`, so the target is never half-written."""
     handle, temp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as fh:
@@ -52,7 +52,7 @@ def _write_json_atomic(path: Path, data: dict) -> None:
 
 
 def _calibration(document: dict, fallback):
-    """Kalibrierung aus der Versuchs-JSON (`pi.intrinsics`) oder der `--intrinsik`-Datei."""
+    """Return the calibration from the trial JSON (`pi.intrinsics`), else the fallback."""
     from use_case_eval.live import calibration_from_meta
 
     meta = (document.get("pi") or {}).get("intrinsics")
@@ -65,7 +65,7 @@ def _calibration(document: dict, fallback):
 
 
 def _measure_image(png: Path, calibration, offset):
-    """Misst ein PNG; `None` als Messung, wenn Bild oder Kalibrierung fehlen."""
+    """Measure a PNG; return a failed measurement if the image or the calibration is missing."""
     import cv2
 
     from use_case_eval.measure import TrialMeasurement, measure_trial
@@ -79,7 +79,7 @@ def _measure_image(png: Path, calibration, offset):
 
 
 def _resolve(reference: str, folder: Path) -> Path:
-    """Bilddatei oder Versuchsnummer innerhalb des Reihenordners."""
+    """Resolve an image path or a trial number inside the series folder."""
     path = Path(reference)
     if path.suffix.lower() == ".png" and path.is_file():
         return path
@@ -91,6 +91,7 @@ def _resolve(reference: str, folder: Path) -> Path:
 
 
 def _fallback_calibration(path: Path | None):
+    """Load the calibration file given by `--intrinsik`, or return None."""
     if path is None:
         return None
     from tagloc.calibration import load_calibration
@@ -99,7 +100,7 @@ def _fallback_calibration(path: Path | None):
 
 
 def calibrate_sticker(folder: Path, before: str, after: str, fallback) -> int:
-    """Aufkleber-Versatz aus zwei Aufnahmen (vor/nach 180 Grad) bestimmen und speichern."""
+    """Determine the sticker offset from two captures (before and after a 180-degree turn) and save it."""
     from use_case_eval.live import write_sticker_offset
     from use_case_eval.measure import sticker_offset_from_pair, summarize  # noqa: F401
 
@@ -125,6 +126,7 @@ def calibrate_sticker(folder: Path, before: str, after: str, fallback) -> int:
 
 
 def evaluate(folder: Path, remeasure: bool, images: bool, fallback) -> int:
+    """Measure all trials of a series, write the CSV and JSON summaries, and print them."""
     from use_case_eval.live import load_sticker_offset
     from use_case_eval.measure import TrialMeasurement, annotate, summarize
 
@@ -196,6 +198,7 @@ def evaluate(folder: Path, remeasure: bool, images: bool, fallback) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("reihenordner", type=Path, help="Ordner einer Versuchsreihe, z. B. data/use-case/reihe_001")
     parser.add_argument("--neu-messen", action="store_true",
@@ -211,6 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Run the command-line tool and return the exit code."""
     args = build_parser().parse_args(argv)
     folder = args.reihenordner.resolve()
     if not folder.is_dir():

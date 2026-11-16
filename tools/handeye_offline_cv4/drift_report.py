@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Erzeugt doc/auswertung/handeye_drift.html aus den Offline-Auswertungen.
+"""Build the drift report HTML (doc/auswertung/handeye_drift.html) from the offline analysis outputs.
 
-Nur Python-Standardbibliothek. Liest doc/auswertung/handeye_cv4/ (nur lesen).
-Aufruf: python3 tools/handeye_offline_cv4/drift_report.py
+Uses the Python standard library only and reads doc/auswertung/handeye_cv4/ (read only).
+Usage: python3 tools/handeye_offline_cv4/drift_report.py
 """
 import csv
 import json
@@ -18,12 +18,13 @@ SESSIONS = [
     {"id": "20261109T125050Z_a5c964f0", "short": "S1", "name": "Sitzung 1", "board": "ChArUco"},
     {"id": "20261109T125825Z_a580eaba", "short": "S2", "name": "Sitzung 2", "board": "Schachbrett"},
 ]
-GROUPS = "ABCDE"  # "F" kommt in load() dazu, falls eine Sitzung die Gruppe enthaelt
+GROUPS = "ABCDE"  # "F" is added in load() if a session contains that group
 MINUS = "−"
 
 
-# ---------------------------------------------------------------- Zahlen
+# ---------------------------------------------------------------- Numbers
 def de(x, d=1, sign=False):
+    """Format x with a German decimal comma and a true minus sign; sign=True adds a plus for positive values."""
     s = f"{abs(x):.{d}f}".replace(".", ",")
     if x < 0 and float(f"{abs(x):.{d}f}") != 0:
         return MINUS + s
@@ -31,6 +32,7 @@ def de(x, d=1, sign=False):
 
 
 def regress(xs, ys):
+    """Return slope, intercept and Pearson r of a linear regression of ys on xs."""
     n = len(xs)
     mx, my = sum(xs) / n, sum(ys) / n
     sxx = sum((x - mx) ** 2 for x in xs)
@@ -41,6 +43,7 @@ def regress(xs, ys):
 
 
 def nice_ticks(lo, hi, n=5):
+    """Return tick values and the tick step covering [lo, hi] with about n intervals."""
     span = hi - lo
     raw = span / n
     mag = 10 ** math.floor(math.log10(raw))
@@ -56,14 +59,16 @@ def nice_ticks(lo, hi, n=5):
 
 
 def decimals(step):
+    """Return the number of decimals (at most 3) needed to show step exactly."""
     for d in range(0, 4):
         if abs(step * 10 ** d - round(step * 10 ** d)) < 1e-6:
             return d
     return 3
 
 
-# ---------------------------------------------------------------- Daten
+# ---------------------------------------------------------------- Data
 def load():
+    """Load the drift results and pose rows of both sessions; add group F if present."""
     drift = json.loads((DATA / "drift.json").read_text())
     by = {s["session"]: s for s in drift}
     out = []
@@ -80,17 +85,18 @@ def load():
 
 
 def col(rows, key):
+    """Return the values of column key from the CSV rows as floats."""
     return [float(r[key]) for r in rows]
 
 
-# ---------------------------------------------------------------- SVG-Bausteine
+# ---------------------------------------------------------------- SVG building blocks
 W, H = 460, 290
 ML, MR, MT, MB = 50, 14, 30, 40
 PW, PH = W - ML - MR, H - MT - MB
 
 
 def shape(g, cx, cy, title, s=5.5):
-    """Gruppenmarker: feste Form und Farbe je Gruppe."""
+    """Return an SVG marker for pose group g with a fixed shape and colour."""
     t = f"<title>{escape(title)}</title>"
     if g == "A":
         return f'<circle class="g g-A" cx="{cx:.1f}" cy="{cy:.1f}" r="{s}">{t}</circle>'
@@ -104,7 +110,7 @@ def shape(g, cx, cy, title, s=5.5):
         k = s * 1.25
         pts = f"{cx:.1f},{cy-k:.1f} {cx+k:.1f},{cy:.1f} {cx:.1f},{cy+k:.1f} {cx-k:.1f},{cy:.1f}"
         return f'<polygon class="g g-D" points="{pts}">{t}</polygon>'
-    if g == "F":  # diagonales Kreuz
+    if g == "F":  # diagonal cross
         d = f"M{cx-s:.1f} {cy-s:.1f}L{cx+s:.1f} {cy+s:.1f}M{cx-s:.1f} {cy+s:.1f}L{cx+s:.1f} {cy-s:.1f}"
         return (f'<g class="g-plus"><path class="plus-ring" d="{d}"/>'
                 f'<path class="plus g-F-s" d="{d}"/>{t}</g>')
@@ -114,6 +120,7 @@ def shape(g, cx, cy, title, s=5.5):
 
 
 def legend_group():
+    """Return the HTML legend for the pose-group markers and the regression line."""
     items = []
     for g in GROUPS:
         sv = f'<svg class="lg" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">{shape(g, 9, 9, "", 5)}</svg>'
@@ -124,6 +131,8 @@ def legend_group():
 
 
 class Panel:
+    """SVG plot panel that maps data coordinates to the viewBox."""
+
     def __init__(self, xlim, ylim, xlabel, ylabel, xticks=None, ytick_fmt=None):
         self.xlim, self.ylim = xlim, ylim
         self.xt, self.xstep = (xticks, None) if xticks else nice_ticks(*xlim)
@@ -136,15 +145,19 @@ class Panel:
         self.yd = decimals(self.ystep)
 
     def X(self, v):
+        """Map a data x value to SVG x."""
         return ML + (v - self.xlim[0]) / (self.xlim[1] - self.xlim[0]) * PW
 
     def Y(self, v):
+        """Map a data y value to SVG y."""
         return MT + PH - (v - self.ylim[0]) / (self.ylim[1] - self.ylim[0]) * PH
 
     def add(self, s):
+        """Append an SVG fragment to the panel."""
         self.parts.append(s)
 
     def render(self, label):
+        """Return the complete SVG element with grid, tick labels and content."""
         o = [f'<svg class="plot" viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="{escape(label)}">']
         for v in self.yt:
             y = self.Y(v)
@@ -163,14 +176,17 @@ class Panel:
 
 
 def halo_text(x, y, s, anchor="end", cls="dl"):
+    """Return an SVG text element with a halo for readability."""
     return f'<text class="{cls}" x="{x:.1f}" y="{y:.1f}" text-anchor="{anchor}">{escape(s)}</text>'
 
 
 def trend_label(slope, span, r, unit, axis):
+    """Return the trend label: total change over the session and Pearson r."""
     return f"{de(slope * span, 1, True)} {unit} über die Sitzung · r = {de(r, 2)}".replace("+", "+")
 
 
 def ylim_of(vals, pad=0.08, include_zero=False):
+    """Return padded (lo, hi) axis limits for vals, optionally including zero."""
     lo, hi = min(vals), max(vals)
     if include_zero:
         lo, hi = min(lo, 0), max(hi, 0)
@@ -178,8 +194,9 @@ def ylim_of(vals, pad=0.08, include_zero=False):
     return lo - p, hi + p
 
 
-# ---------------------------------------------------------------- Diagramme
+# ---------------------------------------------------------------- Charts
 def scatter_panel(sess, key, ylim, unit, axis_name, tmax):
+    """Build the scatter panel of one session and column; return SVG, table rows and trend stats."""
     rows = sess["rows"]
     ts, vs = col(rows, "tSeconds"), col(rows, key)
     slope, icpt, r = regress(ts, vs)
@@ -200,29 +217,32 @@ def scatter_panel(sess, key, ylim, unit, axis_name, tmax):
 
 
 def table_html(head, rows, caption=""):
+    """Return a scrollable HTML table with the given header and rows."""
     h = "".join(f"<th>{escape(x)}</th>" for x in head)
     b = "".join("<tr>" + "".join(f"<td>{escape(str(c))}</td>" for c in r) + "</tr>" for r in rows)
     return f'<div class="tw"><table><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table></div>'
 
 
 def details(inner):
+    """Wrap inner HTML in a collapsible details element."""
     return f"<details><summary>Werte als Tabelle</summary>{inner}</details>"
 
 
 def panel_title(sess, extra=""):
+    """Return the h4 title of a session panel."""
     return f'<h4>{sess["name"]} · {sess["board"]}{extra}</h4>'
 
 
 def multiples(sessions, specs, tmax, stats):
-    """specs: [(key, axis_name, unit)] -> Zeilen = Achse, Spalten = Sitzung."""
+    """Render small multiples: rows are axis specs (key, axis_name, unit), columns are sessions."""
     cells, tab_rows = [], {}
     for key, name, unit in specs:
         allv = []
         for s in sessions:
             allv += col(s["rows"], key)
-        # y-Skala: Daten plus Regressionsgeraden
+        # y scale: data plus regression lines
         lo, hi = ylim_of(allv, 0.12)
-        hi += (hi - lo) * 0.14  # Kopfraum fuer die Beschriftung der Geraden
+        hi += (hi - lo) * 0.14  # headroom for the regression-line labels
         for si, s in enumerate(sessions):
             svg, table, st = scatter_panel(s, key, (lo, hi), unit, name, tmax)
             stats[(key, si)] = st
@@ -235,6 +255,7 @@ def multiples(sessions, specs, tmax, stats):
 
 
 def chart4(sessions, stats4):
+    """Build the per-pose RMS panels comparing the rigid and board-drift models."""
     allv = []
     for s in sessions:
         m = s["drift"]["models"]
@@ -258,7 +279,7 @@ def chart4(sessions, stats4):
         for pid, g, t, a, b in pts:
             p.add(f'<circle class="sr" cx="{p.X(t):.1f}" cy="{p.Y(a):.1f}" r="4"><title>{pid}, Gruppe {g}, {de(t,0)} s, starr: {de(a,2)} px</title></circle>')
             p.add(f'<circle class="sd" cx="{p.X(t):.1f}" cy="{p.Y(b):.1f}" r="3.6"><title>{pid}, Gruppe {g}, {de(t,0)} s, Brettdrift: {de(b,2)} px</title></circle>')
-        # Direktbeschriftung: Serien am Plotrand links oben mit Marker
+        # Direct labels: series at the top-left plot edge, with markers
         lx, ly = ML + 10, MT + 12
         p.add(f'<circle class="sr" cx="{lx}" cy="{ly}" r="4"/>' + halo_text(lx + 9, ly + 4, "starr (rigid)", "start"))
         p.add(f'<circle class="sd" cx="{lx}" cy="{ly+18}" r="3.6"/>' + halo_text(lx + 9, ly + 22, "Brettdrift", "start"))
@@ -271,6 +292,7 @@ def chart4(sessions, stats4):
 
 
 def chart5(sessions, info):
+    """Build the translation-versus-pose-count panels; record the sweep ranges in info."""
     cells, trows = [], []
     for ai, (axname, idx) in enumerate((("t x", 0), ("t y", 1))):
         allv = []
@@ -312,6 +334,7 @@ def chart5(sessions, info):
 
 
 def chart6(sessions):
+    """Build the per-axis drift bar chart; return legend, SVG and table HTML."""
     vals = [s["drift"]["models"]["boardDrift"]["driftOverSessionMm"] for s in sessions]
     lo, hi = ylim_of([v for vv in vals for v in vv], 0.25, include_zero=True)
     p = Panel((0, 3), (lo, hi), "", "Drift über die Sitzung (mm)", xticks=[])
@@ -342,6 +365,7 @@ def chart6(sessions):
 
 
 def models_table(sessions):
+    """Return the HTML table of all drift models per session."""
     head = ["Sitzung", "Modell", "RMS gesamt (px)", "1. Hälfte (px)", "2. Hälfte (px)",
             "t x (mm)", "t y (mm)", "t z (mm)", "Drift (mm)", "Drift (°)"]
     rows = []
@@ -356,7 +380,7 @@ def models_table(sessions):
     return table_html(head, rows)
 
 
-# ---------------------------------------------------------------- Seite
+# ---------------------------------------------------------------- Page
 CSS = """
 :root{--bg:#f7f8f8;--surface:#ffffff;--fg:#15191c;--muted:#56616a;--grid:#e2e6e9;--accent:#1d5f8c;
 --gA:#2a78d6;--gB:#eb6834;--gC:#1baf7a;--gD:#eda100;--gE:#e87ba4;--gF:#7a7a2e;--m-rigid:#52514e;--m-drift:#6250d6}
@@ -422,6 +446,7 @@ th{font-weight:500;color:var(--muted);position:sticky;top:0;background:var(--bg)
 
 
 def build():
+    """Write the drift report HTML and print a short summary."""
     S = load()
     tmax = max(max(col(s["rows"], "tSeconds")) for s in S)
     stats = {}

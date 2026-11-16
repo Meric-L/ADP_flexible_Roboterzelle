@@ -1,8 +1,8 @@
-"""Tests fuer den Watchdog der `SharedCamera`.
+"""Tests for the watchdog of `SharedCamera`.
 
-Die Hardware-Methoden (`_open_camera`, `_read_frame`, `_close_camera`) werden
-ersetzt; so laesst sich ein `capture_array()` nachstellen, das wie auf Pi 1
-(2026-09-22) ewig auf einen Frame wartet.
+The hardware methods (`_open_camera`, `_read_frame`, `_close_camera`) are
+replaced, which lets a `capture_array()` be simulated that waits forever for a
+frame, as a hanging Pi camera does.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ FAST_CONFIG = CameraStreamConfig(
 
 
 class ScriptedCamera(SharedCamera):
-    """Jede Oeffnung bekommt ein Verhalten: "ok", "hang", "error" oder "fail_open"."""
+    """Each open gets one behaviour: "ok", "hang", "error" or "fail_open"."""
 
     def __init__(self, behaviours: list[str], config: CameraStreamConfig = FAST_CONFIG):
         self.gave_up = 0
@@ -111,12 +111,12 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
 
         await _wait_until(lambda: camera.gave_up == 1)
 
-        # Die erste Oeffnung plus max_reopen_attempts Neu-Oeffnungen.
+        # The first open plus max_reopen_attempts re-opens.
         self.assertEqual(len(camera.opened), 1 + FAST_CONFIG.max_reopen_attempts)
         self.assertIsNone(camera.latest_frame)
 
     async def test_a_frame_between_hangs_resets_the_reopen_budget(self):
-        """Haengt die Kamera alle paar Minuten einmal, heilt sie sich jedes Mal selbst."""
+        """If the camera hangs every few minutes, it heals itself each time."""
         camera = self._camera(["hang", "ok"])
         await camera.open()
         await _wait_until(lambda: camera.latest_frame is not None)
@@ -141,7 +141,7 @@ class WatchdogTest(unittest.IsolatedAsyncioTestCase):
 
 
 class _ScriptedCameraTest(unittest.IsolatedAsyncioTestCase):
-    """Gemeinsames Aufraeumen: haengende Leser freigeben, dann schliessen."""
+    """Shared cleanup: release hanging readers, then close."""
 
     async def asyncTearDown(self):
         for camera in getattr(self, "_cameras", []):
@@ -155,10 +155,10 @@ class _ScriptedCameraTest(unittest.IsolatedAsyncioTestCase):
 
 
 class StatusTest(_ScriptedCameraTest):
-    """`status()` ist die einzige Wahrheit, aus der `DeviceHealth` entsteht.
+    """`status()` is the only source the `DeviceHealth` is derived from.
 
-    Ohne sie muesste `camera_health.py` den Zustand ein zweites Mal
-    herleiten -- und die beiden Herleitungen wuerden auseinanderlaufen.
+    Otherwise `camera_health.py` would derive the state a second time, and the
+    two derivations could diverge.
     """
 
     async def test_an_unopened_camera_is_not_running(self):
@@ -186,8 +186,7 @@ class StatusTest(_ScriptedCameraTest):
         self.assertFalse(status.gave_up)
 
     async def test_reports_the_age_against_the_passed_clock(self):
-        """Die Uhr kommt von aussen -- sonst waere die Methode nicht ohne
-        laufenden Loop testbar."""
+        """The clock comes from outside, so the method can be tested without a running loop."""
         camera = self._camera(["ok"])
         await camera.open()
         await _wait_until(lambda: camera.latest_frame is not None)
@@ -211,8 +210,8 @@ class StatusTest(_ScriptedCameraTest):
 
 class GiveUpHandlerTest(_ScriptedCameraTest):
     async def test_awaits_an_asynchronous_handler(self):
-        """Der Runner schreibt hier ein letztes FAILURE, bevor der Prozess
-        faellt -- ein synchron aufgerufener Handler kaeme nicht dazu."""
+        """The runner writes a last FAILURE here before the process exits, which
+        a synchronously called handler would not get to do."""
         camera = self._camera(["hang", "hang", "fail_open"])
         done = asyncio.Event()
 

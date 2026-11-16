@@ -1,8 +1,8 @@
-"""Schachbrett-Pose fuer die Hand-Auge-Kalibrierung, an gerenderten Bildern.
+"""Chessboard pose for the hand-eye calibration, on rendered images.
 
-Der Kern: dasselbe Brett muss in jedem Bild dasselbe Koordinatensystem
-bekommen -- auch wenn die Kamera um 180 Grad gedreht darauf schaut und OpenCV
-die Ecken deshalb in anderer Reihenfolge liefert.
+The core: the same board must get the same coordinate system in every image,
+even when the camera looks at it turned by 180 degrees and OpenCV therefore
+returns the corners in a different order.
 """
 
 import math
@@ -22,10 +22,10 @@ try:
         estimate_board_pose,
     )
     from tagloc.calibration import CameraCalibration
-except Exception:  # pragma: no cover - cv2/numpy fehlen in dieser Umgebung
+except Exception:  # pragma: no cover - cv2/numpy missing in this environment
     cv2 = None
 
-#: Das gelaserte Brett: 6x7 Felder zu 23 mm, also 5x6 Innenecken.
+#: The lasered board: 6x7 squares of 23 mm, i.e. 5x6 inner corners.
 SPEC = BoardSpec(type=CHESSBOARD, cols=5, rows=6, square_size_m=0.023) if cv2 else None
 SIZE = (1280, 960)
 PIXELS_PER_M = 4000.0
@@ -38,8 +38,9 @@ def calibration():
 
 
 def texture():
-    """Das Brett von oben, weisser Rand. Feld (i, j) ist schwarz bei (i + j) gerade,
-    damit liegt das Feld zwischen den ersten vier Innenecken (1, 1) schwarz."""
+    """The board seen from above, with a white border. Square (i, j) is black
+    where (i + j) is even, so the square between the first four inner corners
+    (1, 1) is black."""
     s = SPEC.square_size_m
     width = int(((SPEC.cols + 1) * s + 2 * MARGIN_M) * PIXELS_PER_M)
     height = int(((SPEC.rows + 1) * s + 2 * MARGIN_M) * PIXELS_PER_M)
@@ -54,9 +55,9 @@ def texture():
 
 
 def render(pose_cam_board):
-    """Das Brett so, wie die Kamera es bei `T_cam_board` sieht."""
+    """The board as the camera sees it at `T_cam_board`."""
     s = SPEC.square_size_m
-    # Texturpixel -> Board-Frame (Ursprung in der ersten Innenecke), Meter.
+    # Texture pixel -> board frame (origin at the first inner corner), metres.
     to_board = np.array(
         [[1 / PIXELS_PER_M, 0, -(MARGIN_M + s)], [0, 1 / PIXELS_PER_M, -(MARGIN_M + s)], [0, 0, 1]]
     )
@@ -67,7 +68,7 @@ def render(pose_cam_board):
 
 
 def looking_at_board(rx_deg=0.0, ry_deg=0.0, rz_deg=0.0, distance=0.35):
-    """Kamera schaut aus `distance` auf die Brettmitte, um die Achsen gedreht."""
+    """Camera looks at the board centre from `distance`, rotated about the axes."""
     s = SPEC.square_size_m
     centre = np.array([(SPEC.cols - 1) * s / 2, (SPEC.rows - 1) * s / 2, 0.0])
     rotation = np.eye(3)
@@ -75,7 +76,7 @@ def looking_at_board(rx_deg=0.0, ry_deg=0.0, rz_deg=0.0, distance=0.35):
         rvec = [0.0, 0.0, 0.0]
         rvec[axis] = math.radians(angle)
         rotation = rotation @ geometry.rotation_from_rvec(rvec)
-    # T_cam_board: Brettmitte liegt `distance` vor der Kamera.
+    # T_cam_board: the board centre lies `distance` in front of the camera.
     translation = np.array([0.0, 0.0, distance]) - rotation @ centre
     return geometry.from_rotation_translation(rotation, translation)
 
@@ -106,8 +107,8 @@ class BoardPoseTest(unittest.TestCase):
         self.assert_same_pose(pose, truth)
 
     def test_turned_and_tilted_views_give_the_same_board_frame(self):
-        # Um 180 Grad gedreht liefert OpenCV die Ecken von der anderen Seite;
-        # die Pose muss trotzdem dieselbe sein.
+        # Turned by 180 degrees, OpenCV returns the corners from the other side;
+        # the pose must still be the same.
         for angles in ((0, 0, 180), (0, 0, 90), (20, 0, 30), (0, -25, 200), (15, 15, -120)):
             with self.subTest(angles=angles):
                 truth = looking_at_board(*angles)
@@ -117,7 +118,7 @@ class BoardPoseTest(unittest.TestCase):
 
     def test_a_board_partly_outside_the_image_is_not_found(self):
         truth = looking_at_board()
-        truth[0, 3] += 0.2  # weit nach rechts geschoben
+        truth[0, 3] += 0.2  # pushed far to the right
         self.assertIsNone(detect_board(render(truth), SPEC))
 
 

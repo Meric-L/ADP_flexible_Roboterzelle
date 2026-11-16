@@ -28,12 +28,12 @@ _log = logging.getLogger(__package__)
 
 
 def code_reply(code: VisionErrorCode) -> tuple[ua.Variant]:
-    """Reply with only `Error` (Int32)."""
+    """Return a reply that contains only `Error` (Int32)."""
     return (ua.Variant(int(code), ua.VariantType.Int32),)
 
 
 def text_reply(text: str, code: VisionErrorCode) -> tuple[ua.Variant, ua.Variant]:
-    """Reply with a string (usually JSON) and `Error` (Int32)."""
+    """Return a reply with a string (usually JSON) and `Error` (Int32)."""
     return (
         ua.Variant(text, ua.VariantType.String),
         ua.Variant(int(code), ua.VariantType.Int32),

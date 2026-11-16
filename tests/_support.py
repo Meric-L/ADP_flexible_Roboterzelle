@@ -1,15 +1,8 @@
-"""Gemeinsame Test-Helfer, die sonst in mehreren Testdateien kopiert lagen.
+"""Shared test helpers, importable without numpy, cv2 or asyncua.
 
-Kein Testmodul (der Name passt nicht auf `test*.py`), `unittest discover`
-sammelt hier also nichts ein. Import als `from tests._support import ...`.
-
-Auf Modulebene nur Standardbibliothek und `vision_server.config` (selbst
-reine Standardbibliothek): auch Tests, die ohne numpy, cv2 oder asyncua
-laufen muessen, importieren von hier. `tagloc` und `asyncua` werden erst in
-der jeweiligen Funktion geladen.
-
-Die Form folgt den Commits 1c938f6 und 9a7942f aus `apriltag-refactoring`;
-sie liessen sich nicht ohne Konflikt uebernehmen und wurden hier nachgebaut.
+This module is not collected by `unittest discover` (its name does not match
+`test*.py`). Import it as `from tests._support import ...`. `tagloc` and
+`asyncua` are loaded inside the functions that need them.
 """
 
 import asyncio
@@ -17,18 +10,18 @@ from types import SimpleNamespace
 
 from vision_server.config import DEFAULT_AMCM_NODESET_PATHS
 
-#: Ohne die Nodesets unter src/vision_server/nodesets/ gibt es keine
-#: Anlagensicht (Part 2) -- die betroffenen Tests springen dann ab.
+#: Without the nodesets in src/vision_server/nodesets/ the plant view (part 2)
+#: is unavailable and the affected tests skip.
 HAS_NODESETS = all(path.is_file() for path in DEFAULT_AMCM_NODESET_PATHS)
 
 
 class RecordingNode:
-    """Ein OPC-UA-Knoten, der jedes `write_value` mitschreibt.
+    """An OPC UA node that records every `write_value` call.
 
-    Ein `ua.Variant` wird ausgepackt (`written` haelt dann `.Value`), alles
-    andere so abgelegt, wie es kam -- so vergleichen die Tests Werte statt
-    Variants. `nodeid` reicht fuer Code, der `node.nodeid.to_string()` loggt;
-    `fail=True` laesst jedes Schreiben scheitern.
+    A `ua.Variant` is unwrapped (`written` then holds `.Value`); anything else
+    is stored as given, so tests compare values rather than Variants. `nodeid`
+    is enough for code that logs `node.nodeid.to_string()`; `fail=True` makes
+    every write fail.
     """
 
     def __init__(self, nodeid: str = "ns=6;s=Test", *, fail: bool = False) -> None:
@@ -43,33 +36,31 @@ class RecordingNode:
 
 
 async def run_briefly(publisher, seconds: float) -> None:
-    """Startet einen Publisher (`start()`/`stop()`), laesst ihn `seconds`
-    laufen und haelt ihn wieder an."""
+    """Start a publisher (`start()`/`stop()`), let it run for `seconds`, then stop it."""
     publisher.start()
     await asyncio.sleep(seconds)
     await publisher.stop()
 
 
 def pose(translation, *, rvec=(0.0, 0.0, 0.0)):
-    """Eine Pose aus Translation und Drehvektor (`geometry.from_rvec_tvec`)."""
+    """A pose from a translation and a rotation vector (`geometry.from_rvec_tvec`)."""
     from tagloc import geometry
 
     return geometry.from_rvec_tvec(rvec, translation)
 
 
 class AddressSpaceCache:
-    """Baut den Vision-Adressraum (`configure_server` + `attach_vision_system`)
-    einmal je Variante statt einmal je Testmethode.
+    """Build the vision address space (`configure_server` + `attach_vision_system`)
+    once per variant instead of once per test method.
 
-    Der Aufbau kostet mehrere Sekunden -- vier Nodeset-Importe und rund 700
-    instanziierte Knoten; unmemoisiert dauerte test_asset_model.py allein
-    zwei Minuten. Jedes Testmodul haelt eine **eigene** Instanz: die
-    Schluessel ("mit", "ohne") sind nur innerhalb einer Datei eindeutig,
-    dieselbe Variante meint je Datei andere `AssetConfig`s, und manche Datei
-    baut auf dem Adressraum weiter (`attach_asset_model`).
+    Building takes several seconds (four nodeset imports, about 700 nodes);
+    without caching, test_asset_model.py alone took two minutes. Each test
+    module holds its own instance, because keys such as "mit" and "ohne" are
+    only unique within one file, and some files build further on the address
+    space (`attach_asset_model`).
 
-    `port` geht nur in den Endpunkt ein und wirkt nur beim ersten Aufbau
-    eines Schluessels.
+    `port` only goes into the endpoint and only takes effect on the first build
+    of a key.
     """
 
     def __init__(self) -> None:

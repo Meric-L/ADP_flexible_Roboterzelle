@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Berichtsgenerator Hand-Auge-Offline-Auswertung (OpenCV-Vergleich).
+"""Build the offline hand-eye OpenCV comparison report as one self-contained HTML page.
 
-Nur Standardbibliothek. Liest ausschliesslich doc/auswertung/handeye_cv4/
-(<session>.json, <session>_posen.csv, vergleich.json, drift.json, optional befunde.html)
-und schreibt doc/auswertung/calibration_cv4_vergleich.html (eigenstaendig, alles inline).
+Uses the standard library only and reads doc/auswertung/handeye_cv4/ (read only): the session JSON and
+CSV files, vergleich.json, drift.json and the optional befunde.html. Writes
+doc/auswertung/calibration_cv4_vergleich.html with all styles and charts inline.
 
-Aufruf: python3 tools/handeye_offline_cv4/report.py
+Usage: python3 tools/handeye_offline_cv4/report.py
 """
 import csv
 import json
@@ -25,18 +25,19 @@ SHAPES = {"A": "circle", "B": "square", "C": "triangle", "D": "diamond", "E": "p
 SHAPE_NAME = {"A": "Kreis", "B": "Quadrat", "C": "Dreieck", "D": "Raute", "E": "Plus", "F": "Kreuz"}
 METHODS = ["park", "tsai", "daniilidis", "park_numpy"]
 EXTRA = ["horaud", "andreff"]
-R = 6  # Markerradius (Durchmesser 12 viewBox-Einheiten, >= 8 px auch bei 360 px Breite)
+R = 6  # marker radius (diameter 12 viewBox units, at least 8 px even at 360 px width)
 
 
-# ---------------------------------------------------------------- Helfer
+# ---------------------------------------------------------------- Helpers
 def de(x, d=2):
-    """Deutsche Zahlenformatierung."""
+    """Format x with a German decimal comma; None and non-finite values become a dash."""
     if x is None or (isinstance(x, float) and not math.isfinite(x)):
         return "–"
     return f"{x:.{d}f}".replace(".", ",").replace("-", "−")
 
 
 def sci(x):
+    """Format x in scientific notation with a superscript exponent."""
     if x == 0:
         return "0"
     e = int(math.floor(math.log10(abs(x))))
@@ -48,20 +49,24 @@ def sci(x):
 
 
 def norm(v):
+    """Return the Euclidean norm of v."""
     return math.sqrt(sum(a * a for a in v))
 
 
 def sub(a, b):
+    """Return the element-wise difference a - b."""
     return [x - y for x, y in zip(a, b)]
 
 
 def median(v):
+    """Return the median of v."""
     s = sorted(v)
     n = len(s)
     return s[n // 2] if n % 2 else 0.5 * (s[n // 2 - 1] + s[n // 2])
 
 
 def nice_ticks(lo, hi, n=5):
+    """Return tick values and the tick step covering [lo, hi] with about n intervals."""
     span = hi - lo or 1.0
     raw = span / n
     mag = 10 ** math.floor(math.log10(raw))
@@ -79,7 +84,7 @@ def nice_ticks(lo, hi, n=5):
 
 
 def axis_for(values, pad=0.06, zero=False):
-    """Liefert ((lo, hi), ticks, step)."""
+    """Return ((lo, hi), ticks, step) for values, padded by pad and optionally starting at zero."""
     lo, hi = min(values), max(values)
     if zero:
         lo = 0.0
@@ -95,12 +100,13 @@ def axis_for(values, pad=0.06, zero=False):
 
 
 def tf(step):
+    """Return a formatter that rounds values to the number of decimals suited to step."""
     d = 0 if step >= 1 else (1 if step >= 0.1 else (2 if step >= 0.01 else 3))
     return lambda v: de(v, d)
 
 
 def dodge(items, min_gap, lo, hi):
-    """items: Liste (key, y). Gibt dict key->y mit Mindestabstand (einfaches Relaxieren)."""
+    """Return a dict key -> y for items (key, y) with at least min_gap between them (simple relaxation)."""
     it = sorted(items, key=lambda t: t[1])
     ys = [y for _, y in it]
     for _ in range(100):
@@ -114,7 +120,7 @@ def dodge(items, min_gap, lo, hi):
         ys = [min(max(y, lo), hi) for y in ys]
         if not moved:
             break
-    for i in range(1, len(ys)):  # Rand-Klemmung darf Abstand nicht verletzen
+    for i in range(1, len(ys)):  # clamping to the edges must not violate the gap
         ys[i] = max(ys[i], ys[i - 1] + min_gap)
     for i in range(len(ys) - 2, -1, -1):
         if ys[i] > hi - min_gap * (len(ys) - 1 - i):
@@ -124,7 +130,7 @@ def dodge(items, min_gap, lo, hi):
 
 # ---------------------------------------------------------------- SVG
 def marker(group, cx, cy, title):
-    """Marker mit Gruppenfarbe, fester Form und 2-px-Ring in Flaechenfarbe."""
+    """Return an SVG marker for a pose group: group colour, fixed shape and a 2 px ring in the surface colour."""
     col = f"var(--g-{group.lower()})"
     ring = "var(--surface)"
     shp = SHAPES[group]
@@ -141,7 +147,7 @@ def marker(group, cx, cy, title):
         r = R + 2
         pts = f"{cx:.1f},{cy - r:.1f} {cx + r:.1f},{cy:.1f} {cx:.1f},{cy + r:.1f} {cx - r:.1f},{cy:.1f}"
         return f'<polygon points="{pts}" fill="{col}" stroke="{ring}" stroke-width="2" stroke-linejoin="round">{t}</polygon>'
-    if shp == "cross":  # diagonales Kreuz (Gruppe F)
+    if shp == "cross":  # diagonal cross (group F)
         r = R
         d = f"M{cx - r:.1f},{cy - r:.1f}L{cx + r:.1f},{cy + r:.1f}M{cx - r:.1f},{cy + r:.1f}L{cx + r:.1f},{cy - r:.1f}"
         return (f'<g>{t}<path d="{d}" stroke="{ring}" stroke-width="7" stroke-linecap="round" fill="none"/>'
@@ -153,6 +159,7 @@ def marker(group, cx, cy, title):
 
 
 def legend_groups():
+    """Return the HTML legend for the pose-group markers."""
     out = ['<div class="legend" role="list" aria-label="Legende Posegruppen">']
     for g in GROUPS:
         m = marker(g, 10, 10, f"Gruppe {g}")
@@ -163,6 +170,8 @@ def legend_groups():
 
 
 class Chart:
+    """SVG chart with linear axes mapped to pixel coordinates."""
+
     def __init__(self, w, h, xlim, ylim, xticks, yticks, xfmt, yfmt, xlabel, ylabel,
                  ml=58, mr=14, mt=12, mb=44):
         self.w, self.h = w, h
@@ -184,17 +193,21 @@ class Chart:
         p.append(f'<text transform="translate(13 {(mt + h - mb) / 2:.1f}) rotate(-90)" text-anchor="middle" class="al">{escape(ylabel)}</text>')
 
     def add(self, s):
+        """Append an SVG fragment to the chart."""
         self.parts.append(s)
 
     def text(self, x, y, s, anchor="start"):
+        """Append a text label at pixel position (x, y)."""
         self.parts.append(f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="{anchor}" class="dl">{escape(s)}</text>')
 
     def svg(self, label):
+        """Return the complete SVG element with the chart parts."""
         return (f'<svg viewBox="0 0 {self.w} {self.h}" width="100%" role="img" aria-label="{escape(label)}">'
                 + "".join(self.parts) + "</svg>")
 
 
 def table(headers, rows, cls="", caption=None):
+    """Return an HTML table; rows are lists of cells or pre-rendered row strings."""
     h = "".join(f"<th>{escape(x)}</th>" for x in headers)
     b = []
     for r in rows:
@@ -207,11 +220,13 @@ def table(headers, rows, cls="", caption=None):
 
 
 def details(inner, summary="Tabelle"):
+    """Wrap inner HTML in a collapsible details element."""
     return f"<details><summary>{escape(summary)}</summary>{inner}</details>"
 
 
-# ---------------------------------------------------------------- Daten
+# ---------------------------------------------------------------- Data
 def load():
+    """Load session results, the comparison and drift files, and the optional findings HTML."""
     sess = {}
     for sid, short, kind in SESSIONS:
         j = json.loads((IN_DIR / f"{sid}.json").read_text(encoding="utf-8"))
@@ -226,7 +241,7 @@ def load():
                 })
         loo = {p["poseId"]: p["dtNormMm"] for p in j["leaveOneOut"]["perPose"]}
         if any(r["g"] == "F" for r in rows) and "F" not in GROUPS:
-            GROUPS.append("F")  # Gruppe F nur bei Sitzungen, die sie enthalten (alte Ausgaben bleiben gleich)
+            GROUPS.append("F")  # group F only for sessions that contain it (older outputs stay the same)
         sess[sid] = {"j": j, "rows": rows, "loo": loo, "short": short, "kind": kind}
     vg = json.loads((IN_DIR / "vergleich.json").read_text(encoding="utf-8"))
     dr = {d["session"]: d for d in json.loads((IN_DIR / "drift.json").read_text(encoding="utf-8"))}
@@ -235,8 +250,9 @@ def load():
     return sess, vg, dr, befunde
 
 
-# ---------------------------------------------------------------- Abschnitte
+# ---------------------------------------------------------------- Sections
 def kpis(sess):
+    """Return the HTML KPI tiles for the comparison summary."""
     park_dev = max(sess[sid]["j"]["methods"]["park"]["diffToParkNumpy"]["dtNormMm"] for sid, _, _ in SESSIONS)
     t = {sid: sess[sid]["j"]["finalSolution"]["translationMm"] for sid, _, _ in SESSIONS}
     dist = norm(sub(t[S1], t[S2]))
@@ -256,6 +272,7 @@ def kpis(sess):
 
 
 def method_section(sess):
+    """Return the HTML section comparing the OpenCV methods and the refined solutions."""
     out = ['<h2 id="verfahren">Daten: Verfahrensvergleich</h2>',
            '<p class="sub">Hand-Auge-Translation der Kamera im Flansch je Verfahren (cv2.calibrateHandEye, OpenCV 4.14) und nach '
            'nichtlinearer Verfeinerung. Δ = Abstand der Translation zu park_numpy.</p>']
@@ -320,6 +337,7 @@ def method_section(sess):
 
 
 def reproj_section(sess):
+    """Return the HTML section with reprojection-error plots per pose group, tilt, yaw and time."""
     out = ['<h2 id="reproj">Daten: Reprojektionsfehler je Pose</h2>',
            '<p class="sub">RMS-Reprojektionsfehler je Pose (reprojRmsPx). Je Sitzung vier Ansichten mit '
            'gleicher y-Skala; die Posegruppen A–E haben feste Farbe und Form.</p>', legend_groups()]
@@ -386,6 +404,7 @@ SERIES = [("rigid", "starr verfeinert", "s-rigid", ""), ("drift", "Brettdrift-Mo
 
 
 def influence_section(sess, vg, dr):
+    """Return the HTML section on leave-one-out influence, the pose-count sweep and the drift models."""
     out = ['<h2 id="einfluss">Daten: Einfluss auf die Translation</h2>', '<h3>(a) Leave-one-out</h3>',
            '<p class="sub">Änderung der verfeinerten Translation (Betrag Δt), wenn die jeweilige Pose weggelassen wird; '
            'Posen nach Aufnahmezeit sortiert.</p>', legend_groups()]
@@ -471,6 +490,7 @@ def influence_section(sess, vg, dr):
 
 
 def repro_section(sess):
+    """Return the HTML section with the reproduction commands and software versions."""
     env = sess[S1]["j"]["environment"]
     code = (
         "python3 -m venv .venv-cv4\n"
@@ -526,6 +546,7 @@ pre{background:var(--card);border:1px solid var(--grid);padding:10px;overflow-x:
 
 
 def main():
+    """Write the comparison report HTML."""
     sess, vg, dr, befunde = load()
     head = ('<h1>Hand-Auge OpenCV-Vergleich</h1>'
             f'<p class="sub">Sitzungen S1 <code>{S1}</code> (ChArUco) und S2 <code>{S2}</code> (Schachbrett) · Branch '

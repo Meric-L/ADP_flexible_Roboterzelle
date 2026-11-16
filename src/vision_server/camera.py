@@ -1,6 +1,6 @@
 """One camera, one capture loop, several readers.
 
-Detection (`detection/apriltag.py`) and the live-stream publisher (`camera_stream.py`)
+Detection (`detection/`) and the live-stream publisher (`camera_stream.py`)
 both need images from the same physical camera. Picamera2/libcamera **and** RealSense,
 however, allow only one open handle per camera at a time -- a second open while the
 stream is running would fail. Therefore exactly one `SharedCamera` keeps the hardware
@@ -17,7 +17,7 @@ a `camera_stream` configuration (e.g. local development, tests) starts without t
 dependencies.
 
 Watchdog: `capture_array()` can hang forever without any error message when libcamera
-no longer delivers a frame (observed on Pi 1 on 2026-09-22 via `py-spy`). The capture
+no longer delivers a frame (observed on Pi 1 via `py-spy`). The capture
 loop therefore bounds every capture, reopens the camera on hangs and, as a last resort,
 terminates the process so that systemd restarts it. This applies equally to all
 backends -- `wait_for_frames()` of the RealSense also runs under the same timeout. A

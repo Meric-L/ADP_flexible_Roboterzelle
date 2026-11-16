@@ -1,7 +1,7 @@
-"""Hook into ``SaveUseCaseImage``: measurement without exceptions, sticker offset, intrinsics metadata.
+"""Hook for ``SaveUseCaseImage``: non-raising measurement, sticker offset and intrinsics metadata.
 
-Everything here is defensive: a measurement error must never prevent the photo from being
-saved. The error ends up as ``{"ok": false, "grund": ...}`` in the trial JSON.
+A measurement error must never prevent the photo from being saved; it is reported as
+``{"ok": false, "grund": ...}`` in the trial JSON.
 """
 
 import json

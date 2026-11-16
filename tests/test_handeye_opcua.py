@@ -1,7 +1,7 @@
-"""Hand-Auge-Kalibrierung ueber OPC UA: Methoden, Statusknoten, Datei.
+"""Hand-eye calibration over OPC UA: methods, status node, file.
 
-Ohne Kamera: die Quelle ist ein Fake, der OPC-UA-Teil
-(`runner._install_hand_eye_session`) ist echt.
+Without a camera: the source is a fake, the OPC UA part
+(`runner._install_hand_eye_session`) is real.
 """
 
 import json
@@ -20,7 +20,7 @@ try:
     from vision_server.runner import _install_hand_eye_session
 
     from tests.test_handeye_session import FLANGE_CAM, cam_to_tag, flange_poses
-except Exception:  # pragma: no cover - asyncua oder numpy fehlen
+except Exception:  # pragma: no cover - asyncua or numpy missing
     np = None
 
 
@@ -91,7 +91,7 @@ class HandEyeOpcUaTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((await self.status())["state"], "idle")
 
-        self.busy = True  # Job oder Layer-2-Lauf aktiv
+        self.busy = True  # job or layer-2 run active
         start = json.dumps({"schema": START_SCHEMA, "tagId": 12, "tagInBase": None})
         self.assertEqual(await self.call("StartHandEyeCalibration", start), int(VisionErrorCode.BUSY))
         self.busy = False

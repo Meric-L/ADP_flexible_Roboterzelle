@@ -1,10 +1,8 @@
-"""Tests der Bausteine in `vision_server.runner`: JSON-Wrapper, Antworten, Sperr-Abfragen.
+"""Tests for the building blocks of `vision_server.runner`: JSON wrapper, replies and busy checks.
 
-Der JSON-Wrapper (`json_method`) ersetzt den dreifach kopierten Rahmen von
-`MeasureBoard`, `MeasureTags` und `MeasureTagReference` (Altlast D6). Diese
-Tests nageln die Reihenfolge der Pruefungen fest: Anfrage lesen, Betriebszustand,
-Sperre, Arbeit. Ohne Server: die Handler werden direkt aufgerufen, so wie
-asyncua es tut (NodeId des Elternknotens, dann die Argumente als `ua.Variant`).
+`json_method` fixes the order of the checks: parse the request, operational
+state, busy lock, work. Handlers are called directly, as asyncua does, with the
+parent NodeId followed by the arguments as `ua.Variant`.
 """
 
 import unittest
@@ -28,7 +26,7 @@ PARENT = ua.NodeId(1, 0)
 
 
 def values(result) -> list:
-    """Die Werte einer Methodenantwort."""
+    """The values of a method reply."""
     return [variant.Value for variant in result]
 
 
@@ -41,7 +39,7 @@ class FakeStates:
 
 
 class Recorder:
-    """Merkt sich, welche Stufen des Wrappers erreicht wurden."""
+    """Records which stages of the wrapper were reached."""
 
     def __init__(self, *, parse_error: str | None = None, busy: bool = False) -> None:
         self.parse_error = parse_error
@@ -112,7 +110,7 @@ class JsonMethodTest(unittest.IsolatedAsyncioTestCase):
             values(result),
             ["Vision-System nicht betriebsbereit", int(VisionErrorCode.INVALID_STATE)],
         )
-        # Der Zustand wird vor der Sperre geprueft: `busy` kommt gar nicht dran.
+        # The state is checked before the lock, so `busy` is never reached.
         self.assertEqual(recorder.calls, [("parse", "{}")])
 
     async def test_sperre_ist_busy_mit_dem_text_des_aufrufers(self):
@@ -150,7 +148,7 @@ class ReplyTest(unittest.TestCase):
 
 
 class WiringTest(unittest.TestCase):
-    """Die Sperr-Abfragen, die `install` den Installern als Lambdas uebergibt."""
+    """The busy checks that `install` passes to the installers as lambdas."""
 
     def wiring(self, **fields) -> Wiring:
         return Wiring(None, None, None, None, None, {}, None, **fields)
@@ -171,7 +169,7 @@ class WiringTest(unittest.TestCase):
         self.assertTrue(wiring.calibration_processing())
 
     def test_sitzungen_werden_erst_beim_aufruf_gelesen(self):
-        """Der Grund fuer `Wiring`: die Sitzungen entstehen nach den Handlern."""
+        """Why `Wiring` exists: the sessions are created after the handlers."""
         wiring = self.wiring()
         busy = lambda: wiring.hand_eye_active() or wiring.layer2_active()  # noqa: E731
         self.assertFalse(busy())

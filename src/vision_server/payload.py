@@ -1,4 +1,4 @@
-"""JSON payload for `ResultContent` (schema from section 4.3 of the plan)."""
+"""Build the JSON payload for `ResultContent`, schema `PAYLOAD_SCHEMA`."""
 
 import json
 from collections.abc import Sequence
@@ -33,10 +33,10 @@ def _json_default(value: Any) -> Any:
 
 
 def _dumps(payload: dict) -> str:
-    """`NaN` and `Infinity` are deliberately an error.
+    """Serialize to JSON; `NaN` and `Infinity` raise `ValueError`.
 
-    A bare `NaN` is not valid JSON -- `JSON.parse` throws and the frontend
-    crashes. The job therefore falls into the error path instead.
+    A bare `NaN` is not valid JSON, and `JSON.parse` in the frontend would throw.
+    The job therefore falls into its error path instead.
     """
     return json.dumps(payload, default=_json_default, allow_nan=False)
 

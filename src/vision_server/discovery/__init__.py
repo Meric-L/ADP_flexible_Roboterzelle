@@ -2,17 +2,13 @@
 
 Two paths side by side, because they serve different readers:
 
-* `mdns` announces the service on the subnet. Clients such as the WSC frontend
-  find us through it directly. On by default (back on since 2026-10-21);
-  `OPCUA_MDNS=0` turns it off.
-* `lds` registers the server with the cell's Local Discovery Server. **Only**
-  through it does the aggregation server pick up the module; an mDNS
-  announcement alone is not enough for it. Measured in the lab on 2026-09-21,
-  reasoning in the module. On by default (back on since 2026-10-21);
-  `OPCUA_LDS_URL=""` turns it off.
+* `mdns` announces the service on the subnet, where clients such as the WSC frontend
+  find it directly. `OPCUA_MDNS=0` turns it off.
+* `lds` registers the server with the cell's Local Discovery Server. Only through it
+  does the aggregation server pick up the module. `OPCUA_LDS_URL=""` turns it off.
 
-Both are deliberately fault-tolerant: if one fails, the server keeps running
-and logs a warning. A server reachable by URL is worth more than none at all.
+Both are on by default and fault-tolerant: if one fails, the server keeps running and
+logs a warning.
 """
 
 from . import lds, mdns

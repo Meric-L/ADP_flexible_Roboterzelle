@@ -1,24 +1,9 @@
-"""Camera state as `DeviceHealth` per OPC 40100-2 (AMCM).
+"""Map the camera state to `DeviceHealth` of the OPC 40100-2 asset view.
 
-The watchdog in `camera.py` knows whether the camera delivers images, hangs, or is
-currently being reopened. This module translates that into DI's
-`DeviceHealthEnumeration` and writes it to the state nodes of the asset view
-(`asset_model.py`). This way a generic OPC UA client without knowledge of this repo
-can see whether the camera is working.
-
-Why a separate module and a separate task, instead of hooking this onto the live
-stream like the calibration progress:
-
-* The live stream is a debugging aid and may be absent (`camera_stream` not
-  configured), while the detection source does hold a camera. A maintenance view
-  must not depend on that.
-* The cadences do not match: the stream deliberately writes on every tick, this node
-  only on a state change.
-
-On the similarity to the retired legacy item A3 (`RaspiDevice/Counter`, a 1 Hz
-counter): A3 was a value *without a source* that merely proved some loop was running.
-Here there is a source, and in the idle state nothing at all is written -- after the
-first frame the node stays silent until the state really changes.
+The watchdog state of `camera.py` is translated into DI's `DeviceHealthEnumeration`
+and written to the state nodes built by `asset_model.py`. This runs in its own task,
+independent of the live stream, which may be disabled. Nodes are written only on
+state changes.
 """
 
 import asyncio
@@ -189,8 +174,7 @@ class HealthAlarms:
 class CameraHealthPublisher:
     """Mirror the state of a `SharedCamera` to `Health/DeviceHealth`.
 
-    Writes only on state changes: in normal operation exactly once, when the first
-    frame arrives, and silence thereafter.
+    Writes only on state changes.
     """
 
     def __init__(

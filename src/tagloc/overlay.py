@@ -1,19 +1,9 @@
 """Draw detection results onto the image, for the live stream and the CLI.
 
-The standard marker rendering is an **axis cross in the tag** (red X, green Y,
-blue Z), plus the outline and ID. That is exactly what `draw_tag_overlay`
-does: the outline shows *that* something was detected, the axis cross shows
-*how* the pose sits -- a twisted cross is obvious at a glance, a wrong number
-is not.
-
-The live stream (mode `apriltag`) instead uses the slimmer variant
-`draw_tag_boxes`: only a green box and the tag ID, without the axis cross and
-status bar. The detailed variant stays with the CLI
-(`python -m tagloc.cli.detect --overlay`).
-
-One rule for this module: it only draws, it never computes. Poses arrive
-already finished. That lets the same code run for the stream, a CLI window,
-and a still image.
+`draw_tag_overlay` marks each tag with its outline and an axis cross (red X, green Y,
+blue Z), so a twisted cross shows a bad pose at a glance. The live stream uses the
+slimmer `draw_tag_boxes`, a green box and the tag ID only. This module only draws and
+never computes: poses arrive already finished.
 """
 
 import logging
@@ -40,13 +30,11 @@ COLOR_BOARD = (255, 190, 60)
 
 _log = logging.getLogger(__name__)
 
-#: Tuned for an image width of about 640 px (hand-camera Pi, or formerly the
-#: scaled-down stream everywhere). Modes "apriltag" and "off" have drawn on the
-#: full frame since 2026-09-22 (up to 4056 px on the ceiling camera, see
-#: camera_stream.py). Without scaling, a 2-px line there became unreadable when
-#: zoomed in, instead of clearer. `_scale_for` keeps stroke width, font size and
-#: spacing proportional to the actual image width, never smaller than the
-#: reference values -- those already are the minimum for legibility.
+#: Tuned for an image width of about 640 px. The modes "apriltag" and "off" also draw
+#: on the full frame (up to 4056 px on the ceiling camera, see camera_stream.py), where
+#: a 2-px line becomes unreadable when zoomed in. `_scale_for` keeps stroke width, font
+#: size and spacing proportional to the actual image width, never smaller than these
+#: reference values, which are already the minimum for legibility.
 _REFERENCE_WIDTH = 640
 _FONT_SCALE = 0.5
 _THICKNESS = 2
@@ -163,7 +151,7 @@ def draw_tag_axes(
     thickness = max(1, round(_THICKNESS * _scale_for(image)))
     rvec, tvec = to_rvec_tvec(tag_pose.pose_cam_tag)
     # getattr: callers (and test fakes) may pass an object without `model`;
-    # it is then treated as pinhole, as before the fisheye model was added.
+    # it is then treated as pinhole.
     if getattr(calibration, "model", None) == FISHEYE:
         from .lens import project_points
 
@@ -316,8 +304,7 @@ def draw_calibration_caption(image, calibration_id: str | None) -> Any:
     """One line at the bottom left: "Kamera-Kalibrierung \u00b7 Letzte Kalibrierung: <Datum>".
 
     The date is that of the camera calibration (intrinsics), not that of the
-    hand-eye calibration. Until 02.11.2026 this line wrongly showed
-    "Hand-Auge-Kalibrierung" instead.
+    hand-eye calibration.
 
     Pure white text with a 1 px black border, without bar, shadow or
     transparency. Position and font size are as in `draw_status_bar`.

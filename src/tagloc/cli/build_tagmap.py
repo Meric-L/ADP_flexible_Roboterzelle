@@ -36,6 +36,7 @@ from ._common import (
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for this tool."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_source_arguments(parser)
     add_detection_arguments(parser)
@@ -51,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Place the observed tags in one frame from the images and write the tag map.
+
+    Returns:
+        Exit code ``0`` on success, ``1`` if no image had enough tags.
+    """
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
 

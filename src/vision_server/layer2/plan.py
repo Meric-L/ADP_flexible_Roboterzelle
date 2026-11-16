@@ -1,11 +1,8 @@
 """Approach targets of the layer 2 run: where the flange must go so that the hand camera sees a tag.
 
-A world tag and a module tag go through the **same** calculation (``plan_step``). They
-differ only in where the tag pose in the world frame comes from:
-
-* World tag: from the tag map, exact -- it defines the world.
-* Module tag: rough module pose from layer 1 times the tag position from the module
-  catalog.
+World tags and module tags go through the same planning (``plan_step``); they differ
+only in where the tag pose in the world frame comes from. The camera may look at a tag
+obliquely if the frontal view is out of reach (work plan ``layer2-schraege-ansicht.md``).
 
 The chain for each target::
 
@@ -14,18 +11,10 @@ The chain for each target::
     T_world_flange = T_world_cam · inv(T_flansch_cam)
     T_base_flange  = inv(T_world_base) · T_world_flange     <- approach target
 
-``T_world_base`` is the rough base from layer 1 before anchoring, and the measured one
-from ``RobotAnchor`` afterwards. That is why planning is repeated after anchoring.
-
-Before each anchor or measurement step there is an approach step (``approach``): the
-same calculation with ``approach_standoff_m``, that is from a larger distance. Its image
-provides the measured tag pose, from which the following close step is planned again. So
-the rough pose from layer 1 is only needed for the wide view, not for the close image.
-
-Oblique instead of frontal (work plan ``layer2-schraege-ansicht.md``): if the frontal
-view is out of reach -- a world tag on the floor, the base a metre higher on the cart --
-the camera tilts around the tag centre towards the base, in steps up to
-``max_tilt_deg``. The most frontal view within reach is chosen.
+The approach step (``approach_standoff_m``, a larger distance) measures the tag pose in
+a wide image, and the following close step is planned again from that pose. The anchor
+step sets the world base from the world tag; ``T_world_base`` is the rough base from
+layer 1 until then, and the measured one afterwards, which is why planning is repeated.
 
 Tag frame as in ``tagloc.pose``: +x right, +y towards the top edge of the print, +z out
 of the tag. Camera frame in OpenCV convention: +z forward, +x right, +y down.
@@ -78,8 +67,8 @@ _COMFORTABLE_REACH = 0.9
 
 ANCHOR = "anchor"
 MEASURE = "measure"
-#: Precedence from ``approach_standoff_m``; always placed directly before the anchor or
-#: measurement step whose tag pose it measures.
+#: Purpose of the approach step (standoff from ``approach_standoff_m``). Always placed
+#: directly before the anchor or measurement step whose tag pose it measures.
 APPROACH = "approach"
 
 #: Camera looks at the tag: a 180-degree rotation around x turns the +z of the tag against
@@ -118,7 +107,7 @@ class RunRequest:
     reach_m: float = DEFAULT_REACH_M
     #: ``0`` = without approach.
     approach_standoff_m: float = DEFAULT_APPROACH_STANDOFF_M
-    #: ``0`` = always frontal, as before 13.10.2026.
+    #: ``0`` = always frontal.
     max_tilt_deg: float = DEFAULT_MAX_TILT_DEG
 
     def standoff_for(self, purpose: str) -> float:

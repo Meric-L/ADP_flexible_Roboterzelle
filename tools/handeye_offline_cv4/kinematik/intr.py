@@ -1,9 +1,8 @@
-"""Kinematik-Experiment 3: Hand-Auge offline mit verschiedenen Intrinsiken, optional Brettmassstab, Verzeichnung, Kinematik.
+"""Offline hand-eye calibration with different intrinsics, optional board scale, distortion and kinematic offsets.
 
-WERK = Werks-Intrinsik der RealSense D415 (Seriennr. 002422062052), Color 640x480, ausgelesen
-mit rs-enumerate-devices -c am 10.11.2026 (Verzeichnung Inverse Brown-Conrady, alle 0).
-Aufruf aus der Repo-Wurzel: PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/intr.py
-Ergebnis: doc/auswertung/handeye_cv4/intrinsik_ergebnis.md
+WERK is the factory intrinsic of the RealSense D415 (serial 002422062052, colour 640x480, read with
+rs-enumerate-devices -c; inverse Brown-Conrady distortion, all zero).
+Run from the repository root: PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/intr.py
 """
 import json, sys
 from pathlib import Path
@@ -23,6 +22,11 @@ BOARD = {"S1": "charuco", "S2": "schach", "S3": "schach", "S4": "charuco"}
 def rms(r): return float(np.sqrt(np.mean(np.sum(r.reshape(-1, 2) ** 2, 1))))
 
 def run(keys, K, dist0, *, free_scale=False, free_dist=False, kinfree=False, pfix=None, fixed_scale=None):
+    """Fit hand-eye pose and session poses on the given sessions with optional free parameters.
+
+    Returns:
+        dict with rms (px), t (hand-eye translation in mm), X, scale, dist, p.
+    """
     data = [load(k)[0] for k in keys]
     boards = sorted({BOARD[k] for k in keys})
     X0 = np.array(json.loads((ROOT / f"doc/auswertung/handeye_cv4/{S[keys[0]]}.json").read_text())["finalSolution"]["T_flange_camera"])

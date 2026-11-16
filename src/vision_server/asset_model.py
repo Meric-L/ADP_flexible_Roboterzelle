@@ -1,18 +1,10 @@
-"""OPC 40100-2 (AMCM): what this vision system consists of and how it is doing.
+"""OPC 40100-2 (AMCM) asset view: the components of the vision system and their health.
 
-Part 1 answers "how do I operate the system", part 2 answers "what is it built from
-and what state is it in" -- computing device, image sensor, lens, with identification
-per component, plus a `Health` block with `DeviceHealth`. `camera_health.py` writes
-into this block what it derives from the camera watchdog; this module only builds the
-nodes. It has no runtime coupling to the job path: nothing here can make a job fail,
-and a job cannot change anything here.
+Entry point is `attach_asset_model`. `camera_health.py` writes the `DeviceHealth`
+state into the block built here. Nothing in this module can make a job fail.
 
-Only the folders that we actually fill are created. Instantiating the type with all
-optional folders would also turn their `<Placeholder>` templates into real nodes --
-a node literally named `<ComputingDevice>` is wrong, and removing them afterwards
-took 9 s for 26 deletions, because asyncua's recursive delete is painfully slow.
-Building up instead of tearing down leaves about 50 nodes instead of about 700 and
-runs in well under a second.
+Only the folders that are actually filled are created: instantiating the type with
+all optional folders would also create the `<Placeholder>` templates as real nodes.
 """
 
 import logging
@@ -132,8 +124,8 @@ async def _ensure_folder(
         # creates it as a real node -- regardless of the Optional switch. A placeholder
         # is a template of the type, not an instance: it does not belong in a running
         # address space.
-        # Delete per created folder, not across the whole type -- asyncua's recursive
-        # delete is expensive (measured about 0.35 s per node).
+        # Delete per created folder, not across the whole type: asyncua's recursive
+        # delete is slow.
         for child in await folder.get_children():
             if (await child.read_browse_name()).Name.startswith("<"):
                 await child.delete(recursive=True)

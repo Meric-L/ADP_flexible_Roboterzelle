@@ -1,4 +1,4 @@
-"""Tests fuer die asyncio-Helfer in `vision_server.aio`."""
+"""Tests for the asyncio helpers in `vision_server.aio`."""
 
 import asyncio
 import os

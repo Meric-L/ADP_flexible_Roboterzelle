@@ -1,14 +1,14 @@
-"""Ankern am Welttag, dann messen ohne Welttag im Bild.
+"""Anchor at the world tag, then measure without a world tag in the image.
 
-Der Kern des Konzepts: die Handkamera sieht den Welttag **einmal** zu Beginn
-eines Lokalisierungsvorgangs. Danach steht sie dicht vor den Modulen, der
-naechste Welttag liegt laengst ausserhalb des Bildfelds -- und die Modulposen
-muessen trotzdem im Welt-KS herauskommen. Die Bruecke ist die Kinematik plus
-das einmal kalibrierte `T_flansch_cam`.
+The core of the concept: the hand camera sees the world tag **once** at the start
+of a localisation run. Afterwards it stands close to the modules and the next
+world tag is long outside the field of view, yet the module poses must still come
+out in the world frame. The bridge is the kinematics plus the once-calibrated
+`T_flange_cam`.
 
-Braucht nur numpy -- auch der Solver, weil `cv2.calibrateHandEye` in OpenCV
-5.0 nicht mehr nach Python exportiert ist. Alle Ansichten werden aus bekannten
-Posen gerechnet, nicht gerendert: `T_cam_tag = invert(T_world_cam) @ T_world_tag`.
+Needs only numpy, including the solver, because `cv2.calibrateHandEye` is no
+longer exported to Python in OpenCV 5.0. All views are computed from known poses
+rather than rendered: `T_cam_tag = invert(T_world_cam) @ T_world_tag`.
 """
 
 import json
@@ -42,26 +42,26 @@ except Exception:  # pragma: no cover - numpy broken in this environment
 WORLD_TAG_ID = 2
 MODULE_TAG_ID = 7
 
-#: Die Zelle: ein Welttag in der Ecke, ein Modul weit davon entfernt --
-#: absichtlich so weit, dass beide nie in ein Bild passen.
+#: The cell: one world tag in the corner, one module far from it, deliberately
+#: so far that both never fit in one image.
 WORLD_TAG_POSITION = (2.4, 1.8, 0.0)
 MODULE_TAG_POSITION = (0.6, 0.4, 0.95)
 MODULE_ORIGIN_OFFSET = (0.0, 0.0, -0.04)
 
-#: Roboterbasis irgendwo in der Zelle, leicht verdreht -- eine Basis in der
-#: Identitaet wuerde einen Vorzeichenfehler in der Ankerrechnung verdecken.
+#: Robot base somewhere in the cell, slightly rotated; a base at the identity
+#: would hide a sign error in the anchor computation.
 ROBOT_BASE_POSITION = (1.5, 1.2, 0.0)
 ROBOT_BASE_YAW_RAD = math.radians(35.0)
 
-#: Der konstante Versatz Flansch -> Kameraoptik. Starr, einmal kalibriert.
+#: The constant offset flange -> camera optics. Rigid, calibrated once.
 FLANGE_CAM_POSITION = (0.041, -0.012, 0.087)
 FLANGE_CAM_RVEC = (0.0, math.radians(12.0), 0.0)
 
-#: Rauschgrenze der Winkelstreuung bei rechnerisch exakten Eingaben. Nicht 0:
-#: `average_poses` mittelt ueber eine Eigenwertzerlegung, die bei fuenf Posen
-#: rund 2e-08 rad (1,2e-06 Grad) Rundungsrest laesst. Ein echter Fehler liegt
-#: Groessenordnungen darueber -- `test_the_spread_exposes_a_wrong_transform`
-#: zeigt das an einem um 10 mm verschobenen Versatz.
+#: Noise floor of the angular scatter for exact inputs. Not 0: `average_poses`
+#: averages via an eigendecomposition, which for five poses leaves about 2e-08 rad
+#: (1.2e-06 degrees) of rounding residue. A real error lies orders of magnitude
+#: above this; `test_the_spread_exposes_a_wrong_transform` shows that with an
+#: offset shifted by 10 mm.
 NUMERIC_NOISE_RAD = 1e-6
 
 
@@ -84,12 +84,12 @@ def hand_eye() -> "handeye.HandEye":
 
 
 def flange_pose(translation, *, rvec=(0.0, 0.0, 0.0)):
-    """Eine Armstellung, ausgedrueckt als `T_base_flansch`."""
+    """One arm pose, expressed as `T_base_flange`."""
     return pose(translation, rvec=rvec)
 
 
 def camera_in_world(pose_base_flange):
-    """Wo die Kamera steht, wenn der Arm so steht -- die Wahrheit im Test."""
+    """Where the camera is when the arm stands like this; the truth in the test."""
     return geometry.compose(pose_world_base(), pose_base_flange, pose_flange_cam())
 
 
@@ -102,7 +102,7 @@ def seen(pose_world_cam, pose_world_tag, tag_id, *, error_px=0.2) -> "TagPose":
 
 
 def cell_map() -> "tagmap.TagMap":
-    """Ein Welttag (fest) und ein Modul (beweglich), weit auseinander."""
+    """One world tag (fixed) and one module (movable), far apart."""
     return tagmap.TagMap(
         frame_id="world",
         anchor_tag_id=WORLD_TAG_ID,
@@ -137,7 +137,7 @@ class AnkerRechnungTest(unittest.TestCase):
         np.testing.assert_allclose(recovered, pose_world_base(), atol=1e-12)
 
     def test_carries_the_camera_pose_to_another_arm_position(self):
-        """Der eigentliche Zweck: Kamerapose ohne Welttag im Bild."""
+        """The actual purpose: camera pose without a world tag in the image."""
         other = flange_pose((-0.20, 0.45, 0.35), rvec=(math.radians(15.0), 0.0, 0.0))
 
         carried = handeye.camera_pose_from_robot(
@@ -158,16 +158,16 @@ class AnkerRechnungTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class EinmalAnkernDannMessenTest(unittest.TestCase):
-    """Einmal am Welttag ankern, danach jedes Modul in Reichweite messen."""
+    """Anchor once at the world tag, then measure each module within reach."""
 
     def setUp(self):
         self.tag_map = cell_map()
         self.hand_eye = hand_eye()
-        # Stellung 1: der Arm zeigt zum Welttag.
+        # Position 1: the arm points at the world tag.
         self.anchor_arm = flange_pose(
             (0.35, 0.20, 0.55), rvec=(0.0, math.radians(18.0), 0.0)
         )
-        # Stellung 2: der Arm steht dicht vor dem Modul, ganz woanders.
+        # Position 2: the arm stands close to the module, somewhere else entirely.
         self.measure_arm = flange_pose(
             (-0.40, -0.25, 0.30), rvec=(0.0, 0.0, math.radians(-55.0))
         )
@@ -192,11 +192,11 @@ class EinmalAnkernDannMessenTest(unittest.TestCase):
         self.assertEqual(anchor.world_tag_id, WORLD_TAG_ID)
 
     def test_without_a_world_tag_there_is_no_optical_localization(self):
-        """Vorbedingung des Tests: am Modul ist wirklich kein Welttag zu sehen."""
+        """Precondition of the test: no world tag is really visible at the module."""
         self.assertIsNone(localize_camera(self._module_only(), self.tag_map))
 
     def test_the_module_lands_in_the_world_frame_without_a_world_tag(self):
-        """Der Kern: gemessen wird ohne Welttag, das Ergebnis ist trotzdem Welt-KS."""
+        """The core: measured without a world tag, the result is still in the world frame."""
         anchor = self._anchor()
 
         localization = localize_camera_from_anchor(anchor, self.measure_arm, self.hand_eye)
@@ -234,7 +234,7 @@ class EinmalAnkernDannMessenTest(unittest.TestCase):
         )
 
     def test_the_origin_says_the_pose_was_carried_over(self):
-        """Gemessen und fortgeschrieben sind nicht gleich genau -- das muss dranstehen."""
+        """Measured and carried-over poses are not equally accurate; that must be stated."""
         anchor = self._anchor()
 
         carried = localize_camera_from_anchor(anchor, self.measure_arm, self.hand_eye)
@@ -264,7 +264,7 @@ class EinmalAnkernDannMessenTest(unittest.TestCase):
         self.assertLess(drift_rad, 1e-9)
 
     def test_a_wrong_anchor_is_exposed_by_the_drift(self):
-        """Ein still weggewanderter Anker faellt sonst erst beim Danebengreifen auf."""
+        """Otherwise a silently drifted anchor only shows when grabbing beside the target."""
         anchor = self._anchor()
         wrong = handeye.RobotAnchor(
             pose_world_base=geometry.compose(
@@ -329,7 +329,7 @@ class DateiTest(unittest.TestCase):
         self.assertIn("fehlt.json", str(caught.exception))
 
     def test_survives_a_calibration_without_quality_figures(self):
-        """NaN darf nicht als nacktes NaN in die Datei -- das waere kein JSON."""
+        """NaN must not end up as a bare NaN in the file; that would not be JSON."""
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "cam_flange.json"
             handeye.save_hand_eye(path, handeye.HandEye(pose_flange_cam=pose_flange_cam()))
@@ -360,21 +360,21 @@ class RoboterposeAusJobTest(unittest.TestCase):
         self.assertIsNone(self._parse((1.0, 2.0, 3.0)))
 
     def test_returns_none_instead_of_guessing_on_junk(self):
-        """Eine falsche Roboterpose verschiebt jede Modulpose unsichtbar."""
+        """A wrong robot pose shifts every module pose invisibly."""
         self.assertIsNone(self._parse(("a", "b", "c", "d", "e", "f", "g")))
-        self.assertIsNone(self._parse((0.0,) * 7))  # Quaternion der Laenge 0
+        self.assertIsNone(self._parse((0.0,) * 7))  # quaternion of length 0
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class SolverTest(unittest.TestCase):
-    """Die einmalige Kalibrierfahrt gegen eine bekannte Wahrheit.
+    """The one-off calibration drive against a known truth.
 
-    Braucht kein OpenCV: der Solver rechnet in numpy, weil
-    `cv2.calibrateHandEye` in OpenCV 5.0 nicht mehr nach Python exportiert ist.
+    Needs no OpenCV: the solver computes in numpy, because `cv2.calibrateHandEye`
+    is no longer exported to Python in OpenCV 5.0.
     """
 
     def _samples(self):
-        """Tag liegt fest, der Roboter faehrt verschiedene Posen an."""
+        """Tag fixed, the robot moves to various poses."""
         pose_base_tag = pose((0.50, 0.10, 0.30), rvec=(0.0, 0.0, math.radians(25.0)))
         arms = [
             flange_pose((0.20, 0.05, 0.50), rvec=(0.0, math.radians(15.0), 0.0)),
@@ -436,11 +436,11 @@ class SolverTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class NeueKarteVerwirftAnkerTest(unittest.TestCase):
-    """Eine neue Tag-Map macht den Anker ungueltig.
+    """A new tag map invalidates the anchor.
 
-    Der Anker wurde gegen die Weltposen der alten Karte gerechnet. Ihn stehen
-    zu lassen hiesse, jede Modulpose stumm um die Differenz zu verschieben --
-    genau die Sorte Fehler, die erst beim Danebengreifen auffaellt.
+    The anchor was computed against the world poses of the old map. Keeping it
+    would silently shift every module pose by the difference, exactly the kind of
+    error that only shows when grabbing beside the target.
     """
 
     def test_apply_tag_map_drops_the_anchor(self):

@@ -54,6 +54,11 @@ def _rms(projected, observed):
 
 
 def _pnp(corners, points, calibration, method):
+    """Return `(pose, RMS reprojection error in px, ambiguity)` for one board view.
+
+    `ambiguity` is the error ratio of the second to the best candidate (IPPE only),
+    or `None` if there is just one candidate.
+    """
     import cv2
 
     corrected = lens.undistort_points(corners, calibration)
@@ -447,6 +452,7 @@ def solve_subset(observations, calibration, points, *, optimize=True):
 
 
 def _information(flanges):
+    """Return the 3x3 rotation information matrix of the flange poses, used as a D-optimality score."""
     matrix = np.zeros((3, 3))
     for i, a in enumerate(flanges):
         for b in flanges[i + 1:]:

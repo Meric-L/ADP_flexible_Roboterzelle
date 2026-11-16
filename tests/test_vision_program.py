@@ -1,21 +1,8 @@
-"""Part-10-Programm ueber OPC UA: `VisionProgram` und `ua_program.Program`.
+"""`VISION_PROGRAM` and `ua_program.Program` as seen by a generic OPC UA client.
 
-Charakterisiert, was ein generischer Client sieht (Vorlage:
-`test_ua_methoden.py` aus `apriltag-refactoring`, Commit dfcfa4d, auf den
-heutigen Code zugeschnitten):
-
-* feste NodeIds von Methoden, `ParameterSet` und `ResultSet`,
-* Start/Halt/Reset samt `BadInvalidState` ausserhalb des erlaubten Zustands,
-* `Executable` je Zustand,
-* Abschluss eines Jobs (Running -> Ready), auch wenn ihn die 40100-Seite
-  gestartet hat,
-* nicht betriebsbereites System: Programm steht auf `Halted`,
-* die uebrigen Uebergaenge (Suspend/Resume, abgelehnte Funktion mit Event,
-  `running_to_*`-Helfer) an einem eigenen kleinen `Program`.
-
-Aufgerufen wird ueber die interne Session des Servers -- derselbe
-Methodendienst wie fuer einen entfernten Client, nur ohne TCP. Kamerafrei:
-die Erkennungsquelle ist eine Attrappe.
+Calls go through the server's internal session, the same method service a remote
+client uses, minus TCP. The machine runs without a camera: the detection source
+is a stub.
 """
 
 import asyncio
@@ -35,7 +22,7 @@ AUTO = "VisionMachine.VisionStateMachine.AutomaticModeStateMachine"
 
 
 class FakeSource(DetectionSource):
-    """Liefert nach `delay` eine Detektion; `open()` kann scheitern."""
+    """Returns one detection after `delay`; `open()` can fail."""
 
     profile_id = "fake"
 
@@ -69,7 +56,7 @@ async def wait_until(predicate, timeout: float = 5.0) -> None:
 
 
 class CallMixin:
-    """Methodenaufrufe ueber die interne Session des Servers."""
+    """Method calls through the server's internal session."""
 
     server: Server
     idx: int
@@ -110,7 +97,7 @@ class CallMixin:
 
 
 class MachineTestCase(CallMixin, unittest.IsolatedAsyncioTestCase):
-    """Baut je Test die ganze Maschine mit einer Attrappen-Quelle."""
+    """Builds the whole machine for each test, with a stub source."""
 
     port = 0
     source: DetectionSource
@@ -122,7 +109,7 @@ class MachineTestCase(CallMixin, unittest.IsolatedAsyncioTestCase):
         from vision_server.address_space import configure_server
         from vision_server.runner import install_vision_machine
 
-        # Der Debug-Modus des Loops verdreifacht die Aufbauzeit der Maschine.
+        # The debug mode of the loop triples the set-up time of the machine.
         asyncio.get_running_loop().set_debug(False)
         self.config = replace(
             VisionServerConfig(endpoint=f"opc.tcp://127.0.0.1:{self.port}/test/"),
@@ -187,7 +174,7 @@ class VisionProgramTest(MachineTestCase):
 
     async def test_start_mit_unbekanntem_rezept_wird_abgelehnt(self):
         await self.write_parameter("RecipeId", "gibt-es-nicht", ua.VariantType.String)
-        # Der Aufruf selbst ist Good; die Ablehnung steht im Zustand und im Ergebnis.
+        # The call itself is Good; the refusal is in the state and in the result.
         self.assertTrue((await self.program_call("Start")).StatusCode.is_good())
         await wait_until(lambda: not self.machine.program._lock.locked())
         self.assertEqual(await self.state_of("VisionProgram"), "Ready")
@@ -205,11 +192,11 @@ class VisionProgramTest(MachineTestCase):
             await self.executable("VisionProgram"),
             {"Start": False, "Halt": True, "Reset": False, "Suspend": True, "Resume": False},
         )
-        # Start und Reset im Zustand Running: BadInvalidState.
+        # Start and Reset in state Running: BadInvalidState.
         self.assert_invalid_state(await self.program_call("Start"))
         self.assert_invalid_state(await self.program_call("Reset"))
         self.assert_invalid_state(await self.program_call("Resume"))
-        # Suspend wird angenommen, aber von `VisionProgram.suspend` abgelehnt.
+        # Suspend is accepted, but refused by `VisionProgram.suspend`.
         self.assertTrue((await self.program_call("Suspend")).StatusCode.is_good())
         await self.wait_state("VisionProgram", "Ready")
         self.assertEqual(await self.result("JobId"), "job-000001")
@@ -245,8 +232,8 @@ class VisionProgramTest(MachineTestCase):
         await self.wait_state("VisionProgram", "Halted")
 
     async def test_job_ueber_40100_laesst_das_programm_auf_ready(self):
-        """Ein ueber 40100 gestarteter Job kommt am Programm nur als
-        Ready -> Ready an: `_on_job_finished` tut nichts ausserhalb von Running."""
+        """A job started over 40100 reaches the program only as Ready -> Ready:
+        `_on_job_finished` does nothing outside Running."""
         job_id, code = self.machine.jobs.start_single_job("", "", RECIPE, "", [])
         self.assertEqual(code, VisionErrorCode.OK)
         await wait_until(lambda: not self.machine.jobs.busy)
@@ -265,8 +252,8 @@ class VisionProgramTest(MachineTestCase):
         await self.write_parameter("RecipeId", RECIPE, ua.VariantType.String)
         self.assertTrue((await self.program_call("Start")).StatusCode.is_good())
         await wait_until(lambda: not self.machine.jobs.busy)
-        # Das Programm steht schon vor dem Start auf Ready; erst das Ergebnis
-        # (`_finish` schreibt es vor dem Zustandswechsel) zeigt das Job-Ende.
+        # The program is already at Ready before the start; only the result
+        # (`_finish` writes it before the state change) shows the job's end.
         deadline = asyncio.get_running_loop().time() + 5.0
         while await self.result("ErrorCode") == 0:
             self.assertLess(asyncio.get_running_loop().time(), deadline, "kein ErrorCode")
@@ -277,7 +264,7 @@ class VisionProgramTest(MachineTestCase):
 
 
 class NichtBetriebsbereitTest(MachineTestCase):
-    """Quelle geht nicht auf: 40100 bleibt Preoperational, Programm Halted."""
+    """Source does not open: 40100 stays Preoperational, program Halted."""
 
     port = 48531
 
@@ -293,11 +280,11 @@ class NichtBetriebsbereitTest(MachineTestCase):
         self.assert_invalid_state(await self.program_call("Start"))
 
 
-# ================================================== ua_program.Program allein
+# ================================================== ua_program.Program on its own
 
 
 class DemoProgram(Program):
-    """Ein Programm, dessen Funktionen sich vom Test steuern lassen."""
+    """A program whose functions the test can steer."""
 
     start_inputs: list = []
     halt_inputs: list = []
@@ -334,7 +321,7 @@ class DemoProgram(Program):
 
 
 class ProgramUebergaengeTest(CallMixin, unittest.IsolatedAsyncioTestCase):
-    """Die Zustandsmaschine selbst: alle neun Uebergaenge von Teil 10."""
+    """The state machine itself: all nine transitions of part 10."""
 
     async def asyncSetUp(self):
         asyncio.get_running_loop().set_debug(False)
@@ -410,7 +397,7 @@ class ProgramUebergaengeTest(CallMixin, unittest.IsolatedAsyncioTestCase):
         for name in ("Reset", "Suspend", "Resume"):
             self.assert_invalid_state(await self.method(name))
         self.assertEqual(self.program.calls, [])
-        # Das Lock bleibt nicht haengen: ein gueltiger Aufruf geht danach.
+        # The lock is not left hanging: a valid call succeeds afterwards.
         self.assertTrue((await self.method("Start")).StatusCode.is_good())
         await self.wait_state("Demo", "Running")
 
@@ -425,11 +412,11 @@ class ProgramUebergaengeTest(CallMixin, unittest.IsolatedAsyncioTestCase):
         await wait_until(lambda: self.program._lock.locked())
         second = asyncio.create_task(self.method("Halt"))
         await asyncio.sleep(0.05)
-        self.assertFalse(second.done())  # wartet auf das Lock der Start-Aufgabe
+        self.assertFalse(second.done())  # waits for the lock of the start task
         gate.set()
         self.assertTrue((await first).StatusCode.is_good())
         self.assertTrue((await second).StatusCode.is_good())
-        # Halt lief erst nach dem Start, im Zustand Running.
+        # Halt only ran after the start, in state Running.
         await self.wait_state("Demo", "Halted")
         self.assertEqual(self.program.calls, ["halt"])
 

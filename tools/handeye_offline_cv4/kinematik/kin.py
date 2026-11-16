@@ -1,7 +1,7 @@
-"""Kinematik-Experiment (Hilfsmodul): nominelle Franka-Kinematik und Laden der Sitzungen.
+"""Helper module with the nominal Franka Panda kinematics and session loading for the kinematics scripts.
 
-T_base_flange im robot_state.json ist exakt fk(jointAnglesRad) mal Rz(-45 Grad), z -0,2 mm
-(geprueft ueber alle Posen der vier Sitzungen vom 09.11.2026, Abweichung 0,000 mm).
+T_base_flange in robot_state.json equals fk(jointAnglesRad) times Rz(-45 deg) with z offset -0.2 mm
+(checked over all poses of the four sessions, deviation 0.000 mm).
 """
 import json, sys
 from pathlib import Path
@@ -14,22 +14,25 @@ ROOT = Path(__file__).resolve().parents[3]
 C = ROOT / "data/rohbilder/calibration"
 S = {"S1": "20261109T125050Z_a5c964f0", "S2": "20261109T125825Z_a580eaba",
      "S3": "20261109T142717Z_a7d466a1", "S4": "20261109T143834Z_6852cbc7"}
-# Franka Panda, modifizierte DH (Craig): a, d, alpha je Gelenk, Flansch d=0.107
+# Franka Panda, modified DH (Craig): a, d, alpha per joint; flange d=0.107
 A = [0, 0, 0, 0.0825, -0.0825, 0, 0.088]
 D = [0.333, 0, 0.316, 0, 0.384, 0, 0]
 AL = [0, -np.pi/2, np.pi/2, np.pi/2, -np.pi/2, np.pi/2, np.pi/2]
 
 def tf(a, d, al, th):
+    """Return the modified DH transform for link parameters a, d, alpha and joint angle th."""
     ca, sa, ct, st = np.cos(al), np.sin(al), np.cos(th), np.sin(th)
     return np.array([[ct, -st, 0, a], [st*ca, ct*ca, -sa, -d*sa], [st*sa, ct*sa, ca, d*ca], [0, 0, 0, 1]])
 
 def fk(q, dq=None, dd=None):
+    """Return the flange pose for joint angles q with optional offsets dq and dd."""
     T = np.eye(4)
     for i in range(7):
         T = T @ tf(A[i], D[i] + (dd[i] if dd is not None else 0), AL[i], q[i] + (dq[i] if dq is not None else 0))
     return T @ tf(0, 0.107, 0, 0)
 
 def load(key):
+    """Load the valid observations and the intrinsics of session key."""
     f = C / S[key]
     cfg = json.loads((f / "config.json").read_text())
     cal = intrinsics_from_dict(cfg["intrinsics"])
@@ -43,6 +46,7 @@ def load(key):
     return obs, cal
 
 def resid(obs, cal, X, B, dq=None, use_fk=False):
+    """Return stacked reprojection residuals for the observations."""
     out = []
     for o in obs:
         F = fk(o["q"], dq) if (use_fk or dq is not None) else o["T"]
@@ -51,7 +55,7 @@ def resid(obs, cal, X, B, dq=None, use_fk=False):
         out.append((pr - o["uv"]).reshape(-1))
     return np.concatenate(out)
 
-def rms(r): return float(np.sqrt(np.mean(r.reshape(-1, 2) ** 2 * 2)))  # wie bisher: RMS je Ecke (Betrag)
+def rms(r): return float(np.sqrt(np.mean(r.reshape(-1, 2) ** 2 * 2)))  # RMS per corner (magnitude)
 
 if __name__ == "__main__":
     obs, cal = load("S4")

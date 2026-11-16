@@ -145,8 +145,7 @@ async def _write_calibration_progress(wiring: Wiring) -> None:
     Otherwise only the publish loop of the live stream writes this node
     (`CameraStreamPublisher._publish_progress`), and that loop is paused during
     processing. Without this separate write path the node would stay at the last
-    state of the capture phase, and `processing: true` would never be visible
-    (found 2026-09-28).
+    state of the capture phase, and `processing: true` would never be visible.
     """
     try:
         await wiring.space.calibration_progress.write_value(
@@ -159,9 +158,9 @@ async def _write_calibration_progress(wiring: Wiring) -> None:
 async def _pause_stream_during_processing(wiring: Wiring) -> None:
     """Pause the live stream while `CalibrationSession._process()` runs in the background.
 
-    This leaves the Pi the full CPU for corner detection (2026-09-28, proposed and
-    confirmed, after the earlier ceiling-camera processing kept hanging). It runs
-    as a background task itself. `FinishCalibration` must not wait for it, see there.
+    This leaves the Pi the full CPU for corner detection; without the pause the
+    ceiling-camera processing hung. It runs as a background task itself.
+    `FinishCalibration` must not wait for it, see there.
 
     During this time `CalibrationProgress` is written from here instead of from the
     (paused) live stream. It is written once immediately (`processing: true`), then
@@ -187,9 +186,10 @@ async def _pause_stream_during_processing(wiring: Wiring) -> None:
 
 
 def _start_calibration_method(wiring: Wiring):
-    """Handler for `1:StartCalibration`. It starts a new session. Samples come only via `CaptureCalibrationSample` after that.
+    """Return the handler for `1:StartCalibration`, which starts a new session.
 
-    No calibration run may run at the same time as a job or a second session.
+    Samples come only via `CaptureCalibrationSample` afterwards. No calibration
+    run may run at the same time as a job or a second session.
     Both share the camera and the detector.
     """
 
@@ -226,7 +226,7 @@ def _start_calibration_method(wiring: Wiring):
 
 
 def _capture_calibration_method(wiring: Wiring):
-    """Handler for `1:CaptureCalibrationSample`. It stores the current camera image, triggered manually (e.g. with the space bar in the stream viewer).
+    """Return the handler for `1:CaptureCalibrationSample`, which stores the current camera image.
 
     No board detection happens in this call. It runs only after `FinishCalibration`
     (see `CalibrationSession.capture`). `Error=OK` only means "image saved".
@@ -247,12 +247,12 @@ def _capture_calibration_method(wiring: Wiring):
 
 
 def _finish_calibration_method(wiring: Wiring):
-    """Handler for `1:FinishCalibration`. It ends the capture phase and starts the evaluation in the background.
+    """Return the handler for `1:FinishCalibration`, which ends capture and starts the evaluation in the background.
 
     It returns at once, WITHOUT waiting for the result (see `CalibrationSession.finish()`).
     A synchronous evaluation of several full-resolution captures would carry the
     same timeout risk on the ceiling camera as a single hanging `detect_board`
-    capture (found live 2026-09-28). The frontend follows the result only through
+    capture. The frontend follows the result only through
     `CalibrationProgress` (`processing` -> `result`).
 
     `Summary` is always valid JSON, also on error. On error it holds `message`
@@ -289,7 +289,7 @@ def _finish_calibration_method(wiring: Wiring):
 
 
 def _abort_calibration_method(wiring: Wiring):
-    """Handler for `1:AbortCalibration`. It stops the session without saving."""
+    """Return the handler for `1:AbortCalibration`, which stops the session without saving."""
 
     @uamethod
     async def method(parent):

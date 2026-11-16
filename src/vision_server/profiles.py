@@ -47,23 +47,18 @@ class AprilTagProfileConfig:
     #: "aruco" (default), "pupil" or "auto" -- see tagloc.detector.
     detector_backend: str = "aruco"
     #: `True` enables `cv2.aruco.CORNER_REFINE_APRILTAG` (subpixel corners) in the
-    #: job detector (`AprilTagDetectionSource`). Since the detector split (commit
-    #: 3d91ee1) it ONLY affects the job path. The live stream overlay gets its own
-    #: instance with this refinement fixed in `runner.livestream._build_annotator`,
-    #: independent of this field.
+    #: job detector (`AprilTagDetectionSource`). It does not affect the live stream
+    #: overlay, which gets its own detector instance (`runner.livestream._build_annotator`).
     #:
-    #: Default `False`: live on pi1 it was confirmed that Layer 1 ("find modules")
-    #: reliably finds tags even without the refinement. This saves ~46% CPU in the
-    #: job thread (py-spy). It is kept as a switch (not deleted): an open idea is to
-    #: use the refinement specifically for more accurate localization on a second
-    #: detection layer or for calibration (see work plan
-    #: `deckenkamera-volle-aufloesung.md`, open questions). Not decided yet, not
-    #: implemented yet.
+    #: Default `False`: on pi1 Layer 1 ("find modules") finds tags reliably without
+    #: it, and the refinement costs ~46% CPU in the job thread (py-spy). Kept as a
+    #: switch. Open: whether to use it for a second detection layer or for calibration
+    #: (see work plan `deckenkamera-volle-aufloesung.md`).
     subpixel_corner_refinement: bool = False
     #: Method used when `subpixel_corner_refinement` is active: `"apriltag"`
     #: (CORNER_REFINE_APRILTAG), `"subpix"` (CORNER_REFINE_SUBPIX, default) or
-    #: `"none"`. The hand camera (`cam_flange`) has had the refinement on since
-    #: 28.10.2026: a fixed offset when approaching also comes from rounded tag corners.
+    #: `"none"`. The hand camera (`cam_flange`) uses it too: a fixed approach offset also
+    #: comes from rounded tag corners.
     corner_refinement_method: str = "subpix"
     #: Decimation factor for `cv2.aruco.DetectorParameters.
     #: aprilTagQuadDecimate`. It only has an effect if `subpixel_corner_refinement`
@@ -139,9 +134,8 @@ class CameraStreamConfig:
     """Operating parameters of the one camera that detection and live stream share.
 
     A single `SharedCamera` instance (see `camera.py`) is opened with these
-    values. The detection source (`detection/apriltag.py`) and the node publisher
-    (`camera_stream.py`) both read from it, instead of each opening its own camera
-    handle. Both Picamera2/libcamera and RealSense allow only one open handle per
+    values. The detection source (`detection/apriltag/`) and the node publisher
+    (`camera_stream.py`) both read from it. Both Picamera2/libcamera and RealSense allow only one open handle per
     camera at a time.
 
     `backend` selects the hardware interface, see `CAMERA_BACKENDS`:
@@ -153,13 +147,11 @@ class CameraStreamConfig:
     backend: str = "picamera2"
     #: `False` only suppresses the stream NODES, the publisher and the MJPEG server
     #: (see `address_space.py`, `runner.livestream._start_camera_stream`). The
-    #: remaining fields here (especially `resolution`) stay in effect, because
-    #: `detection/apriltag.py` uses the same `CameraStreamConfig` for the job camera
-    #: (`SharedCamera`) too. Do NOT set the whole `CameraStreamConfig` object to
-    #: `None` to switch off only the stream. That falls back to the bare default in
-    #: `detection/__init__.py` (`config.camera_stream or CameraStreamConfig()`) and
-    #: silently changes the job camera resolution as well (found live on pi1:
-    #: 2028x1520 -> 1280x720, "aspect ratio changes").
+    #: remaining fields here (especially `resolution`) stay in effect, because the job
+    #: camera (`SharedCamera`) uses the same `CameraStreamConfig`. Do NOT set the whole
+    #: object to `None` to switch off only the stream: `detection/__init__.py` then
+    #: falls back to the bare default, which silently changes the job camera resolution
+    #: (on pi1: 2028x1520 became 1280x720).
     stream_enabled: bool = True
     camera_index: int = 0
     #: Picamera2/OpenCV only. RealSense has its own field (`realsense_resolution`),
@@ -175,8 +167,8 @@ class CameraStreamConfig:
     #: with RealSense and OpenCV.
     preview_resolution: tuple[int, int] | None = None
     #: Picamera2 only: number of camera buffers. `None` = Picamera2 default (6 for
-    #: video). At 12 MP that would be ~220 MB of CMA memory, more than the Pi
-    #: reserves by default, so `configure()` then fails.
+    #: video). At 12 MP that needs ~220 MB of CMA memory, more than the Pi reserves
+    #: by default, so `configure()` fails.
     buffer_count: int | None = None
     #: Picamera2 only: libcamera controls that are set at startup, e.g.
     #: `{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}`.
@@ -193,16 +185,10 @@ class CameraStreamConfig:
     #: the fallback path now, and base64 over OPC UA and backend is not suitable
     #: for video. The live image comes via `http_port`.
     stream_fps: float = 5.0
-    #: Chosen conservatively so that the pipeline also starts reliably over the
-    #: RSUSB backend connection (needed because the Pi kernel has no usable UVC
-    #: driver for RealSense). Raise it if needed, once the error message of
-    #: `_open_realsense` shows the profiles the connected camera actually supports.
-    #: Since 10.11.2026 the full resolution of the color sensor (D415: 1920x1080,
-    #: 16:9, full field of view) is the default for all branches. 640x480 was a 4:3
-    #: crop (1440x1080, scaled down by 2.25, horizontal 55 instead of 70 degrees).
-    #: Over USB 2 the D415 offers 1920x1080 only at 8 Hz; with a USB 3 cable
-    #: 6/15/30 Hz -- then adjust `realsense_fps`. The intrinsics of the hand camera
-    #: must match this resolution.
+    #: Full resolution of the colour sensor (D415: 1920x1080, 16:9, full field of view).
+    #: The former 640x480 was a 4:3 crop (horizontal 55 instead of 70 degrees).
+    #: Over USB 2 the D415 offers 1920x1080 only at 8 Hz; with USB 3, 6/15/30 Hz -- then
+    #: adjust `realsense_fps`. The intrinsics of the hand camera must match this resolution.
     realsense_resolution: tuple[int, int] = (1920, 1080)
     #: Native capture frame rate of the RealSense pipeline. Independent of
     #: `stream_fps`, because the sensors only support certain fps values per
@@ -231,8 +217,8 @@ class CameraStreamConfig:
     overlay_mode: str = "apriltag"
     #: Minimum gap between two detection runs for the overlay. The stream is
     #: meant to help debugging, not load the Pi's CPU -- between runs, the
-    #: last result is redrawn. Since 21.10.2026 this applies only to the mode
-    #: "calibration"; for "apriltag" see `overlay_detect_interval_s`.
+    #: last result is redrawn. This applies only to the mode "calibration"; for
+    #: "apriltag" see `overlay_detect_interval_s`.
     overlay_interval_s: float = 0.5
     #: Mode "apriltag": the overlay shows the newest result in full resolution from
     #: the job, cell watch or measurement. If that result is older than this value,
@@ -243,7 +229,7 @@ class CameraStreamConfig:
     overlay_detect_interval_s: float = 5.0
     #: Watchdog: a single `capture_array()` may take at most this long. After that
     #: the camera counts as hung. Otherwise Picamera2 waits forever for a frame that
-    #: libcamera never delivers (Pi 1, 2026-09-22).
+    #: libcamera never delivers (seen on Pi 1).
     frame_timeout_s: float = 3.0
     #: So many capture errors in a row before the camera is reopened. A timeout
     #: counts fully at once: the worker hangs, and every further call would only
@@ -254,8 +240,7 @@ class CameraStreamConfig:
     max_reopen_attempts: int = 2
     #: Capture side: from this age on, the last image counts as stale and
     #: `DeviceHealth` reports OFF_SPEC (camera_health.py). This affects **only** the
-    #: state assessment. The live stream keeps publishing regardless; whether the
-    #: camera is alive is said by the asset view, not by the image.
+    #: state assessment; the live stream keeps publishing regardless.
     stale_frame_s: float = 2.0
     #: An overlay run may not take longer than this, otherwise the raw image goes out.
     overlay_timeout_s: float = 2.0

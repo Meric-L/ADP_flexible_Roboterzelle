@@ -1,30 +1,10 @@
-"""From tag to module. Pure composition, no OpenCV.
+"""From tag to module: the chain ``T_world_module = T_world_cam @ T_cam_tag @ T_tag_module``, without OpenCV.
 
-This is the **only** place in the project where the chain
-
-    T_world_module = T_world_cam @ T_cam_tag @ T_tag_module
-
-is evaluated. Both cameras call the same function. They differ only in what they see
-(doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md):
-
-* **Ceiling camera** -- sees the world tags, the robot and the modules in the same
-  image. It gives the overview, and only here can the question "which world tag is the
-  robot next to" be answered, because only this camera sees both at once.
-* **Hand camera (eye-in-hand)** -- localizes itself **once** at the start of a run
-  against a world tag, and afterwards measures each module within reach from close up.
-  It does not keep the world tag in view: at 0.3 m in front of a module, the nearest
-  world tag is one to two metres away and outside the field of view. The gap is bridged
-  by the kinematics; see ``anchor_from_localization`` and ``localize_camera_from_anchor``.
-  The algebra is in ``handeye.py``.
-
-**Only the world tags are stationary.** Everything else in the cell moves: the modules
-as well as the robot. The robot is a module like any other; it is just the one that is
-always in use.
-
-``T_world_cam`` can therefore come from two sources. ``CameraLocalization.origin`` says
-which one: optically from the world tags (``ORIGIN_WORLD_TAGS``, the precise path, always
-preferred when a world tag is in the image), or taken over from the anchor plus the
-current robot pose (``ORIGIN_ROBOT_POSE``).
+This is the only place where the chain is evaluated; both cameras use it. The ceiling
+camera sees world tags, robot and modules at once. The hand camera localizes against a
+world tag once per run and then carries its pose over with the robot kinematics (see
+``anchor_from_localization`` and ``localize_camera_from_anchor``; the algebra is in
+``handeye.py``). Only the world tags are stationary.
 """
 
 import logging
@@ -133,8 +113,8 @@ class ModuleLocation:
 def confidence_from(tag_pose: TagPose, *, max_reprojection_error_px: float = 3.0) -> float:
     """Compute the confidence in [0, 1] from reprojection error and ambiguity.
 
-    Deliberately not a constant 1.0 as in earlier versions. A confidence that is always
-    1.0 carries no information, yet downstream logic would still be tempted to trust it.
+    Not a constant 1.0: that would carry no information, yet downstream logic would
+    still be tempted to trust it.
     """
     error = tag_pose.reprojection_error_px
     if math.isnan(error) or max_reprojection_error_px <= 0.0:
@@ -164,7 +144,7 @@ def localize_camera(
     estimates deviate from the joint pose. It is a diagnostic, not the pose.
 
     Without a calibration (or if the joint solution fails), the single-tag estimates are
-    averaged with confidence weights, as before. A tag seen far away and at a shallow
+    averaged with confidence weights. A tag seen far away and at a shallow
     angle must not pull as hard as one that fills the image. The joint solution is the
     only place where this module touches OpenCV, and only when a calibration is passed.
 
@@ -189,9 +169,7 @@ def localize_camera(
                 confidence_from(
                     tag_pose, max_reprojection_error_px=max_reprojection_error_px
                 ),
-                # Camera-to-tag distance, i.e. the length of the measured translation.
-                # The distance to the identity pose is exactly this norm, so no separate
-                # numpy call is needed here.
+                # Camera-to-tag distance, used to pick the primary tag.
                 translation_distance_m(identity(), tag_pose.pose_cam_tag),
             )
         )

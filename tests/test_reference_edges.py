@@ -1,14 +1,14 @@
-"""Tag-Position aus Bezugskanten: Kantensuche, Korrektur, Ansichtsplanung.
+"""Tag position from reference edges: edge search, correction, view planning.
 
-Prueft `tagloc.reference_edges` gegen **Referenzwerte**: Der Renderer
-`render_reference_scene` (tools/make_synthetic_scene.py) zeichnet einen Tag auf
-einer hellen Flaeche vor dunklem Hintergrund; die Flaechenraender sind die
-Bezugskanten. Die wahre `T_module_tag` ist bekannt, der Startwert wird in der
-Tag-Ebene um 1 cm / 2 Grad verschoben, und die Messung muss ihn zurueckholen.
+Checks `tagloc.reference_edges` against reference values. The renderer
+`render_reference_scene` (tools/make_synthetic_scene.py) draws a tag on a bright
+surface in front of a dark background; the surface borders are the reference
+edges. The true `T_module_tag` is known, the start value is shifted by 1 cm /
+2 degrees in the tag plane, and the measurement must recover it.
 
-Ohne OpenCV werden die Tests uebersprungen (wie `test_tag_pipeline.py`); die
-reine Mathe (Korrektur, Katalog-RPY, Eingabepruefung) laeuft mit Messungen, die
-ohne Bild aus einer bekannten Korrektur gebaut werden.
+Without OpenCV the tests are skipped (as in `test_tag_pipeline.py`). The pure
+maths (correction, catalogue RPY, input checks) runs on measurements built
+without an image from a known correction.
 """
 
 from __future__ import annotations
@@ -44,13 +44,13 @@ try:
         plan_reference_view,
     )
     from tools.make_synthetic_scene import render_reference_scene, synthetic_calibration
-except Exception:  # pragma: no cover - ohne OpenCV uebersprungen
+except Exception:  # pragma: no cover - skipped without OpenCV
     cv2 = None
 
 TAG_SIZE_M = 0.08
 TAG_ID = 7
 
-#: Plan: Startfehler 1 cm / 2 Grad -> Ergebnis < 0,5 mm / < 0,2 Grad.
+#: Plan: start error 1 cm / 2 degrees -> result < 0.5 mm / < 0.2 degrees.
 POSITION_TOLERANCE_M = 0.0005
 ANGLE_TOLERANCE_DEG = 0.2
 
@@ -60,19 +60,19 @@ def _rotation_z(degrees: float):
 
 
 def _in_plane(dx: float, dy: float, degrees: float):
-    """Starre Verschiebung/Drehung in der Tag-Ebene als 4x4."""
+    """Rigid shift/rotation in the tag plane as 4x4."""
     return from_rotation_translation(_rotation_z(degrees), [dx, dy, 0.0])
 
 
 def _guess_from_truth(pose_module_tag, start_error):
-    """Startwert: das wahre `T_tag_module`, in der Tag-Ebene um `start_error` verschoben."""
+    """Start value: the true `T_tag_module`, shifted by `start_error` in the tag plane."""
     return invert(compose(start_error, invert(pose_module_tag)))
 
 
 def _edge_error(pose_module_tag, pose_true, line: ReferenceLine):
-    """Lage der Kante im Tag-KS unter `pose_module_tag` gegen die Wahrheit.
+    """Position of the edge in the tag frame under `pose_module_tag`, against the truth.
 
-    Gibt `(senkrechter Abstand der Kantenmitte in der Ebene in m, Winkel in Grad)` zurueck.
+    Returns `(perpendicular distance of the edge midpoint in the plane in m, angle in degrees)`.
     """
 
     def in_tag(pose):
@@ -97,7 +97,7 @@ def _edge_error(pose_module_tag, pose_true, line: ReferenceLine):
 
 
 def _analytic_measurements(pose_module_tag_guess, lines, delta):
-    """Messungen ohne Bild: gemessene Kanten = `delta` angewandt auf die Startwert-Kanten."""
+    """Measurements without an image: measured edges = `delta` applied to the start-value edges."""
     to_tag = invert(pose_module_tag_guess)
     measurements = []
     for line in lines:
@@ -134,7 +134,7 @@ def _analytic_measurements(pose_module_tag_guess, lines, delta):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class CorrectionMathTest(unittest.TestCase):
-    """Richtung und Vorzeichen der Korrektur, ohne Bild."""
+    """Direction and sign of the correction, without an image."""
 
     def setUp(self) -> None:
         self.pose_true = from_rotation_translation(_rotation_z(30.0), [0.10, 0.08, 0.0])
@@ -144,8 +144,8 @@ class CorrectionMathTest(unittest.TestCase):
         self.guess = _guess_from_truth(self.pose_true, self.start_error)
 
     def test_two_lines_recover_the_true_pose_exactly(self) -> None:
-        # Die Wahrheit liegt um `start_error^-1` vom Startwert entfernt:
-        # T_tag_module_wahr = D * T_tag_module_guess mit D = start_error^-1.
+        # The truth lies `start_error^-1` away from the start value:
+        # T_tag_module_true = D * T_tag_module_guess with D = start_error^-1.
         delta = invert(self.start_error)
         measurements = _analytic_measurements(self.guess, [self.line_a, self.line_b], delta)
         correction = fit_in_plane_correction(measurements, self.guess)
@@ -157,8 +157,8 @@ class CorrectionMathTest(unittest.TestCase):
         self.assertLess(correction.residual_m, 1e-9)
 
     def test_the_sign_is_the_measured_minus_the_guess_not_the_opposite(self) -> None:
-        # Messung = Startwert um +5 mm in x und +3 Grad verschoben: die Korrektur
-        # muss das genau so in `delta` und in die Pose uebernehmen.
+        # Measurement = start value shifted by +5 mm in x and +3 degrees: the
+        # correction must take exactly that over into `delta` and into the pose.
         delta = _in_plane(0.005, 0.0, 3.0)
         measurements = _analytic_measurements(self.guess, [self.line_a, self.line_b], delta)
         correction = fit_in_plane_correction(measurements, self.guess)
@@ -201,7 +201,7 @@ class CorrectionMathTest(unittest.TestCase):
     def test_an_ambiguous_line_is_not_used(self) -> None:
         delta = invert(self.start_error)
         measurements = _analytic_measurements(self.guess, [self.line_a, self.line_b], delta)
-        # Kante A mit falscher Messung, aber als mehrdeutig markiert: darf nicht eingehen.
+        # Edge A with a wrong measurement, but marked as ambiguous: must not be used.
         wrong = replace(
             measurements[0], point_tag=measurements[0].point_tag + np.array([0.02, 0.0, 0.0]),
             ambiguous=True,
@@ -244,9 +244,9 @@ class CorrectionMathTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class SyntheticReferenceSceneTest(unittest.TestCase):
-    """Kantensuche und Korrektur auf gerenderten Bildern."""
+    """Edge search and correction on rendered images."""
 
-    #: Tag-Ebene = Flaechenebene; zwei rechtwinklige Kanten der Flaeche.
+    #: Tag plane = surface plane; two right-angled edges of the surface.
     POLYGON = [(0.0, 0.0, 0.0), (0.3, 0.0, 0.0), (0.3, 0.2, 0.0), (0.0, 0.2, 0.0)]
 
     @classmethod
@@ -255,7 +255,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
         cls.pose_true = from_rotation_translation(_rotation_z(30.0), [0.10, 0.08, 0.0])
         cls.line_a = ReferenceLine("A", np.array(cls.POLYGON[3]), np.array(cls.POLYGON[0]))
         cls.line_b = ReferenceLine("B", np.array(cls.POLYGON[0]), np.array(cls.POLYGON[1]))
-        cls.start_error = _in_plane(0.008, -0.006, 2.0)  # 1 cm, 2 Grad
+        cls.start_error = _in_plane(0.008, -0.006, 2.0)  # 1 cm, 2 degrees
         cls.guess = _guess_from_truth(cls.pose_true, cls.start_error)
         cls.detector = build_detector("tag36h11", "aruco", subpixel_corner_refinement=True)
 
@@ -309,7 +309,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
             self.assertGreater(item.support_px, 100.0)
         correction = fit_in_plane_correction(measurements, self.guess)
         self._assert_corrected(correction)
-        # Der Startfehler war tatsaechlich da (sonst waere der Test leer).
+        # The start error was really there (otherwise the test would be empty).
         self.assertGreater(translation_distance_m(self.guess, self.pose_true), 0.009)
 
     def test_several_start_errors_in_both_directions(self) -> None:
@@ -325,7 +325,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
                 self._assert_corrected(fit_in_plane_correction(measurements, guess))
 
     def test_the_start_error_is_recovered_with_the_detected_tag_pose(self) -> None:
-        # Leicht gekippt, damit die Tag-Neigung bestimmt ist (frontal nicht).
+        # Tilted slightly so that the tag tilt is determined (not frontal).
         lines = [self.line_a, self.line_b]
         pose_cam_tag = self._view(self.guess, lines, tilt_deg=15.0)
         gray, _ = self._render(pose_cam_tag)
@@ -361,7 +361,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
         self._assert_corrected(fit_in_plane_correction(measurements, self.guess))
 
     def test_an_edge_below_the_tag_plane_is_measured_correctly(self) -> None:
-        # Tag 3 cm ueber der Flaeche: die Kanten liegen bei Tag-z = -0.03.
+        # Tag 3 cm above the surface: the edges lie at tag z = -0.03.
         raised = from_rotation_translation(_rotation_z(30.0), [0.10, 0.08, 0.03])
         lines = [self.line_a, self.line_b]
         guess = _guess_from_truth(raised, self.start_error)
@@ -391,7 +391,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
                 self.assertLess(angle, ANGLE_TOLERANCE_DEG)
 
     def test_an_item_groove_next_to_the_edge_is_ambiguous_or_the_right_edge(self) -> None:
-        # Zweite parallele Kante 5 mm neben der Kante A (Index 3: (0,0.2) -> (0,0)).
+        # Second parallel edge 5 mm next to edge A (index 3: (0,0.2) -> (0,0)).
         lines = [self.line_a, self.line_b]
         pose_cam_tag = self._view(self.guess, lines)
         gray, _ = self._render(pose_cam_tag, groove_edges={3: 0.005})
@@ -404,7 +404,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
         self.assertFalse(plain_line.ambiguous)
         correction = fit_in_plane_correction(measurements, self.guess)
         if groove_line.ambiguous:
-            # Nicht verwenden: nur Kante B geht ein, Teilkorrektur.
+            # Not used: only edge B goes in, a partial correction.
             self.assertEqual(correction.dofs, "partial")
             distance, _ = _edge_error(correction.pose_module_tag, self.pose_true, self.line_b)
             self.assertLess(distance, POSITION_TOLERANCE_M)
@@ -424,11 +424,11 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
         self.assertIsNone(measurements[0].point_tag)
         self.assertIsNone(measurements[0].offset_m)
         self.assertTrue(measurements[1].found)
-        # Eine fehlende Kante senkt nur die Freiheitsgrade.
+        # A missing edge only lowers the degrees of freedom.
         self.assertEqual(fit_in_plane_correction(measurements, self.guess).dofs, "partial")
 
     def test_an_edge_without_contrast_has_no_edge(self) -> None:
-        # Kante mitten auf der gleichmaessig hellen Flaeche: nichts zu finden.
+        # Edge in the middle of the uniformly bright surface: nothing to find.
         inside = ReferenceLine("mitte", np.array([0.2, 0.05, 0.0]), np.array([0.2, 0.15, 0.0]))
         pose_cam_tag = self._view(self.guess, [self.line_a, self.line_b])
         gray, _ = self._render(pose_cam_tag)
@@ -449,7 +449,7 @@ class SyntheticReferenceSceneTest(unittest.TestCase):
         self.assertFalse(measurements[0].found)
         self.assertEqual(measurements[0].reason, "PERPENDICULAR_TO_TAG")
         self.assertTrue(measurements[1].found)
-        # 9 Grad gegen die Normale ist noch "senkrecht", 12 Grad nicht.
+        # 9 degrees against the normal is still "perpendicular", 12 degrees is not.
         for degrees, expected in ((9.0, "PERPENDICULAR_TO_TAG"), (12.0, None)):
             with self.subTest(grad=degrees):
                 end = np.array([0.06 * math.sin(math.radians(degrees)), 0.0, 0.06 * math.cos(math.radians(degrees))])
@@ -519,7 +519,7 @@ class ViewPlanTest(unittest.TestCase):
                 for line in (self.line_a, self.line_b):
                     start = to_tag[:3, :3] @ line.start + to_tag[:3, 3]
                     end = to_tag[:3, :3] @ line.end + to_tag[:3, 3]
-                    # tagnahes 10-cm-Stueck: der Tag-Mittelpunkt liegt 10 bzw. 8 cm neben der Kante
+                    # tag-near 10 cm piece: the tag centre lies 10 or 8 cm beside the edge
                     direction = (end - start) / np.linalg.norm(end - start)
                     foot = start + direction * max(0.0, min(np.linalg.norm(end - start), -start @ direction))
                     points.append(np.array([foot - 0.05 * direction, foot + 0.05 * direction]))
@@ -535,11 +535,11 @@ class ViewPlanTest(unittest.TestCase):
             self.guess, [self.line_a, self.line_b], self.calibration, tag_size_m=TAG_SIZE_M
         )
         rotation = plan.pose_tag_cam[:3, :3]
-        np.testing.assert_allclose(rotation[:, 2], [0.0, 0.0, -1.0], atol=1e-12)  # Blick: -Tag-z
-        np.testing.assert_allclose(rotation[:, 0], [1.0, 0.0, 0.0], atol=1e-12)  # Bild-x = Tag-x
+        np.testing.assert_allclose(rotation[:, 2], [0.0, 0.0, -1.0], atol=1e-12)  # view: -tag z
+        np.testing.assert_allclose(rotation[:, 0], [1.0, 0.0, 0.0], atol=1e-12)  # image x = tag x
         self.assertAlmostEqual(float(np.linalg.det(rotation)), 1.0, places=9)
         self.assertGreater(float(plan.pose_tag_cam[2, 3]), 0.0)
-        # Tag-Oberkante (+y) liegt im Bild oben.
+        # Tag top edge (+y) lies at the top of the image.
         pixels, _ = self._project(plan.pose_tag_cam, [[0.0, 0.04, 0.0], [0.0, -0.04, 0.0]])
         self.assertLess(pixels[0, 1], pixels[1, 1])
 
@@ -547,7 +547,7 @@ class ViewPlanTest(unittest.TestCase):
         plan = plan_reference_view(
             self.guess, [self.line_a], self.calibration, tag_size_m=TAG_SIZE_M, tilt_deg=20.0
         )
-        view = plan.pose_tag_cam[:3, 2]  # Blickrichtung (Kamera-z) im Tag-KS
+        view = plan.pose_tag_cam[:3, 2]  # viewing direction (camera z) in the tag frame
         angle = math.degrees(math.acos(float(np.clip(view @ [0.0, 0.0, -1.0], -1.0, 1.0))))
         self.assertAlmostEqual(angle, 20.0, places=6)
 
@@ -558,8 +558,8 @@ class ViewPlanTest(unittest.TestCase):
         )
         self.assertFalse(plan.fits)
         self.assertEqual(plan.uncovered, ["fern"])
-        # Die Pose gilt fuer Tag + Kante A, die zusammen schon bei 25 cm passen:
-        # die ferne Kante zieht den Tag nicht aus dem Bild.
+        # The pose holds for tag + edge A, which together already fit at 25 cm:
+        # the far edge does not pull the tag out of the image.
         self.assertAlmostEqual(plan.standoff_m, 0.25, places=9)
         pixels, depth = self._project(
             plan.pose_tag_cam, [[-0.04, 0.04, 0.0], [0.04, -0.04, 0.0]]
@@ -579,7 +579,7 @@ class ViewPlanTest(unittest.TestCase):
 class CatalogRpyTest(unittest.TestCase):
     @staticmethod
     def _rebuild(roll, pitch, yaw):
-        # R = Rz(yaw) * Ry(pitch) * Rx(roll), feste Achsen, wie `quaternionFromRpyDeg`.
+        # R = Rz(yaw) * Ry(pitch) * Rx(roll), fixed axes, as in `quaternionFromRpyDeg`.
         cr, sr = math.cos(math.radians(roll)), math.sin(math.radians(roll))
         cp, sp = math.cos(math.radians(pitch)), math.sin(math.radians(pitch))
         cy, sy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
@@ -607,7 +607,7 @@ class CatalogRpyTest(unittest.TestCase):
 
     @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
     def test_a_pose_is_accepted_and_known_values_match_the_convention(self) -> None:
-        # Tag um 90 Grad um z gedreht: yaw = 90 (nicht roll).
+        # Tag rotated by 90 degrees about z: yaw = 90 (not roll).
         pose = from_rotation_translation(_rotation_z(90.0), [1.0, 2.0, 3.0])
         np.testing.assert_allclose(catalog_rpy_deg(pose), [0.0, 0.0, 90.0], atol=1e-9)
 

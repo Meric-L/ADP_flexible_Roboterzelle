@@ -1,21 +1,14 @@
-"""Live stream as MJPEG over HTTP, straight from the Pi to the browser.
+"""Serve the live stream as MJPEG over HTTP, directly from the Pi to the browser.
 
-Why not over OPC UA: there every image travels as a Base64 string (+33 %)
-through asyncua, the backend, a JSON WebSocket message and the React store.
-That is fine for 5 fps, but not for a smooth image. MJPEG is what an
-`<img src=...>` plays without any library: `multipart/x-mixed-replace`, one JPEG
-after another.
+OPC UA stays the control path: the port is published in `CameraStreamHttpPort`, and
+the overlay mode is still selected via `CameraStreamMode`. Images arrive already
+encoded from `CameraStreamPublisher`; this server encodes nothing itself. MJPEG is
+used because Base64 over OPC UA is too slow for smooth video.
 
-OPC UA stays the control path: the server tells the frontend the port via the
-node `CameraStreamHttpPort`, and the overlay mode is still selected via
-`CameraStreamMode`. The images arrive already marked up and encoded from the
-`CameraStreamPublisher` -- this server encodes nothing itself.
+Deliberately without a framework: `asyncio.start_server` is enough for these paths.
 
-Deliberately without a framework (aiohttp or similar): two GET paths,
-`asyncio.start_server` is enough, and no dependency is added on the Pi.
-
-    GET /stream.mjpg    endless MJPEG stream
-    GET /snapshot.jpg   the newest single image
+    GET /stream.mjpg       endless MJPEG stream
+    GET /snapshot.jpg      the newest single image
     GET /tagreference.jpg  debug image of the last MeasureTagReference (404 without)
 """
 

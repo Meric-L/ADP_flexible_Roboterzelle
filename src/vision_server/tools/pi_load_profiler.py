@@ -1,54 +1,10 @@
-"""Show live (and as a summary) which processes on the Pi use how much CPU and RAM.
+"""Show which processes and threads use how much CPU and RAM on the Pi, live and as a summary.
 
-This checks whether processing the 12 MP images (or another process) loads the
-Pi so much that the effective frame rate drops far below 1 fps.
-
-It is a pure stdlib solution. It reads `/proc/[pid]/stat`, `/proc/[pid]/status`,
-`/proc/loadavg` and `/proc/meminfo`. It deliberately avoids `psutil` and similar
-packages, so that no extra `pip install` is needed on an already overloaded or
-hung Pi, and so that the profiler itself adds as little load as possible.
-
-If available, it also reads the CPU temperature (`/sys/class/thermal`) and the
-Raspberry Pi throttling status (`vcgencmd get_throttled`). A Pi throttled by
-undervoltage or heat can show exactly the symptom "the CPU does not even look
-fully loaded, but everything is slow", which a pure CPU% process list does not
-show.
-
-Sampling is interval-based (default: every 2 s). Very short peaks (shorter than
-one interval) between two measurements may therefore be underestimated. To find
-"which script or long-running process uses CPU continuously", this is enough.
-For single short outliers, reduce `--interval` if needed.
-
-A process list alone shows only what `top` also shows. The `vision_server` runs
-as ONE Python process that handles camera capture, detection and OPC UA/MJPEG in
-several threads (`vision-camera`, `vision-<profile>`, `vision-calibration`; see
-``ThreadPoolExecutor(..., thread_name_prefix=...)`` in camera.py and
-detection/base.py). "python3 uses 90% CPU" therefore does not yet say *which*
-part of it is the problem. This tool additionally breaks CPU% down per thread
-inside the `vision_server` process (`/proc/[pid]/task/[tid]/stat`). The process
-is chosen with `--pid`, or automatically as the first process whose command
-line contains "vision_server".
-
-The thread breakdown shows only TIDs and CPU%, not meaningful names. CPython
-does not pass `threading.Thread(name=...)` or `thread_name_prefix` on to the
-kernel, so `/proc/[pid]/task/[tid]/comm` shows only "python3" for every thread
-(verified with a small test script). To still see which *code* (camera capture,
-AprilTag detection, ...) uses the time, `--pyspy` runs `py-spy top` on the same
-target process instead. It reads the real Python call stack per thread
-(ptrace-based, without changing vision_server code). py-spy must be installed
-separately (`pip install py-spy`, or on the Pi possibly via `pipx` or in the
-venv). It usually needs root (`sudo py-spy ...`), because `ptrace_scope` on
-Debian and Raspberry Pi OS protects foreign processes by default.
-
-Usage on the Pi, e.g. while the server runs under load:
-
-    python3 src/vision_server/tools/pi_load_profiler.py --duration 120 --csv load.csv
-
-For the function call stack instead of pure CPU% numbers (possibly with sudo):
-
-    python3 src/vision_server/tools/pi_load_profiler.py --pyspy
-
-Ctrl+C ends the run early and still prints the summary.
+Pure stdlib, reading `/proc`, so nothing has to be installed on an overloaded Pi. The
+threads of the `vision_server` process are broken down separately (chosen with `--pid`,
+or found automatically). Thread names are not usable (CPython does not pass them to the
+kernel), so `--pyspy` hands over to `py-spy top`, which shows the Python call stack per
+thread. py-spy usually needs root (`sudo`) because of ptrace.
 """
 
 import argparse

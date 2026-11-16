@@ -1,11 +1,10 @@
-"""Tests fuer `tagloc.detector`s Subpixel-Eckenverfeinerung als Konfig-Flag.
+"""Tests for the subpixel corner refinement of `tagloc.detector` as a config flag.
 
-`cv2.aruco.CORNER_REFINE_APRILTAG` kostet messbar CPU (py-spy auf pi1: ~46%
-des Profils in `_locate -> detect`), ist fuer Dekodierbarkeit aber nicht
-noetig. `AprilTagProfileConfig.subpixel_corner_refinement` (Default
-`False`) steuert das projektweit; `ArucoTagDetector`/`build_detector`
-selbst bleiben auf Konstruktor-Ebene ebenfalls konservativ (Default
-`False`). Skips instead of failing without OpenCV, gleiches Muster wie
+`cv2.aruco.CORNER_REFINE_APRILTAG` costs measurable CPU (py-spy on pi1: about 46%
+of the profile in `_locate -> detect`) but is not needed for decodability.
+`AprilTagProfileConfig.subpixel_corner_refinement` (default `False`) controls
+this project-wide; `ArucoTagDetector`/`build_detector` also stay conservative at
+constructor level (default `False`). Tests skip without OpenCV, as in
 `test_tag_pipeline.py`.
 """
 
@@ -16,7 +15,7 @@ try:
     import cv2
 
     _ = cv2.aruco
-except Exception:  # OpenCV nicht installiert
+except Exception:  # OpenCV not installed
     cv2 = None
 
 if cv2 is not None:
@@ -24,12 +23,12 @@ if cv2 is not None:
 
 from vision_server.profiles import AprilTagProfileConfig
 
-#: Weiches Deckenkamerabild mit den tag36h11-IDs 0, 1, 2, 3, 583 (19.10.2026).
+#: Soft ceiling-camera image with the tag36h11 IDs 0, 1, 2, 3, 583.
 ROHBILD = (
     Path(__file__).resolve().parents[1] / "data" / "rohbilder" / "cam_ceiling_20261019-114704.png"
 )
-#: Dieselbe Kamera nach dem Neufokussieren, umgebaute Szene: tag36h11-IDs 0, 1
-#: (zweimal, beide physisch da), 2, 3, 583, 586; 585 ist beschaedigt und optional.
+#: Same camera after refocusing, rebuilt scene: tag36h11 IDs 0, 1 (twice, both
+#: physically present), 2, 3, 583, 586; 585 is damaged and optional.
 ROHBILD_SCHARF = (
     Path(__file__).resolve().parents[1] / "data" / "rohbilder" / "cam_ceiling_20261019-142133.png"
 )
@@ -72,9 +71,9 @@ class SubpixelCornerRefinementTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class AprilTagQuadDecimateTest(unittest.TestCase):
-    """`aprilTagQuadDecimate` -- Tuning-Hebel gegen die CPU-Kosten der
-    Subpixel-Verfeinerung (py-spy auf pi1: ~46% des Profils in
-    `_locate -> detect`), noch nicht auf echten Distanzen validiert."""
+    """`aprilTagQuadDecimate`: tuning lever against the CPU cost of the subpixel
+    refinement (py-spy on pi1: about 46% of the profile in `_locate -> detect`),
+    not yet validated at real distances."""
 
     def test_default_leaves_quad_decimate_untouched(self):
         detector = ArucoTagDetector("tag36h11", subpixel_corner_refinement=True)
@@ -89,9 +88,9 @@ class AprilTagQuadDecimateTest(unittest.TestCase):
         self.assertEqual(detector._parameters.aprilTagQuadDecimate, 2.0)
 
     def test_has_no_effect_without_subpixel_refinement(self):
-        # `aprilTagQuadDecimate` wirkt nur zusammen mit
-        # `cornerRefinementMethod == CORNER_REFINE_APRILTAG` -- ohne
-        # Verfeinerung wird es bewusst gar nicht erst gesetzt.
+        # `aprilTagQuadDecimate` only acts together with
+        # `cornerRefinementMethod == CORNER_REFINE_APRILTAG`; without refinement it
+        # is deliberately not set at all.
         detector = ArucoTagDetector(
             "tag36h11", subpixel_corner_refinement=False, apriltag_quad_decimate=2.0
         )
@@ -111,7 +110,7 @@ class AprilTagQuadDecimateTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class DetectorParametersTest(unittest.TestCase):
-    """Frei waehlbare `DetectorParameters`, leer/`None` = OpenCV-Standard."""
+    """Freely selectable `DetectorParameters`; empty/`None` = OpenCV default."""
 
     def test_none_and_empty_leave_opencv_defaults(self):
         standard = cv2.aruco.DetectorParameters()
@@ -149,7 +148,7 @@ class DetectorParametersTest(unittest.TestCase):
             "tag36h11",
             detector_parameters={
                 "errorCorrectionRate": 1,  # int -> float
-                "perspectiveRemovePixelPerCell": 8.0,  # ganzzahliges float -> int
+                "perspectiveRemovePixelPerCell": 8.0,  # integral float -> int
                 "detectInvertedMarker": 1,  # 0/1 -> bool
             },
         )
@@ -208,16 +207,15 @@ class DetectorParametersTest(unittest.TestCase):
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 @unittest.skipUnless(ROHBILD.is_file(), "Rohbild fehlt")
 class CeilingRawImageTest(unittest.TestCase):
-    """Regression auf dem echten, weichen Deckenbild (4056x3040, alter Fokus)."""
+    """Regression on the real, soft ceiling image (4056x3040, old focus)."""
 
     @classmethod
     def setUpClass(cls):
         cls.gray = cv2.imread(str(ROHBILD), cv2.IMREAD_GRAYSCALE)
 
     def test_explicit_parameters_find_all_five_tags_of_the_blurry_image(self):
-        # Haertefall des alten, unscharfen Fokus (19.10.2026, vor dem
-        # Neufokussieren): diese Parameter sind KEIN Preset mehr, der Test
-        # dokumentiert den Fall und prueft die Mechanik.
+        # Hard case of the old, unsharp focus: these parameters are NO preset any
+        # more; the test documents the case and checks the mechanics.
         detector = build_detector(
             "tag36h11",
             "aruco",
@@ -233,7 +231,7 @@ class CeilingRawImageTest(unittest.TestCase):
         self.assertEqual(ids, {0, 1, 2, 3, 583})
 
     def test_opencv_defaults_miss_tags(self):
-        # Dokumentiert das Problem: ohne die Parameter fehlen Tag 0 und 3.
+        # Documents the problem: without the parameters, tags 0 and 3 are missing.
         ids = {o.tag_id for o in build_detector("tag36h11", "aruco").detect(self.gray)}
 
         self.assertLess(len(ids), 5)
@@ -242,7 +240,7 @@ class CeilingRawImageTest(unittest.TestCase):
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 @unittest.skipUnless(ROHBILD_SCHARF.is_file(), "Rohbild fehlt")
 class CeilingSharpRawImageTest(unittest.TestCase):
-    """Regression auf dem neu fokussierten Deckenbild mit dem echten Preset."""
+    """Regression on the newly focused ceiling image with the real preset."""
 
     def test_ceiling_preset_finds_all_required_tags(self):
         from vision_server.server import apriltag_config
@@ -256,20 +254,20 @@ class CeilingSharpRawImageTest(unittest.TestCase):
 
         ids = sorted(o.tag_id for o in detector.detect(cv2.imread(str(ROHBILD_SCHARF), cv2.IMREAD_GRAYSCALE)))
 
-        # 585 (beschaedigt) darf fehlen, sonst genau diese Tags -- keine Fehlalarme.
+        # 585 (damaged) may be missing; otherwise exactly these tags, no false alarms.
         self.assertEqual([i for i in ids if i != 585], [0, 1, 1, 2, 3, 583, 586])
 
 
 class AprilTagProfileConfigDefaultTest(unittest.TestCase):
-    """Braucht kein `cv2` -- reiner Dataclass-Default-Check."""
+    """Needs no `cv2`; a pure dataclass default check."""
 
     def test_subpixel_corner_refinement_defaults_to_disabled(self):
-        # Spart ~46% CPU im Job-Erkennungs-Thread, siehe profiles.py.
+        # Saves about 46% CPU in the job detection thread, see profiles.py.
         self.assertFalse(AprilTagProfileConfig().subpixel_corner_refinement)
 
     def test_apriltag_quad_decimate_defaults_to_unchanged_behaviour(self):
-        # Noch nicht validiert -- Default darf das Verhalten nicht aendern,
-        # bis auf dem Pi mit echten Distanzen gemessen wurde.
+        # Not validated yet: the default must not change behaviour until it has been
+        # measured on the Pi with real distances.
         self.assertEqual(AprilTagProfileConfig().apriltag_quad_decimate, 0.0)
 
     def test_detector_parameters_default_to_empty(self):

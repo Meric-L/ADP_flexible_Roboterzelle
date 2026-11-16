@@ -12,14 +12,13 @@ Two rules keep this sustainable in production:
    the last result is redrawn. Invisible for a fixed-mounted camera, but not
    to the Pi's CPU.
 
-Since 21.10.2026, mode "apriltag" also works as follows. The tags come from a
-detection at **full** camera resolution, yet only the small image is streamed.
-The overlay does not detect at the stream tick. Doing so cost a whole core on
-the Pi and let jobs run into the timeout (py-spy, 24.09.2026). Instead, it draws
-the newest result that a job, the cell watch or a measurement has already
-computed anyway (`AprilTagDetectionSource.latest_tags`). Only if that result is
-too old does it detect by itself, rarely, in the background, and never during a
-job. See `doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
+In mode "apriltag" the tags come from a detection at **full** camera resolution,
+but only the small image is streamed. The overlay does not detect at the stream
+tick, because that cost a whole core on the Pi and made jobs time out. It draws the
+newest result that a job, the cell watch or a measurement has already computed
+(`AprilTagDetectionSource.latest_tags`). Only if that result is too old does it
+detect by itself, rarely, in the background, and never during a job. See
+`doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
 
 Runs entirely in the publisher's worker thread -- `annotate` is never called
 directly on the event loop.
@@ -235,14 +234,10 @@ class AprilTagStreamAnnotator:
         return cached
 
     def _board_spec(self):
-        """Return the board geometry from config.
+        """Return the board geometry from the config.
 
-        Same source as `CalibrationSession._spec()`. This method used to read
-        `self._calibration.board`. With a placeholder calibration (no `board`
-        field) it fell back to the `BoardSpec()` default (9x6/30 mm). That assumed
-        a different geometry than the session actually running, so corner
-        detection in the stream never found anything, although
-        `CaptureCalibrationSample` (using the config geometry) found the board.
+        Same source as `CalibrationSession._spec()`. The calibration does not carry
+        the board, so the config is the only source that matches the running session.
         """
         from tagloc.boards import BoardSpec
 
@@ -300,13 +295,9 @@ class AprilTagStreamAnnotator:
                         frame_tools.to_gray(canvas), self._board_spec()
                     )
                     self._last_run = now
-                # No cumulative coverage here any more. Since `capture()` only
-                # records the frame instead of detecting right away (see
-                # `calibration_session.py`), coverage is known only after the
-                # background evaluation (`progress["result"]`).
-                # `self._last_board` is still useful: the preview here runs
-                # periodically on the small image, independently of that, and
-                # helps with positioning.
+                # Coverage is known only after the background evaluation
+                # (`progress["result"]`). The board detected here, on the small
+                # image, only helps with positioning.
                 # Corner count at the top left, and at the bottom left one line
                 # with the date of the last calibration (local time). The session
                 # progress is shown by the frontend modal.
@@ -318,9 +309,7 @@ class AprilTagStreamAnnotator:
                 return self._tag_reference_view(image, now)
 
             # Drawing happens on the small image, but the tags come from a
-            # detection at full resolution (see module docstring). Until
-            # 21.10.2026 the overlay detected on this small canvas itself --
-            # cheap, but no evidence of what the job finds.
+            # detection at full resolution (see module docstring).
             if self._detection_max_width is not None:
                 from .camera_stream import _resize_for_stream
 

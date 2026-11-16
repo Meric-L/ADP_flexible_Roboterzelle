@@ -1,4 +1,4 @@
-"""MeasureTags: Tags in Kamerakoordinaten, nur aus frischen Bildern."""
+"""MeasureTags: tags in camera coordinates, from fresh images only."""
 
 import json
 import math
@@ -29,7 +29,7 @@ try:
     )
 
     from tests.test_apriltag_source import FakeCamera, FakeDetector, profile_config, tag_pose
-except Exception:  # pragma: no cover - numpy/asyncua fehlen
+except Exception:  # pragma: no cover - numpy/asyncua missing
     np = None
 
 WALL = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc) if np is not None else None
@@ -66,7 +66,7 @@ class RequestTest(unittest.TestCase):
 
 
 def ambiguous_pose(tag_id, translation, *, tilt_deg, ratio):
-    """Tag-Pose mit gekippter Orientierung und Mehrdeutigkeit `ratio`."""
+    """Tag pose with a tilted orientation and ambiguity `ratio`."""
     pose = tag_pose(tag_id, translation, ambiguity=ratio)
     rotation = geometry.from_rvec_tvec((math.radians(tilt_deg), 0, 0), translation)
     return types.SimpleNamespace(
@@ -101,7 +101,7 @@ class ResultTest(unittest.TestCase):
         [tag] = result["tags"]
         self.assertEqual(tag["frameCount"], 2)
         np.testing.assert_allclose(tag["poseInCamera"]["position"], [0.02, 0.0, 0.35])
-        # Die gekippte Loesung aus dem mehrdeutigen Bild zaehlt fuer die Drehung nicht.
+        # The tilted solution from the ambiguous image does not count for the rotation.
         np.testing.assert_allclose(tag["poseInCamera"]["orientation"], [0, 0, 0, 1], atol=1e-9)
         self.assertFalse(tag["ambiguous"])
         self.assertAlmostEqual(tag["ambiguityRatio"], 0.9)
@@ -134,7 +134,7 @@ class ResultTest(unittest.TestCase):
         self.assertEqual(
             near_edge([[600, 460], [635, 460], [635, 478], [600, 478]], size), ["right", "bottom"]
         )
-        # Im Ergebnis je Tag, aus dem letzten Bild (SQUARE liegt oben links).
+        # In the result per tag, from the last image (SQUARE lies top left).
         frames = [FrameMeasurement(WALL, (640, 480), (tag_pose(7, (0, 0, 0.35)),))]
         [tag] = build_result(
             frames, frames_requested=1, frame_id="cam_flange", sizes=self.sizes(),
@@ -150,7 +150,7 @@ class ResultTest(unittest.TestCase):
 
 
 class FakeCameraSource(AprilTagDetectionSource):
-    """Pose vom Fake-Detektor statt aus OpenCV -- der Rest ist Produktionscode."""
+    """Pose from the fake detector instead of OpenCV; the rest is production code."""
 
     def _detect_in_camera(self, image, sizes, tag_ids):
         tag_poses = self._detector.estimate(self._detector.detect(image))
@@ -240,7 +240,7 @@ class FallbackCalibrationTest(unittest.IsolatedAsyncioTestCase):
             source, closed = self.source(folder, None)
             with self.assertRaises(FileNotFoundError):
                 await source._fallback_calibration(FileNotFoundError("fehlt"), default_calibration)
-        self.assertEqual(closed, [True])  # Kamera wieder zu, wie vorher ohne Kalibrierung
+        self.assertEqual(closed, [True])  # camera closed again, as before without calibration
 
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
@@ -308,7 +308,7 @@ class MeasureTagsOpcUaTest(unittest.IsolatedAsyncioTestCase):
 
         seen_during = []
 
-        async def measure_tags(request):  # noqa: F811 -- merkt sich den Zaehler waehrend der Messung
+        async def measure_tags(request):  # noqa: F811 -- records the counter during the measurement
             seen_during.append(source.measure_calls)
             if request.tag_ids == [13]:
                 raise RuntimeError("Messung kaputt")
@@ -333,15 +333,15 @@ class MeasureTagsOpcUaTest(unittest.IsolatedAsyncioTestCase):
         result_json, error = await vision_system.call_method(method, "kaputt")
         self.assertEqual(error, int(VisionErrorCode.INVALID_ARGUMENT))
         self.assertTrue(json.loads(result_json)["error"].startswith("INVALID_ARGUMENT"))
-        # Waehrend der Messung zaehlt sie als laufend (Stream-Overlay haelt an), danach nicht mehr.
+        # While measuring it counts as running (stream overlay holds), afterwards no longer.
         self.assertEqual(seen_during, [1])
         self.assertEqual(source.measure_calls, 0)
-        # Auch ein Fehler in der Messung stellt den Zaehler zurueck.
+        # An error in the measurement also resets the counter.
         try:
             await vision_system.call_method(method, '{"tagIds": [13]}')
         except Exception:
-            pass  # asyncua meldet die Ausnahme je nach Version als Fehlerstatus
-        self.assertEqual(len(seen_during), 2)  # die fehlerhafte Messung lief wirklich
+            pass  # asyncua reports the exception as an error status, depending on version
+        self.assertEqual(len(seen_during), 2)  # the faulty measurement really ran
         self.assertEqual(source.measure_calls, 0)
         busy["value"] = True
         _, error = await vision_system.call_method(method, "{}")

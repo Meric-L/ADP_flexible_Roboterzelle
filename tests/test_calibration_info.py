@@ -1,8 +1,8 @@
-"""Tests fuer `runner._calibration_info_payload` -- die Kurzfassung der
-gerade aktiven Kalibrierung, die `ActiveCalibrationInfo` fuellt.
+"""Tests for `runner._calibration_info_payload`: the short summary of the active
+calibration, which `ActiveCalibrationInfo` fills.
 
-Reiner Stdlib-Test: `CameraCalibration` wird nicht importiert, ein
-`SimpleNamespace` mit denselben Feldern reicht als Fake.
+Pure stdlib test: `CameraCalibration` is not imported; a `SimpleNamespace` with
+the same fields serves as a fake.
 """
 
 import json
@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 try:
     from tagloc.calibration import PLACEHOLDER_CALIBRATION_ID
-except Exception:  # numpy/tagloc nicht verfuegbar
+except Exception:  # numpy/tagloc not available
     PLACEHOLDER_CALIBRATION_ID = None
 
 from vision_server.runner import _calibration_info_payload
@@ -95,7 +95,7 @@ class CalibrationInfoPayloadTest(unittest.TestCase):
 
             info = _calibration_info_payload(_fake_calibration(), path)
 
-            json.dumps(info)  # darf nicht werfen
+            json.dumps(info)  # must not raise
 
 
 if __name__ == "__main__":

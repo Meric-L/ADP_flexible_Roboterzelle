@@ -1,11 +1,10 @@
-"""Rauchtests fuer Werkzeuge und Einstiegspunkte ohne eigene Tests.
+"""Smoke tests for tools and entry points that have no tests of their own.
 
-Geprueft wird nur, dass sie sich importieren lassen und ihren Einstieg
-(`main`) haben -- ein umbenannter Import oder ein verschobenes Modul faellt
-sonst erst auf, wenn jemand das Werkzeug auf dem Pi braucht. Dazu der Einstieg
-der systemd-Unit: die Vorlage `deploy/opcua-server.service` muss den Server per
-`-m vision_server.server` starten, und `vision_server.server.main` muss
-importierbar sein.
+Only checks that they import and have their `main` entry point. A renamed
+import or moved module would otherwise only surface when someone needs the
+tool on the Pi. The systemd unit template `deploy/opcua-server.service` must
+start the server with `-m vision_server.server`, and `vision_server.server.main`
+must be importable.
 """
 
 import importlib
@@ -30,7 +29,7 @@ VISION_TOOLS = (
 
 
 def load_from_path(name: str, path: Path):
-    """Laedt eine Datei ausserhalb eines Pakets, wie `python datei.py` es tut."""
+    """Loads a file outside a package, the way `python file.py` does."""
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -43,12 +42,12 @@ class VisionToolsImportTest(unittest.TestCase):
             with self.subTest(tool=name):
                 try:
                     module = importlib.import_module(f"vision_server.tools.{name}")
-                except ModuleNotFoundError as error:  # cv2/asyncua nicht installiert
+                except ModuleNotFoundError as error:  # cv2/asyncua not installed
                     self.skipTest(f"{name}: {error.name} fehlt")
                 self.assertTrue(callable(module.main))
 
     def test_alle_dateien_sind_in_der_liste(self):
-        """Ein neues Werkzeug soll hier nicht vergessen werden."""
+        """A new tool must not be forgotten here."""
         on_disk = {
             path.stem
             for path in (SRC / "vision_server" / "tools").glob("*.py")
@@ -79,7 +78,7 @@ class RepoToolsTest(unittest.TestCase):
             svg = out.read_text(encoding="utf-8")
         self.assertTrue(svg.startswith("<?xml"))
         self.assertEqual(svg.count("<image "), 2)
-        self.assertIn("exakt 100 mm", svg)  # Massstabskontrolle
+        self.assertIn("exakt 100 mm", svg)  # scale check
 
     def test_make_tag_sheet_charuco_und_unbekanntes_woerterbuch(self):
         try:
@@ -112,8 +111,8 @@ class SystemdEinstiegTest(unittest.TestCase):
         return werte
 
     def test_unit_startet_den_server_als_modul(self):
-        """Die Vorlage startet `-m vision_server.server` und legt `src/` auf
-        den Pfad. Weicht sie ab, startet auf den Pis nichts."""
+        """The template starts `-m vision_server.server` and puts `src/` on the
+        path. If it deviates, nothing starts on the Pis."""
         werte = self._service_zeilen()
         self.assertEqual(len(werte["ExecStart"]), 1)
         self.assertTrue(

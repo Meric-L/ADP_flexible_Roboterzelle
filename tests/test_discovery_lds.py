@@ -1,9 +1,8 @@
-"""Tests fuer die Anmeldung beim Local Discovery Server (`discovery.lds`).
+"""Tests for registration with the Local Discovery Server (`discovery.lds`).
 
-Die Anmeldung selbst macht `asyncua.Server.register_to_discovery()`. Getestet
-wird deshalb die Klammer darum: dass die angekuendigte Adresse stimmt, dass ein
-nicht erreichbarer LDS den Server nicht mitreisst und dass beim Verlassen
-abgemeldet wird.
+The registration itself is done by `asyncua.Server.register_to_discovery()`.
+What is tested is the wrapper around it: the announced address is correct, an
+unreachable LDS does not take the server down, and unregistering happens on exit.
 """
 
 import unittest
@@ -14,7 +13,7 @@ from vision_server.discovery import lds
 
 
 class FakeServer:
-    """Minimaler Ersatz fuer `asyncua.Server` mit dem, was `register()` nutzt."""
+    """Minimal stand-in for `asyncua.Server`, with what `register()` uses."""
 
     def __init__(self, endpoint: str, fail_register: bool = False) -> None:
         self.endpoint = urlparse(endpoint)
@@ -51,8 +50,8 @@ class LdsUrlTest(unittest.TestCase):
 
 class AdvertisedEndpointTest(unittest.TestCase):
     def test_traegt_die_lan_ip_nicht_0_0_0_0(self):
-        """Der Kern: aus diesem Endpoint wird die DiscoveryUrl, die der
-        Aggregation-Server spaeter anwaehlt."""
+        """The core: this endpoint becomes the DiscoveryUrl that the aggregation
+        server later selects."""
         with mock.patch.object(
             lds.mdns, "detect_lan_ipv4", return_value="10.10.38.104"
         ):
@@ -81,8 +80,8 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(server.abgemeldet, ["opc.tcp://lds:4840/"])
 
     async def test_verweigert_anmeldung_mit_0_0_0_0(self):
-        """Ohne diese Bremse traegt `register_to_discovery()` `0.0.0.0` ein,
-        und der Aggregation-Server verbindet ins Leere."""
+        """Without this guard `register_to_discovery()` gets `0.0.0.0`, and the
+        aggregation server connects to nothing."""
         server = FakeServer("opc.tcp://0.0.0.0:4840/raspi/server/")
         async with lds.register(server, url="opc.tcp://lds:4840/") as url:
             self.assertIsNone(url)
@@ -96,17 +95,17 @@ class RegisterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(server.registriert, [])
 
     async def test_fehlgeschlagene_anmeldung_beendet_den_server_nicht(self):
-        """Ein Server, den man per URL erreicht, ist mehr wert als gar keiner."""
+        """A server reachable by URL is worth more than none at all."""
         server = FakeServer(
             "opc.tcp://10.0.0.9:4840/raspi/server/", fail_register=True
         )
         async with lds.register(server, url="opc.tcp://lds:4840/") as url:
             self.assertIsNone(url)
-        # Nie angemeldet -> auch nicht abmelden, sonst KeyError in asyncua.
+        # Never registered, so do not unregister either: asyncua would raise KeyError.
         self.assertEqual(server.abgemeldet, [])
 
     async def test_fehler_beim_abmelden_schlaegt_nicht_durch(self):
-        """Beim Herunterfahren darf ein toter LDS kein Hindernis sein."""
+        """On shutdown a dead LDS must not be an obstacle."""
         server = FakeServer("opc.tcp://10.0.0.9:4840/raspi/server/")
 
         async def kaputt(url):

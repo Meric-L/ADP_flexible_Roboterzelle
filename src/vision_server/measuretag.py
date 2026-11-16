@@ -1,11 +1,8 @@
-"""MeasureTags: measure tags in camera coordinates, for the frontend control loop.
+"""Measure tags in camera coordinates for the `MeasureTags` control loop.
 
-Layer 2 has been split anew: the controller (webskillcomposition) plans and
-moves, and the hand Pi only measures. When the robot stands still, the
-controller calls `MeasureTags`. The Pi uses only images that arrive **after**
-the call, averages over some of them, and returns `T_cam_tag` per tag -- without
-world CS, without CAD offset, without knowledge of the robot. From this, the
-controller computes the next flange target with FK and `T_flansch_cam`.
+The controller plans and moves; the hand Pi only measures. It uses only images that
+arrive after the call, averages over some of them, and returns `T_cam_tag` per tag,
+without world coordinates or knowledge of the robot.
 
 No asyncua and no camera here: measurements come in as data.
 See `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.

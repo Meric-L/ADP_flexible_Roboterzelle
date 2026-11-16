@@ -1,32 +1,8 @@
-"""Assembly of the vision system, either as an install or as its own process.
+"""Vision system assembly, as an install into a server or as its own process.
 
-The entry points are `install_vision_machine` (install into a server, `install.py`) and
-`run` (own process, `standalone.py`). The install is split into steps, one module per
-step. `wiring.Wiring` holds what the steps share (session, annotator, layer-2 run,
-hand-eye session), because the method handlers only read it when called:
-
-| Module | Task |
-| --- | --- |
-| `install.py` | `install_vision_machine`: the steps in fixed order |
-| `wiring.py` | `Wiring`: shared state and the lock queries |
-| `uamethods.py` | Building blocks of the OPC UA methods: replies, setup, JSON wrapper |
-| `sources.py` | Find camera holders, open sources |
-| `jobs.py` | `StartSingleJob`, `Stop`, `StartContinuous`, `Abort`, `Halt`, `Reset` |
-| `calibration.py` | Calibration session, `ActiveCalibrationInfo`, `StartCalibration` and co. |
-| `tag_map.py` | `TagMapJson` and `SetTagMap` |
-| `livestream.py` | Overlay, live stream publisher, MJPEG server |
-| `health.py` | Camera watchdog as `DeviceHealth` |
-| `layer2.py`, `hand_eye.py` | Layer-2 run and hand-eye calibration (hand Pi) |
-| `measure_board.py`, `measure_tags.py` | Measurements on request (board, tags) |
-| `tag_reference.py` | Tag measurement via reference edges |
-| `save_raw_image.py`, `save_use_case_image.py` | Raw image and use-case photo |
-| `cell_watch.py` | Cell watch (ceiling camera) |
-| `part10.py` | `VisionProgram` on the same jobs |
-| `machine.py` | `VisionMachine`, `aclose`, event loop watchdog |
-| `standalone.py` | `run`: own process |
-
-All modules log under the name `vision_server.runner`. The import path and the names
-that used to be defined here are kept.
+The entry points are `install_vision_machine` (see `install.py`) and `run`
+(see `standalone.py`). `wiring.Wiring` holds the state that the install steps
+share, because the method handlers read it only when they are called.
 """
 
 from .calibration import (  # noqa: F401

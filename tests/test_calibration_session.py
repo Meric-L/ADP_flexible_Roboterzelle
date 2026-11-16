@@ -1,20 +1,19 @@
-"""Tests fuer `CalibrationSession`: keine Kamera -- die Board-/Kalibrier-
-Funktionen aus `tagloc.boards`/`tagloc.calibration` sind injiziert (Muster
-aus `test_apriltag_source.py`). `tagloc.frames.image_size`/`to_gray` laufen
-dagegen echt (brauchen numpy, `to_gray` zusaetzlich cv2 fuer ein 3-Kanal-Bild)
--- ein Fake-"Bild" muss deshalb ein echtes Array sein, kein Platzhalter.
+"""Tests for `CalibrationSession`: no camera. The board/calibration functions from
+`tagloc.boards`/`tagloc.calibration` are injected (pattern from
+`test_apriltag_source.py`). `tagloc.frames.image_size`/`to_gray` run for real (they
+need numpy, and `to_gray` also cv2 for a 3-channel image), so a fake "image" must
+be a real array, not a placeholder.
 
-Aufnahme und Auswertung sind entkoppelt (siehe Moduldoc von
-`calibration_session.py`): `capture()` merkt sich nur noch den Frame, kein
-`detect_board` mehr im RPC-Pfad. Die eigentliche Erkennung passiert erst in
-`_process()`, angestossen von `finish()` und im Hintergrund laufend -- Tests,
-die das Ergebnis pruefen wollen, rufen darum immer
-`await session.wait_for_processing()` nach `finish()`, bevor sie
-`session.progress["result"]` lesen.
+Capture and evaluation are decoupled (see the module docstring of
+`calibration_session.py`): `capture()` only stores the frame, with no
+`detect_board` in the RPC path. The actual detection runs in `_process()`,
+started by `finish()` and running in the background. Tests that check the result
+therefore always call `await session.wait_for_processing()` after `finish()`
+before reading `session.progress["result"]`.
 
-`start()` legt/leert echt einen Arbeitsordner auf der Platte (`_pending_dir`)
--- `FAST_CONFIG` zeigt deshalb auf ein Temp-Verzeichnis, nie auf den
-Standardpfad im Repo (`data/calibration/...`).
+`start()` really creates and empties a working folder on disk (`_pending_dir`),
+so `FAST_CONFIG` points at a temp directory, never at the default path in the
+repo (`data/calibration/...`).
 """
 
 import asyncio
@@ -39,8 +38,8 @@ from vision_server.calibration_session import (
 from vision_server.errors import VisionErrorCode
 from vision_server.profiles import AprilTagProfileConfig
 
-#: `start()` legt/leert `_pending_dir` (abgeleitet aus `calibration_path`)
-#: wirklich auf der Platte -- nie auf den Repo-Standardpfad zeigen lassen.
+#: `start()` really creates and empties `_pending_dir` (derived from
+#: `calibration_path`) on disk; never point it at the repo default path.
 _TMP_DIR = tempfile.mkdtemp(prefix="calibration_session_test_")
 
 FAST_CONFIG = AprilTagProfileConfig(
@@ -48,16 +47,16 @@ FAST_CONFIG = AprilTagProfileConfig(
     calibration_path=Path(_TMP_DIR) / "camera.json",
 )
 
-#: Kleines echtes Bild -- `tagloc.frames.image_size`/`to_gray` sind nicht
-#: injiziert und brauchen ein echtes Array, kein String-Platzhalter.
+#: Small real image: `tagloc.frames.image_size`/`to_gray` are not injected and
+#: need a real array, not a string placeholder.
 _FRAME = np.zeros((4, 4, 3), dtype=np.uint8) if np is not None else None
 
-#: Feste Uhr fuer die Archiv-Tests: Sitzungsordner `20261110T091500Z`.
+#: Fixed clock for the archive tests: session folder `20261110T091500Z`.
 _T0 = datetime(2026, 11, 10, 9, 15, 0, tzinfo=timezone.utc)
 
 
 class FakeCamera:
-    """Liefert `latest_frame`, ohne eine echte Kamera zu oeffnen."""
+    """Provides `latest_frame` without opening a real camera."""
 
     def __init__(self) -> None:
         self.latest_frame = None
@@ -67,7 +66,7 @@ class FakeCamera:
 
 
 class FakeSample:
-    """Steht fuer `tagloc.boards.BoardSample`."""
+    """Stands for `tagloc.boards.BoardSample`."""
 
     def __init__(self, corners: int = 20) -> None:
         self._corners = corners
@@ -77,13 +76,12 @@ class FakeSample:
 
 
 def fake_detect_board(gray, spec, board):
-    """Findet das Board immer -- Tests steuern ueber die Aufnahmen, nicht
-    ueber einen Erkennungsfehlschlag."""
+    """Always finds the board; tests steer via the captures, not via a detection miss."""
     return FakeSample()
 
 
 def fake_detect_board_never(gray, spec, board):
-    """Findet das Board nie -- fuer den Fehlschlag-Test."""
+    """Never finds the board; for the failure test."""
     return None
 
 
@@ -96,10 +94,10 @@ def fake_compute_coverage(samples, image_size):
 
 
 def make_session(config=FAST_CONFIG, **overrides):
-    """Baut eine `CalibrationSession` mit gefakten `tagloc`-Funktionen UND
-    einem gefakten In-Memory-"Dateisystem" fuer `save_capture_image`/
-    `load_capture_image` -- `_process()` liest damit exakt das zurueck, was
-    `capture()` zuvor "gespeichert" hat, ohne echte Dateien anzufassen."""
+    """Builds a `CalibrationSession` with faked `tagloc` functions and an in-memory
+    fake "file system" for `save_capture_image`/`load_capture_image`. `_process()`
+    then reads back exactly what `capture()` previously "saved", without touching
+    real files."""
     camera = FakeCamera()
     calibrate_calls: list = []
     save_calls: list = []
@@ -137,8 +135,8 @@ def make_session(config=FAST_CONFIG, **overrides):
 
 
 async def _capture_n(session, camera, n: int) -> None:
-    """Nimmt `n` Aufnahmen auf und wartet, bis sie alle "gespeichert" sind --
-    `_process()` braucht das (siehe `wait_for_pending_saves` dort)."""
+    """Takes `n` captures and waits until they are all "saved"; `_process()` needs
+    that (see `wait_for_pending_saves` there)."""
     for _ in range(n):
         camera.push()
         await session.capture()
@@ -175,9 +173,9 @@ class CaptureTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(found)
 
     async def test_capture_succeeds_even_if_the_board_would_not_be_found_later(self):
-        """Seit der Entkopplung von Aufnahme und Auswertung prueft `capture()`
-        nicht mehr, ob das Board sichtbar ist -- das entscheidet sich erst in
-        `_process()`. `detect_board` wird hier absichtlich nie aufgerufen."""
+        """Since capture and evaluation were decoupled, `capture()` no longer checks
+        whether the board is visible; that is decided only in `_process()`.
+        `detect_board` is deliberately never called here."""
         session, camera, _, _ = make_session(detect_board=fake_detect_board_never)
         session.start()
         camera.push()
@@ -200,9 +198,9 @@ class CaptureTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
-    """Jede Aufnahme landet immer im session-eigenen `_pending_dir` (Aufnahme
-    und Auswertung sind darauf angewiesen) und zusaetzlich im optionalen
-    `calibration_capture_dir`-Archiv, wenn konfiguriert."""
+    """Every capture always lands in the session's own `_pending_dir` (capture and
+    evaluation depend on it), and additionally in the optional
+    `calibration_capture_dir` archive, if configured."""
 
     async def test_saves_each_capture_into_the_pending_dir(self):
         saved_calls: list = []
@@ -240,7 +238,7 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         await session.capture()
         await session.wait_for_pending_saves()
 
-        # Einmal in den Pending-Ordner (JPEG), einmal ins Archiv der Sitzung (PNG).
+        # Once into the pending folder (JPEG), once into the session archive (PNG).
         self.assertEqual(len(saved_calls), 2)
         archive_paths = [p for p in saved_calls if p.parent == archive / "20261110T091500Z"]
         self.assertEqual(len(archive_paths), 1)
@@ -267,12 +265,11 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved_calls[-1].name, "kalib_001.jpg")
 
     async def test_a_slow_save_does_not_block_the_next_capture(self):
-        """Regressionstest fuer den Warteschlangen-Bug, live 2026-09-28 an
-        der Deckenkamera gefunden: `_schedule_capture_save` teilte sich
-        anfangs `_pool()` mit `detect_board` -- eine noch laufende
-        Speicherung liess jede weitere `capture()` darauf warten. Mit
-        `_save_pool()` (eigener Pool) darf eine haengende erste Speicherung
-        eine zweite Aufnahme nicht mehr aufhalten."""
+        """Regression test for the queue bug found live on the ceiling camera:
+        `_schedule_capture_save` initially shared `_pool()` with `detect_board`, so
+        a save still running made every further `capture()` wait for it. With
+        `_save_pool()` (own pool) a hanging first save must not hold up a second
+        capture."""
         import threading
 
         save_started = threading.Event()
@@ -287,10 +284,9 @@ class SaveCaptureImageTest(unittest.IsolatedAsyncioTestCase):
         camera.push()
 
         await session.capture()
-        # Blockierend auf `save_started` warten wuerde hier den Event-Loop
-        # selbst einfrieren (derselbe Thread) und den Hintergrund-Task nie
-        # zum Laufen kommen lassen -- stattdessen kurz pollen und dem Loop
-        # dabei jedes Mal die Kontrolle zurueckgeben.
+        # Blocking on `save_started` here would freeze the event loop itself (same
+        # thread) and never let the background task run; instead poll briefly and
+        # hand control back to the loop each time.
         for _ in range(200):
             if save_started.is_set():
                 break
@@ -329,8 +325,8 @@ class ProgressTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(session.progress["running"])
 
     async def test_running_becomes_false_once_finish_is_called(self):
-        """`finish()` beendet die Aufnahme-Phase sofort, auch wenn die
-        Auswertung selbst noch im Hintergrund laeuft."""
+        """`finish()` ends the capture phase at once, even if the evaluation itself is
+        still running in the background."""
         session, camera, _, _ = make_session()
         session.start()
         await _capture_n(session, camera, 3)
@@ -342,8 +338,8 @@ class ProgressTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class BusyTest(unittest.IsolatedAsyncioTestCase):
-    """`busy` (Aufnahme ODER Auswertung) schuetzt `StartCalibration` davor,
-    den `_pending_dir` einer noch laufenden Auswertung wegzuraeumen."""
+    """`busy` (capture OR evaluation) protects `StartCalibration` from clearing the
+    `_pending_dir` of a still-running evaluation."""
 
     async def test_busy_while_running(self):
         session, _camera, _, _ = make_session()
@@ -367,7 +363,7 @@ class BusyTest(unittest.IsolatedAsyncioTestCase):
         await session.finish()
 
         self.assertFalse(session.running)
-        self.assertTrue(session.busy)  # Auswertung laeuft noch
+        self.assertTrue(session.busy)  # evaluation still running
         self.assertTrue(session.processing)
         release.set()
         await session.wait_for_processing()
@@ -375,7 +371,7 @@ class BusyTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(session.processing)
 
     async def test_not_processing_while_capturing(self):
-        """MeasureBoard darf in der Aufnahmephase messen, nur nicht waehrend der Auswertung."""
+        """MeasureBoard may measure in the capture phase, just not during the evaluation."""
         session, camera, _, _ = make_session()
         session.start()
         await _capture_n(session, camera, 2)
@@ -386,11 +382,9 @@ class BusyTest(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class FinishTest(unittest.IsolatedAsyncioTestCase):
     async def test_finish_returns_immediately_without_waiting_for_processing(self):
-        """Der eigentliche Grund fuer die Entkopplung: `finish()` darf nicht
-        auf die Auswertung warten, sonst haette eine langsame/haengende
-        Auswertung ueber mehrere Vollaufloesungs-Aufnahmen dasselbe
-        Timeout-Risiko wie zuvor eine einzelne haengende `detect_board`-
-        Aufnahme (live 2026-09-28 gefunden)."""
+        """The actual reason for the decoupling: `finish()` must not wait for the
+        evaluation. Otherwise a slow or hanging evaluation over several full-resolution
+        captures would carry the same timeout risk as a single hanging `detect_board` call."""
         import threading
 
         release = threading.Event()
@@ -417,7 +411,7 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         out = folder / "cam.json"
         out.write_text('{"calibrationId": "alt"}', encoding="utf-8")
         clock = lambda: datetime(2026, 11, 15, 9, 30, 0, tzinfo=timezone.utc)
-        for _ in range(2):  # zweimal in derselben Sekunde: zwei getrennte Sicherungen
+        for _ in range(2):  # twice in the same second: two separate backups
             session, camera, _, save_calls = make_session(
                 config=replace(FAST_CONFIG, calibration_path=out), now=clock)
             session.start()
@@ -464,8 +458,8 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(session.progress["processing"])
 
     async def test_calibrates_with_the_configured_lens_model(self):
-        """Das Linsenmodell kommt aus der Config (Deckenkamera: Fisheye) und
-        steht im Ergebnis, damit das Frontend es anzeigen kann."""
+        """The lens model comes from the config (ceiling camera: fisheye) and is part
+        of the result, so that the frontend can display it."""
         config = replace(FAST_CONFIG, calibration_model="fisheye")
         session, camera, calibrate_calls, _save_calls = make_session(config)
         session.start()
@@ -487,8 +481,8 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         await session.abort()
 
     async def test_early_refusal_names_the_model(self):
-        """Weniger als 3 Aufnahmen: auch das sofortige `result` nennt das
-        Modell, und `FinishCalibration`s Summary ebenso."""
+        """Fewer than 3 captures: the immediate `result` also names the model, and so
+        does the summary of `FinishCalibration`."""
         config = replace(FAST_CONFIG, calibration_model="fisheye")
         session, camera, _calibrate_calls, _save_calls = make_session(config)
         session.start()
@@ -515,8 +509,8 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "fisheye")
 
     async def test_detection_failed_with_too_few_captures(self):
-        """Unter `MIN_SAMPLES_FOR_CALIBRATION` gibt `finish()` sofort auf,
-        ohne ueberhaupt eine Hintergrund-Auswertung anzustossen."""
+        """Below `MIN_SAMPLES_FOR_CALIBRATION`, `finish()` gives up at once, without
+        even starting a background evaluation."""
         session, camera, _calibrate_calls, save_calls = make_session()
         session.start()
         await _capture_n(session, camera, 1)
@@ -549,7 +543,7 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
             detect_board=flaky_detect_board
         )
         session.start()
-        await _capture_n(session, camera, 4)  # eine davon "verpasst" das Board
+        await _capture_n(session, camera, 4)  # one of them "misses" the board
 
         await session.finish()
         await session.wait_for_processing()
@@ -560,10 +554,9 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(save_calls), 1)
 
     async def test_detection_failed_after_processing_when_too_few_boards_found(self):
-        """Genug Aufnahmen gemacht (>= MIN_SAMPLES_FOR_CALIBRATION), aber zu
-        wenige zeigten tatsaechlich das Board -- anders als der Fall mit zu
-        wenigen Aufnahmen scheitert das erst NACH der Hintergrund-Auswertung,
-        nicht sofort in `finish()`."""
+        """Enough captures made (>= MIN_SAMPLES_FOR_CALIBRATION), but too few actually
+        showed the board. Unlike the case with too few captures, this fails only
+        AFTER the background evaluation, not immediately in `finish()`."""
         session, camera, _calibrate_calls, save_calls = make_session(
             detect_board=fake_detect_board_never
         )
@@ -571,7 +564,7 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         await _capture_n(session, camera, 3)
 
         error, summary = await session.finish()
-        self.assertEqual(error, VisionErrorCode.OK)  # Auswertung wurde angestossen
+        self.assertEqual(error, VisionErrorCode.OK)  # evaluation was started
 
         await session.wait_for_processing()
 
@@ -580,10 +573,10 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(save_calls, [])
 
     async def test_detection_failed_when_calibration_raises_a_non_value_error(self):
-        """cv2.calibrateCamera scheitert bei numerisch ungeeigneten Aufnahmen
-        mit `cv2.error`, keinem `ValueError` -- muss trotzdem als sauberes
-        DETECTION_FAILED zurueckkommen statt die Session unsichtbar tot
-        haengen zu lassen (Bug, live auf Pi 2 gefunden 2026-09-23)."""
+        """cv2.calibrateCamera fails with `cv2.error`, not a `ValueError`, on
+        numerically unsuitable captures. It must still come back as a clean
+        DETECTION_FAILED instead of leaving the session silently dead (bug found
+        live on Pi 2)."""
 
         def fake_calibrate_raises_runtime_error(
             samples, image_size, spec, board, *, frame_id, model
@@ -608,12 +601,11 @@ class FinishTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class DetectBoardHangTest(unittest.IsolatedAsyncioTestCase):
-    """Live an der Deckenkamera (12 MP) gefunden, 2026-09-28: `detect_board`
-    auf dem vollen Kamera-Frame kann auf der Pi-Hardware unbegrenzt haengen
-    (kein Fehler, kein Rueckgabewert). Das passiert jetzt in `_process()`
-    (waehrend der Auswertung nach `finish()`), nicht mehr in `capture()`.
-    `CAPTURE_DETECT_TIMEOUT_S` wird hier auf einen Testwert gepatcht, der
-    echte Wert (20 s) waere fuer einen Unittest zu lang."""
+    """Found live on the ceiling camera (12 MP): `detect_board` on the full camera
+    frame can hang indefinitely on the Pi hardware (no error, no return value).
+    That now happens in `_process()` (during the evaluation after `finish()`), no
+    longer in `capture()`. `CAPTURE_DETECT_TIMEOUT_S` is patched here to a test
+    value; the real value (20 s) would be too long for a unit test."""
 
     async def test_a_hanging_capture_is_skipped_instead_of_blocking_the_evaluation(self):
         import threading
@@ -626,9 +618,9 @@ class DetectBoardHangTest(unittest.IsolatedAsyncioTestCase):
             nonlocal calls
             calls += 1
             if calls == 1:
-                release.wait(timeout=5)  # haengt "fuer immer" (Testlimit 5s)
+                release.wait(timeout=5)  # hangs "forever" (test limit 5 s)
                 return FakeSample()
-            return FakeSample()  # die anderen sind normal schnell
+            return FakeSample()  # the others are normally fast
 
         session, camera, _calibrate_calls, save_calls = make_session(
             detect_board=flaky_detect_board
@@ -642,16 +634,16 @@ class DetectBoardHangTest(unittest.IsolatedAsyncioTestCase):
 
         result = session.progress["result"]
         self.assertEqual(result["error"], int(VisionErrorCode.OK))
-        self.assertEqual(result["samples"], 3)  # 4 aufgenommen, 1 haengt/verworfen
+        self.assertEqual(result["samples"], 3)  # 4 captured, 1 hangs/discarded
         self.assertEqual(len(save_calls), 1)
         release.set()
 
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class OnCalibratedTest(unittest.IsolatedAsyncioTestCase):
-    """`on_calibrated` -- `runner/calibration.py` haengt hier den Hot-Reload von
-    Erkennung/Overlay ein (`AprilTagDetectionSource.apply_calibration` &
-    Co.), ausgeloest direkt nach dem Speichern in der Hintergrund-Auswertung."""
+    """`on_calibrated`: `runner/calibration.py` hooks in the hot reload of detection
+    and overlay here (`AprilTagDetectionSource.apply_calibration` & co.), triggered
+    directly after saving in the background evaluation."""
 
     async def test_calls_a_sync_callback_after_a_successful_finish(self):
         received: list = []
@@ -715,7 +707,7 @@ class RmsWarningTest(unittest.IsolatedAsyncioTestCase):
     async def test_result_carries_no_warning_within_the_rms_target(self):
         session, camera, _calibrate_calls, _save_calls = make_session()
         session.start()
-        await _capture_n(session, camera, 3)  # fake_calibrate_from_samples liefert rms=0.1234
+        await _capture_n(session, camera, 3)  # fake_calibrate_from_samples returns rms=0.1234
 
         await session.finish()
         await session.wait_for_processing()
@@ -740,7 +732,7 @@ class AbortTest(unittest.IsolatedAsyncioTestCase):
         session, _camera, _, _ = make_session()
         session.start()
         await session.abort()
-        await session.abort()  # darf nicht werfen
+        await session.abort()  # must not raise
         self.assertFalse(session.running)
 
 
@@ -754,7 +746,7 @@ class RestartTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.progress["samples"], 1)
         await session.abort()
 
-        session.start()  # neuer Lauf, gleiche Instanz
+        session.start()  # new run, same instance
 
         self.assertEqual(session.progress["samples"], 0)
         await session.abort()
@@ -778,9 +770,9 @@ if __name__ == "__main__":
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class ArchiveTest(unittest.IsolatedAsyncioTestCase):
-    """Archiv `calibration_capture_dir` (seit 10.11.2026): je Sitzung ein
-    eigener Ordner `<UTC-Stempel>` mit verlustfreien PNG und `session.json`;
-    eine neue Sitzung ueberschreibt die vorige nicht mehr."""
+    """Archive `calibration_capture_dir`: each session gets its own folder
+    `<UTC stamp>` with lossless PNGs and `session.json`; a new session no longer
+    overwrites the previous one."""
 
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="calib_archive_test_"))
@@ -851,7 +843,7 @@ class ArchiveTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(meta["activeCalibration"])
 
     async def test_archive_failure_does_not_break_the_calibration(self):
-        # Archivpfad ist eine Datei -> Ordner kann nicht angelegt werden.
+        # Archive path is a file, so the folder cannot be created.
         self.config.calibration_capture_dir.write_text("blockiert")
         session, camera, saved = self._session()
         with self.assertLogs("vision_server.calibration_session", level="WARNING"):
@@ -872,8 +864,7 @@ class ArchiveTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SaveCaptureImageFormatTest(unittest.TestCase):
-    """`_save_capture_image` waehlt das Format nach Endung: PNG verlustfrei,
-    sonst JPEG."""
+    """`_save_capture_image` picks the format by extension: PNG lossless, otherwise JPEG."""
 
     def setUp(self) -> None:
         try:

@@ -1,9 +1,7 @@
-"""The quality filter of an estimated pose -- testable without OpenCV.
+"""The quality filter of an estimated pose, testable without OpenCV.
 
-The interesting case is NaN. `nan > threshold` is `False` in Python, so a
-plain comparison would let a degenerate solution through -- and
-`payload._dumps` with `allow_nan=False` would then end the job as INTERNAL
-instead of DETECTION_FAILED. Hence it gets its own case here.
+NaN needs its own cases: `nan > threshold` is False, so a plain comparison
+would let a degenerate pose through.
 """
 
 import unittest

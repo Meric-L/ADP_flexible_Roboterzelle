@@ -1,4 +1,4 @@
-"""Tests fuer die Erkennungs-Naht: DetectionRequest, run_blocking, Lifecycle."""
+"""Tests for the detection seam: DetectionRequest, run_blocking and lifecycle."""
 
 import asyncio
 import threading
@@ -48,7 +48,7 @@ class RunBlockingTest(unittest.IsolatedAsyncioTestCase):
         ticker = asyncio.create_task(tick())
         await source.acquire_and_detect(DetectionRequest(job_id="job-000001"))
         ticker.cancel()
-        # Ohne Executor waere der Loop 0,3 s tot und es gaebe fast keine Ticks.
+        # Without the executor the loop would be blocked for 0.3 s, leaving almost no ticks.
         self.assertGreater(ticks, 5)
         await source.close()
 

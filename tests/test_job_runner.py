@@ -1,4 +1,4 @@
-"""Tests fuer JobRunner: Zulassung, Timeout, Ergebniswahrheit."""
+"""Tests for JobRunner: admission, timeout and result truth."""
 
 import asyncio
 import contextlib
@@ -102,10 +102,10 @@ class ScriptedSource(DetectionSource):
 
 
 def make_runner(source: DetectionSource, **config_overrides):
-    """Die Attrappe bedient jedes Profil, damit jedes Rezept sie trifft.
+    """The stub serves every profile, so every recipe hits it.
 
-    Die Tests fahren das Attrappen-Rezept `test`; seit das leere Rezept
-    abgelehnt wird, gibt es keinen kamerafreien Standardjob mehr.
+    The tests run the stub recipe `test`; since the empty recipe is rejected,
+    there is no camera-free default job any more.
     """
     config_overrides.setdefault(
         "recipe_profiles", (("test", "fake"), *VisionServerConfig().recipe_profiles)
@@ -128,7 +128,7 @@ async def run_to_completion(runner: JobRunner, recipe_id: str = "test") -> tuple
 
 class HappyPathTest(unittest.IsolatedAsyncioTestCase):
     async def test_publishes_before_firing_the_event(self):
-        """Der Client liest den Ergebnisknoten auf das Event hin — Reihenfolge zaehlt."""
+        """The client reads the result node on the event, so the order matters."""
         runner, _, events, _ = make_runner(ScriptedSource())
         await run_to_completion(runner)
         self.assertLess(events.log.index("publish"), events.log.index("result_ready"))
@@ -173,7 +173,7 @@ class AdmissionTest(unittest.IsolatedAsyncioTestCase):
 
 class TimeoutTest(unittest.IsolatedAsyncioTestCase):
     async def test_hanging_source_does_not_wedge_the_server(self):
-        """Ohne Timeout blieb _busy fuer immer gesetzt: Rettung nur per Neustart."""
+        """Without a timeout _busy stayed set forever; only a restart recovered."""
         runner, states, events, results = make_runner(
             ScriptedSource(delay=5.0), job_timeout=0.1
         )
@@ -230,7 +230,7 @@ class ResultTruthTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SlowToCancelSource(DetectionSource):
-    """Verschluckt die erste Cancellation, um `stop()`s Timeout-Pfad zu testen."""
+    """Swallows the first cancellation, to exercise the timeout path of `stop()`."""
 
     profile_id = "fake"
 
@@ -256,7 +256,7 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
     async def test_cancels_a_running_job_and_resets_the_state(self):
         runner, states, events, results = make_runner(ScriptedSource(delay=5.0))
         runner.start_single_job(None, None, "test", None, [])
-        await asyncio.sleep(0)  # Task muss erst anlaufen (single_execution etc.)
+        await asyncio.sleep(0)  # the task has to start first (single_execution etc.)
 
         code = await runner.stop()
 
@@ -288,8 +288,8 @@ class StopTest(unittest.IsolatedAsyncioTestCase):
         code = await runner.stop()
 
         self.assertEqual(code, VisionErrorCode.INTERNAL)
-        # `wait_for` hat den Task bereits bis zum Abschluss (cancelled) durchlaufen
-        # lassen, bevor es TimeoutError geworfen hat -- hier ist nichts mehr offen.
+        # `wait_for` has already run the task to completion (cancelled) before it
+        # raised TimeoutError, so nothing is left open here.
         self.assertTrue(runner._task.done())
 
 
@@ -298,11 +298,10 @@ if __name__ == "__main__":
 
 
 class ContinuousTest(unittest.IsolatedAsyncioTestCase):
-    """Dauerbetrieb: laeuft, bis jemand ihn beendet.
+    """Continuous operation: runs until someone ends it.
 
-    Anders als ein Einzeljob endet er nie von allein, also pruefen die Tests
-    beides -- dass er wirklich mehrfach liefert, und dass er sich wirklich
-    beenden laesst.
+    Unlike a single job it never ends by itself, so the tests check both that it
+    really delivers several results and that it really can be ended.
     """
 
     async def _run_briefly(self, cycles: int = 2, **overrides):
@@ -325,7 +324,7 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("continuous_execution", states.transitions)
 
     async def test_gives_every_cycle_its_own_result_id(self):
-        """Ein Client muss die Folge auseinanderhalten koennen."""
+        """A client must be able to tell the sequence apart."""
         runner, _, _, results, job_id = await self._run_briefly(cycles=3)
         await runner.stop()
         ids = [entry.result_id for entry in results.published[:3]]
@@ -359,7 +358,7 @@ class ContinuousTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(VisionErrorCode.INVALID_STATE, code)
 
     async def test_a_failing_cycle_ends_the_run(self):
-        """Sonst erzeugte dieselbe Stoerung im Sekundentakt dieselbe Meldung."""
+        """Otherwise the same fault would produce the same message every second."""
         source = ScriptedSource(error=VisionJobError(
             VisionErrorCode.DETECTION_FAILED, "kaputt"
         ))

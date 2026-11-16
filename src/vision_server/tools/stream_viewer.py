@@ -1,22 +1,9 @@
-"""Local live viewer for the camera stream, for Pis with a monitor attached.
+"""Local live viewer for the camera stream, for a Pi with a monitor attached.
 
-No frontend has to run for it. Reads `LatestCameraFrame` (Base64 JPEG) and
-shows it in an OpenCV window. Defaults to `CameraStreamMode="calibration"`, so
-the image carries the same board detection (running on the small preview image)
-as in the frontend (`stream_overlay.py`). Handy during a running
-`CalibrationSession` (started e.g. via `calibration_client.py`) to see directly
-whether the board is visible or, for example, the image is blurred. This is
-only a positioning aid: whether a given capture was actually usable only shows
-after `FinishCalibration` (capture and evaluation are decoupled, see
-`calibration_session.py`). Both tools can run in parallel because both only
-read from the already open `SharedCamera` -- no exclusive camera access as with
-`tagloc.cli.calibrate`.
-
-Pressing the space bar in the window triggers `CaptureCalibrationSample`.
-Captures happen only on key press, never on a timer: the operator sees the
-image and decides for themselves when the pose is good.
-
-Needs a display (a monitor attached plus a desktop environment, or `ssh -X`).
+Shows `LatestCameraFrame` in an OpenCV window, by default in
+`CameraStreamMode="calibration"`, as a positioning aid during a calibration session
+(see `calibration_client.py`). The space bar triggers `CaptureCalibrationSample`;
+captures happen only on key press. Needs a display (monitor or `ssh -X`).
 """
 
 import argparse
@@ -62,12 +49,9 @@ async def run(args: argparse.Namespace) -> int:
                 if key == ord("q"):
                     break
                 if key == SPACE:
-                    # `CaptureCalibrationSample` only stores the frame now (no
-                    # `detect_board` in the RPC path any more, see
-                    # calibration_session.py). The error is therefore practically
-                    # always OK while a session runs. Whether the board was
-                    # actually visible only shows after `FinishCalibration`
-                    # (Ctrl+C in this tool).
+                    # The capture only stores the frame. Whether the board was
+                    # actually visible is decided in `FinishCalibration` (Ctrl+C
+                    # in `calibration_client.py`).
                     error = await vision.call_method(capture_node)
                     progress = json.loads(await progress_node.read_value())
                     if error == 0:

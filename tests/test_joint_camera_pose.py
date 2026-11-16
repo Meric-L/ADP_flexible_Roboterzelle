@@ -1,9 +1,9 @@
-"""Kamerapose gemeinsam aus allen Welttag-Ecken statt Mittel der Einzel-Tags.
+"""Camera pose from all world-tag corners jointly, instead of averaging single tags.
 
-Synthetische Szene wie in der Zelle: vier Welttags (19,8 cm) an den Ecken von
-etwa 1,6 x 1,6 m, die Kamera 2,5 m darueber, leicht schraeg. Die Ecken
-werden mit dem Linsenmodell projiziert und verrauscht; danach laeuft die
-echte Kette `estimate_tag_poses` -> `localize_camera`.
+Synthetic scene as in the cell: four world tags (19.8 cm) at the corners of about
+1.6 x 1.6 m, camera 2.5 m above and slightly oblique. Corners are projected through
+the lens model and noised, then the real chain `estimate_tag_poses` ->
+`localize_camera` runs.
 """
 
 import math
@@ -19,11 +19,11 @@ try:
     from tagloc.observations import TagObservation
     from tagloc.pose import estimate_tag_poses, tag_object_points
     from tagloc.tagmap import TagEntry, TagMap
-except Exception:  # cv2/numpy nicht verfuegbar
+except Exception:  # cv2/numpy not available
     cv2 = None
 
 TAG_SIZE_M = 0.198
-#: Die Welttags der Zelle (config/tagmap.json).
+#: World tags of the cell (config/tagmap.json).
 WORLD_TAGS = {583: (0.0, 0.0), 584: (1.593, -0.052), 585: (1.593, 1.618), 586: (0.0, 1.618)}
 IMAGE_SIZE = (2028, 1520)
 NOISE_PX = 0.5
@@ -58,14 +58,14 @@ def _tag_map():
 
 
 def _true_world_cam():
-    """Ueber der Zellmitte, 2,5 m hoch, nach unten schauend, 4 Grad gekippt."""
+    """Above the cell centre, 2.5 m high, looking down, tilted by 4 degrees."""
     down = geometry.from_rvec_tvec((math.pi, 0.0, 0.0), (0.0, 0.0, 0.0))[:3, :3]
     tilt = geometry.from_rvec_tvec((math.radians(4.0), math.radians(-3.0), 0.2), (0, 0, 0))[:3, :3]
     return geometry.from_rotation_translation(down @ tilt, (0.8, 0.78, 2.5))
 
 
 def _observations(pose_world_cam, calibration, rng):
-    """Ecken aller Welttags, projiziert und verrauscht."""
+    """Corners of all world tags, projected and noised."""
     pose_cam_world = geometry.invert(pose_world_cam)
     observations = []
     for tag_id, entry in _tag_map().entries.items():
@@ -82,7 +82,7 @@ def _observations(pose_world_cam, calibration, rng):
 @unittest.skipUnless(cv2 is not None, "cv2/numpy nicht verfuegbar")
 class JointCameraPoseTest(unittest.TestCase):
     def _errors(self, model, trials=25):
-        """Mittlerer Positions- und Winkelfehler: (gemeinsam, Mittel der Einzel-Tags)."""
+        """Mean position and angle error: (joint, mean of the single tags)."""
         calibration = _calibration(model)
         tag_map = _tag_map()
         truth = _true_world_cam()
@@ -126,7 +126,7 @@ class JointCameraPoseTest(unittest.TestCase):
         )
         localization = localize_camera(tag_poses, tag_map, calibration=calibration)
         self.assertEqual(sorted(localization.tag_errors_px), sorted(WORLD_TAGS))
-        # Verrauscht mit 0,5 px: der RMS liegt in dieser Groessenordnung.
+        # Noised with 0.5 px: the RMS is of that order.
         self.assertLess(localization.reprojection_error_px, 1.5)
         self.assertGreater(localization.reprojection_error_px, 0.1)
 
@@ -146,8 +146,8 @@ class JointCameraPoseTest(unittest.TestCase):
         )
 
     def test_a_shifted_world_tag_shows_up_in_its_own_error(self):
-        """Steht ein Welttag 5 cm anders als die Karte sagt, faellt er unter
-        der gemeinsamen Pose mit dem groessten Eckenfehler auf."""
+        """A world tag 5 cm away from where the map says shows the largest corner
+        error under the joint pose."""
         calibration = _calibration(calib.PINHOLE)
         tag_map = _tag_map()
         observations = _observations(_true_world_cam(), calibration, np.random.default_rng(3))

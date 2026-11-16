@@ -1,8 +1,8 @@
-"""Datensatz einer Hand-Auge-Sitzung (`session.json`) und die eine Verfeinerungs-Pipeline.
+"""Dataset of a hand-eye session (`session.json`) and the single refinement pipeline.
 
-Der Hand-Pi schreibt den Datensatz, `calibrate_handeye --session` rechnet ihn
-nach. Beide benutzen `tagloc.handeye.refine_board_session`; hier wird gezeigt,
-dass die Nachrechnung am Rechner dasselbe Ergebnis liefert wie der Pi.
+The hand Pi writes the dataset, `calibrate_handeye --session` recomputes it. Both
+use `tagloc.handeye.refine_board_session`; this shows that recomputing on the
+desk gives the same result as the Pi.
 """
 
 import contextlib
@@ -33,7 +33,7 @@ try:
     from tests.test_handeye_refine import SPEC, scene
     from tests.test_handeye_session import sample_json, start_json
     from tests.test_handeye_session_refine import BoardPi, board_6x7
-except Exception:  # pragma: no cover - numpy/cv2 fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy/cv2 missing in this environment
     np = None
 
 
@@ -58,12 +58,12 @@ class SessionDatasetTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(calibrate_main(["--session", str(dataset), "--out", str(out)]), 0)
             self.assertIn("Verfeinert:", stdout.getvalue())
             self.assertIn("Leave-one-out-Vorhersagefehler", stdout.getvalue())
-            self.assertIn("HINWEIS: Brettmassstab", stdout.getvalue())  # 1 % Massstabsfehler
+            self.assertIn("HINWEIS: Brettmassstab", stdout.getvalue())  # 1 % scale error
 
             on_pi = json.loads(pi.path.read_text(encoding="utf-8"))
             at_desk = json.loads(out.read_text(encoding="utf-8"))
-            # Die Pose geht im Datensatz durch Quaternion -> Matrix -> Quaternion:
-            # Abweichungen im 12. Ziffernbereich, in der Datei (6 Stellen) unsichtbar.
+            # The pose goes through quaternion -> matrix -> quaternion in the dataset:
+            # deviations in the 12th digit, invisible in the file (6 digits).
             self.assertEqual(set(at_desk), set(on_pi))
             for key, value in on_pi.items():
                 if key == "poseFlangeCam":
@@ -150,7 +150,7 @@ class RefineBoardSessionTest(unittest.TestCase):
     def test_it_is_the_pipeline_written_out(self):
         flanges, corners, boards, spec, calibration = self.inputs()
         result = refine_board_session(flanges, corners, boards, spec, calibration)
-        # Von Hand: dieselben Aufrufe, wie sie Server und CLI vorher je fuer sich machten.
+        # By hand: the same calls that the server and the CLI make.
         from tagloc import lens
 
         points = chessboard_object_points(spec)
@@ -175,7 +175,7 @@ class RefineBoardSessionTest(unittest.TestCase):
 
     def test_value_errors_pass_through_and_other_errors_name_their_stage(self):
         flanges, corners, boards, spec, calibration = self.inputs()
-        with self.assertRaises(ValueError):  # zu wenige Aufnahmen: Befund ueber die Daten
+        with self.assertRaises(ValueError):  # too few captures: a finding about the data
             refine_board_session(flanges[:2], corners[:2], boards[:2], spec, calibration)
         with mock.patch.object(handeye, "refine_hand_eye_robust", side_effect=RuntimeError("x")):
             with self.assertRaises(RefinementError) as caught:

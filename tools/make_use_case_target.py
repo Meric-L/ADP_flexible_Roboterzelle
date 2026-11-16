@@ -1,15 +1,13 @@
 """Zielscheibe v2 und Wuerfelaufkleber fuer die Use-Case-Bildmessung (A4, 1:1, SVG/PDF).
 
-Seite 1 (`zielscheibe.svg`): die bisherige Zielscheibe (Winkelskala, Fadenkreuz,
-15-Grad-Strahlen, Toleranzkreise, 20-mm-Quadrat, Legende, 50-mm-Massstab) plus
-vier ArUco-Marker (DICT_4X4_50, IDs 0-3, 20 mm) bei (+-45, +-45) mm. Um jeden
-Marker liegt eine weisse Ruhezone von einer Markerzelle; Strahlen, Teilstriche und
-Skalenring sind dort ausgespart.
-Seite 2 (`wuerfelmarker.svg`): Aufkleber ID 10 (18 mm) mit 20-mm-Schnittrahmen.
+Page 1 (`zielscheibe.svg`) is the target sheet: angle scale, crosshair, 15-degree rays,
+tolerance circles, 20 mm square, legend and 50 mm scale, plus four ArUco markers
+(DICT_4X4_50, IDs 0-3, 20 mm) at (+-45, +-45) mm, each with a white quiet zone.
+Page 2 (`wuerfelmarker.svg`) holds the cube stickers (ID 10, 18 mm) with a 20 mm cut frame.
 
-Alle Masse stammen aus `use_case_eval.target`. SVG traegt echte Millimeter und
-druckt aus jedem Browser mit "Massstab 100 %". PDF entsteht nur, wenn `inkscape`
-oder `rsvg-convert` installiert ist (keine Python-Abhaengigkeit).
+All dimensions come from `use_case_eval.target`. The SVG uses real millimetres and
+prints at "100 %" from any browser. A PDF is produced only if `inkscape` or
+`rsvg-convert` is installed.
 
     python tools/make_use_case_target.py
     python tools/make_use_case_target.py --out data/use_case_target --pdf --stickers 12
@@ -30,14 +28,14 @@ from use_case_eval import target  # noqa: E402
 
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
-#: Scheibenmitte auf der Seite (von links unten 105 / 158,5 mm).
+#: Centre of the target on the page (105 mm from the left, 158.5 mm from the bottom).
 CENTER_X_MM = 105.0
 CENTER_Y_FROM_TOP_MM = 138.5
 PT = 25.4 / 72.0  # 1 pt in mm
 FONT = "Helvetica, Arial, sans-serif"
 CIRCLE_COLORS = {"gruen": "#1aa633", "gelb": "#f2bf00", "rot": "#d91a1a"}
 CIRCLE_NAMES = {"gruen": "Green", "gelb": "Yellow", "rot": "Red"}
-#: Zusatz zur Diagonalen 28,3 mm je Zone (mm je Seite).
+#: Margin added to the 28.3 mm cube diagonal per zone (mm per side).
 CIRCLE_MARGINS_MM = {"gruen": 1, "gelb": 3, "rot": 5}
 
 
@@ -46,7 +44,7 @@ def _f(value: float) -> str:
 
 
 def _pos(x_mm: float, y_mm: float) -> tuple[float, float]:
-    """Blattkoordinaten (y oben) -> SVG-Koordinaten der Seite (y unten)."""
+    """Convert sheet coordinates (y up) to page coordinates (y down)."""
     return CENTER_X_MM + x_mm, CENTER_Y_FROM_TOP_MM - y_mm
 
 
@@ -61,10 +59,10 @@ def _line(x1, y1, x2, y2, width_mm, color="black", dash=None) -> str:
 
 
 def marker_path(dictionary, marker_id: int, size_mm: float, x_mm: float, y_mm: float) -> str:
-    """Ein Marker als einzelner SVG-Pfad (schwarze Zellen); (x, y) = Ecke oben-links in SVG-mm."""
+    """Return one marker as a single SVG path of black cells; (x, y) is the top-left corner in mm."""
     import cv2
 
-    grid = cv2.aruco.generateImageMarker(dictionary, marker_id, 6)  # 4x4 Bits + 1 Zelle Rand
+    grid = cv2.aruco.generateImageMarker(dictionary, marker_id, 6)  # 4x4 bits + 1 border cell
     cell = size_mm / grid.shape[0]
     commands = []
     for row in range(grid.shape[0]):
@@ -87,7 +85,7 @@ def _svg_open() -> list[str]:
 
 
 def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 50.0) -> list[str]:
-    """50-mm-Massstab mit Strichen alle 10 mm (SVG-Koordinaten, y = Balkenlinie)."""
+    """Draw a 50 mm scale bar with ticks every 10 mm (SVG coordinates, y = bar line)."""
     parts = [
         f'<line x1="{_f(x_mm)}" y1="{_f(y_mm)}" x2="{_f(x_mm + length_mm)}" y2="{_f(y_mm)}" '
         f'stroke="black" stroke-width="{_f(0.5 * PT)}"/>'
@@ -105,21 +103,21 @@ def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 50.0) -> list[str]:
 
 
 def build_target_svg() -> str:
-    """Seite 1: Zielscheibe v2 mit Blattmarkern."""
+    """Return page 1: the target sheet with the sheet markers."""
     import cv2
 
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     r_in, r_out = target.RING_INNER_RADIUS_MM, target.RING_OUTER_RADIUS_MM
     parts = _svg_open()
 
-    # Skalenring.
+    # Angle scale ring.
     cx, cy = _pos(0, 0)
     for radius in (r_in, r_out):
         parts.append(
             f'<circle cx="{_f(cx)}" cy="{_f(cy)}" r="{_f(radius)}" fill="none" '
             f'stroke="black" stroke-width="{_f(0.5 * PT)}"/>'
         )
-    # Teilstriche je 1 Grad (alle 5 Grad laenger, alle 10 Grad am laengsten) und Zahlen.
+    # Ticks every 1 degree (longer every 5 and longest every 10), with labels.
     for degree in range(360):
         inner = r_in - (4.0 if degree % 10 == 0 else 2.5 if degree % 5 == 0 else 1.5)
         a = math.radians(degree)
@@ -136,7 +134,7 @@ def build_target_svg() -> str:
                 f'text-anchor="middle" dominant-baseline="central" '
                 f'transform="rotate({90 - degree} {_f(lx)} {_f(ly)})">{degree}</text>'
             )
-    # Fadenkreuz, 15-Grad-Strahlen (grau, gestrichelt) ueber den vollen Durchmesser.
+    # Crosshair and 15-degree rays (grey, dashed) across the full diameter.
     for degree in range(15, 180, 15):
         if degree == 90:
             continue
@@ -150,13 +148,13 @@ def build_target_svg() -> str:
         )
     parts.append(_line(-r_in, 0, r_in, 0, 0.5 * PT))
     parts.append(_line(0, -r_in, 0, r_in, 0.5 * PT))
-    # Toleranzkreise, von gross nach klein; halbtransparente Fuellung, voller Rand.
+    # Tolerance circles from large to small; semi-transparent fill, solid outline.
     for zone, radius in reversed(target.ZONE_RADII_MM):
         parts.append(
             f'<circle cx="{_f(cx)}" cy="{_f(cy)}" r="{_f(radius)}" fill="{CIRCLE_COLORS[zone]}" '
             f'fill-opacity="0.25" stroke="{CIRCLE_COLORS[zone]}" stroke-width="{_f(PT)}"/>'
         )
-    # 20-mm-Quadrat (gestrichelt) und kleines Fadenkreuz.
+    # 20 mm square (dashed) and small crosshair.
     half = target.CUBE_SIZE_MM / 2.0
     qx, qy = _pos(-half, half)
     parts.append(
@@ -167,7 +165,7 @@ def build_target_svg() -> str:
     parts.append(_line(-3, 0, 3, 0, 0.5 * PT))
     parts.append(_line(0, -3, 0, 3, 0.5 * PT))
 
-    # Blattmarker: erst weisse Ruhezone (spart alles darunter aus), dann der Marker.
+    # Sheet markers: white quiet zone first (it masks everything beneath), then the marker.
     quiet = target.SHEET_MARKER_QUIET_MM
     outer = target.SHEET_MARKER_SIZE_MM / 2.0 + quiet
     for marker_id, (mx, my) in target.SHEET_MARKERS.items():
@@ -179,7 +177,7 @@ def build_target_svg() -> str:
         ox, oy = _pos(mx - target.SHEET_MARKER_SIZE_MM / 2, my + target.SHEET_MARKER_SIZE_MM / 2)
         parts.append(marker_path(dictionary, marker_id, target.SHEET_MARKER_SIZE_MM, ox, oy))
 
-    # Legende links unten, Massstab rechts unten.
+    # Legend bottom left, scale bar bottom right.
     parts.append(
         f'<text x="25" y="241.5" font-family="{FONT}" font-size="3" font-weight="bold">'
         f"Cube calibration target, circles ({target.CUBE_SIZE_MM:.0f} mm cube, "
@@ -206,7 +204,7 @@ def build_target_svg() -> str:
 
 
 def build_cube_svg(stickers: int = 12) -> str:
-    """Seite 2: Wuerfelaufkleber (ID 10, 18 mm) mit 20-mm-Schnittrahmen."""
+    """Return page 2: cube stickers (ID 10, 18 mm) with a 20 mm cut frame."""
     import cv2
 
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
@@ -248,7 +246,7 @@ def build_cube_svg(stickers: int = 12) -> str:
 
 
 def svg_to_pdf(svg: Path, pdf: Path) -> bool:
-    """SVG nach PDF per `inkscape` oder `rsvg-convert`; `False`, wenn keines vorhanden ist."""
+    """Convert SVG to PDF with `inkscape` or `rsvg-convert`; return False if neither is installed."""
     if shutil.which("inkscape"):
         command = ["inkscape", str(svg), "--export-type=pdf", f"--export-filename={pdf}"]
     elif shutil.which("rsvg-convert"):
@@ -260,6 +258,7 @@ def svg_to_pdf(svg: Path, pdf: Path) -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--out", type=Path, default=Path(__file__).resolve().parents[1] / "data" / "use_case_target",
@@ -271,6 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Write the target SVGs (and optionally PDFs) and return the exit code."""
     args = build_parser().parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     written = []

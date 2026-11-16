@@ -1,4 +1,4 @@
-"""Subpixel-Ecken: Preset der Handkamera und Uebersteuerung per Umgebung."""
+"""Subpixel corner refinement: hand-camera preset and environment override."""
 
 import os
 import unittest

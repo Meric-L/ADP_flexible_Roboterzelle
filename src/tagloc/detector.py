@@ -1,14 +1,8 @@
-"""Tag detection behind one interface: cv2.aruco or pupil_apriltags.
+"""Tag detection behind one interface: cv2.aruco (default) or pupil_apriltags.
 
-The prototype used `pupil_apriltags`; the target architecture per
-`vision_server/profiles.py` and doc/projektdoku/altlasten.md D3 is `cv2.aruco`.
-Instead of deciding now and rewriting later, both sit behind the same
-interface. Pose estimation deliberately lives in `pose.py` and not here --
-otherwise pose quality would depend on the backend, and the two would not be
-comparable.
-
-`cv2` is only imported in constructors, never at module level. Importing this
-module stays cheap, and the vision server can start without OpenCV.
+Pose estimation lives in `pose.py`, not here, so that pose quality does not depend
+on the backend. `cv2` is imported only in constructors, so the vision server can
+start without OpenCV.
 """
 
 import logging
@@ -146,8 +140,7 @@ _CORNER_REFINE_CONSTANTS = {
 class ArucoTagDetector:
     """Detection via `cv2.aruco`. The default path.
 
-    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); both
-    Pis and the development machine run OpenCV 5.0.
+    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`).
     """
 
     def __init__(
@@ -185,12 +178,11 @@ class ArucoTagDetector:
         else:
             self._parameters = aruco.DetectorParameters()
 
-        # Subpixel-accurate corners: can improve pose quality at distance, but
-        # measurably costs CPU time (py-spy on pi1: ~46% of the profile in
-        # `_locate -> detect` on full 12 MP). Not needed for decodability
-        # (history: `AprilTagProfileConfig.subpixel_corner_refinement`, default
-        # off). The constructor default stays deliberately conservative (off);
-        # callers should decide explicitly.
+        # Subpixel-accurate corners can improve pose quality at distance, but they
+        # measurably cost CPU time (py-spy on pi1: ~46% of the profile in
+        # `_locate -> detect` on full 12 MP). Not needed for decodability. The
+        # constructor default stays deliberately conservative (off); callers should
+        # decide explicitly.
         if subpixel_corner_refinement and corner_refinement_method != CORNER_METHOD_NONE:
             refine = getattr(cv2.aruco, _CORNER_REFINE_CONSTANTS[corner_refinement_method], None)
             if refine is not None:

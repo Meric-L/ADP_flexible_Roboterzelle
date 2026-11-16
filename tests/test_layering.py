@@ -1,18 +1,16 @@
-"""Die Abhaengigkeitsrichtung ist eine Regel, also wird sie getestet.
+"""The dependency direction is a rule, so it is tested.
 
-Drei Zusicherungen, auf denen der Rest aufbaut (doc/projektdoku/apriltag-lokalisierung.md 2.1):
+Three guarantees the rest builds on (see doc/projektdoku/apriltag-lokalisierung.md, section 2.1):
 
-* `tagloc.identity` und `tagloc.modes` brauchen **nicht einmal numpy** -- der
-  Server baut die `configurationId` und normalisiert den Stream-Modus, bevor
-  irgendetwas geladen ist.
-* Die Mathematikschicht importiert **kein cv2**. Sonst waere sie an die
-  installierte OpenCV-Version gebunden, die sich zwischen Laptop und Pi
-  unterscheidet.
-* `tagloc` importiert **nie** aus `vision_server`. Die Abhaengigkeit laeuft
-  nur in eine Richtung.
+* `tagloc.identity` and `tagloc.modes` need **no numpy at all**: the server
+  builds the `configurationId` and normalises the stream mode before anything
+  is loaded.
+* The maths layer does **not import cv2**, otherwise it would be bound to the
+  installed OpenCV version, which differs between laptop and Pi.
+* `tagloc` **never imports** from `vision_server`; the dependency points one way only.
 
-Gemessen in einem Subprozess gegen `sys.modules`, nicht am Quelltext: Ein
-Import, der sich ueber drei Ebenen Umweg einschleicht, faellt trotzdem auf.
+Measured in a subprocess against `sys.modules`, not from the source text, so an
+import that sneaks in over three levels of indirection is still caught.
 """
 
 import subprocess
@@ -23,7 +21,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src"
 
-#: Module ohne cv2-Abhaengigkeit.
+#: Modules without a cv2 dependency.
 PURE_MODULES = (
     "tagloc.identity",
     "tagloc.modes",
@@ -32,13 +30,13 @@ PURE_MODULES = (
     "tagloc.calibration",
     "tagloc.tagmap",
     "tagloc.localize",
-    # Auch der Hand-Auge-Solver rechnet in numpy: cv2.calibrateHandEye ist in
-    # OpenCV 5.0 nicht mehr nach Python exportiert, und der Vision-Server soll
-    # den Anker ohne OpenCV auf der Importkette laden koennen.
+    # The hand-eye solver also computes in numpy: cv2.calibrateHandEye is no
+    # longer exported to Python in OpenCV 5.0, and the vision server must be able
+    # to load the anchor without OpenCV on its import chain.
     "tagloc.handeye",
 )
 
-#: Module, die cv2 benutzen -- aber nur innerhalb von Funktionen, nie beim Import.
+#: Modules that use cv2, but only inside functions, never at import time.
 LAZY_CV2_MODULES = (
     "tagloc.detector",
     "tagloc.pose",
@@ -51,12 +49,11 @@ STDLIB_ONLY_MODULES = ("tagloc.identity", "tagloc.modes", "tagloc.jsonio")
 
 
 def imported_modules(target: str, candidates) -> list[str]:
-    """Liefert, welche der `candidates` nach `import target` in `sys.modules` stehen.
+    """Return which of the `candidates` are in `sys.modules` after `import target`.
 
-    Laesst sich das Modul gar nicht importieren, ist das eine kaputte
-    Umgebung, keine verletzte Schichtregel -- also wird uebersprungen. Das
-    kommt in der Praxis vor: In der mitgelieferten `.venv` fehlt
-    `numpy/__init__.py`.
+    If the module cannot be imported at all, the environment is broken rather
+    than a layering rule violated, so the test is skipped. This happens in
+    practice: the bundled `.venv` lacks `numpy/__init__.py`.
     """
     code = (
         f"import sys; import {target}; "
@@ -81,10 +78,10 @@ class LayeringTest(unittest.TestCase):
                 self.assertEqual([], imported_modules(module, ["cv2"]))
 
     def test_cv2_modules_import_opencv_lazily(self):
-        """Auch die Zeichen- und Erkennungsmodule ziehen cv2 nicht beim Import herein.
+        """Drawing and detection modules also do not pull in cv2 at import time.
 
-        Sonst laege OpenCV auf der Importkette des Zellenservers, und ein
-        Server ohne OpenCV koennte nicht starten.
+        Otherwise OpenCV would sit on the import chain of the cell server, and a
+        server without OpenCV could not start.
         """
         for module in LAZY_CV2_MODULES:
             with self.subTest(module=module):
@@ -102,17 +99,17 @@ class LayeringTest(unittest.TestCase):
 
 
 class ConfigurationTest(unittest.TestCase):
-    """Die Serverkonfiguration muss hashbar bleiben.
+    """The server configuration must stay hashable.
 
-    `build_detection_sources` legt sie in ein set/dict; eine numpy-Matrix
-    darin wuerde den Serverstart brechen, nicht nur einen Job.
+    `build_detection_sources` puts it into a set/dict; a numpy matrix in it
+    would break server start, not just one job.
     """
 
     def test_server_configuration_stays_hashable(self):
         try:
             from vision_server.config import VisionServerConfig
             from vision_server.profiles import AprilTagProfileConfig, CameraStreamConfig
-        except ImportError as error:  # asyncua fehlt in dieser Umgebung
+        except ImportError as error:  # asyncua missing in this environment
             self.skipTest(f"vision_server nicht importierbar: {error}")
         config = VisionServerConfig(
             apriltag=AprilTagProfileConfig(), camera_stream=CameraStreamConfig()

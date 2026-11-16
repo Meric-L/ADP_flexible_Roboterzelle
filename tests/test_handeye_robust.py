@@ -1,4 +1,4 @@
-"""Hand-Auge: Residuum je Aufnahme, Ausreisser verwerfen, ehrliche Gueteteile."""
+"""Hand-eye: residual per capture, reject outliers, honest quality figures."""
 
 import json
 import math
@@ -24,7 +24,7 @@ try:
         sample_json,
         start_json,
     )
-except Exception:  # pragma: no cover - numpy fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy missing in this environment
     np = None
 
 X_TRUE = None if np is None else g.from_rvec_tvec(
@@ -34,7 +34,7 @@ T_BASE_BOARD = None if np is None else g.from_rvec_tvec((math.pi, 0, 0.4), (0.55
 
 
 def flange_poses(count, seed=1):
-    """Flanschposen ueber dem Brett, ueber alle drei Achsen gedreht."""
+    """Flange poses over the board, rotated about all three axes."""
     rng = np.random.default_rng(seed)
     poses = []
     for _ in range(count):
@@ -88,10 +88,10 @@ class RobustSolverTest(unittest.TestCase):
         self.assertAlmostEqual(
             solution.rms_rotation_deg, math.sqrt(np.mean([d * d for _, d in kept])), places=12
         )
-        # Das Maximum ist das Maximum, und es liegt ueber dem RMS.
+        # The maximum is the maximum, and it lies above the RMS.
         self.assertEqual(solution.max_position_m, max(m for m, _ in kept))
         self.assertGreater(solution.max_position_m, solution.rms_position_m)
-        # Gleiche Loesung wie der einfache Loeser.
+        # Same solution as the simple solver.
         plain, _, _ = solve_hand_eye(self.flanges, self.boards)
         np.testing.assert_allclose(solution.pose_flange_cam, plain, atol=1e-12)
 
@@ -107,7 +107,7 @@ class RobustSolverTest(unittest.TestCase):
         keeping = solve_hand_eye_robust(self.flanges, boards, reject=False)
         self.assertEqual(rejecting.rejected, (5,))
         self.assertEqual(rejecting.used_count, 11)
-        # Das Residuum der verworfenen Aufnahme ist das groesste und bleibt sichtbar.
+        # The residual of the rejected capture is the largest and stays visible.
         worst = max(range(12), key=lambda i: rejecting.residuals[i][0])
         self.assertEqual(worst, 5)
         self.assertGreater(rejecting.residuals[5][0], 0.01)
@@ -121,7 +121,7 @@ class RobustSolverTest(unittest.TestCase):
         self.assertEqual(sorted(solution.rejected), [2, 9])
 
     def test_rejection_is_capped_and_keeps_enough_samples(self):
-        # Nur 6 Aufnahmen, vier davon kaputt: hoechstens ein Viertel faellt weg.
+        # Only 6 captures, four of them broken: at most a quarter is dropped.
         flanges = self.flanges[:6]
         boards = [board_in_camera(f) for f in flanges]
         for index in (0, 1, 2, 3):
@@ -129,13 +129,13 @@ class RobustSolverTest(unittest.TestCase):
         solution = solve_hand_eye_robust(flanges, boards)
         self.assertLessEqual(len(solution.rejected), int(6 * OUTLIER_MAX_FRACTION))
         self.assertGreaterEqual(solution.used_count, MIN_KEPT)
-        # Zu wenige zum Verwerfen: 4 Aufnahmen bleiben unveraendert.
+        # Too few to reject: 4 captures stay unchanged.
         few = solve_hand_eye_robust(flanges[:4], boards[:4])
         self.assertEqual((few.rejected, few.used_count), ((), 4))
 
     def test_a_rejection_that_breaks_the_solution_is_not_taken(self):
-        """Fiele der Ausreisser weg, drehten die uebrigen nur um eine Achse --
-        dann bleibt die letzte gute Loesung, statt zu scheitern."""
+        """If the outlier were dropped, the others would rotate about one axis only;
+        then the last good solution stays, instead of failing."""
         about_z = [
             g.compose(T_BASE_BOARD, g.from_rvec_tvec((math.pi, 0, 0.0), (0, 0, 0.4)),
                       g.from_rvec_tvec((0, 0, math.radians(angle)), (0, 0, 0)), g.invert(X_TRUE))
@@ -156,7 +156,7 @@ class RobustSolverTest(unittest.TestCase):
 
 
 class CorruptingPi(FakePi if np is not None else object):
-    """Wie `FakePi`, nur dass einzelne Aufnahmen ein verschobenes Brett sehen."""
+    """Like `FakePi`, except that individual captures see a shifted board."""
 
     def __init__(self, folder, corrupt):
         super().__init__(folder)
@@ -182,7 +182,7 @@ class SessionTest(unittest.IsolatedAsyncioTestCase):
             for flange in flanges:
                 pi.flange = flange
                 self.assertEqual(await session.capture(sample_json(flange)), VisionErrorCode.OK)
-            # Vor dem Berechnen gibt es noch keine Residuen.
+            # Before the computation there are no residuals yet.
             self.assertTrue(all(s["residualM"] is None for s in pi.status["samples"]))
             self.assertTrue(all(s["rejected"] is None for s in pi.status["samples"]))
 

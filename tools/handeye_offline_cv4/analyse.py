@@ -51,10 +51,12 @@ FLAGS = {"park": "CALIB_HAND_EYE_PARK", "tsai": "CALIB_HAND_EYE_TSAI",
 
 
 def log(msg):
+    """Print a progress message to stderr."""
     print(msg, file=sys.stderr, flush=True)
 
 
 def clean(o):
+    """Recursively convert numpy values to JSON-safe Python values; non-finite floats become None."""
     if isinstance(o, dict):
         return {str(k): clean(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -72,6 +74,7 @@ def clean(o):
 
 
 def sp(a, b):
+    """Return the Spearman rho and p-value of a and b, or None values if either is constant."""
     a, b = np.asarray(a, float), np.asarray(b, float)
     if np.ptp(a) == 0 or np.ptp(b) == 0:
         return {"rho": None, "p": None}
@@ -79,27 +82,30 @@ def sp(a, b):
     return {"rho": float(r.statistic), "p": float(r.pvalue)}
 
 
-# ---------------------------------------------------------------- Helfer
+# ---------------------------------------------------------------- Helpers
 
 def rms_of(x, obs, calib, points):
+    """Return the reprojection RMS in px for the parameter vector x."""
     r = _residuals(x, obs, calib, points)
     return float(np.sqrt(np.mean(r ** 2) * 2))
 
 
 def pose_diff(a, b):
-    """a - b: Translation in mm (Vektor+Norm), Rotationswinkel in Grad."""
+    """Return a - b: translation in mm (vector and norm) and rotation angle in degrees."""
     d = (np.asarray(a)[:3, 3] - np.asarray(b)[:3, 3]) * 1000
     return {"dtMm": d, "dtNormMm": float(np.linalg.norm(d)),
             "dRotDeg": float(np.degrees(geometry.rotation_distance_rad(a, b)))}
 
 
 def he_summary(he):
+    """Return the hand-eye pose with translation in mm and rotation as rotvec and angle in degrees."""
     rv = geometry.rvec_from_rotation(he[:3, :3])
     return {"T_flange_camera": he, "translationMm": he[:3, 3] * 1000,
             "rotvecDeg": np.degrees(rv), "rotationDeg": float(np.degrees(np.linalg.norm(rv)))}
 
 
 def closed_forms(obs, calib, points, names):
+    """Solve hand-eye with the closed-form methods in names; return per-method results or errors."""
     fl = [o.flange for o in obs]
     bo = [o.board_in_camera for o in obs]
     out = {}
@@ -124,12 +130,14 @@ def closed_forms(obs, calib, points, names):
 
 
 def refine(obs, calib, points, x0, loss="soft_l1", max_nfev=200):
+    """Refine hand-eye and board pose from the start vector x0 with least squares."""
     fit = least_squares(_residuals, x0, args=(obs, calib, points), loss=loss, f_scale=1.0, max_nfev=max_nfev)
     return {"x": fit.x, "he": _pose_from_vector(fit.x[:6]), "B": _pose_from_vector(fit.x[6:12]),
             "rmsPx": rms_of(fit.x, obs, calib, points), "converged": bool(fit.success), "nfev": int(fit.nfev)}
 
 
 def refined_from_best(obs, calib, points, max_nfev=200):
+    """Refine from the best closed-form start; return the closed-form results, the best name and the refinement."""
     cf = closed_forms(obs, calib, points, MAIN)
     ok = {k: v for k, v in cf.items() if "he" in v}
     if not ok:
@@ -139,15 +147,16 @@ def refined_from_best(obs, calib, points, max_nfev=200):
 
 
 def tr_rot(sol):
+    """Return translation in mm, rotation angle in degrees and RMS in px of a solution."""
     return {"translationMm": sol["he"][:3, 3] * 1000,
             "rotationDeg": float(np.degrees(np.linalg.norm(geometry.rvec_from_rotation(sol["he"][:3, :3])))),
             "rmsPx": sol["rmsPx"]}
 
 
-# ---------------------------------------------------------------- Intrinsik / Massstab
+# ---------------------------------------------------------------- Intrinsics / scale
 
 def _proj_model(x, obs, calib, points, mode):
-    """Residuen; mode enthaelt 'K' (fx,fy,cx,cy), 'D' (k1,k2,p1,p2,k3), 'S' (Massstab der Objektpunkte)."""
+    """Return reprojection residuals; mode contains 'K' (fx, fy, cx, cy), 'D' (k1, k2, p1, p2, k3), 'S' (object point scale)."""
     he, B = _pose_from_vector(x[:6]), _pose_from_vector(x[6:12])
     K = np.array(calib.camera_matrix, dtype=np.float64)
     D = np.array(calib.distortion, dtype=np.float64).reshape(-1).copy()
@@ -170,6 +179,7 @@ def _proj_model(x, obs, calib, points, mode):
 
 
 def diag_fit(obs, calib, points, x_final, mode, max_nfev=200):
+    """Refit the hand-eye solution with extra intrinsic or scale parameters for diagnosis only."""
     K = np.array(calib.camera_matrix)
     D = np.array(calib.distortion).reshape(-1)
     extra, names = [], []
@@ -194,9 +204,10 @@ def diag_fit(obs, calib, points, x_final, mode, max_nfev=200):
             **he_summary(he), "params": vals, "delta": {k: vals[k] - start[k] for k in names}}
 
 
-# ---------------------------------------------------------------- Auswertung je Sitzung
+# ---------------------------------------------------------------- Analysis per session
 
 def load_states(folder):
+    """Return the robot_state.json content per pose directory, skipping unreadable files."""
     states = {}
     for p in sorted((folder / "poses").glob("pose_*")):
         try:
@@ -207,6 +218,7 @@ def load_states(folder):
 
 
 def parity(orig_folder, obs):
+    """Compare the recomputed observations with the saved detections of the session."""
     path = orig_folder / "results" / "detections_iterative.json"
     if not path.exists():
         return {"available": False}
@@ -242,6 +254,7 @@ def parity(orig_folder, obs):
 
 
 def board_dev(obs, he, B):
+    """Return the per-pose deviation of the board pose from the mean board pose B."""
     out = []
     for o in obs:
         p = geometry.compose(o.flange, he, o.board_in_camera)
@@ -252,11 +265,13 @@ def board_dev(obs, he, B):
 
 
 def yaw_deg(R):
+    """Return the yaw angle of rotation matrix R in degrees, mapped to (-180, 180]."""
     y = math.degrees(math.atan2(R[1, 0], R[0, 0]))
     return 180.0 if y <= -180.0 else y
 
 
 def analyse_session(folder, name):
+    """Run the full offline analysis for one session folder on a temporary copy and return the result dict."""
     t0 = time.time()
     log(f"== {name}")
     config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
@@ -273,7 +288,7 @@ def analyse_session(folder, name):
     fl = [o.flange for o in obs]
     bo = [o.board_in_camera for o in obs]
 
-    # ---- B Verfahrensvergleich
+    # ---- B Method comparison
     log("B Verfahren")
     cf = closed_forms(obs, calib, points, MAIN + EXTRA)
     ok = {k: v for k, v in cf.items() if "he" in v}
@@ -331,7 +346,7 @@ def analyse_session(folder, name):
                 subsets_seed1[count] = ids
     res["sweep"] = sweep
 
-    # ---- D Je-Pose
+    # ---- D Per pose
     log("D Je-Pose")
     dev_f = board_dev(obs, he_f, B_f)
     B_park = _base_board(fl, bo, ok["park"]["he"]) if "park" in ok else None
@@ -379,7 +394,7 @@ def analyse_session(folder, name):
             "spearmanParkVsFinalDev": sp([d["parkDevMm"] for d in items], [d["finalDevMm"] for d in items]),
             "perPose": items}
 
-    # ---- E Einfluss
+    # ---- E Influence
     log("E LOO")
     loo = []
     for i in range(n):
@@ -433,7 +448,7 @@ def analyse_session(folder, name):
                  "timeWindowS": [min(r["tSeconds"] for r in rr), max(r["tSeconds"] for r in rr)]}
     res["groupSummary"] = gs
 
-    # ---- F Diagnose Intrinsik / Massstab
+    # ---- F Intrinsics / scale diagnosis
     log("F Intrinsik/Massstab")
     diag = {}
     for key, mode in (("intrinsicsFull", "KD"), ("distortionOnly", "D"), ("scaleOnly", "S"),
@@ -443,7 +458,7 @@ def analyse_session(folder, name):
         diag[key] = r
     res["diagnoseIntrinsics"] = {"baseline": tr_rot(final), "note": "Reine Diagnose, nichts gespeichert", **diag}
 
-    # ---- G Roboter
+    # ---- G Robot
     log("G Roboter")
     res["robotDiagnosis"] = {"spearmanBoardDevVsJoint": {
         axis: {f"q{j}": sp([r[key] for r in rows], [r[f"q{j}Deg"] for r in rows]) for j in range(1, 8)}
@@ -453,6 +468,7 @@ def analyse_session(folder, name):
 
 
 def write_csv(path, rows):
+    """Write a list of dicts to a CSV file, with the keys of the first row as header."""
     cols = list(rows[0].keys())
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -465,14 +481,17 @@ def write_csv(path, rows):
 # ---------------------------------------------------------------- Text
 
 def v3(v):
+    """Format a 3-vector with two decimals in parentheses."""
     return "(" + ", ".join(f"{x:.2f}" for x in v) + ")"
 
 
 def fr(v, f="{:.2f}"):
+    """Format v with format string f, or return 'n/a' for None."""
     return f.format(v) if v is not None else "n/a"
 
 
 def summary(res):
+    """Return the human-readable text summary of one session result."""
     L = []
     a = L.append
     a(f"##### {res['session']}  Brett {res['board']['type']} {res['board']['cols']}x{res['board']['rows']}  "
@@ -557,6 +576,7 @@ def summary(res):
 
 
 def main():
+    """Analyse the selected sessions, write per-session JSON and CSV files and a comparison file."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=str(ROOT / "doc/auswertung/handeye_cv4"))
     ap.add_argument("--session", action="append", help="Sitzungsordner (mehrfach); Default: beide Standardsitzungen")

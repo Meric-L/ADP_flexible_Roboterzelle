@@ -1,4 +1,4 @@
-"""`tagloc.cli.calibrate`: `--capture-to` auch im Headless-Zweig mit Kamera-Quelle."""
+"""`tagloc.cli.calibrate`: `--capture-to` also in the headless branch with a camera source."""
 
 import tempfile
 import unittest
@@ -40,7 +40,7 @@ class CaptureToHeadlessTest(unittest.TestCase):
                     "--capture-to", str(ziel), "--min-samples", "5",
                 ]
             )
-        self.assertEqual(rc, 1)  # unter 3 Aufnahmen wird nicht gerechnet
+        self.assertEqual(rc, 1)  # fewer than 3 captures: no calibration is computed
         return sorted(p.name for p in ziel.iterdir())
 
     def test_kamera_quelle_speichert_aufnahmen(self):

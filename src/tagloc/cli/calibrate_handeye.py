@@ -1,51 +1,8 @@
 """Hand-eye calibration -- the one-time offset flange -> camera.
 
 The hand camera is rigidly mounted on the robot, so ``T_flansch_cam`` is a constant of
-the hardware. It is determined **once** and only read afterwards.
-
-Recording the calibration run (kept separate from the computation, so it can be
-repeated without moving the robot again):
-
-1. Place a board somewhere. It must **stay still** for the whole run. Which board does
-   not matter; a world tag is a good choice because it is mounted anyway.
-2. Move the robot to at least a dozen clearly different poses from which the camera
-   sees the board. **Rotate around several axes**: pure translation is not enough,
-   because then the rotation is not determined.
-3. Save one image per pose and note the robot pose ``T_base_flansch``.
-
-This produces a sample list:
-
-    {
-      "schema": "wsc.vision.handeye.samples/1",
-      "tagId": 2,
-      "tagSizeM": 0.100,
-      "samples": [
-        { "image": "pose_000.png",
-          "poseBaseFlange": { "position": [0.20, 0.05, 0.50],
-                              "orientation": [0, 0.131, 0, 0.991] } },
-        { "image": "pose_001.png", "poseBaseFlange": { ... } }
-      ]
-    }
-
-Image paths are relative to the sample list. Then run:
-
-    python -m tagloc.cli.calibrate_handeye --samples fahrt/aufnahmen.json \\
-        --calibration data/calibration/cam_flange.json \\
-        --out data/handeye/cam_flange.json
-
-From a session of the hand Pi (``data/handeye/sessions/<Zeit>/``, written by
-``FinishHandEyeCalibration``), the same calibration is recomputed with
-
-    python -m tagloc.cli.calibrate_handeye --session data/handeye/sessions/<Zeit> \\
-        [--out data/handeye/cam_flange.json]
-
-This runs a closed-form solution, a robust fit, and then a joint refinement against the
-board corners, including the leave-one-out prediction error. Without ``--out`` the
-result is only computed and displayed.
-
-The quality measure is printed at the end. The tag is fixed, so it must come out at the
-same position from every robot pose. If the spread is large, one of the following is
-wrong: the camera calibration, the tag size entered, or the reported robot pose.
+the hardware: it is determined once and only read afterwards. ``--samples`` evaluates a
+recorded calibration run, ``--session`` recomputes a saved session of the hand Pi.
 """
 
 import argparse

@@ -77,7 +77,7 @@ DISAPPEARED = "disappeared"
 MIN_FRAMES_FOR_MISSING = 3
 #: How unlikely it must be that an existing tag is missed by chance for the required
 #: consecutive images. Deliberately very small: checked every 2 s, a tag with a 40 %
-#: detection rate (measured on the ceiling Pi, 15.10.2026) produces about 700 gaps per
+#: detection rate (measured on the ceiling Pi) produces about 700 gaps per
 #: hour. With 1 % there were several false alarms per hour, with 0.01 % in simulation
 #: still one in ten hours, with 0.001 % none in 20 hours.
 MISS_BY_CHANCE = 1e-5
@@ -131,6 +131,8 @@ def required_misses(rate: float) -> int:
 
 @dataclass(frozen=True)
 class CellWatchOptions:
+    """Thresholds, timing and camera-pose tolerances of the cell watch."""
+
     moved_threshold_m: float = 0.05
     rotated_threshold_deg: float = 10.0
     persist_s: float = 5.0
@@ -192,6 +194,8 @@ class TagSighting:
 
 @dataclass(frozen=True)
 class ReferenceTag:
+    """A module pose of the reference that the watch compares against."""
+
     position: tuple[float, float, float]
     yaw_deg: float
     module_id: str = ""
@@ -1124,6 +1128,7 @@ class CellWatch:
         return VisionErrorCode.OK
 
     async def stop(self) -> VisionErrorCode:
+        """Disarm the watch and clear an ordered pause."""
         if not self.active:
             return VisionErrorCode.INVALID_STATE
         await self._halt()

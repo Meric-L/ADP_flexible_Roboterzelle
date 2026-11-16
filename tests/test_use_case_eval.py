@@ -1,8 +1,8 @@
-"""Tests fuer die Bildmessung der Wuerfelablage (`use_case_eval`).
+"""Tests for the image measurement of the cube placement (`use_case_eval`).
 
-Die Messung wird an synthetischen Bildern mit bekannter Wahrheit geprueft
-(`use_case_eval.synthetic`: RealSense-aehnlich 640x480, fx = 466, Kamera rund
-20 cm ueber der Wuerfeloberseite, mit Supersampling gerendert).
+The measurement is checked on synthetic images with known ground truth
+(`use_case_eval.synthetic`: RealSense-like 640x480, fx = 466, camera about 20 cm
+above the cube top, rendered with supersampling).
 """
 
 import json
@@ -16,23 +16,23 @@ try:
 
     from use_case_eval import live, measure, synthetic, target
     from use_case_eval.measure import TrialMeasurement
-except Exception:  # pragma: no cover - numpy/OpenCV fehlen
+except Exception:  # pragma: no cover - numpy/OpenCV missing
     np = None
 
-#: Kamera ueber dem Blatt (mm): 20 cm ueber der Wuerfeloberseite.
+#: Camera height above the sheet (mm): 20 cm above the cube top.
 CAMERA_HEIGHT_MM = 220.0
-#: Ziel der Messgenauigkeit auf synthetischen Bildern.
+#: Target measurement accuracy on synthetic images.
 POSITION_TOLERANCE_MM = 0.1
 ANGLE_TOLERANCE_DEG = 0.2
 
 
 def angle_error(measured: float, true: float) -> float:
-    """Differenz zweier Gierwinkel modulo 90 Grad (Wuerfel ist 90-Grad-symmetrisch)."""
+    """Difference of two yaw angles modulo 90 degrees (the cube is 90-degree symmetric)."""
     return (measured - true + 45.0) % 90.0 - 45.0
 
 
 def render(dx, dy, dtheta, camera=(0.0, 0.0, 0.0, 0.0), sticker=(0.0, 0.0), **kwargs):
-    """Bild einer Ablage; `camera` = (x, y, Gier, Neigung) der Kamera ueber dem Blatt."""
+    """Image of a placement; `camera` = (x, y, yaw, tilt) of the camera above the sheet."""
     x, y, yaw, tilt = camera
     pose = synthetic.look_down_pose(x, y, CAMERA_HEIGHT_MM, yaw, tilt)
     return synthetic.render_trial(
@@ -47,7 +47,7 @@ if np is not None:
 @unittest.skipUnless(np is not None, "numpy/OpenCV fehlen")
 class TargetTest(unittest.TestCase):
     def test_zones_follow_the_circles_on_the_sheet(self):
-        # Die Kreise: Wuerfeldiagonale 28,3 mm + 2 x 1 / 3 / 5 mm.
+        # The circles: cube diagonal 28.3 mm + 2 x 1 / 3 / 5 mm.
         self.assertEqual(target.zone_for_radius(14.14), "gruen")
         self.assertEqual(target.zone_for_radius(15.15), "gruen")
         self.assertEqual(target.zone_for_radius(15.16), "gelb")
@@ -65,7 +65,7 @@ class TargetTest(unittest.TestCase):
     def test_sheet_markers_lie_square_around_the_middle(self):
         self.assertEqual(sorted(target.SHEET_MARKERS), [0, 1, 2, 3])
         corners = target.sheet_marker_corners(0)
-        # Reihenfolge wie OpenCV: oben-links, oben-rechts, unten-rechts, unten-links (y oben).
+        # Order as in OpenCV: top-left, top-right, bottom-right, bottom-left (y up).
         np.testing.assert_allclose(corners, [[-55, 55, 0], [-35, 55, 0], [-35, 35, 0], [-55, 35, 0]])
 
     def test_sheet_markers_stay_inside_the_scale_ring(self):
@@ -97,7 +97,7 @@ class MeasureTrialTest(unittest.TestCase):
                 self.assertMeasured(measure.measure_trial(render(dx, dy, dtheta, camera), CALIBRATION), dx, dy, dtheta)
 
     def test_turn_is_folded_to_a_quarter(self):
-        # 70 Grad sieht aus wie -20 Grad: der Wuerfel ist 90-Grad-symmetrisch.
+        # 70 degrees looks like -20 degrees: the cube is 90-degree symmetric.
         m = measure.measure_trial(render(0, 0, 70), CALIBRATION)
         self.assertTrue(m.ok, m.grund)
         self.assertAlmostEqual(m.dtheta_deg, -20.0, delta=ANGLE_TOLERANCE_DEG)
@@ -114,17 +114,17 @@ class MeasureTrialTest(unittest.TestCase):
         self.assertLess(m.nadir_offset_mm, 20.0)
 
     def test_zone_is_what_one_sees_on_the_sheet(self):
-        # Aeusserste Ecke bei Versatz d in x (ohne Drehung): hypot(10 + d, 10).
+        # Outermost corner at offset d in x (no turn): hypot(10 + d, 10).
         for dx, zone in [(0.5, "gruen"), (2.5, "gelb"), (4.5, "rot"), (7.0, "ausserhalb")]:
             with self.subTest(dx=dx):
                 self.assertEqual(measure.measure_trial(render(dx, 0, 0), CALIBRATION).zone, zone)
 
     def test_sticker_offset_is_taken_off_in_the_markers_turn(self):
-        # Hoechstens 1 mm: der 18-mm-Aufkleber muss ganz auf der 20-mm-Oberseite liegen.
+        # At most 1 mm: the 18 mm sticker must lie entirely on the 20 mm top face.
         sticker = (0.6, -0.4)
         image = render(1.0, -1.0, 25.0, sticker=sticker)
         self.assertMeasured(measure.measure_trial(image, CALIBRATION, sticker), 1.0, -1.0, 25.0)
-        # Ohne Versatz liegt die gemessene Mitte genau um den gedrehten Versatz daneben.
+        # Without the correction, the measured centre is off by exactly the rotated offset.
         naive = measure.measure_trial(image, CALIBRATION)
         expected = np.array([1.0, -1.0]) + target.rotation_2d(25.0) @ np.array(sticker)
         np.testing.assert_allclose([naive.dx_mm, naive.dy_mm], expected, atol=POSITION_TOLERANCE_MM)
@@ -179,7 +179,7 @@ class SummarizeTest(unittest.TestCase):
         self.assertEqual((s["n"], s["n_gesamt"]), (4, 4))
         self.assertAlmostEqual(s["dx_mean_mm"], 2.0)
         self.assertAlmostEqual(s["dy_mean_mm"], 0.0)
-        # Genauigkeit: Abstand des Mittels vom Soll.
+        # Accuracy: distance of the mean from the target.
         self.assertAlmostEqual(s["AP_mm"], 2.0)
         # Wiederholgenauigkeit: alle vier liegen 1 mm vom Mittel -> l = 1, S_l = 0.
         self.assertAlmostEqual(s["l_mean_mm"], 1.0)
@@ -259,7 +259,7 @@ class LiveTest(unittest.TestCase):
 
 
 def load_evaluation_tool():
-    """`tools/use_case_auswertung.py` als Modul (tools/ ist kein Paket)."""
+    """Load `tools/use_case_auswertung.py` as a module (tools/ is not a package)."""
     import importlib.util
 
     path = Path(__file__).resolve().parents[1] / "tools" / "use_case_auswertung.py"
@@ -271,7 +271,7 @@ def load_evaluation_tool():
 
 @unittest.skipUnless(np is not None, "numpy/OpenCV fehlen")
 class EvaluationToolTest(unittest.TestCase):
-    """Die Reihenauswertung ueber den echten Speicherweg (`save_use_case_image`)."""
+    """Series evaluation through the real storage path (`save_use_case_image`)."""
 
     def setUp(self):
         import contextlib
@@ -327,7 +327,7 @@ class EvaluationToolTest(unittest.TestCase):
         self.save(1.0, 0.5, 0.0, sticker=sticker)
         self.assertEqual(self.run_tool("--aufkleber-kalibrieren", "1", "2"), 0)
         np.testing.assert_allclose(live.load_sticker_offset(self.base), sticker, atol=POSITION_TOLERANCE_MM)
-        # Neu gemessen mit dem Versatz liegt Versuch 3 richtig.
+        # Re-measured with the offset, trial 3 is correct.
         self.assertEqual(self.run_tool("--neu-messen"), 0)
         third = json.loads((self.series / "versuch_003.json").read_text(encoding="utf-8"))["messung"]
         self.assertAlmostEqual(third["dx_mm"], 1.0, delta=POSITION_TOLERANCE_MM)

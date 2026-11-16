@@ -1,29 +1,11 @@
-"""Hand-eye: where the camera sits on the robot, and how an anchor is derived from it.
+"""Hand-eye calibration: the fixed flange-to-camera transform, and anchoring of the robot base.
 
-The camera is **rigidly** attached to the robot. Only the robot as a whole moves.
-`T_flange_cam` is therefore a constant of the hardware and is calibrated exactly
-**once**, not per operation.
+The camera is rigidly attached to the robot, so `T_flange_cam` is calibrated once
+and then reused. The world-tag anchor fixes `T_world_base`, which lets the camera
+pose be computed from kinematics when no world tag is in view.
 
-This closes the gap the purely optical path leaves open. A world tag only has to
-be seen **once, at the start** of a localization run. If the hand camera then
-gets close to a module, the next world tag is long out of view. The kinematics
-carry the pose from there.
-
-```
-Once per run (anchoring):
-    T_world_base = T_world_cam · inv(T_flange_cam) · inv(T_base_flange)
-
-Afterwards, per module:
-    T_world_cam  = T_world_base · T_base_flange(now) · T_flange_cam
-```
-
-No OpenCV, the solver included. `cv2.calibrateHandEye` would be the obvious
-choice, but OpenCV 5.0 no longer exports it to Python. Only the
-`CALIB_HAND_EYE_*` constants remain. The repo deliberately supports both 4.x and
-5.x (doc/projektdoku/altlasten.md D3). A version branch in a spot that runs once
-in the life of the cell would be worse than thirty lines of math. This follows
-the same approach as `geometry.from_rvec_tvec`, which computes Rodrigues in numpy
-instead of calling `cv2.Rodrigues`.
+No OpenCV, the solver included: OpenCV 5.0 no longer exports `cv2.calibrateHandEye`
+to Python, and the repo supports both 4.x and 5.x (doc/projektdoku/altlasten.md D3).
 """
 
 import json
@@ -90,12 +72,11 @@ class HandEye:
     rms_position_m: float = float("nan")
     rms_rotation_deg: float = float("nan")
     sample_count: int = 0
-    #: Largest deviation (not RMS) among the captures used. Separate from the RMS
-    #: since 22.10.2026. Older files do not have it.
+    #: Largest deviation (not RMS) among the captures used. Older files do not have it.
     max_position_m: float = float("nan")
     max_rotation_deg: float = float("nan")
-    #: Since 28.10.2026, only for board calibration with joint refinement
-    #: (`refine_hand_eye`). Otherwise NaN or empty. Older files do not have these.
+    #: Only for board calibration with joint refinement (`refine_hand_eye`).
+    #: Otherwise NaN or empty. Older files do not have these.
     #: Reprojection RMS of all board corners after refinement (px).
     refined_reprojection_rms_px: float = float("nan")
     #: Estimated board scale against the nominal size (1.0 = matches).

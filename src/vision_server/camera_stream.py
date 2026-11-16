@@ -1,14 +1,8 @@
-"""Publish frames of the shared camera as Base64 JPEG in one node.
+"""Publish the frames of the shared camera as Base64 JPEG into one OPC UA String node.
 
-Transport as agreed with the backend: the backend subscribes to this node in
-the usual way through the existing `subscribeNode` infrastructure, so no new
-backend logic is needed. This module therefore knows only the node, not the
-WebSocket or backend details.
-
-The stream can be annotated: an `annotator` draws detected AprilTags or board
-corners onto the image, and a second, **writable** node selects the mode
-("off", "apriltag", "calibration", "undistorted"). The publisher itself knows
-neither OpenCV nor detection -- it only passes the mode and the image along.
+An optional `annotator` marks up the image, and a writable mode node selects the
+overlay mode ("off", "apriltag", "calibration", "undistorted"). The publisher itself
+knows neither OpenCV nor detection; it only passes the mode and the image along.
 """
 
 import asyncio
@@ -84,12 +78,9 @@ class CameraStreamPublisher:
     unchanged frame: the frontend should see a simple "image arrives / does not
     arrive" signal, not diff logic.
 
-    **No health monitoring here.** Whether the camera is alive is answered solely
-    by `Health/DeviceHealth` per OPC 40100-2 (`camera_health.py`), fed from the
-    watchdog in `camera.py`. This publisher used to check the image age as well
-    and clear the node -- two sources of truth for the same question, one of
-    which was off the standard. With a hung camera the live image therefore now
-    freezes; the status indicator says that it froze, not the missing image.
+    **No health monitoring here.** Whether the camera is alive is reported only by
+    `Health/DeviceHealth` (`camera_health.py`). With a hung camera the live image
+    freezes; it is not cleared.
     """
 
     def __init__(
@@ -165,10 +156,7 @@ class CameraStreamPublisher:
     def latest(self) -> tuple[int, str] | None:
         """Sequence number and Base64 JPEG of the newest image.
 
-        Deliberately without an age limit: whether the camera is alive is said by
-        `DeviceHealth` per OPC 40100-2 (camera_health.py), not by this publisher.
-        A still image is an image, not a health signal -- two truths about it
-        would be one too many.
+        Without an age limit: camera health is reported by `camera_health.py`.
         """
         if self._latest is None:
             return None
@@ -239,24 +227,16 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # "apriltag" and "off" work from the full frame, not from the small ISP
-        # preview:
-        # - "apriltag" gets the full frame as input and draws on a canvas scaled
-        #   down to `detection_max_width`. The tags come from a detection at full
-        #   resolution -- usually that of the job or the cell watch, otherwise a
-        #   separate rare one in the background (since 2026-10-21, see
-        #   stream_overlay.py). Detecting on the full frame at stream rate cost
-        #   about 102% of one core on pi1 according to py-spy and made jobs run
-        #   into the timeout.
-        # - "off" is the debug raw image: it must show exactly what the Pi really
-        #   sees (to check focus, exposure, framing), not the downscaled preview.
-        #   It costs barely more than before -- without detection/overlay only the
-        #   larger encode is new.
-        # "calibration" stays with the small preview image: there detection
-        # fidelity does not matter, and the session has its own separately tuned
-        # downscale before `detect_board` (`detection_max_width`).
-        # "undistorted" also uses the full frame: the calibration belongs to the
-        # sensor image, not to the ISP preview with its own crop.
+        # "apriltag", "off", "undistorted" and "tagreference" use the full frame, not
+        # the small ISP preview:
+        # - "apriltag": detection at stream rate on the full frame cost about one
+        #   core on pi1 and made jobs time out, so tags come from the job or cell
+        #   watch detection, or from a rare background run (stream_overlay.py).
+        # - "off": the raw debug image must show what the camera really sees.
+        # - "undistorted": the calibration belongs to the sensor image, not to the
+        #   ISP preview with its own crop.
+        # "calibration" stays with the small preview: detection fidelity does not
+        # matter there, and the session downscales itself before `detect_board`.
         if mode in ("apriltag", "off", "undistorted", "tagreference"):
             source = frame.image
         else:

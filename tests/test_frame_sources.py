@@ -1,9 +1,8 @@
-"""Tests for `tagloc.frames.open_source`'s `--source` dispatch.
+"""Tests for the `--source` dispatch of `tagloc.frames.open_source`.
 
-Only the string-dispatch/error-message layer, no real hardware: `picamera`
-and `realsense` need `picamera2`/`pyrealsense2`, which aren't installed
-everywhere the tests run (see `_open_camera`'s deferred-import convention in
-`vision_server/camera.py` -- `frames.py` follows the same rule).
+Only the string dispatch and error messages, no hardware: `picamera` and
+`realsense` need `picamera2`/`pyrealsense2`, which are not installed everywhere.
+As in `vision_server/camera.py`, the SDKs are imported lazily.
 """
 
 import tempfile
@@ -24,7 +23,7 @@ try:
     import numpy as np
 
     _ = cv2.imwrite
-except Exception:  # ohne OpenCV
+except Exception:  # without OpenCV
     cv2 = None
 
 
@@ -89,7 +88,7 @@ class ImageFolderSourceTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class ImageFolderOrderTest(unittest.TestCase):
-    """Reihenfolge, Filter und Ende eines Bildordners mit Tempbildern."""
+    """Order, filter and end of an image folder with temporary images."""
 
     def _write(self, folder: Path, name: str, value: int) -> None:
         cv2.imwrite(str(folder / name), np.full((2, 3, 3), value, dtype=np.uint8))
@@ -98,7 +97,7 @@ class ImageFolderOrderTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             self._write(folder, "c.png", 30)
-            self._write(folder, "a.PNG", 10)  # Endung gross: zaehlt trotzdem
+            self._write(folder, "a.PNG", 10)  # upper-case extension still counts
             self._write(folder, "b.bmp", 20)
             (folder / "notizen.txt").write_text("kein bild")
             source = ImageFolderSource(folder)
@@ -107,7 +106,7 @@ class ImageFolderOrderTest(unittest.TestCase):
             values = [int(source.read()[0, 0, 0]) for _ in range(3)]
             self.assertEqual(values, [10, 20, 30])
             self.assertIsNone(source.read())
-            self.assertIsNone(source.read())  # bleibt am Ende
+            self.assertIsNone(source.read())  # stays at the end
             source.close()
 
     def test_ohne_loop_endet_mit_none_mit_loop_nicht(self):
@@ -145,7 +144,7 @@ class ImageFolderOrderTest(unittest.TestCase):
         color = np.zeros((4, 6, 3), dtype=np.uint8)
         gray = to_gray(color)
         self.assertEqual(gray.shape, (4, 6))
-        self.assertIs(to_gray(gray), gray)  # schon einkanalig: unveraendert
+        self.assertIs(to_gray(gray), gray)  # already single-channel: unchanged
         self.assertEqual(image_size(color), (6, 4))
 
 

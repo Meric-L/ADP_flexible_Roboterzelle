@@ -1,9 +1,9 @@
-"""Zellen-Ueberwachung mit einem einzigen Welttag: gespeicherte Kamerapose.
+"""Cell watch with a single world tag: stored camera pose.
 
-Aus einem einzelnen Welttag waere die Kamerapose aus 2,5 m um Zentimeter
-ungenau. Die fest montierte Kamera hat aber eine feste Pose: Der Pi schaetzt
-sie aus Bildern mit mindestens zwei Welttags, merkt sie sich und prueft den
-einen sichtbaren Welttag danach nur auf Konsistenz.
+From a single world tag the camera pose would be inaccurate by centimetres at
+2.5 m. The fixed camera does have a fixed pose, though: the Pi estimates it from
+images with at least two world tags, remembers it, and afterwards only checks the
+one visible world tag for consistency.
 """
 
 import math
@@ -91,8 +91,8 @@ class KeeperTest(unittest.TestCase):
 
     def test_one_consistent_world_tag_is_enough(self):
         self.remember()
-        # Auf dem Pi liegt der Eckenfehler bei ~3,4 px (Kartenfehler ~1 cm):
-        # nur das, was ueber der Grundlinie liegt, zaehlt.
+        # On the Pi the corner error is about 3.4 px (map error about 1 cm): only
+        # what lies above the baseline counts.
         sightings, reason = self.keeper.judge([location()], self.stored(3.9), self.options, self.tag_map)
         self.assertEqual((list(sightings), reason), ([7], ""))
 
@@ -167,7 +167,7 @@ class OptionsTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class SceneTest(unittest.TestCase):
-    """Die ganze Kette an der synthetischen Zelle: Quelle, Merken, Beurteilen."""
+    """The whole chain on the synthetic cell: source, remembering, judging."""
 
     MODULE = (0.8, 0.8, 0.0)
 
@@ -197,7 +197,7 @@ class SceneTest(unittest.TestCase):
         self.keeper = CameraPoseKeeper()
 
     def observations(self, camera_pose, world_ids):
-        """Die Ecken der gewuenschten Welttags und des Modul-Tags 7."""
+        """The corners of the wanted world tags and of module tag 7."""
         found = [
             o for o in scene._observations(camera_pose, self.calibration, self.rng)
             if o.tag_id in world_ids
@@ -215,7 +215,7 @@ class SceneTest(unittest.TestCase):
         return found
 
     def frame(self, camera_pose, world_ids, *, use_store=True):
-        """Ein Bild durch Quelle und Beurteilung, wie `runner._install_cell_watch`."""
+        """One image through source and judging, as in `runner._install_cell_watch`."""
         observations = self.observations(camera_pose, world_ids)
         detector = types.SimpleNamespace(detect=lambda gray: observations)
         stored = self.keeper.stored_for(self.tag_map) if use_store else None
@@ -227,7 +227,7 @@ class SceneTest(unittest.TestCase):
 
     def test_one_world_tag_with_the_stored_pose_is_as_good_as_four(self):
         truth = scene._true_world_cam()
-        # Erst vier Welttags: die Pose wird gemerkt.
+        # First four world tags: the pose is remembered.
         for _ in range(5):
             (sightings, reason), loc = self.frame(truth, {583, 584, 585, 586})
             self.assertEqual((loc.solver, reason), ("joint", ""))
@@ -236,10 +236,10 @@ class SceneTest(unittest.TestCase):
             (with_pose, reason), loc = self.frame(truth, {584})
             self.assertEqual((loc.solver, reason), ("stored", ""))
             stored.append(self.module_error_mm(with_pose))
-            # Zum Vergleich: dieselbe Lage ohne gespeicherte Pose, nur aus dem einen Welttag.
+            # For comparison: the same position without the stored pose, from the one world tag only.
             (bare, _), loc_single = self.frame(truth, {584}, use_store=False)
             self.assertEqual(loc_single.solver, "single")
-            self.assertIsNone(bare)  # kein Keeper-Urteil ohne gemerkte Pose ...
+            self.assertIsNone(bare)  # no keeper verdict without a remembered pose ...
             locations, loc_s, _ = self.source.observe_cell(
                 self.image,
                 types.SimpleNamespace(detect=lambda gray, o=self.observations(truth, {584}): o),
@@ -247,8 +247,8 @@ class SceneTest(unittest.TestCase):
             single.append(
                 1000 * float(np.linalg.norm(np.subtract(locations[0].pose[:3, 3], self.MODULE)))
             )
-        # Mit gemerkter Pose bleibt nur der eigene Messfehler des Modul-Tags
-        # (~1 cm aus 2,5 m); ohne sie kommen Zentimeter der Kamerapose dazu.
+        # With a remembered pose only the module tag's own measurement error remains
+        # (about 1 cm from 2.5 m); without it, centimetres of camera pose come on top.
         self.assertLess(float(np.median(stored)), 20.0)
         self.assertLess(float(np.percentile(stored, 95)), 40.0)
         self.assertLess(float(np.median(stored)), float(np.median(single)))
@@ -258,11 +258,11 @@ class SceneTest(unittest.TestCase):
         truth = scene._true_world_cam()
         for _ in range(5):
             self.frame(truth, {583, 584, 585, 586})
-        # Unbewegt: nie eine Pause, auch ueber viele Bilder nicht.
+        # Unmoved: never a pause, not even over many images.
         for _ in range(60):
             (sightings, reason), _ = self.frame(truth, {584})
             self.assertEqual(reason, "")
-        # 1 cm und 0,3 Grad bewegt: jedes Bild faellt auf.
+        # Moved by 1 cm and 0.3 degrees: every image trips.
         shifted = geometry.compose(
             truth, geometry.from_rvec_tvec((math.radians(0.3), 0, 0), (0.01, 0, 0))
         )

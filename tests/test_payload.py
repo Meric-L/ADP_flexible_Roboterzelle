@@ -1,4 +1,4 @@
-"""Tests fuer das Ergebnis-Payload (`wsc.vision.detections/1`)."""
+"""Tests for the result payload (`wsc.vision.detections/1`)."""
 
 import json
 import unittest
@@ -17,10 +17,10 @@ NOW = datetime(2026, 9, 10, 12, 0, 0, tzinfo=timezone.utc)
 
 
 class FakeNumpyScalar:
-    """Verhaelt sich wie ein numpy-Skalar, ohne numpy als Testabhaengigkeit.
+    """Behaves like a numpy scalar, without making numpy a test dependency.
 
-    `np.float32`/`np.int64`/`np.bool_` bieten genau dieses `.item()`; nur
-    `np.float64` ist eine float-Subklasse und serialisiert ohnehin.
+    `np.float32`/`np.int64`/`np.bool_` offer exactly this `.item()`; only
+    `np.float64` is a float subclass and serialises anyway.
     """
 
     def __init__(self, value):
@@ -31,7 +31,7 @@ class FakeNumpyScalar:
 
 
 class FakeNumpyArray:
-    """Verhaelt sich wie ein ndarray (`.tolist()`)."""
+    """Behaves like an ndarray (`.tolist()`)."""
 
     def __init__(self, values):
         self._values = list(values)
@@ -66,11 +66,11 @@ def result(**overrides) -> dict:
 
 class SchemaStabilityTest(unittest.TestCase):
     def test_schema_id_is_pinned(self):
-        """Regressionsschutz: das Schema darf NICHT hochversioniert werden.
+        """Regression guard: the schema must NOT be bumped to a higher version.
 
-        Die Interface-Doku verlangt, dass Konsumenten unbekannte Versionen
-        verwerfen — ein Bump bricht das Backend am Deploy-Tag. Additive
-        Schluessel sind erlaubt, eine neue Version nicht.
+        The interface docs require consumers to reject unknown versions, so a bump
+        would break the backend on deploy day. Additive keys are allowed, a new
+        version is not.
         """
         self.assertEqual(PAYLOAD_SCHEMA, "wsc.vision.detections/1")
         self.assertEqual(result()["schema"], "wsc.vision.detections/1")
@@ -128,7 +128,7 @@ class FrameIdTest(unittest.TestCase):
                 world_tags=(tag,),
             )
         )
-        # Ein Bild nur mit Welttags: kein Modul, aber die Welttags kommen mit.
+        # An image with world tags only: no module, but the world tags come along.
         self.assertEqual(error["worldTags"], [tag])
         self.assertEqual(error["detections"], [])
 
@@ -176,12 +176,12 @@ class JsonSafetyTest(unittest.TestCase):
         self.assertEqual(payload["detections"][0]["attributes"]["corners"], [1.0, 2.0])
 
     def test_non_string_attribute_keys_are_coerced(self):
-        """`default=` wird fuer dict-Keys nie aufgerufen — die muessen vorher weg."""
+        """`default=` is never called for dict keys, so those must be converted beforehand."""
         payload = result(detections=[detection(attributes={7: "sieben"})])
         self.assertEqual(payload["detections"][0]["attributes"], {"7": "sieben"})
 
     def test_nan_raises_instead_of_emitting_invalid_json(self):
-        """Nacktes `NaN` ist kein gueltiges JSON; der Browser wuerde crashen."""
+        """Bare `NaN` is not valid JSON; the browser would crash."""
         with self.assertRaises(ValueError):
             build_result_payload(
                 vision_system_id="vision-test",
@@ -202,7 +202,7 @@ class JsonSafetyTest(unittest.TestCase):
             )
 
     def test_error_payload_cannot_contain_nan(self):
-        """Der Fehlerpfad muss serialisieren koennen, sonst gibt es eine Rekursion."""
+        """The error path must be able to serialise, otherwise there is recursion."""
         payload = json.loads(
             build_error_payload(
                 vision_system_id="vision-test",

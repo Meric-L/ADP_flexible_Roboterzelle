@@ -35,8 +35,7 @@ async def _watch_loop_lag(
     """Log a warning when the event loop was blocked.
 
     If a source forgets `run_blocking`, this shows it here. Otherwise it would
-    surface as an unexplained connection drop somewhere else. Replaces
-    `RaspiDevice/Counter` as the reference signal (doc/projektdoku/altlasten.md A3/A5).
+    surface as an unexplained connection drop somewhere else.
     """
     loop = asyncio.get_running_loop()
     while True:

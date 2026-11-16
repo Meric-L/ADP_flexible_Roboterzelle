@@ -67,7 +67,7 @@ async def _persist_tag_map(wiring: Wiring, tag_map) -> VisionErrorCode:
 
 
 def _set_tag_map_method(wiring: Wiring):
-    """Handler for `1:SetTagMap` -- set the tag map of the cell.
+    """Return the handler for `1:SetTagMap`, which sets the tag map of the cell.
 
     This makes the backend the maintenance point: a new tag size or a moved
     world tag no longer needs file access on the Pi. The file remains the local

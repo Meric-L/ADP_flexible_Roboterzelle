@@ -1,7 +1,7 @@
-"""Tests fuer `src/jobs/calibrate.py`, den Pruef-Job des Rezepts `calibration`.
+"""Tests for `src/jobs/calibrate.py`, the check job of the `calibration` recipe.
 
-Der Job laeuft im Betrieb als Subprozess; hier wird `main()` direkt gerufen,
-mit `REPO_ROOT` auf einen Tempordner umgebogen.
+In operation the job runs as a subprocess; here `main()` is called directly,
+with `REPO_ROOT` pointed at a temp folder.
 """
 
 import os

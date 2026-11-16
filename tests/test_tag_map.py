@@ -1,8 +1,8 @@
-"""Tests fuer die Tag-Karte: Platzierung, Schliessungsfehler, Datei-Rundlauf.
+"""Tests for the tag map: placement, closure error, file round trip.
 
-Gemeinsame Beobachtungen werden aus einer bekannten Grundwahrheit
-synthetisiert -- `T_cam_tag = invert(T_world_cam) @ T_world_tag`. Das macht
-jedes Ergebnis von Hand pruefbar und braucht weder Bilder noch cv2.
+Shared observations are synthesised from a known ground truth,
+`T_cam_tag = invert(T_world_cam) @ T_world_tag`. This makes every result
+checkable by hand and needs neither images nor cv2.
 """
 
 import json
@@ -17,14 +17,14 @@ try:
     import numpy as np
 
     from tagloc import geometry, tagmap
-except Exception:  # numpy in dieser Umgebung defekt
+except Exception:  # numpy broken in this environment
     np = None
     geometry = None
     tagmap = None
 
 
 def truth_poses() -> dict:
-    """Liefert vier Tags im Welt-KS; Tag 0 liegt im Ursprung und ist der Anker."""
+    """Return four tags in the world frame; tag 0 lies at the origin and is the anchor."""
     return {
         0: geometry.identity(),
         1: pose((0.40, 0.00, 0.00), rvec=(0.0, 0.0, math.radians(15.0))),
@@ -38,12 +38,12 @@ def camera_pose(translation, *, rvec):
 
 
 def observation_from(world_poses, pose_world_cam, tag_ids) -> dict:
-    """Liefert, was eine Kamera in dieser Pose von diesen Tags sehen wuerde."""
+    """Return what a camera in this pose would see of these tags."""
     inverse = geometry.invert(pose_world_cam)
     return {tag_id: geometry.compose(inverse, world_poses[tag_id]) for tag_id in tag_ids}
 
 
-#: Drei Kamerapositionen. Ohne numpy bleiben sie leer, und alle Tests werden uebersprungen.
+#: Three camera positions. Without numpy they stay empty and all tests are skipped.
 if np is not None:
     CAMERA_A = camera_pose((0.1, -0.8, 1.6), rvec=(math.radians(10.0), 0.2, -0.4))
     CAMERA_B = camera_pose((-0.6, 0.9, 1.2), rvec=(-0.3, math.radians(25.0), 1.1))
@@ -77,7 +77,7 @@ class PlaceTagsTest(unittest.TestCase):
         np.testing.assert_allclose(placed[1], geometry.identity(), atol=1e-15)
 
     def test_places_all_tags_reachable_from_the_anchor(self):
-        """Bild 1 zeigt 0 und 1, Bild 2 zeigt 1 und 2 -- 2 haengt nur indirekt am Anker."""
+        """Image 1 shows 0 and 1, image 2 shows 1 and 2; tag 2 hangs only indirectly on the anchor."""
         world = truth_poses()
         observations = [
             observation_from(world, CAMERA_A, [0, 1]),
@@ -93,7 +93,7 @@ class PlaceTagsTest(unittest.TestCase):
         world = truth_poses()
         observations = [
             observation_from(world, CAMERA_A, [0, 1]),
-            {9: pose((0.0, 0.0, 1.0))},  # allein aufgenommen, keine Kante
+            {9: pose((0.0, 0.0, 1.0))},  # seen alone, no edge
         ]
 
         placed = tagmap.place_tags(observations, anchor_tag_id=0)
@@ -151,7 +151,7 @@ class RelativePosesTest(unittest.TestCase):
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class ResidualsTest(unittest.TestCase):
     def _ring(self, displacement_m: float):
-        """Drei Tags als geschlossener Ring; eine Kante ist verfaelscht."""
+        """Three tags as a closed ring; one edge is corrupted."""
         world = truth_poses()
         corrupted = dict(world)
         corrupted[2] = geometry.compose(
@@ -180,8 +180,8 @@ class ResidualsTest(unittest.TestCase):
 
         residual_map = tagmap.residuals(observations, placed)
 
-        # Die verfaelschte Kante und ihr Gegenstueck muessen den Fehler zeigen;
-        # der Ring schliesst sich nicht mehr.
+        # The corrupted edge and its counterpart must show the error; the ring no
+        # longer closes.
         self.assertGreater(residual_map[(0, 2)][0], 0.01)
         self.assertGreater(residual_map[(1, 2)][0], 0.01)
 
@@ -230,14 +230,14 @@ class TagMapQueryTest(unittest.TestCase):
         self.assertAlmostEqual(self._map().size_for(99, 0.05), 0.05)
 
     def test_lists_only_tags_with_a_known_world_pose_as_references(self):
-        # Tag 7 ist ein Welttag, aber noch nicht eingemessen -- also kein Anker.
+        # Tag 7 is a world tag but not surveyed yet, so no anchor.
         self.assertEqual(sorted(self._map().reference_poses()), [0])
 
     def test_lists_both_world_tags_regardless_of_the_survey(self):
         self.assertEqual(self._map().world_tag_ids(), [0, 7])
 
     def test_counts_the_robot_among_the_module_tags(self):
-        """Der Roboter ist ein Modul, das immer im Einsatz ist -- kein Sonderfall."""
+        """The robot is a module that is always in use, no special case."""
         entries = self._map().module_entries()
 
         self.assertEqual(sorted(entry.tag_id for entry in entries), [5, 9])
@@ -402,9 +402,9 @@ class TagMapFileTest(unittest.TestCase):
         self.assertEqual(data["schema"], tagmap.SCHEMA)
         self.assertEqual([tag["tagId"] for tag in data["tags"]], [3, 4, 5, 7])
         self.assertIsNone(by_id[5]["poseInWorld"])
-        self.assertIsNone(by_id[7]["poseInWorld"])  # der Roboter ist beweglich
+        self.assertIsNone(by_id[7]["poseInWorld"])  # the robot is movable
         self.assertIn("tagToModule", by_id[5])
-        self.assertNotIn("tagToModule", by_id[3])  # Identitaet wird weggelassen
+        self.assertNotIn("tagToModule", by_id[3])  # identity is omitted
         self.assertEqual(by_id[5]["moduleId"], "MOD-A")
 
     def test_rejects_an_unknown_schema(self):
@@ -445,10 +445,10 @@ class TagMapFileTest(unittest.TestCase):
 
 @unittest.skipUnless(np is not None, "numpy nicht verfuegbar")
 class TagMapJsonTextTest(unittest.TestCase):
-    """Karte als Text -- dasselbe Format fuer Datei und `SetTagMap`.
+    """Map as text: the same format for file and `SetTagMap`.
 
-    Weil beide Wege denselben Serialisierer benutzen, laesst sich das, was das
-    Backend schickt, unveraendert ablegen und umgekehrt.
+    Because both paths use the same serialiser, what the backend sends can be
+    stored unchanged, and vice versa.
     """
 
     def _map(self):

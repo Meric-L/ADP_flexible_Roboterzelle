@@ -1,8 +1,8 @@
-"""Tests fuer ScriptDetectionSource: insbesondere den Abbruchpfad.
+"""Tests for ScriptDetectionSource, especially the cancellation path.
 
-Ein `Stop` waehrend `calibration` laeuft muss den Subprozess wirklich
-beenden statt ihn als Waisen weiterlaufen zu lassen (z. B. mit offener
-Kamera). Das ist genau der Fall aus `job.py`s `except asyncio.CancelledError`.
+A `Stop` during `calibration` must really end the subprocess instead of leaving
+it running as an orphan (e.g. with the camera still open). This is the case
+handled by `job.py`'s `except asyncio.CancelledError`.
 """
 
 import asyncio
@@ -31,7 +31,7 @@ class TerminateTest(unittest.IsolatedAsyncioTestCase):
         await process.wait()
         source = ScriptDetectionSource("calibration", Path("unused.py"))
 
-        await source._terminate(process)  # darf keinen toten Prozess anfassen
+        await source._terminate(process)  # must not touch an already dead process
 
         self.assertEqual(process.returncode, 0)
 
@@ -53,7 +53,7 @@ class AcquireAndDetectCancellationTest(unittest.IsolatedAsyncioTestCase):
             task = asyncio.create_task(
                 source.acquire_and_detect(DetectionRequest(job_id="job-1"))
             )
-            await asyncio.sleep(0.3)  # Subprozess ist jetzt sicher gestartet
+            await asyncio.sleep(0.3)  # subprocess is surely started by now
             task.cancel()
             with self.assertRaises(asyncio.CancelledError):
                 await task

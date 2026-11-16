@@ -1,33 +1,14 @@
-"""Measure the tag position on the module from reference edges in the camera image.
+"""Measure a module's tag position from reference edges in the camera image.
 
-The folding-rule replacement: the module catalog supplies `T_module_tag` as a
-start value, plus two physical reference edges of the module (table edge, profile
-end face, ...; 3D segments in the module frame). The hand camera sees the tag and
-the edges in the **same** image, so everything can be measured in the tag frame
--- without robot kinematics and without hand-eye error. From the position of the
-edges relative to the tag, `T_module_tag` is corrected **in the tag plane** (x, y,
-rotation about tag z). Tilt and distance to the surface stay from the start value
-(the tag lies flush).
+The module catalog gives `T_module_tag` as a start value plus two physical reference
+edges of the module. The hand camera sees the tag and the edges in the same image, so
+the correction is measured in the tag frame, without robot kinematics. Only the
+in-plane position and rotation are corrected; tilt and distance stay at the start
+value, because the tag lies flush. `plan_reference_view` plans a camera pose from
+which tag and edges fit into the image.
 
-Procedure per image (details in each step):
-
-1. `measure_reference_lines`: project the edge from the start value into the tag
-   frame and into the image (with distortion), cross profiles, gradient maxima,
-   RANSAC line, intersect viewing rays with the edge height -> measured 3D line in
-   the tag frame.
-2. `fit_in_plane_correction`: rigid 2D transform `D` in the tag plane that maps
-   the start-value edges onto the measured ones.
-3. `average_corrections`: average several images and report the spread.
-
-`plan_reference_view` computes in advance the camera pose in the tag frame from
-which tag and edge pieces fit into the image. `catalog_rpy_deg` converts a
-rotation into the catalog format (`rotationDeg`).
-
-Conventions as in the whole project (`tagloc.geometry`): `T_a_b` is the pose of
-b in frame a, metres, radians internally. Tag frame: +X right, +Y top edge, +Z
-out of the tag. Camera frame: OpenCV (+Z out of the lens, +X right, +Y down).
-
-`cv2` is imported only inside functions.
+Conventions as in `tagloc.geometry`: metres and radians. Tag frame: +X right, +Y top
+edge, +Z out of the tag. `cv2` is imported only inside functions.
 """
 
 import logging
@@ -392,6 +373,7 @@ def _band_px(calibration, pose_cam_tag, centre_tag, lateral_tag, band_m) -> floa
 
 
 def _failed(line_id, guess_point, guess_direction, reason, candidates=0, ambiguous=False):
+    """Return a `LineMeasurement` with `found=False` for an edge that could not be measured."""
     return LineMeasurement(
         id=line_id,
         found=False,

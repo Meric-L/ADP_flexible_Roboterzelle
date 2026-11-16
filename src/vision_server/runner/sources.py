@@ -14,9 +14,9 @@ def _camera_owner(
 ) -> DetectionSource | None:
     """Return the first opened source that holds a shared camera.
 
-    Deliberately uses the `camera` attribute instead of a profile name: earlier
-    this was `sources.get("image_recognition")`, and renaming or removing that
-    profile would have silently switched off the live stream.
+    Uses the `camera` attribute instead of a profile name. A lookup by name, such
+    as `sources.get("image_recognition")`, would silently switch off the live
+    stream when that profile is renamed or removed.
     """
     for profile in sorted(sources):
         if not opened.get(profile):

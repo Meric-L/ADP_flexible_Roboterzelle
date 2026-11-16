@@ -1,15 +1,8 @@
 """From the image corners to the pose: `T_cam_tag` together with quality measures.
 
-The prototype (`src/apriltag/detect_apriltags.py`, removed on 2026-10-30) did two
-things worse:
-
-1. No undistortion. There `D` was only passed to `drawFrameAxes`; the pose was
-   computed on the distorted image (doc/projektdoku/altlasten.md, "Was nicht hier
-   steht"). Here the corners are first undistorted and then solved with an ideal
-   pinhole model.
-2. No statement of ambiguity. A square marker seen at a shallow angle has two
-   almost equally good solutions; `solvePnPGeneric` returns both, and the ratio of
-   their residual errors is the most honest warning there is.
+The corners are undistorted before solving, so the pose is an ideal pinhole result
+for either lens model. The ratio of the two IPPE solutions' errors flags ambiguity:
+a square marker seen at a shallow angle has two almost equally good poses.
 """
 
 import logging
@@ -333,9 +326,7 @@ def _world_correspondences(
     sizes_m: dict[int, float],
     calibration: CameraCalibration,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    """For each tag, return the four corners in the world frame and the undistorted
-    image corners, in the same order.
-    """
+    """Return the world-frame corners and the undistorted image corners of each tag, in matching order."""
     object_points = []
     image_points = []
     for tag_pose in used:

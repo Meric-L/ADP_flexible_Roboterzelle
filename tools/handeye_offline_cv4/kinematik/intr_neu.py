@@ -1,6 +1,8 @@
-"""Hand-Auge der vier Sitzungen vom 09.11.2026 mit der Offline-Intrinsik vom 10.11.2026 (k1,k2) und
-korrigiertem ChArUco-Massstab, starr und mit Kinematik (Leave-one-session-out). Aufruf aus der Repo-Wurzel:
-PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/intr_neu.py"""
+"""Hand-eye calibration of the four sessions with the offline intrinsics (k1, k2) and corrected ChArUco scale.
+
+Both rigid and with kinematics (leave-one-session-out). Run from the repository root:
+PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/intr_neu.py
+"""
 import sys, numpy as np
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))

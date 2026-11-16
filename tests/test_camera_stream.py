@@ -1,10 +1,9 @@
-"""Tests fuer den Livestream-Publisher.
+"""Tests for the livestream publisher.
 
-`encode_frame` wird durch einen Fake ersetzt, damit die Tests ohne `cv2`
-laufen und ohne echte Bilddaten auskommen. `max_stream_width=None` schaltet
-das Herunterskalieren vor dem Encode ab -- das braeuchte ein echtes Array
-mit `.shape` statt der hier verwendeten Platzhalter-Strings; eigens getestet
-in `ResizeForStreamTest` unten.
+`encode_frame` is replaced by a fake, so the tests run without `cv2` and without
+real image data. `max_stream_width=None` turns off downscaling before encoding;
+that would need a real array with `.shape` instead of the placeholder strings
+used here, and is tested separately in `ResizeForStreamTest` below.
 """
 
 import asyncio
@@ -22,7 +21,7 @@ from vision_server.profiles import CameraStreamConfig
 try:
     import cv2
     import numpy as np
-except Exception:  # OpenCV nicht installiert
+except Exception:  # OpenCV not installed
     cv2 = None
     np = None
 
@@ -65,7 +64,7 @@ def fake_encode(image, quality: int) -> str:
 
 
 def _fresh_frame(image: str) -> CameraFrame:
-    """Ein Frame von eben -- aeltere gelten als veraltet und gehen nicht raus."""
+    """A frame from just now; older ones count as stale and are not sent out."""
     return CameraFrame(image=image, timestamp=asyncio.get_running_loop().time())
 
 
@@ -99,7 +98,7 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         await publisher.stop()
 
     async def test_an_encode_failure_does_not_kill_the_loop(self):
-        """Ein einzelner kaputter Frame darf den Stream nicht dauerhaft stoppen."""
+        """A single broken frame must not stop the stream permanently."""
         camera = FakeCamera()
         camera.latest_frame = _fresh_frame("bad")
         node = RecordingNode()
@@ -116,9 +115,9 @@ class PublishLoopTest(unittest.IsolatedAsyncioTestCase):
         config = replace(FAST_CONFIG, stream_fps=50.0)
         publisher = CameraStreamPublisher(camera, node, config, encode_frame=flaky_encode)
 
-        # Grosszuegiges Fenster: der erste `run_in_executor(None, ...)`-Aufruf
-        # zahlt die Thread-Pool-Anlaufzeit, die auf einer ausgelasteten
-        # Maschine schon mal die erste Iteration allein aufbraucht.
+        # Generous window: the first `run_in_executor(None, ...)` call pays the
+        # thread-pool start-up, which on a loaded machine can take the whole first
+        # iteration alone.
         await run_briefly(publisher, 0.5)
 
         self.assertGreaterEqual(calls, 2)
@@ -232,13 +231,12 @@ class ResizeForStreamTest(unittest.TestCase):
 
 
 class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
-    """Der Publisher ueberwacht nicht -- er veroeffentlicht.
+    """The publisher does not monitor; it publishes.
 
-    Frueher leerte er den Knoten, sobald der Frame aelter als `stale_frame_s`
-    war. Das war eine zweite Wahrheit ueber "lebt die Kamera", neben
-    `DeviceHealth` nach OPC 40100-2 und an der Companion Spec vorbei. Diese
-    Tests halten die Umkehrung fest, damit sie nicht versehentlich
-    zurueckrutscht.
+    It used to clear the node as soon as the frame was older than `stale_frame_s`.
+    That was a second source of truth about whether the camera is alive, next to
+    `DeviceHealth` per OPC 40100-2, and at odds with the companion spec. These tests
+    pin the reverse, so that it does not slip back in.
     """
 
     async def test_keeps_publishing_a_stale_frame(self):
@@ -254,7 +252,7 @@ class StaleFrameTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(node.written[0], f"encoded:alt:{FAST_CONFIG.jpeg_quality}")
 
     async def test_never_writes_an_empty_value(self):
-        """Das Leeren des Knotens war das Signal -- es darf nicht wiederkommen."""
+        """Clearing the node was the signal; it must not come back."""
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="alt", timestamp=loop.time() - 10.0)
@@ -310,7 +308,7 @@ class OverlayTimeoutTest(unittest.IsolatedAsyncioTestCase):
             release.set()
 
         self.assertIn(f"encoded:frame-1:{FAST_CONFIG.jpeg_quality}", node.written)
-        # Solange der erste Lauf haengt, startet kein zweiter.
+        # While the first run hangs, no second one starts.
         self.assertEqual(calls, 1)
 
 
@@ -334,16 +332,15 @@ class NormaliseModeTest(unittest.TestCase):
 
 
 class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
-    """Mit einem kleinen ISP-Bild rechnet der Stream im `calibration`-Modus
-    auf dem verkleinerten Vorschaubild -- genau das liess die Deckenkamera
-    ruckeln, als noch jeder Modus auf dem vollen Frame rechnete.
+    """With a small ISP image the stream computes in `calibration` mode on the
+    scaled-down preview image. This is exactly what made the ceiling camera stutter
+    when every mode still computed on the full frame.
 
-    `apriltag` und `off` nutzen dagegen bewusst den vollen Frame
-    (Absprache 2026-09-22): `apriltag`, damit der Stream dasselbe Bild zeigt
-    wie der echte Job -- sonst laesst sich nicht vertrauenswuerdig sehen, ob
-    der Pi ein Tag wirklich erkennt. `off` ist das Debug-Rohbild und soll
-    zeigen, was der Pi tatsaechlich sieht (Fokus/Belichtung/Ausschnitt),
-    nicht die Vorschau -- kostet ohne Erkennung kaum mehr.
+    `apriltag` and `off`, by contrast, deliberately use the full frame. `apriltag`
+    so that the stream shows the same image as the real job; otherwise it cannot be
+    trusted to show whether the Pi really detects a tag. `off` is the debug raw
+    image and shows what the Pi actually sees (focus/exposure/crop), not the
+    preview; without detection it costs hardly more.
     """
 
     async def test_apriltag_mode_overlays_and_encodes_the_full_frame(self):
@@ -384,8 +381,8 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
 
     async def test_raw_mode_sends_the_full_frame_unmarked(self):
-        """'off' ist das Debug-Rohbild: soll zeigen, was der Pi tatsaechlich
-        sieht (Fokus/Belichtung/Ausschnitt pruefen), nicht die Vorschau."""
+        """'off' is the debug raw image: it shows what the Pi actually sees (check
+        focus/exposure/crop), not the preview."""
         camera = FakeCamera()
         loop = asyncio.get_running_loop()
         camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
@@ -417,7 +414,7 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class UndistortedStreamTest(unittest.IsolatedAsyncioTestCase):
-    """Modus "undistorted": voller Frame zum Annotator, der entzerrt."""
+    """Mode "undistorted": full frame to the annotator, which undistorts."""
 
     async def test_the_full_frame_goes_to_the_annotator(self):
         camera = FakeCamera()

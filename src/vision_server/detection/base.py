@@ -1,4 +1,4 @@
-"""Strategy interface for the detection stage (part 4.5 of the plan)."""
+"""Strategy interface for the detection stage: `DetectionSource` and its data types."""
 
 import asyncio
 import functools
@@ -21,7 +21,7 @@ class Detection:
     orientation: tuple[float, float, float, float]
     confidence: float
     attributes: dict[str, Any] = field(default_factory=dict)
-    bounding_box: tuple[float, ...] | None = None  # 2D profile, part 4.5
+    bounding_box: tuple[float, ...] | None = None  # 2D profile
 
 
 @dataclass(frozen=True)
@@ -93,8 +93,8 @@ class DetectionSource(ABC):
     async def run_blocking(self, func, /, *args) -> Any:
         """Run blocking work in a dedicated thread. Every OpenCV call goes through this.
 
-        Running it directly on the loop would freeze the state machine, the events
-        and the 1 Hz loop of the cell server. A private single-worker pool is used
+        Running it directly on the loop would freeze the state machine and the
+        events of the server. A private single-worker pool is used
         instead of `asyncio.to_thread`, because that shares the default executor
         and does not serialize camera access. A hung worker blocks this profile
         for good, so a source also needs its own capture timeouts.

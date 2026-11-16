@@ -1,4 +1,4 @@
-"""Zellen-Ueberwachung: bestaetigte Aenderungen statt Alarm bei jedem Ausreisser."""
+"""Cell watch: confirmed changes instead of an alarm on every outlier."""
 
 import json
 import math
@@ -30,7 +30,7 @@ try:
         yaw_deg,
     )
     from vision_server.errors import VisionErrorCode
-except Exception:  # pragma: no cover - numpy/asyncua fehlen
+except Exception:  # pragma: no cover - numpy/asyncua missing
     np = None
 
 WALL = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
@@ -65,9 +65,9 @@ class TrackerTest(unittest.TestCase):
         frames = []
         for index in range(60):
             if index % 10 == 5:
-                frames.append({7: sighting(1.4, 1.0)})  # einzelner Ausreisser, 40 cm
+                frames.append({7: sighting(1.4, 1.0)})  # single outlier, 40 cm
             elif index % 13 == 0:
-                frames.append({})  # Person vor dem Tag
+                frames.append({})  # person in front of the tag
             else:
                 frames.append({7: sighting(1.0, 1.0, noise=0.008, rng=rng)})
         self.run_frames(tracker, frames)
@@ -76,7 +76,7 @@ class TrackerTest(unittest.TestCase):
     def test_a_moved_module_is_confirmed_after_persist_and_clears_with_hysteresis(self):
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
         t = self.run_frames(tracker, [{7: sighting(1.0, 1.0)}] * 5)
-        # Um 12 cm verschoben: erst nach persistS (5 s) bestaetigt.
+        # Moved by 12 cm: confirmed only after persistS (5 s).
         t = self.run_frames(tracker, [{7: sighting(1.12, 1.0)}] * 4, start=t)
         self.assertEqual(tracker.changes, [])
         t = self.run_frames(tracker, [{7: sighting(1.12, 1.0)}] * 10, start=t)
@@ -85,16 +85,16 @@ class TrackerTest(unittest.TestCase):
         self.assertAlmostEqual(change["distanceM"], 0.12, places=6)
         self.assertEqual(change["referencePosition"], [1.0, 1.0, 0.0])
         self.assertEqual(change["moduleId"], "MOD-t7")
-        # Zurueck auf 3 cm: zwischen halbem und ganzem Schwellwert bleibt der Alarm.
+        # Back to 3 cm: between half and the full threshold, the alarm stays.
         t = self.run_frames(tracker, [{7: sighting(1.03, 1.0)}] * 15, start=t)
         self.assertEqual(len(tracker.changes), 1)
-        # Erst stabil unter 2,5 cm ueber persistS erlischt er.
+        # Only stable below 2.5 cm for longer than persistS clears it.
         self.run_frames(tracker, [{7: sighting(1.005, 1.0)}] * 15, start=t)
         self.assertEqual(tracker.changes, [])
 
     def test_a_range_error_along_a_slanted_ray_is_no_move(self):
-        # Deckenkamera bei (0, 0, 3), Tag bei (1.5, 1.0, 0): 4 % zu weit auf dem
-        # Sehstrahl geschaetzt -- 6 cm tiefer, und waagrecht 7 cm daneben.
+        # Ceiling camera at (0, 0, 3), tag at (1.5, 1.0, 0): estimated 4 % too far
+        # along the line of sight, i.e. 6 cm lower and 7 cm beside horizontally.
         camera = (0.0, 0.0, 3.0)
         true = np.array((1.5, 1.0, 0.0))
         measured = tuple(np.asarray(camera) + 1.04 * (true - np.asarray(camera)))
@@ -102,7 +102,7 @@ class TrackerTest(unittest.TestCase):
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
         self.run_frames(tracker, frames)
         self.assertEqual(tracker.changes, [])
-        # Ohne Kameraposition (alter Stand) waere das ein Alarm gewesen.
+        # Without a camera position (old behaviour) this would have been an alarm.
         blind = [{7: TagSighting(measured, 0.0, False, "MOD-A")}] * 20
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
         self.run_frames(tracker, blind)
@@ -118,7 +118,7 @@ class TrackerTest(unittest.TestCase):
         [change] = tracker.changes
         self.assertEqual(change["kind"], MOVED)
         self.assertAlmostEqual(change["distanceM"], 0.1, places=6)
-        # Ohne Kameraposition zaehlt nur noch waagrecht: 3 cm Hoehe allein sind keine Bewegung.
+        # Without a camera position only the horizontal counts: 3 cm of height alone is no movement.
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.5, 1.0, 0.0)), 0.0)
         self.run_frames(tracker, [{7: TagSighting((1.5, 1.0, 0.03), 0.0, False, "MOD-A")}] * 20)
         self.assertEqual(tracker.changes, [])
@@ -143,7 +143,7 @@ class TrackerTest(unittest.TestCase):
         self.run_frames(tracker, [{7: sighting(1.0, 1.0, yaw=-170.0)}] * 20)
         [change] = tracker.changes
         self.assertEqual(change["kind"], MOVED)
-        self.assertAlmostEqual(change["rotationDeg"], 15.0, places=6)  # ueber +-180 gerechnet
+        self.assertAlmostEqual(change["rotationDeg"], 15.0, places=6)  # computed across +-180
 
     def test_a_short_occlusion_is_no_disappearance_but_a_long_one_is(self):
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0), t8=(0.5, 0.5, 0.0)), 0.0)
@@ -157,13 +157,13 @@ class TrackerTest(unittest.TestCase):
         [change] = tracker.changes
         self.assertEqual((change["tagId"], change["kind"]), (7, DISAPPEARED))
         self.assertIsNone(change["currentPosition"])
-        # Wieder da: erlischt, sobald er ueber persistS in der Mehrzahl ist.
+        # Back again: cleared once it is in the majority for longer than persistS.
         self.run_frames(tracker, [both] * 8, start=t)
         self.assertEqual(tracker.changes, [])
 
     def test_a_flat_module_turned_by_15_degrees_is_reported_even_if_ambiguous(self):
-        """Draufsicht der Decke: flache Tags sind fast immer mehrdeutig. Der
-        Gierwinkel ist dabei stabil und muss zaehlen."""
+        """Top view of the ceiling: flat tags are almost always ambiguous. The yaw
+        angle is stable in that case and must count."""
         rng = random.Random(3)
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
         frames = [
@@ -174,9 +174,9 @@ class TrackerTest(unittest.TestCase):
         [change] = tracker.changes
         self.assertEqual(change["kind"], MOVED)
         self.assertAlmostEqual(change["rotationDeg"], 15.0, delta=3.0)
-        self.assertLess(change["distanceM"], 0.01)  # nur gedreht, nicht verschoben
+        self.assertLess(change["distanceM"], 0.01)  # only rotated, not moved
 
-        # An einer senkrechten Flaeche bleibt mehrdeutig ohne Drehung.
+        # On a vertical surface it stays ambiguous without rotation.
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
         self.run_frames(
             tracker, [{7: TagSighting((1.0, 1.0, 0.0), 15.0, ambiguous=True, flat=False)}] * 10
@@ -188,7 +188,7 @@ class TrackerTest(unittest.TestCase):
 
         self.assertTrue(is_flat(geometry.identity()))
         self.assertTrue(is_flat(geometry.from_rvec_tvec((math.radians(25), 0, 0), (0, 0, 0))))
-        self.assertTrue(is_flat(geometry.from_rvec_tvec((math.pi, 0, 0), (0, 0, 0))))  # kopfueber
+        self.assertTrue(is_flat(geometry.from_rvec_tvec((math.pi, 0, 0), (0, 0, 0))))  # upside down
         self.assertFalse(is_flat(geometry.from_rvec_tvec((math.radians(90), 0, 0), (0, 0, 0))))
         location = types.SimpleNamespace(
             tag_id=7, pose=geometry.identity(), ambiguous=True, module_id="MOD-A"
@@ -204,7 +204,7 @@ class TrackerTest(unittest.TestCase):
         t = self.run_frames(tracker, [both] * 30)
         self.assertEqual(tracker.pending(t), [])
 
-        # Tag 7 um 6 cm verschoben: sofort als Kandidat, gemeldet nach persistS.
+        # Tag 7 moved by 6 cm: candidate at once, reported after persistS.
         t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 8: sighting(0.5, 0.5)}] * 3, start=t)
         [moved] = tracker.pending(t - 1)
         self.assertEqual((moved["tagId"], moved["kind"], moved["moduleId"]), (7, MOVED, "MOD-t7"))
@@ -214,15 +214,15 @@ class TrackerTest(unittest.TestCase):
         self.assertEqual(tracker.changes, [])
         t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 8: sighting(0.5, 0.5)}] * 5, start=t)
         self.assertEqual([c["kind"] for c in tracker.changes], [MOVED])
-        self.assertEqual(tracker.pending(t - 1), [])  # bestaetigt: nicht mehr pending
+        self.assertEqual(tracker.pending(t - 1), [])  # confirmed: no longer pending
 
-        # Tag 8 verdeckt: nach persistS ohne Sichtung pending, mit Restzeit.
+        # Tag 8 occluded: after persistS, pending without a sighting, with remaining time.
         t = self.run_frames(tracker, [{7: sighting(1.06, 1.0)}] * 6, start=t)
         [gone] = [p for p in tracker.pending(t - 1) if p["tagId"] == 8]
         self.assertEqual(gone["kind"], DISAPPEARED)
         self.assertGreater(gone["confirmInS"], 0.0)
 
-        # Ein neuer Tag: pending, bis er bestaetigt ist.
+        # A new tag: pending until confirmed.
         t = self.run_frames(tracker, [{7: sighting(1.06, 1.0), 9: sighting(0.2, 0.2, module_id="MOD-N")}] * 2, start=t)
         [new] = [p for p in tracker.pending(t - 1) if p["tagId"] == 9]
         self.assertEqual((new["kind"], new["moduleId"]), (APPEARED, "MOD-N"))
@@ -230,20 +230,20 @@ class TrackerTest(unittest.TestCase):
     def test_required_misses_follow_the_detection_rate(self):
         from vision_server.cellwatch import MAX_REQUIRED_MISSES, required_misses
 
-        self.assertEqual(required_misses(0.95), 4)  # zuverlaessig: kaum laenger als bisher
-        self.assertEqual(required_misses(0.4), 23)  # Tag 2 am Decken-Pi: 0,6^23 < 0,001 %
+        self.assertEqual(required_misses(0.95), 4)  # reliable: barely longer than before
+        self.assertEqual(required_misses(0.4), 23)  # tag 2 at the ceiling Pi: 0.6^23 < 0.001 %
         self.assertEqual(required_misses(0.01), MAX_REQUIRED_MISSES)
 
     def test_a_tag_at_the_detection_limit_raises_no_false_alarm(self):
-        """Wie Tag 2 im Betrieb: nur in jedem fuenften Bild erkannt, dazwischen
-        Luecken bis 30 s. Der Scan (mehrere Bilder) findet ihn trotzdem."""
+        """Like tag 2 in operation: detected only in every fifth image, with gaps of up
+        to 30 s in between. The scan (several images) still finds it."""
         options = CellWatchOptions(interval_s=2.0)
         tracker = CellWatchTracker(
             options, reference(t2=(0.4, 0.4, 0.0), t7=(1.0, 1.0, 0.0)), 0.0
         )
         rng = random.Random(4)
         t = 0.0
-        for index in range(150):  # 5 Minuten
+        for index in range(150):  # 5 minutes
             sightings = {7: sighting(1.0, 1.0)}
             if rng.random() < 0.2:
                 sightings[2] = sighting(0.4, 0.4)
@@ -257,7 +257,7 @@ class TrackerTest(unittest.TestCase):
         self.assertFalse(solid["unreliable"])
         self.assertEqual(solid["seenRatio"], 1.0)
 
-        # Wirklich weg: wird gemeldet, nur eben spaeter als ein sicherer Tag.
+        # Really gone: reported, only later than a reliable tag.
         for _ in range(65):
             tracker.update(t, WALL, {7: sighting(1.0, 1.0)})
             t += 2.0
@@ -268,28 +268,28 @@ class TrackerTest(unittest.TestCase):
         from vision_server.cellwatch import conservative_rate
 
         self.assertEqual(conservative_rate(0, 0), 0.0)
-        self.assertLess(conservative_rate(12, 20), 0.6)  # 60 % aus 20 Bildern: vorsichtig
+        self.assertLess(conservative_rate(12, 20), 0.6)  # 60 % from 20 images: careful
         self.assertGreater(conservative_rate(12, 20), 0.35)
         self.assertGreater(conservative_rate(95, 100), 0.88)
 
     def test_an_hour_at_forty_percent_raises_no_alarm(self):
-        """Gemessen am Decken-Pi (15.10.2026): Tag 2 in ~40 % der Pruefungen."""
+        """Measured at the ceiling Pi: tag 2 in about 40 % of the checks."""
         tracker = CellWatchTracker(CellWatchOptions(interval_s=2.0), reference(t2=(0.4, 0.4, 0.0)), 0.0)
         rng = random.Random(15)
         t = 0.0
-        for _ in range(1800):  # eine Stunde bei 2 s
+        for _ in range(1800):  # one hour at 2 s
             tracker.update(t, WALL, {2: sighting(0.4, 0.4)} if rng.random() < 0.4 else {})
             t += 2.0
             self.assertEqual(tracker.changes, [], f"Fehlalarm nach {t:.0f} s")
 
     def test_missing_needs_enough_valid_frames(self):
-        """Pausen (keine gueltigen Bilder) zaehlen nicht als "fehlt"."""
+        """Pauses (no valid images) do not count as missing."""
         from vision_server.cellwatch import conservative_rate, required_misses
 
         tracker = CellWatchTracker(OPTIONS, reference(t7=(1.0, 1.0, 0.0)), 0.0)
         t = self.run_frames(tracker, [{7: sighting(1.0, 1.0)}] * 30)  # sicher erkannt
         needed = required_misses(conservative_rate(30, 30))
-        t += 60.0  # Pause: die Zeit laeuft, aber kein Bild zaehlt als "fehlt"
+        t += 60.0  # pause: time runs, but no image counts as missing
         for _ in range(needed - 1):
             tracker.update(t, WALL, {})
             t += 1.0
@@ -303,7 +303,7 @@ class TrackerTest(unittest.TestCase):
         new = {9: sighting(0.2, 0.3, module_id="MOD-N")}
         flicker = [{**base, **(new if i % 3 == 0 else {})} for i in range(20)]
         t = self.run_frames(tracker, flicker)
-        self.assertEqual(tracker.changes, [])  # nur in jedem dritten Bild
+        self.assertEqual(tracker.changes, [])  # only in every third image
         t = self.run_frames(tracker, [{**base, **new}] * 8, start=t)
         [change] = tracker.changes
         self.assertEqual((change["tagId"], change["kind"], change["moduleId"]), (9, APPEARED, "MOD-N"))
@@ -316,7 +316,7 @@ class TrackerTest(unittest.TestCase):
         self.assertIsNone(tracker.stable_observation(0.0))
         self.run_frames(tracker, [{7: sighting(1.0, 1.0, yaw=30.0), 9: sighting(0.2, 0.2)}] * 3 + [{7: sighting(1.0, 1.0, yaw=30.0)}] * 4)
         observed = tracker.stable_observation(6.0)
-        self.assertEqual(sorted(observed), [7])  # 9 nur in 3 von 6 Bildern des Fensters
+        self.assertEqual(sorted(observed), [7])  # 9 only in 3 of the 6 images of the window
         self.assertAlmostEqual(observed[7].yaw_deg, 30.0)
 
 
@@ -341,10 +341,10 @@ class JsonTest(unittest.TestCase):
             "detections": [
                 {"moduleId": "ROBOT", "position": list(position), "orientation": list(orientation),
                  "attributes": {"tagId": 20, "tagIds": [20, 21], "role": "robot"}},
-                # Flach liegend und mehrdeutig: Gierwinkel zaehlt trotzdem.
+                # Flat, lying and ambiguous: the yaw angle counts anyway.
                 {"moduleId": "TAG-9", "position": [0, 0, 0], "orientation": [0, 0, 0, 1],
                  "attributes": {"tagId": 9, "ambiguous": True}},
-                # An einer senkrechten Flaeche (90 Grad um x) und mehrdeutig: nicht.
+                # On a vertical surface (90 degrees about x) and ambiguous: not.
                 {"moduleId": "TAG-11", "position": [0, 0, 0],
                  "orientation": [math.sin(math.pi / 4), 0, 0, math.cos(math.pi / 4)],
                  "attributes": {"tagId": 11, "ambiguous": True}},
@@ -382,7 +382,7 @@ class JsonTest(unittest.TestCase):
             tag_id=7, pose=geometry.identity(), ambiguous=False, module_id="MOD-A"
         )
         self.assertEqual(CellWatchOptions().max_camera_error_px, 6.0)
-        # 3,3 px wie auf Pi 1: ~1 cm Kartenfehler, kein Grund zur Pause.
+        # 3.3 px as on Pi 1: about 1 cm map error, no reason to pause.
         real = types.SimpleNamespace(solver="joint", reprojection_error_px=3.3, tag_errors_px={})
         self.assertIsNotNone(sightings_from_locations([location], real, CellWatchOptions())[0])
         bad = types.SimpleNamespace(
@@ -460,7 +460,7 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.status["changes"][0]["kind"], "moved")
         self.assertIn("MOD-A verschoben", self.status["message"])
 
-        # "Ignorieren": die aktuelle Beobachtung wird die Referenz.
+        # "Ignore": the current observation becomes the reference.
         self.assertEqual(await watch.start('{"referenceJobId": null}', run_loop=False), VisionErrorCode.OK)
         self.assertEqual(self.status["state"], "watching")
         self.assertNotEqual(self.status["referenceId"], first_reference)
@@ -469,8 +469,8 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.status["changes"], [])
 
     async def test_rearming_keeps_the_history(self):
-        """Zeit oder Schwelle aendern = neu scharf schalten mit demselben Job:
-        Verlauf, Kandidaten und Meldungen bleiben, die Referenz-ID auch."""
+        """Changing time or threshold = re-arm with the same job: history, candidates
+        and messages stay, and so does the reference ID."""
         self.results["job-000001"] = json.dumps(
             {"frameId": "world", "resultState": 0, "detections": [
                 {"moduleId": "MOD-A", "position": [1.0, 1.0, 0.0], "orientation": [0, 0, 0, 1],
@@ -488,9 +488,9 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.status["referenceId"], reference_id)
         self.assertEqual(self.status["options"]["persistS"], 4.0)
         self.assertEqual(len(watch._tracker._frames), frames_before)
-        self.assertEqual(self.status["changes"][0]["kind"], "moved")  # Meldung bleibt
+        self.assertEqual(self.status["changes"][0]["kind"], "moved")  # message stays
 
-        # Neue Referenz: Verlauf bleibt (Erkennungsrate), Meldungen nicht.
+        # New reference: history stays (detection rate), messages do not.
         self.results["job-000002"] = self.results["job-000001"].replace("1.0, 1.0", "1.2, 1.0")
         await watch.start('{"referenceJobId": "job-000002"}', run_loop=False)
         self.assertNotEqual(self.status["referenceId"], reference_id)
@@ -509,11 +509,11 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_visible_tags_are_reported_also_while_paused(self):
         watch = self.watch()
         await watch.start("{}", run_loop=False)
-        self.assertIsNone(self.status["visibleTagIds"])  # noch kein Bild geprueft
+        self.assertIsNone(self.status["visibleTagIds"])  # no image checked yet
         self.frame = (None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau", [3, 583])
         await self.ticks(watch, 1)
         self.assertEqual((self.status["state"], self.status["visibleTagIds"]), ("paused", [3, 583]))
-        # Gleicher Grund, aber jetzt ist Tag 3 verdeckt: der Status wird trotzdem neu geschrieben.
+        # Same reason, but tag 3 is now occluded: the status is rewritten anyway.
         count = len(self.statuses)
         self.frame = (None, "weniger als zwei Welttags im Bild -- Kamerapose zu ungenau", [583])
         await self.ticks(watch, 1)
@@ -528,10 +528,10 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
     async def test_status_carries_visibility_and_a_hint_for_weak_tags(self):
         watch = self.watch()
         await watch.start("{}", run_loop=False)
-        await self.ticks(watch, 6)  # Referenz aus der Beobachtung: Tag 7
+        await self.ticks(watch, 6)  # reference from the observation: tag 7
         self.assertEqual(self.status["tagVisibility"][0]["tagId"], 7)
         self.assertEqual(self.status["tagVisibility"][0]["seenRatio"], 1.0)
-        # Tag 7 wird nur noch selten erkannt.
+        # Tag 7 is now only rarely detected.
         for index in range(12):
             self.frame = ({7: sighting(1.0, 1.0)} if index % 4 == 0 else {}, "")
             await self.ticks(watch, 1)
@@ -566,15 +566,15 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await watch.pause("Roboter faehrt", 0), VisionErrorCode.OK)
         self.assertEqual((self.status["state"], self.status["message"]), ("paused", "Roboter faehrt"))
         self.assertEqual(self.status["manualPause"]["reason"], "Roboter faehrt")
-        # Der Tag wandert weit weg, aber waehrend der Pause zaehlt das nicht.
+        # The tag moves far away, but during the pause that does not count.
         self.frame = ({7: sighting(2.0, 1.0)}, "")
         await self.ticks(watch, 20)
         self.assertEqual((self.status["state"], self.status["changes"], self.status["pending"]), ("paused", [], []))
         self.assertEqual(await watch.resume(), VisionErrorCode.OK)
         self.assertEqual((self.status["state"], self.status["message"]), ("watching", ""))
         self.assertIsNone(self.status["manualPause"])
-        # Nach dem Resume zaehlt der Tag an der neuen Stelle wie ein frisch gesehener:
-        # erst nach `persist_s` bestaetigt, nicht sofort.
+        # After the resume the tag at the new place counts like a freshly seen one:
+        # confirmed only after `persist_s`, not at once.
         await self.ticks(watch, 1)
         self.assertEqual(self.status["changes"], [])
         await self.ticks(watch, 8)
@@ -594,7 +594,7 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         await watch.pause("Roboter faehrt")
         self.assertEqual(self.status["state"], "paused")
         await watch.resume()
-        self.assertEqual(self.status["state"], "changed")  # bestaetigte Meldung bleibt
+        self.assertEqual(self.status["state"], "changed")  # confirmed message stays
         self.assertIn("MOD-A verschoben", self.status["message"])
 
     async def test_pause_ends_by_itself(self):
@@ -626,13 +626,13 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
         await watch.start("{}", run_loop=False)
         self.assertEqual(await watch.resume(), VisionErrorCode.OK)  # nichts zu beenden
         await watch.pause("eins")
-        await watch.pause("zwei")  # Grund und Frist werden ersetzt
+        await watch.pause("zwei")  # reason and deadline are replaced
         self.assertEqual(self.status["message"], "zwei")
-        # Neu scharf schalten hebt die Pause nicht auf.
+        # Re-arming does not lift the pause.
         await watch.start("{}", run_loop=False)
         self.assertEqual((self.status["state"], self.status["message"]), ("paused", "zwei"))
         await watch.stop()
-        await watch.start("{}", run_loop=False)  # Stopp verwirft die Pause
+        await watch.start("{}", run_loop=False)  # stop discards the pause
         self.assertEqual(self.status["state"], "watching")
         self.assertIsNone(self.status["manualPause"])
 
@@ -649,7 +649,7 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
             await watch.start('{"referenceJobId": "job-000002"}', run_loop=False),
             VisionErrorCode.INVALID_STATE,
         )
-        await watch.start("{}")  # mit echtem Takt
+        await watch.start("{}")  # with real tick
         self.assertEqual(await watch.stop(), VisionErrorCode.OK)
         self.assertEqual(self.status["state"], "off")
         self.assertEqual(self.status["changes"], [])
@@ -657,8 +657,8 @@ class CellWatchTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class ObserveCellTest(unittest.TestCase):
-    """`observe_cell` an der synthetischen Zelle aus `test_joint_camera_pose`:
-    Module je Tag im Welt-KS, Welttags nicht, und kein Seiteneffekt."""
+    """`observe_cell` on the synthetic cell from `test_joint_camera_pose`: modules
+    per tag in the world frame, not world tags, and no side effect."""
 
     def test_modules_per_tag_without_side_effects(self):
         from pathlib import Path
@@ -676,7 +676,7 @@ class ObserveCellTest(unittest.TestCase):
             entries={**scene._tag_map().entries, 7: TagEntry(7, "module", scene.TAG_SIZE_M, module_id="MOD-A")},
         )
         observations = scene._observations(scene._true_world_cam(), calibration, np.random.default_rng(2))
-        # Tag 7 wie ein Welttag projizieren -- dafuer kurz als Welttag eintragen.
+        # Project tag 7 like a world tag: enter it briefly as a world tag for that.
         helper = TagMap(frame_id="world", entries={7: TagEntry(7, "world", scene.TAG_SIZE_M, pose_in_world=module_pose)})
         original = scene._tag_map
         scene._tag_map = lambda: helper
@@ -700,9 +700,9 @@ class ObserveCellTest(unittest.TestCase):
 
         self.assertEqual(localization.solver, "joint")
         self.assertEqual([location.tag_id for location in locations], [7])
-        # Erkannt sind alle, Welttags eingeschlossen.
+        # All are seen, world tags included.
         self.assertEqual(visible, [7, 583, 584, 585, 586])
-        # Ein Modul-Tag ist ein Einzel-Tag-PnP: rund 1 cm Rauschen aus 2,5 m.
+        # A module tag is a single-tag PnP: about 1 cm of noise from 2.5 m.
         np.testing.assert_allclose(locations[0].pose[:3, 3], [0.8, 0.8, 0.0], atol=0.03)
         self.assertEqual(source._anchor, "unberuehrt")
         self.assertEqual(source.world_tags, ())

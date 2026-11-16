@@ -8,10 +8,7 @@ is therefore the only place that decides, based on `CameraCalibration.model`, wh
 gets called. Pose, overlay and calibration request functions here instead of
 branching themselves.
 
-The config sets which camera uses which model
-(`AprilTagProfileConfig.calibration_model`, see work plan
-`kalibrierung-linsenmodell-je-kamera.md`): ceiling camera fisheye, hand camera
-pinhole.
+The model per camera is set in `AprilTagProfileConfig.calibration_model`.
 """
 
 import logging
@@ -191,8 +188,8 @@ def calibrate(
 
     # cv2.fisheye is stricter about shapes than calibrateCamera: float64,
     # (1, N, 3) or (1, N, 2) per capture. (N, 1, 3) fails under
-    # OpenCV 5 with "Sizes of input arguments do not match" (measured
-    # 2026-09-29); (1, N, *) is also the shape from the OpenCV 4 examples.
+    # OpenCV 5 with "Sizes of input arguments do not match"; (1, N, *) is also the
+    # shape from the OpenCV 4 examples.
     objects = [np.asarray(points, dtype=np.float64).reshape(1, -1, 3) for points in object_points]
     images = [np.asarray(points, dtype=np.float64).reshape(1, -1, 2) for points in image_points]
     criteria = (

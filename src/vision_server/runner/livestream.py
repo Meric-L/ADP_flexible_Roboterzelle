@@ -18,22 +18,17 @@ _log = logging.getLogger(__package__)
 def _build_annotator(source: DetectionSource):
     """Build the stream overlay for a source, if it can provide one.
 
-    Stream and job use the same loaded calibration and tag map -- if the image shows
-    something different from the job result, it is not due to two configurations. The
-    detector is deliberately NOT the same: until 2026-09-24 the job and the stream ran on
-    a shared instance, both with `subpixel_corner_refinement` from the config (currently
-    `True` -- layer 1 needs it, see `AprilTagProfileConfig`). Measured live on pi1
-    (py-spy dump): the job thread (`vision-apriltag_0`) and the overlay thread ran
-    `detector.detect()` AT THE SAME TIME with `CORNER_REFINE_APRILTAG` active -- together
-    enough CPU contention to make the 20 s job timeout trip again. The stream does not
-    need the refinement (demo image, lower resolution than the job), so it gets its OWN
-    detector instance with the refinement permanently off, independent of the config value
-    for the job path.
+    Stream and job use the same loaded calibration and tag map, so they agree on
+    the configuration. The detector is deliberately NOT shared: job and stream
+    running `detect()` at the same time with `CORNER_REFINE_APRILTAG` active caused
+    enough CPU contention on the Pi to trip the 20 s job timeout. The stream needs
+    no corner refinement (lower resolution than the job), so it gets its own
+    detector with refinement permanently off, whatever the job path uses.
 
-    Since 21.10.2026 the overlay draws the tags from detection at full resolution
-    (`source.latest_tags`) and only rarely detects itself, in the background and not during
-    a job (`set_busy`). The own detector remains for this -- a detector is not built for
-    two threads.
+    The overlay draws the tags from the job's full-resolution detection
+    (`source.latest_tags`) and only rarely detects itself, in the background and
+    not during a job (`set_busy`). The own detector serves this, because a detector
+    must not be used from two threads.
     """
     job_detector = getattr(source, "_detector", None)
     calibration = getattr(source, "_calibration", None)

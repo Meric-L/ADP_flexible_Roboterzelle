@@ -44,6 +44,7 @@ from ._common import (
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for this tool."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_source_arguments(parser)
     add_detection_arguments(parser)
@@ -72,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Detect and localize tags in each frame of the source, printing, drawing and saving results.
+
+    Returns:
+        Exit code ``0`` on success, ``1`` if no frame could be read.
+    """
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
     if args.limit is not None and args.limit < 1:

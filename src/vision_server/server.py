@@ -1,23 +1,13 @@
-"""The server as it runs on the cell's Raspberry Pi.
+"""Installation point of the vision server on the cell's Raspberry Pi.
 
-One server, one tree: ``VisionMachine`` (OPC 40100) under ``Objects/Machines``, and next
-to it ``VisionProgram`` (OPC UA Part 10) as the operator interface for the frontend. Both
-operate the same job.
-
-This module is the **installation point**, not the vision system itself. It holds only
-what depends on this Pi: its identity, its camera backend, its AprilTag and asset values,
-plus the mDNS announcement and LDS registration. The address space is built entirely in
-``runner.install_vision_machine``.
+Holds only the values that depend on this Pi: identity, camera backend, AprilTag and
+asset presets, mDNS announcement and LDS registration. The address space is built in
+``runner.install_vision_machine``: ``VisionMachine`` (OPC 40100) under
+``Objects/Machines`` and ``VisionProgram`` (OPC UA Part 10) next to it.
 
 To start::
 
     python3 -m vision_server.server
-
-The early CPU-temperature demo -- ``RaspiDevice``, the empty second instance
-``2:VisionSystem``, ``CpuTemperatureResult`` and the namespace
-``http://launch-rm.de/raspi`` -- has been removed (tech debt A1-A6). As a result, all
-namespace indices shift down by one. Anyone resolving them via
-``get_namespace_index(uri)`` will not notice.
 """
 
 import asyncio
@@ -102,32 +92,32 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "allow_resolution_mismatch": True,
         # Fallback size for tags that are not in the tag map -- that is, for all module and
         # robot tags. Our module tags are 8 cm (edge of the black square). A wrong size
-        # scales the distance to the camera and pushes the tag sideways (13.10.2026).
+        # scales the distance to the camera and pushes the tag sideways.
         "tag_size_m": 0.080,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
         # The same printed board as on the hand Pi (see cam_flange below) -- only the
-        # resolution and camera distance differ, not the sheet. The new board has been in
-        # use since 28.10.2026: 7x10 inner corners (8x11 squares), 23 mm per square.
+        # resolution and camera distance differ, not the sheet: 7x10 inner corners
+        # (8x11 squares), 23 mm per square.
         # If it is not found during the calibration run, test several cols/rows combinations
         # against a real frame with the diagnostic script (``tools/diagnose_board.py``).
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
         "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
-        # Kannala-Brandt instead of Brown-Conrady: in the image tests of 29.09.2026, the best
-        # model for the HQ camera at 4056x3040 (work plan kalibrierung-linsenmodell-je-kamera.md).
+        # Kannala-Brandt instead of Brown-Conrady: the best model for the HQ camera at
+        # 4056x3040 in the image tests (work plan kalibrierung-linsenmodell-je-kamera.md).
         "calibration_model": "fisheye",
         # Detector parameters (OpenCV DetectorParameters, attribute name -> value).
-        # Status 19.10.2026, camera refocused: the OpenCV default finds all tags. A finer
+        # After refocusing the camera, the OpenCV default finds all tags. A finer
         # sampling grid (8 instead of 4 pixels per cell) gives +3 to +5 hits of reserve under
         # artificial degradation, without false alarms. errorCorrectionRate deliberately NOT
         # raised -- more range, but wrong IDs. Measurement: doc/projektdoku/kamera-und-detektor-analyse.md.
         # To try alternatives, set VISION_APRILTAG_DETECTOR_PARAMS.
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
-        # Subpixel corners on (method subpix, since 10.11.2026). Without them, ArUco returns
-        # integer corners; a module tag at 1.6 m is only about 85 px in size, and the rounding
-        # jitters as 0.6-1.1 px corner noise and 5-10 mm in depth (brightness test 09.11.).
+        # Subpixel corners on (method subpix). Without them, ArUco returns integer corners;
+        # a module tag at 1.6 m is only about 85 px in size, and the rounding jitters as
+        # 0.6-1.1 px corner noise and 5-10 mm in depth.
         # subpix refines only a window around each corner found: same hits, about 3% more
         # computing time. NOT "apriltag" -- that searches the whole 12 MP image again, costs
         # about 46% CPU and loses tags (kamera-und-detektor-analyse.md).
@@ -137,20 +127,19 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_flange": {
         # Subpixel corners on (method subpix): the hand camera measures tags for approach
         # moves, and every corner rounding acts as a fixed offset. The CPU load (see
-        # AprilTagProfileConfig) was no issue at 640x480; observe it on the Pi at 1920x1080
-        # (since 10.11.2026).
+        # AprilTagProfileConfig) was no issue at 640x480; observe it on the Pi at 1920x1080.
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
         # Must match CameraStreamConfig.realsense_resolution: the real frames arrive via
         # SharedCamera at that resolution, not at the one entered here. A wrong deviation
         # only shows up at the first job, as a ValueError ("Kalibrierung gilt fuer ...").
-        # Full resolution 1920x1080 since 10.11.2026 (previously 640x480).
+        # Full resolution of the RealSense colour stream.
         "resolution": (1920, 1080),
         # The same 8 cm module tags as on the ceiling (see cam_ceiling).
         "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Hand-eye / calibration board since 28.10.2026: 8x11 squares = 7x10 inner corners,
+        # Hand-eye / calibration board: 8x11 squares = 7x10 inner corners,
         # 23 mm per square. 7 + 10 = 17 is odd, so it is unambiguous for the automatic
         # hand-eye calibration (the 180-degree rotation of the board is recognizable). Too
         # small a corner count finds a partial grid with wrongly assigned corners ("board pose
@@ -161,8 +150,8 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_board_cols": 7,
         "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
-        # Brown-Conrady with 5 coefficients: in the image tests of 29.09.2026 the best model
-        # at 640x480. Corresponds to the previous behavior, stated here explicitly only.
+        # Brown-Conrady with 5 coefficients: the best model in the image tests at 640x480.
+        # Stated explicitly here.
         "calibration_model": "pinhole",
     },
 }
@@ -182,17 +171,15 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         "capture_fps": 10.0,
         "buffer_count": 2,
         # "off" still encodes the full 12 MP frame in the stream instead of the small lores
-        # stream (agreed 2026-09-22, camera_stream.py._encoded). The global default of 2.0 s
-        # (profiles.py) was not enough: encoding a 4056x3040 image alone reliably exceeded it,
-        # and the overlay fell back to the unmarked raw image on every tick (bug: overlay text
-        # was missing entirely on Pi 1). Since 21.10.2026, "apriltag" only draws a finished
-        # result at full resolution onto the reduced image; its own detection runs in the
-        # background (see stream_overlay.py). The reserve is no longer strictly needed, but
-        # the generous value stays as a safety margin. cam_flange does not need this: its
+        # stream (camera_stream.py._encoded). The global default of 2.0 s (profiles.py) is
+        # too short for a 4056x3040 encode, so the overlay fell back to the unmarked raw
+        # image. "apriltag" only draws a finished result at full resolution onto the
+        # reduced image; its own detection runs in the background (see stream_overlay.py).
+        # The generous value stays as a safety margin. cam_flange does not need this: its
         # detection resolution has never changed (640x480 was always the full frame).
         "overlay_timeout_s": 8.0,
-        # libcamera controls (ISP/exposure). Best of 14 measured settings (exposure test
-        # 19.10.2026, see doc/projektdoku/kamera-und-detektor-analyse.md): slightly darker, so
+        # libcamera controls (ISP/exposure). Best of 14 measured settings (see
+        # doc/projektdoku/kamera-und-detektor-analyse.md): slightly darker, so
         # that the white of the tags does not burn out (auto: 15-48%), and somewhat more ISP
         # sharpness and contrast. By contrast, contrast >= 1.25 and matrix metering burn the
         # tags out completely. The calibration must be recorded with these values. To try
@@ -307,14 +294,10 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         hand_eye_path=hand_eye_path,
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
-        # Debug artifact, off by default (introduced 2026-09-23, first enabled for both Pis
-        # unconditionally, switched to an environment variable on 2026-09-28): every
-        # accepted interactive capture is also saved as a PNG per session here, for checking
-        # or recomputing outside the server. It was still a noticeable extra SD card load
-        # even on the ceiling camera (12 MP) live, even after moving to a separate background
-        # pool (see ``calibration_session.py._schedule_capture_save``). That is why it is no
-        # longer the default and is only enabled when needed. ``data/`` is gitignored, so no
-        # cleanup mechanism is needed; it is emptied by hand.
+        # Debug artifact, off by default: every accepted interactive capture is also saved
+        # as a PNG per session here. It is a noticeable extra SD card load even in the
+        # background pool (see ``calibration_session.py._schedule_capture_save``), so it is
+        # enabled only when needed. ``data/`` is gitignored and emptied by hand.
         calibration_capture_dir=(
             REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures"
             if os.getenv("VISION_SAVE_CALIBRATION_CAPTURES") == "1"
@@ -323,8 +306,8 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         # From the preset (both Pis: on, subpix), see subpixel_corner_settings().
         # VISION_SUBPIXEL_CORNER_REFINEMENT overrides per Pi.
         **subpixel,
-        # Diagnostic/tuning switch (2026-09-24): try it on the Pi with real tag distances and
-        # py-spy before a production default changes -- see
+        # Diagnostic/tuning switch: try it on the Pi with real tag distances and py-spy
+        # before a production default changes -- see
         # ``AprilTagProfileConfig.apriltag_quad_decimate``.
         apriltag_quad_decimate=float(os.getenv("VISION_APRILTAG_QUAD_DECIMATE", "0.0")),
         **preset,
@@ -435,8 +418,8 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
     # the captured image has a different aspect ratio than the calibration (placeholder or
     # real), and the stream overlay fails with "Seitenverhaeltnis aendert sich"
     # (``tagloc.calibration.scale_to_resolution``). RealSense is not affected: it has its own
-    # field ``realsense_resolution``, already matched to cam_flange's resolution (640x480).
-    # Diagnostic switch (2026-09-24): ``VISION_DISABLE_STREAM=1`` for an A/B test of a
+    # field ``realsense_resolution``, already matched to cam_flange's resolution.
+    # Diagnostic switch: ``VISION_DISABLE_STREAM=1`` for an A/B test of a
     # suspected job timeout, to see whether the stream publisher/overlay is involved at all.
     # ``stream_enabled=False`` only suppresses the stream nodes, the publisher and the MJPEG
     # server (see ``CameraStreamConfig.stream_enabled``). ``resolution`` stays set, because
@@ -493,10 +476,7 @@ async def main():
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
     # The whole address space is built in ``install_vision_machine``: nodesets,
-    # ``VisionMachine`` under ``Objects/Machines`` and ``VisionProgram`` next to it. This
-    # server no longer creates any nodes itself -- the CPU-temperature demo (``RaspiDevice``,
-    # ``2:VisionSystem``, ``CpuTemperatureResult``) has been removed, along with its namespace
-    # ``http://launch-rm.de/raspi``.
+    # ``VisionMachine`` under ``Objects/Machines`` and ``VisionProgram`` next to it.
     machine = await install_vision_machine(server, vision_config(endpoint))
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
@@ -526,9 +506,6 @@ async def main():
                 # appear there.
                 lds.register(server),
             ):
-                # This used to run a 1 Hz loop that kept the demo values current. It ran in the
-                # same event loop as the vision system; the loop-lag watchdog in ``runner.py``
-                # now reports blockages more reliably than a counter ever could.
                 await stop.wait()
     finally:
         await machine.aclose()

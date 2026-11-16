@@ -3,9 +3,7 @@
 `install_vision_machine` creates the OPC UA methods before all parts exist: the
 calibration session, the annotator, the layer-2 run and the hand-eye session
 are only created later in the sequence. The handlers read them only when a
-method is called, long after that. Earlier this was solved by late name lookup
-of closures over local variables; since the split into modules, this object
-holds the fields and each step sets its own.
+method is called, so this object holds these fields and each step sets its own.
 """
 
 from collections.abc import Mapping

@@ -1,4 +1,4 @@
-"""Hand-Auge-Kalibrierung ueber OPC UA, gegen Fakes: aufnehmen, rechnen, speichern."""
+"""Hand-eye calibration over OPC UA, against fakes: capture, compute, save."""
 
 import json
 import math
@@ -19,7 +19,7 @@ try:
         HandEyeSession,
         rotation_diversity,
     )
-except Exception:  # pragma: no cover - numpy fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy missing in this environment
     np = None
 
 
@@ -33,19 +33,19 @@ def pose(position, rot=None):
     return geometry.from_rotation_translation(np.eye(3) if rot is None else rot, position)
 
 
-#: Die Wahrheit, die die Kalibrierung finden soll.
+#: The truth the calibration should find.
 FLANGE_CAM = pose((0.03, -0.05, 0.08), rotation(0, 0, 90))
 TAG_IN_BASE = pose((0.5, 0.1, 0.0))
 
 
 def flange_poses(single_axis=False):
-    """Posen ueber dem Tag, um mehrere (oder nur eine) Achse gedreht."""
+    """Poses over the tag, rotated about several (or only one) axis."""
     angles = (
         [(0, 0, a) for a in (0, 20, 40, 60, 80)]
         if single_axis
         else [(0, 0, 0), (20, 0, 10), (-15, 10, 30), (0, -25, -20), (10, 20, 60), (-20, -10, 5)]
     )
-    # Kamera nach unten (180 Grad um x), darauf die jeweilige Drehung.
+    # Camera facing down (180 degrees about x), with the respective rotation on top.
     looking_down = rotation(180, 0, 0)
     return [
         pose((0.5 + 0.02 * i, 0.1 - 0.01 * i, 0.4), looking_down @ rotation(rx, ry, rz))
@@ -72,8 +72,8 @@ def sample_json(flange_in_base):
 
 
 class FakePi:
-    """Steht fuer Kamera, Quelle und Knoten. Der Tag ist sichtbar, solange
-    `visible` gilt; seine Pose folgt aus der zuletzt gemeldeten Flanschpose."""
+    """Stands for camera, source and node. The tag is visible as long as `visible`
+    holds; its pose follows from the last reported flange pose."""
 
     def __init__(self, folder):
         self.path = Path(folder) / "handeye" / "cam_flange.json"
@@ -134,8 +134,8 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertLess(result["knownTagCheckM"], 1e-6)
             self.assertLess(result["knownTagCheckDeg"], 1e-4)
             self.assertIsNone(result["backupPath"])
-            # Die gespeicherte Kalibrierung steht im Status -- auch fuer eine
-            # frische Sitzung, wie nach einem Neustart des Servers.
+            # The saved calibration is in the status, also for a fresh session,
+            # as after a server restart.
             fresh = HandEyeSession(pi.ports())
             await fresh.publish_idle()
             current = pi.status["current"]
@@ -148,7 +148,7 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             saved = load_hand_eye(pi.path)
             np.testing.assert_allclose(saved.pose_flange_cam, FLANGE_CAM, atol=1e-6)
             self.assertEqual(saved.frame_id, "cam_flange")
-            # Aktiv ohne Neustart: die frisch geladene Datei ging an die Quelle.
+            # Active without a restart: the freshly loaded file went to the source.
             self.assertEqual(len(pi.applied), 1)
             np.testing.assert_allclose(pi.applied[0].pose_flange_cam, FLANGE_CAM, atol=1e-6)
 
@@ -164,7 +164,7 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             backup = Path(pi.status["result"]["backupPath"])
             self.assertEqual(backup.read_text(encoding="utf-8"), old)
             self.assertEqual(backup.parent, pi.path.parent)
-            # Ohne tagInBase gibt es keine Gegenprobe.
+            # Without tagInBase there is no cross-check.
             self.assertIsNone(pi.status["result"]["knownTagCheckM"])
 
     async def test_a_tag_not_seen_is_dropped_with_a_reason(self):
@@ -219,7 +219,7 @@ class HandEyeSessionTest(unittest.IsolatedAsyncioTestCase):
             await session.start(start_json())
             self.assertEqual(await session.start(start_json()), VisionErrorCode.BUSY)
             self.assertEqual(await session.capture("kaputt"), VisionErrorCode.INVALID_ARGUMENT)
-            pi.is_busy = True  # ein Job belegt die Kamera
+            pi.is_busy = True  # a job occupies the camera
             self.assertEqual(await session.capture(sample_json(pose((0, 0, 0)))), VisionErrorCode.BUSY)
             pi.is_busy = False
 
@@ -237,7 +237,7 @@ def board_json(cols=5, rows=6, size=0.023, **extra):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class HandEyeBoardTest(unittest.IsolatedAsyncioTestCase):
-    """Dasselbe mit einem Schachbrett statt eines Tags als festem Ziel."""
+    """The same with a chessboard instead of a tag as fixed target."""
 
     def board_pi(self, folder):
         pi = FakePi(folder)
@@ -249,7 +249,7 @@ class HandEyeBoardTest(unittest.IsolatedAsyncioTestCase):
                 return None, "Board nicht (vollstaendig) gesehen"
             return cam_to_tag(pi.flange), ""
 
-        async def no_tag(tag_id):  # pragma: no cover - darf nicht gerufen werden
+        async def no_tag(tag_id):  # pragma: no cover - must not be called
             raise AssertionError("mit Board wird kein Tag gemessen")
 
         ports = pi.ports()
@@ -297,7 +297,7 @@ class HandEyeBoardTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             pi, ports, _ = self.board_pi(folder)
             session = HandEyeSession(ports)
-            # 6x6 Innenecken: um 180 Grad gedreht nicht zu unterscheiden.
+            # 6x6 inner corners: indistinguishable when rotated by 180 degrees.
             self.assertEqual(await session.start(board_json(cols=6, rows=6)), VisionErrorCode.INVALID_ARGUMENT)
             self.assertEqual(await session.start(board_json(size=0)), VisionErrorCode.INVALID_ARGUMENT)
             self.assertEqual(await session.start(board_json(tagId=3)), VisionErrorCode.INVALID_ARGUMENT)

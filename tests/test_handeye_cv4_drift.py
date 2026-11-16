@@ -1,4 +1,4 @@
-"""Driftmodell der Offline-Auswertung: findet eine bekannte Brettdrift wieder."""
+"""Drift model of the offline evaluation: recovers a known board drift."""
 
 import importlib.util
 import unittest
@@ -25,7 +25,7 @@ def _load_drift():
 
 
 def _session(rate):
-    """30 Posen ueber 400 s; die Brettlage wandert mit `rate` (rvec/s, m/s)."""
+    """30 poses over 400 s; the board pose drifts at `rate` (rvec/s, m/s)."""
     points = chessboard_object_points(SPEC)
     handeye = geometry.from_rvec_tvec([0.08, -0.04, 0.1], [-0.047, -0.034, 0.057])
     base_board = geometry.from_rvec_tvec([0, 0, 0.1], [0.45, 0.05, 0])
@@ -49,7 +49,7 @@ class DriftModelTest(unittest.TestCase):
         self.drift = _load_drift()
 
     def test_board_drift_is_recovered_and_rigid_model_is_not_enough(self):
-        rate = np.r_[0.0, 0.0, 0.0, -3e-3 / 400, 0.0, -1.5e-3 / 400]  # 3 mm x, 1,5 mm z
+        rate = np.r_[0.0, 0.0, 0.0, -3e-3 / 400, 0.0, -1.5e-3 / 400]  # 3 mm in x, 1.5 mm in z
         obs, times, points, handeye = _session(rate)
         rigid, _ = self.drift.fit(obs, times, CAL, points, "rigid")
         drift, _ = self.drift.fit(obs, times, CAL, points, "boardDrift")

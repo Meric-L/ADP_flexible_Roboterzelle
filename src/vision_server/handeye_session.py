@@ -553,6 +553,12 @@ def _summary_message(solution: HandEyeSolution, refined: BoardRefinement | None)
 
 
 class HandEyeSession:
+    """Hand-eye calibration session: start, capture samples, finish or abort.
+
+    Captures come from the robot's reported flange poses. Only one session runs at a
+    time, and it blocks jobs, camera calibration and layer-2 runs while active.
+    """
+
     def __init__(self, ports: HandEyePorts) -> None:
         self._ports = ports
         self._s = _State()
@@ -568,6 +574,11 @@ class HandEyeSession:
     # --- Inputs --------------------------------------------------------------
 
     async def start(self, options_json: str) -> VisionErrorCode:
+        """Start a session from a `wsc.vision.handeye.start/1` document.
+
+        Returns `BUSY` if a session or another activity is running, and
+        `INVALID_ARGUMENT` if the options are rejected.
+        """
         if self.active:
             _log.warning("StartHandEyeCalibration abgelehnt: Sitzung laeuft schon")
             return VisionErrorCode.BUSY
@@ -900,6 +911,7 @@ class HandEyeSession:
         return backup
 
     async def abort(self) -> VisionErrorCode:
+        """Stop the running session without computing a result."""
         if not self.active:
             return VisionErrorCode.INVALID_STATE
         self._s.state = IDLE
@@ -912,6 +924,7 @@ class HandEyeSession:
         return VisionErrorCode.OK
 
     async def publish_idle(self) -> None:
+        """Write the current status, e.g. at server start."""
         await self._publish()
 
     async def _measure(self, s: _State) -> tuple[Any, str, dict]:
@@ -1012,6 +1025,7 @@ class HandEyeSession:
         }
 
     def status_json(self) -> str:
+        """Return the `wsc.vision.handeye.status/1` document as JSON text."""
         s = self._s
         flanges = [sample.flange_in_base for sample in s.samples if sample.accepted]
         spread_deg, axes = rotation_diversity(flanges)

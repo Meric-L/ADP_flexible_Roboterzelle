@@ -1,4 +1,4 @@
-"""`tagloc.jsonio`: `finite_or_none` (NaN/Unendlich auf `None`, Rundung je Aufrufer) und die UTC-Zeitstempel."""
+"""`tagloc.jsonio`: `finite_or_none` (NaN and infinity to `None`, rounding per caller) and the UTC timestamps."""
 
 import math
 import re
@@ -28,7 +28,7 @@ class FiniteOrNoneTest(unittest.TestCase):
         self.assertEqual(finite_or_none(0.123456789, 6), 0.123457)
 
     def test_accepts_numeric_strings_and_numpy_scalars_like_float(self):
-        self.assertEqual(finite_or_none("1.25", 1), 1.2)  # round-half-even wie bisher
+        self.assertEqual(finite_or_none("1.25", 1), 1.2)  # round-half-even
         try:
             import numpy as np
         except ImportError:
@@ -41,7 +41,7 @@ class UtcStampTest(unittest.TestCase):
     def test_formats_of_the_files(self):
         self.assertRegex(utc_now_z(), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         self.assertRegex(utc_stamp(), r"^\d{8}T\d{6}Z$")
-        self.assertIsNone(re.search(r"\.", utc_now_z()))  # keine Bruchteile
+        self.assertIsNone(re.search(r"\.", utc_now_z()))  # no fractional seconds
 
 
 if __name__ == "__main__":

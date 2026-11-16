@@ -1,4 +1,4 @@
-"""Tests fuer den Schalter der mDNS-Ankuendigung (`discovery.mdns`)."""
+"""Tests for the on/off switch of the mDNS announcement (`discovery.mdns`)."""
 
 import unittest
 from unittest import mock

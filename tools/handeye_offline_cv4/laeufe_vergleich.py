@@ -1,6 +1,7 @@
-"""Aufruf aus der Repo-Wurzel: PYTHONPATH=src python tools/handeye_offline_cv4/laeufe_vergleich.py <Sitzung> <Sitzung> ...
+"""Compare several 1080p calibration runs: intrinsics and hand-eye per run, and scatter between runs.
 
-Vergleich mehrerer 1080p-Kalibrierlaeufe: Intrinsik und Hand-Auge je Lauf, Streuung zwischen den Laeufen."""
+Usage, from the repository root: PYTHONPATH=src python tools/handeye_offline_cv4/laeufe_vergleich.py <session> <session> ...
+"""
 import json, sys
 from pathlib import Path
 import numpy as np, cv2
@@ -14,9 +15,10 @@ F = 274.8 / 275.0
 dic = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
 board = cv2.aruco.CharucoBoard((11, 7), 0.025 * F, 0.0185 * F, dic); det = cv2.aruco.CharucoDetector(board)
 SIZE = (1920, 1080)
-X0 = np.array(json.load(open("data/handeye/cam_flange.json"))["poseFlangeCam"]["position"])  # nur zur Info
+X0 = np.array(json.load(open("data/handeye/cam_flange.json"))["poseFlangeCam"]["position"])  # for reference only
 
 def load(S):
+    """Load the valid observations (board corners and robot pose) of a session folder."""
     S = Path(S); out = []
     for f in sorted(S.glob("poses/*/camera.png")):
         q = f.parent / "quality.json"
@@ -29,13 +31,16 @@ def load(S):
     return out
 
 def intrinsics(obs, flags):
+    """Calibrate the camera from the observations; return RMS, camera matrix and distortion."""
     rms, K, D, *_ = cv2.calibrateCameraExtended([o["P"].astype(np.float32) for o in obs], [o["uv"].astype(np.float32) for o in obs], SIZE, None, None, flags=flags)
     return rms, K, D.ravel()
 
 def pnp(o, K, D):
+    """Return the board pose in camera coordinates from PnP for one observation."""
     ok, rv, tv = cv2.solvePnP(o["P"], o["uv"], K, D); T = np.eye(4); T[:3, :3] = cv2.Rodrigues(rv)[0]; T[:3, 3] = tv.ravel(); return T
 
 def handeye(obs, K, D, X0):
+    """Fit the hand-eye pose X and the board pose B for the observations, starting from X0."""
     O = [o for o in obs if len(o["uv"]) >= 25]
     B0 = geometry.average_poses([o["T"] @ X0 @ pnp(o, K, D) for o in O])
     def res(v):
@@ -51,6 +56,7 @@ def handeye(obs, K, D, X0):
     return dict(X=X, B=B, rms=float(np.sqrt(np.mean(np.sum(rr ** 2, 1)))), spread=float(np.sqrt(np.mean(dp ** 2))), n=len(O))
 
 def angles(X):
+    """Return tilt (camera axis against the flange z-axis) and roll of X in degrees."""
     R = X[:3, :3]; z = R[:, 2]
     return np.degrees(np.arccos(np.clip(z[2], -1, 1))), np.degrees(np.arctan2(R[1, 0], R[0, 0]))
 
@@ -66,7 +72,7 @@ for name, obs in data.items():
 allobs = [o for v in data.values() for o in v]
 rA, KA, DA = intrinsics(allobs, FULL)
 print("gemeinsam n=%d voll RMS %.3f fx %.1f fy %.1f cx %.1f cy %.1f D %s" % (len(allobs), rA, KA[0, 0], KA[1, 1], KA[0, 2], KA[1, 2], np.round(DA[:5], 3)))
-# Kreuztest Intrinsik: Intrinsik von Lauf i auf Bilder von Lauf j (PnP je Bild)
+# Cross test of intrinsics: intrinsics of run i applied to images of run j (PnP per image)
 print("== Kreuztest Intrinsik (Zeile = Intrinsik aus Lauf, Spalte = Bilder aus Lauf), RMS px")
 names = list(data)
 for a in names:

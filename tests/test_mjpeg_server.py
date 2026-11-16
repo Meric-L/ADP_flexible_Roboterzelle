@@ -1,7 +1,7 @@
-"""Tests fuer den MJPEG-Livestream ueber HTTP.
+"""Tests for the MJPEG livestream over HTTP.
 
-Laeuft gegen einen echten Socket auf einem vom System vergebenen Port; die
-Kamera ist ein Fake, das "JPEG" ein erkennbarer Byte-String.
+Runs against a real socket on a system-assigned port; the camera is a fake, and
+the "JPEG" is a recognisable byte string.
 """
 
 import asyncio
@@ -14,8 +14,8 @@ from vision_server.camera_stream import CameraStreamPublisher
 from vision_server.mjpeg_server import MjpegServer
 from vision_server.profiles import CameraStreamConfig
 
-#: `max_stream_width=None`: die Fake-Bilder sind Strings, keine Arrays --
-#: wie in test_camera_stream.py, sonst scheitert schon das Verkleinern.
+#: `max_stream_width=None`: the fake images are strings, not arrays, as in
+#: test_camera_stream.py; otherwise even downscaling would fail.
 CONFIG = CameraStreamConfig(
     stream_fps=20.0, http_fps=100.0, overlay_mode="off", max_stream_width=None
 )
@@ -165,19 +165,18 @@ class PublisherFanOutTest(unittest.IsolatedAsyncioTestCase):
         elapsed = loop.time() - started
 
         self.assertEqual(frames, 25)
-        # Gemessen statt angenommen: unter Windows rundet asyncio.sleep auf den
-        # Timer-Takt (~15,6 ms) auf, die Schleife dauert dann eher 1,5 s als
-        # 0,5 s. Zugesichert ist nur: der Knoten folgt stream_fps, nicht den Frames.
+        # Measured, not assumed: on Windows asyncio.sleep rounds up to the timer
+        # tick (~15.6 ms), so the loop takes about 1.5 s instead of 0.5 s. Only this
+        # is guaranteed: the node follows stream_fps, not the frames.
         self.assertLessEqual(len(node.written), elapsed * config.stream_fps + 2)
         self.assertLess(len(node.written), frames)
         self.assertGreaterEqual(len(node.written), 2)
 
     async def test_still_serves_a_stale_frame(self):
-        """MJPEG zeigt weiter das letzte Bild, auch wenn die Kamera haengt.
+        """MJPEG keeps showing the last image even when the camera hangs.
 
-        Ob sie haengt, sagt `DeviceHealth` nach OPC 40100-2 -- nicht ein
-        fehlendes Bild. Frueher lieferte `latest` hier `None` und
-        `/snapshot.jpg` antwortete mit 503.
+        Whether the camera hangs is reported by `DeviceHealth` per OPC 40100-2,
+        not by a missing image.
         """
         camera = FakeCamera()
         camera.latest_frame = CameraFrame(

@@ -1,40 +1,9 @@
-"""AprilTag detection on the camera shared with the livestream.
+"""AprilTag detection source for the ceiling and the hand camera.
 
-One source for both cameras. The ceiling camera and the camera on the robot
-(eye-in-hand) use the same class and the same code. They differ only in the
-`AprilTagProfileConfig` that `vision_server/server.py` sets per Pi, and in what
-they get to see:
-
-* if world tags from the map are in the image, the camera pose is derived from
-  them, and every module pose is reported in the world frame, together with the
-  world tag it is closest to
-* otherwise everything stays in the camera frame, and `frameConvention` tells
-  the reader where +Z points
-
-**Only the world tags are fixed** -- four of them at the edge of the cell. The
-robot is a module like any other: it carries its own tags and is measured, not
-read from a file. The ceiling camera is the only one that sees both the robot
-and the world tags, so it reports which world tag the robot stands next to. The
-robot camera then localizes itself optically against that tag, which needs no
-hand-eye calibration.
-
-The actual computation lives in `tagloc`; this package is the OPC UA adapter.
-It is split by task into modules that are combined as mixins into the one
-class `AprilTagDetectionSource`:
-
-| Module | Task |
-| --- | --- |
-| `resources.py` | Load calibration, tag map, hand-eye, detector (`open`), swap them (`apply_*`), `close` |
-| `capture.py` | Wait for fresh images, calibration matched to the image size, overlay state |
-| `job.py` | `acquire_and_detect`: evaluate images, localize modules, build detections |
-| `tags.py` | `MeasureTags` and `measure_tag` (hand-eye): tags in the camera frame |
-| `board.py` | `measure_board` (hand-eye) and `MeasureBoard`: the chessboard |
-| `reference.py` | `MeasureTagReference` and `PlanTagReferenceView`: reference edges |
-| `cell.py` | `observe_cell`: one image for the cell watch |
-| `snapshot.py` | `TagSnapshot` for the livestream overlay |
-
-The import path `vision_server.detection.apriltag` and all names importable
-there so far remain available.
+The entry point is `AprilTagDetectionSource`, which combines the task mixins of the
+sibling modules (`resources`, `capture`, `job`, `tags`, `board`, `reference`, `cell`).
+The import path `vision_server.detection.apriltag` and all names importable there
+remain available.
 """
 
 from collections.abc import Callable
@@ -82,8 +51,14 @@ class AprilTagDetectionSource(
 ):
     """Localize modules by their AprilTags.
 
-    Holds the source state (camera, detector, calibration, map, anchor). The
-    methods live in the mixins; see the module docstring.
+    Only the world tags from the map are fixed, four of them at the edge of the cell.
+    If one is in view, the camera pose is derived from it and module poses are
+    reported in the world frame, together with the nearest world tag. Otherwise
+    everything stays in the camera frame, and `frameConvention` states where +Z
+    points. Robots are modules like any other: they are measured, not read from a file.
+
+    Holds the source state (camera, detector, calibration, map, anchor). The methods
+    live in the mixins.
     """
 
     profile_id = "apriltag"

@@ -1,5 +1,5 @@
-"""Hand-Auge-Sitzung mit Brett und Ecken: verfeinern, Massstab, Vorhersagefehler,
-Warnungen, Datensatz, Mindestzahl Drehachsen."""
+"""Hand-eye session with board and corners: refinement, scale, prediction error,
+warnings, dataset, minimum number of rotation axes."""
 
 import json
 import math
@@ -18,13 +18,13 @@ try:
 
     from tests.test_handeye_refine import K, T_BASE_BOARD, X_TRUE, scene
     from tests.test_handeye_session import board_json, sample_json
-except Exception:  # pragma: no cover - numpy/cv2 fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy/cv2 missing in this environment
     np = None
 
 
 class BoardPi:
-    """Kamera und Knoten fuer eine Brett-Sitzung: liefert Pose, Ecken und Intrinsik
-    der jeweils naechsten vorbereiteten Aufnahme."""
+    """Camera and node for a board session: returns the pose, corners and intrinsics
+    of the next prepared capture each time."""
 
     def __init__(self, folder, flanges, corners, boards, source="calibration"):
         self.path = Path(folder) / "handeye" / "cam_flange.json"
@@ -47,7 +47,7 @@ class BoardPi:
             "reprojectionErrorPx": 0.3,
         }
 
-    async def no_tag(self, tag_id):  # pragma: no cover - darf nicht gerufen werden
+    async def no_tag(self, tag_id):  # pragma: no cover - must not be called
         raise AssertionError("mit Brett wird kein Tag gemessen")
 
     async def publish(self, status):
@@ -103,14 +103,14 @@ class RefinedSessionTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(all(s["looErrorPx"] is not None for s in status["samples"]))
 
-            # Gespeichert und aktiv ist das verfeinerte X -- nahe der Wahrheit.
+            # Saved and active is the refined X, close to the truth.
             saved = load_hand_eye(pi.path)
             self.assertLess(1000 * g.translation_distance_m(saved.pose_flange_cam, X_TRUE), 1.0)
             self.assertEqual(len(pi.applied), 1)
             raw = json.loads(pi.path.read_text(encoding="utf-8"))
             self.assertAlmostEqual(raw["boardScale"], result["boardScale"], places=5)
 
-            # Der Datensatz reicht zum Nachrechnen.
+            # The dataset is enough to recompute from.
             dataset = json.loads((Path(result["sessionPath"]) / "session.json").read_text(encoding="utf-8"))
             self.assertEqual(dataset["outcome"], "finished")
             self.assertEqual(len(dataset["samples"]), 12)
@@ -142,8 +142,8 @@ class RefinedSessionTest(unittest.IsolatedAsyncioTestCase):
 
 
 def turned_about_one_axis(count=5):
-    """Flanschposen ueber dem Brett, nur um die Blickachse gedreht."""
-    look = g.from_rvec_tvec((0, 0, 0), (0.05, 0.07, -0.45))  # Kamera vor dem Brett, schaut hinein
+    """Flange poses over the board, rotated only about the viewing axis."""
+    look = g.from_rvec_tvec((0, 0, 0), (0.05, 0.07, -0.45))  # camera in front of the board, looking into it
     poses = []
     for index in range(count):
         roll = g.from_rvec_tvec((0, 0, math.radians(-60 + 30 * index)), (0, 0, 0))

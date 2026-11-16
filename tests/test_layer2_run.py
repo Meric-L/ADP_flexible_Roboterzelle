@@ -1,4 +1,4 @@
-"""Ablauf des Layer-2-Laufs gegen Fakes: ankern, neu planen, messen, abbrechen."""
+"""Flow of the layer-2 run against fakes: anchor, re-plan, measure, abort."""
 
 import json
 import unittest
@@ -12,7 +12,7 @@ try:
     from vision_server.errors import VisionErrorCode
     from vision_server.layer2 import plan
     from vision_server.layer2.run import Layer2Ports, Layer2Run
-except Exception:  # pragma: no cover - numpy fehlt in dieser Umgebung
+except Exception:  # pragma: no cover - numpy missing in this environment
     np = None
 
 
@@ -21,8 +21,8 @@ def pose_dict(position):
 
 
 def request_json(*modules, reach_m=5.0, approach_m=0):
-    """Ohne Annaeherung, wenn nicht anders verlangt -- die Grundtests pruefen
-    den Lauf Schritt fuer Schritt, die Annaeherung hat eigene Tests."""
+    """Without approach unless asked otherwise: the basic tests check the run step
+    by step, the approach has its own tests."""
     return json.dumps(
         {
             "schema": plan.RUN_SCHEMA,
@@ -51,7 +51,7 @@ def report(step_index, reached=True, reason=""):
 
 
 class FakeServer:
-    """Steht fuer JobRunner, AprilTag-Quelle und die beiden Knoten."""
+    """Stands for JobRunner, the AprilTag source and the two nodes."""
 
     def __init__(self, hand_eye=True):
         self.hand_eye = HandEye(pose_flange_cam=geometry.identity()) if hand_eye else None
@@ -134,19 +134,19 @@ class Layer2RunTest(unittest.IsolatedAsyncioTestCase):
         coarse = server.status["steps"][1]["reachM"]
 
         self.assertEqual(await run.report(report(0)), VisionErrorCode.OK)
-        # Die gemeldete Pose geht als Job-Parameter mit -- nur mit ihr ankert der Pi.
+        # The reported pose goes along as a job parameter; the Pi anchors only with it.
         self.assertEqual([float(v) for v in server.jobs[0]], [0.3, 0.0, 0.4, 0, 0, 0, 1])
         self.assertEqual(server.status["state"], "measuring")
         self.assertEqual(server.targets[-1], "")
 
-        # Nur der Welttag im Bild: DETECTION_FAILED, aber geankert.
+        # Only the world tag in the image: DETECTION_FAILED, but anchored.
         measured_base = geometry.from_rotation_translation(np.eye(3), (1.1, 1.0, 0.0))
         await self.finish_job(
             run, server, VisionErrorCode.DETECTION_FAILED, anchor=RobotAnchor(measured_base, 0, 0.002)
         )
         self.assertEqual(server.status["steps"][0]["status"], "done")
         self.assertEqual(server.status["anchor"]["worldTagId"], 0)
-        # Neu geplant mit der gemessenen Basis: das Modul ist jetzt 10 cm naeher.
+        # Re-planned with the measured base: the module is now 10 cm closer.
         self.assertLess(server.status["steps"][1]["reachM"], coarse)
         self.assertEqual(server.target["stepIndex"], 1)
         self.assertEqual(server.target["moduleId"], "MOD-A")
@@ -233,7 +233,7 @@ class Layer2RunTest(unittest.IsolatedAsyncioTestCase):
         await run.abort("Stop")
         self.assertEqual(server.status["state"], "aborted")
         self.assertEqual(server.targets[-1], "")
-        # Das Ende des abgebrochenen Jobs aendert nichts mehr.
+        # The end of the aborted job changes nothing any more.
         await self.finish_job(
             run, server, VisionErrorCode.CANCELLED, anchor=RobotAnchor(geometry.identity(), 0)
         )
@@ -255,7 +255,7 @@ class Layer2RunTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await run.start(request_json()), VisionErrorCode.BUSY)
         self.assertEqual(await run.report(report(3)), VisionErrorCode.INVALID_STATE)
         self.assertEqual(await run.report("kaputt"), VisionErrorCode.INVALID_ARGUMENT)
-        # Ein belegter JobRunner laesst den Schritt stehen: noch einmal melden geht.
+        # A busy JobRunner leaves the step pending: reporting again works.
         server.is_busy = True
         self.assertEqual(await run.report(report(0)), VisionErrorCode.BUSY)
         self.assertEqual(server.status["state"], "waitingForRobot")
@@ -263,7 +263,7 @@ class Layer2RunTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(np is not None, "numpy fehlt")
 class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
-    """Vorfahrt aus 0,6 m: weites Bild misst, nahes Bild ankert bzw. misst."""
+    """Approach from 0.6 m: a far image measures, a near image anchors or measures."""
 
     async def finish_job(self, run, server, code, anchor=None, result=""):
         if anchor is not None:
@@ -280,7 +280,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         return run
 
     async def anchor_with_approach(self, run, server):
-        """Annaeherung und Anker, beide geglueckt; Basis wie geplant."""
+        """Approach and anchor, both succeeded; base as planned."""
         base = geometry.from_rotation_translation(np.eye(3), (1.0, 1.0, 0.0))
         await run.report(report(0))
         await self.finish_job(
@@ -299,7 +299,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([step["stepIndex"] for step in server.status["steps"]], [0, 1, 2, 3])
         self.assertEqual(server.target["purpose"], "approach")
         self.assertEqual(server.target["tagId"], 0)
-        # Gleiche Blickrichtung, doppelter Abstand: weiter weg von der Basis.
+        # Same viewing direction, twice the distance: further away from the base.
         steps = server.status["steps"]
         self.assertGreater(steps[0]["reachM"], steps[1]["reachM"])
         self.assertTrue(all(step["status"] == "pending" for step in steps[1:]))
@@ -310,7 +310,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         run = await self.start(server, ("MOD-A", (1.5, 1.0, 0.0), 7))
         coarse = server.status["steps"][1]["reachM"]
         await run.report(report(0))
-        # Das weite Bild sieht den Welttag: die Basis steht 10 cm anders.
+        # The far image sees the world tag: the base is 10 cm off.
         seen_base = geometry.from_rotation_translation(np.eye(3), (1.1, 1.0, 0.0))
         await self.finish_job(
             run, server, VisionErrorCode.DETECTION_FAILED, anchor=RobotAnchor(seen_base, 0)
@@ -319,12 +319,12 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(steps[0]["status"], "done")
         self.assertIn("100 mm korrigiert", steps[0]["detail"])
         self.assertNotAlmostEqual(steps[1]["reachM"], coarse)
-        # Der Anker aus dem weiten Bild ist nicht der des Laufs.
+        # The anchor from the far image is not the run's.
         self.assertIsNone(server.status["anchor"])
         self.assertEqual(server.target["purpose"], "anchor")
         self.assertEqual(server.target["stepIndex"], 1)
 
-        # Das nahe Bild sieht den Welttag nicht: der weite Anker zaehlt nicht.
+        # The near image does not see the world tag: the far anchor does not count.
         await run.report(report(1))
         await self.finish_job(run, server, VisionErrorCode.DETECTION_FAILED)
         self.assertEqual(server.status["state"], "aborted")
@@ -361,7 +361,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(coarse_tag[0], 1.5)
 
         await run.report(report(2))
-        # Der Tag steht in Wahrheit 5 cm weiter in +x als Layer 1 meinte.
+        # In truth the tag is 5 cm further in +x than layer 1 assumed.
         await self.finish_job(
             run, server, VisionErrorCode.OK, result=payload("world", 7, position=(1.55, 1.0, 0.2))
         )
@@ -388,7 +388,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(steps[2]["status"], "skipped")
         self.assertEqual(steps[3]["status"], "skipped")
         self.assertIn("Tag 7 nicht gesehen", steps[3]["detail"])
-        # Weiter mit der Annaeherung an MOD-B.
+        # Continue with the approach to MOD-B.
         self.assertEqual(server.target["stepIndex"], 4)
         self.assertEqual(server.target["purpose"], "approach")
         self.assertEqual(server.target["moduleId"], "MOD-B")
@@ -405,7 +405,7 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
         run = await self.start(server, ("MOD-A", (1.5, 1.0, 0.0), 7))
         await self.anchor_with_approach(run, server)
         await run.report(report(2))
-        # Die Detection traegt die Modulpose: Tag-Mitte minus 4 cm in z.
+        # The detection carries the module pose: tag centre minus 4 cm in z.
         await self.finish_job(
             run, server, VisionErrorCode.OK, result=payload("world", 7, position=(1.5, 1.0, 0.16))
         )
@@ -413,8 +413,8 @@ class Layer2ApproachTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_approach_is_skipped_when_the_near_target_is_out_of_reach(self):
         server = FakeServer()
-        # Welttag direkt bei der Basis -- sonst laege schon dessen Annaeherung
-        # ausser Reichweite.
+        # World tag directly at the base; otherwise its approach would already lie
+        # out of reach.
         server.tag_map = TagMap(
             entries={
                 0: TagEntry(

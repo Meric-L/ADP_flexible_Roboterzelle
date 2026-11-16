@@ -1,9 +1,8 @@
-"""Tests fuer SharedCamera: nur der SDK-unabhaengige Teil (Backend-Auswahl).
+"""Tests for SharedCamera: only the SDK-independent part (backend selection).
 
-Die drei Backends selbst (Picamera2, RealSense, OpenCV) brauchen echte
-Hardware bzw. SDKs, die hier nicht installiert sind -- deferred-import per
-Konvention (siehe camera.py). Verifiziert wird deshalb nur das Dispatching,
-nicht das Ansprechen der eigentlichen Kamera.
+The three backends (Picamera2, RealSense, OpenCV) need real hardware and SDKs
+that are not installed here, so they are imported lazily (see camera.py).
+Only the dispatching is verified, not talking to a real camera.
 """
 
 import types
@@ -12,7 +11,7 @@ import unittest
 try:
     import cv2
     import numpy as np
-except Exception:  # OpenCV fehlt in dieser Umgebung
+except Exception:  # OpenCV is missing in this environment
     cv2 = None
 
 from vision_server.camera import (
@@ -72,7 +71,7 @@ class CloseDispatchTest(unittest.TestCase):
 
 
 class Picamera2ConfigurationTest(unittest.TestCase):
-    """Was Picamera2 zum Konfigurieren bekommt -- ohne Kamera pruefbar."""
+    """What Picamera2 receives for configuration, checkable without a camera."""
 
     def test_main_stream_only_by_default(self):
         arguments = picamera2_video_configuration(CameraStreamConfig(resolution=(1280, 720)))
@@ -81,7 +80,7 @@ class Picamera2ConfigurationTest(unittest.TestCase):
         )
 
     def test_full_resolution_with_a_small_preview_stream(self):
-        """Das Preset der Deckenkamera: 12 MP fuer Jobs, 960x720 fuer den Stream."""
+        """The ceiling camera preset: 12 MP for jobs, 960x720 for the stream."""
         arguments = picamera2_video_configuration(
             CameraStreamConfig(
                 resolution=(4056, 3040), preview_resolution=(960, 720), buffer_count=2
@@ -141,7 +140,7 @@ FAKE_LIBCAMERA_CONTROLS = types.SimpleNamespace(
 
 
 class ResolveCameraControlsTest(unittest.TestCase):
-    """String-Enums -> libcamera-Werte, mit untergeschobenem Namensraum."""
+    """String enums -> libcamera values, with a substituted namespace."""
 
     def test_enum_names_are_resolved(self):
         resolved = resolve_camera_controls(
@@ -209,8 +208,8 @@ class CameraMetadataFormatTest(unittest.TestCase):
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class Yuv420ConversionTest(unittest.TestCase):
     def _picture(self, width=64, height=48):
-        # Flaechige Farbfelder: YUV420 halbiert die Farbaufloesung, feines
-        # Rauschen kaeme nicht verlustfrei zurueck.
+        # Flat colour areas: YUV420 halves the colour resolution, so fine noise
+        # would not come back losslessly.
         image = np.zeros((height, width, 3), dtype=np.uint8)
         image[:, : width // 2] = (200, 40, 40)
         image[:, width // 2 :] = (30, 180, 220)
@@ -226,7 +225,7 @@ class Yuv420ConversionTest(unittest.TestCase):
         self.assertLess(int(np.abs(result.astype(int) - image.astype(int)).max()), 6)
 
     def test_crops_the_stride_padding(self):
-        """Picamera2 richtet Zeilen aus; der Puffer ist dann breiter als das Bild."""
+        """Picamera2 aligns rows, so the buffer is wider than the image."""
         width, height, stride = 64, 48, 96
         image = self._picture(width, height)
         yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV_I420)
@@ -297,7 +296,7 @@ class ReadFramesTest(unittest.TestCase):
         self.assertTrue(request.released)
 
     def test_returns_the_request_even_when_reading_fails(self):
-        """Ein nicht zurueckgegebener Request blockiert die Kamera -- bei 2 Puffern sofort."""
+        """A request that is not returned blocks the camera, at once with 2 buffers."""
         request = FakeRequest({"main": "voll"}, fail="lores")
         camera = self._camera(request)
 
@@ -316,7 +315,7 @@ class ReadFramesTest(unittest.TestCase):
 
 
 class RealsenseColorProfilesTest(unittest.TestCase):
-    """Die gemeinsame Profilabfrage (Fehlermeldung und Werkzeug) gegen ein Fake-SDK."""
+    """The shared profile query (error message and tool) against a fake SDK."""
 
     @staticmethod
     def _profile(rs, stream, width, height, fps, fmt):

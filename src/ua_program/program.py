@@ -1,24 +1,8 @@
 """Minimal implementation of OPC UA programs (Spec Part 10).
 
-Taken over from the supervisor's template (`OPC_UA_Program.py`, Robert
-Knobloch, robert.knobloch@stud.tu-darmstadt.de, 2024). The template is not in
-the repo (`betreuer/` was removed on 23.09.2026; the file was never tracked).
-
-Changes compared to the template. Each one was needed so that the framework
-can be used at all, or cleanly:
-
-1. `Program.__init__` is concrete. The template calls
-   `cls(server, nsid, *args, **kwargs)` in `init()`, but its example
-   `testProgram.py` defines `__init__(self)` without arguments and calls
-   `super().__init__()` on an ABC that has no `__init__` at all. In this
-   combination it could not be started.
-2. `Resume` takes `resume_inputs`. The template passed `reset_inputs` there.
-3. Optional descriptive string NodeIds (`nodeid=`). The instance and its
-   methods then get stable, guessable ids (`ns=4;s=VisionProgram.Start`), and
-   a client does not have to browse. Without `nodeid`, the template's automatic
-   numeric behavior is kept.
-4. The five identical blocks that replace the methods are merged into one
-   loop. Behavior unchanged.
+`Program` is the base class for the programs of the cell; subclasses implement
+`start`, `halt`, `reset`, `suspend` and `resume`. Instances are created with
+`Program.init()`.
 """
 
 from abc import ABC, abstractmethod
@@ -34,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProgramException(Exception):
-    pass
+    """Raised when a program transition is requested in a state that does not allow it."""
 
 
 class Program(ABC):
@@ -395,9 +379,8 @@ class ProgramStateMachine(FiniteStateMachine):
             ]
         )
         # Not `set_available_transitions()`: in asyncua 2.0.1 that method writes
-        # the value and then **always** raises ValueError, because the `raise`
-        # is not in the else branch (statemachine.py:357-363). The supervisor's
-        # template still ran against an older version.
+        # the value and then always raises ValueError, because the `raise` is not
+        # in the else branch (statemachine.py:357-363).
         if self._optionals:
             transitions_node = await self._state_machine_node.get_child(
                 ["AvailableTransitions"]

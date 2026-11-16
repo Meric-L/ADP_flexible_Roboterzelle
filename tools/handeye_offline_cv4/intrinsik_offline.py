@@ -1,15 +1,13 @@
-"""Offline-Intrinsik aus Kalibrieraufnahmen der Hand-Kamera (ChArUco 11x7, DICT_5X5_100).
+"""Compute the offline intrinsics from hand-camera calibration images (ChArUco 11x7, DICT_5X5_100).
 
-Brett mit dem gemessenen Massstab (274,8 mm ueber 11 Felder statt 275,0 mm: Feld 24,982 mm,
-Marker 18,487 mm). Vergleicht drei Verzeichnungsmodelle (inkl. Leave-one-out) mit der
-Werks-Intrinsik der D415 und der alten cam_flange.json. Nichts wird gespeichert oder aktiviert.
+The board uses the measured scale (274.8 mm over 11 squares instead of 275.0 mm: square 24.982 mm,
+marker 18.487 mm). Compares three distortion models (incl. leave-one-out) with the factory intrinsics
+of the D415 and the old cam_flange.json. Nothing is saved or activated.
 
-Aufruf aus der Repo-Wurzel:
-    python tools/handeye_offline_cv4/intrinsik_offline.py [Bildmuster | Hand-Auge-Sitzungsordner] [--nur-gruppe F]
-Ein Sitzungsordner (mit config.json und poses/) nimmt poses/*/camera.png; --nur-gruppe filtert
-ueber poseGroup in poses/*/robot_state.json.
-Standard-Bildmuster: data/calibration/cam_flange_pending/kalib_*.jpg (18 Bilder vom 10.11.2026)
-Ergebnis vom 10.11.2026: doc/auswertung/intrinsik_20261110.md
+Usage, from the repository root:
+    python tools/handeye_offline_cv4/intrinsik_offline.py [image pattern | hand-eye session folder] [--nur-gruppe F]
+A session folder (with config.json and poses/) supplies poses/*/camera.png; --nur-gruppe filters by
+poseGroup in poses/*/robot_state.json. Default image pattern: data/calibration/cam_flange_pending/kalib_*.jpg.
 """
 import cv2, numpy as np, glob, json, sys, os, argparse
 F = 274.8 / 275.0
@@ -54,6 +52,7 @@ KW = np.array([[608.81201171875, 0, 331.596038818359], [0, 607.105346679688, 243
 alt = json.load(open('data/calibration/cam_flange.json'))
 KA, DA = np.array(alt['cameraMatrix']), np.array(alt['distortionCoefficients']).ravel()
 def evalK(K, D):
+    """Return the RMS reprojection error in px with per-image PnP for intrinsics K, D."""
     errs = []
     for o, p in zip(obj, img):
         ok, rv, tv = cv2.solvePnP(o, p, K, D)
@@ -69,7 +68,7 @@ variants = {
 for name, flags in variants.items():
     rms, K, D, rv, tv, sdi, sde, pve = cv2.calibrateCameraExtended(obj, img, size, None, None, flags=flags)
     sd = sdi.ravel()
-    # Leave-one-out: Kalibrierung ohne Bild i, Fehler auf Bild i (PnP mit fremder Intrinsik)
+    # Leave-one-out: calibrate without image i, measure the error on image i (PnP with foreign intrinsics)
     loo = []
     for i in range(len(obj)):
         o2 = obj[:i] + obj[i + 1:]; p2 = img[:i] + img[i + 1:]
@@ -80,12 +79,12 @@ for name, flags in variants.items():
     res[name] = (K, D)
     print("%-24s RMS %.3f px | LOO %.3f px | fx %.1f±%.1f fy %.1f±%.1f cx %.1f±%.1f cy %.1f±%.1f | D %s" % (
         name, rms, np.mean(loo), K[0, 0], sd[0], K[1, 1], sd[1], K[0, 2], sd[2], K[1, 2], sd[3], np.round(D.ravel()[:5], 3)))
-# Werks-K fest, nur k1,k2 frei
+# Factory K fixed, only k1, k2 free
 rms, K, D, *_ = cv2.calibrateCameraExtended(obj, img, size, KW.copy(), np.zeros(5), flags=cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_FOCAL_LENGTH | cv2.CALIB_FIX_PRINCIPAL_POINT | cv2.CALIB_FIX_K3 | cv2.CALIB_ZERO_TANGENT_DIST)
 print("%-24s RMS %.3f px | D %s" % ("Werk-K fest, k1,k2 frei", rms, np.round(D.ravel()[:5], 3)))
 print("%-24s RMS %.3f px (je Bild PnP)" % ("Werk unveraendert", evalK(KW, np.zeros(5))))
 print("%-24s RMS %.3f px (je Bild PnP) | fx %.1f fy %.1f cx %.1f cy %.1f" % ("alt cam_flange.json", evalK(KA, DA), KA[0, 0], KA[1, 1], KA[0, 2], KA[1, 2]))
-# Kippwinkel der Ansichten (voll-Modell)
+# Tilt angles of the views (k1, k2 model)
 K, D = res["k1,k2 (p=0,k3=0)"]
 tilts = []
 for o, p in zip(obj, img):

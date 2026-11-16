@@ -1,9 +1,8 @@
-"""Tests fuer `AprilTagStreamAnnotator`s Kalibrier- und Entzerr-Modus.
+"""Tests for the calibration and undistort modes of `AprilTagStreamAnnotator`.
 
-`annotate()` importiert `tagloc`/`cv2` nur deferred und nicht injizierbar --
-diese Tests laufen deshalb mit echten kleinen Arrays und echtem `cv2`
-(`skipUnless`, gleiches Muster wie `test_tag_pipeline.py`), statt die
-tagloc-Funktionen zu faken.
+`annotate()` imports `tagloc`/`cv2` only lazily and not injectably, so these
+tests run with real small arrays and real `cv2` (`skipUnless`, the same pattern
+as `test_tag_pipeline.py`) instead of faking the tagloc functions.
 """
 
 import unittest
@@ -15,7 +14,7 @@ try:
     import numpy as np
 
     _ = (cv2.circle, np.ndarray)
-except Exception:  # OpenCV nicht installiert
+except Exception:  # OpenCV not installed
     cv2 = None
     np = None
 
@@ -33,19 +32,20 @@ CONFIG = AprilTagProfileConfig(
 
 
 def _fake_calibration(size: tuple[int, int]):
-    """Reicht fuer `_calibration_for`, solange `image_size` zur Bildgroesse
-    passt -- dann wird `scale_to_resolution` gar nicht erst aufgerufen."""
+    """Enough for `_calibration_for` as long as `image_size` matches the image
+    size; then `scale_to_resolution` is never called."""
     return SimpleNamespace(image_size=size, calibration_id="test-cal")
 
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class BoardSpecFromConfigTest(unittest.TestCase):
     def test_uses_config_geometry_not_the_calibration_file(self):
-        """Frueher las `_board_spec` `calibration.board` und fiel bei einer
-        Platzhalter-Kalibrierung (kein `board`-Feld) auf den BoardSpec()-
-        Default (9x6/30mm) zurueck -- eine andere Geometrie als die, mit der
-        `CalibrationSession` tatsaechlich sucht. Die Kalibrierungs-Objekt hat
-        hier bewusst gar kein `board`-Attribut, um das zu erzwingen."""
+        """`_board_spec` must use the configured geometry, not `calibration.board`.
+
+        A placeholder calibration has no `board` field and would fall back to the
+        BoardSpec() default (9x6/30 mm), a different geometry from the one
+        `CalibrationSession` searches for. The fake calibration has no `board`
+        attribute on purpose."""
         annotator = AprilTagStreamAnnotator(
             CONFIG,
             detector=None,
@@ -91,9 +91,9 @@ class CalibrationModeDownscaleTest(unittest.TestCase):
         self.assertEqual(result.shape[1], 400)
 
     def test_a_board_that_is_not_found_does_not_raise(self):
-        """Ein leeres Bild enthaelt kein Schachbrett -- `detect_board` muss
-        `None` liefern statt zu werfen, und `annotate` gibt trotzdem ein
-        Bild zurueck (die Overlay-Faenger-Klausel darf hier nicht greifen)."""
+        """An empty image contains no chessboard: `detect_board` must return `None`
+        instead of raising, and `annotate` still returns an image (the overlay's
+        catch-all clause must not kick in here)."""
         image = np.zeros((300, 400, 3), dtype=np.uint8)
         annotator = AprilTagStreamAnnotator(
             CONFIG,
@@ -109,9 +109,9 @@ class CalibrationModeDownscaleTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class ApplyCalibrationTest(unittest.TestCase):
-    """`apply_calibration` -- Gegenstueck zu `AprilTagDetectionSource.
-    apply_calibration`, damit Job und Livestream nach einer frischen
-    interaktiven Kalibrierung wieder dieselbe Quelle zeigen."""
+    """`apply_calibration`: counterpart to `AprilTagDetectionSource.apply_calibration`,
+    so job and livestream show the same source again after a fresh interactive
+    calibration."""
 
     def test_replaces_the_calibration_object(self):
         annotator = AprilTagStreamAnnotator(
@@ -136,10 +136,10 @@ class ApplyCalibrationTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class AprilTagFullResolutionTest(unittest.TestCase):
-    """Modus "apriltag" seit 21.10.2026: gezeichnet wird auf dem kleinen
-    Stream-Bild, die Tags stammen aus einer Erkennung in voller Aufloesung.
-    Das Overlay erkennt nicht mehr im Stream-Takt -- auf pi1 kostete das in
-    voller Aufloesung eine Core und liess Jobs in den Timeout laufen."""
+    """Mode "apriltag": drawing happens on the small stream image, the tags come
+    from detection at full resolution. The overlay no longer detects at stream
+    rate; on pi1 that cost one core at full resolution and let jobs run into the
+    timeout."""
 
     CORNERS = ((100.0, 60.0), (140.0, 60.0), (140.0, 100.0), (100.0, 100.0))
 
@@ -189,9 +189,9 @@ class AprilTagFullResolutionTest(unittest.TestCase):
         result, draw, status = self._annotate(annotator, image)
 
         self.assertEqual(result.shape[:2], (150, 200))
-        # Ecken von 400x300 auf 200x150 umgerechnet.
+        # Corners scaled from 400x300 to 200x150.
         self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
-        # Seit dem schlanken Overlay: keine Statusleiste im Modus "apriltag".
+        # No status bar in mode "apriltag" (lean overlay).
         status.assert_not_called()
         self.assertFalse(np.any(image))
 
@@ -202,10 +202,10 @@ class AprilTagFullResolutionTest(unittest.TestCase):
         annotator.set_overlay_paused(lambda: paused["value"])
 
         result, draw, _ = self._annotate(annotator, image)
-        self.assertIs(result, image)  # Rohbild, nichts gezeichnet, nichts erkannt
+        self.assertIs(result, image)  # raw image, nothing drawn, nothing detected
         draw.assert_not_called()
 
-        # Danach laeuft das Overlay wieder wie gewaehlt.
+        # Afterwards the overlay runs again as selected.
         paused["value"] = False
         result, draw, _ = self._annotate(annotator, image)
         self.assertEqual(result.shape[:2], (150, 200))
@@ -215,7 +215,7 @@ class AprilTagFullResolutionTest(unittest.TestCase):
         annotator = self._annotator(snapshot=self._snapshot())
         annotator.set_overlay_paused(lambda: True)
         result = annotator.annotate(np.zeros((300, 400, 3), dtype=np.uint8), "calibration")
-        self.assertEqual(result.shape[:2], (150, 200))  # Kalibrier-Vorschau unveraendert
+        self.assertEqual(result.shape[:2], (150, 200))  # calibration preview unchanged
 
     def test_no_own_detection_while_a_fresh_result_exists(self):
         detector = SimpleNamespace(detect=lambda gray: [])
@@ -227,8 +227,8 @@ class AprilTagFullResolutionTest(unittest.TestCase):
         self.assertIsNone(annotator._pending)
 
     def test_own_detection_runs_on_the_full_frame_in_the_background(self):
-        """Ohne frisches Ergebnis erkennt das Overlay selbst -- auf dem
-        vollen Frame (400x300), nicht auf der Leinwand (200x150)."""
+        """Without a fresh result the overlay detects by itself, on the full frame
+        (400x300), not on the canvas (200x150)."""
         image = np.zeros((300, 400, 3), dtype=np.uint8)
         detector = SimpleNamespace(detect=lambda gray: [])
         with patch.object(detector, "detect", wraps=detector.detect) as detect:
@@ -238,10 +238,10 @@ class AprilTagFullResolutionTest(unittest.TestCase):
                 annotator._pending.result(timeout=5)
 
         self.assertEqual(detect.call_args.args[0].shape[:2], (300, 400))
-        # Der erste Tick wartet nicht auf die Erkennung ...
+        # The first tick does not wait for detection ...
         self.assertEqual(draw.call_args.args[1], [])
         status.assert_not_called()
-        # ... der naechste zeigt ihr Ergebnis.
+        # ... the next one shows its result.
         _, draw, status = self._annotate(annotator, image)
         self.assertEqual(draw.call_args.args[1][0].observation.corners[0], (50.0, 30.0))
         status.assert_not_called()
@@ -298,7 +298,7 @@ class AprilTagFullResolutionTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class UndistortedModeTest(unittest.TestCase):
-    """Modus "undistorted": nur entzerrt, ohne Markierungen."""
+    """Mode "undistorted": only undistorted, without markers."""
 
     def _calibration(self, calibration_id="echt"):
         from tagloc.calibration import PINHOLE, CameraCalibration
@@ -313,7 +313,7 @@ class UndistortedModeTest(unittest.TestCase):
 
     def _image(self, width=100, height=80):
         image = np.zeros((height, width, 3), dtype=np.uint8)
-        image[::10, :] = 255  # Gitterlinien: entzerrt sehen sie anders aus
+        image[::10, :] = 255  # grid lines: they look different once undistorted
         image[:, ::10] = 255
         return image
 
@@ -328,7 +328,7 @@ class UndistortedModeTest(unittest.TestCase):
 
         self.assertEqual(out.shape, image.shape)
         self.assertFalse(np.array_equal(out, image))
-        np.testing.assert_array_equal(image, original)  # geteilter Frame unberuehrt
+        np.testing.assert_array_equal(image, original)  # shared frame untouched
         self.assertIn((100, 80), annotator._undistort_maps)
 
         annotator.apply_calibration(self._calibration())

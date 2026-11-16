@@ -1,9 +1,9 @@
-"""Volle Kalibrierung der Handkamera aus einer Rohaufnahme (`fullCalibration`).
+"""Full calibration of the hand camera from a raw capture (`fullCalibration`).
 
-Aus denselben Rohbildern erst die Intrinsik, dann Hand-Auge; beides wird
-geschrieben und live uebernommen. Die Bilder sind synthetisch: ein ChArUco-Brett
-mit nachgemessenen (krummen) Massen, gerendert ueber bekannte Intrinsik und
-bekanntes Hand-Auge -- die Rechnung muss beides wiederfinden.
+Intrinsics first, then hand-eye, from the same raw images; both are written and
+applied live. The images are synthetic: a ChArUco board with re-measured
+(irregular) dimensions, rendered from known intrinsics and a known hand-eye. The
+computation must recover both.
 """
 
 import json
@@ -22,7 +22,7 @@ from tagloc.handeye_offline import calibrate_session
 from vision_server.errors import VisionErrorCode
 from vision_server.handeye_session import HandEyePorts, HandEyeSession
 
-#: Labor-Brett mit den nachgemessenen Massen (274,8 mm / 11 Felder).
+#: Lab board with the re-measured dimensions (274.8 mm / 11 squares).
 SPEC = BoardSpec(type="charuco", cols=11, rows=7, square_size_m=0.024982,
                  marker_size_m=0.018487, dictionary="DICT_5X5_100")
 SIZE = (1280, 720)
@@ -31,16 +31,16 @@ X_TRUE = geometry.from_rotation_translation(
     cv2.Rodrigues(np.array([0.05, -0.03, 0.12]))[0], np.array([-0.047, -0.034, 0.060]))
 BOARD_IN_BASE = geometry.from_rotation_translation(
     cv2.Rodrigues(np.array([np.pi, 0, 0]))[0], np.array([0.5, 0.0, 0.0]))
-#: Irgendeine falsche Intrinsik, wie sie waehrend der Aufnahme aktiv sein kann.
+#: Some wrong intrinsics, as can be active during capture.
 CAL_ACTIVE = CameraCalibration(np.array([[1000.0, 0, 640], [0, 1000.0, 360], [0, 0, 1]]),
                                np.zeros(5), SIZE, frame_id="cam_flange")
 
 
 def _render_views(count, seed=3):
-    """`count` Paare (T_base_flange, Bild), Brett jeweils ganz im Bild."""
+    """`count` pairs (T_base_flange, image), the board completely in the image each time."""
     rng = np.random.default_rng(seed)
     width_m, height_m = SPEC.cols * SPEC.square_size_m, SPEC.rows * SPEC.square_size_m
-    # Genau 100 px je Feld: die Textur passt ohne Rundung auf das Brett.
+    # Exactly 100 px per square: the texture fits the board without rounding.
     tw, th = 100 * SPEC.cols, 100 * SPEC.rows
     texture = build_board(SPEC).generateImage((tw, th), marginSize=0)
     corners_board = np.array([[0, 0, 0], [width_m, 0, 0], [width_m, height_m, 0], [0, height_m, 0]])
@@ -51,7 +51,7 @@ def _render_views(count, seed=3):
         rotation = cv2.Rodrigues(np.array([np.pi, 0, 0]) + rng.normal(0, 0.25, 3))[0]
         camera_target = centre_in_base + np.r_[rng.normal(0, 0.03, 2), rng.uniform(0.33, 0.45)]
         flange = geometry.from_rotation_translation(rotation, camera_target)
-        # Flansch so verschieben, dass die Kamera ueber der Brettmitte steht.
+        # Shift the flange so that the camera is above the board centre.
         camera = geometry.compose(flange, X_TRUE)
         flange[:3, 3] += camera_target - camera[:3, 3]
         cam_board = geometry.invert(geometry.compose(flange, X_TRUE)) @ BOARD_IN_BASE
@@ -63,7 +63,7 @@ def _render_views(count, seed=3):
         pixels = pixels.reshape(-1, 2)
         if pixels.min() < 20 or pixels[:, 0].max() > SIZE[0] - 20 or pixels[:, 1].max() > SIZE[1] - 20:
             continue
-        # Pixelmitten liegen auf ganzen Zahlen: die Bildkante der Textur ist -0,5.
+        # Pixel centres lie on whole numbers: the image edge of the texture is -0.5.
         edges = np.array([[-0.5, -0.5], [tw - 0.5, -0.5], [tw - 0.5, th - 0.5], [-0.5, th - 0.5]], np.float32)
         homography = cv2.getPerspectiveTransform(edges, pixels.astype(np.float32))
         image = cv2.warpPerspective(texture, homography, SIZE, flags=cv2.INTER_LINEAR, borderValue=255)
@@ -101,12 +101,12 @@ class CalibrateSessionTest(unittest.TestCase):
             np.testing.assert_allclose(K[:2, 2], K_TRUE[:2, 2], atol=5.0)
             self.assertLess(result.intrinsic_rms_px, 0.5)
             self.assertEqual(result.intrinsic_image_count, len(VIEWS))
-            # Hand-Auge mit nomineller Flanschpose; auf 1 mm / 0,2 Grad.
+            # Hand-eye with nominal flange pose; to 1 mm / 0.2 degrees.
             self.assertLess(geometry.translation_distance_m(result.hand_eye_pose, X_TRUE), 0.001)
             self.assertLess(np.degrees(geometry.rotation_distance_rad(result.hand_eye_pose, X_TRUE)), 0.2)
             self.assertGreaterEqual(result.handeye_pose_count, 10)
             self.assertEqual(result.calibration.calibration_id, "cam_flange@sitzung-pi")
-            # Die nachgemessenen Masse stehen unveraendert in der Kalibrierung.
+            # The re-measured dimensions stay unchanged in the calibration.
             self.assertAlmostEqual(result.calibration.board["squareSizeM"], 0.024982)
             self.assertAlmostEqual(result.calibration.board["markerSizeM"], 0.018487)
             results = folder / "results"
@@ -121,7 +121,7 @@ class CalibrateSessionTest(unittest.TestCase):
 
 
 class _FakePi:
-    """Ports einer Hand-Auge-Sitzung; liefert die gerenderten Bilder der Reihe nach."""
+    """Ports of a hand-eye session; returns the rendered images in order."""
 
     def __init__(self, tmp: Path, views):
         self.views = list(views)
@@ -176,7 +176,7 @@ class FullCalibrationSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["backups"], {"intrinsics": None, "handEye": None})
             self.assertIn("aktiviert", status["message"])
 
-            # Beide Dateien geschrieben, zusammengehoerig und live uebernommen.
+            # Both files written, consistent with each other, and applied live.
             calibration = load_calibration(Path(tmp) / "calibration" / "cam_flange.json")
             hand_eye = load_hand_eye(Path(tmp) / "handeye" / "cam_flange.json")
             self.assertEqual(hand_eye.calibration_id, calibration.calibration_id)
@@ -185,7 +185,7 @@ class FullCalibrationSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(pi.applied), 1)
             self.assertLess(geometry.translation_distance_m(pi.applied[0].pose_flange_cam, X_TRUE), 0.001)
 
-            # Die Werks-/Platzhalter-Intrinsik der Aufnahme landet nicht im Datensatz.
+            # The factory/placeholder intrinsics of the capture do not land in the dataset.
             config = json.loads((Path(result["sessionPath"]) / "config.json").read_text())
             self.assertIsNone(config["intrinsics"])
             self.assertAlmostEqual(config["board"]["squareSizeM"], 0.024982)
@@ -206,7 +206,7 @@ class FullCalibrationSessionTest(unittest.IsolatedAsyncioTestCase):
 
 
 class BoardOptionsTest(unittest.IsolatedAsyncioTestCase):
-    """Schachbrett und ChArUco mit eingetragenen Massen; nur Unplausibles wird abgelehnt."""
+    """Chessboard and ChArUco with entered dimensions; only implausible ones are refused."""
 
     async def _code(self, board=None, **extra):
         with tempfile.TemporaryDirectory() as tmp:

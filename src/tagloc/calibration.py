@@ -1,16 +1,9 @@
-"""Camera calibration as data: read, write, validate. No OpenCV required.
+"""Camera calibration as data: read, write and validate JSON files. No OpenCV required.
 
-JSON is used instead of the OpenCV FileStorage YAML format, for these reasons:
-
-* It can be read without ``cv2``. The vision server builds the ``configurationId``
-  without loading OpenCV, and the tests run everywhere.
-* It has room for ``rms``, the image size and the board geometry. The prototype
-  (``src/apriltag/calibrate_camera.py``, removed on 2026-10-30) only printed ``rms``
-  to stdout and wrote ``image_width``/``image_height`` without ever reading them back.
-* It can be diffed and read by hand when something fails.
-
-A calibration file belongs to **one physical camera** and is not part of the repo.
-It lives under ``data/``, excluded by ``.gitignore``. Every Pi creates its own.
+JSON is used instead of OpenCV FileStorage YAML so that the file can be read without
+``cv2``, which the vision server needs to build the ``configurationId``, and so that
+it can be diffed and read by hand. A calibration file belongs to **one physical
+camera**; it lives under ``data/``, is excluded from git, and every Pi creates its own.
 """
 
 import json
@@ -25,7 +18,7 @@ import numpy as np
 from .identity import calibration_identity
 
 SCHEMA = "wsc.vision.calibration/2"
-#: Predates the lens-model field (2026-09-29). Still read, and treated as
+#: Predates the lens-model field. Still read, and treated as
 #: ``PINHOLE``, the only model at that time. Only ``SCHEMA`` is written now, so an old
 #: code version rejects a new file loudly instead of silently reading fisheye
 #: coefficients as pinhole.

@@ -1,9 +1,9 @@
-"""Die Anlagensicht nach OPC 40100-2 (AMCM).
+"""The plant view per OPC 40100-2 (AMCM).
 
-Braucht die Nodesets unter src/vision_server/nodesets/ und importiert sie wirklich --
-anders laesst sich nicht pruefen, ob die Abhaengigkeitskette DI -> Machinery ->
-AMCM gegen asyncuas Basis-Adressraum aufgeht. Genau daran ist die neueste
-DI-Version gescheitert, siehe src/vision_server/nodesets/README.md.
+Requires the nodesets under src/vision_server/nodesets/ and really imports them.
+Only then can it be checked that the dependency chain DI -> Machinery -> AMCM
+resolves against asyncua's base address space; a DI version that did not resolve
+is documented in src/vision_server/nodesets/README.md.
 """
 
 import unittest
@@ -25,14 +25,14 @@ ASSETS = AssetConfig(
 )
 
 
-#: Der Aufbau kostet mehrere Sekunden (siehe `AddressSpaceCache`); einmal je
-#: Variante, nicht einmal je Testmethode.
+#: Building takes several seconds (see `AddressSpaceCache`); once per variant,
+#: not once per test method.
 build = AddressSpaceCache().build
 _WITH_ASSETS: dict[str, tuple] = {}
 
 
 async def build_with_assets(assets: AssetConfig, key: str, port: int):
-    """Adressraum samt aufgebauter Anlagensicht, ebenfalls memoisiert."""
+    """Address space plus the plant view built on it, also memoised."""
     from vision_server.asset_model import attach_asset_model
 
     cached = _WITH_ASSETS.get(key)
@@ -76,22 +76,21 @@ class AssetModelTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(uri, namespaces)
 
     async def test_uses_an_explicit_string_node_id(self):
-        """Automatisch vergebene numerische Ids verschieben sich; Clients
-        abonnieren diese Knoten aber fest."""
+        """Automatically assigned numeric IDs shift; clients subscribe to these nodes by fixed ID."""
         self.assertEqual(
             "VisionMachine.VisionAsset", self.assets.root.nodeid.Identifier
         )
 
     async def test_creates_no_placeholder_template_nodes(self):
-        """`<ComputingDevice>` & Co. sind Vorlagen des Typs, keine Instanzen --
-        sie duerfen im laufenden Adressraum nicht auftauchen."""
+        """`<ComputingDevice>` & Co. are template types, not instances; they must not
+        appear in the running address space."""
         for folder in await self.assets.root.get_children():
             for child in await folder.get_children():
                 name = (await child.read_browse_name()).Name
                 self.assertFalse(name.startswith("<"), f"Platzhalter: {name}")
 
     async def test_creates_only_the_folders_it_fills(self):
-        """Leere Ordner fuer WayEncoder oder Klimaregler waeren Rauschen."""
+        """Empty folders for WayEncoder or climate controls would be noise."""
         names = {(await c.read_browse_name()).Name for c in await self.assets.root.get_children()}
         self.assertIn("ComputingDevices", names)
         self.assertNotIn("WayEncoders", names)
@@ -107,8 +106,7 @@ class AssetModelTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.assets.lens)
 
     async def test_leaves_out_components_without_a_model(self):
-        """Ein leeres Modellfeld heisst 'nicht bekannt' und darf keinen
-        Phantomeintrag erzeugen."""
+        """An empty model field means 'not known' and must not create a phantom entry."""
         _, _, assets = await build_with_assets(AssetConfig(), "minimal", 48404)
         self.assertIsNotNone(assets.computing_device)
         self.assertIsNone(assets.image_sensor)
@@ -117,12 +115,11 @@ class AssetModelTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(HAS_NODESETS, "AMCM-Nodesets nicht vorhanden")
 class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
-    """Der Zustandsteil von Part 2 -- `Health` mit `DeviceHealth`.
+    """The state part of Part 2: `Health` with `DeviceHealth`.
 
-    Was hier geprueft wird, ist der Vertrag gegenueber dem Backend: Adresse,
-    Namensraum des BrowseName, DataType und Startwert. Ein vertauschter
-    Namensraumindex erzeugt keinen Fehler, nur einen Knoten, den niemand per
-    BrowsePath findet -- deshalb die BrowseName-Tests.
+    What is checked here is the contract with the backend: address, namespace of
+    the BrowseName, DataType and start value. A swapped namespace index raises no
+    error, only a node that nobody finds via BrowsePath; hence the BrowseName tests.
     """
 
     async def asyncSetUp(self):
@@ -147,9 +144,9 @@ class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_health_is_an_add_in_not_a_component(self):
-        """AMCM referenziert `Health` per `HasAddIn`; asyncuas `instantiate()`
-        setzt aber immer `HasComponent`. `includesubtypes=False` ist noetig,
-        weil `HasAddIn` selbst ein Subtyp von `HasComponent` ist."""
+        """AMCM references `Health` via `HasAddIn`; asyncua's `instantiate()` always
+        sets `HasComponent`. `includesubtypes=False` is needed because `HasAddIn` is
+        itself a subtype of `HasComponent`."""
         add_ins = await self.assets.root.get_references(
             ua.NodeId(ua.ObjectIds.HasAddIn), direction=ua.BrowseDirection.Forward
         )
@@ -182,14 +179,14 @@ class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_device_health_starts_as_check_function(self):
-        """Beim Aufbau ist die Kamera nicht einmal geoeffnet -- NORMAL waere
-        eine Behauptung, die bis zum ersten Frame unwidersprochen stuende."""
+        """At build time the camera is not even open; NORMAL would be a claim that
+        stands unchallenged until the first frame."""
         for node in self.assets.device_health:
             self.assertEqual(int(DeviceHealth.CHECK_FUNCTION), await node.read_value())
 
     async def test_device_health_accepts_an_int32_write(self):
-        """Enumerationen gehen als Int32 ueber die Leitung; ohne den
-        ausdruecklichen Startwert-VariantType gaebe es BadTypeMismatch."""
+        """Enumerations travel as Int32 over the wire; without the explicit start-value
+        VariantType there would be BadTypeMismatch."""
         node = self.assets.device_health[0]
         try:
             await node.write_value(
@@ -202,11 +199,10 @@ class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_the_health_block_carries_exactly_the_two_di_members(self):
-        """DIs `IDeviceHealthType` hat genau zwei Mitglieder, beide bedient.
+        """DI's `IDeviceHealthType` has exactly two members, both served.
 
-        Die uebrigen Kinder von `VisionHealthInfoType` bleiben weg -- `State`
-        (SEMI E10), `Temperature` und `RemainingLifeTime` haetten keine
-        Quelle.
+        The other children of `VisionHealthInfoType` are left out: `State`
+        (SEMI E10), `Temperature` and `RemainingLifeTime` would have no source.
         """
         health = await self.assets.root.get_child(f"{self.amcm_idx}:Health")
         names = {(await c.read_browse_name()).Name for c in await health.get_children()}
@@ -215,7 +211,7 @@ class DeviceHealthNodeTest(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(HAS_NODESETS, "AMCM-Nodesets nicht vorhanden")
 class DeviceHealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
-    """Der zweite Teil von `IDeviceHealthType`: echte OPC-UA-Alarme."""
+    """The second part of `IDeviceHealthType`: real OPC UA alarms."""
 
     async def asyncSetUp(self):
         self.server, self.space, self.assets = await build_with_assets(
@@ -235,8 +231,8 @@ class DeviceHealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_leaves_out_maintenance_required(self):
-        """Ohne Verschleisszaehler koennte er nie feuern -- ein Alarm, der nie
-        kommt, ist eine Zusage, die wir nicht halten."""
+        """Without a wear counter it could never fire; an alarm that never comes is a
+        promise we do not keep."""
         self.assertNotIn(DeviceHealth.MAINTENANCE_REQUIRED, self.assets.health_alarms)
         folder = await self._folder()
         names = {(await c.read_browse_name()).Name for c in await folder.get_children()}
@@ -248,15 +244,15 @@ class DeviceHealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.di_idx, browse_name.NamespaceIndex)
 
     async def test_the_alarms_are_condition_objects(self):
-        """Sie muessen die Condition-Felder tragen, sonst ist es kein Alarm."""
+        """They must carry the condition fields; otherwise they are not alarms."""
         alarm = self.assets.health_alarms[DeviceHealth.FAILURE]
         names = {(await c.read_browse_name()).Name for c in await alarm.get_children()}
         for field in ("ActiveState", "AckedState", "Retain", "Severity", "Message"):
             self.assertIn(field, names)
 
     async def test_only_the_root_carries_alarms(self):
-        """Wurzel und Bildsensor tragen denselben Wert; jede Alarminstanz
-        kostet 36 Knoten, doppelt waere sie reine Verdopplung."""
+        """Root and image sensor carry the same value; each alarm instance costs 36
+        nodes, so a duplicate would be pure doubling."""
         sensor_health = await self.assets.image_sensor.get_child(
             f"{self.amcm_idx}:Health"
         )
@@ -270,8 +266,8 @@ class DeviceHealthAlarmsTest(unittest.IsolatedAsyncioTestCase):
         return await health.get_child(f"{self.di_idx}:DeviceHealthAlarms")
 
     async def test_without_an_image_sensor_only_the_root_carries_health(self):
-        """Genau deshalb haengt der Zustand auch an der Wurzel: ohne bekanntes
-        Kameramodell gibt es keinen ImageSensor-Knoten."""
+        """That is why the state also hangs on the root: without a known camera model
+        there is no ImageSensor node."""
         _, _, assets = await build_with_assets(AssetConfig(), "minimal", 48404)
         self.assertEqual(1, len(assets.device_health))
         self.assertEqual(

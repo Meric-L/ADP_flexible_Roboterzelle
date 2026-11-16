@@ -1,12 +1,12 @@
-"""MeasureTagReference / PlanTagReferenceView: Anfrage, Ergebnis, Quelle, OPC UA.
+"""MeasureTagReference / PlanTagReferenceView: request, result, source, OPC UA.
 
-Die Quelle bekommt eine Fake-Kamera, die **gerenderte** Bilder liefert
-(`render_reference_scene`: Tag auf heller Flaeche, die Flaechenraender sind die
-Bezugskanten). Die wahre `T_module_tag` ist bekannt, der Startwert wird in der
-Tag-Ebene verschoben, und die Messung muss ihn zurueckholen -- mit dem echten
-Detektor und der echten Kantensuche, nur ohne Kamera.
+The source gets a fake camera that delivers **rendered** images
+(`render_reference_scene`: a tag on a bright surface, the surface borders are the
+reference edges). The true `T_module_tag` is known, the start value is shifted in
+the tag plane, and the measurement must recover it, with the real detector and
+the real edge search, only without a camera.
 
-Ohne OpenCV/numpy/asyncua werden die Tests uebersprungen.
+Without OpenCV/numpy/asyncua the tests are skipped.
 """
 
 import asyncio
@@ -56,17 +56,17 @@ try:
     )
 
     from tests.test_apriltag_source import FakeCamera, profile_config
-except Exception:  # pragma: no cover - numpy/cv2/asyncua fehlen
+except Exception:  # pragma: no cover - numpy/cv2/asyncua missing
     np = None
 
 TAG_ID = 7
 TAG_SIZE_M = 0.08
-#: Flaeche im Modul-KS; Kante A: (0,0.2)->(0,0), Kante B: (0,0)->(0.3,0).
+#: Surface in the module frame; edge A: (0,0.2)->(0,0), edge B: (0,0)->(0.3,0).
 POLYGON = [(0.0, 0.0, 0.0), (0.3, 0.0, 0.0), (0.3, 0.2, 0.0), (0.0, 0.2, 0.0)]
 
 
 def request_text(**overrides) -> str:
-    """Eine gueltige Anfrage, einzelne Felder ueberschreibbar (`None` entfernt sie)."""
+    """A valid request, with individual fields overridable (`None` removes them)."""
     data = {
         "schema": "wsc.vision.tagreference.request/1",
         "tagId": TAG_ID,
@@ -89,7 +89,7 @@ class RequestTest(unittest.TestCase):
         self.assertEqual(request.frames, 3)
         self.assertAlmostEqual(request.search_band_m, 0.015)
         self.assertAlmostEqual(request.line_extent_m, 0.10)
-        # Nicht 0: frontal kippt die Tag-Pose gern in die Spiegelloesung.
+        # Not 0: frontal, the tag pose tends to flip into the mirror solution.
         self.assertAlmostEqual(request.tilt_deg, 10.0)
         self.assertEqual([line.id for line in request.lines], ["A", "B"])
         np.testing.assert_allclose(request.pose_module_tag_guess[:3, 3], [0.1, 0.08, 0.0])
@@ -109,7 +109,7 @@ class RequestTest(unittest.TestCase):
             (request.tag_size_m, request.search_band_m, request.frames, request.line_extent_m, request.tilt_deg),
             (0.1, 0.02, 5, 0.2, -5.0),
         )
-        # Quaternion wird normiert: 90 Grad um z.
+        # Quaternion is normalised: 90 degrees about z.
         np.testing.assert_allclose(request.pose_module_tag_guess[:3, 0], [0, 1, 0], atol=1e-12)
         self.assertEqual(parse_request(request_text(view=None)).tilt_deg, 10.0)
         self.assertEqual(parse_request(request_text(view={"tiltDeg": 0})).tilt_deg, 0.0)
@@ -165,12 +165,12 @@ def _in_plane(dx: float, dy: float, degrees: float):
 
 
 class SceneSource:
-    """Gemeinsame Szene: wahre Pose, Startwert, Quelle mit Fake-Kamera.
+    """Shared scene: true pose, start value, source with fake camera.
 
-    Kein Test-Case, nur Hilfsfunktionen -- ein Mixin fuer die Testklassen.
+    Not a test case, only helper functions; a mixin for the test classes.
     """
 
-    #: Startfehler in der Tag-Ebene: knapp 1 cm, 2 Grad.
+    #: Start error in the tag plane: just under 1 cm, 2 degrees.
     START_ERROR = (0.008, -0.006, 2.0)
     IMAGE_SIZE = (640, 480)
     FOCAL_PX = 600.0
@@ -227,10 +227,10 @@ class SceneSource:
 
     @staticmethod
     def feed(camera, images):
-        """Erst ein altes Bild (liegt beim Aufruf schon im Puffer), dann die frischen.
+        """First an old image (already in the buffer at call time), then the fresh ones.
 
-        `FakeCamera.latest_frame` holt bei jedem Zugriff das naechste Bild;
-        `measure_tag_reference` liest es einmal vorab -- das ist das alte.
+        `FakeCamera.latest_frame` fetches the next image on each access;
+        `measure_tag_reference` reads it once in advance, so that is the old one.
         """
         camera.push_frame("aus-der-fahrt")
         for image in images:
@@ -245,10 +245,10 @@ class SceneSource:
 
 
 class AmbiguousSource(AprilTagDetectionSource):
-    """Echte Erkennung, aber Tag-Posen werden mehrdeutig und mit falscher Drehung gemeldet.
+    """Real detection, but tag poses are reported as ambiguous and with a wrong rotation.
 
-    `ambiguous_frames`: Indizes der Bilder (0-basiert), die so verfaelscht
-    werden. Die Drehung ist um 10 Grad um Tag-x verkippt -- wie eine Spiegelloesung.
+    `ambiguous_frames`: indices of the images (0-based) that are falsified this way.
+    The rotation is tilted by 10 degrees about tag x, like a mirror solution.
     """
 
     ambiguous_frames: set = set()
@@ -298,24 +298,24 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(correction["dofs"], "full")
         self.assertEqual(result["warnings"], [])
         self.assert_true_pose(correction, 0.001, 0.3)
-        # Katalogformat: position/rotationDeg sind dieselbe Pose.
+        # Catalogue format: position/rotationDeg describe the same pose.
         self.assertEqual(correction["position"], correction["moduleTag"]["position"])
         pose = geometry.from_position_quaternion(
             correction["moduleTag"]["position"], correction["moduleTag"]["orientation"]
         )
         np.testing.assert_allclose(correction["rotationDeg"], catalog_rpy_deg(pose), atol=1e-9)
-        # Startwert war tatsaechlich daneben (sonst waere der Test leer).
+        # The start value really was off (otherwise the test would be empty).
         self.assertGreater(translation_distance_m(self.guess, self.pose_true), 0.009)
-        # Korrektur in mm, im Tag-KS: so viel wie der Startfehler (Vorzeichen: D = Startfehler^-1).
+        # Correction in mm, in the tag frame: as large as the start error (sign: D = start error^-1).
         self.assertGreater(math.hypot(*correction["deltaMm"]), 5.0)
         self.assertLess(correction["spreadMm"], 0.5)
         self.assertLess(correction["residualMm"], 0.5)
         json.loads(dumps(result))
 
     async def test_accuracy_at_640x480(self):
-        """Realistische Hand-Kamera: 640x480, f 600 px, Tag 80 mm, ~0,35 m, 10 Grad gekippt.
+        """Realistic hand camera: 640x480, f 600 px, tag 80 mm, ~0.35 m, tilted by 10 degrees.
 
-        Ziel: < 1 mm und < 0,3 Grad. Die erreichten Werte stehen in der Meldung.
+        Target: < 1 mm and < 0.3 degrees. The values reached are in the message.
         """
         errors = []
         for tilt, minimum in ((10.0, 0.25), (15.0, 0.25), (10.0, 0.35)):
@@ -340,13 +340,13 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         for tilt, standoff, millimetres, degrees in errors:
             with self.subTest(kippung=tilt, abstand=standoff):
                 self.assertTrue(0.25 <= standoff <= 0.6, standoff)
-                # Erreicht (Stand 20.10.2026): 0,25 bis 0,63 mm und 0,07 bis 0,11 Grad.
+                # Reached: 0.25 to 0.63 mm and 0.07 to 0.11 degrees.
                 self.assertLess(millimetres, 1.0, errors)
                 self.assertLess(degrees, 0.3, errors)
 
     async def test_ambiguous_tag_in_some_frames_uses_the_clear_rotation(self):
-        # Bild 0 mehrdeutig mit falscher Drehung, die anderen eindeutig: die
-        # Drehung der eindeutigen gilt fuer alle, die Korrektur bleibt voll.
+        # Image 0 ambiguous with a wrong rotation, the others clear: the rotation of
+        # the clear ones applies to all, the correction stays full.
         class Source(AmbiguousSource):
             ambiguous_frames = {0}
 
@@ -373,7 +373,7 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         pose = geometry.from_position_quaternion(
             correction["moduleTag"]["position"], correction["moduleTag"]["orientation"]
         )
-        # Drehung exakt der Startwert, nur die Position ist korrigiert.
+        # Rotation is exactly the start value; only the position is corrected.
         np.testing.assert_allclose(pose[:3, :3], self.guess[:3, :3], atol=1e-9)
         self.assertEqual(correction["deltaRotDeg"], 0.0)
         self.assertEqual(correction["spreadDeg"], 0.0)
@@ -406,7 +406,7 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("Teilkorrektur" in warning for warning in result["warnings"]))
 
     async def test_a_wrong_guess_beyond_the_band_is_flagged(self):
-        # Kante A sitzt 2 cm neben dem Startwert, Suchband nur 5 mm: nichts gefunden bzw. Warnung.
+        # Edge A sits 2 cm beside the start value, search band only 5 mm: nothing found or a warning.
         self.guess = invert(compose(_in_plane(0.02, 0.0, 0.0), invert(self.pose_true)))
         with tempfile.TemporaryDirectory() as folder:
             source, camera = self.source(folder)
@@ -450,7 +450,7 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder:
             source, camera = self.source(folder)
             camera.push_frame("alt")
-            _ = camera.latest_frame  # liegt vor dem Aufruf im Puffer: zaehlt nicht
+            _ = camera.latest_frame  # already in the buffer before the call: does not count
             result = await source.measure_tag_reference(self.request())
         self.assertEqual(result["error"], NO_FRAME)
         self.assertEqual(result["framesUsed"], 0)
@@ -459,8 +459,8 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         json.loads(dumps(result))
 
     async def test_tag_size_from_request_wins(self):
-        # Ein falsch angegebener Tag (halb so gross) verschiebt die Messung sichtbar:
-        # die Anfrage-Groesse muss ankommen (Vorrang vor Tag-Map und Standard).
+        # A wrongly given tag (half the size) visibly shifts the measurement: the request
+        # size must arrive (priority over tag map and default).
         with tempfile.TemporaryDirectory() as folder:
             source, camera = self.source(folder)
             self.feed(camera, self.images)
@@ -486,7 +486,7 @@ class SourceTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         np.testing.assert_allclose(
             view["camInTag"]["position"], pose_to_dict(expected.pose_tag_cam)["position"], atol=1e-9
         )
-        # Kippung aus der Anfrage wirkt (Standard 10, nicht 0).
+        # The tilt from the request takes effect (default 10, not 0).
         frontal = source.plan_tag_reference_view(self.request(view={"tiltDeg": 0}))
         self.assertNotAlmostEqual(
             frontal["camInTag"]["position"][1], view["camInTag"]["position"][1], places=3
@@ -540,7 +540,7 @@ class ResultTest(unittest.TestCase):
                                                        support_px=0.0, candidates=0)],
         ]
         tag_poses = [tag_pose(7, (0.0, 0.0, 0.35), error_px=0.4), tag_pose(7, (0.0, 0.0, 0.35), error_px=0.6)]
-        frontal = geometry.from_rvec_tvec((math.pi, 0, 0), (0.0, 0.0, 0.35))  # Tag-z zeigt zur Kamera
+        frontal = geometry.from_rvec_tvec((math.pi, 0, 0), (0.0, 0.0, 0.35))  # tag z points at the camera
         result = build_result(
             captured_at=__import__("datetime").datetime(2026, 10, 20, 12, 0, 0),
             captured_until=__import__("datetime").datetime(2026, 10, 20, 12, 0, 1),
@@ -569,7 +569,7 @@ class ResultTest(unittest.TestCase):
         found, missing = result["lines"]
         self.assertEqual(found["id"], "A")
         self.assertTrue(found["found"])
-        self.assertAlmostEqual(found["offsetMm"], 2.0)  # Mittel aus 1,8 und 2,2 mm, in mm
+        self.assertAlmostEqual(found["offsetMm"], 2.0)  # mean of 1.8 and 2.2 mm, in mm
         self.assertAlmostEqual(found["angleDeg"], 0.4)
         self.assertEqual((found["supportPx"], found["candidates"], found["reason"]), (210.0, 2, None))
         self.assertEqual((missing["found"], missing["offsetMm"], missing["reason"]), (False, None, "NOT_VISIBLE"))
@@ -597,7 +597,7 @@ class ResultTest(unittest.TestCase):
 
         [line] = summarize_lines([[measurement(True, 0.010)], [measurement(False, 0.002)]])
         self.assertTrue(line["ambiguous"])
-        self.assertAlmostEqual(line["offsetMm"], 2.0)  # nur das eindeutige Bild zaehlt
+        self.assertAlmostEqual(line["offsetMm"], 2.0)  # only the clear image counts
         self.assertEqual(line["candidates"], 2)
         self.assertEqual(summarize_lines([]), [])
 
@@ -637,10 +637,10 @@ class ResultTest(unittest.TestCase):
         from tagloc.reference_edges import InPlaneCorrection
 
         guess = from_rotation_translation(_rotation_z(30.0), [0.1, 0.08, 0.0])
-        # Wahre Pose: um 3 Grad gedreht, Ursprung um (3, -2) mm verschoben (im Tag-KS des Startwerts).
+        # True pose: rotated by 3 degrees, origin shifted by (3, -2) mm (in the start value's tag frame).
         true = compose(guess, from_rotation_translation(_rotation_z(3.0), [0.003, -0.002, 0.0]))
-        delta = invert(compose(invert(guess), true))  # D mit T_tag_module_neu = D * T_tag_module_guess
-        # D wirkt im Tag-KS: T_module_tag_neu = guess * D^-1  =>  D^-1 = inv(guess) * true
+        delta = invert(compose(invert(guess), true))  # D with T_tag_module_new = D * T_tag_module_guess
+        # D acts in the tag frame: T_module_tag_new = guess * D^-1  =>  D^-1 = inv(guess) * true
         full = InPlaneCorrection(
             "full", delta[:2, 3].copy(), math.degrees(math.atan2(delta[1, 0], delta[0, 0])), true, 0.0
         )
@@ -648,7 +648,7 @@ class ResultTest(unittest.TestCase):
         np.testing.assert_allclose(kept.pose_module_tag[:3, :3], guess[:3, :3], atol=1e-12)
         np.testing.assert_allclose(kept.pose_module_tag[:3, 3], true[:3, 3], atol=1e-12)
         self.assertEqual(kept.delta_rot_deg, 0.0)
-        # delta_xy ist die reine Verschiebung, die dieselbe Position ergibt.
+        # delta_xy is the pure shift that yields the same position.
         np.testing.assert_allclose(
             guess[:3, :3] @ np.array([-kept.delta_xy_m[0], -kept.delta_xy_m[1], 0.0]) + guess[:3, 3],
             true[:3, 3],
@@ -708,7 +708,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             )
 
             async def feed():
-                # Erst nach dem Start des Aufrufs, sonst waeren es "alte" Bilder.
+                # Only after the start of the call, otherwise these would be "old" images.
                 await asyncio.sleep(0.02)
                 for image in self.images:
                     camera.push_frame(image)
@@ -731,7 +731,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(view["fits"])
             self.assertIsNone(view["error"])
 
-            # Kein Tag im Bild: DETECTION_FAILED, ResultJson bleibt gueltig, LastTagReference zeigt es.
+            # No tag in the image: DETECTION_FAILED, ResultJson stays valid, LastTagReference shows it.
             blank = np.full((480, 640, 3), 120, dtype=np.uint8)
 
             async def feed_blank():
@@ -746,7 +746,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(json.loads(result_json)["error"], TAG_NOT_SEEN)
             self.assertEqual(json.loads(await node.read_value())["error"], TAG_NOT_SEEN)
 
-            # Kein frisches Bild: NO_FRAME.
+            # No fresh image: NO_FRAME.
             source._config = replace(source._config, capture_timeout_s=0.05)
             result_json, error = await vision_system.call_method(measure, request)
             self.assertEqual(error, int(VisionErrorCode.DETECTION_FAILED))
@@ -781,14 +781,14 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             _, error = await vision_system.call_method(method, "")
             self.assertEqual(error, int(VisionErrorCode.INVALID_ARGUMENT))
         self.assertEqual(calls, [])
-        self.assertEqual(await node.read_value(), "")  # Ablehnungen ueberschreiben die Anzeige nicht
+        self.assertEqual(await node.read_value(), "")  # refusals do not overwrite the display
 
         busy["value"] = True
         result_json, error = await vision_system.call_method(measure_method, good)
         self.assertEqual(error, int(VisionErrorCode.BUSY))
         self.assertTrue(json.loads(result_json)["error"].startswith("BUSY"))
         self.assertEqual(calls, [])
-        # Die Planung braucht kein Bild und stoert nichts: nie BUSY.
+        # Planning needs no image and disturbs nothing: never BUSY.
         _, error = await vision_system.call_method(plan_method, good)
         self.assertEqual(error, int(VisionErrorCode.OK))
         busy["value"] = False
@@ -812,7 +812,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(json.loads(result_json)["error"].startswith("INVALID_STATE"))
 
     async def test_a_running_measurement_blocks_the_others(self):
-        # Waehrend einer Einmessung sind weitere Einmessungen und MeasureTags BUSY -- und umgekehrt.
+        # During a measurement, further measurements and MeasureTags are BUSY, and vice versa.
         release = asyncio.Event()
 
         async def measure(request, artifacts=None):
@@ -836,7 +836,7 @@ class OpcUaTest(SceneSource, unittest.IsolatedAsyncioTestCase):
         _, error = await first
         self.assertEqual(error, int(VisionErrorCode.OK))
         self.assertFalse(reference.active)
-        tags.active = True  # MeasureTags laeuft
+        tags.active = True  # MeasureTags running
         _, error = await vision_system.call_method(measure_method, request_text())
         self.assertEqual(error, int(VisionErrorCode.BUSY))
 

@@ -1,28 +1,12 @@
-"""Part 10 program as a generic operator interface for the vision job.
+"""Part 10 `VisionProgram`: a generic operator interface for the vision job.
 
-This is an **add-on**, not a second implementation. `VisionProgram` keeps no
-job state of its own. It calls the same `JobRunner` that the 40100 methods
-`StartSingleJob` and `Stop` use. Both interfaces stand side by side with equal
-rights and always see the same job.
+It keeps no job state of its own and calls the same `JobRunner` as the 40100
+methods `StartSingleJob` and `Stop`, so both interfaces always see the same job.
+Inputs are written to `ParameterSet` before `Start()`, outputs are read from
+`ResultSet`.
 
-Why at all: `ProgramStateMachineType` lives in the base namespace and is present
-in every OPC UA server. A client can operate start, halt and reset, and read the
-state, without knowing OPC 40100.
-
-The shape follows the other cell modules (checked on 2026-09-21 at the conveyor
-`opc.tcp://10.10.38.41:4840/conveyor/`: `RunContinuous`, `MoveDistance`,
-`MoveUntilSensor`):
-
-* `Start()` takes **no** arguments.
-* Inputs are writable variables in `ParameterSet`, and they are written
-  **before** the start.
-* Outputs are in `ResultSet`.
-
-Deliberate deviation from Part 10: a failed job does **not** lead to `Halted`
-but back to `Ready`. Otherwise the front end would have to call `Reset` after
-every failed detection, and the two state machines would drift apart. The
-40100 state machine also returns to `Ready`/`Operational` after an error. The
-reason is in `ResultSet/ErrorCode` and travels as a `ProgramTransitionEvent`.
+Deliberate deviation from Part 10: a failed job returns to `Ready`, not `Halted`,
+as the 40100 state machine does. The reason is in `ResultSet/ErrorCode`.
 """
 
 import asyncio
@@ -222,8 +206,8 @@ async def install_vision_program(
         mirror_methods: Existing method nodes that should also be callable
             directly under the program (the calibration methods). These are
             likewise only `HasComponent` references: one method, one
-            implementation, two places where it is found. Re-measured on
-            21.09.2026 against asyncua 2.0.1. The call succeeds with the program
+            implementation, two places where it is found. Verified with
+            asyncua 2.0.1: the call succeeds with the program
             *and* with the vision system as `objectId`, without registering the
             method twice.
 

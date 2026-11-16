@@ -1,25 +1,17 @@
 """mDNS announcement of an OPC UA server on the local network.
 
-Implements the maintainer's quick guide. The file is not in the repo, because
-`betreuer/` was removed on 23.09.2026. It uses the service type
-`_opcua-tcp._tcp.local.`, the TXT entries `path` and `caps`, registration when
-the server runs, and deregistration on shutdown.
-
+Follows the maintainer's quick guide: service type `_opcua-tcp._tcp.local.`, TXT entries
+`path` and `caps`, registration when the server runs, deregistration on shutdown.
 Two deliberate deviations from the guide:
 
-1. The guide hard-codes an IP in the source, which also fixes the endpoint.
-   Here the LAN IPv4 is detected at runtime, and the endpoint is not changed.
-   The server still binds to `0.0.0.0`, so it is reachable on every interface
-   **and** on 127.0.0.1. The real LAN address is still announced, because
-   `0.0.0.0` is useless to a client. A DHCP reservation in the router makes this
-   stable, without a statically configured address on the Pi.
-2. `zeroconf` is optional. If the package is missing or registration fails, the
-   server keeps running and logs a warning. A server reachable by URL is worth
-   more than none.
+1. The LAN IPv4 is detected at runtime instead of hard-coded in the source. The server
+   still binds to `0.0.0.0`; only the announced address is the LAN address, because
+   `0.0.0.0` is useless to a client.
+2. `zeroconf` is optional. If the package is missing or registration fails, the server
+   keeps running and logs a warning.
 
-**On by default** (again since 21.10.2026; it was off from 23.09. to 21.10.2026).
-`OPCUA_MDNS=0` (or `false`/`no`/`off`) disables the announcement. The server then
-still runs and is reachable by URL.
+On by default. `OPCUA_MDNS=0` (or `false`/`no`/`off`) disables the announcement; the
+server is then still reachable by URL.
 """
 
 import contextlib

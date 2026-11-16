@@ -1,19 +1,18 @@
 """Drift-Test: starres Hand-Auge-Modell gegen Modelle mit zeitlicher Drift.
 
-Nimmt die Je-Pose-Fehler als starren Versatz ernst und prueft, ob er sich
-durch eine gleichmaessige Bewegung ueber die Aufnahmezeit erklaeren laesst:
+Treats the per-pose errors as a rigid offset and checks whether a uniform motion over the recording
+time explains them:
 
-* ``rigid``      -- X = T_flange_camera und B = T_base_board fest (wie bisher).
-* ``boardDrift`` -- B wandert linear mit der Zeit (6 Raten: Brett oder Basis).
-* ``mountDrift`` -- X wandert linear mit der Zeit (Kamerahalterung am Flansch).
+* ``rigid``      -- X = T_flange_camera and B = T_base_board fixed.
+* ``boardDrift`` -- B drifts linearly with time (6 rates: board or base).
+* ``mountDrift`` -- X drifts linearly with time (camera mount on the flange).
 
-Fuer jedes Modell: Gesamt-RMS, RMS erste/zweite Haelfte, Hand-Auge-Translation
-(bei Drift: zur Sitzungsmitte), Driftbetrag ueber die Sitzung, und die
-Translation ueber die D-optimalen Teilmengen (15/25/40/alle). Nur Auswertung,
-nichts wird gespeichert oder aktiviert.
+For each model: overall RMS, RMS of the first and second half, hand-eye translation (with drift:
+at the session midpoint), drift over the session, and the translation over the D-optimal subsets
+(15/25/40/all). Analysis only; nothing is saved or activated.
 
-Aufruf (separate Umgebung, siehe requirements.txt):
-    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out doc/auswertung/handeye_cv4] [--session <ordner> ...]
+Usage (separate environment, see requirements.txt):
+    PYTHONPATH=src python tools/handeye_offline_cv4/drift.py [--out doc/auswertung/handeye_cv4] [--session <folder> ...]
 """
 
 from __future__ import annotations
@@ -42,16 +41,17 @@ SESSIONS = [
 
 
 def _times(folder, obs):
+    """Return capture times in seconds relative to the session midpoint."""
     stamps = {}
     for o in obs:
         state = json.loads((folder / "poses" / o.pose_id / "robot_state.json").read_text())
         stamps[o.pose_id] = datetime.fromisoformat(state["capturedAt"]).timestamp()
     t = np.array([stamps[o.pose_id] for o in obs])
-    return t - 0.5 * (t.min() + t.max())  # Sitzungsmitte = 0
+    return t - 0.5 * (t.min() + t.max())  # session midpoint = 0
 
 
 def _increment(rate, t):
-    """Lineare Drift als Pose: Rotationsvektor und Translation, je mal t."""
+    """Return the linear drift as a pose: rotation vector and translation, each times t."""
     return _pose_from_vector(rate * t)
 
 
@@ -81,6 +81,7 @@ def _per_pose_rms(residual, obs):
 
 
 def fit(obs, times, calib, points, model, start=None):
+    """Fit one drift model and return its summary dict and the fitted parameter vector."""
     if start is None:
         result = solve_subset(obs, calib, points)
         handeye = np.asarray(result["optimized"]["T_flange_camera"])
@@ -111,6 +112,7 @@ def fit(obs, times, calib, points, model, start=None):
 
 
 def analyse(folder):
+    """Fit all drift models and the pose-subset sweep for one session folder."""
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / folder.name
         shutil.copytree(folder, copy)
@@ -119,7 +121,7 @@ def analyse(folder):
     models, starts = {}, {}
     for model in ("rigid", "boardDrift", "mountDrift"):
         models[model], starts[model] = fit(obs, times, calib, points, model)
-    # Translation ueber dieselben D-optimalen Teilmengen wie in handeye_offline.
+    # Translation over the same D-optimal subsets as in handeye_offline.
     sweep = []
     subsets = [(c, idx) for c in (15, 25, 40) for idx in diverse_subsets(obs, c, 3)]
     subsets.append((len(obs), tuple(range(len(obs)))))
@@ -137,6 +139,7 @@ def analyse(folder):
 
 
 def main():
+    """Run the drift analysis for the selected sessions and write drift.json."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=ROOT / "doc/auswertung/handeye_cv4")
     parser.add_argument("--session", action="append", type=Path,

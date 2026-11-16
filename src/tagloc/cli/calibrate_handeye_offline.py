@@ -10,6 +10,7 @@ from ..handeye_offline import run_experiments
 
 
 def main(argv=None):
+    """Run the offline experiments for a session and print the report path."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("session", type=Path, help="Sitzungsordner unter data/rohbilder/calibration")
     parser.add_argument("--pnp", choices=("iterative", "ippe"), default="iterative")

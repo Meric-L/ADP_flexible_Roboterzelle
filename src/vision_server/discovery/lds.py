@@ -1,48 +1,26 @@
 """Registration of the OPC UA server with the cell's Local Discovery Server.
 
-Complements the mDNS announcement from `mdns`, does not replace it.
+Complements the mDNS announcement from `mdns`, does not replace it. The aggregation
+server collects its modules only from the discovery server, not via mDNS, so an active
+registration is required. Clients on the subnet still find the server through mDNS.
 
-Why both are needed (measured in the lab on 2026-09-21):
-The aggregation server (`opc.tcp://10.10.38.27:48400/`) does **not** collect its
-modules via mDNS, although the supervisor's quick guide claimed it did. On the same
-machine runs an open62541 discovery server at `opc.tcp://10.10.38.27:4840/`, and the
-aggregation server lists exactly the servers registered there. One only gets into
-this inventory through an active call; an mDNS announcement alone does not get in.
-Cross-check: the aggregation server restarted at 15:56 and, on the fresh scan, picked
-up all five registered modules -- our two Pis, which had been running and broadcasting
-for ten minutes at that point, were left out.
+The actual work is done by `asyncua.Server.register_to_discovery()`, which keeps the
+registration fresh with its own renewal loop. This module wraps it and handles three
+points:
 
-The mDNS announcement stays anyway: clients on the subnet (among them the WSC frontend)
-find us through it without a detour via the discovery server.
+1. **The advertised address must be the LAN IPv4.** `register_to_discovery()` registers
+   `server.endpoint.geturl()`. With `0.0.0.0` in it, the aggregation server connects to
+   nothing. `Server.socket_address` fixes this: the endpoint names the LAN IPv4, while
+   listening still happens on `0.0.0.0`. `advertised_endpoint()` builds the URL,
+   `server.py` sets both. `register()` refuses to register if `0.0.0.0` remains.
+2. **An unreachable LDS must not prevent startup.** The error is logged and the server
+   runs on without the registration.
+3. **`Server.stop()` does not unregister.** The entry would stay in the LDS until it
+   expires, so `unregister_from_discovery()` runs in a `finally`.
 
-The actual work is done by `asyncua.Server.register_to_discovery()`: it registers and
-keeps the registration fresh with its own loop (a fresh channel on each pass, so it
-survives an LDS restart). This module is only the wrapper around it:
-
-1. **The advertised address must be correct.** `register_to_discovery()` enters
-   `server.endpoint.geturl()` as DiscoveryUrl. If that contains `0.0.0.0` -- the
-   obvious value, so that the server is reachable on every interface -- the
-   aggregation server takes the address literally and connects to nothing. The fix is
-   `Server.socket_address`: the endpoint names the LAN IPv4, while listening still
-   happens on `0.0.0.0`. `advertised_endpoint()` builds the URL, `server.py` sets both.
-   As a safety net against regressions, `register()` refuses the registration if the
-   endpoint still contains `0.0.0.0`.
-2. **An unreachable LDS must not prevent startup.** `register_to_discovery()` then
-   raises; here it stays a warning in the log. A server reachable by URL is worth more
-   than none -- the same line as for `mdns`.
-3. **`Server.stop()` does not unregister.** It only cancels the renewal loop and
-   disconnects; the entry would remain in the LDS until it expires, and the aggregation
-   server would show a module it can no longer reach. Hence
-   `unregister_from_discovery()` in the `finally`.
-
-**On by default** (again since 21.10.2026; from 23.09. to 21.10.2026 it was off): without
-`OPCUA_LDS_URL` the server registers at `CELL_LDS_URL`. `OPCUA_LDS_URL=""` disables the
-registration, another URL redirects it.
-
-Without `MdnsDiscoveryConfiguration`, i.e. via a plain `RegisterServer` -- just as
-Conveyor, CardDispenser and the robots do it. `caps=DA` is in any case contained in our
-own mDNS announcement. (`register_to_discovery()` only sends the configuration if it is
-passed to it.)
+Registration is on by default and uses `CELL_LDS_URL` unless `OPCUA_LDS_URL` is set;
+`OPCUA_LDS_URL=""` disables it. It is a plain `RegisterServer` without
+`MdnsDiscoveryConfiguration`, as the other cell modules do it.
 """
 
 import contextlib
@@ -59,16 +37,11 @@ _log = logging.getLogger(__name__)
 #: Discovery server of the cell.
 CELL_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 
-#: Registration is **on** by default (again since 21.10.2026; from 23.09. to 21.10.2026
-#: it was off and the frontend could not find the Pis).
-#: `OPCUA_LDS_URL=""` disables it.
+#: Registration is on by default. `OPCUA_LDS_URL=""` disables it.
 DEFAULT_LDS_URL = CELL_LDS_URL
 
-#: Renewal is necessary, not optional -- measured on 2026-09-21: the LDS restarted at
-#: 15:56, and Conveyor (continuously since 08.09.) as well as CardDispenser (since 07.09.)
-#: were in the registration inventory again afterwards, without having restarted
-#: themselves. A one-time registration at our own start lay in the old LDS process and
-#: would have been gone.
+#: Renewal is necessary: a one-time registration is lost when the LDS restarts, and
+#: the LDS does not rebuild its inventory from the modules themselves.
 #: 60 s is also the default of `register_to_discovery()`; how long an entry actually
 #: survives without renewal has not been measured.
 DEFAULT_RENEW_SECONDS = 60

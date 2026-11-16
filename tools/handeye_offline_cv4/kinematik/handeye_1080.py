@@ -1,11 +1,12 @@
-"""Hand-Auge fuer die 1080p-Sitzung: starr und mit Kinematik-Korrektur aus den alten Sitzungen (Gegentest).
+"""Hand-eye calibration for the 1080p session, rigid and with kinematic correction.
 
-Starr = nominelle Franka-Kinematik (wie Roboter und Pi rechnen). Kinematik-Korrektur = 10 Abweichungen
-vom Datenblattmodell (Nullpunkte Gelenk 2-6, Laengen d3, d5, a4, a5, a7), geschaetzt aus den vier
-Sitzungen vom 09.11.2026. Schreibt die starre Loesung als Kandidat nach <Sitzung>/results/.
-Aufruf aus der Repo-Wurzel:
-    PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/handeye_1080.py <Sitzung> <intrinsik.json> [Modell]
-<intrinsik.json> wie von tools/handeye_offline_cv4/intrinsik_1080.py geschrieben.
+The rigid solution uses the nominal Franka kinematics; the corrected one adds 10 offsets to the
+datasheet model (joint 2-6 zero points, lengths d3, d5, a4, a5, a7) estimated from the four earlier
+sessions. The rigid solution is written as a candidate to <session>/results/.
+
+Usage, from the repository root:
+    PYTHONPATH=src python tools/handeye_offline_cv4/kinematik/handeye_1080.py <session> <intrinsik.json> [model]
+<intrinsik.json> as written by tools/handeye_offline_cv4/intrinsik_1080.py.
 """
 import json, sys
 from pathlib import Path
@@ -22,7 +23,7 @@ K5, D5 = np.array(IN[MODEL]["K"]), np.array(IN[MODEL]["D"])
 F = 274.8 / 275.0
 cfg = json.loads((SES / "config.json").read_text()); b = cfg["board"]
 dic = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, b["dictionary"]))
-board = cv2.aruco.CharucoBoard((b["cols"], b["rows"]), b["squareSizeM"], b["markerSizeM"], dic)  # Nennmass, skaliert unten
+board = cv2.aruco.CharucoBoard((b["cols"], b["rows"]), b["squareSizeM"], b["markerSizeM"], dic)  # Nominal dimensions, scaled below
 det = cv2.aruco.CharucoDetector(board)
 obs = []
 for f in sorted(SES.glob("poses/*/camera.png")):
@@ -40,6 +41,7 @@ print("Posen fuer Hand-Auge (>=25 Ecken):", len(obs), {g: sum(o["g"] == g for o 
 X0 = np.array(json.loads(Path("doc/auswertung/handeye_cv4/20261109T143834Z_6852cbc7.json").read_text())["finalSolution"]["T_flange_camera"])
 
 def fit(p=None, sel=lambda o: True):
+    """Fit hand-eye pose and board poses; return RMS, pose, per-group RMS and board scatter."""
     O = [o for o in obs if sel(o)]
     fl = (lambda o: fk2(o["q"], p)) if p is not None else (lambda o: o["T"])
     Bs = []
@@ -59,7 +61,7 @@ def fit(p=None, sel=lambda o: True):
     per = []; i = 0
     for o in O:
         n = len(o["uv"]); per.append((o["g"], np.sqrt(np.mean(np.sum(rr[i:i+n] ** 2, 1))))); i += n
-    # Brettlage-Streuung (mm) ueber PnP je Pose
+    # Board-pose scatter (mm) over per-pose PnP estimates
     dev = []
     for o in O:
         ok, rv, tv = cv2.solvePnP(o["P"], o["uv"], K5, D5); T = np.eye(4); T[:3, :3] = cv2.Rodrigues(rv)[0]; T[:3, 3] = tv.ravel()

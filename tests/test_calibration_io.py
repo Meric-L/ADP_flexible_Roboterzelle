@@ -120,8 +120,8 @@ class CalibrationFileTest(unittest.TestCase):
         self.assertEqual(data["distortionModel"], "pinhole")
 
     def test_reads_a_legacy_file_as_pinhole(self):
-        """Kalibrierungen von vor dem Linsenmodell-Feld (Schema /1) gelten
-        weiter -- ohne Neukalibrierung am Pi."""
+        """Calibrations from before the lens-model field (schema /1) remain valid,
+        without recalibrating the Pi."""
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "camera.json"
             calib.save_calibration(path, sample_calibration())
@@ -149,8 +149,8 @@ class CalibrationFileTest(unittest.TestCase):
         self.assertIn("omnidir", str(caught.exception))
 
     def test_rejects_a_fisheye_file_with_pinhole_coefficients(self):
-        """5 Koeffizienten unter "fisheye" hiesse: falsch beschriftet. Beim
-        Laden auffallen, nicht erst mitten im Job."""
+        """Five coefficients under "fisheye" would be mislabelled. Catch it when
+        loading, not in the middle of a job."""
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "camera.json"
             calib.save_calibration(path, sample_calibration())

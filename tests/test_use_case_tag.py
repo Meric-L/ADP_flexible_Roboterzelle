@@ -1,8 +1,8 @@
-"""Tests fuer die Bildmessung der Wuerfelablage gegen einen AprilTag (Bezug "tag").
+"""Tests for the image measurement of the cube placement against an AprilTag ("tag" reference).
 
-Der Wuerfel liegt auf einem 80-mm-Tag; gemessen wird gegen den Aussenrand des
-schwarzen Tag-Quadrats, nicht gegen die (vom Wuerfel verdeckten) Tag-Bits.
-Synthetische Bilder mit bekannter Wahrheit (`use_case_eval.synthetic.render_tag_scene`).
+The cube sits on an 80 mm tag. Measurement is against the outer edge of the black
+tag square, since the cube hides the tag bits. Uses synthetic images with known
+ground truth (`use_case_eval.synthetic.render_tag_scene`).
 """
 
 import json
@@ -14,32 +14,32 @@ try:
     import numpy as np
 
     from use_case_eval import live, measure, synthetic
-except Exception:  # pragma: no cover - numpy/OpenCV fehlen
+except Exception:  # pragma: no cover - numpy/OpenCV missing
     np = None
 
 try:
     from vision_server.runner.save_use_case_image import _reference_from_metadata
-except Exception:  # pragma: no cover - asyncua fehlt
+except Exception:  # pragma: no cover - asyncua missing
     _reference_from_metadata = None
 
-#: Kamera ueber der Tag-Ebene (mm): 20 cm ueber der Wuerfeloberseite.
+#: Camera height above the tag plane (mm): 20 cm above the cube top.
 CAMERA_HEIGHT_MM = 220.0
-#: Handkamera seit 10.11.2026: D415-Farbsensor in voller Aufloesung 1920x1080
-#: (`profiles.realsense_resolution`), fx rund 1390 px. Bei 640x480 reicht der
-#: 1-mm-Rand zwischen Aufkleber und Wuerfelkante (gut 2 px) vor dem schwarzen
-#: Tag-Muster nicht fuer die Kantenverfeinerung des Aufklebers (Fehler bis ~1 Grad).
+#: Hand camera: D415 colour sensor at full resolution 1920x1080
+#: (`profiles.realsense_resolution`), fx about 1390 px. At 640x480 the 1 mm margin
+#: between sticker and cube edge (about 2 px) is too small for the sticker's edge
+#: refinement next to the black tag pattern (errors up to about 1 degree).
 FULL_HD = {"fx": 1390.0, "size": (1920, 1080)}
 POSITION_TOLERANCE_MM = 0.05
 ANGLE_TOLERANCE_DEG = 0.15
 
 
 def angle_error(measured: float, true: float) -> float:
-    """Differenz zweier Gierwinkel modulo 90 Grad."""
+    """Difference of two yaw angles modulo 90 degrees."""
     return (measured - true + 45.0) % 90.0 - 45.0
 
 
 def tag_x_in_image(camera_yaw_deg: float) -> list[float]:
-    """Richtung der Tag-x-Achse im Bild bei `look_down_pose(yaw)` (x rechts, y unten)."""
+    """Direction of the tag x axis in the image for `look_down_pose(yaw)` (x right, y down)."""
     yaw = math.radians(camera_yaw_deg)
     return [math.cos(yaw), math.sin(yaw)]
 

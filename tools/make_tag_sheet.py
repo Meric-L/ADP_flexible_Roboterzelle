@@ -1,12 +1,9 @@
 """Druckbogen fuer AprilTags und ChArUco-Boards, masshaltig in Millimetern.
 
-Die Ausgabe ist **SVG**, nicht PNG: Ein SVG traegt echte Millimetermasse,
-druckt aus jedem Browser mit "Skalierung 100 %" und bleibt massgenau. Ein PNG
-haengt dagegen von der DPI-Annahme des Druckertreibers ab -- genau der Fehler,
-der spaeter als konstanter Abstandsversatz wiederkommt.
-
-Jeder Bogen traegt einen Massstab von 100 mm, sodass ein Lineal nach dem
-Drucken bestaetigt, dass der Drucker wirklich nichts skaliert hat.
+Writes an SVG sheet with real millimetre dimensions; the scale is verified after
+printing with the 100 mm bar on the sheet. SVG is used instead of PNG because a PNG
+depends on the printer driver's DPI assumption, which would show up as a constant
+distance offset later.
 
     python tools/make_tag_sheet.py --ids 0 1 2 3 7 12 --size-mm 100 --out tags.svg
     python tools/make_tag_sheet.py --charuco --cols 7 --rows 5 \
@@ -18,7 +15,7 @@ import base64
 import sys
 from pathlib import Path
 
-# Marker-Woerterbuch und Board-Bau kommen aus `tagloc`, nicht aus eigenen Kopien.
+# Marker dictionary and board construction come from `tagloc`, not from local copies.
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
@@ -27,8 +24,8 @@ A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
 MARGIN_MM = 12.0
 LABEL_MM = 6.0
-#: Aufloesung des eingebetteten Bitmaps. Marker sind Rechtecke; mehr Pixel
-#: vergroessern nur die Datei, zu wenige erzeugen Rundungsartefakte.
+#: Resolution of the embedded bitmap. More pixels only grow the file; too few
+#: cause rounding artifacts.
 PIXELS_PER_MM = 8
 
 
@@ -42,7 +39,7 @@ def _png_data_uri(image) -> str:
 
 
 def render_marker(dictionary, tag_id: int, size_mm: float):
-    """Rendert einen Marker als Bitmap in Druckaufloesung."""
+    """Render a marker as a bitmap at print resolution."""
     import cv2
 
     pixels = max(64, int(size_mm * PIXELS_PER_MM))
@@ -50,7 +47,7 @@ def render_marker(dictionary, tag_id: int, size_mm: float):
 
 
 def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: float, name: str):
-    """Rendert ein ChArUco-Board als Bitmap samt seiner Groesse in Millimetern."""
+    """Render a ChArUco board as a bitmap, together with its size in millimetres."""
     from tagloc.boards import CHARUCO, BoardSpec, build_board
 
     width_mm = spec_cols * square_mm
@@ -71,7 +68,7 @@ def render_charuco(spec_cols: int, spec_rows: int, square_mm: float, marker_mm: 
 
 
 def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
-    """Zeichnet einen Massstab zum Nachmessen nach dem Drucken."""
+    """Draw a scale bar to measure after printing."""
     parts = [
         f'<line x1="{x_mm}mm" y1="{y_mm}mm" x2="{x_mm + length_mm}mm" y2="{y_mm}mm" '
         'stroke="black" stroke-width="0.4mm"/>'
@@ -91,10 +88,10 @@ def _scale_bar(x_mm: float, y_mm: float, length_mm: float = 100.0) -> list[str]:
 
 
 def build_svg(items, title: str) -> str:
-    """Setzt den Bogen zusammen. `items` sind `(data_uri, x, y, w, h, label)` in mm.
+    """Assemble the sheet. `items` are `(data_uri, x, y, w, h, label)` in mm.
 
-    Reine Zeichenkettenarbeit, bewusst ohne OpenCV, damit das Layout auch ohne
-    installiertes OpenCV testbar ist.
+    Pure string work, deliberately without OpenCV, so the layout can be tested
+    without OpenCV installed.
     """
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -121,7 +118,7 @@ def build_svg(items, title: str) -> str:
 
 
 def layout_tags(dictionary, ids, size_mm: float):
-    """Ordnet Marker in Spalten und Zeilen auf A4 an."""
+    """Arrange markers in columns and rows on A4."""
     cell = size_mm + LABEL_MM + 6.0
     columns = max(1, int((A4_WIDTH_MM - 2 * MARGIN_MM) / cell))
     items = []
@@ -149,6 +146,7 @@ def layout_tags(dictionary, ids, size_mm: float):
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True, help="Zieldatei (.svg)")
     parser.add_argument("--ids", type=int, nargs="+", default=[0, 1, 2, 3], help="Tag-IDs")
@@ -164,17 +162,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Run the command-line tool and return the exit code."""
     args = build_parser().parse_args(argv)
     if args.out.suffix.lower() != ".svg":
         print(f"Warnung: {args.out.name} ist kein .svg -- geschrieben wird SVG", file=sys.stderr)
 
     try:
         return _run(args)
-    except ValueError as error:  # unbekannte Woerterbuch-Namen
+    except ValueError as error:  # unknown dictionary name
         raise SystemExit(str(error)) from None
 
 
 def _run(args) -> int:
+    """Render the requested sheet and write it to `args.out`."""
     if args.charuco:
         image, width_mm, height_mm = render_charuco(
             args.cols, args.rows, args.square_mm, args.marker_mm, args.board_dictionary

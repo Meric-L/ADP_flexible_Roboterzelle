@@ -1,12 +1,11 @@
-"""Tests fuer `tagloc.overlay`s Skalierung von Strichstaerke/Schriftgroesse.
+"""Tests for the stroke and font scaling of `tagloc.overlay`.
 
-Das Livestream-Overlay zeichnet nicht mehr auf einer festen Breite: "off"
-zeigt weiterhin den vollen Frame (bis 4056 px an der Deckenkamera), "apriltag"
-erkennt und zeichnet seit der Umstellung auf Software-Downscale (siehe
-`stream_overlay.py.annotate`) auf `detection_max_width` (typischerweise
-~960 px). Ohne Skalierung blieb ein 2-px-Strich bei genauer Betrachtung/Zoom
-praktisch unsichtbar. Diese Tests laufen mit echtem `cv2` auf echten Arrays
-(kein Mock der Zeichenfunktionen), gleiches Muster wie `test_stream_overlay.py`.
+The livestream overlay no longer draws at a fixed width: "off" still shows the
+full frame (up to 4056 px on the ceiling camera), while "apriltag" detects and
+draws on the downscaled `detection_max_width` (typically about 960 px, see
+`stream_overlay.py.annotate`). Without scaling a 2 px line would be practically
+invisible when zoomed in. These tests run with real `cv2` on real arrays, not
+mocked drawing functions, the same pattern as `test_stream_overlay.py`.
 """
 
 import unittest
@@ -28,7 +27,7 @@ try:
     )
 
     _ = cv2.circle
-except Exception:  # OpenCV/numpy nicht verfuegbar
+except Exception:  # OpenCV/numpy not available
     cv2 = None
     np = None
 
@@ -45,7 +44,7 @@ def _tag_pose(tag_id: int = 1):
 
 
 class FakeCalibration:
-    """Reicht fuer `draw_tag_axes`s `drawFrameAxes`-Aufruf."""
+    """Enough for the `drawFrameAxes` call of `draw_tag_axes`."""
 
     camera_matrix = ((500.0, 0.0, 320.0), (0.0, 500.0, 240.0), (0.0, 0.0, 1.0))
     distortion = (0.0, 0.0, 0.0, 0.0, 0.0)
@@ -68,8 +67,8 @@ class ScaleForTest(unittest.TestCase):
 
 @unittest.skipUnless(cv2 is not None, "OpenCV nicht verfuegbar")
 class DrawingSmokeTest(unittest.TestCase):
-    """Kein Pixel-Vergleich (zu bruechig) -- nur: laeuft ohne Fehler und
-    veraendert das Bild tatsaechlich, bei kleiner wie bei grosser Aufloesung."""
+    """No pixel comparison (too brittle); only that it runs without error and
+    really changes the image, at small and at large resolution."""
 
     def test_draw_tag_overlay_on_a_large_frame(self):
         image = np.zeros((3040, 4056, 3), dtype=np.uint8)

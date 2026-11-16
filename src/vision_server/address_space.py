@@ -141,17 +141,10 @@ async def _ensure_amcm_nodesets(server: Server, config: VisionServerConfig) -> i
 async def _vision_parent(server: Server) -> Node:
     """Return `Objects/Machines` if Machinery is loaded, otherwise `Objects`.
 
-    Why at all: `VisionMachine` used to sit directly under `Objects`, next to
-    `VisionProgram`. Anyone browsing with UaExpert saw two entry points and had
-    to guess which one was meant, and that caused confusion during support.
-    `Machines` is the place OPC UA Machinery provides for this; `VisionProgram`
-    thus remains the only entry point under `Objects`.
-
-    Clients are not affected: `VisionMachine` has a fixed string NodeId, which
-    does not depend on its browse position.
-
-    Falls back to `Objects` without the Machinery nodeset (i.e. without
-    `config.assets`) -- a missing folder must not prevent the server from starting.
+    Keeps `VisionProgram` the only entry point under `Objects`. Clients are not
+    affected, because `VisionMachine` has a fixed string NodeId that does not
+    depend on its browse position. Falls back to `Objects` without the Machinery
+    nodeset, so a missing folder does not prevent the server from starting.
     """
     try:
         machinery_idx = await server.get_namespace_index(MACHINERY_NAMESPACE_URI)
@@ -170,9 +163,8 @@ async def _vision_parent(server: Server) -> Node:
 def _namespace_uri_for(path: Path) -> str:
     """Read the ModelUri from the header of a nodeset.
 
-    Cheaper and more honest than a second list of URIs next to the path list:
-    the file itself states which namespace it brings, so it cannot drift out of
-    sync with a constant.
+    The file states its own namespace, so no separate URI list can drift out of
+    sync with the path list.
     """
     head = path.read_text(encoding="utf-8", errors="replace")[:4096]
     match = re.search(r'<Model\s[^>]*ModelUri="([^"]+)"', head)
