@@ -99,9 +99,14 @@ documents:
 
 ## 5. Run flow in brief
 
-1. **Layer 1 (ceiling Pi):** the backend calls `StartSingleJob` with `apriltag`. The Pi
-   computes the camera pose from the world tags (`localize_camera`), then the module
-   poses (`locate_modules`), and returns both as event and in `LatestResultJson`.
+1. **Layer 1 (ceiling Pi):**
+   - *On demand (Autolocate):* the backend calls `StartSingleJob` with `apriltag`. The Pi
+     computes the camera pose from the world tags (`localize_camera`), then the module
+     poses (`locate_modules`), and returns both as event and in `LatestResultJson`.
+   - *Continuous monitoring:* the backend arms the cell watch with `StartCellWatch`. The Pi
+     checks the ceiling camera about every 2 s against a reference and reports module
+     moves, additions and removals only once they are confirmed (`cellwatch.py`). It does
+     not call `StartSingleJob`.
 2. **Layer 2 (hand Pi):** the backend moves the robot. The hand Pi measures each tag
    (`MeasureTags`), or plans the run itself (`StartLayer2Run` → `Layer2Target` →
    `ReportRobotPose`). The camera pose is the flange pose times the hand-eye transform.
@@ -110,3 +115,43 @@ documents:
    - Hand Pi: `StartHandEyeCalibration` with `fullCalibration: true`. The robot moves
      through the poses; at the end the Pi writes intrinsics and hand-eye, keeps the old
      files as `.bak`, and applies both live.
+
+---
+
+## 6. Code documentation standard
+
+This is the rule for docstrings and comments in the code. It applies to all new and
+changed code and to the files being cleaned up.
+
+**Module docstrings (Python)**
+
+- One to three sentences: what the module is for and its main entry point.
+- No step-by-step description of a script's flow. Put procedures into the code, or into a
+  linked document under `doc/projektdoku/`.
+- No history, dates, or references to earlier versions.
+
+**Functions, methods, classes (Python, Google style)**
+
+- Start with a summary line in the imperative mood, ending with a period.
+- Add `Args:`, `Returns:`, `Raises:` only where they add information: units and ranges,
+  non-obvious types, several return values, deliberately raised exceptions. Do not repeat the
+  signature in words.
+- Private helpers (`_name`) need a summary only if the name does not explain the behaviour.
+- Class docstrings state purpose and key invariants. Document attributes only when non-obvious.
+
+**Inline comments**
+
+- Explain *why*: constraints, workarounds, units, protocol requirements, timing.
+- Do not restate what the code does. Remove comments that repeat the next line.
+- Remove commented-out code.
+- No dates, session names, or history ("2026-09-24", "vorher", "Altlast").
+
+**Messages**
+
+- Log, error, and OPC UA messages stay German. They are read by operators and checked in tests.
+
+**TypeScript**
+
+- Exported functions, hooks, and types: one-line JSDoc summary. Add `@param` and `@returns`
+  only where the name and type do not say enough.
+- Same rules for inline comments as above.
