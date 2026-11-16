@@ -1,6 +1,6 @@
 # Zelle: tools, deployment, config, data, tests
 
-Detailed reference for the non-library parts of the ADP repository (branch `apriltag-aufraeumen`). Overview: [code-dokumentation.md](../code-dokumentation.md).
+Detailed reference for the non-library parts of the ADP repository (branch `main`). Overview: [code-dokumentation.md](../code-dokumentation.md).
 
 
 Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` in the branch `doku/code-reference`. Paths are relative to the repository root.

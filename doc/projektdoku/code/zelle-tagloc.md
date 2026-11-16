@@ -1,6 +1,6 @@
 # Zelle: tagloc library, CLI, jobs, use-case eval, UA program
 
-Detailed reference for the code in the ADP repository (branch `apriltag-aufraeumen`). Overview and system picture: [code-dokumentation.md](../code-dokumentation.md).
+Detailed reference for the code in the ADP repository (branch `main`). Overview and system picture: [code-dokumentation.md](../code-dokumentation.md).
 
 
 Scope: `src/tagloc/` (incl. `cli/`), `src/jobs/`, `src/use_case_eval/`, `src/ua_program/`, and the repo root files. Paths are relative to the repository root. Project-wide overviews: `doc/projektdoku/code-dokumentation.md` (per-file handbook), `doc/projektdoku/apriltag-referenz.md` (functions, CLI, file formats), `doc/projektdoku/apriltag-lokalisierung.md` (concept).
@@ -43,6 +43,28 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Entry points: `build_parser`, `load_samples`, `solve_session(path, *, estimate_scale, out)`, `main`.
 - Input: session folder with raw captures and robot poses (`load_samples`). Prints a refinement summary; `solve_session` takes an optional `out` path.
 - Details: `doc/projektdoku/arbeitsplaene/handeye-genauigkeit.md`, `doc/projektdoku/apriltag-referenz.md`.
+- Recording a calibration run (kept separate from the computation, so it can be repeated without moving the robot):
+  1. Place a board somewhere. It must stay still for the whole run; a world tag is a good choice because it is mounted anyway.
+  2. Move the robot to at least a dozen clearly different poses from which the camera sees the board. Rotate around several axes: pure translation is not enough, because the rotation is then not determined.
+  3. Save one image per pose and note the robot pose `T_base_flansch`.
+- Sample list (`--samples`; image paths are relative to the list):
+
+  ```
+  {
+    "schema": "wsc.vision.handeye.samples/1",
+    "tagId": 2,
+    "tagSizeM": 0.100,
+    "samples": [
+      { "image": "pose_000.png",
+        "poseBaseFlange": { "position": [0.20, 0.05, 0.50],
+                            "orientation": [0, 0.131, 0, 0.991] } },
+      { "image": "pose_001.png", "poseBaseFlange": { ... } }
+    ]
+  }
+  ```
+
+  Run: `python -m tagloc.cli.calibrate_handeye --samples fahrt/aufnahmen.json --calibration data/calibration/cam_flange.json --out data/handeye/cam_flange.json`
+- Spread troubleshooting: the tag is fixed, so the reconstructed tag position must agree across all robot poses. If the spread is large, one of these is wrong: the camera calibration, the tag size entered, or the reported robot pose.
 
 ### `src/tagloc/cli/calibrate_handeye_offline.py`
 - Re-runs the offline evaluation of a hand-eye session on its stored raw images (`main(argv)`).
@@ -158,7 +180,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 
 ### `src/use_case_eval/target.py`
 - Single source of geometry for target sheet v2 and the cube marker, in mm. numpy only.
-- Entry points: `marker_corners`, `sheet_marker_corners`, `cube_marker_corners`, `cube_corners_xy`, `rotation_2d`, `zone_for_radius`.
+- Entry points: `marker_corners`, `sheet_marker_corners`, `cube_corners_xy`, `rotation_2d`, `zone_for_radius`.
 - Constants: `ARUCO_FAMILY`, `SHEET_MARKERS` (IDs 0-3), `CUBE_MARKER_ID` (10), `CIRCLES` and `ZONE_RADII_MM` (zones `gruen`, `gelb`, `rot`, else `ausserhalb`).
 - Used by `tools/make_use_case_target.py`, `measure.py` and `synthetic.py`.
 - Details: `doc/projektdoku/arbeitsplaene/use-case-messung.md`.

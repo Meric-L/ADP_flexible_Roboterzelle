@@ -239,15 +239,6 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 - Vitest tests for `modelPlanes.ts`.
 
-### `model/moduleTracking.ts`
-
-- Compares ceiling-camera measurements cycle after cycle with the viewport and reports a module (or tag robot) as moved after a sustained disagreement. Compares tag position in the floor plane and heading only.
-- Entry points: `trackObservation`, `trackingReferences`, `TrackingState`, `DEFAULT_TRACKING_THRESHOLDS`, `movedEntries`.
-- No importer outside its test file. See Flags.
-
-### `model/moduleTracking.test.ts`
-
-- Vitest tests for `moduleTracking.ts`.
 
 ### `model/moveTracker.ts`
 

@@ -1237,7 +1237,7 @@ Gilt für `board` in `StartHandEyeCalibration` und `MeasureBoard`.
   `dictionary` aus `DICT_4X4`, `DICT_5X5`, `DICT_6X6`, `DICT_7X7` mit Endung `_50`, `_100`, `_250` oder
   `_1000`; `floor(cols·rows/2)` darf die Dictionary-Größe nicht überschreiten.
 - Maße gehen **ohne Skalierungsfaktor** ein. Labor-Brett nachgemessen: Feld 24,982 mm, Marker 18,487 mm.
-- Frontend (`webskillcomposition`, Branch `ADP_Lokaliserung`): Feldmaß, Markermaß, Dictionary eintragbar;
+- Frontend (`webskillcomposition`, Branch `ADP_Lokalisierung`): Feldmaß, Markermaß, Dictionary eintragbar;
   Browser merkt sich die Werte.
 
 ## 16. Zellen-Überwachung (nur Deckenkamera)

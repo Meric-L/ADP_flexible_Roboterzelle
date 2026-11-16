@@ -8,7 +8,7 @@ hier die alte ID (Spalte „ex-ID“). Gegenstück für webskillcomposition: [`a
 dort steht auch die **Welttag-Kette über beide Repos** (Abschnitt 10). Was jede Datei tut:
 [`code-dokumentation.md`](code-dokumentation.md), Teil A. Plan: [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
 
-**Aufgeräumt wird auf Branch `apriltag-aufraeumen`** (lokal, ungemergt). Was davon umgesetzt ist, steht am
+**Aufgeräumt wird auf Branch `main`** (lokal, ungemergt). Was davon umgesetzt ist, steht am
 Ende unter „Umsetzungsstand“.
 
 **Nicht angefasst werden beim Aufräumen:**
@@ -312,7 +312,7 @@ Aufruf `git log --oneline apriltag..apriltag-refactoring`; je Thema geprüft, ob
 
 ## 12. Umsetzungsstand
 
-Branch `apriltag-aufraeumen`. Wird beim Aufräumen fortgeschrieben.
+Branch `main`. Wird beim Aufräumen fortgeschrieben.
 
 | IDs | Stand | Commit |
 | --- | --- | --- |

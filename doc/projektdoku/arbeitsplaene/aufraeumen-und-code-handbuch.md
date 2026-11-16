@@ -3,7 +3,7 @@
 **Status:** in Arbeit — 30.10.2026
 **Verantwortlich:** Meric, `Agent: Aufräumen und Code-Handbuch`
 **Thema:** sonstiges
-**Branch:** Doku auf `apriltag`; Code auf `apriltag-aufraeumen` (dieses Repo) und `ADP_Lokaliserung` (webskillcomposition) — beide lokal, ungemergt
+**Branch:** Code auf `main` (ADP-Repo) und `ADP_Lokalisierung` (webskillcomposition) — beide lokal, ungemergt
 
 ## Ziel
 
