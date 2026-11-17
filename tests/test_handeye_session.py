@@ -327,3 +327,22 @@ class RotationDiversityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreviousSessionsTest(unittest.TestCase):
+    """Like Layer 1: a new calibration keeps only its own images (17.11.2026)."""
+
+    def test_only_folders_named_by_a_stamp_are_deleted(self):
+        import tempfile
+        from pathlib import Path
+
+        from vision_server.handeye_session import _remove_session_folders
+
+        root = Path(tempfile.mkdtemp(prefix="handeye_sessions_"))
+        (root / "20261117T120000Z_ab12cd34" / "poses").mkdir(parents=True)
+        (root / "20261117T130000Z").mkdir()
+        (root / "notizen").mkdir()
+        (root / "cam_flange.json").write_text("{}")
+        self.assertEqual(_remove_session_folders(root), 2)
+        self.assertEqual(sorted(path.name for path in root.iterdir()), ["cam_flange.json", "notizen"])
+        self.assertEqual(_remove_session_folders(root / "missing"), 0)

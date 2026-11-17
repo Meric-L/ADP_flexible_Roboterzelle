@@ -1,67 +1,65 @@
-# AprilTag-Funktionalität — Referenz
+# AprilTag functionality — reference
 
-Funktionsreferenz des Pakets `src/tagloc/`: was jedes Modul kann, wie die
-Dateiformate aussehen, wie die Skripte bedient werden und was im OPC-UA-Ergebnis
-ankommt.
+Function reference for the package `src/tagloc/`: what each module can do, what the
+file formats look like, how the scripts are operated, and what arrives in the OPC UA
+result.
 
-Nachbardokumente: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) (Konzept
-und warum es so gebaut ist), [`apriltag-e2e-test.md`](apriltag-e2e-test.md)
-(wie man es durchtestet, auch mit der Pi-Kamera),
-[`vision-server-interface.md`](vision-server-interface.md) (OPC-UA-Seite).
+Neighbouring documents: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md)
+(concept and why it is built this way), [`apriltag-e2e-test.md`](apriltag-e2e-test.md)
+(how to test it end to end, including with the Pi camera),
+[`vision-server-interface.md`](vision-server-interface.md) (OPC UA side).
 
 ---
 
-## 1. Begriffe und Konventionen
+## 1. Terms and conventions
 
-| Begriff | Bedeutung |
+| Term | Meaning |
 |---|---|
-| `T_a_b` | Pose von `b` ausgedrückt in `a`; als 4×4-Matrix. Verkettung: `T_a_c = T_a_b · T_b_c` |
-| Pose | `np.ndarray` der Form `(4, 4)`, `float64`, homogen. Kein eigener Typ — numpy reicht, und jede Funktion sagt im Namen, welches KS gemeint ist |
-| Einheiten | **Meter** und **Radiant**, durchgehend, ohne Ausnahme |
-| Quaternion | **xyzw**, wie im Payload (`"rotation": "quaternion_xyzw"`) und wie three.js es erwartet — *nicht* wxyz |
-| Kamera-KS | OpenCV-Optikrahmen: +X rechts im Bild, +Y nach unten, +Z entlang der optischen Achse nach vorn. Als `frameConvention` der String `z_forward_x_right_y_down` |
-| Welt-KS | durch den Anker-Tag der Tag-Map definiert, `frameId: "world"` |
+| `T_a_b` | Pose of `b` expressed in `a`; as a 4×4 matrix. Chaining: `T_a_c = T_a_b · T_b_c` |
+| Pose | `np.ndarray` of shape `(4, 4)`, `float64`, homogeneous. No dedicated type — numpy is enough, and every function says in its name which frame is meant |
+| Units | **Meters** and **radians**, throughout, without exception |
+| Quaternion | **xyzw**, as in the payload (`"rotation": "quaternion_xyzw"`) and as three.js expects it — *not* wxyz |
+| Camera frame | OpenCV optical frame: +X right in the image, +Y down, +Z along the optical axis forward. As `frameConvention` the string `z_forward_x_right_y_down` |
+| World frame | defined by the anchor tag of the tag map, `frameId: "world"` |
 
-**Regel:** Ein Rahmenname allein sagt nicht, wohin +Z zeigt. Jede kamerarelative
-Pose trägt deshalb `frameConvention` mit. Wer den Payload liest, nimmt `frameId`
-nie an, sondern liest ihn.
+**Rule:** A frame name alone does not say where +Z points. Every camera-relative pose
+therefore carries `frameConvention`. Whoever reads the payload never assumes `frameId`;
+they read it.
 
 ---
 
-## 2. Modulübersicht
+## 2. Module overview
 
-| Modul | Abhängigkeiten | Aufgabe |
+| Module | Dependencies | Task |
 |---|---|---|
-| `tagloc.identity` | **nur Stdlib** | `"<name>#<mtime>"` von Kalibrierung und Tag-Map, für `configurationId` |
-| `tagloc.modes` | **nur Stdlib** | die drei Overlay-Modi des Livestreams und ihre Beschriftungen |
-| `tagloc.observations` | numpy-Typen | `TagObservation` und `TagPose` — die Typen zwischen Bild und Mathematik |
-| `tagloc.geometry` | numpy | Posen bauen, verketten, invertieren, mitteln, in Position+Quaternion wandeln |
-| `tagloc.calibration` | numpy, `json` | Kalibrierdatei lesen/schreiben, Auflösung prüfen und skalieren |
-| `tagloc.tagmap` | numpy, `json` | Tag-Map lesen/schreiben; Tags aus Ko-Beobachtungen in ein gemeinsames KS platzieren |
-| `tagloc.localize` | numpy | Tag-Posen + Tag-Map → Modulposen |
-| `tagloc.boards` | cv2 | Schachbrett/ChArUco auf einem Frame finden, Kalibrierung rechnen |
-| `tagloc.detector` | cv2 *oder* `pupil_apriltags` | Tags im Graubild finden → `TagObservation` |
-| `tagloc.pose` | cv2 | `TagObservation` → `T_cam_tag` inkl. Reprojektionsfehler und Mehrdeutigkeit |
-| `tagloc.overlay` | cv2 | Erkennungsergebnisse ins Bild zeichnen — Livestream und CLI |
-| `tagloc.frames` | cv2 / picamera2 | Frame-Quellen: Pi-Kamera, Webcam, Bildordner, Einzelbild, `SharedCamera` |
-| `tagloc.cli.*` | alles | vier Kommandozeilenwerkzeuge |
+| `tagloc.identity` | **stdlib only** | `"<name>#<mtime>"` of calibration and tag map, for `configurationId` |
+| `tagloc.modes` | **stdlib only** | the three overlay modes of the live stream and their labels |
+| `tagloc.observations` | numpy types | `TagObservation` and `TagPose` — the types between image and mathematics |
+| `tagloc.geometry` | numpy | build, chain, invert and average poses; convert to position+quaternion |
+| `tagloc.calibration` | numpy, `json` | read/write calibration file, check and scale resolution |
+| `tagloc.tagmap` | numpy, `json` | read/write tag map; place tags from co-observations in a shared frame |
+| `tagloc.localize` | numpy | tag poses + tag map → module poses |
+| `tagloc.boards` | cv2 | find chessboard/ChArUco in a frame, compute calibration |
+| `tagloc.detector` | cv2 *or* `pupil_apriltags` | find tags in the grayscale image → `TagObservation` |
+| `tagloc.pose` | cv2 | `TagObservation` → `T_cam_tag` including reprojection error and ambiguity |
+| `tagloc.overlay` | cv2 | draw detection results into the image — live stream and CLI |
+| `tagloc.frames` | cv2 / picamera2 | frame sources: Pi camera, webcam, image folder, single image, `SharedCamera` |
+| `tagloc.cli.*` | everything | four command-line tools |
 
-Die Abhängigkeitsrichtung ist eine harte Regel, keine Stilfrage:
+The dependency direction is a hard rule, not a question of style:
 
-- `identity` und `modes` brauchen **nicht einmal numpy**. Deshalb kann der
-  Vision-Server die `configurationId` schon beim Bauen der Quelle bilden und der
-  Livestream-Publisher den Modus normalisieren, ohne dass numpy oder OpenCV auf
-  der Importkette liegen.
-- `geometry`, `calibration`, `tagmap`, `localize` und `observations` importieren
-  **kein cv2**. Sie sind damit auf jedem Rechner importierbar und testbar,
-  unabhängig von der installierten OpenCV-Version (lokal 5.x, Pi 4.x, mit
-  abweichender `aruco`-API).
-- `tagloc` importiert **nirgends** aus `vision_server`. Die Verbindung läuft nur
-  in eine Richtung.
+- `identity` and `modes` do **not even need numpy**. That is why the vision server can
+  build the `configurationId` already when constructing the source, and the live-stream
+  publisher can normalise the mode without numpy or OpenCV being on the import chain.
+- `geometry`, `calibration`, `tagmap`, `localize` and `observations` do **not import
+  cv2**. They are thus importable and testable on every machine, independently of the
+  installed OpenCV version (locally 5.x, Pi 4.x, with a differing `aruco` API).
+- `tagloc` imports **nothing** from `vision_server`. The connection runs in one
+  direction only.
 
 ---
 
-## 3. `tagloc.geometry` — Posen und Verkettung
+## 3. `tagloc.geometry` — poses and chaining
 
 ```python
 Pose = np.ndarray   # (4, 4), float64
@@ -76,37 +74,36 @@ def compose(*poses: Pose) -> Pose
 def invert(pose: Pose) -> Pose
 
 def to_position_quaternion(pose: Pose) -> tuple[
-    tuple[float, float, float],                  # Position in Metern
-    tuple[float, float, float, float],           # Quaternion xyzw, w >= 0
+    tuple[float, float, float],                  # position in meters
+    tuple[float, float, float, float],           # quaternion xyzw, w >= 0
 ]
 
 def translation_distance_m(a: Pose, b: Pose) -> float
 def rotation_distance_rad(a: Pose, b: Pose) -> float
 def average_poses(poses: Sequence[Pose]) -> Pose
-
 def pose_to_dict(pose: Pose) -> dict[str, list[float]]
     # {"position": [x, y, z], "orientation": [x, y, z, w]}
-def pose_from_dict(data) -> Pose   # Umkehrung von pose_to_dict
+def pose_from_dict(data) -> Pose   # inverse of pose_to_dict
 ```
 
-`pose_to_dict`/`pose_from_dict` sind das gemeinsame JSON-Scharnier für **jedes**
-Datenformat im Projekt, das eine Pose speichert: Kalibrierung, Tag-Map,
-Hand-Auge-Datei und das CLI-Austauschformat von `transform` (Abschnitt 9.3).
+`pose_to_dict`/`pose_from_dict` are the shared JSON hinge for **every** data format in
+the project that stores a pose: calibration, tag map, hand-eye file and the CLI exchange
+format of `transform` (section 9.3).
 
-Anmerkungen, die im Betrieb zählen:
+Notes that matter in operation:
 
-- `from_rvec_tvec` rechnet Rodrigues **in numpy**, nicht über `cv2.Rodrigues`.
-  Damit bleibt das Modul cv2-frei.
-- `to_position_quaternion` normiert das Vorzeichen auf `w >= 0`. Ohne diese
-  Normierung liefern zwei mathematisch identische Rotationen unterschiedliche
-  Zahlen, und jeder Golden-Value-Test wird zufällig.
-- `average_poses` mittelt die Translation arithmetisch und die Rotation über den
-  Hauptvektor der akkumulierten Quaternion-Matrix — komponentenweises Mitteln von
-  Quaternionen ist falsch. Wird für `samples_per_job` gebraucht.
+- `from_rvec_tvec` computes Rodrigues **in numpy**, not via `cv2.Rodrigues`. This keeps
+  the module cv2-free.
+- `to_position_quaternion` normalises the sign to `w >= 0`. Without this normalisation,
+  two mathematically identical rotations would produce different numbers, and every
+  golden-value test would fail at random.
+- `average_poses` averages the translation arithmetically and the rotation via the
+  principal eigenvector of the accumulated quaternion matrix — component-wise averaging
+  of quaternions is wrong. It is needed for `samples_per_job`.
 
 ---
 
-## 4. `tagloc.calibration` — Kamerakalibrierung als Datum
+## 4. `tagloc.calibration` — camera calibration as data
 
 ```python
 @dataclass(frozen=True)
@@ -133,79 +130,70 @@ PLACEHOLDER_CALIBRATION_ID = "placeholder-unkalibriert"
 def default_calibration(resolution: tuple[int, int], frame_id: str = "") -> CameraCalibration
 ```
 
-- `default_calibration` liefert eine grob aus der Sichtfeldbreite geschätzte
-  Kalibrierung — **kein Ersatz** für eine echte Kalibrierfahrt (Posen sind dann
-  plausibel orientiert, aber nicht maßhaltig). Nur dazu da, Erkennung/Overlay/
-  Job-Pfad ohne Kalibrierdatei lauffähig zu halten; aktiv nur mit
-  `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` bzw.
-  `AprilTagProfileConfig.allow_placeholder_calibration=True` (Abschnitt 10.1).
-  `calibration_id` ist dann `PLACEHOLDER_CALIBRATION_ID`, erkennbar im Payload.
+- `default_calibration` returns a calibration roughly estimated from the field-of-view
+  width — **no substitute** for a real calibration run (poses are then plausibly oriented,
+  but not dimensionally accurate). It exists only to keep detection, overlay and the job
+  path runnable without a calibration file; active only with
+  `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` or
+  `AprilTagProfileConfig.allow_placeholder_calibration=True` (section 10.1).
+  `calibration_id` is then `PLACEHOLDER_CALIBRATION_ID`, recognisable in the payload.
 
-- `calibration_identity(path)` (aus `tagloc.identity`, hier re-exportiert) bildet
-  `"<name>#<mtime>"`, **ohne die Datei zu öffnen** und ohne numpy. Das ist der
-  Wert, der als `configurationId` in den Payload geht und im Fehlerfall die Frage
-  beantwortet, welche Kalibrierung das war.
-- `check_resolution` wirft `ValueError`, wenn Kalibrierauflösung und Bildgröße
-  nicht zusammenpassen. Ohne diese Prüfung sind alle Posen um den
-  Skalierungsfaktor falsch — plausibel falsch, also unauffällig.
-- `scale_to_resolution` ist der bewusste Ausweg, wenn bewusst in anderer
-  Auflösung gearbeitet wird: `fx, fy, cx, cy` werden skaliert, die
-  Verzeichnungskoeffizienten bleiben.
+- `calibration_identity(path)` (from `tagloc.identity`, re-exported here) forms
+  `"<name>#<mtime>"`, **without opening the file** and without numpy. This is the value
+  that goes into the payload as `configurationId` and answers, in case of an error, the
+  question of which calibration it was.
+- `check_resolution` raises `ValueError` if the calibration resolution and the image size
+  do not match. Without this check, all poses are wrong by the scale factor — plausibly
+  wrong, and therefore inconspicuous.
+- `scale_to_resolution` is the deliberate way out when working deliberately at a
+  different resolution: `fx, fy, cx, cy` are scaled, the distortion coefficients stay.
 
-### Board-Erkennung (`tagloc.boards.detect_board`)
+### Board detection (`tagloc.boards.detect_board`)
 
-Für `chessboard` (aktuell beide Pis) probiert `detect_board` zuerst
-`cv2.findChessboardCornersSB` — der neuere "Sector-Based"-Detektor,
-robuster bei schlechtem Licht/Unschärfe/starker Neigung als die klassische
-Methode und bereits subpixelgenau, kein zusätzliches `cornerSubPix()` nötig.
-Rückfall auf die klassische `cv2.findChessboardCorners` + `cornerSubPix`
-(11×11-Fenster), falls diese OpenCV-Version kein SB kennt (Pi: OpenCV 4.x)
-oder SB das Board in diesem Frame nicht findet.
+For `chessboard` (currently both Pis), `detect_board` first tries
+`cv2.findChessboardCornersSB` — the newer "sector-based" detector. It is more robust
+against poor light, blur and strong tilt than the classic method, and already sub-pixel
+accurate, so no additional `cornerSubPix()` is needed. It falls back to the classic
+`cv2.findChessboardCorners` + `cornerSubPix` (11×11 window) if this OpenCV version does
+not know SB (Pi: OpenCV 4.x) or SB does not find the board in this frame.
 
-**Bewusst ohne `CALIB_CB_ACCURACY`:** der Flag verspricht bessere
-Eckengenauigkeit, ist laut OpenCV-Doku aber ein "eigener, langsamerer
-Algorithmus" — gemessen bei ~4000 px Breite (Deckenkamera-Format, 12 MP)
-4,45 s gegen 0,87 s ohne (Faktor 5) bzw. 0,06 s bei der klassischen Methode
-(Faktor 73). Die Kalibrier-Aufnahme läuft immer auf dem **vollen**
-Kamera-Frame; mit dem Flag lief die OPC-UA-Anfrage auf dem Pi in den
-Timeout (live gefunden 2026-09-23, gleicher Tag wie die Einführung).
+**Deliberately without `CALIB_CB_ACCURACY`:** the flag promises better corner accuracy,
+but according to the OpenCV documentation it is an "own, slower algorithm". Measured at
+~4000 px width (ceiling-camera format, 12 MP), it took 4.45 s versus 0.87 s without it
+(factor 5), and 0.06 s with the classic method (factor 73). The calibration capture always
+runs on the **full** camera frame; with the flag, the OPC UA request on the Pi ran into
+the timeout (found live on 2026-09-23, same day as its introduction).
 
-**Nicht offensichtlich:** SB liefert die Eckpunkte in **exakt umgekehrter
-Reihenfolge** gegenüber der klassischen Methode (empirisch mit einem
-synthetischen Testbild geprüft, 2026-09-23 — nach Umkehren stimmen die
-Positionen auf < 0,1 px). `detect_board` gleicht das aus (`corners[::-1]`),
-bevor es die Ecken zurückgibt — ungefiltert übernommen hätte das die
-Bild-zu-Weltpunkt-Zuordnung in `_chessboard_object_points` lautlos
-vertauscht: `calibrate_from_samples` wäre durchgelaufen, aber mit falschem
-statt nur ungenauem Ergebnis, ohne dass ein Fehler aufgefallen wäre.
-Regressionsschutz dafür: `tests/test_tag_pipeline.py`,
+**Not obvious:** SB returns the corner points in the **exact reverse order** compared to
+the classic method (checked empirically with a synthetic test image, 2026-09-23 — after
+reversing, the positions agree to < 0.1 px). `detect_board` compensates for this
+(`corners[::-1]`) before it returns the corners. Had this been taken over unfiltered, the
+image-to-world-point assignment in `_chessboard_object_points` would have been silently
+swapped: `calibrate_from_samples` would have run through, but with a wrong rather than
+merely imprecise result, without any error being noticed. Regression guard for this:
+`tests/test_tag_pipeline.py`,
 `SyntheticCalibrationTest.test_corner_order_matches_the_classic_convention`.
 
-**Kann auf Pi-Hardware auch nach der `CALIB_CB_ACCURACY`-Entfernung noch
-hängen bleiben:** live an der Deckenkamera (12 MP) gefunden, 2026-09-28 — ein
-einzelner Aufruf lieferte über fünf Minuten kein Ergebnis (kein Fehler, kein
-Timeout-Log, einfach nie fertig; auf dem Hand-Pi bei 640×480 nie beobachtet).
-Die eigentliche Ursache des Hängers selbst ist damit nicht geklärt, nur
-eingedämmt: `CalibrationSession._process()` (`calibration_session.py`)
-begrenzt jeden `detect_board`-Aufruf mit `CAPTURE_DETECT_TIMEOUT_S` (20 s)
-und verwirft danach den betroffenen Ein-Worker-Pool, statt ihn für jede
-weitere Aufnahme blockiert zu lassen — Details und Begründung dort.
+**Can still hang on Pi hardware even after `CALIB_CB_ACCURACY` was removed:** found live
+on the ceiling camera (12 MP), 2026-09-28 — a single call produced no result for over
+five minutes (no error, no timeout log, simply never finished; never observed on the hand
+Pi at 640×480). The actual cause of the hang has not been clarified, only contained:
+`CalibrationSession._process()` (`calibration_session.py`) limits each `detect_board`
+call with `CAPTURE_DETECT_TIMEOUT_S` (20 s) and then discards the affected single-worker
+pool, instead of letting it block every further capture — details and rationale there.
 
-Dieser Fund war zugleich der Auslöser für eine größere Änderung: Aufnahme
-(`capture()`) und Auswertung (`_process()`, `detect_board` je Bild +
-`calibrate_from_samples`) sind seither entkoppelt (`FinishCalibration` stößt
-die Auswertung nur noch im Hintergrund an, siehe
-`vision-server-interface.md` Abschnitt 12) — `detect_board` läuft also nicht
-mehr im OPC-UA-Antwortpfad von `CaptureCalibrationSample`, sondern erst nach
-`FinishCalibration`, wo ein Hängenbleiben "nur" eine einzelne Aufnahme
-kostet (übersprungen, siehe `CAPTURE_DETECT_TIMEOUT_S`) statt die gesamte
-Session zu blockieren. Ob `detect_board` auf dem vollen Sensor-Frame künftig
-auch für die Kalibrierung selbst herunterskaliert werden sollte (analog zum
-bereits bestehenden Downscale von Livestream/Job), bleibt eine offene Frage
--- inzwischen mit deutlich geringerem Risiko, seit ein Hänger nicht mehr die
-ganze Session lahmlegt.
+This finding was at the same time the trigger for a larger change: capture (`capture()`)
+and evaluation (`_process()`, `detect_board` per image + `calibrate_from_samples`) have
+since been decoupled (`FinishCalibration` only starts the evaluation in the background, see
+`vision-server-interface.md` section 12). `detect_board` therefore no longer runs in the
+OPC UA response path of `CaptureCalibrationSample`, but only after `FinishCalibration`,
+where a hang costs "only" a single capture (skipped, see `CAPTURE_DETECT_TIMEOUT_S`)
+instead of blocking the entire session. Whether `detect_board` should in future also
+downscale the full sensor frame for the calibration itself (analogous to the existing
+downscale of live stream/job) remains an open question — now with significantly lower
+risk, since a hang no longer paralyses the whole session.
 
-### Dateiformat `data/calibration/<frame_id>.json`
+### File format `data/calibration/<frame_id>.json`
 
 ```jsonc
 {
@@ -223,23 +211,23 @@ ganze Session lahmlegt.
 }
 ```
 
-Die Datei gehört zu **einer physischen Kamera**, nicht zum Repo — `data/` ist
-in `.gitignore` und das ist hier richtig. Jeder Pi erzeugt seine eigene.
+The file belongs to **one physical camera**, not to the repo — `data/` is in `.gitignore`,
+and that is correct here. Each Pi generates its own.
 
 ---
 
-## 5. `tagloc.tagmap` — Tags in einem gemeinsamen Koordinatensystem
+## 5. `tagloc.tagmap` — tags in a shared coordinate system
 
 ```python
 @dataclass(frozen=True)
 class TagEntry:
     tag_id: int
-    role: str                       # "world" (fest) | "robot" | "module" (beweglich)
+    role: str                       # "world" (fixed) | "robot" | "module" (movable)
     size_m: float
     module_id: str = ""
     instance_id: str = ""
-    pose_in_world: Pose | None = None      # None = beweglich, wird gemessen
-    tag_to_module: Pose = identity()       # konstanter CAD-Versatz
+    pose_in_world: Pose | None = None      # None = movable, is measured
+    tag_to_module: Pose = identity()       # constant CAD offset
 
 @dataclass(frozen=True)
 class TagMap:
@@ -249,16 +237,16 @@ class TagMap:
     entries: Mapping[int, TagEntry]
 
     def __getitem__(self, tag_id: int) -> TagEntry
-    def reference_poses(self) -> Mapping[int, Pose]      # alles mit bekannter Weltpose
+    def reference_poses(self) -> Mapping[int, Pose]      # everything with a known world pose
     def module_entries(self) -> Sequence[TagEntry]       # role == "module"
 
 def load_tag_map(path: Path) -> TagMap
 def save_tag_map(path: Path, tag_map: TagMap) -> None
 def empty_tag_map(frame_id: str = "world", anchor_tag_id: int = 0) -> TagMap
-    # leere Karte -- Betrieb ohne Karte bleibt ein normaler Fall
+    # empty map -- operation without a map remains a normal case
 ```
 
-### Die Platzierungsfunktionen
+### The placement functions
 
 ```python
 def place_tags(observations: Sequence[Mapping[int, Pose]],
@@ -269,54 +257,51 @@ def residuals(observations: Sequence[Mapping[int, Pose]],
 def with_world_poses(tag_map: TagMap, placed: Mapping[int, Pose]) -> TagMap
 
 def observed_tag_ids(observations: Sequence[Observation]) -> set[int]
-    # alle jemals gesehenen Tag-IDs
+    # all tag IDs ever seen
 def relative_poses(observations: Sequence[Observation]
                    ) -> dict[tuple[int, int], list[Pose]]
-    # kamerafreie Relationen T_a_b aus Ko-Beobachtungen -- Vorstufe von place_tags
+    # camera-free relations T_a_b from co-observations -- precursor of place_tags
 def missing_tags(observations: Sequence[Observation],
                  placed: Mapping[int, Pose]) -> list[int]
-    # beobachtete Tags ohne Pfad zum Anker
+    # observed tags without a path to the anchor
 def format_residual_report(
     residual_map: Mapping[tuple[int, int], tuple[float, float]]
 ) -> str
-    # menschenlesbare Zusammenfassung der Schließfehler, groesster zuerst
+    # human-readable summary of the closure errors, largest first
 ```
 
-Diese vier sind die Bausteine, aus denen `place_tags`/`residuals` sich
-zusammensetzen; `cli/build_tagmap.py` benutzt sie direkt beim schrittweisen
-Aufbau der Karte (Abschnitt 9.4).
+These four are the building blocks from which `place_tags`/`residuals` are composed;
+`cli/build_tagmap.py` uses them directly for the step-by-step construction of the map
+(section 9.4).
 
-`place_tags` ist der Kern. Eingabe ist eine Folge von Aufnahmen; jede Aufnahme
-ist ein Dict `tag_id → T_cam_tag`, also alles, was in **einem** Bild gleichzeitig
-zu sehen war. Daraus:
+`place_tags` is the core. Input is a sequence of captures; each capture is a dict
+`tag_id → T_cam_tag`, i.e. everything that was visible together in **one** image. From
+this:
 
-1. Jedes Paar `(a, b)` aus derselben Aufnahme liefert die kamerafreie Relation
-   `T_a_b = invert(T_cam_a) · T_cam_b`. Die Kamerapose kürzt sich heraus — deshalb
-   muss man die Kamera nicht kennen.
-2. Diese Relationen bilden einen Graphen: Knoten sind Tag-IDs, Kanten sind
-   Ko-Beobachtungen.
-3. Breitensuche vom Anker-Tag aus verkettet die Relationen zu Posen in einem
-   einzigen KS. Der Anker bekommt die Identität.
-4. Mehrere Pfade zum selben Tag werden über `merge_tag_poses` zusammengeführt.
+1. Each pair `(a, b)` from the same capture yields the camera-free relation
+   `T_a_b = invert(T_cam_a) · T_cam_b`. The camera pose cancels out — which is why the
+   camera does not need to be known.
+2. These relations form a graph: nodes are tag IDs, edges are co-observations.
+3. A breadth-first search from the anchor tag chains the relations into poses in a single
+   frame. The anchor gets the identity.
+4. Multiple paths to the same tag are merged via `merge_tag_poses`.
 
-Tags ohne Pfad zum Anker tauchen **nicht** im Ergebnis auf — sie werden gemeldet,
-nicht stillschweigend weggelassen.
+Tags without a path to the anchor do **not** appear in the result — they are reported,
+not silently dropped.
 
-`residuals` gibt je Kante `(Positionsfehler in m, Winkelfehler in rad)` zwischen
-gemessener und aus der Karte rekonstruierter Relation zurück. **Das ist die
-Qualitätszahl der Karte.** Eine Bilderserie, die einen Ring schließt, muss sich
-schließen; tut sie das nicht, stimmt die Kalibrierung oder die eingetragene
-Tag-Größe nicht.
+`residuals` returns, per edge, `(position error in m, angle error in rad)` between the
+measured relation and the relation reconstructed from the map. **This is the quality
+figure of the map.** A series of images that closes a ring must close; if it does not,
+the calibration or the entered tag size is wrong.
 
-> **Genauigkeitsgrenze.** Gemittelt wird über die zum Zeitpunkt des Besuchs
-> bereits platzierten Nachbarn, nicht über alle Kanten des fertigen Graphen.
-> Das Ergebnis ist deterministisch, aber keine globale Ausgleichung: über lange
-> Ketten summiert sich der Fehler auf. Für eine Zelle mit wenigen Tags reicht
-> das; `residuals` ist das Maß dafür, ob es noch reicht. Der nächste Schritt
-> wäre eine gewichtete Fehlerquadratminimierung über alle Kanten — nötig
-> spätestens dann, wenn sich die Schließfehler den Toleranzen nähern.
+> **Accuracy limit.** Averaging is over the neighbours that are already placed at the time
+> of the visit, not over all edges of the finished graph. The result is deterministic, but
+> not a global adjustment: errors accumulate over long chains. For a cell with few tags
+> this is enough; `residuals` is the measure of whether it still is. The next step would
+> be a weighted least-squares adjustment over all edges — needed at the latest once the
+> closure errors approach the tolerances.
 
-### Dateiformat `config/tagmap.json`
+### File format `config/tagmap.json`
 
 ```jsonc
 {
@@ -325,7 +310,7 @@ Tag-Größe nicht.
   "anchorTagId": 0,
   "tagFamily": "tag36h11",
   "tags": [
-    // Vier Welttags im Randbereich — das Einzige, was feststeht.
+    // Four world tags at the edge — the only fixed items.
     { "tagId": 0, "role": "world", "sizeM": 0.100,
       "poseInWorld": { "position": [0, 0, 0], "orientation": [0, 0, 0, 1] } },
     { "tagId": 1, "role": "world", "sizeM": 0.100,
@@ -335,7 +320,7 @@ Tag-Größe nicht.
     { "tagId": 3, "role": "world", "sizeM": 0.100,
       "poseInWorld": { "position": [0, 1.800, 0], "orientation": [0, 0, 0, 1] } },
 
-    // Der Roboter: beweglich, mehrere Tags auf dieselbe Basis.
+    // The robot: movable, several tags on the same base.
     { "tagId": 20, "role": "robot", "sizeM": 0.080,
       "moduleId": "UR5e", "instanceId": "ur5e-1",
       "tagToModule": { "position": [0, 0, -0.120], "orientation": [0, 0, 0, 1] },
@@ -349,43 +334,41 @@ Tag-Größe nicht.
 }
 ```
 
-`validate_tag_map(tag_map) -> list[str]` liefert die Beanstandungen der Karte
-(genau vier Welttags, jeder eingemessen; kein bewegliches Tag mit Weltpose;
-Anker ist ein Welttag; mindestens ein Robotertag). Leere Liste heißt in
-Ordnung. Bewusst ein Bericht statt einer Ausnahme — eine Zelle im Aufbau darf
-messen; `AprilTagDetectionSource.open` protokolliert und läuft weiter.
+`validate_tag_map(tag_map) -> list[str]` returns the objections to the map (exactly four
+world tags, each one surveyed; no movable tag with a world pose; anchor is a world tag; at
+least one robot tag). An empty list means all is in order. Deliberately a report instead
+of an exception — a cell under construction may be measured; `AprilTagDetectionSource.open`
+logs and carries on.
 
-`nearest_world_tag(tag_map, pose_world) -> tuple[int, float] | None` gibt den
-nächstgelegenen Welttag und seinen Abstand in Metern.
+`nearest_world_tag(tag_map, pose_world) -> tuple[int, float] | None` returns the nearest
+world tag and its distance in meters.
 
-Eine Karte im Schema `/1` wird beim Laden **migriert, nicht abgelehnt**:
-`reference` wird zu `world` (war schon immer ein fester Anker mit Weltpose),
-`robot_table` wird zum beweglichen `robot` und **verliert dabei seine
-Weltpose**. Jede Umdeutung wird einzeln protokolliert — still passiert nichts.
-Modulnamen, Instanz-IDs und CAD-Versätze bleiben erhalten. Dauerhaft umstellen:
-einmal mit `build_tagmap` neu schreiben lassen, `save_tag_map` schreibt immer
-`/2`.
+A map in schema `/1` is **migrated, not rejected**, on load: `reference` becomes `world`
+(it was always a fixed anchor with a world pose), `robot_table` becomes the movable `robot`
+and **loses its world pose** in the process. Every reinterpretation is logged individually
+— nothing happens silently. Module names, instance IDs and CAD offsets are kept. To switch
+permanently: have it rewritten once with `build_tagmap`; `save_tag_map` always writes `/2`.
 
-Ein *unbekanntes* Schema und ein **Tippfehler in der Rolle** werfen weiterhin
-`ValueError` — sonst wäre ein Tag stumm weder Anker noch Modul.
+An *unknown* schema and a **typo in the role** continue to raise `ValueError` — otherwise a
+tag would silently be neither anchor nor module.
 
-`AprilTagDetectionSource.open` fängt diese Fehler ab und läuft **ohne Karte**
-weiter: die Tags werden dann als `TAG-<id>` im Kamera-KS gemeldet. Eine
-unbrauchbare Textdatei darf nicht das ganze Vision-System stilllegen.
+`AprilTagDetectionSource.open` catches these errors and carries on **without a map**: the
+tags are then reported as `TAG-<id>` in the camera frame. An unusable text file must not
+shut down the entire vision system.
 
-`config/` ist versioniert — die Tag-Map beschreibt das Zellenlayout und gehört
-ins Repo. Nicht nach `data/`, `concept/` oder `hardware/`: die sind alle
-gitignored, Dateien dort wären für `git add` still unsichtbar.
+`config/` is versioned — the tag map describes the cell layout and belongs in the repo. Not
+in `data/`, `concept/` or `hardware/`: those are all gitignored, and files there would be
+silently invisible to `git add`.
 
 ---
 
-## 6. `tagloc.detector` und `tagloc.pose` — vom Bild zur Pose
+## 6. `tagloc.detector` and `tagloc.pose` — from image to pose
 
 ```python
 @dataclass(frozen=True)
 class TagObservation:
     tag_id: int
-    corners: tuple[tuple[float, float], ...]   # genau 4, feste Reihenfolge
+    corners: tuple[tuple[float, float], ...]   # exactly 4, fixed order
     decision_margin: float | None = None
 
 class TagDetector(Protocol):
@@ -395,10 +378,10 @@ class TagDetector(Protocol):
 def build_detector(family: str = "tag36h11", backend: str = "aruco") -> TagDetector
 ```
 
-Zwei Implementierungen hinter demselben Protokoll: `ArucoTagDetector` (`cv2.aruco`,
-der Standardweg) und `PupilAprilTagDetector` (`pupil_apriltags`, für den Übergang
-und für Vergleichsmessungen). Die Posenschätzung liegt bewusst **nicht** im
-Detektor — sonst hinge die Posenqualität am Backend und wäre nicht vergleichbar.
+Two implementations behind the same protocol: `ArucoTagDetector` (`cv2.aruco`, the
+standard path) and `PupilAprilTagDetector` (`pupil_apriltags`, for the transition and for
+comparison measurements). Pose estimation deliberately does **not** live in the detector —
+otherwise pose quality would depend on the backend and would not be comparable.
 
 ```python
 @dataclass(frozen=True)
@@ -406,8 +389,8 @@ class TagPose:
     tag_id: int
     pose_cam_tag: Pose
     reprojection_error_px: float = float("nan")
-    ambiguity_ratio: float = 0.0    # Fehler der besten / Fehler der zweitbesten
-                                    # Lösung, in (0, 1]; nahe 1 = mehrdeutig
+    ambiguity_ratio: float = 0.0    # error of the best / error of the second-best
+                                    # solution, in (0, 1]; near 1 = ambiguous
     observation: TagObservation | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
@@ -415,9 +398,9 @@ class TagPose:
     def is_ambiguous(self) -> bool  # ambiguity_ratio > 0.6
 
     def is_usable(self, max_reprojection_error_px: float | None = None) -> bool
-        # False bei NaN/Inf-Reprojektionsfehler (sonst würde payload.py bei
-        # allow_nan=False mit INTERNAL statt DETECTION_FAILED abbrechen);
-        # sonst False nur, wenn ueber der Schwelle
+        # False for NaN/Inf reprojection error (otherwise payload.py would abort
+        # with INTERNAL instead of DETECTION_FAILED at allow_nan=False);
+        # otherwise False only if above the threshold
 
 def undistort_corners(corners, calibration: CameraCalibration) -> np.ndarray
 def estimate_tag_pose(observation: TagObservation, size_m: float,
@@ -430,28 +413,26 @@ def estimate_tag_poses(observations: Sequence[TagObservation],
                        ) -> list[TagPose]
 ```
 
-Zwei Punkte, die der Prototyp heute falsch macht und die hier behoben sind:
+Two points that the prototype currently gets wrong and that are fixed here:
 
-- **Die Ecken werden entzerrt.** `detect_apriltags.py` (Prototyp, entfernt am 30.10.2026) reicht `D` nur an
-  `drawFrameAxes` weiter und schätzt die Pose auf dem verzeichneten Bild
-  ([`altlasten.md`](altlasten.md), „Was nicht hier steht").
-- **Mehrdeutigkeit wird gemeldet.** Ein flach gesehener quadratischer Marker hat
-  zwei fast gleich gute Lösungen. `solvePnPGeneric` mit `SOLVEPNP_IPPE_SQUARE`
-  liefert beide; das Verhältnis der Restfehler ist `ambiguity_ratio`. Ein
-  mehrdeutiger Tag ist nicht falsch, aber er darf nicht ungeprüft angefahren
-  werden — deshalb steht `ambiguous` im Payload.
+- **The corners are undistorted.** `detect_apriltags.py` (prototype, removed on 30.10.2026)
+  passes `D` only to `drawFrameAxes` and estimates the pose on the distorted image
+  ([`altlasten.md`](altlasten.md), "Explicitly not on this list").
+- **Ambiguity is reported.** A flat-seen square marker has two almost equally good
+  solutions. `solvePnPGeneric` with `SOLVEPNP_IPPE_SQUARE` returns both; the ratio of the
+  residual errors is `ambiguity_ratio`. An ambiguous tag is not wrong, but it must not be
+  approached unchecked — which is why `ambiguous` appears in the payload.
 
-`estimate_tag_poses` nimmt die Tag-Größe **je Tag aus der Tag-Map**, nicht aus
-einer globalen Konstante. Welt-Board und Modul-Tags haben unterschiedliche Größen;
-eine falsche Größe skaliert die Distanz linear mit und fällt sonst nicht auf.
-Für mehrere Tags in einem Bild werden die vier Ecken gemeinsam entzerrt und
-Kameramatrix, Null-Verzeichnung sowie Objektpunkte gleicher Tag-Größe einmal
-vorbereitet. `estimate_tag_pose` für einen einzelnen Tag liefert denselben
-Rechenweg; nicht lösbare Tags werden weiterhin einzeln übersprungen.
+`estimate_tag_poses` takes the tag size **per tag from the tag map**, not from a global
+constant. World board and module tags have different sizes; a wrong size scales the
+distance linearly and otherwise goes unnoticed. For several tags in one image, the four
+corners are undistorted together, and camera matrix, zero distortion and object points of
+equal tag size are prepared once. `estimate_tag_pose` for a single tag follows the same
+computation path; unsolvable tags are still skipped individually.
 
 ---
 
-## 7. `tagloc.localize` — vom Tag zum Modul
+## 7. `tagloc.localize` — from tag to module
 
 ```python
 @dataclass(frozen=True)
@@ -465,20 +446,20 @@ class ModuleLocation:
     ambiguous: bool
     confidence: float
 
-    role: str                       # "module" | "robot", aus der Tag-Map
+    role: str                       # "module" | "robot", from the tag map
     source: str                     # "ceiling" | "flange"
-    reference_tag_id: int           # naechster Welttag, -1 = unbekannt
+    reference_tag_id: int           # nearest world tag, -1 = unknown
     pose_in_reference_tag: Pose | None    # T_worldtag_module
     attributes: dict[str, Any] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class CameraLocalization:
     pose_world_cam: Pose
-    world_tag_ids: tuple[int, ...]  # alle beitragenden Welttags
-    primary_tag_id: int             # der naechste Welttag
-    spread_m: float                 # Streuung der Einzelschaetzungen
+    world_tag_ids: tuple[int, ...]  # all contributing world tags
+    primary_tag_id: int             # the nearest world tag
+    spread_m: float                 # spread of the individual estimates
     spread_rad: float
-    origin: str = ORIGIN_WORLD_TAGS # oder ORIGIN_ROBOT_POSE, siehe unten
+    origin: str = ORIGIN_WORLD_TAGS # or ORIGIN_ROBOT_POSE, see below
 
 def localize_camera(tag_poses: Sequence[TagPose], tag_map: TagMap, *,
                     max_reprojection_error_px: float = 3.0) -> CameraLocalization | None
@@ -492,60 +473,56 @@ def world_tag_for_robot(tag_map: TagMap, locations) -> tuple[int, float] | None
 
 def confidence_from(tag_pose: TagPose, *,
                     max_reprojection_error_px: float = 3.0) -> float
-    # aus Reprojektionsfehler + Mehrdeutigkeit, in [0, 1] -- bewusst nicht
-    # konstant 1.0, das waere Information ohne Inhalt
+    # from reprojection error + ambiguity, in [0, 1] -- deliberately not constant 1.0,
+    # which would be information without content
 def merge_samples(samples: Sequence[Sequence[ModuleLocation]]) -> list[ModuleLocation]
-    # mehrere Aufnahmen desselben Jobs -> ein Ergebnis je Modul; Anzahl
-    # gemittelter Aufnahmen landet als sampleCount in attributes
+    # several captures of the same job -> one result per module; the number of
+    # averaged captures goes into attributes as sampleCount
 def robot_locations(locations: Sequence[ModuleLocation]) -> list[ModuleLocation]
-    # role == "robot", normalerweise genau ein Treffer
+    # role == "robot", usually exactly one hit
 def expected_but_missing(tag_map: TagMap,
                          located: Sequence[ModuleLocation]) -> list[str]
-    # Module aus der Karte, die nicht gefunden wurden (Abbruchkriterium aus
-    # concept/offene_punkte.md Nr. 6, ohne zusaetzliche Konfiguration)
+    # modules from the map that were not found (stop criterion from
+    # concept/offene_punkte.md no. 6, without additional configuration)
 ```
 
-`merge_samples` ist die Funktion, die `detection/apriltag/job.py` tatsächlich zum
-Mitteln mehrerer Job-Aufnahmen benutzt — nicht zu verwechseln mit
-`merge_by_module` (mittelt mehrere Tags **einer** Aufnahme zu einer Modulpose).
+`merge_samples` is the function that `detection/apriltag/job.py` actually uses to average
+several job captures — not to be confused with `merge_by_module` (which averages several
+tags of **one** capture into a module pose).
 
-`localize_camera` bestimmt `T_world_cam` aus allen sichtbaren Welttags —
-**nur** die Rolle `world` zählt. Mehrere Welttags werden nach Konfidenz
-gewichtet gemittelt, damit ein weit entfernter, schräg gesehener Tag nicht so
-stark zieht wie einer, der das Bild füllt; keiner sichtbar → `None`.
-`primary_tag_id` ist der kameranächste Welttag — der, an dem sich die
-Handkamera ausrichtet. `spread_m`/`spread_rad` sagen, wie weit die
-Einzelschätzungen auseinanderliegen: widersprechen sich die vier Welttags,
-stimmt die Vermessung nicht, und die Zahl sagt es, statt im Mittelwert zu
-verschwinden.
+`localize_camera` determines `T_world_cam` from all visible world tags — **only** the role
+`world` counts. Several world tags are averaged weighted by confidence, so that a distant,
+obliquely seen tag does not pull as hard as one that fills the image; if none is visible →
+`None`. `primary_tag_id` is the camera-nearest world tag — the one the hand camera aligns
+to. `spread_m`/`spread_rad` say how far apart the individual estimates lie: if the four
+world tags contradict each other, the survey is wrong, and the number says so instead of
+vanishing into the mean.
 
-`locate_modules` rechnet dann für jeden Modul- und Roboter-Tag
+`locate_modules` then computes, for each module and robot tag,
 
 ```
-pose = T_world_cam · T_cam_tag · T_tag_module        # wenn localization gegeben
-pose =               T_cam_tag · T_tag_module        # sonst, im Kamera-KS
+pose = T_world_cam · T_cam_tag · T_tag_module        # if localization is given
+pose =               T_cam_tag · T_tag_module        # otherwise, in the camera frame
 ```
 
-setzt `frame_id` entsprechend und legt zusätzlich den nächstgelegenen Welttag
-samt `T_worldtag_module` bei. **Das ist die einzige Stelle im gesamten Code, an
-der diese Verkettung steht** — Decken- und Handkamera rufen dieselbe Funktion,
-sie unterscheiden sich nur darin, ob `localization` gesetzt ist.
+sets `frame_id` accordingly, and additionally records the nearest world tag together with
+`T_worldtag_module`. **This is the only place in the entire code where this chaining
+exists** — ceiling and hand camera call the same function; they differ only in whether
+`localization` is set.
 
-`merge_by_module` mittelt Messungen gleicher `(moduleId, instanceId)` — so
-werden mehrere Tags am Roboter zu einer Roboterpose. `merge_locations` führt
-Decken- und Handergebnis zusammen, die genauere Quelle gewinnt.
-`world_tag_for_robot` beantwortet, welcher Welttag dem Roboter am nächsten
-steht.
+`merge_by_module` averages measurements of the same `(moduleId, instanceId)` — this is how
+several tags on the robot become one robot pose. `merge_locations` merges ceiling and hand
+results; the more precise source wins. `world_tag_for_robot` answers which world tag is
+closest to the robot.
 
-`camera_pose_from_reference_tags(tag_poses, tag_map) -> Pose | None` bleibt als
-schlanke Hülle für die CLI-Werkzeuge erhalten, die nur die Matrix brauchen.
+`camera_pose_from_reference_tags(tag_poses, tag_map) -> Pose | None` is retained as a slim
+wrapper for the CLI tools that only need the matrix.
 
-### Hand-Auge und Ankern — `tagloc.handeye`
+### Hand-eye and anchoring — `tagloc.handeye`
 
-Die Kamera sitzt starr am Roboter, `T_flansch_cam` ist also eine Konstante der
-Hardware und wird **einmal** kalibriert. Sie schließt die Lücke zwischen zwei
-Welttag-Sichtungen: die Handkamera sieht den Welttag nur beim Ankern, danach
-trägt die Kinematik.
+The camera sits rigidly on the robot, so `T_flansch_cam` is a hardware constant and is
+calibrated **once**. It bridges the gap between two world-tag sightings: the hand camera
+sees the world tag only when anchoring; afterwards the kinematics carry the pose.
 
 ```python
 SCHEMA = "wsc.vision.handeye/1"          # data/handeye/<frame_id>.json
@@ -555,15 +532,15 @@ class HandEye:
     pose_flange_cam: Pose
     frame_id: str = ""
     calibration_id: str = ""
-    rms_position_m: float = float("nan")   # Streuung des rekonstruierten Tag-Orts
+    rms_position_m: float = float("nan")   # spread of the reconstructed tag location
     rms_rotation_deg: float = float("nan")
     sample_count: int = 0
 
 @dataclass(frozen=True)
 class RobotAnchor:
     pose_world_base: Pose
-    world_tag_id: int = -1     # Welttag, an dem geankert wurde
-    spread_m: float = 0.0      # Guete der Lokalisierung beim Ankern
+    world_tag_id: int = -1     # world tag at which anchoring was done
+    spread_m: float = 0.0      # quality of the localization when anchoring
     spread_rad: float = 0.0
 
 def anchor_world_base(pose_world_cam, pose_base_flange, pose_flange_cam) -> Pose
@@ -574,7 +551,7 @@ def load_hand_eye(path) -> HandEye
 def save_hand_eye(path, hand_eye) -> None
 ```
 
-### Dateiformat `data/handeye/<frame_id>.json`
+### File format `data/handeye/<frame_id>.json`
 
 ```jsonc
 {
@@ -590,23 +567,21 @@ def save_hand_eye(path, hand_eye) -> None
 }
 ```
 
-Gehört wie die Kamerakalibrierung zur physischen Hardware, nicht zum Repo
-(`data/` ist gitignored). `rmsPositionM`/`rmsRotationDeg` können `null` sein
-(NaN lässt sich nicht als JSON schreiben), wenn keine belastbare Streuung
-vorliegt.
+Like the camera calibration, this belongs to the physical hardware, not to the repo
+(`data/` is gitignored). `rmsPositionM`/`rmsRotationDeg` may be `null` (NaN cannot be
+written as JSON) if no reliable spread is available.
 
-`solve_hand_eye` rechnet nach **Park und Martin** in numpy, nicht über
-`cv2.calibrateHandEye`: OpenCV 5.0 exportiert die Funktion nicht mehr nach
-Python (nur die `CALIB_HAND_EYE_*`-Konstanten sind übrig), und das Repo trägt
-bewusst 4.x wie 5.x. Damit bleibt `tagloc.handeye` außerdem OpenCV-frei — der
-Vision-Server lädt den Anker, ohne OpenCV auf die Importkette zu holen.
+`solve_hand_eye` computes according to **Park and Martin** in numpy, not via
+`cv2.calibrateHandEye`: OpenCV 5.0 no longer exports the function to Python (only the
+`CALIB_HAND_EYE_*` constants remain), and the repo deliberately supports 4.x as well as 5.x.
+This also keeps `tagloc.handeye` OpenCV-free — the vision server loads the anchor without
+pulling OpenCV onto the import chain.
 
-Gütemaß ist `target_spread`: der Tag der Kalibrierfahrt lag fest, also muss
-`T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` für jedes `i` dieselbe Pose
-ergeben. Streut das, stimmt die Kamerakalibrierung, die Tag-Größe oder die
-gemeldete Roboterpose nicht.
+The quality measure is `target_spread`: the tag of the calibration run was fixed, so
+`T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` must yield the same pose for every `i`.
+If it spreads, the camera calibration, the tag size or the reported robot pose is wrong.
 
-In `tagloc.localize` hängen daran:
+The following in `tagloc.localize` depend on this:
 
 ```python
 def anchor_from_localization(localization, pose_base_flange, hand_eye) -> RobotAnchor
@@ -614,26 +589,24 @@ def localize_camera_from_anchor(anchor, pose_base_flange, hand_eye) -> CameraLoc
 def anchor_drift(anchor, localization, pose_base_flange, hand_eye) -> tuple[float, float]
 ```
 
-`CameraLocalization.origin` sagt, woher die Pose stammt: `ORIGIN_WORLD_TAGS`
-(optisch gemessen, gewinnt immer wenn ein Welttag im Bild ist) oder
-`ORIGIN_ROBOT_POSE` (aus dem Anker fortgeschrieben). Die beiden haben nicht
-dieselbe Genauigkeit, deshalb steht es im Payload.
+`CameraLocalization.origin` says where the pose comes from: `ORIGIN_WORLD_TAGS` (optically
+measured; always wins when a world tag is in the image) or `ORIGIN_ROBOT_POSE` (propagated
+from the anchor). The two do not have the same accuracy, which is why it is in the payload.
 
-`confidence` wird aus Reprojektionsfehler und Mehrdeutigkeit gebildet, nicht
-konstant auf `1.0` gesetzt.
+`confidence` is formed from reprojection error and ambiguity, not set to a constant `1.0`.
 
 ---
 
-## 8. `tagloc.overlay` — Erkennungsergebnisse im Bild markieren
+## 8. `tagloc.overlay` — marking detection results in the image
 
 ```python
-OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted")     # aus tagloc.modes
+OVERLAY_MODES = ("off", "apriltag", "undistorted", "tagreference")     # from tagloc.modes; "calibration" removed 17.11.2026
 def normalise_mode(mode) -> str
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None
 def draw_tag_axes(image, tag_pose, calibration, axis_length_m: float) -> None
 def draw_tag_boxes(image, tag_poses) -> image
-    # schlank, vom Livestream benutzt: gruener Kasten + "#<id>", sonst nichts
+    # lean, used by the live stream: green box + "#<id>", nothing else
 def draw_tag_overlay(image, tag_poses, calibration, *,
                      tag_map=None, default_size_m=0.05, show_distance=True)
 def draw_board_overlay(image, board_sample, *, coverage=None)
@@ -641,126 +614,120 @@ def draw_status_bar(image, lines: Sequence[str])
 def summarise(tag_poses, tag_map=None) -> str
 
 def has_display() -> bool
-    # ob ueberhaupt ein Bildschirm erreichbar ist (Linux: $DISPLAY/$WAYLAND_DISPLAY)
+    # whether any display is reachable at all (Linux: $DISPLAY/$WAYLAND_DISPLAY)
 
 class Window:
     def __init__(self, title: str, *, enabled: bool = True) -> None
     @property
     def enabled(self) -> bool
-    def show(self, image, wait_ms: int = 1) -> str   # gedrueckte Taste, klein, "" = keine
+    def show(self, image, wait_ms: int = 1) -> str   # key pressed, short, "" = none
     def close(self) -> None
 ```
 
-`Window` faengt ab, dass `cv2.imshow` auf einem Pi ohne Bildschirm bzw. in
-einer SSH-Sitzung ohne X-Forwarding **mitten im Lauf** abstürzt — der erste
-Fehlschlag wird einmal geloggt, danach läuft die Erkennung ohne Fenster weiter
-(das Ziel ist die Erkennung, nicht das Bild). `cli/detect.py` und
-`cli/calibrate.py` benutzen sie für ihre interaktiven Fenster.
+`Window` catches the fact that `cv2.imshow` on a Pi without a screen, or in an SSH session
+without X forwarding, **crashes mid-run** — the first failure is logged once, after which
+detection continues without a window (the goal is detection, not the picture).
+`cli/detect.py` and `cli/calibrate.py` use it for their interactive windows.
 
-Die übliche Darstellung bei Markern ist das **Achsenkreuz im Tag** — X rot,
-Y grün, Z blau — zusätzlich der Umriss und die ID. Genau das zeichnet
-`draw_tag_overlay`. Die Aufteilung hat einen Grund: der Umriss zeigt, **dass**
-erkannt wurde, das Achsenkreuz zeigt, **wie** die Pose liegt. Ein verdrehtes
-Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
+The usual depiction for markers is the **axis cross in the tag** — X red, Y green, Z blue —
+in addition to the outline and the ID. That is exactly what `draw_tag_overlay` draws. The
+split has a reason: the outline shows **that** something was detected, the axis cross shows
+**how** the pose lies. A twisted cross is noticed immediately; a wrong number in a table
+is not.
 
-> **Stand 21.10.2026:** Das gilt für `draw_tag_overlay` und damit die CLI
-> (`python -m tagloc.cli.detect`). Der **Livestream** (Modus `apriltag`) nutzt stattdessen
-> `draw_tag_boxes`: je Tag nur ein grüner Kasten und `#<id>`, ohne Achsenkreuz,
-> Modulname, Distanz, Reprojektionsfehler, orange Färbung und ohne Statusleiste.
-> Die Modi `calibration`/`undistorted` sind unverändert (mit Statusleiste).
+> **State 21.10.2026:** This applies to `draw_tag_overlay` and thus to the CLI
+> (`python -m tagloc.cli.detect`). The **live stream** (mode `apriltag`) instead uses
+> `draw_tag_boxes`: per tag only a green box and `#<id>`, without axis cross, module name,
+> distance, reprojection error, orange colouring and without the status bar. The modes
+> `calibration`/`undistorted` are unchanged (with status bar).
 
-Beschriftet wird (`draw_tag_overlay`) je Tag: ID, Modulname aus der Karte, Distanz und
-Reprojektionsfehler. **Mehrdeutige Posen werden orange statt grün gezeichnet** —
-das ist die Information, nach der man beim Debuggen sucht.
+Labelled (`draw_tag_overlay`) per tag are: ID, module name from the map, distance and
+reprojection error. **Ambiguous poses are drawn orange instead of green** — that is the
+information one searches for when debugging.
 
-Das Modul zeichnet nur, es rechnet nichts: Posen kommen fertig herein. Deshalb
-kann derselbe Code im Livestream, im CLI-Fenster und in einem Standbild laufen.
+The module only draws; it computes nothing: poses come in finished. That is why the same
+code can run in the live stream, in the CLI window and in a still image.
 
-Strichstärke, Schriftgröße und Abstände sind **proportional zur Bildbreite**
-(`_scale_for`, Referenz 640 px, nie kleiner skaliert) statt fester Pixelwerte.
-Der Livestream erkennt AprilTags weiterhin auf dem vollen Kamera-Frame (bis
-4056 px an der Deckenkamera), skaliert für die Übertragung aber zuerst das
-Bild und die Eckenkoordinaten und zeichnet dann auf dieser Ausgabeauflösung.
-So entfallen Kopieren und Beschriften des großen Vollbilds bei jedem Tick.
+Line thickness, font size and spacing are **proportional to the image width** (`_scale_for`,
+reference 640 px, never scaled down) instead of fixed pixel values. The live stream still
+detects AprilTags on the full camera frame (up to 4056 px on the ceiling camera), but for
+transmission it first scales the image and the corner coordinates, and then draws at this
+output resolution. This avoids copying and labelling the large full frame on every tick.
 
-`normalise_mode` liegt in `tagloc.modes` und kommt ohne numpy aus, weil der
-Livestream-Publisher sie braucht, auch wenn gar keine Erkennung konfiguriert ist.
-Ein unbekannter, leerer oder falsch getippter Modus fällt auf `apriltag` zurück
-statt den Stream anzuhalten.
+`normalise_mode` lives in `tagloc.modes` and works without numpy, because the live-stream
+publisher needs it even when no detection is configured at all. An unknown, empty or
+mistyped mode falls back to `apriltag` instead of halting the stream.
 
 ---
 
-## 9. Die Kommandozeilenwerkzeuge
+## 9. The command-line tools
 
-Alle akzeptieren `--source` wahlweise als Kamera oder als Bildordner. Ein
-Bildordner macht jeden Aufruf reproduzierbar und hardwarefrei.
+All of them accept `--source` either as a camera or as an image folder. An image folder
+makes every call reproducible and hardware-free.
 
-### 9.1 Kalibrierung
+### 9.1 Calibration
 
 ```bash
-# interaktiv an der Kamera: SPACE = Aufnahme, C = rechnen, S = speichern, Q = Ende
+# interactive at the camera: SPACE = capture, C = compute, S = save, Q = quit
 PYTHONPATH=src python3 -m tagloc.cli.calibrate \
     --source camera:0 --board charuco --out data/calibration/cam_ceiling.json \
     --frame-id cam_ceiling
 
-# headless aus einem Bildordner — derselbe Rechenkern, keine GUI
+# headless from an image folder — same compute core, no GUI
 PYTHONPATH=src python3 -m tagloc.cli.calibrate \
     --source ./aufnahmen/decke/ --board charuco --out data/calibration/cam_ceiling.json
 ```
 
-Wichtige Optionen: `--board chessboard|charuco`, `--cols/--rows`,
-`--square-size-m`, `--marker-size-m`, `--dictionary`, `--min-samples`.
-Ausgegeben werden RMS-Reprojektionsfehler und die Bildabdeckung in x und y —
-eine Kalibrierung, die nur die Bildmitte abdeckt, hat brauchbares RMS und
-unbrauchbare Verzeichnungskoeffizienten.
+Important options: `--board chessboard|charuco`, `--cols/--rows`, `--square-size-m`,
+`--marker-size-m`, `--dictionary`, `--min-samples`. Printed are the RMS reprojection error
+and the image coverage in x and y — a calibration that covers only the image centre has a
+usable RMS and unusable distortion coefficients.
 
-### 9.2 Erkennung
+### 9.2 Detection
 
 ```bash
 PYTHONPATH=src python3 -m tagloc.cli.detect \
     --source camera:0 --calibration data/calibration/cam_ceiling.json \
     --tag-map config/tagmap.json --overlay
 
-# als JSON in eine Datei, z. B. zur Weiterverarbeitung oder für einen Report
+# as JSON into a file, e.g. for further processing or a report
 PYTHONPATH=src python3 -m tagloc.cli.detect \
     --source ./aufnahmen/szene/ --calibration … --tag-map … --json posen.json
 ```
 
-Gibt je Tag aus: ID, Pose (Position + Quaternion xyzw), Reprojektionsfehler,
-Mehrdeutigkeits-Flag. Mit `--tag-map` zusätzlich die Modulzuordnung und, sobald
-Referenztags sichtbar sind, die Weltpose.
+Prints per tag: ID, pose (position + quaternion xyzw), reprojection error, ambiguity flag.
+With `--tag-map`, additionally the module assignment and, once reference tags are visible,
+the world pose.
 
-### 9.3 Koordinatentransformation
+### 9.3 Coordinate transformation
 
 ```bash
-# einzelne Pose mit bekannter Kamerapose transformieren
+# transform a single pose with a known camera pose
 PYTHONPATH=src python3 -m tagloc.cli.transform \
     --camera-pose roboterpose.json \
     --position 0.12 -0.04 0.85 --orientation 0 0 0 1
 
-# ganze Ergebnisdatei von detect, Kamerapose aus den Referenztags der Eingabe
+# whole result file from detect, camera pose from the reference tags of the input
 PYTHONPATH=src python3 -m tagloc.cli.transform \
     --input posen.json --tag-map config/tagmap.json \
     --from-reference --out posen_welt.json
 
-# umgekehrte Richtung
+# reverse direction
 PYTHONPATH=src python3 -m tagloc.cli.transform \
     --camera-pose roboterpose.json --invert \
     --position 1.20 0.33 0.04 --orientation 0 0 0.3827 0.9239
 ```
 
-Es gibt **kein** `--from`-Flag. Die Herkunft der Transformation `T_ziel_quelle`
-ist entweder `--camera-pose <datei>` (JSON mit `position`/`orientation`) oder
-`--from-reference` (rechnet `T_world_cam` selbst aus den Referenz-Tags der
-`--input`-Datei, braucht dafür `--tag-map`); ohne beides ist die Transformation
-die Identität. `--to` benennt nur das Ziel-KS für die Ausgabe (Default
-`world`), nicht die Quelle. Weitere Optionen: `--position`/`--orientation` für
-eine einzelne Pose ohne `--input`, `--invert` zum Umkehren, `--out` zum
-Schreiben. Reine Rechnung, keine Kamera, kein cv2. Das Werkzeug ist auch der
-schnellste Weg, eine Konventionsfrage zu klären, bevor man sie sich im
-Produktivcode einfängt.
+There is **no** `--from` flag. The origin of the transformation `T_ziel_quelle` is either
+`--camera-pose <file>` (JSON with `position`/`orientation`) or `--from-reference` (computes
+`T_world_cam` itself from the reference tags of the `--input` file; requires `--tag-map`);
+with neither, the transformation is the identity. `--to` only names the target frame for
+the output (default `world`), not the source. Further options: `--position`/`--orientation`
+for a single pose without `--input`, `--invert` to reverse, `--out` to write. Pure
+computation, no camera, no cv2. The tool is also the fastest way to settle a convention
+question before it gets baked into production code.
 
-### 9.3a Hand-Auge-Kalibrierung
+### 9.3a Hand-eye calibration
 
 ```bash
 PYTHONPATH=src python3 -m tagloc.cli.calibrate_handeye \
@@ -769,15 +736,14 @@ PYTHONPATH=src python3 -m tagloc.cli.calibrate_handeye \
     --out data/handeye/cam_flange.json
 ```
 
-Optionen: `--samples` (Aufnahmeliste, siehe unten, Pflicht), `--calibration`
-(Kamerakalibrierung, Pflicht), `--out` (Zieldatei, Pflicht), `--family`
-(Tag-Familie, Default `tag36h11`), `--backend` (Detektor-Backend, Default
-`aruco`), `--frame-id` (Bezugsrahmen, leer = aus der Kalibrierung),
-`--max-reproj-error-px` (Aufnahmen darüber werden verworfen, Default 2.0),
-`-v`/`--verbose`.
+Options: `--samples` (capture list, see below, required), `--calibration` (camera
+calibration, required), `--out` (target file, required), `--family` (tag family, default
+`tag36h11`), `--backend` (detector backend, default `aruco`), `--frame-id` (reference frame,
+empty = from the calibration), `--max-reproj-error-px` (captures above this are discarded,
+default 2.0), `-v`/`--verbose`.
 
-Aufnahmeliste (`--samples`, getrennt von der Rechnung, damit sie sich ohne
-neue Roboterfahrt wiederholen lässt):
+Capture list (`--samples`, separate from the computation, so that it can be repeated without
+a new robot run):
 
 ```jsonc
 {
@@ -793,16 +759,15 @@ neue Roboterfahrt wiederholen lässt):
 }
 ```
 
-Bildpfade sind relativ zur Aufnahmeliste. Ablauf: einen Tag ortsfest hinlegen
-(er muss während der ganzen Fahrt liegen bleiben), den Roboter mindestens ein
-Dutzend deutlich verschiedene Posen anfahren lassen (**um mehrere Achsen
-drehen**, reines Verschieben bestimmt die Rotation nicht), je Pose ein Bild
-plus `T_base_flansch` notieren. Das Gütemaß (`target_spread`) steht danach in
-der Ausgabe: der Tag lag fest, also muss er aus jeder Roboterpose an
-derselben Stelle herauskommen — streut das über `SPREAD_WARNING_M` (5 mm),
-wird die Datei trotzdem geschrieben, aber mit unübersehbarem Hinweis.
+Image paths are relative to the capture list. Procedure: lay one tag down in a fixed
+position (it must stay in place for the whole run), have the robot move through at least a
+dozen clearly different poses (**rotate about several axes**; pure translation does not
+determine the rotation), and note one image plus `T_base_flansch` per pose. The quality
+measure (`target_spread`) is then in the output: the tag was fixed, so it must come out at
+the same spot from every robot pose. If it spreads beyond `SPREAD_WARNING_M` (5 mm), the
+file is still written, but with a conspicuous warning.
 
-### 9.4 Tag-Map bauen
+### 9.4 Building the tag map
 
 ```bash
 PYTHONPATH=src python3 -m tagloc.cli.build_tagmap \
@@ -810,88 +775,84 @@ PYTHONPATH=src python3 -m tagloc.cli.build_tagmap \
     --anchor 0 --sizes config/tagsizes.json --out config/tagmap.json
 ```
 
-Nimmt eine Bilderserie, in der sich benachbarte Tags jeweils paarweise
-überlappen, platziert alle Tags relativ zum Anker und schreibt die Karte.
-Ausgegeben werden zusätzlich die Schließfehler je Kante und eine Liste der Tags,
-die keinen Pfad zum Anker hatten.
+Takes an image series in which neighbouring tags each overlap pairwise, places all tags
+relative to the anchor, and writes the map. Also output are the closure errors per edge and
+a list of the tags that had no path to the anchor.
 
-**Aufnahmehinweis:** Es genügt nicht, jeden Tag einmal zu fotografieren. Jedes
-Bild muss mindestens zwei Tags zeigen, und die Paare müssen eine
-zusammenhängende Kette bis zum Anker bilden.
+**Capture note:** It is not enough to photograph each tag once. Every image must show at
+least two tags, and the pairs must form a connected chain to the anchor.
 
-### 9.5 Hilfswerkzeuge unter `tools/`
+### 9.5 Helper tools under `tools/`
 
 ```bash
-# maßhaltiger Druckbogen als SVG: Tags oder ChArUco-Board, mit 100-mm-Maßstab
+# true-to-scale print sheet as SVG: tags or ChArUco board, with a 100 mm scale bar
 python tools/make_tag_sheet.py --ids 0 1 2 3 7 12 --size-mm 100 --out tags.svg
 python tools/make_tag_sheet.py --charuco --cols 7 --rows 5 \
     --square-mm 30 --marker-mm 22 --out board.svg
 
-# synthetische Szene mit bekannter Wahrheit — die ganze Kette ohne Kamera
+# synthetic scene with known ground truth — the whole chain without a camera
 python tools/make_synthetic_scene.py --mode tags --count 12 \
     --out /tmp/bilder --calibration /tmp/calib.json
 ```
 
-`make_tag_sheet.py` gibt bewusst SVG aus, nicht PNG oder PDF: ein SVG trägt echte
-Millimeterangaben und bleibt beim Drucken mit „100 %" maßhaltig. Auf jedem Bogen
-steht ein 100-mm-Maßstab zum Nachmessen — ein Drucker, der still auf 96 %
-skaliert, erzeugt sonst 4 % Distanzfehler, und alles andere sieht dabei plausibel
-aus.
+`make_tag_sheet.py` deliberately outputs SVG, not PNG or PDF: an SVG carries real
+millimetre dimensions and stays true to scale when printed at "100 %". Every sheet carries a
+100 mm scale bar for measuring afterwards — a printer that quietly scales to 96 % would
+otherwise produce a 4 % distance error, and everything else would look plausible.
 
 ---
 
-## 10. Im Vision-Server
+## 10. In the vision server
 
-### 10.1 Profil und Rezept
+### 10.1 Profile and recipe
 
-| | Wert |
+| | Value |
 |---|---|
-| Profil | `apriltag` |
-| Rezept | `RecipeId = "apriltag"` |
-| Klasse | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag/` (Paket; `__init__.py` setzt die Klasse aus Mixins zusammen) |
-| Konfiguration | `AprilTagProfileConfig` in `src/vision_server/profiles.py` |
+| Profile | `apriltag` |
+| Recipe | `RecipeId = "apriltag"` |
+| Class | `AprilTagDetectionSource` in `src/vision_server/detection/apriltag/` (package; `__init__.py` composes the class from mixins) |
+| Configuration | `AprilTagProfileConfig` in `src/vision_server/profiles.py` |
 | `IsSimulated` | `False` |
 
-Layer 1 und Layer 2 benutzen **dasselbe Profil**; jeder Pi fährt einen eigenen
-Server mit einer eigenen `AprilTagProfileConfig`, gesetzt in `src/vision_server/server.py`.
+Layer 1 and Layer 2 use the **same profile**; each Pi runs its own server with its own
+`AprilTagProfileConfig`, set in `src/vision_server/server.py`.
 
-| Feld | Layer 1 (`pi-decke`) | Layer 2 (`pi-hand`) |
+| Field | Layer 1 (`pi-decke`) | Layer 2 (`pi-hand`) |
 |---|---|---|
 | `frame_id` | `world` | `cam_flange` |
 | `frame_convention` | `z_forward_x_right_y_down` | `z_forward_x_right_y_down` |
 | `calibration_path` | `data/calibration/cam_ceiling.json` | `data/calibration/cam_flange.json` |
 | `tag_map_path` | `config/tagmap.json` | `config/tagmap.json` |
-| `tag_size_m` | 0.080 (bis 13.10.2026: 0.100) | 0.080 (bis 13.10.2026: 0.050) |
+| `tag_size_m` | 0.080 (until 13.10.2026: 0.100) | 0.080 (until 13.10.2026: 0.050) |
 | `resolution` | 2028×1520 | 640×480 |
 | `samples_per_job` | 3 | 5 |
 | `max_reproj_error_px` | 3.0 | 1.5 |
-| `hand_eye_path` | `None` (keine Kamera am Flansch) | `data/handeye/cam_flange.json` |
+| `hand_eye_path` | `None` (no camera on the flange) | `data/handeye/cam_flange.json` |
 
-`resolution` bei Layer 2 muss zu `CameraStreamConfig.realsense_resolution`
-passen (Standard 640×480) — die tatsächlichen Frames kommen über die geteilte
-`SharedCamera`, nicht direkt aus `AprilTagProfileConfig`. Eine Abweichung
-fällt erst beim ersten Job als `ValueError` auf ("Kalibrierung gilt für …").
+`resolution` on Layer 2 must match `CameraStreamConfig.realsense_resolution` (default
+640×480) — the actual frames come via the shared `SharedCamera`, not directly from
+`AprilTagProfileConfig`. A mismatch only shows up at the first job as a `ValueError`
+("Kalibrierung gilt für …" — calibration applies to …).
 
-`tag_size_m` bleibt als Rückfallwert für Tags, die nicht in der Karte stehen;
-steht ein Tag in der Karte, gewinnt deren `sizeM`.
+`tag_size_m` remains the fallback for tags that are not in the map; if a tag is in the map,
+its `sizeM` wins.
 
-**Ohne Kalibrierdatei** scheitert `open()` normalerweise, und der Server
-bleibt in `Preoperational` (Absicht: bedeutungslose Zahlen sollen nicht
-unbemerkt rausgehen). Für Tests **vor** der echten Kalibrierfahrt (Abschnitt
-3.3 im Testplan) gibt es einen expliziten, temporären Notausgang:
-`AprilTagProfileConfig.allow_placeholder_calibration = True` — gesetzt über
-die Env-Var `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` in
-`src/vision_server/server.py`, Standard aus. Dann startet die Quelle mit einer grob
-geschätzten Intrinsik (`tagloc.calibration.default_calibration`, aus einer
-angenommenen Sichtfeldbreite von 70° gerechnet). Detektor, Overlay und
-Job-Pfad lassen sich damit prüfen; die Posen sind aber **nicht masshaltig**.
-`calibration_id` im Ergebnis heißt dann `"placeholder-unkalibriert"` — vor
-dem Rollout die Env-Var wieder entfernen.
+**Without a calibration file**, `open()` normally fails and the server stays in
+`Preoperational` (intended: meaningless numbers should not leave unnoticed). For tests
+**before** the real calibration run (section 3.3 in the test plan) there is an explicit,
+temporary emergency exit: `AprilTagProfileConfig.allow_placeholder_calibration = True` — set
+via the environment variable `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` in
+`src/vision_server/server.py`, default off. The source then starts with a roughly estimated
+intrinsic (`tagloc.calibration.default_calibration`, computed from an assumed field-of-view
+width of 70°). Detector, overlay and job path can thus be checked; the poses are, however,
+**not dimensionally accurate**. `calibration_id` in the result is then
+`"placeholder-unkalibriert"` (placeholder, uncalibrated) — remove the environment variable
+again before rollout.
 
-### 10.2 Was im Ergebnis ankommt
+### 10.2 What arrives in the result
 
-Das Payload-Schema bleibt `wsc.vision.detections/1` — **unverändert**, neue Keys
-sind additiv erlaubt, ein Versionssprung würde das Backend brechen.
+The payload schema remains `wsc.vision.detections/1` — **unchanged**; new keys are allowed
+additively, a version jump would break the backend.
 
 ```jsonc
 {
@@ -934,171 +895,190 @@ sind additiv erlaubt, ein Versionssprung würde das Backend brechen.
 }
 ```
 
-Vollständige, tatsächlich mögliche Attribute (alle `attributes`-Werte sind
-Strings, OPC UA kennt hier keine gemischten Typen):
+Complete list of attributes that can actually occur (all `attributes` values are strings;
+OPC UA has no mixed types here):
 
-| Feld | Wann gesetzt | Bedeutung |
+| Field | When set | Meaning |
 | --- | --- | --- |
-| `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `frameTimestamp`, `recipeId` | immer | wie oben |
-| `source` | immer | `"ceiling"` \| `"flange"` |
-| `role` | immer | `"module"` \| `"robot"`, aus der Tag-Map |
-| `tagIds`, `tagCount` | mehrere Tags derselben Modulinstanz gemessen | welche Tags beigetragen haben |
-| `referenceTagId` | ein Welttag als Bezug bekannt | nächster Welttag |
-| `referencePosition`, `referenceOrientation`, `referenceDistanceM` | s. o. | Pose relativ zu diesem Welttag |
-| `worldTagIds`, `cameraSpreadM`, `cameraSpreadDeg`, `cameraPoseOrigin` | Kamera lokalisiert (`localize_camera`/Anker) | beitragende Welttags, Streuung, `"world_tags"` (optisch gemessen) oder `"robot_pose"` (aus dem Anker fortgeschrieben) |
-| `cameraPoseSolver`, `cameraReprojectionErrorPx` | Kamera optisch lokalisiert | `"joint"` (gemeinsames PnP über alle Welttag-Ecken, ab zwei Welttags), `"single"` (ein Welttag) oder `"average"` (Rückfall: Mittel der Einzel-Tags); RMS der Lösung in px |
-| `anchorWorldTagId` | Hand-Auge-Anker gesetzt | Welttag, an dem geankert wurde |
-| `anchorDriftM`, `anchorDriftDeg` | s. o., mit aktueller Sichtung vergleichbar | Abweichung Anker vs. jetzige Messung |
-| `missingModules` | Module aus der Tag-Map nicht gefunden | kommagetrennte Liste |
+| `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `frameTimestamp`, `recipeId` | always | as above |
+| `source` | always | `"ceiling"` \| `"flange"` |
+| `role` | always | `"module"` \| `"robot"`, from the tag map |
+| `tagIds`, `tagCount` | several tags of the same module instance measured | which tags contributed |
+| `referenceTagId` | a world tag known as reference | nearest world tag |
+| `referencePosition`, `referenceOrientation`, `referenceDistanceM` | see above | pose relative to this world tag |
+| `worldTagIds`, `cameraSpreadM`, `cameraSpreadDeg`, `cameraPoseOrigin` | camera localized (`localize_camera`/anchor) | contributing world tags, spread, `"world_tags"` (optically measured) or `"robot_pose"` (propagated from the anchor) |
+| `cameraPoseSolver`, `cameraReprojectionErrorPx` | camera localized optically | `"joint"` (joint PnP over all world-tag corners, from two world tags on), `"single"` (one world tag) or `"average"` (fallback: mean of the individual tags); RMS of the solution in px |
+| `anchorWorldTagId` | hand-eye anchor set | world tag at which anchoring was done |
+| `anchorDriftM`, `anchorDriftDeg` | see above, comparable with the current sighting | deviation of anchor vs. current measurement |
+| `missingModules` | modules from the tag map not found | comma-separated list |
 
-- `configurationId` trägt Tag-Familie, Kalibrieridentität und Tag-Map-Identität.
-  Damit ist bei einer falschen Pose nachträglich klar, welche Kalibrierung und
-  welche Karte gewirkt haben.
-- Kein Tag gefunden → kein leeres Ergebnis, sondern `VisionJobError` mit
-  `DETECTION_FAILED` (`resultState = 5`).
-- `Stop` während eines Jobs → `resultState = 7` (`CANCELLED`), wie von
-  `JobRunner.stop()` gehandhabt.
+- `configurationId` carries tag family, calibration identity and tag-map identity. So if a
+  pose is wrong, it becomes clear afterwards which calibration and which map were in effect.
+- No tag found → no empty result, but `VisionJobError` with `DETECTION_FAILED`
+  (`resultState = 5`).
+- `Stop` during a job → `resultState = 7` (`CANCELLED`), as handled by `JobRunner.stop()`.
 
-### 10.3 Betriebsregeln der Quelle
+### 10.3 Operating rules of the source
 
-- **Jede** cv2-Operation läuft über `run_blocking`. Direkt auf dem Event-Loop
-  friert sie Zustandsautomat, Events und die 1-Hz-Schleife des Zellenservers ein.
-- Die Quelle hat ein **eigenes** Aufnahme-Timeout (`capture_timeout_s`). Das
-  Job-Timeout des Runners kann einen hängenden Worker-Thread nicht töten.
-- Die Kamera wird über `SharedCamera` mitbenutzt, nicht selbst geöffnet —
-  Picamera2 lässt pro Kamera nur einen offenen Zugriff zu, und der Livestream
-  hält ihn.
-- `open()` lädt Kalibrierung und Tag-Map. Fehlen sie, öffnet die Quelle nicht,
-  und der Server bleibt in Preoperational. Das ist gewollt: ein Vision-Server
-  ohne Kalibrierung liefert Zahlen ohne Bedeutung.
+- **Every** cv2 operation runs via `run_blocking`. Run directly on the event loop, it would
+  freeze the state machine, the events and the cell server's 1 Hz loop.
+- The source has its **own** capture timeout (`capture_timeout_s`). The runner's job
+  timeout cannot kill a hanging worker thread.
+- The camera is shared via `SharedCamera`, not opened on its own — Picamera2 allows only one
+  open access per camera, and the live stream holds it.
+- `open()` loads calibration and tag map. If they are missing, the source does not open, and
+  the server stays in Preoperational. This is intended: a vision server without calibration
+  delivers numbers without meaning.
 
 ---
 
-## 11. Testen
+## 11. Testing
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -t .
 ```
 
-| Testdatei | Prüft | Braucht |
+| Test file | Checks | Requires |
 |---|---|---|
-| `tests/test_tag_geometry.py` | Verkettung, Inversion, Quaternion-Konvention, Mittelung — mit Golden Values | numpy |
-| `tests/test_tag_map.py` | `place_tags` auf konstruierten Ko-Beobachtungen, Schließfehler, unerreichbare Tags, Datei-Round-Trip | numpy |
-| `tests/test_calibration_io.py` | Schreiben/Lesen, Identität, Auflösungsprüfung, Skalierung | numpy |
-| `tests/test_tag_pipeline.py` | **End-to-End auf einem synthetisch gerenderten Bild**: Detektor → Pose → Platzierung → Modulpose gegen die bekannte Wahrheit; Toleranz 2 mm / 1° / 1 px, gemessen 0,29 mm / 0,50° / 0,063 px | cv2 (sonst `skipUnless`) |
-| `tests/test_apriltag_source.py` | `run_blocking`, Aufnahme-Timeout, `configurationId`, `frame_id`/`frame_convention`, Payload-Attribute, `DETECTION_FAILED` | — |
+| `tests/test_tag_geometry.py` | chaining, inversion, quaternion convention, averaging — with golden values | numpy |
+| `tests/test_tag_map.py` | `place_tags` on constructed co-observations, closure errors, unreachable tags, file round trip | numpy |
+| `tests/test_calibration_io.py` | write/read, identity, resolution check, scaling | numpy |
+| `tests/test_tag_pipeline.py` | **end to end on a synthetically rendered image**: detector → pose → placement → module pose against the known ground truth; tolerance 2 mm / 1° / 1 px, measured 0.29 mm / 0.50° / 0.063 px | cv2 (otherwise `skipUnless`) |
+| `tests/test_apriltag_source.py` | `run_blocking`, capture timeout, `configurationId`, `frame_id`/`frame_convention`, payload attributes, `DETECTION_FAILED` | — |
 
-Testbilder werden **im Test erzeugt** (`tools/make_synthetic_scene.py`), nicht
-committet: `.gitignore` schließt `*.jpg` aus, und das Repo kommt bewusst ohne
-Fixture-Dateien aus. Gemockt wird mit handgeschriebenen Fakes (`FakeCamera`,
-`FakeDetector`), nicht mit `unittest.mock` — das ist das Idiom dieses Repos.
+Test images are **generated inside the test** (`tools/make_synthetic_scene.py`), not
+committed: `.gitignore` excludes `*.jpg`, and the repo deliberately works without fixture
+files. Mocking uses hand-written fakes (`FakeCamera`, `FakeDetector`), not `unittest.mock` —
+that is the idiom of this repo.
 
 ---
 
-## 12. Wenn etwas nicht stimmt
+## 12. When something is wrong
 
-| Symptom | Wahrscheinliche Ursache |
+| Symptom | Probable cause |
 |---|---|
-| Distanz systematisch um einen festen Faktor daneben | falsche `sizeM` in der Tag-Map, oder Kalibrierung gehört zu einer anderen Auflösung → `check_resolution` |
-| Pose kippt zwischen zwei Lagen hin und her | mehrdeutiger Tag, `ambiguous: true`. Steiler auf den Tag schauen oder einen zweiten Tag hinzunehmen |
-| Posen am Bildrand deutlich schlechter als in der Mitte | Kalibrierung deckt den Rand nicht ab — Abdeckungswerte aus `calibrate` prüfen, nicht nur RMS |
-| `place_tags` liefert weniger Tags als aufgenommen | kein Pfad zum Anker; es fehlt ein Bild, das zwei bereits verbundene Tags gemeinsam zeigt |
-| Schließfehler in `residuals` groß | Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht; die Karte ist erst brauchbar, wenn sie sich schließt |
-| Server bleibt in Preoperational | `open()` der Quelle ist gescheitert — meist fehlende Kalibrier- oder Tag-Map-Datei; Logmeldung nennt den Pfad |
-| Livestream weg, obwohl konfiguriert | keine geöffnete Quelle hält eine `SharedCamera` |
-| Layer 2 liefert Posen im Kamera-KS statt `world`, obwohl ein Welttag sichtbar sein sollte | `AprilTagProfileConfig.hand_eye_path` fehlt oder zeigt auf keine Datei — ohne Hand-Auge-Kalibrierung ankert nichts |
-| `anchorDriftM`/`anchorDriftDeg` im Payload wachsen über die Zeit | Anker ist veraltet oder der Roboter hat sich seit dem letzten Ankern stark bewegt — neu ankern (Welttag wieder ins Bild bringen) |
-| `calibrate_handeye` bricht mit „Keine Aufnahmen" oder ähnlichem ab | Aufnahmeliste leer, falsches Schema, oder alle Aufnahmen über `--max-reproj-error-px` verworfen |
-| `solve_hand_eye`-Ergebnis mit großer Streuung (`target_spread` > `SPREAD_WARNING_M`) | zu wenige oder zu ähnliche Roboterposen (Rotation nicht ausreichend variiert), oder Kamerakalibrierung/Tag-Größe falsch |
-| Job meldet `DETECTION_FAILED`, obwohl ein Tag sichtbar war | `TagPose.is_usable()` hat die Pose verworfen — NaN/Inf-Reprojektionsfehler oder über `max_reprojection_error_px` |
+| Distance systematically off by a fixed factor | wrong `sizeM` in the tag map, or the calibration belongs to a different resolution → `check_resolution` |
+| Pose flips back and forth between two states | ambiguous tag, `ambiguous: true`. Look at the tag more steeply, or add a second tag |
+| Poses at the image edge clearly worse than in the centre | calibration does not cover the edge — check the coverage values from `calibrate`, not only the RMS |
+| `place_tags` returns fewer tags than were captured | no path to the anchor; an image showing two already-connected tags together is missing |
+| Closure errors in `residuals` large | calibration or a recorded tag size is wrong; the map is only usable once it closes |
+| Server stays in Preoperational | the source's `open()` failed — usually a missing calibration or tag-map file; the log message names the path |
+| Live stream gone although configured | no open source holds a `SharedCamera` |
+| Layer 2 returns poses in the camera frame instead of `world`, although a world tag should be visible | `AprilTagProfileConfig.hand_eye_path` is missing or points to no file — without a hand-eye calibration, nothing anchors |
+| `anchorDriftM`/`anchorDriftDeg` in the payload grow over time | anchor is stale, or the robot has moved a lot since the last anchoring — re-anchor (bring the world tag back into the image) |
+| `calibrate_handeye` aborts with „Keine Aufnahmen" (no captures) or similar | capture list empty, wrong schema, or all captures discarded by `--max-reproj-error-px` |
+| `solve_hand_eye` result with large spread (`target_spread` > `SPREAD_WARNING_M`) | too few or too similar robot poses (rotation not varied enough), or camera calibration/tag size wrong |
+| Job reports `DETECTION_FAILED` although a tag was visible | `TagPose.is_usable()` discarded the pose — NaN/Inf reprojection error, or above `max_reprojection_error_px` |
 
 ---
 
-## 13. Detektor-Parameter für unscharfe Tags (Deckenkamera)
+## 13. Detector parameters for blurred tags (ceiling camera)
 
-Das 12-MP-Bild der Deckenkamera ist optisch weich: Kanten 4–8 px breit bei
-Zellen von 6–13 px. Mit den OpenCV-Standards fanden sich auf
-`data/rohbilder/cam_ceiling_20261019-114704.png` nur die Tags [1, 2, 583]; Tag 0
-hatte 4 Bitfehler bei 3 korrigierbaren, Tag 3 (Kontrast nur 60 Graustufen)
-wurde falsch dekodiert. Drei `DetectorParameters` beheben das:
+The 12 MP image of the ceiling camera is optically soft: edges 4–8 px wide with cells of
+6–13 px. With the OpenCV defaults, only the tags [1, 2, 583] were found in
+`data/rohbilder/cam_ceiling_20261019-114704.png`; tag 0 had 4 bit errors with 3 correctable,
+and tag 3 (contrast only 60 grey levels) was decoded incorrectly. Three `DetectorParameters`
+fix this:
 
-| `AprilTagProfileConfig` / `build_detector` | OpenCV | Standard | `cam_ceiling` |
+| `AprilTagProfileConfig` / `build_detector` | OpenCV | Default | `cam_ceiling` |
 |---|---|---|---|
 | `error_correction_rate` | `errorCorrectionRate` | 0.6 | 1.0 |
 | `perspective_remove_margin_per_cell` | `perspectiveRemoveIgnoredMarginPerCell` | 0.13 | 0.3 |
 | `perspective_remove_pixel_per_cell` | `perspectiveRemovePixelPerCell` | 4 | 8 |
 
-Ergebnis: [0, 1, 2, 3, 583] in 0,1 s, keine Mehrkosten. Rand 0.2–0.4 und
-ppc 8–10 liefern dasselbe. `None` lässt den OpenCV-Standard (alle anderen
-Profile, `cam_flange` eingeschlossen). Job, Stream-Overlay und
-Zellüberwachung bekommen dieselben Werte; die CLI-Werkzeuge haben
-`--error-correction-rate`, `--perspective-remove-margin`,
-`--perspective-remove-ppc`. Das `pupil`-Backend ignoriert sie.
+Result: [0, 1, 2, 3, 583] in 0.1 s, no extra cost. A margin of 0.2–0.4 and ppc 8–10 give
+the same. `None` keeps the OpenCV default (all other profiles, `cam_flange` included). Job,
+stream overlay and cell monitoring receive the same values; the CLI tools have
+`--error-correction-rate`, `--perspective-remove-margin`, `--perspective-remove-ppc`. The
+`pupil` backend ignores them.
 
-**Risiko:** Bei 1.0 werden bis zu 5 statt 3 Bitfehler korrigiert, das
-theoretische Fehlalarmrisiko je Viereck-Kandidat steigt von etwa 0,03 % auf
-etwa 1,5 % (die Randprüfung davor filtert den Großteil; auf den 40
-tag-freien Schachbrettbildern in `data/LV1` null Fehlalarme). Tauchen im
-Betrieb Geister-IDs auf, `error_correction_rate` Richtung 0.8 senken.
+**Risk:** at 1.0, up to 5 instead of 3 bit errors are corrected; the theoretical false-alarm
+risk per quadrilateral candidate rises from about 0.03 % to about 1.5 % (the border check
+before it filters most of it; on the 40 tag-free chessboard images in `data/LV1`, zero false
+alarms). If ghost IDs appear in operation, lower `error_correction_rate` toward 0.8.
 
-`subpixel_corner_refinement` bleibt aus: auf diesem Bild verliert es mit
-Standardparametern Tags (nur [583]) und braucht 2,7 s.
+`subpixel_corner_refinement` stays off: on this image, with default parameters, it loses
+tags (only [583]) and takes 2.7 s.
 
-Regressionstest: `tests/test_detector.py` (`CeilingRawImageTest`).
+Regression test: `tests/test_detector.py` (`CeilingRawImageTest`).
 
-### Nachtrag 19.10.2026: Werte verworfen, Parameter frei einstellbar
+### Addendum 19.10.2026: values discarded, parameters freely configurable
 
-Die Kamera ist neu fokussiert. Die Werte 1.0 / 0.3 / 8 gehörten zum
-unscharfen Bild und sind **nicht mehr gesetzt**: `cam_ceiling` läuft mit dem
-OpenCV-Standard. Die drei Einzel-Keywords (`error_correction_rate`,
-`perspective_remove_margin_per_cell`, `perspective_remove_pixel_per_cell`)
-und die CLI-Optionen dazu sind entfernt. An ihre Stelle tritt ein
-generisches Mapping `detector_parameters` (Attributname von
-`cv2.aruco.DetectorParameters` → Wert):
+The camera has been refocused. The values 1.0 / 0.3 / 8 belonged to the blurred image and
+are **no longer set**: `cam_ceiling` runs with the OpenCV default. The three individual
+keywords (`error_correction_rate`, `perspective_remove_margin_per_cell`,
+`perspective_remove_pixel_per_cell`) and the CLI options for them have been removed. In
+their place comes a generic mapping `detector_parameters` (attribute name of
+`cv2.aruco.DetectorParameters` → value):
 
 - Preset: `PI_APRILTAG_PRESETS[...]["detector_parameters"]` in `server.py`.
-- Umgebungsvariable `VISION_APRILTAG_DETECTOR_PARAMS` (JSON-Objekt), z. B.
-  `'{"errorCorrectionRate": 0.8}'`; je Schlüssel gewinnt die Variable,
-  `null` entfernt einen Preset-Eintrag.
-- CLI: `--detector-param NAME=WERT`, wiederholbar.
-- Unbekannte Namen und Werte vom falschen Typ werfen beim Start `ValueError`.
+- Environment variable `VISION_APRILTAG_DETECTOR_PARAMS` (JSON object), e.g.
+  `'{"errorCorrectionRate": 0.8}'`; per key the variable wins, `null` removes a preset entry.
+- CLI: `--detector-param NAME=VALUE`, repeatable.
+- Unknown names and values of the wrong type raise `ValueError` at startup.
 
-Details und Schnittstellen:
+Details and interfaces:
 [`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
-Der Regressionstest auf dem alten Rohbild übergibt die Werte jetzt
-ausdrücklich und dokumentiert damit den Härtefall.
+The regression test on the old raw image now passes the values explicitly, thereby
+documenting the edge case.
 
-## 14. Tag-Position mit der Kamera einmessen (nur Hand-Pi)
+## 14. Surveying tag position with the camera (hand Pi only)
 
-Arbeitsplan mit Begründung und Schnittstellen: [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md). OPC-UA-Methoden: [`vision-server-interface.md`](vision-server-interface.md), Abschnitt 19.
+Work plan with rationale and interfaces: [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md). OPC UA methods: [`vision-server-interface.md`](vision-server-interface.md), section 19.
 
-### Prinzip
+### Principle
 
-- **Die Kamera ersetzt den Zollstock.** Der Modulkatalog liefert den Startwert `T_module_tag` (Position, Drehung). Die zwei Bezugskanten (`placement.lines`) sind echte 3D-Strecken im Modul-KS. Die Hand-Kamera sieht Tag und beide Kanten im **selben** Bild. Gemessen wird deshalb im Tag-KS, ohne Roboterkinematik und ohne Hand-Auge-Fehler.
-- **Korrektur nur in der Tag-Ebene**, drei Freiheitsgrade: x, y und θ (Drehung um Tag-z). Neigung und Abstand zur Fläche bleiben aus dem Startwert (der Tag liegt bündig).
-- **`dofs`:** `full` = zwei nicht parallele Kanten (≥ 20°), alle drei Größen. `partial` = eine Kante: senkrecht zu ihr und die Drehung, entlang der Kante bleibt der Startwert. `none` = keine verwertbare Kante, der Startwert bleibt.
-- **Kantenhöhe `h`** über der Tag-Ebene kommt aus dem Startwert. Ein Fehler in `h` verschiebt die Messung seitlich um `Δh · tan(Sehwinkel)`. Deshalb frontal messen und die Kante nahe der Bildmitte halten. Die Tiefe der RealSense kann später optional genutzt werden.
-- **Standard-Kippung 10°:** Frontal auf einen erhöhten Tag liefert die Tag-Pose die Spiegellösung (ca. 13°). Der Anfrage-Standard ist `tiltDeg` = 10; der Python-Default `plan_reference_view(tilt_deg=0.0)` bleibt 0.
-- **Messwerte:** nur synthetisch (`tools/make_synthetic_scene.py`, Messung über `measure_tag_reference`): 0,23 bis 0,63 mm und 0,07 bis 0,11° bei 3 Bildern. Am Pi noch nicht gemessen.
+- **The camera replaces the tape measure.** The module catalog provides the starting value
+  `T_module_tag` (position, rotation). The two reference edges (`placement.lines`) are real
+  3D segments in the module frame. The hand camera sees the tag and both edges in the
+  **same** image. Measurement therefore takes place in the tag frame, without robot
+  kinematics and without hand-eye error.
+- **Correction only in the tag plane**, three degrees of freedom: x, y and θ (rotation about
+  tag z). Tilt and distance to the surface stay as in the starting value (the tag lies flush).
+- **`dofs`:** `full` = two non-parallel edges (≥ 20°), all three quantities. `partial` = one
+  edge: perpendicular to it and the rotation; along the edge the starting value stays.
+  `none` = no usable edge, the starting value stays.
+- **Edge height `h`** above the tag plane comes from the starting value. An error in `h`
+  shifts the measurement laterally by `Δh · tan(viewing angle)`. Therefore measure head-on
+  and keep the edge near the image centre. The RealSense depth can optionally be used later.
+- **Default tilt 10°:** head-on to a raised tag, the tag pose yields the mirror solution
+  (about 13°). The request default is `tiltDeg` = 10; the Python default
+  `plan_reference_view(tilt_deg=0.0)` stays at 0.
+- **Measured values:** synthetic only (`tools/make_synthetic_scene.py`, measurement via
+  `measure_tag_reference`): 0.23 to 0.63 mm and 0.07 to 0.11° with 3 images. Not yet measured
+  on the Pi.
 
-### Python-API `src/tagloc/reference_edges.py`
+### Python API `src/tagloc/reference_edges.py`
 
-Datenklassen: `ReferenceLine` (id, start, end; Modul-KS, m), `LineMeasurement`, `InPlaneCorrection` (dofs, delta_xy_m, delta_rot_deg, pose_module_tag, residual_m), `ViewPlan` (pose_tag_cam, standoff_m, fits, uncovered).
+Data classes: `ReferenceLine` (id, start, end; module frame, m), `LineMeasurement`,
+`InPlaneCorrection` (dofs, delta_xy_m, delta_rot_deg, pose_module_tag, residual_m),
+`ViewPlan` (pose_tag_cam, standoff_m, fits, uncovered).
 
-- `measure_reference_lines(gray, calib, pose_cam_tag, pose_module_tag_guess, lines, *, tag_size_m, search_band_m=0.015, tag_margin_m=0.01) -> list[LineMeasurement]`: eine Messung je Bild.
+- `measure_reference_lines(gray, calib, pose_cam_tag, pose_module_tag_guess, lines, *, tag_size_m, search_band_m=0.015, tag_margin_m=0.01) -> list[LineMeasurement]`: one
+  measurement per image.
 - `fit_in_plane_correction(measurements, pose_module_tag_guess) -> InPlaneCorrection`
-- `average_corrections(corrections) -> (InPlaneCorrection, dict)`: mehrere Bilder mitteln; das dict nennt die Streuung in mm und Grad.
+- `average_corrections(corrections) -> (InPlaneCorrection, dict)`: averages several images;
+  the dict reports the spread in mm and degrees.
 - `plan_reference_view(pose_module_tag_guess, lines, calib, *, tag_size_m, line_extent_m=0.10, margin=0.10, min_standoff_m=0.25, max_standoff_m=0.60, tilt_deg=0.0) -> ViewPlan`
-- `catalog_rpy_deg(rotation) -> ndarray`: Rotation ins Katalogformat (RPY in Grad).
-- `ValueError` bei ungültigen Eingaben: Kante kürzer als 2 cm, Größe ≤ 0, nicht endliche Werte, Auflösung passt nicht zur Kalibrierung.
-- `cv2` wird nur innerhalb der Funktionen importiert.
+- `catalog_rpy_deg(rotation) -> ndarray`: rotation in catalog format (RPY in degrees).
+- `ValueError` for invalid inputs: edge shorter than 2 cm, size ≤ 0, non-finite values,
+  resolution not matching the calibration.
+- `cv2` is only imported inside the functions.
 
-### Datenformat im Modulkatalog
+### Data format in the module catalog
 
-Die Felder von `ModuleTag.placement` stehen in [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md) unter „Daten: `ModuleTag.placement`“ (`mode`, `normal`, `edgeA`, `edgeB`, `distancesM`, `inPlaneRotationDeg`, `flipped`, `offsetM`). Neu hinzu kommt:
+The fields of `ModuleTag.placement` are described in
+[`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md)
+under "Data: `ModuleTag.placement`" (`mode`, `normal`, `edgeA`, `edgeB`, `distancesM`,
+`inPlaneRotationDeg`, `flipped`, `offsetM`). New here:
 
-- **`placement.lines`** (optional): `TagReferenceLine[]` mit `id` (`"A"`, `"B"`), `start`, `end`. Die Kanten **ungeprojiziert**, Modul-KS, Meter. Die Kamera sucht genau diese Linien. Fehlt das Feld, leitet das Frontend die Kanten aus `edgeA`/`edgeB` ab (Länge 0,15 m; bei `corner` liegt die zweite Kante entlang `inward`), und die Oberfläche markiert sie als „Kanten geschätzt“.
-- **`measurement`** (`TagCameraMeasurement`, fehlt = noch nicht eingemessen). Das Beispiel zeigt nur das Format, die Zahlen sind erfunden:
+- **`placement.lines`** (optional): `TagReferenceLine[]` with `id` (`"A"`, `"B"`), `start`,
+  `end`. The edges **unprojected**, module frame, meters. The camera searches for exactly
+  these lines. If the field is missing, the frontend derives the edges from `edgeA`/`edgeB`
+  (length 0.15 m; for `corner` the second edge lies along `inward`), and the surface marks
+  them as „Kanten geschätzt“ (edges estimated).
+- **`measurement`** (`TagCameraMeasurement`, missing = not yet surveyed). The example shows
+  only the format; the numbers are invented:
 
 ```json
 { "tagId": 4, "sizeM": 0.1,
@@ -1113,121 +1093,141 @@ Die Felder von `ModuleTag.placement` stehen in [`arbeitsplaene/modell-flaechen-t
                    "deltaMm": [1.8, -0.6], "deltaRotDeg": 0.4, "spreadMm": 0.2, "lines": ["A", "B"] } }
 ```
 
-Gemessen werden `position`/`rotationDeg` überschrieben. `placement` bleibt als Protokoll des Startwerts, und `measurement.guess` hält den Startwert fest. Der Pi bekommt weiter nur Welt-Tags, Modul-Tags stehen nicht in seiner Tag-Map.
+Measured values overwrite `position`/`rotationDeg`. `placement` remains as a record of the
+starting value, and `measurement.guess` holds the starting value. The Pi still receives only
+world tags; module tags are not in its tag map.
 
-Erledigt ist damit der offene Punkt „`placement`-Format in `apriltag-referenz.md` übernehmen“ aus [`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md).
+This closes the open item "Adopt `placement` format into `apriltag-referenz.md`" from
+[`arbeitsplaene/modell-flaechen-tag-platzierung.md`](arbeitsplaene/modell-flaechen-tag-platzierung.md).
 
-### Einmal-Regel
+### Once-only rule
 
-Jeder Tag wird **einmal** eingemessen, wenn sein Modul neu angelegt oder bearbeitet wurde (Vorgabe vom 20.10.2026).
+Every tag is surveyed **once**, when its module is newly created or edited (requirement of
+20.10.2026).
 
-- Speichern aus dem Editor verwirft `measurement` bei neuen Tags und bei Tags, deren `tagId`, `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes Speichern behält es.
-- Import und Laden lassen `measurement` unverändert.
-- Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind. Der Start erfolgt nur per Klick, weil der Roboter fährt.
+- Saving from the editor discards `measurement` for new tags and for tags whose `tagId`,
+  `sizeM`, `position`, `rotationDeg` or `placement` have changed. Saving unchanged keeps it.
+- Import and load leave `measurement` unchanged.
+- Only pending tags of modules placed in the cell are surveyed. Start happens only by click,
+  because the robot moves.
 
-### Tags auf dem Roboter selbst (über Gelenkwinkel)
+### Tags on the robot itself (via joint angles)
 
-Die Tags des Roboters (Katalogeintrag `kind: "robot"`) werden im selben Fenster „Tags einmessen“ (Settings → Zellüberwachung, neben „Modulkatalog“) gemessen,
-ohne Bezugskanten und ohne Layer 1. Der Pi bleibt unverändert: Es wird nur `MeasureTags` benutzt
-(`frames` 3). Umsetzung im Frontend (`webskillcomposition`, `model/robotTagRun.ts`), Arbeitsplan
-[`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md), Nachtrag
-„Roboter-Variante“.
+The robot's tags (catalog entry `kind: "robot"`) are measured in the same window „Tags einmessen“
+(survey tags) (Settings → Zellüberwachung (cell monitoring), next to „Modulkatalog“ (module
+catalog)), without reference edges and without layer 1. The Pi remains unchanged: only
+`MeasureTags` is used (`frames` 3). Implementation in the frontend (`webskillcomposition`,
+`model/robotTagRun.ts`), work plan
+[`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md),
+addendum „Roboter-Variante“ (robot variant).
 
-**Prinzip**
+**Principle**
 
-- Die Roboterbasis ist das Modul-KS des Roboters: `ROBOT_MODULE_TO_BASE` = Identität (URDF-Wurzel; die
-  Vorwärtskinematik rechnet im selben Frame, `robotBaseFrom` übernimmt die Modulpose ohne Versatz).
-  Damit ist `T_module_tag = T_module_base · T_base_tag`, und der Katalogwert ist der Startwert
-  `T_base_tag`.
-- Je Ansicht gilt `T_base_tag = FK(Gelenke) · T_flansch_cam · T_cam_tag` (`tagInBaseFrom`,
-  `model/tagServo.ts`). Gelesen werden die **Ist**-Gelenke nach der Fahrt, nicht die Sollwerte.
-- Volle 6 DoF. Der Fehler geht direkt in das Ergebnis ein: Hand-Auge-Kalibrierung und Gelenkwinkel.
-  Mehrere Ansichten aus verschiedenen Gelenkstellungen mitteln einen Teil davon heraus.
+- The robot base is the robot's module frame: `ROBOT_MODULE_TO_BASE` = identity (URDF root;
+  the forward kinematics computes in the same frame, `robotBaseFrom` takes over the module
+  pose without offset). Thus `T_module_tag = T_module_base · T_base_tag`, and the catalog
+  value is the starting value `T_base_tag`.
+- For each view, `T_base_tag = FK(Gelenke) · T_flansch_cam · T_cam_tag` applies
+  (`tagInBaseFrom`, `model/tagServo.ts`). The **actual** joints after the move are read, not
+  the setpoints.
+- Full 6 DoF. The error feeds directly into the result: hand-eye calibration and joint
+  angles. Several views from different joint configurations average out part of it.
 
-**Ansichten (3)**
+**Views (3)**
 
-- Erst wird wie beim Modul-Lauf zentriert (`centreOnTag`, Abstand 0,35 m). Danach liegen drei Kamerapositionen
-  auf einer Kugel um den Tag-Mittelpunkt, je 0,35 m entfernt und auf den Tag gerichtet: gekippt um +12° und
-  −12° um Tag-x sowie um +12° um Tag-y (`ROBOT_TAG_TILTS`, `robotTagViews`). Konvention wie
-  `PlanTagReferenceView`: Die Kamera schaut entlang −Tag-z.
-- Je Ansicht: `flangeForView` → `planMove` → Fahrt mit Clearance → Ist-Gelenke lesen → FK → `MeasureTags`.
-- Gültig ist eine Ansicht nur mit `frameCount` ≥ 2, nicht `placeholder`-Intrinsik, ohne Pi-Fehler und mit
-  dem Tag im Bild. Ist sie nicht erreichbar oder verletzt die Clearance, wird sie mit Warnung übersprungen.
-  Ein Fahrfehler ohne Blockade bricht den Tag ab.
+- First, as in the module run, centring takes place (`centreOnTag`, distance 0.35 m). Then
+  three camera positions lie on a sphere around the tag centre, each 0.35 m away and aimed at
+  the tag: tilted by +12° and −12° about tag x, and by +12° about tag y (`ROBOT_TAG_TILTS`,
+  `robotTagViews`). Convention as in `PlanTagReferenceView`: the camera looks along −tag z.
+- For each view: `flangeForView` → `planMove` → move with clearance → read actual joints →
+  FK → `MeasureTags`.
+- A view is valid only with `frameCount` ≥ 2, not `placeholder` intrinsics, without a Pi
+  error, and with the tag in the image. If it is unreachable or violates the clearance, it is
+  skipped with a warning. A motion error without a blockage aborts the tag.
 
-**Mittelung**
+**Averaging**
 
-- Position: Mittel über alle gültigen Ansichten.
-- Orientierung: Mittel über die nicht mehrdeutigen Ansichten (`ambiguous: false`). Sind alle mehrdeutig,
-  bleibt die Orientierung aus dem Katalog, mit Warnung.
-- Mindestens **2** gültige Ansichten (`ROBOT_TAG_MIN_VIEWS`), sonst bleibt der Tag ausstehend.
-- Streuung: `spreadMm` (RMS der Positionen um das Mittel), `spreadDeg` (RMS der Winkel zum Mittel).
-  Über 3 mm bzw. 1° kommt eine Warnung („Hand-Auge-Kalibrierung prüfen“). Die Schwellen sind Annahmen
-  und nicht an der Hardware gemessen.
+- Position: average over all valid views.
+- Orientation: average over the non-ambiguous views (`ambiguous: false`). If all are
+  ambiguous, the orientation stays from the catalog, with a warning.
+- At least **2** valid views (`ROBOT_TAG_MIN_VIEWS`), otherwise the tag remains pending.
+- Spread: `spreadMm` (RMS of the positions about the mean), `spreadDeg` (RMS of the angles to
+  the mean). Above 3 mm or 1° there is a warning („Hand-Auge-Kalibrierung prüfen“ (check
+  hand-eye calibration)). The thresholds are assumptions and not measured on the hardware.
 
-**Datenformat**
+**Data format**
 
-`ModuleTag.measurement` (`TagCameraMeasurement`) mit `method: "robot-fk"`. Der Wert `"camera-edges"` gilt
-für die Modul-Tags. Felder:
+`ModuleTag.measurement` (`TagCameraMeasurement`) with `method: "robot-fk"`. The value
+`"camera-edges"` applies to the module tags. Fields:
 
-- `dofs` ist bei `robot-fk` immer `"full"`, `lines` ist `[]`.
-- `deltaMm`: neu minus Startwert, in Tag-x und Tag-y des Startwerts, mm.
-- `deltaNormalMm` (nur `robot-fk`, optional): dieselbe Verschiebung entlang Tag-z des Startwerts, mm.
-- `deltaRotDeg`: der gesamte Drehwinkel zwischen Startwert und Ergebnis.
-- `spreadMm`, `spreadDeg` (nur `robot-fk`, optional), `views` (nur `robot-fk`, optional): Anzahl der
-  gültigen Ansichten.
+- `dofs` is always `"full"` for `robot-fk`; `lines` is `[]`.
+- `deltaMm`: new minus starting value, in tag x and tag y of the starting value, mm.
+- `deltaNormalMm` (only `robot-fk`, optional): the same shift along tag z of the starting
+  value, mm.
+- `deltaRotDeg`: the total angle of rotation between starting value and result.
+- `spreadMm`, `spreadDeg` (only `robot-fk`, optional), `views` (only `robot-fk`, optional):
+  number of valid views.
 
-`parseMeasurement` in `model/catalogStore.ts` verwirft ein fehlendes oder unbekanntes `method` (dann wird
-der Tag neu gemessen). Ungültige optionale Felder verwirft es einzeln. `describeTagMeasurement(tag,
-{ robot: true })` zeigt „measured … via robot joints · Δ … mm / …° · n views“, und ungemessen
-„not measured yet · measured with the robot's hand camera“.
+`parseMeasurement` in `model/catalogStore.ts` discards a missing or unknown `method` (then
+the tag is measured again). It discards invalid optional fields individually.
+`describeTagMeasurement(tag, { robot: true })` shows "measured … via robot joints · Δ … mm /
+…° · n views", and for unmeasured tags "not measured yet · measured with the robot's hand
+camera".
 
-**Grenzen**
+**Limits**
 
-- Hand-Auge-Kalibrierung und Gelenkwinkel gehen direkt ein. Erwartet werden ~1–2 mm, nicht gemessen.
-- Nur Tags, die die eigene Hand-Kamera sieht und erreicht. Seitlich am Fuß liegende Tags sind evtl.
-  unerreichbar und bleiben ausstehend.
-- Die Clearance (`keepOutFromRobotBounds`) blockiert Ansichten über dem eigenen Wagen nicht grundsätzlich:
-  geprüft werden Flansch, Kamera und Gelenkpunkte nur unter Tischplatte + 5 cm im Footprint bzw. unter
-  Boden + 10 cm. Die Wagen-Bounds im Katalog müssen den Footprint beschreiben.
-- Fehlt `frameCount` im Ergebnis (`null`), gilt die Ansicht als gültig. Der Pi liefert das Feld immer.
-- ±12° bei 0,35 m und ob die Schrägansicht `frameCount` ≥ 2 erreicht, sind ungetestet.
+- Hand-eye calibration and joint angles feed in directly. ~1–2 mm are expected, not measured.
+- Only tags that the own hand camera sees and can reach. Tags lying sideways at the base may
+  be unreachable and remain pending.
+- The clearance (`keepOutFromRobotBounds`) does not generally block views above the robot's
+  own cart: flange, camera and joint points are checked only below table top + 5 cm within
+  the footprint, or below floor + 10 cm. The cart bounds in the catalog must describe the
+  footprint.
+- If `frameCount` is missing in the result (`null`), the view counts as valid. The Pi always
+  supplies the field.
+- ±12° at 0.35 m, and whether the oblique view reaches `frameCount` ≥ 2, are untested.
 
-### Live-Ansicht der Kantensuche
+### Live view of the edge search
 
-Seit 21.10.2026 zeigt der Stream während der Einmessung, was die Kantensuche tut (Plan
-[`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)). Die Rechnung
-bleibt dieselbe: `measure_reference_lines(..., debug=...)` füllt nur eine Liste, Ergebnis und
-`LineMeasurement` sind mit und ohne `debug` bitgleich.
+Since 21.10.2026 the stream shows during surveying what the edge search is doing (plan
+[`arbeitsplaene/tag-einmessen-liveview.md`](arbeitsplaene/tag-einmessen-liveview.md)). The
+computation remains the same: `measure_reference_lines(..., debug=...)` only fills a list;
+the result and `LineMeasurement` are bit-identical with and without `debug`.
 
-**Was man sieht**, in dieser Reihenfolge der Suche:
+**What you see**, in the order of the search:
 
-1. **Startwert-Kante** (gelb gestrichelt): die Kante aus dem Modulkatalog, in das Bild projiziert, nur der sichtbare Teil.
-2. **Suchband** (dünne gelbe Ränder): Bereich, in dem nach Kanten gesucht wird (`bandPx`).
-3. **Kandidatenpunkte** (cyan): alle Gradientenmaxima im Band.
-4. **Verworfene Linien** (orange): RANSAC-Geraden aus den Kandidaten, die nicht gewählt wurden (Inlier je Linie).
-5. **Gewählte Linie** (grün, rot bei `ambiguous`), mit Saum; Beschriftung je Kante mit Δ mm und Grad, bzw. `NO_EDGE` oder `mehrdeutig`.
-6. **Tag-Maske** (grau) und Tag-Rahmen, wie im Stream sonst.
+1. **Starting-value edge** (yellow dashed): the edge from the module catalog, projected into
+   the image, visible part only.
+2. **Search band** (thin yellow borders): area in which edges are searched for (`bandPx`).
+3. **Candidate points** (cyan): all gradient maxima in the band.
+4. **Rejected lines** (orange): RANSAC lines from the candidates that were not chosen
+   (inliers per line).
+5. **Chosen line** (green, red when `ambiguous`), with a halo; label per edge with Δ mm and
+   degrees, or `NO_EDGE` or „mehrdeutig“ (ambiguous).
+6. **Tag mask** (grey) and tag frame, as otherwise in the stream.
 
-Die Ebenen sind einzeln abschaltbar (`overlay` in der Anfrage, acht Schalter, siehe
-[`vision-server-interface.md`](vision-server-interface.md) §19.1). Ohne aktive Vorschau läuft der
-Stream im Modus `tagreference` mit dem Titel „keine Einmess-Vorschau“ und normalen Tag-Rahmen.
+The layers can be switched off individually (`overlay` in the request, eight switches, see
+[`vision-server-interface.md`](vision-server-interface.md) §19.1). Without an active preview,
+the stream runs in mode `tagreference` with the title „keine Einmess-Vorschau“ (no survey
+preview) and normal tag frames.
 
-**Debug-Daten je Kante** (Pixel des Rohbilds, verzeichnet, volle Auflösung): `guessPx`, `profilesPx`,
-`normalsPx`, `bandPx`, `edgePointsPx`, `candidates` (mit `inliersPx`, `score`, `chosen`), `measuredPx`,
-`measuredPolyPx`, dazu `found`, `supportPx`, `contrast`, `ambiguous`, `offsetMm`, `angleDeg`. Einmal je Aufruf
-`_tag` mit `maskOutlinePx`. Die Zeichnung (`tagloc/reference_overlay.py`) rechnet nichts, sie zeichnet nur
-diese Daten.
+**Debug data per edge** (raw-image pixels, distorted, full resolution): `guessPx`,
+`profilesPx`, `normalsPx`, `bandPx`, `edgePointsPx`, `candidates` (with `inliersPx`, `score`,
+`chosen`), `measuredPx`, `measuredPolyPx`, plus `found`, `supportPx`, `contrast`, `ambiguous`,
+`offsetMm`, `angleDeg`. Once per call `_tag` with `maskOutlinePx`. The drawing
+(`tagloc/reference_overlay.py`) computes nothing; it only draws this data.
 
-**Rechenlast:** die Vorschau wertet höchstens 3 Hz aus (`PREVIEW_INTERVAL_S`), auf demselben
-Ein-Thread-Pool wie die eigene Erkennung des Livestreams (der Detektor ist nicht für zwei Threads gebaut).
-Auf dem Testrechner 52–62 ms je Auswertung, am Hand-Pi nicht gemessen.
+**Computational load:** the preview evaluates at most 3 Hz (`PREVIEW_INTERVAL_S`), on the same
+single-thread pool as the stream's own detection (the detector is not built for two threads).
+On the test machine 52–62 ms per evaluation, not measured on the hand Pi.
 
-**Mess-Protokoll:** jede Messung schreibt unter `data/tagreference/` einen Ordner mit Anfrage, Ergebnis,
-den Rohbildern (PNG) und dem Debug-Bild. Die letzte Messung ist unter `GET /tagreference.jpg` abrufbar.
-Details und Aufräumregel: `vision-server-interface.md` §19.1.
+**Measurement log:** each measurement writes a folder under `data/tagreference/` containing
+the request, the result, the raw images (PNG) and the debug image. The last measurement is
+retrievable at `GET /tagreference.jpg`. Details and cleanup rule:
+`vision-server-interface.md` §19.1.
 
-**Testphase „alle Tags“ (Frontend, Stand 21.10.2026):** Der Schalter „Alle Tags neu einmessen (Testphase)“
-ist standardmäßig an. Jeder Lauf misst dann alle messbaren Tags neu, damit der Versuch oft wiederholt
-werden kann. Das ist eine **Ausnahme zur Einmal-Regel** oben. Zielzustand (Vorgabe des Nutzers): Schalter
-aus bzw. `TAG_MEASURE_ALL_TESTPHASE = false` in `tagMeasurementState.ts`, dann gilt wieder nur die Einmal-Regel.
+**Test phase "all tags" (frontend, state 21.10.2026):** the switch „Alle Tags neu einmessen (Testphase)“
+(re-survey all tags (test phase)) is on by default. Each run then re-measures all measurable
+tags, so that the trial can be repeated often. This is an **exception to the once-only rule**
+above. Target state (user's requirement): switch off, or `TAG_MEASURE_ALL_TESTPHASE = false`
+in `tagMeasurementState.ts`; then only the once-only rule applies again.

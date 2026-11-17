@@ -1,90 +1,86 @@
-# AprilTags über dominante Flächen und Kanten des Modulmodells platzieren
+# Place AprilTags on the dominant faces and edges of the module model
 
-**Status:** fertig (vorläufig) — 29.09.2026. Die Funktion läuft im Modulkatalog und ist in `webskillcomposition` committet (`839aa58`). Sie kann weiterentwickelt werden; siehe „Offene Fragen“.
-**Verantwortlich:** Meric, `Agent: Tags auf Modellflächen platzieren`
-**Thema:** frontend
-**Branch:** `feature/modulkatalog` (Repo `webskillcomposition`)
+**Status:** done — 29.09.2026 (provisional). The function runs in the module catalog and is committed in `webskillcomposition` (`839aa58`). It can be developed further; see "Open questions".
+**Owner:** Meric, `Agent: place tags on model faces`
+**Topic:** frontend
+**Branch:** `feature/modulkatalog` (repo `webskillcomposition`)
 
-## Ziel
+## Goal
 
-Wo ein AprilTag auf einem Modul klebt (`ModuleTag.position` / `rotationDeg` im
-Modul-KS), wird im Modulkatalog-Dialog nicht mehr an der **Umrissbox** abgelesen,
-sondern am **3D-Modell selbst** vermessen. Die Box ist bei Tischen mit Roboter und
-Aufbauten unbrauchbar.
+Where an AprilTag is glued to a module (`ModuleTag.position` / `rotationDeg` in the
+module frame), the module catalog dialog no longer reads it off the **outline box**,
+but measures it on the **3D model itself**. The box is unusable for tables with a
+robot and attachments.
 
-Aus dem geladenen Modell (URDF, DAE, glTF, STL) werden die **dominanten ebenen
-Flächen** berechnet, dazu pro Fläche ihre **langen Außenkanten** und **Ecken**. Der
-Ablauf ist:
+From the loaded model (URDF, DAE, glTF, STL) the **dominant planar faces** are
+computed, plus for each face its **long outer edges** and **corners**. The procedure is:
 
-1. Fläche wählen.
-2. Ecke oder zwei Kanten anklicken.
-3. Die am echten Modul gemessenen Abstände eintragen.
+1. Select a face.
+2. Click a corner or two edges.
+3. Enter the distances measured on the real module.
 
-Der Tag liegt dann bündig auf der Fläche.
+The tag then lies flush on the face.
 
-**Item-Profile:** Koplanare Teilflächen mit Spalten bis zu einer einstellbaren
-Breite (Standard 10 mm) werden **zu einer Fläche zusammengefasst**. Damit wird ein
-Rahmen aus Aluprofilen mit Nuten und Fugen als eine Fläche mit durchgehenden
-Außenkanten erkannt.
+**Item profiles:** Coplanar sub-faces with gaps up to an adjustable width (default
+10 mm) are **merged into one face**. This way a frame of aluminum profiles with slots
+and joints is recognized as one face with continuous outer edges.
 
-Zusätzlich gibt es zwei Möglichkeiten:
-- **Kanten außerhalb der Fläche:** Die Bezugskanten im Modus „zwei Kanten“ dürfen
-  **beliebige Modellkanten** sein, auch außerhalb der gewählten Fläche, z. B. die
-  Tischkante unter einem Profil oder die Kante eines Roboterfußes. Sie werden
-  auf die Fläche projiziert, und der Abstand wird in der Fläche gemessen.
-- **z-Offset:** Der Tag kann um einen **Abstand vor der Fläche** versetzt werden,
-  etwa für einen Halter, ein Distanzstück oder eine Platte, die das Modell nicht
-  enthält.
+In addition, there are two options:
+- **Edges outside the face:** The reference edges in the "two edges" mode may be
+  **any model edges**, including ones outside the selected face, e.g. the table edge
+  under a profile or the edge of a robot foot. They are projected onto the face, and
+  the distance is measured within the face.
+- **z-offset:** The tag can be offset by a **distance in front of the face**, e.g. for
+  a bracket, a spacer or a plate that the model does not contain.
 
-Vorher gab es nur die Face-Presets der Umrissbox (`TAG_FACE_PRESETS`) und Zahlen
-von Hand. Das vorhandene Kanten-Picking (`modelEdges.ts`) setzte nur den
-Modul-Ursprung und die X-Achse, nicht den Tag.
+Previously there were only the face presets of the outline box (`TAG_FACE_PRESETS`)
+and numbers entered by hand. The existing edge picking (`modelEdges.ts`) only set the
+module origin and the X axis, not the tag.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md` (Arbeitsplanpflicht, Regeln für Änderungen)
-- `doc/projektdoku/arbeitsplaene/README.md` (kein offener `frontend`-Plan zum Thema)
-- `doc/projektdoku/apriltag-referenz.md`: Tag-Frame-Konvention (+X rechts, +Y
-  Oberkante, +Z aus dem Tag), `tagToModule`
+- `CLAUDE.md` (work plan obligation, rules for changes)
+- `doc/projektdoku/arbeitsplaene/README.md` (no open `frontend` plan on this topic)
+- `doc/projektdoku/apriltag-referenz.md`: tag frame convention (+X right, +Y top edge,
+  +Z out of the tag), `tagToModule`
 - `webskillcomposition/frontend/src/features/cell-modules/config/moduleCatalog.ts`:
-  `ModuleTag`, Face-Presets, Modul-KS (+Z oben)
+  `ModuleTag`, face presets, module frame (+Z up)
 
-## Betroffene Dateien
+## Affected files
 
-Alle Pfade liegen in `webskillcomposition/frontend/src/features/cell-modules/`.
+All paths are in `webskillcomposition/frontend/src/features/cell-modules/`.
 
-**Neu:**
-- `model/modelPlanes.ts`: Flächen-, Kanten- und Eckensuche, reine Mathematik ohne three.js
-- `model/tagPlacement.ts`: Tag-Pose aus Ecke + Abständen bzw. zwei Kanten
-- `model/planeWorker.ts`: Web Worker um `findPlanes`
-- `components/ModelPlanes.tsx`: Meshes einsammeln, Worker-Aufruf, Overlay, Picking, Maßlinien
+**New:**
+- `model/modelPlanes.ts`: face, edge and corner search, pure math without three.js
+- `model/tagPlacement.ts`: tag pose from corner + distances, or from two edges
+- `model/planeWorker.ts`: Web Worker around `findPlanes`
+- `components/ModelPlanes.tsx`: collecting meshes, worker call, overlay, picking, dimension lines
 - Tests: `model/modelPlanes.test.ts`, `model/tagPlacement.test.ts`
 
-**Geändert:**
+**Changed:**
 - `config/moduleCatalog.ts`: `ModuleTag.placement`, `TagPlacement`, `TagPlacementEdge`
 - `model/tagGeometry.ts`: `quaternionFromBasis`
-- `model/catalogStore.ts`: `placement` importieren und exportieren (defekte Einträge werden verworfen)
-- `model/catalogValidation.ts`: keine Umrissbox-Warnung für platzierte Tags
-- `components/ModulePreview.tsx`: `PlaneTool`, Overlay und Maßlinien in `ModuleScene`
-- `components/ModuleCatalogModal.tsx`: Schaltfläche „Auf Modell platzieren“, `TagPlacementPanel`, Mitführen von `placement` bei neuem Ursprung oder neuer X-Achse
+- `model/catalogStore.ts`: import and export `placement` (defective entries are discarded)
+- `model/catalogValidation.ts`: no outline-box warning for placed tags
+- `components/ModulePreview.tsx`: `PlaneTool`, overlay and dimension lines in `ModuleScene`
+- `components/ModuleCatalogModal.tsx`: button „Auf Modell platzieren“ (Place on model),
+  `TagPlacementPanel`, carrying `placement` along when the origin or X axis is set anew
 - Tests: `model/catalogStore.test.ts`, `model/catalogValidation.test.ts`
 
-**Außerdem:** Das Submodul `frontend/public/urdf` (`misc/urdf.git`) ist ausgecheckt.
-Es enthält nur Roboter-URDFs; `fr3_description_with_wagon` diente als Testmodell.
+**Additionally:** The submodule `frontend/public/urdf` (`misc/urdf.git`) is checked out.
+It contains only robot URDFs; `fr3_description_with_wagon` served as test model.
 
-## Schnittstellen
+## Interfaces
 
-### Daten: `ModuleTag.placement` im Modulkatalog (`wsc.cellModules.catalog/1`)
+### Data: `ModuleTag.placement` in the module catalog (`wsc.cellModules.catalog/1`)
 
-Das Feld ist optional und wird mit dem Katalog in `localStorage` gespeichert und
-per JSON exportiert. Es ist nur ein **Protokoll**: maßgeblich bleiben `position`
-und `rotationDeg`. Pi, Tag-Map und Layer 2 sind nicht betroffen.
+The field is optional and is stored with the catalog in `localStorage` and exported
+as JSON. It is only a **protocol**: `position` and `rotationDeg` remain authoritative.
+Pi, tag map and layer 2 are not affected.
 
-- **Längen** in Metern, Richtungen als Einheitsvektoren im Modul-KS.
-- **Manuelles Überschreiben:** Wird Position oder Drehung von Hand geändert, wird
-  `placement` entfernt.
-- **Ursprung oder X-Achse neu gesetzt:** `placement` wird mitverschoben bzw.
-  mitgedreht.
+- **Lengths** in meters, directions as unit vectors in the module frame.
+- **Manual override:** If position or rotation is changed by hand, `placement` is removed.
+- **Origin or X axis set anew:** `placement` is shifted or rotated along with it.
 
 ```json
 {
@@ -101,264 +97,260 @@ und `rotationDeg`. Pi, Tag-Map und Layer 2 sind nicht betroffen.
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 | --- | --- |
-| `mode` | `"corner"`: `distancesM` = [entlang `edgeA` ab `edgeA.point`, senkrecht in die Fläche]. `"edges"`: `distancesM` = [senkrechter Abstand zu Kante A, zu Kante B]. |
-| `normal` | Außennormale der Fläche. Tag-+Z zeigt entlang dieser Normalen, bei `flipped` entgegengesetzt. |
-| `edgeA`, `edgeB` | Bezugskanten, **auf die Fläche projiziert**: ein Punkt der Kante (bei `corner` die Ecke selbst), die Richtung (bei `corner` von der Ecke weg) und `inward` (in der Fläche, senkrecht zur Kante, zur Fläche hin). `edgeB` gibt es nur bei `edges`. Für Kanten außerhalb der Fläche zeigt `inward` zum Flächenschwerpunkt; negative Abstände sind erlaubt. |
-| `inPlaneRotationDeg` | `null` = Oberkante des Drucks „oben“: auf waagerechten Flächen (\|n_z\| ≥ cos 45°) Tag-+Y Richtung Modul-+Y, sonst Richtung Modul-+Z. Das entspricht genau den `TAG_FACE_PRESETS`. Ein Wert = Drehung von `edgeA.direction` zu Tag-+X um die Tag-Z-Achse, in Grad. |
-| `flipped` | optional, `true` = Tag schaut gegen die Normale; für Modelle mit nach innen gewickelten Flächen |
-| `offsetM` | optional, Abstand des Tags vor der Fläche in m, entlang der Tag-+Z-Achse (Blickrichtung). Fehlt = 0. Die Abstände in `distancesM` beziehen sich auf den Fußpunkt in der Fläche. |
+| `mode` | `"corner"`: `distancesM` = [along `edgeA` from `edgeA.point`, perpendicular into the face]. `"edges"`: `distancesM` = [perpendicular distance to edge A, to edge B]. |
+| `normal` | Outward normal of the face. Tag +Z points along this normal, or opposite to it with `flipped`. |
+| `edgeA`, `edgeB` | Reference edges, **projected onto the face**: a point on the edge (for `corner`, the corner itself), the direction (for `corner`, away from the corner) and `inward` (within the face, perpendicular to the edge, toward the face). `edgeB` exists only for `edges`. For edges outside the face, `inward` points to the face centroid; negative distances are allowed. |
+| `inPlaneRotationDeg` | `null` = top edge of the print is "up": on horizontal faces (\|n_z\| ≥ cos 45°) tag +Y points toward module +Y, otherwise toward module +Z. This corresponds exactly to the `TAG_FACE_PRESETS`. A value = rotation from `edgeA.direction` to tag +X about the tag Z axis, in degrees. |
+| `flipped` | optional, `true` = tag faces against the normal; for models with faces wound inward |
+| `offsetM` | optional, distance of the tag in front of the face in m, along the tag +Z axis (viewing direction). Missing = 0. The distances in `distancesM` refer to the foot point on the face. |
 
-### TypeScript: Flächensuche (`model/modelPlanes.ts`)
+### TypeScript: Face search (`model/modelPlanes.ts`)
 
 ```ts
 function findPlanes(meshes: MeshInput[], overrides?: Partial<PlaneOptions>): ModelPlane[];
-// Größte Flächen zuerst, höchstens maxPlanes. Wirft nicht; leeres Array, wenn nichts passt.
+// Largest faces first, at most maxPlanes. Does not throw; empty array if nothing fits.
 
 interface MeshInput {
-  positions: ArrayLike<number>;        // xyz je Vertex
-  index?: ArrayLike<number> | null;    // 3 je Dreieck; fehlt = Triangle-Soup
-  matrix?: ArrayLike<number> | null;   // spaltenweise 4x4 (three.js Matrix4.elements) ins Modul-KS
+  positions: ArrayLike<number>;        // xyz per vertex
+  index?: ArrayLike<number> | null;    // 3 per triangle; missing = triangle soup
+  matrix?: ArrayLike<number> | null;   // column-major 4x4 (three.js Matrix4.elements) into the module frame
 }
 
 interface ModelPlane {
   id: number;
   normal: Vec3; offset: number;        // normal·p = offset
-  area: number;                        // Materialfläche in m² (Summe der Dreiecke)
+  area: number;                        // material area in m² (sum of the triangles)
   centroid: Vec3;
-  u: Vec3; v: Vec3;                    // u entlang der längsten Kante, v = normal × u
-  extent: [number, number];            // Ausdehnung entlang u und v, m
-  triangles: Float32Array;             // 9 Zahlen je Dreieck, Modul-KS (zum Zeichnen)
-  segments: PlaneSegment[];            // lange Außenkanten, längste zuerst
+  u: Vec3; v: Vec3;                    // u along the longest edge, v = normal × u
+  extent: [number, number];            // extent along u and v, m
+  triangles: Float32Array;             // 9 numbers per triangle, module frame (for drawing)
+  segments: PlaneSegment[];            // long outer edges, longest first
   corners: PlaneCorner[];
 }
 interface PlaneSegment { id: number; start: Vec3; end: Vec3; length: number; direction: Vec3; inward: Vec3 }
 interface PlaneCorner  { id: number; point: Vec3; incoming: number; outgoing: number; angleDeg: number; virtual: boolean }
-// Der Rand läuft so, dass die Fläche links liegt (von der Normalen aus gesehen).
-// incoming = Segment, das in die Ecke läuft; outgoing = das hinausläuft.
-// angleDeg < 0 = Innenecke; virtual = verrundete oder gefaste Ecke:
-// der Punkt, an dem sich die geraden Kanten treffen würden.
+// The boundary runs so that the face lies on the left (seen from the normal).
+// incoming = segment that runs into the corner; outgoing = the one that runs out.
+// angleDeg < 0 = inner corner; virtual = rounded or chamfered corner:
+// the point where the straight edges would meet.
 ```
 
-`PlaneOptions` mit Standardwerten (`DEFAULT_PLANE_OPTIONS`):
+`PlaneOptions` with default values (`DEFAULT_PLANE_OPTIONS`):
 
-| Option | Standard | Bedeutung |
+| Option | Default | Meaning |
 | --- | --- | --- |
-| `angleToleranceDeg` | 2 | Normalenabweichung, bis zu der ein Dreieck zur Ebene gehört |
-| `distanceToleranceM` | 0.003 | Abstand zur Ebene, bis zu dem ein Dreieck zur Ebene gehört |
-| `minAreaM2` | 0.0025 | kleinere Flächen werden verworfen (25 cm²) |
-| `minWidthM` | 0.03 | schmalere Flächen werden verworfen, z. B. die Facetten runder Teile |
-| `maxPlanes` | 12 | Anzahl der angebotenen Flächen |
-| `simplifyToleranceM` | 0.001 | Kollinearitätstoleranz der Kantenstücke |
-| `minSegmentM` | 0.02 | kürzere Kanten gelten als Rundung oder Fase |
-| `maxCornerGapM` | 0.06 | maximaler Abstand der Kantenenden zur Ecke; erlaubt verrundete Ecken bis zu etwa diesem Radius |
-| `minCornerAngleDeg` | 20 | Mindestknick für eine Ecke |
-| `mergeGapM` | 0.010 | Spaltbreite, bis zu der Teilflächen zusammengefasst werden (Nuten, Fugen); im Panel einstellbar |
+| `angleToleranceDeg` | 2 | normal deviation up to which a triangle belongs to the plane |
+| `distanceToleranceM` | 0.003 | distance from the plane up to which a triangle belongs to the plane |
+| `minAreaM2` | 0.0025 | smaller faces are discarded (25 cm²) |
+| `minWidthM` | 0.03 | narrower faces are discarded, e.g. the facets of round parts |
+| `maxPlanes` | 12 | number of faces offered |
+| `simplifyToleranceM` | 0.001 | collinearity tolerance of the edge pieces |
+| `minSegmentM` | 0.02 | shorter edges count as rounding or chamfer |
+| `maxCornerGapM` | 0.06 | maximum distance of the edge ends from the corner; allows rounded corners up to about this radius |
+| `minCornerAngleDeg` | 20 | minimum kink for a corner |
+| `mergeGapM` | 0.010 | gap width up to which sub-faces are merged (slots, joints); adjustable in the panel |
 
-### TypeScript: Tag-Pose (`model/tagPlacement.ts`)
+### TypeScript: Tag pose (`model/tagPlacement.ts`)
 
 ```ts
 function tagPoseFromPlacement(p: TagPlacement): { position: Vec3; rotationDeg: Vec3 };
-//   rotationDeg: rpy im Katalogformat. Wirft bei mode "edges", wenn die Kanten
-//   weniger als 10° gegeneinander gedreht sind ("… (fast) parallel …").
+//   rotationDeg: rpy in catalog format. Throws for mode "edges" if the edges are
+//   less than 10° rotated against each other ("… (fast) parallel …" = "… (almost) parallel …").
 function placementFromCorner(plane, corner, along: "incoming" | "outgoing", previous?): TagPlacement;
-//   previous: Abstände, Drehung, flipped und offsetM werden übernommen.
+//   previous: distances, rotation, flipped and offsetM are taken over.
 function placementFromEdges(plane, first: EdgeLine, second: EdgeLine, previous?): TagPlacement;
-//   EdgeLine = { start: Vec3; end: Vec3 }: eine lange Flächenkante oder eine beliebige Mesh-Kante.
+//   EdgeLine = { start: Vec3; end: Vec3 }: a long face edge or an arbitrary mesh edge.
 function edgeInPlane(plane, line: EdgeLine): TagPlacementEdge;
-//   Projiziert die Kante auf die Fläche. Eine eigene Kante der Fläche behält ihr `inward`,
-//   andere zeigen zum Flächenschwerpunkt. Wirft, wenn die Kante weniger als 10°
-//   von der Flächennormalen abweicht ("… (fast) senkrecht auf der Fläche …").
-function placementFootPoint(p): Vec3;                     // Tag-Mitte in der Fläche (ohne offsetM)
-function placementPosition(p): Vec3;                      // Fußpunkt + offsetM · Tag-+Z
-function shiftPlacement(p, offset: Vec3): TagPlacement;   // neuer Modul-Ursprung
-function rotatePlacement(p, turn: Quat): TagPlacement;    // Modul-KS gedreht; friert "oben" auf waagerechten Flächen ein
-function placementMatches(tag): boolean;                  // passt position/rotationDeg noch zum Protokoll?
+//   Projects the edge onto the face. An own edge of the face keeps its `inward`,
+//   others point to the face centroid. Throws if the edge is less than 10° away
+//   from the face normal ("… (fast) senkrecht auf der Fläche …" = "… (almost) perpendicular to the face …").
+function placementFootPoint(p): Vec3;                     // tag center in the face (without offsetM)
+function placementPosition(p): Vec3;                      // foot point + offsetM · tag +Z
+function shiftPlacement(p, offset: Vec3): TagPlacement;   // new module origin
+function rotatePlacement(p, turn: Quat): TagPlacement;    // module frame rotated; freezes "top" on horizontal faces
+function placementMatches(tag): boolean;                  // still matches position/rotationDeg to the protocol?
 ```
 
-In `model/tagGeometry.ts` gibt es neu
-`quaternionFromBasis(x, y, z): Quat`, die Rotation aus orthonormalen Spalten.
+In `model/tagGeometry.ts` there is a new
+`quaternionFromBasis(x, y, z): Quat`, the rotation from orthonormal columns.
 
 ### Worker (`model/planeWorker.ts`)
 
-- **Anfrage:** `PlaneRequest = { meshes: MeshInput[]; options?: Partial<PlaneOptions> }`
-- **Antwort:** `PlaneResponse = { planes, triangleCount, ms } | { error }`
-- Die `triangles`-Puffer werden transferiert.
-- Das Frontend startet einen Worker pro Anfrage. Das Ergebnis wird je platziertem
-  Modellobjekt und `mergeGapM` gecacht (`useModelPlanes` in
-  `components/ModelPlanes.tsx`).
+- **Request:** `PlaneRequest = { meshes: MeshInput[]; options?: Partial<PlaneOptions> }`
+- **Response:** `PlaneResponse = { planes, triangleCount, ms } | { error }`
+- The `triangles` buffers are transferred.
+- The frontend starts one worker per request. The result is cached per placed model
+  object and `mergeGapM` (`useModelPlanes` in `components/ModelPlanes.tsx`).
 
-### Fehlerfälle
+### Failure cases
 
-- **Keine passende Fläche:** Das Panel meldet es, die Position wird von Hand eingetragen.
-- **Worker schlägt fehl:** Die Meldung erscheint im Panel, der Dialog bleibt bedienbar.
-- **Zwei (fast) parallele Kanten** im Modus „zwei Kanten“: Fehlermeldung im Panel, der Tag bleibt unverändert.
-- **Eine Kante steht (fast) senkrecht auf der Fläche:** Fehlermeldung, nur die erste Kante bleibt gewählt.
-- **Kein Modell oder Ladefehler:** Die Schaltfläche „Auf Modell platzieren“ ist deaktiviert.
-- **Skinned Meshes** werden übersprungen, weil ihre Vertices nicht der gezeichneten Lage entsprechen.
+- **No matching face:** the panel reports it; the position is entered by hand.
+- **Worker fails:** the message appears in the panel; the dialog remains usable.
+- **Two (almost) parallel edges** in the "two edges" mode: error message in the panel;
+  the tag remains unchanged.
+- **An edge is (almost) perpendicular to the face:** error message; only the first
+  edge remains selected.
+- **No model or load error:** the button „Auf Modell platzieren“ (Place on model) is disabled.
+- **Skinned meshes** are skipped, because their vertices do not match the displayed pose.
 
-## Vorgehen (Algorithmus)
+## Approach (algorithm)
 
-1. **Kandidaten:** Pro Dreieck werden Normale n, Offset d = n·p und Fläche
-   berechnet und über (quantisierte Normale, quantisierter Offset) in Buckets
-   gezählt. Nur Dreiecke aus Buckets mit nennenswerter Fläche kommen in die
-   nächsten Schritte. Die meisten Dreiecke eines CAD-Modells sind Tessellierung
-   runder Teile, deshalb bleibt der Aufwand beherrschbar.
-2. **Ebenen-Cluster:** Buckets werden nach absteigender Fläche abgearbeitet. Der
-   Bucket legt eine Ebene fest, benachbarte Dreiecke innerhalb der Winkel- und
-   Abstandstoleranz schließen sich an. Danach folgt ein Refit.
-3. **Körper:** Innerhalb einer Ebene bilden Dreiecke mit gemeinsamen
-   (verschweißten, 0,1 mm) Vertices einen Körper.
-4. **Zusammenfassen (Item-Profile):** Körper, deren Randkanten höchstens
-   `mergeGapM` voneinander entfernt sind, werden **eine Fläche**.
-   - Umgesetzt über ein Hash-Gitter der Randkanten und den Segment-Abstand.
-   - Tischbein-Oberseiten mit größerem Abstand bleiben getrennt.
-5. **Außenkontur:** Eine Randkante wird genau dort **nicht** als Umriss gezählt,
-   wo ihr innerhalb von `mergeGapM` eine andere Randkante **gegenübersteht**.
-   - „Gegenüber“ heißt: Die Außennormalen zeigen ≥ 45° gegeneinander, und die
-     Gegenkante liegt, senkrecht projiziert, vor der Kante. Das trifft Nutlippen,
-     Fugen und T-Stöße (deckungsgleiche Kanten).
-   - Der verdeckte Bereich wird **exakt als Intervall** berechnet. Er endet genau
-     am Vertex der Gegenkante, z. B. wo ein Loch beginnt.
-6. **Kanten:** Die Umrissstücke werden auf gemeinsame Geraden verteilt. Die
-   Gerade wird fortlaufend an alle Stücke angepasst, gewichtet mit ihrer Länge
-   (Hauptachse der Endpunkte). Stücke mit Lücken ≤ `mergeGapM` werden zu einer
-   Kante verbunden, damit die von Nuten unterbrochene Stirnkante eines
-   Profilrahmens eine Kante wird. Danach gilt der Filter `minSegmentM`.
-7. **Ecken:** Für Paare langer Kanten mit Knick ≥ `minCornerAngleDeg` wird der
-   Geradenschnitt berechnet. Er ist eine Ecke, wenn er höchstens
-   `maxCornerGapM` vom Ende der einen und vom Anfang der anderen Kante liegt.
-   Verrundete Ecken werden dadurch zum gedachten Schnittpunkt (`virtual`), also
-   zu dem Punkt, an dem man den Zollstock ansetzt.
-8. **Filter:** Übrig bleiben Flächen mit Fläche ≥ `minAreaM2` und schmaler
-   Ausdehnung ≥ `minWidthM`, sortiert nach Fläche, die ersten `maxPlanes`.
+1. **Candidates:** For each triangle, the normal n, offset d = n·p and area are
+   computed and counted in buckets by (quantized normal, quantized offset). Only
+   triangles from buckets with significant area go into the next steps. Most triangles
+   of a CAD model are tessellation of round parts, so the effort stays manageable.
+2. **Plane clusters:** Buckets are processed in descending order of area. A bucket
+   defines a plane; adjacent triangles within the angle and distance tolerance join it.
+   A refit follows.
+3. **Bodies:** Within a plane, triangles with shared (welded, 0.1 mm) vertices form a body.
+4. **Merging (item profiles):** Bodies whose boundary edges are at most `mergeGapM`
+   apart become **one face**.
+   - Implemented via a hash grid of the boundary edges and the segment distance.
+   - Table tops of table legs with a larger spacing remain separate.
+5. **Outer contour:** A boundary edge is **not** counted as outline exactly where, within
+   `mergeGapM`, another boundary edge **faces** it.
+   - "Facing" means: the outer normals point ≥ 45° against each other, and the opposite
+     edge, projected perpendicularly, lies in front of the edge. This covers slot lips,
+     joints and T-joints (congruent edges).
+   - The hidden region is computed **exactly as an interval**. It ends exactly at the
+     vertex of the opposite edge, e.g. where a hole begins.
+6. **Edges:** The outline pieces are distributed onto common straight lines. The line is
+   continuously fitted to all pieces, weighted by their length (principal axis of the
+   endpoints). Pieces with gaps ≤ `mergeGapM` are joined into one edge, so that the
+   front edge of a profile frame, interrupted by slots, becomes one edge. Then the
+   `minSegmentM` filter applies.
+7. **Corners:** For pairs of long edges with a kink ≥ `minCornerAngleDeg`, the
+   intersection of the lines is computed. It is a corner if it lies at most
+   `maxCornerGapM` from the end of one edge and from the start of the other. Rounded
+   corners thereby become the imagined intersection point (`virtual`), i.e. the point
+   where the tape measure is placed.
+8. **Filter:** What remains are faces with area ≥ `minAreaM2` and narrow extent ≥
+   `minWidthM`, sorted by area; the first `maxPlanes`.
 
-**Bedienung** (Modulkatalog → Modul bearbeiten → am Tag „Auf Modell platzieren“):
+**Operation** (Module catalog → edit module → at the tag, „Auf Modell platzieren“ (Place on model)):
 
-1. Die farbigen Flächen im Bild anklicken. Verdeckte Flächen werden sichtbar,
-   wenn man die Ansicht dreht.
-2. „Messen ab einer Ecke“ oder „ab zwei Kanten“ wählen.
-   - Bei einer Ecke mit A/B wählen, entlang welcher Kante gemessen wird.
-   - Kleine Punkte markieren verrundete Ecken.
-   - Bei zwei Kanten zählt **jede scharfe Kante des Modells**, auch außerhalb der
-     Fläche. Die Mesh-Kanten des Teils unter dem Cursor werden orange angezeigt,
-     die langen Kanten anderer Flächen grau.
-   - Liegt die geklickte Mesh-Kante auf einer langen Flächenkante (≤ 1 mm), wird
-     die ganze lange Kante genommen.
-   - Jede lange Flächenkante hat einen unsichtbaren Fangbereich, eine Röhre
-     mit etwa dem halben Markerradius (mindestens 3 mm). Der Rand der gewählten
-     Fläche lässt sich damit auch dort treffen, wo er keine einzelne Mesh-Kante
-     ist, und auch knapp neben der Silhouette. Die Röhren der gewählten Fläche
-     sind 25 % dicker und gewinnen, wenn zwei Kanten zusammenfallen. Verdeckte
-     Röhren nimmt das Modell davor ab.
-   - Eine Mesh-Kante außerhalb davon gilt nur, wenn der Cursor höchstens etwa
-     0,6 × Markerradius von ihr entfernt ist. Mitten auf einer Fläche wird
-     nichts hervorgehoben.
-3. Die Abstände bis zur **Tag-Mitte** in cm eintragen. Optional eine eigene
-   Drehung, „Tag schaut in die Gegenrichtung“ oder den **Abstand zur Fläche** in
-   mm (z-Offset) setzen.
+1. Click the colored faces in the image. Hidden faces become visible when the view is rotated.
+2. Choose „Messen ab einer Ecke“ (Measure from a corner) or „ab zwei Kanten“ (from two edges).
+   - For a corner, choose A/B to select along which edge is measured.
+   - Small dots mark rounded corners.
+   - In the two-edges mode, **every sharp edge of the model counts**, including ones
+     outside the face. The mesh edges of the part under the cursor are shown in orange,
+     the long edges of other faces in gray.
+   - If the clicked mesh edge lies on a long face edge (≤ 1 mm), the whole long edge is taken.
+   - Each long face edge has an invisible snap zone, a tube with about half the marker
+     radius (at least 3 mm). The edge of the selected face can thereby be hit even where
+     it is not a single mesh edge, and also just next to the silhouette. The tubes of the
+     selected face are 25 % thicker and win if two edges coincide. Hidden tubes are
+     cut off by the model in front.
+   - A mesh edge outside this zone counts only if the cursor is at most about
+     0.6 × marker radius away from it. Nothing is highlighted in the middle of a face.
+3. Enter the distances to the **tag center** in cm. Optionally set a custom rotation,
+   „Tag schaut in die Gegenrichtung“ (Tag faces the other direction), or the
+   **distance to the face** in mm (z-offset) „Abstand zur Fläche“ (Distance to face).
 
-**Ansicht:**
-- Linke Maustaste dreht die Ansicht.
-- Mittlere und rechte Maustaste verschieben das Modell.
-- Das Mausrad zoomt.
-- Gewählte Bezugskanten werden kräftig rot (`#ff1a1a`, 5 px) gezeichnet, die
-  Kante unter dem Cursor hellrot (3 px).
-- Alle Kantenlinien (Flächenkanten, Mesh-Kanten, Auswahl) sind Screen-Space-Linien
-  **mit Tiefentest**, per Polygon-Offset leicht zur Kamera gezogen
-  (`SurfaceLines` in `components/ModelEdges.tsx`). Nur sichtbare Kanten werden
-  markiert; was das Modell verdeckt, bleibt verdeckt.
-- Im Kantenmodus gibt es keine Punkte. Ecken-Punkte erscheinen nur im
-  Ecken-Modus.
+**View:**
+- The left mouse button rotates the view.
+- The middle and right mouse buttons move the model.
+- The mouse wheel zooms.
+- Selected reference edges are drawn in strong red (`#ff1a1a`, 5 px); the edge under the
+  cursor in bright red (3 px).
+- All edge lines (face edges, mesh edges, selection) are screen-space lines **with depth
+  test**, pulled slightly toward the camera via polygon offset (`SurfaceLines` in
+  `components/ModelEdges.tsx`). Only visible edges are marked; what the model occludes
+  stays occluded.
+- In edge mode there are no points. Corner points appear only in corner mode.
 
-Im Panel lässt sich „Spalten überbrücken bis (mm)“ einstellen. Eine Änderung
-löst nach 400 ms eine neue Flächensuche aus. Die Maßlinien (gelb) zeigen die
-Messung im Bild. „Abbrechen“ stellt den Tag wieder her.
+In the panel, „Spalten überbrücken bis (mm)“ (Bridge gaps up to (mm)) can be set. A change
+triggers a new face search after 400 ms. The dimension lines (yellow) show the
+measurement in the image. „Abbrechen“ (Cancel) restores the tag.
 
-## Messwerte
+## Measurements
 
-Gemessen mit `wagon.stl` aus `fr3_description_with_wagon`: 357 632 Dreiecke,
-in Metern, Node/vitest, ein Thread.
+Measured with `wagon.stl` from `fr3_description_with_wagon`: 357 632 triangles,
+in meters, Node/vitest, one thread.
 
-| Stand | `mergeGapM` 0 | 10 mm | 20 mm |
+| State | `mergeGapM` 0 | 10 mm | 20 mm |
 | --- | --- | --- | --- |
-| ohne Zusammenfassen (erste Version) | 0,9 s | — | — |
-| mit Zusammenfassen (aktuell) | 1,8 s | 2,4 s | 3,5 s |
+| without merging (first version) | 0.9 s | — | — |
+| with merging (current) | 1.8 s | 2.4 s | 3.5 s |
 
-Im Browser läuft die Suche im Web Worker, der Dialog bleibt bedienbar. Das
-visuelle `link0.dae` des Wagens ist 250 MB groß; dort dauert schon das Laden
-des Modells.
+In the browser the search runs in the Web Worker; the dialog remains usable. The visual
+`link0.dae` of the wagon is 250 MB; there, even loading the model takes time.
 
-## Offene Fragen
+## Open questions
 
-- **Stand 29.09.2026:** Laut Nutzer funktioniert es so weit. Weiterentwicklung
-  ist möglich, etwa bei der Bedienung der Kantenauswahl und bei Flächen als Bezug.
-  Ein erster Versuch mit Flächen als Bezug wurde auf Wunsch des Nutzers
-  zurückgenommen.
-- **Noch nicht systematisch geprüft:** der Abgleich der Abstände mit dem
-  Zollstock am echten Modul und die Genauigkeit bei echten Item-Profil-Modellen.
-- **Tisch-URDFs:** Das Submodul `misc/urdf.git` enthält nur Roboter; eigene
-  Tisch-URDFs gibt es dort noch nicht.
-- **Deckungsgleiche koplanare Körper** (eine Fläche doppelt im Modell, z. B. ein
-  Aufkleber-Körper) werden nicht zusammengelegt, wenn ihre Kanten weit
-  auseinanderliegen.
-- **Schräge V-Spalte**, deren Kanten weniger als 45° gegeneinander zeigen,
-  werden nicht als Spalt erkannt. Für Nuten und Fugen spielt das keine Rolle.
-- **Bereits vorher rot:** `src/entities/robot/model/store.test.ts` („keeps
-  offline robots selected …“) schlägt schon auf dem Stand vor dieser Arbeit fehl,
-  hat also nichts mit ihr zu tun.
-- **Fach-MD:** In `apriltag-referenz.md` fehlt noch ein eigener Abschnitt
-  „Tag-Position am Modellmodell“ (Datenformat `placement`).
+- **State as of 29.09.2026:** According to the user, it works so far. Further development
+  is possible, e.g. in the operation of edge selection and for faces as reference.
+  A first attempt at faces as reference was withdrawn at the user's request.
+- **Not yet systematically checked:** the comparison of the distances with a tape
+  measure on the real module, and the accuracy on real item-profile models.
+- **Table URDFs:** The submodule `misc/urdf.git` contains only robots; there are no
+  table URDFs there yet.
+- **Congruent coplanar bodies** (one face twice in the model, e.g. a sticker body) are
+  not merged if their edges lie far apart.
+- **Oblique V gap** whose edges point less than 45° against each other is not recognized
+  as a gap. This does not matter for slots and joints.
+- **Already red before:** `src/entities/robot/model/store.test.ts` („keeps offline robots
+  selected …“) (keeps offline robots selected …) already fails on the state before this
+  work, so it has nothing to do with it.
+- **Topic doc:** `apriltag-referenz.md` still lacks its own section "Tag position on the
+  model" (data format `placement`).
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Zusammenfassen geometrisch statt per 2D-Raster.** Geplant waren
-  morphologisches Schließen auf einem ~1-mm-Raster und Zusammenhangskomponenten.
-  Das Raster war auf dem Wagen zu langsam: 57 Mio. Zellen, 4,5 s. Außerdem
-  machte die Zellrundung die Spaltbreite ungenau, ein 20-mm-Spalt wurde bei
-  2,5-mm-Zellen mit überbrückt. Das Hash-Gitter der Randkanten mit exakter
-  Intervallrechnung (Schritte 4 und 5) hält die Spaltbreite exakt ein und
-  skaliert mit der Zahl der Randkanten statt mit der Fläche.
-- **Kein Verketten mit Douglas-Peucker mehr:** Die Kanten entstehen durch
-  kollineares Zusammenfassen der Umrissstücke, die Ecken paarweise über
-  Geradenschnitte.
-- **`placement` enthält kein Feld `offset`:** Kantenpunkt und Normale legen die
-  Ebene fest. Abstände werden in Metern gespeichert (`distancesM`), im UI in cm
-  angezeigt.
-- **Nachtrag auf Wunsch des Nutzers:** Kanten außerhalb der Fläche und z-Offset
-  (`offsetM`) sind dazugekommen. Das Feld `edgeIds` in der UI-Auswahl wurde
-  deshalb durch `edges: EdgeLine[]` ersetzt. `PlaneTool.onEdgePick` nimmt jetzt
-  eine `EdgeLine` statt einer Segment-Id.
-- **Keine Flächenliste im Panel:** Die Fläche wird nur im Bild gewählt, so wie
-  der Nutzer es festgelegt hat.
+- **Merging geometric instead of 2D raster.** Planned were morphological closing on a
+  ~1 mm grid and connected components. The raster was too slow on the wagon: 57 M cells,
+  4.5 s. In addition, cell rounding made the gap width imprecise; a 20 mm gap was bridged
+  with 2.5 mm cells. The hash grid of the boundary edges with exact interval computation
+  (steps 4 and 5) keeps the gap width exact and scales with the number of boundary edges
+  instead of with the area.
+- **No more chaining with Douglas-Peucker:** the edges arise from collinear merging of the
+  outline pieces, the corners pairwise via line intersections.
+- **`placement` contains no field `offset`:** the edge point and the normal define the
+  plane. Distances are stored in meters (`distancesM`) and shown in cm in the UI.
+- **Addition at the user's request:** edges outside the face and z-offset (`offsetM`) were
+  added. The field `edgeIds` in the UI selection was therefore replaced by
+  `edges: EdgeLine[]`. `PlaneTool.onEdgePick` now takes an `EdgeLine` instead of a segment id.
+- **No face list in the panel:** the face is selected only in the image, as the user specified.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig (vorläufig)` gesetzt, Code in `webskillcomposition` committet (`839aa58`).
-- [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
-- [ ] Das Datenformat `placement` in `apriltag-referenz.md` übernehmen, als eigenen Abschnitt.
-- Weiterentwicklung: im bestehenden Plan einen neuen Abschnitt ergänzen oder einen Folgeplan anlegen und hier verlinken.
+- [x] Status set to `done (provisional)`, code committed in `webskillcomposition` (`839aa58`).
+- [x] Line in the index `doc/projektdoku/arbeitsplaene/README.md` updated.
+- [ ] Take over the data format `placement` into `apriltag-referenz.md`, as its own section.
+- Further development: add a new section to the existing plan, or create a follow-up plan
+  and link it here.
 
-## Nachtrag 19.10.2026: Tag per Button um 90° drehen
+## Addendum 19.10.2026: Rotate tag by 90° with a button
 
-Im Modulkatalog erscheinen an zwei Stellen Buttons ↺ / ↻, die einen AprilTag um ±90° um seine Normale drehen (beim Blick auf den Tag: ↺ = gegen den Uhrzeigersinn, ↻ = im Uhrzeigersinn):
+In the module catalog, buttons ↺ / ↻ appear in two places; they rotate an AprilTag by
+±90° about its normal (looking at the tag: ↺ = counterclockwise, ↻ = clockwise):
 
-1. **Im Platzier-Panel** (Schritt 4) vor dem Häkchen „Oberkante des Drucks nach oben": ruft `turnPlacement(placement, ±1)` auf.
-2. **In der Tag-Zeile** (neben „Auf Modell platzieren"): dreht platzierte Tags per `turnPlacement`; für Tags ohne Platzierung wird `turnRotationDegAboutTagZ` auf `rotationDeg` angewendet.
+1. **In the placement panel** (step 4), before the checkbox „Oberkante des Drucks nach oben“
+   (Printed top edge up): calls `turnPlacement(placement, ±1)`.
+2. **In the tag row** (next to „Auf Modell platzieren“ (Place on model)): rotates placed tags
+   via `turnPlacement`; for tags without a placement, `turnRotationDegAboutTagZ` is applied
+   to `rotationDeg`.
 
-Gedreht wird immer aus der aktuellen, **sichtbaren Lage**:
-- Steht `inPlaneRotationDeg` auf `null` („Oberkante oben"), wird der Winkel aus den Achsen der Platzierung (über `placementAxes`) berechnet, und ±90° werden addiert — danach ist es eine Zahl in (−180°, 180°].
-- Das Häkchen „Oberkante des Drucks nach oben" geht dabei automatisch aus.
-- Der Tag springt nicht; die Platzierung bleibt sonst unverändert.
+Rotation always starts from the current, **visible position**:
+- If `inPlaneRotationDeg` is `null` („Oberkante oben“ (Top edge up)), the angle is computed from the
+  axes of the placement (via `placementAxes`), and ±90° are added — afterwards it is a
+  number in (−180°, 180°].
+- The checkbox „Oberkante des Drucks nach oben“ (Printed top edge up) is cleared automatically.
+- The tag does not jump; otherwise the placement remains unchanged.
 
-**Datenformat unverändert:** Das Feld `placement` bleibt wie beschrieben, nur `inPlaneRotationDeg` ändert sich. Pi, Tag-Map und Layer 2 sind nicht betroffen; dorthin gehen weiter nur `position` und `rotationDeg`. Näheres: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
+**Data format unchanged:** The field `placement` stays as described; only `inPlaneRotationDeg`
+changes. Pi, tag map and layer 2 are not affected; only `position` and `rotationDeg` still
+go there. Details: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
 
-## Nachtrag 19.10.2026: Oberfläche englisch, Drehfeld entfernt
+## Addendum 19.10.2026: UI in English, rotation field removed
 
-Die Bedienung oben nennt die deutschen Bezeichnungen. Seit `4b01ab3` ist die Oberfläche des Modulkatalogs englisch. Zuordnung der in diesem Dokument zitierten Texte:
+The operation above names the German labels. Since `4b01ab3`, the module catalog's UI is
+in English. Assignment of the texts cited in this document:
 
-| Im Dokument (DE) | In der Oberfläche (EN) |
+| In the document (DE) | In the UI (EN) |
 | --- | --- |
 | Modulkatalog (Button, Dialog) | Module catalog |
 | Auf Modell platzieren | Place on model |
@@ -369,8 +361,16 @@ Die Bedienung oben nennt die deutschen Bezeichnungen. Seit `4b01ab3` ist die Obe
 | Oberkante des Drucks nach oben | Printed top edge up |
 | Abbrechen | Cancel |
 
-Das Feld „Drehung ab der Kante“ gibt es nicht mehr. `inPlaneRotationDeg` bleibt im Datenformat, wird aber nur noch über ↺ / ↻ bzw. das Häkchen gesetzt. Abwählen des Häkchens behält die Lage. Details: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
+The field „Drehung ab der Kante“ (Rotation from the edge) no longer exists. `inPlaneRotationDeg`
+remains in the data format, but is only set via ↺ / ↻ or the checkbox. Unchecking the
+checkbox keeps the position. Details: [`tag-drehen-90-grad.md`](tag-drehen-90-grad.md).
 
-## Nachtrag 20.10.2026: Abstände mit der Kamera einmessen
+## Addendum 20.10.2026: Survey distances with the camera
 
-Die mit „Place on model“ gewählten Bezugskanten werden künftig von der Hand-Kamera vermessen statt mit dem Zollstock. Der Katalogwert bleibt Startwert und bestimmt das Suchfenster; das Ergebnis überschreibt danach `position`/`rotationDeg`, `placement` bleibt als Protokoll des Startwerts. Ablauf und Schnittstelle stehen in [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md). Dafür muss das Frontend die echten 3D-Kanten (EdgeLine, nicht auf die Fläche projiziert) mitschicken, weil die Kamera genau diese Kanten im Bild sucht.
+The reference edges selected with „Place on model“ will in future be surveyed by the hand
+camera instead of with the tape measure. The catalog value remains the starting value and
+determines the search window; the result then overwrites `position`/`rotationDeg`, while
+`placement` remains as the record of the starting value. The procedure and interface are
+described in [`tag-einmessen-bezugskanten.md`](tag-einmessen-bezugskanten.md). For this, the
+frontend must send the real 3D edges (EdgeLine, not projected onto the face), because the
+camera searches exactly these edges in the image.

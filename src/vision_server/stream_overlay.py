@@ -2,15 +2,14 @@
 
 The stream is a debugging tool. It should show not just that an image arrives,
 but what detection sees in it: detected tags as a green box with the tag ID
-(no axis cross, no status bar), or the found board corners in calibration mode.
+(no axis cross, no status bar).
 
 Two rules keep this sustainable in production:
 
 1. **Never modify the shared frame.** `SharedCamera.latest_frame` belongs to
    all readers; drawing happens on a copy here.
-2. **Don't re-detect on every frame.** Between runs (`overlay_interval_s`),
-   the last result is redrawn. Invisible for a fixed-mounted camera, but not
-   to the Pi's CPU.
+2. **Don't re-detect on every frame.** Between runs, the last result is
+   redrawn. Invisible for a fixed-mounted camera, but not to the Pi's CPU.
 
 Since 21.10.2026, mode "apriltag" also works as follows. The tags come from a
 detection at **full** camera resolution, yet only the small image is streamed.
@@ -53,7 +52,6 @@ class AprilTagStreamAnnotator:
         detector: Any,
         calibration: Any,
         tag_map: Any,
-        interval_s: float = 0.5,
         detection_max_width: int | None = None,
         full_resolution_tags: Callable[[], Any] | None = None,
         detect_interval_s: float = 5.0,
@@ -62,12 +60,9 @@ class AprilTagStreamAnnotator:
         self._detector = detector
         self._calibration = calibration
         self._tag_map = tag_map
-        self._interval_s = interval_s
-        #: In calibration mode the image is scaled down to this width before
-        #: `detect_board` (typically the same as `CameraStreamConfig.max_stream_width`).
-        #: Corner detection on the full camera frame (e.g. 2028x1520 for cam_ceiling)
-        #: takes noticeably long on the Pi and lowers the stream frame rate. `None`
-        #: leaves the original frame unchanged.
+        #: The drawing canvas is scaled down to this width (typically the same as
+        #: `CameraStreamConfig.max_stream_width`). `None` leaves the original
+        #: frame size unchanged.
         self._detection_max_width = detection_max_width
         #: Returns the newest `TagSnapshot` of the source (job, cell watch,
         #: measurement), or `None`.
@@ -91,11 +86,10 @@ class AprilTagStreamAnnotator:
         #: Time of the last own attempt, including a failed one. Otherwise an
         #: error would be retried on every tick.
         self._last_own_attempt = float("-inf")
-        self._last_run = 0.0
-        self._last_board = None
         self._scaled: dict[tuple[int, int], Any] = {}
-        #: Set by `runner.py`'s `StartCalibration`, `FinishCalibration` and
-        #: `AbortCalibration`, and reset to `None` -- see `set_calibration_session`.
+        #: Set by the calibration methods (`runner/calibration.py`) and reset to
+        #: `None` -- see `set_calibration_session`. Only used for
+        #: `calibration_progress`; the overlay draws nothing for it.
         self._calibration_session: Any = None
         #: Undistortion maps per stream resolution for mode "undistorted".
         #: `initUndistortRectifyMap` is expensive, `remap` with ready-made maps is not.
@@ -133,7 +127,7 @@ class AprilTagStreamAnnotator:
     def set_calibration_session(self, session: Any) -> None:
         """Attach or detach a running `CalibrationSession` (`None` detaches).
 
-        Called by the calibration methods in `runner.py`. The publisher loop runs
+        Called by the calibration methods in `runner/calibration.py`. The publisher loop runs
         in its own worker thread, but the assignment itself happens on the event
         loop. A plain attribute assignment is safe enough for this, without a lock.
         """
@@ -234,27 +228,6 @@ class AprilTagStreamAnnotator:
             self._scaled[size] = cached
         return cached
 
-    def _board_spec(self):
-        """Return the board geometry from config.
-
-        Same source as `CalibrationSession._spec()`. This method used to read
-        `self._calibration.board`. With a placeholder calibration (no `board`
-        field) it fell back to the `BoardSpec()` default (9x6/30 mm). That assumed
-        a different geometry than the session actually running, so corner
-        detection in the stream never found anything, although
-        `CaptureCalibrationSample` (using the config geometry) found the board.
-        """
-        from tagloc.boards import BoardSpec
-
-        return BoardSpec(
-            type=self._config.calibration_board_type,
-            cols=self._config.calibration_board_cols,
-            rows=self._config.calibration_board_rows,
-            square_size_m=self._config.calibration_board_square_size_m,
-            marker_size_m=self._config.calibration_board_marker_size_m,
-            dictionary=self._config.calibration_board_dictionary,
-        )
-
     def set_overlay_paused(self, paused: Callable[[], bool] | None) -> None:
         """Attach the signal that pauses the tag overlay (`runner.py`)."""
         self._overlay_paused = paused
@@ -268,12 +241,7 @@ class AprilTagStreamAnnotator:
         """
         try:
             from tagloc import frames as frame_tools
-            from tagloc.overlay import (
-                draw_board_overlay,
-                draw_calibration_caption,
-                draw_status_bar,
-                draw_tag_boxes,
-            )
+            from tagloc.overlay import draw_tag_boxes
 
             if mode == "undistorted":
                 return self._undistorted(image)
@@ -282,37 +250,6 @@ class AprilTagStreamAnnotator:
                 return image  # raw image, without detection and without drawing
 
             now = time.monotonic()
-            due = now - self._last_run >= self._interval_s
-
-            if mode == "calibration":
-                canvas = image.copy()
-                if self._detection_max_width is not None:
-                    from .camera_stream import _resize_for_stream
-
-                    # Same target width as the stream itself. Corner coordinates
-                    # from `detect_board` then stay valid between ticks, because
-                    # every tick draws at the same size.
-                    canvas = _resize_for_stream(canvas, self._detection_max_width)
-                if due:
-                    from tagloc.boards import detect_board
-
-                    self._last_board = detect_board(
-                        frame_tools.to_gray(canvas), self._board_spec()
-                    )
-                    self._last_run = now
-                # No cumulative coverage here any more. Since `capture()` only
-                # records the frame instead of detecting right away (see
-                # `calibration_session.py`), coverage is known only after the
-                # background evaluation (`progress["result"]`).
-                # `self._last_board` is still useful: the preview here runs
-                # periodically on the small image, independently of that, and
-                # helps with positioning.
-                # Corner count at the top left, and at the bottom left one line
-                # with the date of the last calibration (local time). The session
-                # progress is shown by the frontend modal.
-                draw_board_overlay(canvas, self._last_board, outline=False, compact=True)
-                draw_calibration_caption(canvas, self._calibration.calibration_id)
-                return canvas
 
             if mode == "tagreference":
                 return self._tag_reference_view(image, now)

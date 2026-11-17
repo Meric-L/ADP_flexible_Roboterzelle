@@ -13,6 +13,7 @@ module stays cheap, and the vision server can start without OpenCV.
 
 import logging
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -262,6 +263,75 @@ class PupilAprilTagDetector:
         return sorted(found, key=lambda observation: observation.tag_id)
 
 
+class RoiTagDetector:
+    """Detect only inside a fixed rectangle of the image (crop before detection).
+
+    The image itself is not changed: only a view of the region is handed to the
+    inner detector, and the corners are shifted back by the region's offset. For
+    everything after the detector (pose, calibration, overlay) the corners stay in
+    coordinates of the full image -- cropping the frame itself would move the
+    principal point and invalidate the calibration.
+
+    The region is given in pixels of `reference_size` (the configured camera
+    resolution). For an image of a different size, e.g. the downscaled image the
+    stream overlay detects on, it is scaled proportionally.
+    """
+
+    def __init__(
+        self,
+        inner: TagDetector,
+        roi: tuple[int, int, int, int],
+        reference_size: tuple[int, int],
+    ) -> None:
+        """Wrap `inner`.
+
+        Args:
+            inner: The detector that does the actual work.
+            roi: `(x, y, width, height)` in pixels of `reference_size`.
+            reference_size: `(width, height)` the region refers to.
+
+        Raises:
+            ValueError: If the region is empty or does not lie within `reference_size`.
+        """
+        x, y, width, height = (int(value) for value in roi)
+        ref_width, ref_height = (int(value) for value in reference_size)
+        if width <= 0 or height <= 0:
+            raise ValueError(f"Detektions-Ausschnitt {roi} ist leer")
+        if x < 0 or y < 0 or x + width > ref_width or y + height > ref_height:
+            raise ValueError(
+                f"Detektions-Ausschnitt {roi} (x, y, Breite, Hoehe) liegt nicht im Bild "
+                f"{ref_width}x{ref_height}"
+            )
+        self._inner = inner
+        self.family = inner.family
+        self.roi = (x, y, width, height)
+        self.reference_size = (ref_width, ref_height)
+        #: Passed through, for the start log in `resources._build_detector`.
+        self.changed_parameters = getattr(inner, "changed_parameters", {})
+
+    def region_for(self, image_width: int, image_height: int) -> tuple[int, int, int, int]:
+        """Return `(x0, y0, x1, y1)` of the region for an image of this size."""
+        from .frames import scaled_region
+
+        return scaled_region(self.roi, self.reference_size, (image_width, image_height))
+
+    def detect(self, gray: Any) -> list[TagObservation]:
+        image = np.asarray(gray)
+        x0, y0, x1, y1 = self.region_for(image.shape[1], image.shape[0])
+        if x1 <= x0 or y1 <= y0:
+            return []
+        # Basic slicing returns a view, no copy of the 12 MP frame. OpenCV accepts
+        # the non-contiguous view directly.
+        found = self._inner.detect(image[y0:y1, x0:x1])
+        return [
+            replace(
+                observation,
+                corners=tuple((cx + x0, cy + y0) for cx, cy in observation.corners),
+            )
+            for observation in found
+        ]
+
+
 def build_detector(
     family: str = DEFAULT_TAG_FAMILY,
     backend: str = "aruco",
@@ -270,6 +340,8 @@ def build_detector(
     apriltag_quad_decimate: float = 0.0,
     detector_parameters: Mapping[str, Any] | None = None,
     corner_refinement_method: str = CORNER_METHOD_APRILTAG,
+    roi: tuple[int, int, int, int] | None = None,
+    roi_reference_size: tuple[int, int] | None = None,
 ) -> TagDetector:
     """Build the detector for the requested family.
 
@@ -280,7 +352,39 @@ def build_detector(
     `"aruco"`/`"auto"` -- `pupil_apriltags` has no equivalent setting. The same
     holds for `detector_parameters` (attribute name of
     `cv2.aruco.DetectorParameters` -> value, `None` = OpenCV default).
+
+    `roi` (`(x, y, width, height)` in pixels of `roi_reference_size`) restricts
+    detection to that region, see `RoiTagDetector`. `None` = whole image.
+
+    Raises:
+        ValueError: Unknown backend, or `roi` without `roi_reference_size`, or a
+            region outside the image.
     """
+    detector = _build_plain_detector(
+        family,
+        backend,
+        subpixel_corner_refinement=subpixel_corner_refinement,
+        apriltag_quad_decimate=apriltag_quad_decimate,
+        detector_parameters=detector_parameters,
+        corner_refinement_method=corner_refinement_method,
+    )
+    if roi is None:
+        return detector
+    if roi_reference_size is None:
+        raise ValueError("Detektions-Ausschnitt ohne Bezugsaufloesung (roi_reference_size)")
+    return RoiTagDetector(detector, roi, roi_reference_size)
+
+
+def _build_plain_detector(
+    family: str,
+    backend: str,
+    *,
+    subpixel_corner_refinement: bool,
+    apriltag_quad_decimate: float,
+    detector_parameters: Mapping[str, Any] | None,
+    corner_refinement_method: str,
+) -> TagDetector:
+    """Build the detector without a region (see `build_detector`)."""
     backend = backend.lower()
     aruco_options = dict(
         subpixel_corner_refinement=subpixel_corner_refinement,
@@ -305,6 +409,7 @@ __all__ = [
     "ARUCO_DICTIONARIES",
     "ArucoTagDetector",
     "PupilAprilTagDetector",
+    "RoiTagDetector",
     "TagDetector",
     "TagObservation",
     "apply_detector_parameters",

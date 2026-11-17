@@ -1,39 +1,38 @@
-# Intrinsik der Hand-Kamera offline, 10.11.2026
+# Hand camera intrinsics offline, 10.11.2026
 
-Daten: 18 Kalibrieraufnahmen `data/calibration/cam_flange_pending/kalib_001..018.jpg` (JPEG, Hand-Pi, RealSense D415 Color 640×480),
-ChArUco 11×7, DICT_5X5_100, gemessener Maßstab 274,8 mm über 11 Felder (Feld 24,982 mm, Marker 18,487 mm).
-Skripte: `tools/handeye_offline_cv4/intrinsik_offline.py`, `tools/handeye_offline_cv4/kinematik/intr_neu.py`. Nichts aktiviert.
+Data: 18 calibration captures `data/calibration/cam_flange_pending/kalib_001..018.jpg` (JPEG, hand Pi, RealSense D415 Color 640×480),
+ChArUco 11×7, DICT_5X5_100, measured scale 274.8 mm over 11 squares (square 24.982 mm, marker 18.487 mm).
+Scripts: `tools/handeye_offline_cv4/intrinsik_offline.py`, `tools/handeye_offline_cv4/kinematik/intr_neu.py`. Nothing activated.
 
-## Intrinsik
+## Intrinsics
 
-| Modell | RMS | Leave-one-out | fx / fy | cx / cy | Verzeichnung |
+| Model | RMS | Leave-one-out | fx / fy | cx / cy | Distortion |
 |---|---|---|---|---|---|
-| neu, k1+k2 (Empfehlung) | 0,131 px | 0,132 px | 602,9 / 603,3 | 331,8 / 244,2 | k1 0,118, k2 −0,245 |
-| neu, k1+k2+p1+p2 | 0,126 px | 0,128 px | 602,8 / 603,1 | 332,9 / 241,7 | k1 0,119, k2 −0,247 |
-| neu, voll (k3) | 0,114 px | 0,119 px | 603,4 / 603,8 | 333,2 / 241,4 | k3 −1,2 |
-| Werk-K fest, k1+k2 frei | 0,192 px | – | 608,8 / 607,1 | 331,6 / 243,4 | k1 0,111, k2 −0,236 |
-| Werks-Intrinsik unverändert | 0,386 px | – | 608,8 / 607,1 | 331,6 / 243,4 | 0 |
-| alte `cam_flange.json` (23.09.2026) | 0,324 px | – | 607,5 / 606,4 | 323,5 / 263,4 | k1 0,17, k2 −0,65, k3 0,64 |
+| new, k1+k2 (recommended) | 0.131 px | 0.132 px | 602.9 / 603.3 | 331.8 / 244.2 | k1 0.118, k2 −0.245 |
+| new, k1+k2+p1+p2 | 0.126 px | 0.128 px | 602.8 / 603.1 | 332.9 / 241.7 | k1 0.119, k2 −0.247 |
+| new, full (k3) | 0.114 px | 0.119 px | 603.4 / 603.8 | 333.2 / 241.4 | k3 −1.2 |
+| factory K fixed, k1+k2 free | 0.192 px | – | 608.8 / 607.1 | 331.6 / 243.4 | k1 0.111, k2 −0.236 |
+| factory intrinsics unchanged | 0.386 px | – | 608.8 / 607.1 | 331.6 / 243.4 | 0 |
+| old `cam_flange.json` (23.09.2026) | 0.324 px | – | 607.5 / 606.4 | 323.5 / 263.4 | k1 0.17, k2 −0.65, k3 0.64 |
 
-- Hauptpunkt bestätigt den Werkswert auf ~1 px; der alte cy (263,4) lag 20 px daneben.
-- Verzeichnung ist nicht null (Werksangabe 0).
-- Brennweite ≈ 603 px statt 608,8 (Werk): −1 %, entspricht ~1 % Tiefe. Kippungen der Aufnahmen nur 1–31° (Median ~12°);
-  zur Bestätigung Aufnahmen mit 30–45° Kippung nachholen.
-- Abdeckung 42/48 Rasterfelder (x 52–599 px, y 45–446 px).
+- Principal point confirms the factory value to ~1 px; the old cy (263.4) was 20 px off.
+- Distortion is not zero (factory specification 0).
+- Focal length ≈ 603 px instead of 608.8 (factory): −1%, corresponding to ~1% depth. Tilts of the captures only 1–31° (median ~12°); to confirm, capture again with 30–45° tilt.
+- Coverage 42/48 grid squares (x 52–599 px, y 45–446 px).
 
-## Wirkung auf Hand-Auge (vier Sitzungen 09.11.2026, ChArUco-Maßstab korrigiert)
+## Effect on hand-eye (four sessions 09.11.2026, ChArUco scale corrected)
 
-| | S1 | S2 | S3 | S4 | Spannweite t | Hand-Auge z |
+| | S1 | S2 | S3 | S4 | Span of t | Hand-eye z |
 |---|---|---|---|---|---|---|
-| alt, starr | 2,01 | 1,58 | 1,89 | 1,54 px | 1,76 mm | ≈ 57,1 mm |
-| neu, starr | 2,00 | 1,52 | 1,84 | 1,51 px | 1,77 mm | ≈ 59,9 mm |
-| alt + Kinematik (LOSO) | 1,28 | 1,07 | 1,37 | 1,06 px | 1,34 mm | ≈ 57,4 mm |
-| neu + Kinematik (LOSO) | 1,23 | 0,97 | 1,31 | 0,98 px | 1,50 mm | ≈ 59,2 mm |
+| old, rigid | 2.01 | 1.58 | 1.89 | 1.54 px | 1.76 mm | ≈ 57.1 mm |
+| new, rigid | 2.00 | 1.52 | 1.84 | 1.51 px | 1.77 mm | ≈ 59.9 mm |
+| old + kinematics (LOSO) | 1.28 | 1.07 | 1.37 | 1.06 px | 1.34 mm | ≈ 57.4 mm |
+| new + kinematics (LOSO) | 1.23 | 0.97 | 1.31 | 0.98 px | 1.50 mm | ≈ 59.2 mm |
 
-Die neue Intrinsik verbessert die Reprojektion nur um 2–9 %; der größte Anteil bleibt die Roboterkinematik.
-Die Hand-Auge-Tiefe verschiebt sich um ~2,8 mm, im Wesentlichen über die Brennweite: deshalb die Brennweite vor dem Aktivieren bestätigen.
+The new intrinsics improve the reprojection by only 2–9%; the largest share remains the robot kinematics.
+The hand-eye depth shifts by ~2.8 mm, essentially via the focal length: therefore confirm the focal length before activating.
 
-## Konsolenausgabe `intrinsik_offline.py`
+## Console output `intrinsik_offline.py`
 
 ```
 Bilder mit Brett: 18 von 18 | Ecken je Bild: [60, 60, 60, 49, 60, 60, 58, 54, 41, 60, 58, 50, 60, 60, 57, 60, 60, 60]

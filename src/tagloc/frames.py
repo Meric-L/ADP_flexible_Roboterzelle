@@ -220,6 +220,34 @@ def image_size(image) -> tuple[int, int]:
     return (int(shape[1]), int(shape[0]))
 
 
+def scaled_region(
+    roi: tuple[int, int, int, int],
+    reference_size: tuple[int, int],
+    image_size: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    """Scale a region to an image of another size and clamp it to the image.
+
+    Args:
+        roi: `(x, y, width, height)` in pixels of `reference_size`.
+        reference_size: `(width, height)` the region refers to.
+        image_size: `(width, height)` of the image the region is applied to.
+
+    Returns:
+        `(x0, y0, x1, y1)` in pixels of `image_size`, ready for slicing
+        `image[y0:y1, x0:x1]`. Empty (`x1 <= x0` or `y1 <= y0`) if nothing is left.
+    """
+    x, y, width, height = roi
+    ref_width, ref_height = reference_size
+    image_width, image_height = image_size
+    scale_x = image_width / ref_width
+    scale_y = image_height / ref_height
+    x0 = max(0, int(round(x * scale_x)))
+    y0 = max(0, int(round(y * scale_y)))
+    x1 = min(image_width, int(round((x + width) * scale_x)))
+    y1 = min(image_height, int(round((y + height) * scale_y)))
+    return x0, y0, x1, y1
+
+
 __all__ = [
     "FrameSource",
     "ImageFolderSource",
@@ -229,5 +257,6 @@ __all__ = [
     "VideoCaptureSource",
     "image_size",
     "open_source",
+    "scaled_region",
     "to_gray",
 ]

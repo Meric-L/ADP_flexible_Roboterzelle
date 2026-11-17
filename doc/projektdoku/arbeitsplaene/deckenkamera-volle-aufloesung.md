@@ -1,256 +1,258 @@
-# Deckenkamera (Pi 1) mit voller Sensorauflösung, flüssiger Livestream
+# Ceiling camera (Pi 1) at full sensor resolution, smooth live stream
 
-**Status:** in Arbeit — 22.09.2026
-**Verantwortlich:** Meric
-**Thema:** vision
+**Status:** in progress — 22.09.2026
+**Owner:** Meric
+**Topic:** vision
 **Branch:** apriltag-optimierung
 
-## Ziel
+## Goal
 
 Pi 1 (`ADP-Roboter-Lokalisierung`, `cam_ceiling`, Raspberry Pi HQ Camera,
-Sensor IMX477) nimmt mit der vollen Sensorauflösung **4056×3040 (12,3 MP)**
-auf statt mit dem 2×2-gebinnten Modus 2028×1520. Die AprilTag-Jobs bekommen
-damit die volle Auflösung — kleine Tags aus der Deckenhöhe werden sicherer
-gefunden und genauer vermessen.
+sensor IMX477) captures at the full sensor resolution **4056×3040 (12.3 MP)**
+instead of the 2×2-binned mode 2028×1520. The AprilTag jobs thereby get the
+full resolution — small tags at ceiling height are found more reliably and
+measured more accurately.
 
-Der Livestream bleibt dabei flüssig, **mit beiden Overlay-Modi**
-(„Rohbild“ und „AprilTags markieren“). Heute schon ruckelt „AprilTags
-markieren“ bei 3 MP, weil das Overlay jedes Bild in voller Auflösung kopiert,
-darauf alle 0,5 s Tags sucht und erst danach verkleinert. Bei 12 MP wäre das
-viermal so teuer.
+The live stream stays smooth, **with both overlay modes** ("Rohbild" (raw
+image) and "AprilTags markieren" (mark AprilTags)). Already today "AprilTags
+markieren" stutters at 3 MP, because the overlay copies every image at full
+resolution, searches it for tags every 0.5 s and only downscales afterwards.
+At 12 MP this would be four times as expensive.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (kein laufender Plan zum Thema)
+- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (no ongoing plan on the topic)
 - `doc/arbeitsplaene/livestream-mjpeg-und-watchdog.md`
-- `doc/vision-server-interface.md` (Abschnitt 10, 10.2)
+- `doc/vision-server-interface.md` (section 10, 10.2)
 - `doc/vision-system.md`
-- `doc/apriltag-e2e-test.md` (Abschnitt 3.3, Kalibrierung)
+- `doc/apriltag-e2e-test.md` (section 3.3, calibration)
 
-## Lösung
+## Solution
 
-Die Pi-Kamera liefert neben dem Hauptbild (`main`) einen zweiten, kleinen
-Bildstrom (`lores`) aus demselben Frame. Den skaliert der ISP in Hardware —
-praktisch ohne CPU-Last. Aufteilung:
+Besides the main image (`main`), the Pi camera delivers a second, small image
+stream (`lores`) from the same frame. The ISP scales that in hardware —
+practically without CPU load. Split:
 
-| Wer | Bild | Auflösung |
+| Who | Image | Resolution |
 | --- | --- | --- |
-| AprilTag-Job, Kalibrier-Session | `main` | 4056×3040 |
-| Livestream (MJPEG und Knoten), beide Overlays | `lores` | 960×720 |
+| AprilTag job, calibration session | `main` | 4056×3040 |
+| Live stream (MJPEG and nodes), both overlays | `lores` | 960×720 |
 
-Das Overlay rechnet damit auf 0,7 MP statt 12,3 MP; die Kalibrierung wird
-dafür wie bisher per `scale_to_resolution` auf die Stream-Größe umgerechnet
-(Seitenverhältnis 960×720 vs. 4056×3040 weicht um 0,07 % ab, unter der
-Schranke von 0,1 %).
+The overlay thereby computes on 0.7 MP instead of 12.3 MP; the calibration is
+converted to the stream size via `scale_to_resolution` as before (the aspect
+ratio of 960×720 vs. 4056×3040 deviates by 0.07 %, below the 0.1 % threshold).
 
-Weitere Einsparung: Hauptstrom im Format `RGB888`, das Picamera2 im Speicher
-als B,G,R ablegt — also direkt OpenCV-BGR. Die bisherige Farbumrechnung
-(`XBGR8888` → `cv2.cvtColor`) auf jedem 12-MP-Frame entfällt.
+Further saving: main stream in the format `RGB888`, which Picamera2 stores in
+memory as B,G,R — i.e. directly OpenCV BGR. The previous color conversion
+(`XBGR8888` → `cv2.cvtColor`) on every 12 MP frame is dropped.
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/camera.py` — `CameraFrame.preview`, Picamera2 mit
-  `lores`, `RGB888`, Umrechnung YUV420 → BGR
-- `src/vision_server/profiles.py` — neue Felder in `CameraStreamConfig`
-- `src/vision_server/camera_stream.py` — Stream nimmt `preview`, wenn vorhanden
-- `src/vision_server/server.py` — Preset für `cam_ceiling`
-- `tests/test_camera.py`, `tests/test_camera_stream.py`, neuer Test für die
-  Serverkonfiguration
+- `src/vision_server/camera.py` — `CameraFrame.preview`, Picamera2 with
+  `lores`, `RGB888`, conversion YUV420 → BGR
+- `src/vision_server/profiles.py` — new fields in `CameraStreamConfig`
+- `src/vision_server/camera_stream.py` — stream takes `preview`, if present
+- `src/vision_server/server.py` — preset for `cam_ceiling`
+- `tests/test_camera.py`, `tests/test_camera_stream.py`, new test for the
+  server configuration
 - `doc/vision-server-interface.md`, `doc/vision-system.md`
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-**Keine Änderung.** Alle Knoten bleiben, wie sie sind. `LatestCameraFrame`
-und der MJPEG-Stream liefern weiterhin höchstens 960 px breite JPEGs.
+**No change.** All nodes remain as they are. `LatestCameraFrame` and the MJPEG
+stream continue to deliver JPEGs at most 960 px wide.
 
 ### Python
 
 ```python
-# Modul: src/vision_server/camera.py
+# Module: src/vision_server/camera.py
 @dataclass(frozen=True)
 class CameraFrame:
-    image: Any            # BGR, volle Aufnahmeauflösung -- Jobs, Kalibrierung
+    image: Any            # BGR, full capture resolution -- jobs, calibration
     timestamp: float
-    preview: Any = None   # BGR, kleiner Strom fuer den Livestream; None ohne lores
+    preview: Any = None   # BGR, small stream for the live stream; None without lores
 ```
 
-`SharedCamera.latest_frame.image` bleibt bei allen Backends das volle Bild.
-`preview` ist nur bei Picamera2 mit gesetzter `preview_resolution` gefüllt;
-RealSense und OpenCV liefern `None`, der Stream verkleinert dann selbst wie
-bisher.
+`SharedCamera.latest_frame.image` remains the full image for all backends.
+`preview` is only filled for Picamera2 with `preview_resolution` set; RealSense
+and OpenCV deliver `None`, and the stream then downscales itself as before.
 
-### Konfiguration (`CameraStreamConfig`)
+### Configuration (`CameraStreamConfig`)
 
-| Feld | Standard | Bedeutung |
+| Field | Default | Meaning |
 | --- | --- | --- |
-| `preview_resolution` | `None` | Picamera2: Größe des `lores`-Stroms für den Livestream. `None` = kein zweiter Strom |
-| `buffer_count` | `None` | Picamera2: Anzahl Kamerapuffer. `None` = Picamera2-Standard (6). Bei 12 MP zu viel für den CMA-Speicher |
+| `preview_resolution` | `None` | Picamera2: size of the `lores` stream for the live stream. `None` = no second stream |
+| `buffer_count` | `None` | Picamera2: number of camera buffers. `None` = Picamera2 default (6). At 12 MP too many for the CMA memory |
 
-Preset `cam_ceiling` (nur Backend `picamera2`):
+Preset `cam_ceiling` (only backend `picamera2`):
 
-| | vorher | nachher |
+| | before | after |
 | --- | --- | --- |
-| `resolution` (Job und Kamera) | 2028×1520 | **4056×3040** |
+| `resolution` (job and camera) | 2028×1520 | **4056×3040** |
 | `preview_resolution` | — | 960×720 |
-| `capture_fps` | 15 | **10** (Obergrenze des IMX477 im Vollauflösungsmodus) |
+| `capture_fps` | 15 | **10** (upper limit of the IMX477 in full-resolution mode) |
 | `buffer_count` | 6 | 2 |
 
-### Fehlerfälle
+### Failure cases
 
-- **Kalibrierung für 2028×1520 vorhanden:** Der 2028×1520-Modus ist das
-  2×2-Binning des vollen Sensors, also dasselbe Sichtfeld. Die Intrinsik lässt
-  sich exakt verdoppeln. Für `cam_ceiling` wird deshalb
-  `allow_resolution_mismatch` gesetzt, bis die Neukalibrierung bei 4056×3040
-  vorliegt. **Danach wieder entfernen.**
-- **Keine Kalibrierung:** Die Platzhalter-Kalibrierung rechnet sich aus der
-  Auflösung und passt sich selbst an.
-- **Kamerapuffer lassen sich nicht anlegen** (CMA zu klein): `open()` scheitert
-  wie jeder Kamerafehler, die Quelle bleibt zu. Abhilfe `buffer_count` oder
-  CMA erhöhen.
-- **Farben vertauscht** (Rot/Blau): hieße, `RGB888` liegt auf diesem
-  Picamera2-Stand nicht als BGR vor. Erkennung arbeitet auf Graustufen und ist
-  kaum betroffen, das Overlay schon.
+- **Calibration for 2028×1520 present:** The 2028×1520 mode is the 2×2 binning
+  of the full sensor, i.e. the same field of view. The intrinsics can be
+  exactly doubled. For `cam_ceiling`, `allow_resolution_mismatch` is therefore
+  set until the recalibration at 4056×3040 is available. **Remove it again
+  afterwards.**
+- **No calibration:** The placeholder calibration computes itself from the
+  resolution and adapts automatically.
+- **Camera buffers cannot be allocated** (CMA too small): `open()` fails like any
+  camera error, and the source stays closed. Remedy: raise `buffer_count` or
+  CMA.
+- **Colors swapped** (red/blue): would mean `RGB888` is not present as BGR in
+  this Picamera2 version. Detection works on grayscale and is hardly affected;
+  the overlay is.
 
-## Vorgehen
+## Approach
 
-### Überholt (nicht umgesetzt)
+### Superseded (not implemented)
 
-Ursprünglicher Plan — wurde durch Team-Absprache vom 22.09.2026 überholt:
+Original plan — superseded by the team agreement of 22.09.2026:
 
-1. `CameraFrame.preview`, Picamera2-Konfiguration mit `lores`, Umrechnung
-2. Stream nimmt `preview`
-3. Preset `cam_ceiling` mit `preview_resolution` (960×720)
-4. Tests, Doku
-5. Auf Pi 1: Framerate messen (`measure_framerate.py`), Stream prüfen,
-   **neu kalibrieren**
+1. `CameraFrame.preview`, Picamera2 configuration with `lores`, conversion
+2. Stream takes `preview`
+3. Preset `cam_ceiling` with `preview_resolution` (960×720)
+4. Tests, docs
+5. On Pi 1: measure the frame rate (`measure_framerate.py`), check the stream,
+   **recalibrate**
 
-### Aktuelle Umsetzung
+### Current implementation
 
-1. **Livestream-Overlay-Optimierung:** Erkennung in `AprilTagStreamAnnotator.annotate()`
-   auf `max_stream_width`-Auflösung (960) verlegen, statt auf volle 12-MP-Auflösung
-   (Datei: `src/vision_server/stream_overlay.py`)
+1. **Live-stream overlay optimization:** move the detection in
+   `AprilTagStreamAnnotator.annotate()` to the `max_stream_width` resolution
+   (960) instead of the full 12 MP resolution (file:
+   `src/vision_server/stream_overlay.py`)
 
-2. **Subpixel-Eckenverfeinerung konfigurierbar machen:**
-   - Neues Feld `subpixel_corner_refinement: bool = True` in `AprilTagProfileConfig`
-     (`src/vision_server/profiles.py`) — siehe „Abweichungen vom Plan" unten: Default
-     war kurzzeitig `False`, brach Layer 1, noch am selben Tag zurueckgenommen.
-   - Detektor-Logik in `src/tagloc/detector.py` (`ArucoTagDetector`) anpassen
+2. **Make subpixel corner refinement configurable:**
+   - New field `subpixel_corner_refinement: bool = True` in
+     `AprilTagProfileConfig` (`src/vision_server/profiles.py`) — see "Deviations
+     from the plan" below: the default was briefly `False`, broke Layer 1, and
+     was reverted the same day.
+   - Adjust the detector logic in `src/tagloc/detector.py` (`ArucoTagDetector`)
 
-3. **Tests und lokale Verifizierung:**
-   - Unit-Tests für die Overlay-Optimierung
-   - CI-Tests (Windows, ohne Kamera)
+3. **Tests and local verification:**
+   - Unit tests for the overlay optimization
+   - CI tests (Windows, without camera)
 
-4. **Auf Pi 1 verifizieren:**
-   - AprilTag-Jobs: keine CPU-Überlastung mehr, keine 20s-Timeouts (DETECTION_FAILED)
-   - Livestream „AprilTags markieren": flüssig, auch bei 10 fps und 12 MP
-   - Livestream „Rohbild": unverändert
+4. **Verify on Pi 1:**
+   - AprilTag jobs: no more CPU overload, no more 20 s timeouts (DETECTION_FAILED)
+   - Live stream "AprilTags markieren": smooth, also at 10 fps and 12 MP
+   - Live stream "Rohbild": unchanged
 
-## Offene Fragen
+## Open questions
 
-- Genügt die Stream-Auflösung 960×720 für „AprilTags markieren”? Ein 10-cm-Tag
-  aus Deckenhöhe ist darin deutlich kleiner als im Job-Bild. Im Zweifel zeigt
-  das Overlay einen Tag nicht an, den der Job trotzdem findet — nie umgekehrt.
-- Welcher Pi steckt in Pi 1 (`/proc/device-tree/model`)? Ein Pi 4 schafft
-  12 MP bei 10 fps im ISP; ein Pi 3 nicht sicher.
-- **Subpixel-Verfeinerung final aus (2026-09-24):** live auf pi1 bestaetigt,
-  dass Layer 1 Tags auch ohne `subpixel_corner_refinement` zuverlaessig findet
-  (kein Reprojektionsfehler-Ausschluss, siehe Abschnitt unten) -- Default
-  jetzt `False`, spart ~46 % CPU im Job-Thread. `job_timeout=30.0` und
-  `apriltag_quad_decimate` (beide `config.py`/`profiles.py`) bleiben als
-  Sicherheitsmarge bzw. Tuning-Hebel bestehen, werden aktuell aber nicht
-  gebraucht.
-- **Offene Idee, nicht umgesetzt:** `subpixel_corner_refinement` gezielt fuer
-  eine genauere Lokalisierung auf einem zweiten Erkennungs-Layer oder fuer
-  die Kalibrierung nutzen.
+- Is the stream resolution 960×720 sufficient for "AprilTags markieren"? A
+  10 cm tag at ceiling height is clearly smaller in it than in the job image. In
+  doubt, the overlay does not show a tag that the job still finds — never the
+  reverse.
+- Which Pi is in Pi 1 (`/proc/device-tree/model`)? A Pi 4 manages 12 MP at
+  10 fps in the ISP; a Pi 3 not reliably.
+- **Subpixel refinement finally off (2026-09-24):** confirmed live on pi1 that
+  Layer 1 finds tags reliably even without `subpixel_corner_refinement` (no
+  reprojection-error exclusion, see section below) -- default now `False`,
+  saves ~46 % CPU in the job thread. `job_timeout=30.0` and
+  `apriltag_quad_decimate` (both `config.py`/`profiles.py`) remain as a safety
+  margin resp. tuning levers, but are currently not needed.
+- **Open idea, not implemented:** use `subpixel_corner_refinement` specifically
+  for more precise localization on a second detection layer or for calibration.
 
-### Subpixel-Nachbearbeitung der Kalibrierbilder (nicht Teil der aktuellen Umsetzung)
+### Subpixel post-processing of the calibration images (not part of the current implementation)
 
-Angedacht ist eine Subpixel-Nachbearbeitung der bereits gespeicherten Kalibrierbilder
-(Feld `calibration_capture_dir` in `AprilTagProfileConfig`). Eine genauere, aber
-langsame Ecken-Verfeinerung soll als **Nachbearbeitungsschritt nach Abschluss aller
-Kalibrieraufnahmen** auf den gespeicherten Bildern laufen — nicht live während der
-Aufnahme, nicht in einem Stream angezeigt. **Offene Design-Fragen dazu:**
+The idea is a subpixel post-processing of the already stored calibration images
+(field `calibration_capture_dir` in `AprilTagProfileConfig`). A more precise but
+slow corner refinement is to run as a **post-processing step after all
+calibration captures are complete**, on the stored images — not live during the
+capture, not shown in a stream. **Open design questions:**
 
-1. Soll das über eine neue OPC-UA-Methode ausgelöst sein, oder reicht ein
-   Offline-CLI-Skript?
-2. Ersetzt die Nachbearbeitung die gespeicherte Kalibrierdatei direkt, oder wird
-   erst verglichen (RMS könnte sich auch verschlechtern)?
-3. Ist eine serielle Laufzeit von ca. 4 Sekunden pro Bild (gemessen für die genaue
-   Methode `CALIB_CB_ACCURACY` bei ~4000px Breite, siehe Kommentar in
-   `src/tagloc/boards.py`) über alle Aufnahmen hinweg akzeptabel, oder braucht es
-   Parallelisierung/einen Fortschrittsanzeiger?
+1. Should this be triggered via a new OPC UA method, or is an offline CLI script
+   sufficient?
+2. Does the post-processing replace the stored calibration file directly, or is
+   it first compared (RMS could also get worse)?
+3. Is a serial runtime of about 4 seconds per image (measured for the accurate
+   method `CALIB_CB_ACCURACY` at ~4000 px width, see comment in
+   `src/tagloc/boards.py`) across all captures acceptable, or are
+   parallelization / a progress indicator needed?
 
-Diese Anforderung ist **nicht Teil der aktuellen Umsetzung** und wird als Folgepunkt
-offengehalten.
+This requirement is **not part of the current implementation** and is kept open
+as a follow-up item.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-Der ursprüngliche Ansatz (separater Picamera2-`lores`-Stream 960×720 aus dem ISP)
-wurde **nicht umgesetzt**. Stattdessen folgt die Umsetzung einer späteren
-Team-Absprache vom **22.09.2026** (dokumentiert in Kommentar `stream_overlay.py`
-/ `camera_stream.py`): *„Overlay soll exakt das Bild zeigen, auf dem auch der Job
-erkennt"*.
+The original approach (separate Picamera2 `lores` stream 960×720 from the ISP)
+was **not implemented**. Instead, the implementation follows a later team
+agreement of **22.09.2026** (documented in a comment in `stream_overlay.py` /
+`camera_stream.py`): *"The overlay should show exactly the image on which the
+job also detects."*
 
-**Neue Lösung:** Die AprilTag-Erkennung für den Livestream-Overlay wird direkt in
-`AprilTagStreamAnnotator.annotate()` (`src/vision_server/stream_overlay.py`) auf
-die bereits vorhandene, per Software herunterskalierte Stream-Auflösung verlegt.
-Das Feld `max_stream_width` in `CameraStreamConfig` (`src/vision_server/profiles.py`,
-aktuell Default 960) bestimmt diese Auflösung. **Kein neuer Kamera-Stream nötig.**
+**New solution:** The AprilTag detection for the live-stream overlay is moved
+directly into `AprilTagStreamAnnotator.annotate()` (`src/vision_server/stream_overlay.py`)
+to the already existing, software-downscaled stream resolution. The field
+`max_stream_width` in `CameraStreamConfig` (`src/vision_server/profiles.py`,
+currently default 960) determines this resolution. **No new camera stream
+needed.**
 
-**Grund:** py-spy-Messung auf pi1 zeigte, dass die Erkennung auf dem vollen
-12-MP-Frame im Livestream-Overlay derart viel CPU frisst, dass die eigentlichen
-AprilTag-Jobs den 20-Sekunden-Timeout reißen (DETECTION_FAILED). Die Job-Erkennung
-(`AprilTagDetectionSource`) und Kalibrierung bleiben unverändert auf voller Auflösung
-und Genauigkeit.
+**Reason:** py-spy measurement on pi1 showed that detection on the full 12 MP
+frame in the live-stream overlay eats so much CPU that the actual AprilTag jobs
+exceed the 20-second timeout (DETECTION_FAILED). The job detection
+(`AprilTagDetectionSource`) and calibration remain unchanged at full resolution
+and accuracy.
 
-### Subpixel-Eckenverfeinerung (neue Konfigurierbarkeit)
+### Subpixel corner refinement (new configurability)
 
-Neues Feld `AprilTagProfileConfig.subpixel_corner_refinement` (`profiles.py`) steuert
-`cv2.aruco.CORNER_REFINE_APRILTAG` (`ArucoTagDetector`, `detector.py`) — bleibt im Code
-erhalten, nur abschaltbar. `runner._build_annotator` baut fürs Livestream-Overlay einen
-eigenen Detektor mit der Verfeinerung fest aus; Job und Stream teilen sich seitdem keine
-Detektor-Instanz mehr (verhindert gegenseitige CPU-Konkurrenz bei gleichzeitigem
-`detect()`).
+The new field `AprilTagProfileConfig.subpixel_corner_refinement` (`profiles.py`)
+controls `cv2.aruco.CORNER_REFINE_APRILTAG` (`ArucoTagDetector`, `detector.py`)
+— it remains in the code and can only be switched off. `runner._build_annotator`
+builds its own detector with the refinement hard-wired for the live-stream
+overlay; since then, job and stream no longer share a detector instance (this
+prevents mutual CPU competition when `detect()` runs concurrently).
 
-**Ergebnis nach mehreren Live-Tests auf pi1:** Default jetzt `False` — Layer 1 findet
-Tags auch ohne die Verfeinerung zuverlässig (kein Reprojektionsfehler-Ausschluss in
-`estimate_tag_poses`), spart dabei ~46 % CPU im Job-Thread. Konstruktor-Defaults von
-`ArucoTagDetector`/`build_detector` bleiben unabhängig davon konservativ `False`.
-Offene Idee (nicht umgesetzt): die Verfeinerung gezielt für einen zweiten
-Erkennungs-Layer oder die Kalibrierung nutzen.
+**Result after several live tests on pi1:** default now `False` — Layer 1 finds
+tags reliably even without the refinement (no reprojection-error exclusion in
+`estimate_tag_poses`), saving ~46 % CPU in the job thread. Constructor defaults
+of `ArucoTagDetector`/`build_detector` remain conservatively `False`,
+independently of this. Open idea (not implemented): use the refinement
+specifically for a second detection layer or for calibration.
 
-### Ursprüngliche Implementierungsdetails (überholt)
+### Original implementation details (superseded)
 
-Die folgenden Punkte beschreiben den ursprünglichen Ansatz und wurden nicht umgesetzt:
+The following points describe the original approach and were not implemented:
 
-- `picamera2_video_configuration(config)` mit `lores`-Strom
-- Preset `cam_ceiling` mit `preview_resolution` (960×720)
-- ISP-seitige Skalierung für den Livestream
+- `picamera2_video_configuration(config)` with `lores` stream
+- Preset `cam_ceiling` with `preview_resolution` (960×720)
+- ISP-side scaling for the live stream
 
-**Aktuelle Architektur (korrigiert):** Der `lores`-Stream existiert weiterhin und ist
-für `cam_ceiling` aktiv (`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["preview_resolution"]
-= (960, 720)` in `src/vision_server/server.py`) — genutzt aber nur vom
-`"calibration"`-Modus des Livestreams (`camera_stream.py._encoded` waehlt `frame.preview`
-nur dort). Die Modi `"apriltag"`/`"off"` gehen weiterhin vom vollen `frame.image` aus;
-`"apriltag"` verkleinert seitdem selbst per Software in `annotate()` (siehe oben).
+**Current architecture (corrected):** The `lores` stream still exists and is
+active for `cam_ceiling` (`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["preview_resolution"]
+= (960, 720)` in `src/vision_server/server.py`) — but it is only used by the
+`"calibration"` mode of the live stream (`camera_stream.py._encoded` selected
+`frame.preview` only there; the mode was removed on 17.11.2026, so now no mode reads
+the preview). The modes `"apriltag"`/`"off"` still start from the
+full `frame.image`; `"apriltag"` has since then itself downscaled in software in
+`annotate()` (see above).
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, Schnittstellen wie umgesetzt
-- Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert
-- Fachwissen in `doc/vision-server-interface.md` und `doc/vision-system.md`
+- Status set to `done`, interfaces as implemented
+- Entry in the index `doc/arbeitsplaene/README.md` updated
+- Domain knowledge in `doc/vision-server-interface.md` and `doc/vision-system.md`
 
-## Siehe auch
+## See also
 
 - [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md):
-  Detektor-Parameter für die weichen 12-MP-Bilder der Deckenkamera (Tags 0 und
-  3 wurden mit den OpenCV-Standardwerten nicht gefunden).
+  detector parameters for the soft 12 MP images of the ceiling camera (tags 0
+  and 3 were not found with the OpenCV default values).
 
-## Nachtrag 10.11.2026: Subpixel wieder an, Verfahren `subpix`
+## Addendum 10.11.2026: subpixel back on, method `subpix`
 
-Die ~46 % CPU oben galten für `CORNER_REFINE_APRILTAG`. Die Decke nutzt seit
-10.11.2026 `CORNER_REFINE_SUBPIX`: gleiche Treffer, +3 % Laufzeit, 5- bis 8-mal
-weniger Eckenrauschen. Details stehen im Arbeitsplan
+The ~46 % CPU above applied to `CORNER_REFINE_APRILTAG`. Since 10.11.2026 the
+ceiling camera uses `CORNER_REFINE_SUBPIX`: same detections, +3 % runtime, 5 to
+8 times less corner noise. Details are in the work plan
 [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md).

@@ -1,6 +1,6 @@
-# Kinematik-Experiment 09.11.2026 (Konsolenausgabe)
+# Kinematics experiment 09.11.2026 (console output)
 
-Skripte: `tools/handeye_offline_cv4/kinematik/` (ba.py, ba2.py). RMS in px, Translationen in mm.
+Scripts: `tools/handeye_offline_cv4/kinematik/` (ba.py, ba2.py). RMS in px, translations in mm.
 
 ```
 === ba.py (ueberparametrisiert: dq1..7, dd1..7; Parameter mit X/B nicht trennbar) ===
@@ -35,6 +35,6 @@ Spannweite Hand-Auge-Translation (max. Paarabstand) starr: 1.76 mm
 Spannweite Hand-Auge-Translation (max. Paarabstand) Kinematik: 1.34 mm
 ```
 
-## Nachtrag 10.11.2026: Gegentest auf neuer Sitzung negativ
+## Addendum 10.11.2026: cross-test on a new session negative
 
-Auf die 1080p-Sitzung `20261110T104151Z_77e0dd17` angewandt, verschlechtert die aus S1–S4 geschätzte Kinematik-Korrektur die Reprojektion von 3,63 auf 4,78 px. Die Leave-one-session-out-Werte oben waren nicht unabhängig genug (gleiche Brettlage, fast gleiche Posen). Siehe `doc/auswertung/handauge_1080_20261110.md`.
+Applied to the 1080p session `20261110T104151Z_77e0dd17`, the kinematic correction estimated from S1–S4 worsens the reprojection from 3.63 to 4.78 px. The leave-one-session-out values above were not independent enough (same board position, nearly the same poses). See `doc/auswertung/handauge_1080_20261110.md`.

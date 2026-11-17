@@ -151,6 +151,8 @@ class BuildAnnotatorTest(unittest.TestCase):
             source._config.detector_backend,
             subpixel_corner_refinement=False,
             detector_parameters={},
+            roi=None,
+            roi_reference_size=source._config.resolution,
         )
         self.assertIs(annotator_cls.call_args.kwargs["detector"], stream_detector)
         self.assertIsNot(annotator_cls.call_args.kwargs["detector"], source._detector)

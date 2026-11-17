@@ -1,179 +1,155 @@
-# Kalibrierung: Linsenmodell je Kamera (Fisheye für Layer 1, Pinhole für Layer 2)
+# Calibration: lens model per camera (fisheye for layer 1, pinhole for layer 2)
 
-**Status:** fertig — 29.09.2026 (Code und Tests; Neukalibrierung von LV1 am Pi steht aus)
-**Verantwortlich:** `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)`
-**Thema:** vision
+**Status:** done — 29.09.2026 (code and tests; recalibration of LV1 on the Pi still pending)
+**Owner:** `Agent: Linsenmodell je Kamera (Kannala-Brandt / Brown-Conrady)`
+**Topic:** vision
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Jede Kamera wird mit dem Linsenmodell kalibriert, das sich in den Bildtests
-als das beste erwiesen hat:
+Each camera is calibrated with the lens model that proved to be the best in the image tests:
 
-| Layer | Kamera | Pi | Auflösung | Modell |
+| Layer | Camera | Pi | Resolution | Model |
 | --- | --- | --- | --- | --- |
-| LV1 | `cam_ceiling` (HQ-Kamera, Decke) | Pi 4 | 4056 × 3040 | OpenCV-Fisheye (Kannala-Brandt, 4 Koeffizienten k1–k4) |
-| LV2 | `cam_flange` (Hand) | Pi 5 | 640 × 480 | OpenCV-Pinhole (Brown-Conrady, 5 Koeffizienten k1, k2, p1, p2, k3) |
+| LV1 | `cam_ceiling` (HQ camera, ceiling) | Pi 4 | 4056 × 3040 | OpenCV fisheye (Kannala-Brandt, 4 coefficients k1–k4) |
+| LV2 | `cam_flange` (hand) | Pi 5 | 640 × 480 | OpenCV pinhole (Brown-Conrady, 5 coefficients k1, k2, p1, p2, k3) |
 
-Bisher gab es nur das Pinhole-Modell (`cv2.calibrateCamera`). Das Modell steht
-danach in der Kalibrierdatei, und **alle** Verbraucher (Posenschätzung,
-Overlay, Skalierung) richten sich nach der Datei, nicht nach der Config.
+Until now only the pinhole model existed (`cv2.calibrateCamera`). The model is then stored in the
+calibration file, and **all** consumers (pose estimation, overlay, scaling) follow the file, not the config.
 
-## Bereits gelesen
+## Already read
 
 - `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md`
-- `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (Meric, in
-  Arbeit): betrifft Auflösung/Livestream von `cam_ceiling`, **nicht** das
-  Linsenmodell — keine Überschneidung in den Dateien außer dem Preset in
-  `server.py` (nur ein zusätzlicher Schlüssel, bestehende bleiben unberührt)
-- `doc/projektdoku/vision-server-interface.md` Abschnitt 12
+- `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (Meric, in progress): concerns resolution/live stream of `cam_ceiling`, **not** the lens model — no overlap in the files except the preset in `server.py` (only one additional key, existing ones remain untouched)
+- `doc/projektdoku/vision-server-interface.md` section 12
 - `doc/frontend-integration-kalibrierung.md`
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/calibration.py` — Feld `model`, Schema `/2`, Lesen von `/1`
-- `src/tagloc/lens.py` (neu) — modellabhängige OpenCV-Aufrufe an einer Stelle
+- `src/tagloc/calibration.py` — field `model`, schema `/2`, reading of `/1`
+- `src/tagloc/lens.py` (new) — model-dependent OpenCV calls in one place
 - `src/tagloc/boards.py` — `calibrate_from_samples(..., model=...)`
-- `src/tagloc/pose.py` — Entzerren über `lens.undistort_points`
-- `src/tagloc/overlay.py` — Achsenkreuz über `lens.project_points`
-- `src/tagloc/cli/calibrate.py` — Option `--model`
+- `src/tagloc/pose.py` — undistortion via `lens.undistort_points`
+- `src/tagloc/overlay.py` — axis cross via `lens.project_points`
+- `src/tagloc/cli/calibrate.py` — option `--model`
 - `src/vision_server/profiles.py` — `AprilTagProfileConfig.calibration_model`
-- `src/vision_server/server.py` — Preset je Kamera
-- `src/vision_server/calibration_session.py` — Modell durchreichen, im Ergebnis melden
+- `src/vision_server/server.py` — preset per camera
+- `src/vision_server/calibration_session.py` — pass the model through, report it in the result
 - `src/vision_server/runner.py` — `ActiveCalibrationInfo.model`
-- `tests/test_lens.py` (neu), `tests/test_calibration_io.py`, `tests/test_calibration_session.py`
+- `tests/test_lens.py` (new), `tests/test_calibration_io.py`, `tests/test_calibration_session.py`
 - `doc/projektdoku/vision-server-interface.md`, `doc/frontend-integration-kalibrierung.md`
 
-## Schnittstellen
+## Interfaces
 
-### Daten: Kalibrierdatei (`data/calibration/<frame_id>.json`)
+### Data: calibration file (`data/calibration/<frame_id>.json`)
 
-Neues Schema `wsc.vision.calibration/2`, einziger Unterschied zu `/1` ist das
-Feld `distortionModel`:
+New schema `wsc.vision.calibration/2`; the only difference from `/1` is the field `distortionModel`:
 
 ```jsonc
 {
   "schema": "wsc.vision.calibration/2",
   "distortionModel": "fisheye",          // "pinhole" | "fisheye"
   "distortionCoefficients": [k1, k2, k3, k4],   // pinhole: [k1, k2, p1, p2, k3]
-  // alles andere unverändert: calibrationId, frameId, imageSize, cameraMatrix,
+  // everything else unchanged: calibrationId, frameId, imageSize, cameraMatrix,
   // rmsReprojectionError, sampleCount, board, createdAt
 }
 ```
 
-- Dateien mit Schema `/1` werden weiter gelesen und gelten als `pinhole` —
-  bestehende Kalibrierungen bleiben gültig, ohne Neukalibrierung.
-- Geschrieben wird immer `/2`. Ein alter Code-Stand lehnt eine `/2`-Datei
-  laut ab (`Unbekanntes Kalibrierschema`) statt Fisheye-Koeffizienten stumm
-  als Pinhole zu deuten.
+- Files with schema `/1` continue to be read and count as `pinhole` — existing calibrations remain valid without recalibration.
+- `/2` is always written. An old code state rejects a `/2` file loudly (`Unbekanntes Kalibrierschema` (unknown calibration schema)) instead of silently interpreting fisheye coefficients as pinhole.
 
 ### Python
 
 ```python
-# Modul: src/tagloc/calibration.py
+# Module: src/tagloc/calibration.py
 PINHOLE = "pinhole"; FISHEYE = "fisheye"; DISTORTION_MODELS = (PINHOLE, FISHEYE)
 
 @dataclass(frozen=True)
 class CameraCalibration:
-    ...                      # unverändert
-    model: str = PINHOLE     # neu, letztes Feld
+    ...                      # unchanged
+    model: str = PINHOLE     # new, last field
 
-# Modul: src/tagloc/lens.py (neu, braucht cv2)
-def undistort_points(points, calibration) -> np.ndarray       # (N,2), Pixel, ideales Pinhole mit P=K
-def project_points(object_points, rvec, tvec, calibration) -> np.ndarray   # (N,2), Pixel, mit Verzeichnung
+# Module: src/tagloc/lens.py (new, needs cv2)
+def undistort_points(points, calibration) -> np.ndarray       # (N,2), pixels, ideal pinhole with P=K
+def project_points(object_points, rvec, tvec, calibration) -> np.ndarray   # (N,2), pixels, with distortion
 def calibrate(object_points, image_points, image_size, model) -> tuple[float, K, D]
-    # wirft ValueError bei unbekanntem Modell, cv2.error bei numerischem Scheitern
+    # raises ValueError for unknown model, cv2.error on numerical failure
 
-# Modul: src/tagloc/boards.py
+# Module: src/tagloc/boards.py
 def calibrate_from_samples(samples, image_size, spec, board=None, *,
                            frame_id="", model=PINHOLE) -> CameraCalibration
 ```
 
-`scale_to_resolution` gilt für beide Modelle unverändert (Koeffizienten
-beziehen sich auf normierte Koordinaten, nur `K` wird skaliert).
+`scale_to_resolution` applies unchanged to both models (the coefficients refer to normalised
+coordinates; only `K` is scaled).
 
-### Konfiguration
+### Configuration
 
-`AprilTagProfileConfig.calibration_model: str = "pinhole"` — mit welchem Modell
-`CalibrationSession` **neu kalibriert**. Presets in `server.py`:
+`AprilTagProfileConfig.calibration_model: str = "pinhole"` — the model with which
+`CalibrationSession` **recalibrates**. Presets in `server.py`:
 `cam_ceiling` → `"fisheye"`, `cam_flange` → `"pinhole"`.
-Überschreibbar per Env `VISION_CALIBRATION_MODEL=pinhole|fisheye`.
+Overridable via env `VISION_CALIBRATION_MODEL=pinhole|fisheye`.
 
-Für die Posenschätzung zählt allein das Modell **in der Datei**.
+For pose estimation only the model **in the file** counts.
 
-### OPC UA (nur Ergänzungen, keine Änderung bestehender Felder)
+### OPC UA (additions only, no change to existing fields)
 
-- `CalibrationProgress` bekommt `"model"` während einer Session (Aufnahme,
-  Auswertung, Ergebnis), `result.model` in jedem Ergebnis, auch bei
-  Fehlschlag (Nachtrag 29.09.2026, damit das Frontend das Modell schon vorab
-  und auch bei Fehlschlag anzeigen kann).
-- `FinishCalibration`s `Summary` trägt `model` bei sofortiger Ablehnung.
-- `ActiveCalibrationInfo` bekommt `"model": "fisheye" | "pinhole"`.
+- `CalibrationProgress` gets `"model"` during a session (capture, evaluation, result), `result.model` in every result,
+  also on failure (addendum 29.09.2026, so that the frontend can display the model in advance and also on failure).
+- `FinishCalibration`'s `Summary` carries `model` on immediate rejection.
+- `ActiveCalibrationInfo` gets `"model": "fisheye" | "pinhole"`.
 
 ### CLI
 
-`python -m tagloc.cli.calibrate ... --model fisheye` (Standard `pinhole`).
+`python -m tagloc.cli.calibrate ... --model fisheye` (default `pinhole`).
 
-### Fehlerfälle
+### Failure cases
 
-- Unbekanntes Modell in Config/CLI → `ValueError` beim Rechnen, in der Session
-  als `result.error = 5` mit Meldung.
-- Fisheye-Kalibrierung numerisch schlecht konditioniert (`CALIB_CHECK_COND`
-  schlägt an) → einmaliger Neuversuch ohne diese Prüfung, mit Warnung im Log.
-  Scheitert auch der, `result.error = 5` wie bisher.
-- Unbekanntes `distortionModel` in einer Datei → `ValueError` beim Laden
-  (Quelle bleibt wie bei jeder kaputten Kalibrierung zu).
+- Unknown model in config/CLI → `ValueError` when calculating, in the session as `result.error = 5` with a message.
+- Fisheye calibration numerically badly conditioned (`CALIB_CHECK_COND` triggers) → one-time retry without this check, with a warning in the log.
+  If that also fails, `result.error = 5` as before.
+- Unknown `distortionModel` in a file → `ValueError` on loading (the source stays shut, as with any broken calibration).
 
-## Vorgehen
+## Approach
 
-1. `calibration.py` + `lens.py` + Tests (Rundreise Datei, Entzerren ↔ Projizieren
-   für beide Modelle, synthetische Fisheye-Kalibrierung findet K/D wieder)
-2. `boards.py`, `pose.py`, `overlay.py` auf `lens` umstellen
-3. Config, Preset, Session, Runner, CLI
-4. Doku (`vision-server-interface.md` Abschnitt 12, Frontend-Briefing)
-5. Auf den Pis: **LV1 neu kalibrieren** (die vorhandene Pinhole-Datei gilt
-   weiter, bis eine neue Fisheye-Datei geschrieben ist). LV2 muss nicht neu
-   kalibriert werden — dort war es schon Pinhole mit 5 Koeffizienten.
+1. `calibration.py` + `lens.py` + tests (round trip of the file, undistort ↔ project for both models, synthetic fisheye calibration recovers K/D)
+2. Switch `boards.py`, `pose.py`, `overlay.py` over to `lens`
+3. Config, preset, session, runner, CLI
+4. Docs (`vision-server-interface.md` section 12, frontend briefing)
+5. On the Pis: **recalibrate LV1** (the existing pinhole file applies until a new fisheye file has been written). LV2 does not need
+   recalibrating — it was already pinhole with 5 coefficients there.
 
-## Offene Fragen
+## Open questions
 
-- Welche Flags hatten die Bildtests für Fisheye? Umgesetzt ist
-  `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW` (OpenCV-Tutorial-Standard).
-- `allow_resolution_mismatch` für `cam_ceiling` (Meric) nach der
-  Neukalibrierung bei 4056 × 3040 entfernen — gehört zu dessen Plan.
+- Which flags did the image tests use for fisheye? Implemented is
+  `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW` (OpenCV tutorial standard).
+- Remove `allow_resolution_mismatch` for `cam_ceiling` (Meric) after the recalibration at 4056 × 3040 — it belongs to that plan.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Array-Formen für `cv2.fisheye.calibrate`:** `(1, N, 3)` / `(1, N, 2)` je
-  Aufnahme statt `(N, 1, 3)`. Letzteres scheitert unter OpenCV 5 mit
-  „Sizes of input arguments do not match“ (gemessen 29.09.2026).
-- **Flag-Konstanten:** OpenCV 5 führt die Fisheye-Flags nicht mehr unter
-  `cv2.fisheye.*`, sondern unter `cv2.*` und mit anderen Zahlenwerten.
-  `lens._fisheye_flag` schlägt sie deshalb zur Laufzeit nach; hart kodierte
-  Werte wären auf Pi (OpenCV 4) oder Entwicklungsrechner (OpenCV 5) still
-  falsch.
-- **Neuversuch ohne `CHECK_COND`** nur bei einer „ill-conditioned“-Meldung,
-  nicht bei jedem `cv2.error` — sonst verdeckte er echte Fehler.
-- **`overlay.draw_tag_axes`** liest `model` per `getattr` (fehlend = Pinhole),
-  weil Aufrufer und Test-Fakes Kalibrierobjekte ohne das Feld übergeben.
-- Zusätzlich: `src/jobs/calibrate.py` (Kalibrier-Check-Job) nennt das Modell.
-- Nebenbefund, nicht Teil dieser Arbeit: `tests/test_mjpeg_server.py::
-  test_node_stays_at_stream_fps_while_viewers_run_faster` schlägt auch ohne
-  diese Änderungen fehl (Zeitverhalten).
+- **Array shapes for `cv2.fisheye.calibrate`:** `(1, N, 3)` / `(1, N, 2)` per capture instead of `(N, 1, 3)`. The latter
+  fails under OpenCV 5 with "Sizes of input arguments do not match" (measured 29.09.2026).
+- **Flag constants:** OpenCV 5 no longer provides the fisheye flags under `cv2.fisheye.*`, but under `cv2.*` and with
+  different numeric values. `lens._fisheye_flag` therefore looks them up at runtime; hard-coded values would silently be wrong
+  on the Pi (OpenCV 4) or on the development computer (OpenCV 5).
+- **Retry without `CHECK_COND`** only on an "ill-conditioned" message, not on every `cv2.error` — otherwise it would hide real errors.
+- **`overlay.draw_tag_axes`** reads `model` via `getattr` (missing = pinhole), because callers and test fakes pass
+  calibration objects without the field.
+- In addition: `src/jobs/calibrate.py` (calibration check job) names the model.
+- Side finding, not part of this work: `tests/test_mjpeg_server.py::
+  test_node_stays_at_stream_fps_while_viewers_run_faster` fails even without these changes (timing behaviour).
 
-## Stand der Tests
+## State of the tests
 
-Alle Tests grün außer dem oben genannten, bereits vorher roten MJPEG-Test.
-Neu: `tests/test_lens.py` — synthetisch, ohne Kamera: Entzerren ↔
-Projizieren für beide Modelle, Tag-Pose am Bildrand aus einem Fisheye-Bild,
-Fisheye-Kalibrierung findet K und k1..k4 aus 20 synthetischen
-Schachbrett-Aufnahmen wieder (RMS < 0,05 px), Pinhole liefert genau 5
-Koeffizienten.
+All tests green except the MJPEG test named above, which was already red before.
+New: `tests/test_lens.py` — synthetic, without camera: undistort ↔ project for both models, tag pose at the image edge
+from a fisheye image, fisheye calibration recovers K and k1..k4 from 20 synthetic chessboard captures (RMS < 0.05 px),
+pinhole yields exactly 5 coefficients.
 
-**Nicht getestet:** auf den Pis selbst (OpenCV-Version dort, echte Bilder).
+**Not tested:** on the Pis themselves (their OpenCV version, real images).
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
-- Fachwissen in `doc/projektdoku/vision-server-interface.md` übernommen.
+- Status set to `done`, actual interfaces entered.
+- Index line `doc/projektdoku/arbeitsplaene/README.md` updated.
+- Topic knowledge carried over into `doc/projektdoku/vision-server-interface.md`.

@@ -1,60 +1,60 @@
-# AprilTag im Modulkatalog per Button um 90° drehen
+# Rotate an AprilTag in the module catalog by 90° using a button
 
-**Status:** fertig — 19.10.2026, Nachtrag 19.10.2026 (`4b01ab3`)
-**Verantwortlich:** Meric, `Agent: Tag um 90° drehen`
-**Thema:** frontend
-**Branch:** `Ungetestet` (Repo `webskillcomposition`), Commit `862e49a`
+**Status:** done — 19.10.2026, addendum 19.10.2026 (`4b01ab3`)
+**Owner:** Meric, `Agent: rotate tag by 90°`
+**Topic:** frontend
+**Branch:** `Ungetestet` (repo `webskillcomposition`), commit `862e49a`
 
-## Ziel
+## Goal
 
-Im Modulkatalog (webskillcomposition, `frontend/src/features/cell-modules/`) zwei Buttons ↺ / ↻ hinzufügen, die einen AprilTag um ±90° um seine eigene Normale (Tag-+Z) drehen. Die Konvention: ↺ = +90° (gegen den Uhrzeigersinn beim Blick auf den Tag), ↻ = −90° (gleiche Konvention wie `spin()` im Tag-Tool `frontend/src/tag-tool/TagToolApp.tsx`).
+In the module catalog (webskillcomposition, `frontend/src/features/cell-modules/`) add two buttons ↺ / ↻ that rotate an AprilTag by ±90° about its own normal (tag +Z). The convention: ↺ = +90° (counter-clockwise when looking at the tag), ↻ = −90° (same convention as `spin()` in the tag tool `frontend/src/tag-tool/TagToolApp.tsx`).
 
-Die Buttons erscheinen an zwei Stellen:
-1. Im Platzier-Panel „Tag auf eine Fläche des Modells setzen" (Schritt 4, neben „Oberkante des Drucks nach oben")
-2. In jeder Tag-Zeile neben „Auf Modell platzieren" (auch für Tags ohne Modell, d. h. Flächen-Voreinstellung oder eigene Drehung)
+The buttons appear in two places:
+1. In the placement panel "Tag auf eine Fläche des Modells setzen" (set tag on a face of the model) (step 4, next to "Oberkante des Drucks nach oben" (printed top edge up))
+2. In every tag row next to "Auf Modell platzieren" (place on model) (also for tags without a model, i.e. face preset or custom rotation)
 
-**Bisheriges Problem:** Die Drehung ging nur über Häkchen + Zahlenfeld „Drehung ab der Kante (°)". Abwählen des Häkchens setzte 0° und ließ den Tag springen. Mit den neuen Buttons bleibt die aktuelle Drehung erhalten und wird inkrementell angepasst. (Zahlenfeld seit `4b01ab3` entfernt, siehe Nachtrag.)
+**Previous problem:** the rotation was only possible via a checkbox + number field "Drehung ab der Kante (°)" (rotation from the edge (°)). Unticking the checkbox set 0° and made the tag jump. With the new buttons the current rotation is preserved and adjusted incrementally. (Number field removed since `4b01ab3`, see addendum.)
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md` (Arbeitsplanpflicht, Regeln für Änderungen)
-- `doc/projektdoku/arbeitsplaene/README.md` (kein offener `frontend`-Plan zum Thema)
-- `doc/projektdoku/arbeitsplaene/modell-flaechen-tag-platzierung.md` (Datenformat `placement`, Schnittstellen-Stil)
-- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md` (AprilTag-Kontext)
-- `doc/projektdoku/apriltag-referenz.md` §1 (Tag-Frame-Konvention: +X rechts, +Y Oberkante, +Z aus dem Tag)
+- `CLAUDE.md` (work-plan obligation, rules for changes)
+- `doc/projektdoku/arbeitsplaene/README.md` (no open `frontend` plan on this topic)
+- `doc/projektdoku/arbeitsplaene/modell-flaechen-tag-platzierung.md` (data format `placement`, interface style)
+- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md` (AprilTag context)
+- `doc/projektdoku/apriltag-referenz.md` §1 (tag frame convention: +X right, +Y top edge, +Z out of the tag)
 
-## Betroffene Dateien
+## Affected files
 
-Alle Pfade liegen in `webskillcomposition/frontend/src/features/cell-modules/`.
+All paths are in `webskillcomposition/frontend/src/features/cell-modules/`.
 
-**Geändert:**
-- `model/tagPlacement.ts`: neue Funktion `turnPlacement`
-- `model/tagGeometry.ts`: neue Funktion `turnRotationDegAboutTagZ`
-- `components/ModuleCatalogModal.tsx`: Buttons rendern, Klicks handhaben
-- `model/tagPlacement.test.ts`: Test für `turnPlacement`
-- `model/tagGeometry.test.ts`: Test für `turnRotationDegAboutTagZ`
+**Changed:**
+- `model/tagPlacement.ts`: new function `turnPlacement`
+- `model/tagGeometry.ts`: new function `turnRotationDegAboutTagZ`
+- `components/ModuleCatalogModal.tsx`: render buttons, handle clicks
+- `model/tagPlacement.test.ts`: test for `turnPlacement`
+- `model/tagGeometry.test.ts`: test for `turnRotationDegAboutTagZ`
 
-**Nicht betroffen:**
-- Datenformat `wsc.cellModules.catalog/1` — unverändert
-- Downstream-Schnittstellen: an den Pi (Layer 2, `wsc.vision.layer2.run/1`, `poseInModule`) gehen weiterhin nur `position` und `rotationDeg`; `placement` verlässt den Browser nicht.
-- Pi, Tag-Map, Layer 2 — nicht betroffen.
+**Not affected:**
+- Data format `wsc.cellModules.catalog/1` — unchanged
+- Downstream interfaces: only `position` and `rotationDeg` still go to the Pi (layer 2, `wsc.vision.layer2.run/1`, `poseInModule`); `placement` never leaves the browser.
+- Pi, tag map, layer 2 — not affected.
 
-## Schnittstellen
+## Interfaces
 
-### TypeScript: Drehung in `model/tagPlacement.ts`
+### TypeScript: rotation in `model/tagPlacement.ts`
 
 ```ts
 export function turnPlacement(placement: TagPlacement, quarterTurns: 1 | -1): TagPlacement;
 ```
 
-Dreht eine Platzierung um ±90° um die Tag-+Z-Achse (Normale der Fläche):
-- **Berechnung:** Der aktuelle Winkel wird aus `placementAxes` (die Achsen aus der Platzierung) als `edgeA.direction` in der Fläche projiziert, dann `atan2` um die Tag-Z-Achse verwendet.
-- **Funktioniert auch bei** `inPlaneRotationDeg === null` („Oberkante nach oben"): Der implizite Winkel wird aus den Achsen berechnet und ±90° addiert.
-- **Normierung:** Das Ergebnis wird auf (−180°, 180°] normiert, dann auf 1e-6° gerundet.
-- **Rückgabe:** `{ ...placement, inPlaneRotationDeg: <Zahl> }` — die neue Platzierung unterscheidet sich nur im Winkelfeld.
-- **Folge:** Aus `null` wird ein Zahlenwert; das Häkchen „Oberkante des Drucks nach oben" ist danach falsch und sollte aus sein; der Tag springt nicht.
+Rotates a placement by ±90° about the tag +Z axis (normal of the face):
+- **Calculation:** the current angle is taken from `placementAxes` (the axes from the placement) as `edgeA.direction` projected into the face, then `atan2` is used about the tag Z axis.
+- **Also works for** `inPlaneRotationDeg === null` ("top edge up"): the implicit angle is calculated from the axes and ±90° is added.
+- **Normalisation:** the result is normalised to (−180°, 180°], then rounded to 1e-6°.
+- **Return value:** `{ ...placement, inPlaneRotationDeg: <number> }` — the new placement differs only in the angle field.
+- **Consequence:** `null` becomes a numeric value; the checkbox "Oberkante des Drucks nach oben" (printed top edge up) is then wrong and should be off; the tag does not jump.
 
-**Beispiel:**
+**Example:**
 ```js
 turnPlacement({ mode: "corner", normal: [0, 0, 1], inPlaneRotationDeg: null, ... }, 1)
 // → { ..., inPlaneRotationDeg: 90 }
@@ -63,22 +63,22 @@ turnPlacement({ ..., inPlaneRotationDeg: 90 }, -1)
 // → { ..., inPlaneRotationDeg: 0 }
 
 turnPlacement({ ..., inPlaneRotationDeg: 180 }, 1)
-// → { ..., inPlaneRotationDeg: -90 }  (normiert auf (−180°, 180°])
+// → { ..., inPlaneRotationDeg: -90 }  (normalised to (−180°, 180°])
 ```
 
-### TypeScript: Drehung in `model/tagGeometry.ts`
+### TypeScript: rotation in `model/tagGeometry.ts`
 
 ```ts
 export function turnRotationDegAboutTagZ(rotationDeg: Vec3, quarterTurns: 1 | -1): Vec3;
 ```
 
-Dreht einen rpy-Rotationsvektor um ±90° um die Tag-+Z-Achse:
-- **Berechnung:** Quaternion aus `rotationDeg`, dann Multiplikation von rechts mit der 90°-Drehung um die Tag-Z-Achse (`multiplyQuaternions`), Ergebnis zurück zu rpy.
-- **Normierung:** Das Ergebnis wird auf 1e-6° gerundet.
-- **Rückgabe:** neuer `rotationDeg`-Vektor [r, p, y].
-- **Verwendung:** Für Tags ohne Platzierungsdatensatz (nur rpy gegeben, nicht `inPlaneRotationDeg`).
+Rotates an rpy rotation vector by ±90° about the tag +Z axis:
+- **Calculation:** quaternion from `rotationDeg`, then multiplication from the right with the 90° rotation about the tag Z axis (`multiplyQuaternions`), result converted back to rpy.
+- **Normalisation:** the result is rounded to 1e-6°.
+- **Return value:** new `rotationDeg` vector [r, p, y].
+- **Use:** for tags without a placement record (only rpy given, not `inPlaneRotationDeg`).
 
-**Beispiel:**
+**Example:**
 ```js
 turnRotationDegAboutTagZ([0, 0, 0], 1)
 // → [0, 0, 90]
@@ -87,12 +87,12 @@ turnRotationDegAboutTagZ([0, 0, 0], -1)
 // → [0, 0, -90]
 
 turnRotationDegAboutTagZ([90, 0, 30], 1)
-// → neuer rpy nach 90°-Drehung um Tag-+Z
+// → new rpy after a 90° rotation about tag +Z
 ```
 
-### Datenformat `placement` (unverändert)
+### Data format `placement` (unchanged)
 
-Das Format bleibt wie in `modell-flaechen-tag-platzierung.md` beschrieben. Nach einer Drehung per Button ändert sich nur `inPlaneRotationDeg`:
+The format remains as described in `modell-flaechen-tag-platzierung.md`. After a rotation via button only `inPlaneRotationDeg` changes:
 
 ```json
 {
@@ -105,73 +105,73 @@ Das Format bleibt wie in `modell-flaechen-tag-platzierung.md` beschrieben. Nach 
 }
 ```
 
-### UI: Buttons und Zustandsübergänge
+### UI: buttons and state transitions
 
-**Komponente `TurnButtons` in `components/ModuleCatalogModal.tsx`:**
-- Zwei Buttons ↺ / ↻, Stil `button-ghost`.
-- `title` und `aria-label`: „Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag)" / „Um 90° im Uhrzeigersinn drehen (Blick auf den Tag)" (seit `4b01ab3` englisch, siehe Nachtrag).
+**Component `TurnButtons` in `components/ModuleCatalogModal.tsx`:**
+- Two buttons ↺ / ↻, style `button-ghost`.
+- `title` and `aria-label`: "Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag)" / "Um 90° im Uhrzeigersinn drehen (Blick auf den Tag)" (German UI strings; English since `4b01ab3`, see addendum).
 
-**Im TagPlacementPanel (Schritt 4):**
-- Buttons vor dem Häkchen „Oberkante des Drucks nach oben".
-- Klick: `onPlacement(turnPlacement(placement, ±1))`.
+**In the TagPlacementPanel (step 4):**
+- Buttons before the checkbox "Oberkante des Drucks nach oben" (printed top edge up).
+- Click: `onPlacement(turnPlacement(placement, ±1))`.
 
-**In der Tag-Zeile (TagEditor):**
-- Buttons direkt nach „Auf Modell platzieren".
-- Deaktiviert, während ein Tag gerade platziert wird.
-- **Platzierter Tag** (`placementMatches`): `turnPlacement(placement, ±1)` auf den Platzierungsdatensatz, dann Pose per `tagPoseFromPlacement`.
-- **Sonst** (keine Platzierung): `turnRotationDegAboutTagZ(rotationDeg, ±1)` auf den rpy-Vektor; `placement` wird entfernt. Wenn keine Flächen-Voreinstellung mehr passt, springt die Auswahl „Fläche" auf „Eigene Drehung…" mit r/p/y angezeigt. (Labels seit `4b01ab3` englisch, siehe Nachtrag.)
+**In the tag row (TagEditor):**
+- Buttons directly after "Auf Modell platzieren" (place on model).
+- Disabled while a tag is being placed.
+- **Placed tag** (`placementMatches`): `turnPlacement(placement, ±1)` on the placement record, then pose via `tagPoseFromPlacement`.
+- **Otherwise** (no placement): `turnRotationDegAboutTagZ(rotationDeg, ±1)` on the rpy vector; `placement` is removed. If no face preset fits any more, the "Fläche" (face) selection jumps to "Eigene Drehung…" (custom rotation…) with r/p/y shown. (Labels in English since `4b01ab3`, see addendum.)
 
-### Fehlerfälle
+### Failure cases
 
-- **Numerische Ungenauigkeit:** Alle Ergebnisse werden auf 1e-6° gerundet, um Floating-Point-Artefakte zu vermeiden.
+- **Numerical imprecision:** all results are rounded to 1e-6° to avoid floating-point artefacts.
 
-## Vorgehen (umgesetzt)
+## Approach (implemented)
 
-1. Beide Funktionen berechnen einen neuen Winkel aus der aktuellen Pose und addieren ±90°, normiert auf (−180°, 180°].
-2. `turnPlacement` liest die Achsen aus der Platzierung (über `placementAxes`), nicht aus Face-Presets.
-3. Buttons in `ModuleCatalogModal.tsx` im Platzier-Panel vor dem Häkchen und in der Tag-Zeile nach „Auf Modell platzieren".
-4. Platzierte Tags: `turnPlacement` + `tagPoseFromPlacement`; sonst `turnRotationDegAboutTagZ` auf `rotationDeg`.
-5. Tests: `turnPlacement` mit vier Achsen-Orientierungen (waagerecht, Wand, geflippt, 30° vorgedreht), Rückdrehung, vier Umdrehungen, Normierung (180 + 90 → −90, −90 − 90 → 180).
-6. Gleich für `turnRotationDegAboutTagZ`: flaches Tag [0,0,0] → [0,0,90], senkrecht um Tag-+Z (Y → X), vier Umdrehungen.
+1. Both functions calculate a new angle from the current pose and add ±90°, normalised to (−180°, 180°].
+2. `turnPlacement` reads the axes from the placement (via `placementAxes`), not from face presets.
+3. Buttons in `ModuleCatalogModal.tsx` in the placement panel before the checkbox and in the tag row after "Auf Modell platzieren".
+4. Placed tags: `turnPlacement` + `tagPoseFromPlacement`; otherwise `turnRotationDegAboutTagZ` on `rotationDeg`.
+5. Tests: `turnPlacement` with four axis orientations (level, wall, flipped, pre-turned 30°), reverse rotation, four full turns, normalisation (180 + 90 → −90, −90 − 90 → 180).
+6. Same for `turnRotationDegAboutTagZ`: flat tag [0,0,0] → [0,0,90], vertical about tag +Z (Y → X), four full turns.
 
-## Offene Fragen
+## Open questions
 
-- Keine. Entscheidungen: Buttons an beiden Orten; Drehung immer aus der sichtbaren Lage.
+- None. Decisions: buttons in both places; rotation always from the visible position.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-Keine inhaltlichen Abweichungen; die Implementierung folgt dem Plan genau.
+No substantive deviations; the implementation follows the plan exactly.
 
 **Tests:**
-- `tagPlacement.test.ts`: vier Achsen-Orientierungen (`level`, `wall`, `flipped`, `turned`), Rückdrehung und vier Umdrehungen, Normierung auf (−180°, 180°].
-- `tagGeometry.test.ts`: flaches Tag [0,0,0] ↔ ±90°, senkrecht [90,0,0] um Tag-+Z (Y wird zu X bzw. −X), vier Umdrehungen äquivalent zur Identität.
+- `tagPlacement.test.ts`: four axis orientations (`level`, `wall`, `flipped`, `turned`), reverse rotation and four full turns, normalisation to (−180°, 180°].
+- `tagGeometry.test.ts`: flat tag [0,0,0] ↔ ±90°, vertical [90,0,0] about tag +Z (Y becomes X or −X respectively), four full turns equivalent to the identity.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig` gesetzt — 19.10.2026.
-- [x] Tatsächliche Funktionssignaturen nachtragen.
-- [x] Schnittstellen präzisieren (Achsen, atan2, Normierung, multiplyQuaternions).
-- [x] UI-Platzierung und Verhalten dokumentieren.
+- [x] Status set to `done` — 19.10.2026.
+- [x] Add actual function signatures.
+- [x] Clarify interfaces (axes, atan2, normalisation, multiplyQuaternions).
+- [x] Document UI placement and behaviour.
 
-## Nachtrag 19.10.2026: Feld „Drehung ab der Kante“ entfernt, Oberfläche englisch
+## Addendum 19.10.2026: field "Drehung ab der Kante" removed, UI in English
 
-Commit `4b01ab3` (webskillcomposition, Branch `Ungetestet`):
+Commit `4b01ab3` (webskillcomposition, branch `Ungetestet`):
 
-1. **Zahlenfeld entfernt.** Das Feld „Drehung ab der Kante (°)“ im Platzier-Panel gibt es nicht mehr. Die Drehung in der Fläche stellt man nur noch mit ↺ / ↻ ein.
-2. **Häkchen bleibt, Lage bleibt.** Das Häkchen heißt jetzt „Printed top edge up“. Abwählen setzt `inPlaneRotationDeg` auf `inPlaneRotationDegOf(placement)` statt auf 0°; der Tag springt nicht mehr.
-3. **Modulkatalog englisch.** Dialog, Validierungs-, Import- und Sync-Meldungen, Fehlermeldungen aus `tagPlacement.ts`, `TAG_FACE_PRESETS` und die Standard-Modulnamen sind englisch. Datenformat `wsc.cellModules.catalog/1` und Schnittstellen zum Pi sind unverändert. Bereits gespeicherte Kataloge (Backend `/api/module-catalog`, localStorage) behalten ihre deutschen Modulnamen, bis sie neu gespeichert oder zurückgesetzt werden.
+1. **Number field removed.** The field "Drehung ab der Kante (°)" (rotation from the edge (°)) in the placement panel no longer exists. The in-face rotation is now set only with ↺ / ↻.
+2. **Checkbox stays, position stays.** The checkbox is now labelled "Printed top edge up". Unticking sets `inPlaneRotationDeg` to `inPlaneRotationDegOf(placement)` instead of 0°; the tag no longer jumps.
+3. **Module catalog in English.** Dialog, validation, import and sync messages, error messages from `tagPlacement.ts`, `TAG_FACE_PRESETS` and the default module names are in English. Data format `wsc.cellModules.catalog/1` and interfaces to the Pi are unchanged. Already saved catalogs (backend `/api/module-catalog`, localStorage) keep their German module names until they are saved again or reset.
 
-Neue exportierte Funktion in `model/tagPlacement.ts`:
+New exported function in `model/tagPlacement.ts`:
 
 ```ts
 export function inPlaneRotationDegOf(placement: TagPlacement): number;
 ```
 
-Winkel von `edgeA.direction` (in die Fläche projiziert) zu Tag-+X um Tag-+Z, in (−180°, 180°], gerundet auf 1e-6°. `turnPlacement` baut darauf auf; das Verhalten von `turnPlacement` ist unverändert.
+Angle from `edgeA.direction` (projected into the face) to tag +X about tag +Z, in (−180°, 180°], rounded to 1e-6°. `turnPlacement` builds on this; the behaviour of `turnPlacement` is unchanged.
 
-**Übersetzungen (DE → EN):**
+**Translations (DE → EN):**
 
-| Deutsch | Englisch |
+| German | English |
 | --- | --- |
 | Modulkatalog | Module catalog |
 | Auf Modell platzieren | Place on model |
@@ -192,4 +192,4 @@ Winkel von `edgeA.direction` (in die Fläche projiziert) zu Tag-+X um Tag-+Z, in
 | Welt-Tag | World tag |
 | Um 90° gegen den Uhrzeigersinn drehen (Blick auf den Tag) | Turn 90° counter-clockwise (looking at the tag) |
 | Um 90° im Uhrzeigersinn drehen (Blick auf den Tag) | Turn 90° clockwise (looking at the tag) |
-| Drehung ab der Kante (°) | entfernt, keine Entsprechung |
+| Drehung ab der Kante (°) | removed, no equivalent |

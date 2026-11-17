@@ -1,71 +1,54 @@
-# Tag-Position per Hand-Kamera einmessen — Bezugskanten statt Mesh-Matching
+# Survey tag position with the hand camera — reference edges instead of mesh matching
 
-**Status:** fertig — 20.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** Meric, `Agent: Tag-Position mit der Kamera über Bezugskanten einmessen`
-**Thema:** apriltag
-**Branch:** `tag-einmessen` (dieses Repo und `webskillcomposition`)
+**Status:** done — 20.10.2026 (not tested on real hardware)
+**Owner:** Meric, `Agent: survey tag position with the camera via reference edges`
+**Topic:** apriltag
+**Branch:** `tag-einmessen` (this repo and `webskillcomposition`)
 
-## Ziel
+## Goal
 
-Die Tag-Position eines Moduls (`T_module_tag`) wird nicht mehr mit dem Zollstock
-gemessen, sondern mit der Hand-Kamera über die Bezugskanten. Hinterher liefert der
-Hand-Pi pro Bezugskante die gemessene Lage im Tag-KS und eine korrigierte Tag-Pose
-im Modul-KS. Vorher wurden die Abstände von Hand gemessen, und der Messfehler ging
-1:1 in jede Modulpose ein.
+The tag position of a module (`T_module_tag`) is no longer measured with a folding rule, but with the hand camera via the reference edges. Afterwards the hand Pi delivers, per reference edge, the measured position in the tag frame and a corrected tag pose in the module frame. Previously the distances were measured by hand, and the measurement error went 1:1 into every module pose.
 
-### Kontext
+### Context
 
-`T_module_tag` (`ModuleTag.position`/`rotationDeg` im Modulkatalog, nur im Frontend; die
-Tag-Map des Pi enthält nur Welt-Tags) wird heute von Hand bestimmt: im Katalog Fläche + Ecke bzw. zwei Kanten wählen
-(`placement`, siehe `modell-flaechen-tag-platzierung.md`), dann mit dem Zollstock die
-Abstände messen. Der Fehler geht 1:1 in jede Modulpose ein.
+`T_module_tag` (`ModuleTag.position`/`rotationDeg` in the module catalog, frontend only; the tag map of the Pi contains only world tags) is determined by hand today: in the catalog choose face + corner or two edges (`placement`, see `modell-flaechen-tag-platzierung.md`), then measure the distances with the folding rule. The error goes 1:1 into every module pose.
 
-Der erste Plan (Tiefen-ICP gegen das ganze Mesh) ist **verworfen** (siehe Abschnitt
-„Verworfen“): Die Module ändern sich ständig, die Modelle werden nicht gepflegt — ein
-Abgleich gegen das ganze Modell misst dann gegen veraltete Geometrie.
+The first plan (depth ICP against the whole mesh) is **discarded** (see section "Discarded"): the modules change constantly, the models are not maintained — a match against the whole model would then measure against outdated geometry.
 
-**Neuer Ansatz: Die Kamera ersetzt den Zollstock.** Vom Modell wird nur noch gebraucht,
-was der Zollstock auch braucht: die **zwei Bezugskanten**, die beim Platzieren im Katalog
-gewählt werden (Tischkante, Profil-Stirnkante …). Das sind langlebige physische Kanten;
-der Rest des Modells darf veraltet sein. Die Hand-Kamera sieht Tag und Kanten **im selben
-Bild** → Messung im Tag-KS, ganz ohne Roboterkinematik und Hand-Auge-Fehler. Der
-Katalogwert bleibt Startwert und bestimmt das Suchfenster.
+**New approach: the camera replaces the folding rule.** Of the model only what the folding rule also needs is still used: the **two reference edges** chosen when placing in the catalog (table edge, profile end edge …). These are long-lived physical edges; the rest of the model may be outdated. The hand camera sees tag and edges **in the same image** → measurement in the tag frame, entirely without robot kinematics and hand-eye error. The catalog value remains the start value and determines the search window.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md` (Arbeitsplanpflicht, Regeln für Änderungen)
+- `CLAUDE.md` (work-plan requirement, rules for changes)
 - `doc/projektdoku/arbeitsplaene/_vorlage.md`
-- `doc/projektdoku/arbeitsplaene/README.md` (kein offener `apriltag`-Plan zum Thema)
-- `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`: Muster für Schnittstellen,
-  Intrinsik, Fehlerfälle; `measure_tags` ist die Grundlage dieser Messung
-- `doc/projektdoku/arbeitsplaene/modell-flaechen-tag-platzierung.md`: `placement`-Format,
-  `EdgeLine`, Bedienung „Auf Modell platzieren“
-- Freigegebener Plan `thema-tag-positionen-auf-modulen` (Konzept, Schnittstellen,
-  Agenten-Aufteilung, Verifikation)
+- `doc/projektdoku/arbeitsplaene/README.md` (no open `apriltag` plan on this topic)
+- `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`: pattern for interfaces, intrinsics, failure cases; `measure_tags` is the basis of this measurement
+- `doc/projektdoku/arbeitsplaene/modell-flaechen-tag-platzierung.md`: `placement` format, `EdgeLine`, operation "Auf Modell platzieren" ("Place on model")
+- Approved plan `thema-tag-positionen-auf-modulen` (concept, interfaces, division among agents, verification)
 
-## Betroffene Dateien
+## Affected files
 
-Diese Liste reserviert die Dateien. Parallele Änderungen daran werden vorher abgesprochen.
+This list reserves the files. Parallel changes to them are coordinated beforehand.
 
-**Neu:**
-- `src/tagloc/reference_edges.py`: reine Funktionen (numpy/cv2), Rechnung und Ansichtsplanung
-- `src/vision_server/tagreference.py`: Anfrage parsen, Ergebnis-JSON bauen (wie `measuretag.py`)
+**New:**
+- `src/tagloc/reference_edges.py`: pure functions (numpy/cv2), calculation and view planning
+- `src/vision_server/tagreference.py`: parse the request, build the result JSON (like `measuretag.py`)
 - `tests/test_reference_edges.py`
-- `tests/test_tagreference.py` inkl. OPC-UA-Methodentest (Muster `tests/test_measuretag.py`)
+- `tests/test_tagreference.py` incl. OPC UA method test (pattern `tests/test_measuretag.py`)
 
-**Geändert:**
-- `tools/make_synthetic_scene.py`: `render_reference_scene` (synthetischer Renderer)
-- `src/vision_server/detection/apriltag.py`: `measure_tag_reference` (frische Bilder wie `measure_tags`)
-- `src/vision_server/runner.py`: `_install_tag_reference`, BUSY-Sperre
-- `src/vision_server/address_space.py`: Knoten `MeasureTagReference`, `PlanTagReferenceView`, `LastTagReference`
+**Changed:**
+- `tools/make_synthetic_scene.py`: `render_reference_scene` (synthetic renderer)
+- `src/vision_server/detection/apriltag.py`: `measure_tag_reference` (fresh images like `measure_tags`)
+- `src/vision_server/runner.py`: `_install_tag_reference`, BUSY lock
+- `src/vision_server/address_space.py`: nodes `MeasureTagReference`, `PlanTagReferenceView`, `LastTagReference`
 
-## Schnittstellen
+## Interfaces
 
-### Python — `src/tagloc/reference_edges.py` (neu, reine Funktionen, numpy/cv2)
+### Python — `src/tagloc/reference_edges.py` (new, pure functions, numpy/cv2)
 
 ```python
 @dataclass(frozen=True)
-class ReferenceLine:          # Bezugskante, Modul-KS, Meter
+class ReferenceLine:          # reference edge, module frame, metres
     id: str
     start: np.ndarray         # (3,)
     end: np.ndarray           # (3,)
@@ -74,21 +57,21 @@ class ReferenceLine:          # Bezugskante, Modul-KS, Meter
 class LineMeasurement:
     id: str
     found: bool
-    guess_point_tag: np.ndarray; guess_direction_tag: np.ndarray   # Startwert im Tag-KS
-    point_tag: np.ndarray | None; direction_tag: np.ndarray | None # gemessen im Tag-KS
-    offset_m: float | None    # senkrechte Verschiebung gemessen − Startwert, in der Tag-Ebene
-    angle_deg: float | None   # Drehung gemessen − Startwert um Tag-z
+    guess_point_tag: np.ndarray; guess_direction_tag: np.ndarray   # start value in tag frame
+    point_tag: np.ndarray | None; direction_tag: np.ndarray | None # measured in tag frame
+    offset_m: float | None    # perpendicular shift measured − start value, in the tag plane
+    angle_deg: float | None   # rotation measured − start value about tag z
     support_px: float; residual_px: float; contrast: float
     candidates: int; ambiguous: bool
     reason: str | None        # "NOT_VISIBLE" | "NO_EDGE" | "PERPENDICULAR_TO_TAG" | None
-    extent_m: float = 0.0     # Länge des gemessenen Kantenstücks in der Tag-Ebene; gewichtet die Drehung, nicht im Ergebnis-JSON
+    extent_m: float = 0.0     # length of the measured edge piece in the tag plane; weights the rotation, not in the result JSON
 
 @dataclass(frozen=True)
 class InPlaneCorrection:
     dofs: str                 # "full" | "partial" | "none"
-    delta_xy_m: np.ndarray    # (2,) im Tag-KS
+    delta_xy_m: np.ndarray    # (2,) in tag frame
     delta_rot_deg: float
-    pose_module_tag: Pose     # korrigiertes T_module_tag
+    pose_module_tag: Pose     # corrected T_module_tag
     residual_m: float
 
 @dataclass(frozen=True)
@@ -100,60 +83,55 @@ def measure_reference_lines(gray, calib, pose_cam_tag, pose_module_tag_guess,
         search_band_m: float = 0.015, tag_margin_m: float = 0.01) -> list[LineMeasurement]
 def fit_in_plane_correction(measurements: Sequence[LineMeasurement],
         pose_module_tag_guess: Pose) -> InPlaneCorrection
-def average_corrections(corrections: Sequence[InPlaneCorrection]) -> tuple[InPlaneCorrection, dict]  # Streuung mm/deg
+def average_corrections(corrections: Sequence[InPlaneCorrection]) -> tuple[InPlaneCorrection, dict]  # spread mm/deg
 def plan_reference_view(pose_module_tag_guess, lines, calib, *, tag_size_m,
         line_extent_m=0.10, margin=0.10, min_standoff_m=0.25, max_standoff_m=0.60,
         tilt_deg=0.0) -> ViewPlan
-def catalog_rpy_deg(rotation) -> np.ndarray   # Katalogformat: RPY feste Achsen X,Y,Z, Grad
+def catalog_rpy_deg(rotation) -> np.ndarray   # catalog format: RPY fixed axes X,Y,Z, degrees
 ```
 
-`ValueError` bei ungültigen Eingaben (Kante kürzer als 2 cm, Größe ≤ 0, nicht endliche Werte, Auflösung passt nicht zur Kalibrierung).
+`ValueError` for invalid input (edge shorter than 2 cm, size ≤ 0, non-finite values, resolution does not match the calibration).
 
-Wiederverwendet werden `tagloc.geometry` (`compose`, `invert`, `pose_to_dict`,
-`from_position_quaternion`), `tagloc.lens` (`project_points`, `undistort_points`) und
-`tagloc.pose.tag_object_points`.
+Reused are `tagloc.geometry` (`compose`, `invert`, `pose_to_dict`, `from_position_quaternion`), `tagloc.lens` (`project_points`, `undistort_points`) and `tagloc.pose.tag_object_points`.
 
-### Python — `src/vision_server/tagreference.py` (neu, ohne asyncua und ohne Kamera)
+### Python — `src/vision_server/tagreference.py` (new, without asyncua and without camera)
 
 ```python
-parse_request(text: str) -> TagReferenceRequest          # ValueError mit Klartext bei Schema-, Pflicht- oder Grenzverletzung
-combine_tag_pose(tag_poses) -> tuple[np.ndarray, bool]   # (T_cam_tag, ambiguous) aus den Bildern mit Tag
-keep_guess_rotation(correction, pose_module_tag_guess) -> InPlaneCorrection  # nur der Tag-Ursprung wandert, Drehung aus Startwert
-summarize_lines(per_frame) -> list[dict]                 # eine Zeile je Kante über alle Bilder
+parse_request(text: str) -> TagReferenceRequest          # ValueError with plain text on schema, required-field or limit violation
+combine_tag_pose(tag_poses) -> tuple[np.ndarray, bool]   # (T_cam_tag, ambiguous) from the images with tag
+keep_guess_rotation(correction, pose_module_tag_guess) -> InPlaneCorrection  # only the tag origin moves, rotation from start value
+summarize_lines(per_frame) -> list[dict]                 # one line per edge across all images
 reference_warnings(*, correction, lines, search_band_m, tag_ambiguous, intrinsics_source) -> list[str]
 build_result(*, ..., error: str | None = None) -> dict   # wsc.vision.tagreference.result/1
 build_view(plan=None, *, error: str | None = None) -> dict  # wsc.vision.tagreference.view/1
 dumps(result: dict) -> str                               # json, allow_nan=False
 ```
 
-`TagReferenceRequest` (frozen): `tag_id`, `tag_size_m` (`None` = Tag-Map bzw. config),
-`pose_module_tag_guess`, `lines`, `search_band_m`, `frames`, `line_extent_m`, `tilt_deg`.
+`TagReferenceRequest` (frozen): `tag_id`, `tag_size_m` (`None` = tag map resp. config), `pose_module_tag_guess`, `lines`, `search_band_m`, `frames`, `line_extent_m`, `tilt_deg`.
 
-### OPC UA (nur Hand-Pi, `hand_eye_path` gesetzt; unter `VisionMachine`, verlinkt unter `VisionProgram`)
+### OPC UA (hand Pi only, `hand_eye_path` set; under `VisionMachine`, linked under `VisionProgram`)
 
-| Element | NodeId | Typ |
+| Element | NodeId | Type |
 | --- | --- | --- |
 | `MeasureTagReference` | `ns=<vision>;s=VisionMachine.MeasureTagReference` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` |
-| `PlanTagReferenceView` | `ns=<vision>;s=VisionMachine.PlanTagReferenceView` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` — rechnet nur, kein Bild |
-| `LastTagReference` | `ns=<vision>;s=VisionMachine.LastTagReference` | String (JSON), nur zur Anzeige |
+| `PlanTagReferenceView` | `ns=<vision>;s=VisionMachine.PlanTagReferenceView` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` — calculates only, no image |
+| `LastTagReference` | `ns=<vision>;s=VisionMachine.LastTagReference` | String (JSON), for display only |
 
 | Error | `MeasureTagReference` | `PlanTagReferenceView` |
 | --- | --- | --- |
-| `OK` | gemessen. Auch wenn Kanten fehlen (dann `dofs` reduziert bzw. `none`). | geplant, auch mit `fits: false`. |
-| `DETECTION_FAILED` | `NO_FRAME`, `TAG_NOT_SEEN`; auch ein `ValueError` der Messung (z. B. Bildgröße passt nicht zur Kalibrierung) | entfällt (kein Bild) |
-| `INVALID_ARGUMENT` | Anfrage-JSON bzw. Werte ungültig | wie links |
-| `INVALID_STATE` | Vision-System nicht `Operational` | wie links |
-| `BUSY` | Job, Kamera-Kalibrierung, Hand-Auge-Sitzung, `MeasureTags` oder weitere Einmessung läuft | kein `BUSY`: rechnet nur, kein Bild |
+| `OK` | measured. Also if edges are missing (then `dofs` reduced resp. `none`). | planned, also with `fits: false`. |
+| `DETECTION_FAILED` | `NO_FRAME`, `TAG_NOT_SEEN`; also a `ValueError` of the measurement (e.g. image size does not match the calibration) | not applicable (no image) |
+| `INVALID_ARGUMENT` | request JSON resp. values invalid | as left |
+| `INVALID_STATE` | vision system not `Operational` | as left |
+| `BUSY` | job, camera calibration, hand-eye session, `MeasureTags` or another survey is running | no `BUSY`: calculates only, no image |
 
-Bei Ablehnung steht im JSON `"<CODE>: Text"`; bei Mess-Fehlern (`NO_FRAME`, `TAG_NOT_SEEN`)
-der nackte Code. `ResultJson` ist immer gültiges JSON.
+On rejection the JSON contains `"<CODE>: text"`; for measurement errors (`NO_FRAME`, `TAG_NOT_SEEN`) the bare code. `ResultJson` is always valid JSON.
 
-`LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht
-bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
+`LastTagReference` is written after every measurement, also on `DETECTION_FAILED`, but not on rejections (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
 
-### Daten / Payload
+### Data / payload
 
-**Anfrage** `wsc.vision.tagreference.request/1` (für beide Methoden):
+**Request** `wsc.vision.tagreference.request/1` (for both methods):
 
 ```json
 { "schema": "wsc.vision.tagreference.request/1",
@@ -165,18 +143,15 @@ bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
   "view": { "lineExtentM": 0.10, "tiltDeg": 10 } }
 ```
 
-- `moduleTagGuess` = `T_module_tag` aus dem Katalog (`position`/`rotationDeg` umgerechnet).
-- `lines` = echte 3D-Kanten im Modul-KS (die `EdgeLine`s der Platzierung, **nicht** auf die
-  Fläche projiziert); 1–4 Stück.
-- `tagSizeM` (optional): Vorrang Anfrage > Tag-Map > `config.tag_size_m`.
-- `searchBandM` (Standard 0,015; 0,003–0,05 m), `frames` (Standard 3; 1–10),
-  `view.lineExtentM` (Standard 0,10; (0, 1] m), `view.tiltDeg` (Standard **10**; |tiltDeg| < 80).
-- `lines`: `id` nicht leer und eindeutig, jede Kante ≥ 2 cm.
-- `moduleTagGuess.orientation` ist ein Quaternion `[qx, qy, qz, qw]`: es wird normiert,
-  ein Nullquaternion ist ungültig.
-- Unbekannte Felder werden ignoriert.
+- `moduleTagGuess` = `T_module_tag` from the catalog (`position`/`rotationDeg` converted).
+- `lines` = real 3D edges in the module frame (the `EdgeLine`s of the placement, **not** projected onto the face); 1–4 pieces.
+- `tagSizeM` (optional): precedence request > tag map > `config.tag_size_m`.
+- `searchBandM` (default 0.015; 0.003–0.05 m), `frames` (default 3; 1–10), `view.lineExtentM` (default 0.10; (0, 1] m), `view.tiltDeg` (default **10**; |tiltDeg| < 80).
+- `lines`: `id` not empty and unique, every edge ≥ 2 cm.
+- `moduleTagGuess.orientation` is a quaternion `[qx, qy, qz, qw]`: it is normalised, a zero quaternion is invalid.
+- Unknown fields are ignored.
 
-**Ergebnis** `wsc.vision.tagreference.result/1`:
+**Result** `wsc.vision.tagreference.result/1`:
 
 ```json
 { "schema": "wsc.vision.tagreference.result/1",
@@ -194,23 +169,13 @@ bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
   "error": null }
 ```
 
-- `framesUsed`: Bilder, in denen der Tag erkannt wurde.
-- Mehrdeutige Tag-Pose: Gibt es mindestens ein eindeutiges Bild, wird die Drehung nur über
-  diese Bilder gemittelt, die Position über alle. Eine Pose gilt für alle Bilder (der Roboter
-  steht), die Korrektur bleibt `full`. Gibt es kein eindeutiges Bild, werden die Kanten mit der
-  mehrdeutigen Pose gemessen; die Orientierung bleibt dann exakt der Startwert
-  (`deltaRotDeg`, `spreadDeg` = 0), nur der Tag-Ursprung wandert, und es gibt eine Warnung.
-- `lines[]`: je Kante ein Eintrag über alle Bilder. `found`, sobald in einem Bild gefunden;
-  Werte (`offsetMm`, `angleDeg`, `supportPx`, ...) als Mittel über die eindeutigen Bilder, sonst
-  über die gefundenen; `ambiguous`, sobald in irgendeinem Bild mehrdeutig; `reason` nur bei
-  nicht gefundenen Kanten.
-- `warnings[]`: Platzhalter-Intrinsik; Tag mehrdeutig; `dofs` `none` (Startwert unverändert) oder
-  `partial`; mehrdeutige Kante; Korrektur über dem Suchband bzw. eine Kantenverschiebung
-  ≥ 0,9 × Suchband (Startwert vermutlich falsch).
-- Fehlerfall: `correction: null`, `lines: []`, `tag: null`. `error` ist bei Mess-Fehlern der nackte
-  Code (`TAG_NOT_SEEN`, `NO_FRAME`), bei Ablehnung `"<CODE>: Text"`.
+- `framesUsed`: images in which the tag was detected.
+- Ambiguous tag pose: if there is at least one unambiguous image, the rotation is averaged only over these images, the position over all. One pose applies to all images (the robot stands still), the correction stays `full`. If there is no unambiguous image, the edges are measured with the ambiguous pose; the orientation then remains exactly the start value (`deltaRotDeg`, `spreadDeg` = 0), only the tag origin moves, and there is a warning.
+- `lines[]`: one entry per edge across all images. `found` as soon as found in one image; values (`offsetMm`, `angleDeg`, `supportPx`, ...) as mean over the unambiguous images, otherwise over the found ones; `ambiguous` as soon as ambiguous in any image; `reason` only for edges not found.
+- `warnings[]`: placeholder intrinsics; tag ambiguous; `dofs` `none` (start value unchanged) or `partial`; ambiguous edge; correction beyond the search band resp. an edge shift ≥ 0.9 × search band (start value presumably wrong).
+- Failure case: `correction: null`, `lines: []`, `tag: null`. `error` is the bare code for measurement errors (`TAG_NOT_SEEN`, `NO_FRAME`), `"<CODE>: text"` for rejection.
 
-**Planung** `wsc.vision.tagreference.view/1` (von `PlanTagReferenceView`, Antwort):
+**Planning** `wsc.vision.tagreference.view/1` (from `PlanTagReferenceView`, response):
 
 ```json
 { "schema": "wsc.vision.tagreference.view/1",
@@ -218,180 +183,121 @@ bei Ablehnungen (`INVALID_ARGUMENT`, `INVALID_STATE`, `BUSY`).
   "standoffM": 0.38, "fits": true, "uncovered": [], "error": null }
 ```
 
-`camInTag` ist die Kamerapose im Tag-KS (Kamera-KS OpenCV: +Z aus der Linse). Die Kamera
-schaut entlang −Tag-z; Bild-x = Tag-x, Bild-y = −Tag-y. `tiltDeg` kippt um Tag-x durch den
-Zielpunkt (positiv: Kamera nach −y). `fits: false`: Der Tag ist immer im Bild; Kanten werden
-nach Abstand zum Tag nacheinander dazugenommen, solange alles bei `max_standoff` passt.
-`uncovered` nennt die übrigen Kanten (ggf. `"tag"`). Ablehnung: `camInTag: null`, `fits: false`,
-`uncovered: []`, `error` mit `"<CODE>: Text"`.
+`camInTag` is the camera pose in the tag frame (camera frame OpenCV: +Z out of the lens). The camera looks along −tag z; image x = tag x, image y = −tag y. `tiltDeg` tilts about tag x through the target point (positive: camera towards −y). `fits: false`: the tag is always in the image; edges are added one after another, ordered by distance to the tag, as long as everything fits at `max_standoff`. `uncovered` names the remaining edges (possibly `"tag"`). Rejection: `camInTag: null`, `fits: false`, `uncovered: []`, `error` with `"<CODE>: text"`.
 
-### Katalog (Frontend)
+### Catalog (frontend)
 
-Die Datenform steht im Abschnitt „Frontend“ (`ModuleTag.measurement`, `placement.lines`).
-`position`/`rotationDeg` werden mit `correction.position`/`correction.rotationDeg`
-überschrieben, `placement` bleibt als Protokoll des Startwerts. **Modul-Tags stehen bewusst
-nicht in der Tag-Map des Pi** (dort nur Welt-Tags, siehe Kopfkommentar `moduleCatalog.ts` in
-`webskillcomposition`). Der Katalog wirkt nur im Frontend: Layer-1-Platzierung und
-`moduleTagGuess` der Layer-2-Anfragen.
+The data form is described in the section "Frontend" (`ModuleTag.measurement`, `placement.lines`). `position`/`rotationDeg` are overwritten with `correction.position`/`correction.rotationDeg`; `placement` remains as the record of the start value. **Module tags are deliberately not in the Pi's tag map** (there only world tags, see header comment `moduleCatalog.ts` in `webskillcomposition`). The catalog acts only in the frontend: layer-1 placement and the `moduleTagGuess` of the layer-2 requests.
 
-## Fehlerfälle
+## Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Tag nicht im Bild | `DETECTION_FAILED`, `TAG_NOT_SEEN` |
-| Kein frisches Bild | `DETECTION_FAILED`, `NO_FRAME` |
-| Kante außerhalb des Bilds | `found: false`, `reason: "NOT_VISIBLE"` |
-| Keine Kante im Suchband | `found: false`, `reason: "NO_EDGE"` |
-| Kante mehrdeutig (Item-Nut) | `ambiguous: true`; die Kante geht in keine Korrektur ein (`dofs` ggf. reduziert) |
-| Kante (fast) senkrecht zur Tag-Ebene | `reason: "PERPENDICULAR_TO_TAG"` |
-| Korrektur über dem Suchband bzw. Kantenverschiebung ≥ 0,9 × Suchband | Warnung; Startwert vermutlich falsch |
-| Keine Kante verwertbar | `dofs: "none"`, Startwert unverändert, Warnung |
-| Tag `ambiguous` | Gibt es eindeutige Bilder: Drehung über sie, Position über alle, Korrektur `full`. Sonst: Drehung exakt aus dem Startwert, nur der Tag-Ursprung wandert (`keep_guess_rotation`), Warnung |
+| Tag not in image | `DETECTION_FAILED`, `TAG_NOT_SEEN` |
+| No fresh image | `DETECTION_FAILED`, `NO_FRAME` |
+| Edge outside the image | `found: false`, `reason: "NOT_VISIBLE"` |
+| No edge in the search band | `found: false`, `reason: "NO_EDGE"` |
+| Edge ambiguous (item groove) | `ambiguous: true`; the edge enters no correction (`dofs` possibly reduced) |
+| Edge (nearly) perpendicular to the tag plane | `reason: "PERPENDICULAR_TO_TAG"` |
+| Correction beyond the search band resp. edge shift ≥ 0.9 × search band | warning; start value presumably wrong |
+| No edge usable | `dofs: "none"`, start value unchanged, warning |
+| Tag `ambiguous` | If unambiguous images exist: rotation over them, position over all, correction `full`. Otherwise: rotation exactly from the start value, only the tag origin moves (`keep_guess_rotation`), warning |
 
-## Vorgehen
+## Approach
 
-### Rechnung (je Bild, Hand-Pi)
+### Calculation (per image, hand Pi)
 
-1. AprilTag → `T_cam_tag` (vorhandene `measure_tags`-Pipeline, Intrinsik wie MeasureTags).
-2. Jede Bezugskante (3D-Strecke im Modul-KS, aus dem Katalog) über den Startwert ins Tag-KS:
-   `T_tag_module_guess = inv(T_module_tag_guess)`; Höhe `h` der Kante über der Tag-Ebene
-   (Tag-z) merken.
-3. Kante ins Bild projizieren (`lens.project_points`, mit Verzeichnung), auf den sichtbaren
-   Teil kürzen, Tag-Fläche + Rand ausmaskieren (Tag-Ränder sind selbst starke Kanten).
-4. Kantensuche im Band ±`searchBandM` (Standard 15 mm, in px umgerechnet): alle ~4 px ein
-   Querprofil auf dem leicht geglätteten Graubild, Gradientenmaxima subpixelgenau
-   (Parabel) → Kandidatenpunkte; RANSAC-Geradenfit; Wahl nach Nähe zum Startwert ×
-   Stützlänge × Kontrast, gleiche Polarität entlang der Kante. Zweiter Kandidat mit
-   ≥ 70 % der Bewertung und > 2 px Abstand → `ambiguous` (Item-Nuten!).
-5. Stützpunkte entzerren (`lens.undistort_points`) → Sehstrahlen → Schnitt mit der Ebene
-   `z_tag = h` → 3D-Gerade im Tag-KS (PCA).
-6. **Korrektur in der Tag-Ebene** (3 DoF: x, y, θ): starre 2D-Transformation, die die
-   Startwert-Kanten auf die gemessenen abbildet (kleinste Quadrate Punkt-zu-Gerade).
-   2 nicht parallele Kanten (≥ 20°) → `dofs: "full"`; 1 Kante → nur senkrecht + Drehung
-   (`"partial"`, entlang der Kante unverändert); 0 → `"none"`.
-   `T_tag_module_neu = D · T_tag_module_guess`, `T_module_tag_neu = inv(…)`.
-   Neigung und Abstand zur Fläche (`offsetM`) bleiben aus dem Startwert (Tag liegt bündig).
-7. Mehrere Bilder (`frames`): Kanten je Bild messen, Korrektur über die Bilder mit der höchsten
-   `dofs`-Stufe gemittelt, Streuung melden. Mehrere Ansichten sind dadurch trivial — die Steuerung ruft mehrfach auf und
-   mittelt, keine Vorwärtskinematik nötig.
+1. AprilTag → `T_cam_tag` (existing `measure_tags` pipeline, intrinsics as for MeasureTags).
+2. Each reference edge (3D segment in the module frame, from the catalog) is mapped via the start value into the tag frame: `T_tag_module_guess = inv(T_module_tag_guess)`; remember its height `h` above the tag plane (tag z).
+3. Project the edge into the image (`lens.project_points`, with distortion), shorten it to the visible part, mask out the tag area + border (the tag edges are themselves strong edges).
+4. Edge search in the band ±`searchBandM` (default 15 mm, converted to px): every ~4 px a cross profile on the slightly smoothed grey image, gradient maxima at subpixel precision (parabola) → candidate points; RANSAC line fit; choice by proximity to the start value × support length × contrast, same polarity along the edge. A second candidate with ≥ 70 % of the score and > 2 px distance → `ambiguous` (item grooves!).
+5. Rectify support points (`lens.undistort_points`) → viewing rays → intersection with the plane `z_tag = h` → 3D line in the tag frame (PCA).
+6. **Correction in the tag plane** (3 DoF: x, y, θ): rigid 2D transformation that maps the start-value edges onto the measured ones (least squares point-to-line). 2 non-parallel edges (≥ 20°) → `dofs: "full"`; 1 edge → only perpendicular + rotation (`"partial"`, along the edge unchanged); 0 → `"none"`.
+   `T_tag_module_new = D · T_tag_module_guess`, `T_module_tag_new = inv(…)`.
+   Tilt and distance to the face (`offsetM`) remain from the start value (the tag lies flush).
+7. Multiple images (`frames`): measure edges per image, average the correction over the images with the highest `dofs` level, report the spread. Multiple views are thereby trivial — the control calls several times and averages, no forward kinematics needed.
 
-### Kamera passend platzieren
+### Placing the camera appropriately
 
-`plan_reference_view` berechnet die Kamerapose **im Tag-KS** (`T_tag_cam`): frontal
-(Kippwinkel gegen Spiegelung; Anfrage-Standard 10 Grad, Python-Default 0), zentriert über Tag + den tagnahen Stücken beider
-Kanten (Standard je 10 cm), Abstand so, dass alles mit 10 % Rand ins Bild passt
-(0,25–0,60 m). Die Steuerung rechnet
+`plan_reference_view` computes the camera pose **in the tag frame** (`T_tag_cam`): frontal (tilt angle against mirror solution; request default 10 degrees, Python default 0), centred over the tag + the pieces near the tag of both edges (default 10 cm each), distance such that everything fits into the image with 10 % border (0.25–0.60 m). The control computes
 
-`Flanschziel = T_base_tag (aus MeasureTags/Layer 2) · T_tag_cam · inv(T_flansch_cam)`,
+`flange target = T_base_tag (from MeasureTags/layer 2) · T_tag_cam · inv(T_flange_cam)`,
 
-fährt hin und ruft die Messung auf. Passt nicht alles in ein Bild → `fits: false`, `uncovered` nennt die fehlenden Kanten. Ohne sie
-fehlt dann in der Messung die Kante (`NOT_VISIBLE`); v1 ist das eine Teilkorrektur.
+drives there and calls the measurement. If not everything fits into one image → `fits: false`, `uncovered` names the missing edges. Without them the measurement lacks that edge (`NOT_VISIBLE`); v1 is then a partial correction.
 
-### Verifikation
+### Verification
 
-- `PYTHONPATH=src python3 -m unittest discover -s tests -t .` (mit der Umgebung, in der
-  cv2 installiert ist): alle alten und neuen Tests grün.
-- Synthetisch (`reference_edges`): Startfehler 1 cm / 2° → Ergebnis < 0,5 mm / < 0,2°;
-  Nut-Doppelkante → `ambiguous` oder richtige Kante; eine Kante → `partial`; Kante außerhalb
-  → `NOT_VISIBLE`; Ansichtsplanung: projizierte Tag-Ecken und Kantenstücke liegen im Bild.
-- OPC UA (`tagreference`): Fake-Kamera mit synthetischem Bild, Aufruf über asyncua-Client,
-  Ergebnis-JSON geprüft.
-- Am Pi (später, Nutzer): Tag mit Zollstock-Referenz, Ziel < 1–2 mm / < 0,5°. Ergebnis in
-  `doc/projektdoku/` festhalten.
+- `PYTHONPATH=src python3 -m unittest discover -s tests -t .` (in the environment where cv2 is installed): all old and new tests green.
+- Synthetic (`reference_edges`): start error 1 cm / 2° → result < 0.5 mm / < 0.2°; groove double edge → `ambiguous` or correct edge; one edge → `partial`; edge outside → `NOT_VISIBLE`; view planning: projected tag corners and edge pieces lie in the image.
+- OPC UA (`tagreference`): fake camera with synthetic image, call via asyncua client, result JSON checked.
+- On the Pi (later, user): tag with folding-rule reference, target < 1–2 mm / < 0.5°. Record the result in `doc/projektdoku/`.
 
-## Messwerte (synthetisch)
+## Measurements (synthetic)
 
-Synthetische Szenen aus `tools/make_synthetic_scene.py` (`render_reference_scene`), Startfehler
-1 cm / 2°. „Detektor-Pose“ heißt: Tag-Pose aus der AprilTag-Erkennung statt der echten Pose.
-Fehler = Abweichung von der bekannten Wahrheit. **Nicht am Pi gemessen** (das steht noch aus).
+Synthetic scenes from `tools/make_synthetic_scene.py` (`render_reference_scene`), start error 1 cm / 2°. "Detector pose" means: tag pose from the AprilTag detection instead of the true pose. Error = deviation from the known truth. **Not measured on the Pi** (that is still outstanding).
 
-**S1, Einzelbild, 1600 × 1200, f = 1600, Tag 80 mm:**
+**S1, single image, 1600 × 1200, f = 1600, tag 80 mm:**
 
-| Fall | Positionsfehler | Drehfehler |
+| Case | Position error | Rotation error |
 | --- | --- | --- |
-| Echte Pose, frontal | 0,024 mm | 0,014° |
-| Detektor-Pose, 15° gekippt | 0,27–0,28 mm | 0,045° |
-| Detektor-Pose, frontal | 0,24 mm | 0,013° |
-| Verzeichnung k1 = −0,12 | 0,034 mm | – |
-| Fisheye-Verzeichnung | 0,029 mm | – |
-| Unschärfe 3 px + Rauschen σ = 6 | 0,015 mm | – |
-| Kante 3 cm unter der Tag-Ebene, echte Pose | 0,010 mm | – |
-| Kante 3 cm unter der Tag-Ebene, Detektor-Pose, Kippung 5–20° | 0,05–0,21 mm | – |
+| True pose, frontal | 0.024 mm | 0.014° |
+| Detector pose, tilted 15° | 0.27–0.28 mm | 0.045° |
+| Detector pose, frontal | 0.24 mm | 0.013° |
+| Distortion k1 = −0.12 | 0.034 mm | – |
+| Fisheye distortion | 0.029 mm | – |
+| Blur 3 px + noise σ = 6 | 0.015 mm | – |
+| Edge 3 cm below the tag plane, true pose | 0.010 mm | – |
+| Edge 3 cm below the tag plane, detector pose, tilt 5–20° | 0.05–0.21 mm | – |
 
-**S2, Messung durch `measure_tag_reference`, 640 × 480, f = 600, 3 Bilder:**
+**S2, measurement by `measure_tag_reference`, 640 × 480, f = 600, 3 images:**
 
-| Ansicht | Positionsfehler | Drehfehler |
+| View | Position error | Rotation error |
 | --- | --- | --- |
-| Kippung 10°, Abstand 0,296 m | 0,63 mm | 0,07° |
-| Kippung 15°, Abstand 0,298 m | 0,23 mm | 0,10° |
-| Kippung 10°, Abstand 0,35 m | 0,25 mm | 0,11° |
+| Tilt 10°, distance 0.296 m | 0.63 mm | 0.07° |
+| Tilt 15°, distance 0.298 m | 0.23 mm | 0.10° |
+| Tilt 10°, distance 0.35 m | 0.25 mm | 0.11° |
 
-**Grenzen:**
+**Limits:**
 
-- Frontale Sicht auf einen erhöhten Tag liefert die Spiegellösung der Tag-Pose (13°). Daher
-  Standard-Kippung 10°.
-- Nut mit gleicher Polarität wie die Kante: `ambiguous` → Teilkorrektur (`partial`).
-- Fast unsichtbare Nut (< 8 Graustufen Kontrast): es wird still die innere Kante gemessen,
-  Fehler 5 mm. Physikalisch nicht erkennbar.
-- Falsche Tag-Größe: alle Kanten `NO_EDGE`.
+- A frontal view of a raised tag yields the mirror solution of the tag pose (13°). Hence the default tilt of 10°.
+- Groove with the same polarity as the edge: `ambiguous` → partial correction (`partial`).
+- Almost invisible groove (< 8 grey levels contrast): the inner edge is measured silently, error 5 mm. Physically not detectable.
+- Wrong tag size: all edges `NO_EDGE`.
 
-## Frontend (webskillcomposition, Branch `tag-einmessen`)
+## Frontend (webskillcomposition, branch `tag-einmessen`)
 
-Die Steuerung läuft im Frontend (`webskillcomposition`) gegen die Schnittstellen oben. Pfade
-der Dateien: unten im Abschnitt „Dateien“.
+The control runs in the frontend (`webskillcomposition`) against the interfaces above. Paths of the files: see section "Files" below.
 
-### Ablauf (Stand Code)
+### Procedure (as of code)
 
-1. **Modulkatalog:** „Place on model“ speichert die echten 3D-Bezugskanten in `placement.lines`
-   (corner: beide Eckkanten A und B; edges: die zwei gewählten Kanten). Ausstehend sind Tags ohne
-   `measurement` (`pendingTags`), ohne Welt-Tags; der Lauf nimmt nur Tags von Modulen, die in der
-   Zelle platziert sind (`TagReferencePanel`).
-2. **Layer 1** (Deckenkamera) platziert die Module grob. Daraus die Grob-Tagpose `coarseTagInBase`
-   (`approachTags`).
-3. **Je Tag** (`measureTagReferences` in `model/tagReferenceRun.ts`, ein Roboterzug nach dem
-   anderen; gefahren wird nichts, das die IK nicht erreicht oder das Wagen oder Boden berührt):
-   a. **Anfahrt:** Gibt es einen Anfahrtswinkel (`approach`, aus `planApproach` auf den Grobwert),
-      fährt der Roboter zuerst dorthin. Sonst startet das Zentrieren dort, wo er steht.
-   b. **Zentrieren:** `centreOnTag` mit MeasureTags, Standoff 0,35 m, Startpunkt ist der
-      Layer-1-Grobwert; sucht bei Bedarf, wenn der Tag nicht im Bild ist. Ergebnis ist `tagInBase`.
-   c. **Orientierung:** Ist die Tag-Pose beim Zentrieren mehrdeutig (`ambiguous`, bei ca. 35 cm oft
-      gespiegelt), wird nur die gemessene Position übernommen; die Orientierung bleibt die aus Layer 1.
-   d. **Ansicht planen:** `PlanTagReferenceView` mit allen Kanten des Tags. Bei `fits: false` werden
-      die Kanten aus `uncovered` weggelassen und mit den übrigen neu geplant (Warnung). Bleibt keine
-      Kante übrig, schlägt der Tag fehl. Ein `error` oder fehlende Kamerapose ebenso.
-   e. **Erreichbarkeit und Weg:** Flanschziel `flangeForView(tagInBase, camInTag, flangeToCamera)`,
-      Gelenkwinkel per `planMove`. Nicht konvergent: Tag fehlgeschlagen. Ein Ziel, das Wagen oder
-      Boden berührt, wird nicht gefahren. Ist der direkte Weg blockiert, fährt er über die
-      Startstellung; blockiert schon der Weg dorthin, schlägt der Schritt fehl.
-   f. **Messen:** `MeasureTagReference` mit `moduleTagGuess` und den Kanten aus (d). Timeout 60 s.
-   g. **Übernahme:** nur wenn `error` leer ist, die Intrinsik nicht `placeholder` und `dofs` nicht
-      `none`. Dann `onMeasured` (`keep` im Panel): `applyTagMeasurement` schreibt in den Katalog;
-      wurde zwischenzeitlich gespeichert, wird einmal auf den neueren Stand aufgesetzt. Scheitert das
-      Speichern, bleibt der Tag ausstehend.
+1. **Module catalog:** "Place on model" saves the real 3D reference edges in `placement.lines` (corner: both corner edges A and B; edges: the two selected edges). Pending are tags without `measurement` (`pendingTags`), without world tags; the run takes only tags of modules that are placed in the cell (`TagReferencePanel`).
+2. **Layer 1** (ceiling camera) places the modules roughly. From this the coarse tag pose `coarseTagInBase` (`approachTags`).
+3. **Per tag** (`measureTagReferences` in `model/tagReferenceRun.ts`, one robot move after another; nothing is driven that the IK does not reach or that touches the cart or floor):
+   a. **Approach:** if there is an approach angle (`approach`, from `planApproach` to the coarse value), the robot first drives there. Otherwise centring starts where it stands.
+   b. **Centring:** `centreOnTag` with MeasureTags, standoff 0.35 m, start point is the layer-1 coarse value; searches if needed when the tag is not in the image. Result is `tagInBase`.
+   c. **Orientation:** if the tag pose during centring is ambiguous (`ambiguous`, often mirrored at about 35 cm), only the measured position is taken over; the orientation stays the one from layer 1.
+   d. **Plan view:** `PlanTagReferenceView` with all edges of the tag. For `fits: false` the edges from `uncovered` are omitted and re-planned with the rest (warning). If no edge remains, the tag fails. An `error` or missing camera pose likewise.
+   e. **Reachability and path:** flange target `flangeForView(tagInBase, camInTag, flangeToCamera)`, joint angles via `planMove`. Not convergent: tag failed. A target that touches cart or floor is not driven. If the direct path is blocked, it goes via the start pose; if the path there is already blocked, the step fails.
+   f. **Measure:** `MeasureTagReference` with `moduleTagGuess` and the edges from (d). Timeout 60 s.
+   g. **Takeover:** only if `error` is empty, the intrinsics are not `placeholder` and `dofs` is not `none`. Then `onMeasured` (`keep` in the panel): `applyTagMeasurement` writes into the catalog; if it was saved in the meantime, it is re-applied once onto the newer state. If saving fails, the tag remains pending.
 
-   Fehler in a bis g beenden den Lauf nicht: der Tag bekommt seinen Grund, der nächste folgt. Ein
-   Halt (`stopped`) setzt die restlichen Tags auf `skipped`.
-4. **Ende:** Ohne Halt fährt der Roboter zurück in die Startstellung (`returnNote`); bei einem Halt
-   bleibt er stehen. Danach Layer 1 neu scannen, damit die Modulposen den neuen Tag-Wert nutzen
-   (Hinweis im Panel).
+   Errors in a to g do not end the run: the tag gets its reason, the next one follows. A stop (`stopped`) sets the remaining tags to `skipped`.
+4. **End:** without a stop the robot drives back to the start pose (`returnNote`); on a stop it stays where it is. Afterwards re-scan layer 1 so that the module poses use the new tag value (hint in the panel).
 
-### Einmal-Regel
+### Once-only rule
 
-Vorgabe des Nutzers vom 20.10.2026: Jeder Tag wird nur einmal eingemessen, und zwar dann, wenn
-sein Modul im Modulkatalog neu angelegt oder bearbeitet wurde.
+Requirement of the user dated 20.10.2026: every tag is surveyed only once, namely when its module was newly created or edited in the module catalog.
 
-- `ModuleTag.measurement` fehlt = ausstehend.
-- Speichern aus dem Editor verwirft `measurement` bei Tags, die neu sind oder deren `tagId`,
-  `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert haben. Unverändertes
-  Speichern behält sie.
-- Import und Laden lassen `measurement` unverändert.
-- Eingemessen werden nur ausstehende Tags von Modulen, die in der Zelle platziert sind.
-- Der Start erfolgt nur per Klick (Roboterbewegung).
+- `ModuleTag.measurement` missing = pending.
+- Saving from the editor discards `measurement` for tags that are new or whose `tagId`, `sizeM`, `position`, `rotationDeg` or `placement` have changed. Unchanged saving keeps it.
+- Import and loading leave `measurement` unchanged.
+- Only pending tags of modules placed in the cell are surveyed.
+- The start happens only by click (robot movement).
 
-### Datenformat
+### Data format
 
 ```ts
-interface TagReferenceLine { id: string; start: Vec3; end: Vec3 }   // Modul-KS, m, nicht projiziert
+interface TagReferenceLine { id: string; start: Vec3; end: Vec3 }   // module frame, m, not projected
 TagPlacement.lines?: TagReferenceLine[]
 interface TagCameraMeasurement { method: "camera-edges"; measuredAt: string; dofs: "full" | "partial";
   guess: { position: Vec3; rotationDeg: Vec3 }; deltaMm: [number, number]; deltaRotDeg: number;
@@ -399,282 +305,259 @@ interface TagCameraMeasurement { method: "camera-edges"; measuredAt: string; dof
 ModuleTag.measurement?: TagCameraMeasurement
 ```
 
-`placement` bleibt nach der Messung als Protokoll des Startwerts erhalten.
+`placement` stays after the measurement as the record of the start value.
 
-### Alte Platzierungen ohne `lines`
+### Old placements without `lines`
 
-Die Kanten werden aus `edgeA`/`edgeB` abgeleitet: Länge 0,15 m; bei corner wird die zweite Kante
-entlang `inward` gelegt (90°-Annahme). Solche Platzierungen zeigt die Oberfläche mit dem Hinweis
-„Kanten geschätzt“.
+The edges are derived from `edgeA`/`edgeB`: length 0.15 m; for corner the second edge is laid along `inward` (90° assumption). Such placements are shown by the surface with the note "Kanten geschätzt" ("edges estimated").
 
-### Dateien
+### Files
 
-Pfade relativ zu `frontend/src/features/cell-modules/`, außer `piServers.ts`
-(`frontend/src/features/opcua-server/config/`):
+Paths relative to `frontend/src/features/cell-modules/`, except `piServers.ts` (`frontend/src/features/opcua-server/config/`):
 
-- `config/moduleCatalog.ts`: Typen `TagReferenceLine`, `TagCameraMeasurement`, `lines`, `measurement`
+- `config/moduleCatalog.ts`: types `TagReferenceLine`, `TagCameraMeasurement`, `lines`, `measurement`
 - `model/catalogStore.ts`
 - `model/tagPlacement.ts`
-- `model/tagMeasurementState.ts` (neu): Einmal-Regel
+- `model/tagMeasurementState.ts` (new): once-only rule
 - `components/ModuleCatalogModal.tsx`
 - `opcua-server/config/piServers.ts`: `TagReferenceBinding`
-- `model/tagReferenceCall.ts` (neu)
-- `model/tagReferenceRun.ts` (neu)
-- `components/TagReferencePanel.tsx` (neu), `components/TagReferenceWindow.tsx` (neu, Fenster aus den Settings)
+- `model/tagReferenceCall.ts` (new)
+- `model/tagReferenceRun.ts` (new)
+- `components/TagReferencePanel.tsx` (new), `components/TagReferenceWindow.tsx` (new, window from the settings)
 
-**Signaturen (Stand Umsetzung):**
+**Signatures (as of implementation):**
 
 `model/tagMeasurementState.ts`
-- `DERIVED_LINE_LENGTH_M = 0.15`: Länge der aus `edgeA`/`edgeB` abgeleiteten Kanten.
+- `DERIVED_LINE_LENGTH_M = 0.15`: length of the edges derived from `edgeA`/`edgeB`.
 - `interface PendingTag { moduleId: string; tag: ModuleTag }`
-- `pendingTags(catalog: CellModuleDefinition[]): PendingTag[]`: Tags ohne `measurement`, ohne Welt-Tags.
+- `pendingTags(catalog: CellModuleDefinition[]): PendingTag[]`: tags without `measurement`, without world tags.
 - `referenceLinesOf(tag: ModuleTag): { lines: TagReferenceLine[]; derived: boolean } | null`:
-  `placement.lines`, sonst abgeleitet (`derived: true`); `null` ohne `placement`.
-- `applyTagMeasurement(catalog, moduleId, tagId, measured): CellModuleDefinition[]`: setzt
-  `position`/`rotationDeg` auf die Messung, `measurement.guess` auf den bisherigen Wert.
-  Wirft `Error` bei unbekanntem Modul oder Tag.
-- `invalidateChangedMeasurements(previous, next, current?): CellModuleDefinition`: neue Tags und Tags,
-  deren `sizeM`, `position`, `rotationDeg` oder `placement` sich geändert hat, verlieren `measurement`.
-  Unveränderte Tags übernehmen den Stand aus `current` (inkl. einer zwischenzeitlichen Messung); fehlt
-  der Tag dort, verliert er `measurement`. Ohne Änderung kommt `next` selbst zurück.
-- `describeTagMeasurement(tag: ModuleTag): string`: Text für die Tag-Zeile im Editor.
+  `placement.lines`, otherwise derived (`derived: true`); `null` without `placement`.
+- `applyTagMeasurement(catalog, moduleId, tagId, measured): CellModuleDefinition[]`: sets
+  `position`/`rotationDeg` to the measurement, `measurement.guess` to the previous value.
+  Throws `Error` for unknown module or tag.
+- `invalidateChangedMeasurements(previous, next, current?): CellModuleDefinition`: new tags and tags
+  whose `sizeM`, `position`, `rotationDeg` or `placement` has changed lose `measurement`. Unchanged tags take the state from `current` (incl. an interim measurement); if the
+  tag is missing there, it loses `measurement`. Without change `next` itself is returned.
+- `describeTagMeasurement(tag: ModuleTag): string`: text for the tag line in the editor.
 
 `model/tagReferenceCall.ts`
 - `TAG_REFERENCE_REQUEST_SCHEMA`, `TAG_REFERENCE_RESULT_SCHEMA`, `TAG_REFERENCE_VIEW_SCHEMA`:
   `wsc.vision.tagreference.request/1`, `…result/1`, `…view/1`.
 - `interface TagReferenceRequest { tagId; tagSizeM; moduleTagGuess: { position; rotationDeg }; lines: TagReferenceLine[]; searchBandM?; frames?; view?: { lineExtentM?; tiltDeg? } }`
-- `tagReferenceRequestJson(request): string`: wandelt `rotationDeg` in ein Quaternion (`quaternionFromRpyDeg`).
+- `tagReferenceRequestJson(request): string`: converts `rotationDeg` into a quaternion (`quaternionFromRpyDeg`).
 - `parseTagReferenceResult(raw: unknown): TagReferenceResult | null`, `parseTagReferenceView(raw: unknown): TagReferenceView | null`:
-  `null` bei nicht lesbarer Antwort.
-- `measureTagReference(controller, serverUrl, nodeId, requestJson, opts?): Promise<MeasureReferenceOutcome>`: Timeout 60 s.
-- `planTagReferenceView(controller, serverUrl, nodeId, requestJson, opts?): Promise<PlanViewOutcome>`: Timeout 15 s.
-- `opts` = `{ sleep?, timeoutMs? }` (für Tests).
+  `null` for an unreadable response.
+- `measureTagReference(controller, serverUrl, nodeId, requestJson, opts?): Promise<MeasureReferenceOutcome>`: timeout 60 s.
+- `planTagReferenceView(controller, serverUrl, nodeId, requestJson, opts?): Promise<PlanViewOutcome>`: timeout 15 s.
+- `opts` = `{ sleep?, timeoutMs? }` (for tests).
 - `TagReferenceOutcome<Answer> = { status: "measured" | "planned"; result: Answer } | { status: "failed"; reason: string }`;
-  `MeasureReferenceOutcome` und `PlanViewOutcome` darauf aufgesetzt.
+  `MeasureReferenceOutcome` and `PlanViewOutcome` built on top of it.
 
 `model/tagReferenceRun.ts`
 - `DEFAULT_CENTRING_STANDOFF_M = 0.35`
 - `interface TagReferenceJob { moduleId; moduleName; tagId; tagSizeM; moduleTagGuess; lines; coarseTagInBase: Pose }`
-- `TagReferenceJobResult`: `measured` (mit `result`), `failed` (mit `reason`, optional `result`), `skipped` (mit `reason`); jeweils mit `warnings`.
+- `TagReferenceJobResult`: `measured` (with `result`), `failed` (with `reason`, optional `result`), `skipped` (with `reason`); each with `warnings`.
 - `measureTagReferences(options: TagReferenceRunOptions): Promise<TagReferenceRunOutcome>` → `{ results, halted, returnNote }`.
-  Wirft nicht; Fehler stehen je Tag im Ergebnis. Optionen: `jobs`, `deps`, `flangeToCamera`, `measureTags`,
+  Does not throw; errors are in the result per tag. Options: `jobs`, `deps`, `flangeToCamera`, `measureTags`,
   `planView`, `measureReference`, optional `approach`, `clearance`, `stopped`, `standoffM`, `onProgress`, `onMeasured`.
 - `flangeForView(tagInBase: Pose, camInTag: Pose, flangeToCamera: Pose): Pose`
 
-`config/moduleCatalog.ts`: Typen `TagReferenceLine`, `TagCameraMeasurement`, `TagPlacement.lines?`, `ModuleTag.measurement?`.
+`config/moduleCatalog.ts`: types `TagReferenceLine`, `TagCameraMeasurement`, `TagPlacement.lines?`, `ModuleTag.measurement?`.
 
 `opcua-server/config/piServers.ts`
-- `interface TagReferenceBinding { measureNodeId; planViewNodeId; lastNodeId }`, im Hand-Pi-Profil als `tagReference`.
-  Leere NodeIds heißen: die Methode fehlt auf dem Pi.
+- `interface TagReferenceBinding { measureNodeId; planViewNodeId; lastNodeId }`, in the hand-Pi profile as `tagReference`.
+  Empty NodeIds mean: the method is missing on the Pi.
 
-`components/TagReferencePanel.tsx`: Default-Export `TagReferencePanel({ sceneState })`, im Fenster
-`components/TagReferenceWindow.tsx` („Tags einmessen · Hand-Kamera“). Geöffnet wird es in den Settings unter
-„Zellüberwachung“ mit dem Button **„Tags einmessen“** neben „Modulkatalog“ (`viewport/components/ViewportHeaderControls.tsx`).
-Offen/zu steht in `model/autolocateUi.ts` (`tagReferenceOpen`, `openTagReference()`, `closeTagReference()`, nicht über
-einen Reload gehalten). Solange das Fenster offen ist, zeigt die Layer-2-Zeile im Autolocate-Bereich statt der
-Annäherung nur einen Hinweis — beide Panels übernehmen den Roboter (`useRobotHold`).
+`components/TagReferencePanel.tsx`: default export `TagReferencePanel({ sceneState })`, in the window
+`components/TagReferenceWindow.tsx` ("Tags einmessen · Hand-Kamera" ("Survey tags · hand camera")). It is opened in the settings under
+"Zellüberwachung" ("Cell monitoring") with the button **"Tags einmessen"** ("Survey tags") next to "Modulkatalog" ("Module catalog") (`viewport/components/ViewportHeaderControls.tsx`).
+Open/closed state is in `model/autolocateUi.ts` (`tagReferenceOpen`, `openTagReference()`, `closeTagReference()`, not kept across a reload). While the window is open, the layer-2 row in the autolocate area shows only a hint instead of the approach; both panels take over the robot (`useRobotHold`).
 
-## Aufteilung
+## Division of work
 
-Alle Agenten dieses Repos arbeiten im selben Worktree (Basis aktueller `apriltag`-Stand,
-Branch `tag-einmessen`), jeweils nur auf ihren Dateien. Die Frontend-Agenten (S3, S4, H2 im
-Doku-Teil) arbeiten im Worktree von `webskillcomposition` auf Branch `tag-einmessen`. Die Koordination prüft jeden Diff, lässt die Tests laufen
-und committet (`docs:` / `feat(apriltag):`), **nicht pushen**.
+All agents of this repo work in the same worktree (base: current `apriltag` state,
+branch `tag-einmessen`), each only on their own files. The frontend agents (S3, S4, H2 in the
+docs part) work in the worktree of `webskillcomposition` on branch `tag-einmessen`. The coordination checks each diff, runs the tests
+and commits (`docs:` / `feat(apriltag):`), **do not push**.
 
-| # | Agent | Aufgabe | Dateien | Wann |
+| # | Agent | Task | Files | When |
 | --- | --- | --- | --- | --- |
-| H1 | Haiku | Arbeitsplan (dieser Plan, Schnittstellen 1:1), Zeile in `arbeitsplaene/README.md`, Nachtrag in `modell-flaechen-tag-platzierung.md` mit Link; verworfene Mesh-Variante unter „Verworfen“ | nur `doc/projektdoku/…` | sofort, parallel zu S1 |
-| S1 | Sonnet | `src/tagloc/reference_edges.py` (Rechnung 2–7, Ansichtsplanung, RPY), synthetischer Renderer `render_reference_scene` in `tools/make_synthetic_scene.py` (Tag auf heller Fläche mit Kanten, optional Nut-Doppelkante, Rauschen, Unschärfe), `tests/test_reference_edges.py` | genannte | sofort |
-| S2 | Sonnet | `src/vision_server/tagreference.py` (parse/build wie `measuretag.py`), `measure_tag_reference` in `detection/apriltag.py`, `_install_tag_reference` in `runner.py`, Knoten in `address_space.py`, BUSY-Sperre, `tests/test_tagreference.py` inkl. OPC-UA-Methodentest | genannte | nach S1 |
-| S3 | Sonnet | Katalogseite: `ModuleTag.measurement` und `placement.lines` in `config/moduleCatalog.ts`, `model/catalogStore.ts`, `model/tagPlacement.ts`, `model/tagMeasurementState.ts` (neu), `components/ModuleCatalogModal.tsx`; Einmal-Regel; Ableitung alter Platzierungen | webskillcomposition: genannte | parallel zu S1/S2, gegen die Schnittstelle dieses Plans |
-| S4 | Sonnet | Aufrufe und Ablauf: `opcua-server/config/piServers.ts` (`TagReferenceBinding`), `model/tagReferenceCall.ts` (neu), `model/tagReferenceRun.ts` (neu), `components/TagReferencePanel.tsx` (neu, Layer-2-Fenster) | webskillcomposition: genannte | nach S3 |
-| H2 | Haiku | Plan auf `fertig`, tatsächliche Schnittstellen aus den Berichten von S1/S2 nachtragen, neuer Abschnitt in `vision-server-interface.md`, eigener Abschnitt „Tag-Position mit der Kamera einmessen“ in `apriltag-referenz.md` (dabei auch das `placement`-Format, offener Punkt aus dem Flächen-Plan), README-Zeile; zusätzlich Doku zum Frontend-Teil (Abschnitt „Frontend“ dieses Plans, Stand nach S3/S4) | nur Doku | nach S2 bzw. nach S3/S4 |
-| H3 | Haiku | Nachtrag „Roboter-Variante“ in diesem Plan (Abschnitt „Nachtrag 20.10.2026“, Kopf, Aufteilung, Punkt „Nach Abschluss“), Index-Zeile | nur `doc/projektdoku/…` | sofort (20.10.2026) |
-| S5 | Sonnet | Roboter-Variante im Frontend: `model/robotTagRun.ts` (neu, rein), `TagCameraMeasurement` um `method: "robot-fk"` und die optionalen Felder in `config/moduleCatalog.ts`, `parseMeasurement` in `model/catalogStore.ts`, `applyTagMeasurement`/`describeTagMeasurement` in `model/tagMeasurementState.ts`, Block „Roboter-Tags (über Gelenkwinkel)“ in `components/TagReferencePanel.tsx` | webskillcomposition: genannte | nach S4 (Panel), gegen die Schnittstelle des Nachtrags |
+| H1 | Haiku | Work plan (this plan, interfaces 1:1), row in `arbeitsplaene/README.md`, addendum in `modell-flaechen-tag-platzierung.md` with link; discarded mesh variant under "Discarded" | only `doc/projektdoku/…` | immediately, in parallel with S1 |
+| S1 | Sonnet | `src/tagloc/reference_edges.py` (calculation 2–7, view planning, RPY), synthetic renderer `render_reference_scene` in `tools/make_synthetic_scene.py` (tag on bright surface with edges, optional groove double edge, noise, blur), `tests/test_reference_edges.py` | as named | immediately |
+| S2 | Sonnet | `src/vision_server/tagreference.py` (parse/build like `measuretag.py`), `measure_tag_reference` in `detection/apriltag.py`, `_install_tag_reference` in `runner.py`, nodes in `address_space.py`, BUSY lock, `tests/test_tagreference.py` incl. OPC UA method test | as named | after S1 |
+| S3 | Sonnet | Catalog page: `ModuleTag.measurement` and `placement.lines` in `config/moduleCatalog.ts`, `model/catalogStore.ts`, `model/tagPlacement.ts`, `model/tagMeasurementState.ts` (new), `components/ModuleCatalogModal.tsx`; once-only rule; derivation of old placements | webskillcomposition: as named | in parallel with S1/S2, against the interface of this plan |
+| S4 | Sonnet | Calls and procedure: `opcua-server/config/piServers.ts` (`TagReferenceBinding`), `model/tagReferenceCall.ts` (new), `model/tagReferenceRun.ts` (new), `components/TagReferencePanel.tsx` (new, layer-2 window) | webskillcomposition: as named | after S3 |
+| H2 | Haiku | Set plan to `done`, add the actual interfaces from the reports of S1/S2, new section in `vision-server-interface.md`, own section "Survey tag position with the camera" in `apriltag-referenz.md` (including the `placement` format, open point from the surface plan), README row; additionally docs on the frontend part (section "Frontend" of this plan, state after S3/S4) | docs only | after S2 resp. after S3/S4 |
+| H3 | Haiku | Addendum "robot variant" in this plan (section "Addendum 20.10.2026", header, division of work, point "After completion"), index row | only `doc/projektdoku/…` | immediately (20.10.2026) |
+| S5 | Sonnet | Robot variant in the frontend: `model/robotTagRun.ts` (new, pure), `TagCameraMeasurement` extended by `method: "robot-fk"` and the optional fields in `config/moduleCatalog.ts`, `parseMeasurement` in `model/catalogStore.ts`, `applyTagMeasurement`/`describeTagMeasurement` in `model/tagMeasurementState.ts`, block "Roboter-Tags (über Gelenkwinkel)" ("Robot tags (via joint angles)") in `components/TagReferencePanel.tsx` | webskillcomposition: as named | after S4 (panel), against the interface of the addendum |
 
-## Verworfen: Tiefen-ICP gegen das ganze Mesh
+## Discarded: depth ICP against the whole mesh
 
-Der erste Ansatz war, die Tiefendaten der Kamera gegen das gesamte 3D-Modell eines Moduls
-abzugleichen (ICP). Er ist **verworfen**, Entscheidung des Nutzers vom 20.10.2026:
+The first approach was to match the depth data of the camera against the entire 3D model
+of a module (ICP). It is **discarded**, decision of the user dated 20.10.2026:
 
-- Die Module ändern sich ständig (Aufbauten kommen und gehen). Ein Abgleich gegen das
-  ganze Modell misst dann gegen Geometrie, die gar nicht mehr da ist.
-- Die Modelle werden nicht gepflegt. Sie können veraltet sein, ohne dass es auffällt.
-- Die Bezugskanten sind dagegen langlebige physische Kanten. Nur sie werden gemessen.
+- The modules change constantly (set-ups come and go). A match against the whole model then measures against geometry that is no longer there at all.
+- The models are not maintained. They may be outdated without anyone noticing.
+- The reference edges, by contrast, are long-lived physical edges. Only they are measured.
 
-## Offene Fragen / Risiken
+## Open questions / risks
 
-- **Höhe der Kante:** Die Höhe `h` kommt aus dem Startwert. Ein Fehler in `h` verschiebt die
-  Messung seitlich um `Δh · tan(Sehwinkel)`. Deshalb frontal messen und die Kante möglichst
-  nahe an der Bildmitte halten. Später optional die Tiefe der RealSense nutzen.
-- **Kontrastarme Kanten** (Alu auf Alu): Ausleuchtung und Belichtung über die vorhandenen
-  Kamera-Controls.
-- **Kanten, die nicht in ein Bild mit dem Tag passen:** v1 nicht unterstützt (nur
-  Teilkorrektur), später Verkettung über die Vorwärtskinematik.
-- **Frontend-Teil** (Ansicht anfahren, Ergebnis in den Katalog schreiben): Umsetzung im Branch
-  `tag-einmessen` von `webskillcomposition`, Beschreibung im Abschnitt „Frontend“.
-- **Echte 3D-Kanten** (im Branch umgesetzt, siehe Abschnitt „Frontend“): Das Frontend schickt die
-  `EdgeLine`s als echte 3D-Kanten in `placement.lines`, nicht die auf die Fläche projizierten
-  Kanten aus `placement.edges`.
-- **Hardwaretests stehen aus** (Stand 20.10.2026 nicht am Roboter gelaufen):
-  - Kamerakonvention gegen `flangeToCamera` am echten Roboter prüfen (Tag-Pose und Flanschziel müssen zusammenpassen).
-  - `centreOnTag` bei seitlich liegenden Tags.
-  - Die Basis-Korrektur über Welt-Tag-Anker (`apriltag-welttag-konzept.md`) wird im Panel nicht genutzt.
-  - Der Konflikt-Neuversuch beim Katalog-Speichern (`keep`) ist nur per Code geprüft.
-  - Die Statuszeile im Editor zeigt während einer laufenden Messung bis zum Speichern den alten Stand.
-- **Roboter-Variante (an Hardware nicht getestet):**
-  - Fehler aus Hand-Auge-Kalibrierung und Gelenkwinkeln ist nicht gemessen (erwartet ~1–2 mm).
-  - Die Streuungsschwellen 3 mm und 1° sind Annahmen.
-  - ±12° bei 0,35 m ist ungetestet; ob die Schrägansicht `frameCount` ≥ 2 erreicht, ist offen.
-  - Seitlich am Fuß liegende Tags sind evtl. unerreichbar und bleiben dann ausstehend.
-  - Die Wagen-Bounds im Katalog müssen den Footprint beschreiben. Der Demo1-Default
-    `boundsFromSize([0.3,0.3,0.3])` ist ein Platzhalter.
-  - Gelenkpunkte nahe der Basis unter 0,05 m im Footprint würden jede Stellung blockieren. Das ist eine
-    bestehende Eigenschaft der Clearance-Prüfung, nicht durch diese Umsetzung eingeführt.
+- **Height of the edge:** the height `h` comes from the start value. An error in `h` shifts the measurement sideways by `Δh · tan(viewing angle)`. Therefore measure frontally and keep the edge as close as possible to the image centre. Later optionally use the depth of the RealSense.
+- **Low-contrast edges** (aluminium on aluminium): lighting and exposure via the existing camera controls.
+- **Edges that do not fit into one image with the tag:** not supported in v1 (only partial correction), later chaining via forward kinematics.
+- **Frontend part** (drive to view, write result into the catalog): implemented in branch
+  `tag-einmessen` of `webskillcomposition`, described in section "Frontend".
+- **Real 3D edges** (implemented in the branch, see section "Frontend"): the frontend sends the
+  `EdgeLine`s as real 3D edges in `placement.lines`, not the edges projected onto the face from `placement.edges`.
+- **Hardware tests outstanding** (as of 20.10.2026 not run on the robot):
+  - Check the camera convention against `flangeToCamera` on the real robot (tag pose and flange target must match).
+  - `centreOnTag` for tags lying to the side.
+  - The base correction via world tag anchors (`apriltag-welttag-konzept.md`) is not used in the panel.
+  - The conflict retry when saving the catalog (`keep`) has only been checked by code.
+  - The status line in the editor shows the old state during a running measurement until saving.
+- **Robot variant (not tested on hardware):**
+  - Error from hand-eye calibration and joint angles is not measured (expected ~1–2 mm).
+  - The scatter thresholds 3 mm and 1° are assumptions.
+  - ±12° at 0.35 m is untested; whether the oblique view reaches `frameCount` ≥ 2 is open.
+  - Tags lying to the side at the foot may be unreachable and then remain pending.
+  - The cart bounds in the catalog must describe the footprint. The Demo1 default
+    `boundsFromSize([0.3,0.3,0.3])` is a placeholder.
+  - Joint points near the base below 0.05 m in the footprint would block every pose. This is an
+    existing property of the clearance check, not introduced by this implementation.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Nachtrag 21.10.2026 — Ort der Bedienung:** Der Tab „Tags einmessen“ war in `AutolocateLayer2Window.tsx`
-  eingebaut. Dieses Fenster wird seit `2b56b4f` (20.10.2026) nirgends mehr geöffnet, der Tab war also unerreichbar.
-  Jetzt: eigenes Fenster aus den Settings neben dem Modulkatalog (Wunsch des Nutzers), webskillcomposition
-  `10f73f2`, `d94673a`. Der Tab im toten Fenster ist unverändert geblieben.
+- **Addendum 21.10.2026 — place of operation:** the tab "Tags einmessen" was built into `AutolocateLayer2Window.tsx`.
+  This window has not been opened anywhere since `2b56b4f` (20.10.2026), so the tab was unreachable.
+  Now: own window from the settings next to the module catalog (user request), webskillcomposition
+  `10f73f2`, `d94673a`. The tab in the dead window is unchanged.
 
-Wird während der Umsetzung gefüllt. Weicht die Realität vom Plan ab, wird der Plan
-korrigiert.
+Filled in during implementation. If reality deviates from the plan, the plan is corrected.
 
-Abweichungen, Stand Umsetzung:
+Deviations, as of implementation:
 
-- `LineMeasurement.extent_m: float = 0.0`: Länge des gemessenen Kantenstücks in der Tag-Ebene,
-  gewichtet die Drehung in der Korrektur. Nicht im Ergebnis-JSON.
-- `view.tiltDeg` Standard **10** statt 0 (frontal kippt die Tag-Pose in die Spiegellösung). Der
-  Python-Default von `plan_reference_view` bleibt 0.
-- Grenzen der Anfrage: `searchBandM` 0,003–0,05 m, `frames` 1–10, `lineExtentM` (0, 1] m,
-  `|tiltDeg|` < 80, `lines` 1–4 mit nicht leerer, eindeutiger `id` und ≥ 2 cm. Quaternion wird
-  normiert, Null ist ungültig. Unbekannte Felder werden ignoriert. `tagSizeM`-Vorrang: Anfrage >
-  Tag-Map > `config.tag_size_m`.
-- Ergebnis: zusätzlich `warnings: []` (Platzhalter-Intrinsik, Tag mehrdeutig, `dofs` none/partial,
-  mehrdeutige Kante, Korrektur nahe am Suchband). Fehlerfall: `correction: null`, `lines: []`,
-  `tag: null`. `error` ist bei Mess-Fehlern der nackte Code, bei Ablehnung `"<CODE>: Text"`.
-- `framesUsed` zählt Bilder mit erkanntem Tag. `lines[]` ist je Kante über die Bilder
-  zusammengefasst; `ambiguous` wird true, sobald in irgendeinem Bild mehrdeutig.
-- View: zusätzlich `error` (null bei Erfolg). Ablehnung: `camInTag: null`, `fits: false`,
+- `LineMeasurement.extent_m: float = 0.0`: length of the measured edge piece in the tag plane,
+  weights the rotation in the correction. Not in the result JSON.
+- `view.tiltDeg` default **10** instead of 0 (frontally the tag pose tilts into the mirror solution). The
+  Python default of `plan_reference_view` remains 0.
+- Limits of the request: `searchBandM` 0.003–0.05 m, `frames` 1–10, `lineExtentM` (0, 1] m,
+  `|tiltDeg|` < 80, `lines` 1–4 with non-empty, unique `id` and ≥ 2 cm. Quaternion is
+  normalised, zero is invalid. Unknown fields are ignored. `tagSizeM` precedence: request >
+  tag map > `config.tag_size_m`.
+- Result: additionally `warnings: []` (placeholder intrinsics, tag ambiguous, `dofs` none/partial,
+  ambiguous edge, correction close to the search band). Failure case: `correction: null`, `lines: []`,
+  `tag: null`. `error` is the bare code for measurement errors, `"<CODE>: text"` for rejection.
+- `framesUsed` counts images with a detected tag. `lines[]` is summarised per edge over the images;
+  `ambiguous` becomes true as soon as ambiguous in any image.
+- View: additionally `error` (null on success). Rejection: `camInTag: null`, `fits: false`,
   `uncovered: []`.
-- Mehrdeutige Tag-Pose: Ohne eindeutiges Bild bleibt die Orientierung exakt der Startwert, nur der
-  Tag-Ursprung wandert (`keep_guess_rotation`); `deltaRotDeg` und `spreadDeg` sind dann 0.
-- Error-Codes: `PlanTagReferenceView` hat kein `BUSY` (rechnet nur), braucht aber `Operational`
-  (sonst `INVALID_STATE`). `DETECTION_FAILED` auch bei `ValueError` der Messung (z. B. Bildgröße
-  passt nicht zur Kalibrierung). `MeasureTags` ist jetzt zusätzlich `BUSY`, solange eine
-  Einmessung läuft (**Verhaltensänderung an bestehender Methode**).
-- `LastTagReference` wird nach jeder Messung geschrieben, auch bei `DETECTION_FAILED`, nicht bei
-  Ablehnungen.
-- **Falsch im Plan:** „Danach Tag-Map wie bisher per `SetTagMap`“ und „`tagToModule` in der
-  Tag-Map“. Modul-Tags stehen bewusst nicht in der Tag-Map des Pi (dort nur Welt-Tags). Der Katalog
-  wirkt nur im Frontend.
-- `catalog_rpy_deg` übernommen wie `tagGeometry.ts`: R = Rz · Ry · Rx, Ausgabe `[roll, pitch, yaw]`
-  in Grad; bei pitch ±90° alles in roll, yaw = 0.
-- Doku: H2 um den Frontend-Teil erweitert statt eine zweite H2-Zeile anzulegen; S3 und S4 neu.
-- Frontend: `shiftPlacement`/`rotatePlacement` existieren im Frontend nicht; deshalb wird dort bei
-  einem verschobenen Ursprung oder gedrehter X-Achse kein `placement` angepasst.
-- Frontend: `placementMatches` (`model/tagPlacement.ts`) akzeptiert einen gemessenen Tag, solange
-  `measurement.guess` zum `placement` passt. Sonst gilt der Tag als von Hand überschrieben.
-- Frontend: Mehrdeutige Tag-Pose beim Zentrieren: übernommen wird nur die gemessene Position, die
-  Orientierung bleibt die aus Layer 1 (nicht im Plan festgelegt).
-- Frontend: Bei `fits: false` plant die Steuerung mit den passenden Kanten neu (`planTagReferenceView`
-  ein zweites Mal).
+- Ambiguous tag pose: without an unambiguous image the orientation remains exactly the start value, only the
+  tag origin moves (`keep_guess_rotation`); `deltaRotDeg` and `spreadDeg` are then 0.
+- Error codes: `PlanTagReferenceView` has no `BUSY` (calculates only), but needs `Operational`
+  (otherwise `INVALID_STATE`). `DETECTION_FAILED` also for a `ValueError` of the measurement (e.g. image size does not
+  match the calibration). `MeasureTags` now additionally returns `BUSY` while a survey is running (**behaviour change in an existing method**).
+- `LastTagReference` is written after every measurement, also on `DETECTION_FAILED`, but not on
+  rejections.
+- **Wrong in the plan:** "Afterwards tag map as before via `SetTagMap`" and "`tagToModule` in the
+  tag map". Module tags are deliberately not in the Pi's tag map (there only world tags). The catalog
+  acts only in the frontend.
+- `catalog_rpy_deg` adopted like `tagGeometry.ts`: R = Rz · Ry · Rx, output `[roll, pitch, yaw]`
+  in degrees; at pitch ±90° everything goes into roll, yaw = 0.
+- Docs: H2 extended by the frontend part instead of creating a second H2 line; S3 and S4 new.
+- Frontend: `shiftPlacement`/`rotatePlacement` do not exist in the frontend; therefore there no `placement` is adjusted for a shifted origin or rotated X axis.
+- Frontend: `placementMatches` (`model/tagPlacement.ts`) accepts a measured tag as long as
+  `measurement.guess` matches the `placement`. Otherwise the tag counts as manually overwritten.
+- Frontend: ambiguous tag pose during centring: only the measured position is taken over, the orientation
+  remains the one from layer 1 (not fixed in the plan).
+- Frontend: for `fits: false` the control re-plans with the matching edges (`planTagReferenceView`
+  a second time).
 
-## Umsetzung und Tests
+## Implementation and tests
 
-- Pi (dieses Repo, Branch `tag-einmessen`): 737 Tests grün, davon 62 neu.
-- Frontend (`webskillcomposition`, Branch `tag-einmessen`): 521 Tests grün, davon 78 neu; `tsc` und `vite build` sauber.
-- Commits, dieses Repo: `7c4ea3c`, `8a64a35`, `8c26b7f`, `45317d3`; `webskillcomposition`: `9647295`.
+- Pi (this repo, branch `tag-einmessen`): 737 tests green, of which 62 new.
+- Frontend (`webskillcomposition`, branch `tag-einmessen`): 521 tests green, of which 78 new; `tsc` and `vite build` clean.
+- Commits, this repo: `7c4ea3c`, `8a64a35`, `8c26b7f`, `45317d3`; `webskillcomposition`: `9647295`.
 
-## Nachtrag 20.10.2026: Roboter-Variante (Tags auf dem Roboter selbst)
+## Addendum 20.10.2026: robot variant (tags on the robot itself)
 
-Umsetzung: Agent S5 (Sonnet). Commits: `webskillcomposition` `e82bb61` (Frontend, Branch
-`tag-einmessen`), dieses Repo `15e7bb0` (Doku-Nachtrag). Stand: Frontend 560 Tests grün (39 neu),
-`tsc` und `vite build` sauber. An der Hardware nicht gelaufen.
+Implementation: agent S5 (Sonnet). Commits: `webskillcomposition` `e82bb61` (frontend, branch
+`tag-einmessen`), this repo `15e7bb0` (docs addendum). State: frontend 560 tests green (39 new),
+`tsc` and `vite build` clean. Not run on the hardware.
 
-**Tatsächliche Exporte.** `model/robotTagRun.ts`: `ROBOT_TAG_STANDOFF_M`, `ROBOT_TAG_TILTS`,
+**Actual exports.** `model/robotTagRun.ts`: `ROBOT_TAG_STANDOFF_M`, `ROBOT_TAG_TILTS`,
 `ROBOT_TAG_MIN_VIEWS`, `ROBOT_TAG_MAX_SPREAD_MM` (3), `ROBOT_TAG_MAX_SPREAD_DEG` (1),
 `ROBOT_MODULE_TO_BASE`, `robotTagViews`, `robotTagJob`, `RobotTagJob`, `RobotTagMeasured`,
-`RobotTagRunOptions`, `RobotTagJobResult`, `combineRobotTagViews`, `measureRobotTags`. Neu in
-`model/tagReferenceRun.ts`: `driveClear` (Fahrt mit Clearance und Umweg über die Startstellung, vom
-Modul-Lauf und vom Roboter-Lauf genutzt; Verhalten des Modul-Laufs unverändert).
+`RobotTagRunOptions`, `RobotTagJobResult`, `combineRobotTagViews`, `measureRobotTags`. New in
+`model/tagReferenceRun.ts`: `driveClear` (drive with clearance and detour via the start pose, used by the module run and the robot run; behaviour of the module run unchanged).
 
-**Abweichungen vom Plan (Stand Umsetzung):**
+**Deviations from the plan (as of implementation):**
 
-- `ROBOT_MODULE_TO_BASE = IDENTITY_POSE`: Das Robotermodul-KS ist die Roboterbasis (URDF-Wurzel; die
-  Vorwärtskinematik rechnet im selben Frame; `robotBaseFrom` übernimmt die Modulpose ohne Versatz).
-  Der Job bleibt generisch (`moduleToBase` = T_module_base, `robotTagJob(..., moduleToBase?)`).
-- `measureRobotTags` hat zusätzlich `approach?(job, seed)`. Gibt es einen Anfahrtswinkel, fährt der
-  Roboter zuerst dorthin, wie beim Modul-Lauf; sonst startet das Zentrieren dort, wo er steht.
-  Das Ergebnis trägt `returnNote?`.
-- Ist das Zentrieren mehrdeutig, werden die Ansichten um die gemessene Position mit der
-  Katalog-Orientierung geplant.
-- Die Clearance-Prüfung `keepOutFromRobotBounds` (`cellClearance.ts` unverändert) blockiert Ansichten
-  über dem eigenen Wagen nicht grundsätzlich. Geprüft werden Flansch, Kamera und Gelenkpunkte nur,
-  wenn sie unter Tischplatte + 5 cm im Footprint liegen, bzw. unter Boden + 10 cm. `legCollision`
-  wie beim Modul-Lauf.
-- Fahrfehler: Eine unerreichbare oder per Clearance verworfene Ansicht wird übersprungen (Warnung).
-  Ein Fahrfehler ohne Blockade bricht den Tag ab.
-- Panel: Ein Start-Button misst erst Modul-Tags, dann Roboter-Tags („N Module, M Roboter“). Der
-  Roboterlauf selbst braucht kein Layer-1-Ergebnis, der Button verlangt aber weiter ein Layer-1-Ergebnis
-  mit platziertem Roboter (`layer2Gate`). Der Hinweis „Layer 1 neu scannen“ nennt auch die Roboterbasis.
-- Datenformat: `parseMeasurement` verwirft ein fehlendes oder unbekanntes `method` (dann wird der Tag
-  neu gemessen). Ungültige optionale Felder (`deltaNormalMm`, `spreadDeg`, `views`) verwirft es einzeln.
-- Anzeige: `describeTagMeasurement(tag, { robot: true })`. Gemessen: „measured … via robot joints · Δ …
-  · n views“. Ungemessen: „not measured yet · measured with the robot's hand camera“.
+- `ROBOT_MODULE_TO_BASE = IDENTITY_POSE`: the robot module frame is the robot base (URDF root; the
+  forward kinematics calculates in the same frame; `robotBaseFrom` takes over the module pose without offset).
+  The job stays generic (`moduleToBase` = T_module_base, `robotTagJob(..., moduleToBase?)`).
+- `measureRobotTags` additionally has `approach?(job, seed)`. If there is an approach angle, the robot first drives there, as in the module run; otherwise centring starts where it stands.
+  The result carries `returnNote?`.
+- If centring is ambiguous, the views are planned around the measured position with the catalog orientation.
+- The clearance check `keepOutFromRobotBounds` (`cellClearance.ts` unchanged) does not generally block views above one's own cart. Flange, camera and joint points are checked only
+  if they lie in the footprint below table top + 5 cm, resp. below floor + 10 cm. `legCollision`
+  as in the module run.
+- Drive error: an unreachable or clearance-rejected view is skipped (warning). A drive error without blockage aborts the tag.
+- Panel: one start button measures module tags first, then robot tags ("N modules, M robots"). The robot run itself needs no layer-1 result, but the button still requires a layer-1 result
+  with a placed robot (`layer2Gate`). The hint "Layer 1 neu scannen" ("re-scan layer 1") also names the robot base.
+- Data format: `parseMeasurement` discards a missing or unknown `method` (then the tag is measured again). Invalid optional fields (`deltaNormalMm`, `spreadDeg`, `views`) are discarded individually.
+- Display: `describeTagMeasurement(tag, { robot: true })`. Measured: "measured … via robot joints · Δ …
+  · n views". Not measured: "not measured yet · measured with the robot's hand camera".
 
-Vorgabe des Nutzers vom 20.10.2026: Die Tags des Roboters (Katalogeintrag `kind: "robot"`)
-werden ebenfalls mit der Hand-Kamera eingemessen, im selben Fenster „Tags einmessen“, nach derselben
-Einmal-Regel (nur Tags ohne `measurement`; Speichern eines geänderten Tags im Editor verwirft sie).
+Requirement of the user dated 20.10.2026: the tags of the robot (catalog entry `kind: "robot"`)
+are also surveyed with the hand camera, in the same window "Tags einmessen", under the same once-only rule (only tags without `measurement`; saving a changed tag in the editor discards it).
 
-### Ziel / Prinzip
+### Goal / principle
 
-Der Modulursprung des Roboters ist die Roboterbasis (`moduleCatalog.ts`, `kind: "robot"`).
-Statt Bezugskanten wird die Kette über die Gelenkwinkel genutzt:
+The module origin of the robot is the robot base (`moduleCatalog.ts`, `kind: "robot"`).
+Instead of reference edges, the chain via the joint angles is used:
 
     T_base_tag,i = FK(Gelenke_i) · T_flansch_cam · T_cam_tag,i      (tagInBaseFrom in tagServo.ts)
-    T_module_tag = T_module_base · mittel_i(T_base_tag,i)            (T_module_base = Identität,
-                                                                      falls der Code nichts anderes zeigt)
+    T_module_tag = T_module_base · mean_i(T_base_tag,i)            (T_module_base = identity,
+                                                                      unless the code shows otherwise)
 
-Volle 6 DoF. Fehlerquellen: Hand-Auge-Kalibrierung und Gelenkwinkel (~1–2 mm erwartet, nicht gemessen).
-Mehrere Ansichten aus verschiedenen Gelenkstellungen mitteln einen Teil davon heraus.
-Kein Layer 1 nötig: der Startwert `T_base_tag_guess = T_base_module · T_module_tag(Katalog)` ist
-direkt bekannt. Der Pi bleibt unverändert, es wird nur `MeasureTags` benutzt.
+Full 6 DoF. Error sources: hand-eye calibration and joint angles (~1–2 mm expected, not measured).
+Averaging several views from different joint configurations removes part of this.
+No layer 1 needed: the start value `T_base_tag_guess = T_base_module · T_module_tag(catalog)` is
+known directly. The Pi remains unchanged; only `MeasureTags` is used.
 
-### Ablauf je Roboter-Tag
+### Procedure per robot tag
 
-1. Startwert `tagInBase` aus dem Katalog (s. o.).
-2. `centreOnTag` (expectedTagInBase = Startwert, standoff 0,35 m) → genaue `tagInBase`.
-   Fehlschlag → Tag bleibt ausstehend, Grund „für die eigene Hand-Kamera nicht sichtbar/erreichbar“.
-3. Ansichten: `ROBOT_TAG_VIEWS` = 3 Kamerposen im Tag-KS (`camInTag`). Die Kamera schaut entlang −Tag-z
-   (gleiche Konvention wie `PlanTagReferenceView`: Bild-x = Tag-x, Bild-y = −Tag-y), Abstand 0,35 m,
-   gekippt um +12° um Tag-x, −12° um Tag-x, +12° um Tag-y (Kippung durch den Tag-Mittelpunkt).
-   Je Ansicht: `flangeForView(tagInBase, camInTag, flangeToCamera)` → `planMove` (Erreichbarkeit +
-   Clearance) → fahren → **Ist-Gelenke lesen und FK rechnen** (nicht das Soll) → `MeasureTags`
-   (tagIds [tagId], frames 3). Gültig nur bei `frameCount ≥ 2`, `intrinsicsSource ≠ "placeholder"`.
-   Unerreichbare Ansicht überspringen.
-4. Mindestens **2 gültige Ansichten**, sonst Tag fehlgeschlagen (ausstehend).
-5. Mittel: Position über alle gültigen Ansichten, Orientierung über die nicht mehrdeutigen
-   (`ambiguous: false`). Sind alle mehrdeutig, kommt die Orientierung aus dem Startwert, mit Warnung.
-6. Streuung: `spreadMm` (RMS der Positionen um das Mittel), `spreadDeg` (RMS der Winkelabstände).
-   Warnung bei `spreadMm > 3` oder `spreadDeg > 1` (Hinweis: Hand-Auge-Kalibrierung prüfen).
-7. Ergebnis in den Katalog: `position`/`rotationDeg` (Katalogformat via `rpyDegFromQuaternion`),
-   `measurement` mit `method: "robot-fk"`.
+1. Start value `tagInBase` from the catalog (see above).
+2. `centreOnTag` (expectedTagInBase = start value, standoff 0.35 m) → precise `tagInBase`.
+   Failure → tag stays pending, reason "für die eigene Hand-Kamera nicht sichtbar/erreichbar" (not visible/reachable for the own hand camera).
+3. Views: `ROBOT_TAG_VIEWS` = 3 camera poses in the tag frame (`camInTag`). The camera looks along −tag z
+   (same convention as `PlanTagReferenceView`: image x = tag x, image y = −tag y), distance 0.35 m,
+   tilted by +12° about tag x, −12° about tag x, +12° about tag y (tilt through the tag centre).
+   Per view: `flangeForView(tagInBase, camInTag, flangeToCamera)` → `planMove` (reachability + clearance) → drive →
+   **read the actual joints and compute FK** (not the setpoint) → `MeasureTags`
+   (tagIds [tagId], frames 3). Valid only with `frameCount ≥ 2`, `intrinsicsSource ≠ "placeholder"`.
+   Skip an unreachable view.
+4. At least **2 valid views**, otherwise the tag fails (pending).
+5. Mean: position over all valid views, orientation over the non-ambiguous ones (`ambiguous: false`). If all are
+   ambiguous, the orientation comes from the start value, with a warning.
+6. Spread: `spreadMm` (RMS of the positions around the mean), `spreadDeg` (RMS of the angular distances).
+   Warning at `spreadMm > 3` or `spreadDeg > 1` (hint: check the hand-eye calibration).
+7. Result into the catalog: `position`/`rotationDeg` (catalog format via `rpyDegFromQuaternion`),
+   `measurement` with `method: "robot-fk"`.
 
-### Schnittstellen
+### Interfaces
 
-#### TypeScript — `model/robotTagRun.ts` (neu, rein, testbar, ohne `tagMeasurementState`-Import)
+#### TypeScript — `model/robotTagRun.ts` (new, pure, testable, without `tagMeasurementState` import)
 
 ```ts
 export const ROBOT_TAG_STANDOFF_M = 0.35;
-export const ROBOT_TAG_TILTS: ReadonlyArray<{ axis: "x" | "y"; deg: number }>;   // +12 um x, −12 um x, +12 um y
+export const ROBOT_TAG_TILTS: ReadonlyArray<{ axis: "x" | "y"; deg: number }>;   // +12 about x, −12 about x, +12 about y
 export const ROBOT_TAG_MIN_VIEWS = 2;
-export const ROBOT_TAG_MAX_SPREAD_MM = 3;                                        // Annahme, nicht gemessen
-export const ROBOT_TAG_MAX_SPREAD_DEG = 1;                                       // Annahme, nicht gemessen
+export const ROBOT_TAG_MAX_SPREAD_MM = 3;                                        // assumption, not measured
+export const ROBOT_TAG_MAX_SPREAD_DEG = 1;                                       // assumption, not measured
 export const ROBOT_MODULE_TO_BASE: Pose = IDENTITY_POSE;                         // T_module_base
-export function robotTagViews(standoffM?: number): Pose[];                       // camInTag je Ansicht
+export function robotTagViews(standoffM?: number): Pose[];                       // camInTag per view
 export function robotTagJob(moduleId: string,
   tag: { tagId: number; sizeM: number; position: Vec3; rotationDeg: Vec3 },
   moduleToBase?: Pose): RobotTagJob;
@@ -696,216 +579,206 @@ export type RobotTagJobResult =
   | { job; status: "failed" | "skipped"; reason: string; warnings: string[] };
 export function measureRobotTags(options: RobotTagRunOptions):
   Promise<{ results: RobotTagJobResult[]; halted: boolean; returnNote?: string }>;
-// Wirft nicht: Fehler stehen je Tag im Ergebnis.
+// Does not throw: errors are in the result per tag.
 ```
 
-#### Datenformat — Erweiterung `TagCameraMeasurement` in `config/moduleCatalog.ts`
+#### Data format — extension of `TagCameraMeasurement` in `config/moduleCatalog.ts`
 
 ```ts
 method: "camera-edges" | "robot-fk"
-dofs: "full" | "partial"            // robot-fk immer "full"
-deltaMm: [number, number]           // robot-fk: Verschiebung neu − Startwert in Tag-x/-y des Startwerts
-deltaNormalMm?: number              // nur robot-fk: Verschiebung entlang Tag-z des Startwerts
-deltaRotDeg: number                 // robot-fk: gesamter Drehwinkel zwischen Startwert und neu
+dofs: "full" | "partial"            // robot-fk always "full"
+deltaMm: [number, number]           // robot-fk: shift new − start value in x/y of the start value's tag frame
+deltaNormalMm?: number              // robot-fk only: shift along tag z of the start value
+deltaRotDeg: number                 // robot-fk: total rotation angle between start value and new
 spreadMm: number
-spreadDeg?: number                  // nur robot-fk
-views?: number                      // nur robot-fk: Anzahl gültiger Ansichten
+spreadDeg?: number                  // robot-fk only
+views?: number                      // robot-fk only: number of valid views
 lines: string[]                     // robot-fk: []
 ```
 
-`parseMeasurement` in `model/catalogStore.ts` akzeptiert beide Methoden und die optionalen Felder.
-`applyTagMeasurement` nimmt die neuen optionalen Felder und `method` an (Standard `"camera-edges"`).
-`describeTagMeasurement` zeigt für robot-fk z. B. „measured 2026-10-20 via robot joints · Δ 1.2 mm / 0.3° · 3 views“.
+`parseMeasurement` in `model/catalogStore.ts` accepts both methods and the optional fields.
+`applyTagMeasurement` takes the new optional fields and `method` (default `"camera-edges"`).
+`describeTagMeasurement` shows for robot-fk e.g. "measured 2026-10-20 via robot joints · Δ 1.2 mm / 0.3° · 3 views".
 
 #### Panel — `components/TagReferencePanel.tsx`
 
-Eigener Block „Roboter-Tags (über Gelenkwinkel)“ mit den ausstehenden Tags des Zellroboters
-(`useCellRobot` → Katalogeintrag). Derselbe Start-Button misst zuerst die Modul-Tags, dann die
-Roboter-Tags (Anzahl getrennt angezeigt). Ergebnis wie bei den Modulen gespeichert
-(`saveModuleCatalog(applyTagMeasurement(...))`, ein Konflikt-Neuversuch). Ein Hinweis „Layer 1 neu
-scannen“ bleibt, weil die Roboterbasis in Layer 1 aus diesen Tags berechnet wird.
+A dedicated block "Roboter-Tags (über Gelenkwinkel)" (robot tags via joint angles) with the pending tags of the cell robot
+(`useCellRobot` → catalog entry). The same start button first measures the module tags, then the robot tags
+(counts shown separately). Result saved as for the modules (`saveModuleCatalog(applyTagMeasurement(...))`, one conflict retry).
+A hint "Layer 1 neu scannen" (re-scan layer 1) remains, because the robot base in layer 1 is calculated from these tags.
 
-### Fehlerfälle
+### Failure cases
 
-- Tag für die eigene Kamera nicht sichtbar oder nicht erreichbar (z. B. seitlich am Fuß) →
-  ausstehend mit Grund; der Tag bleibt beim Katalogwert. Ansichten, die die Clearance
-  (Selbstkollision mit dem Roboterbereich) verletzen, werden übersprungen.
-- Weniger als 2 gültige Ansichten → ausstehend.
-- Keine Hand-Auge-Kalibrierung → Lauf startet nicht (wie bisher).
-- Alle Ansichten mehrdeutig → Orientierung aus dem Startwert, Warnung.
+- Tag not visible or not reachable for the own camera (e.g. at the side of the foot) → pending with reason; the tag stays at the catalog value.
+  Views that violate the clearance (self-collision with the robot area) are skipped.
+- Fewer than 2 valid views → pending.
+- No hand-eye calibration → run does not start (as before).
+- All views ambiguous → orientation from the start value, warning.
 
-### Genauigkeit / Grenzen
+### Accuracy / limits
 
-- Hand-Auge-Kalibrierung und Gelenkwinkel gehen direkt in das Ergebnis ein. Erwartet ~1–2 mm,
-  **nicht gemessen**. Ein Abgleich am Pi mit Zollstock-Referenz steht aus.
-- Nur Tags, die die eigene Hand-Kamera sehen kann. Andere Tags bleiben ausstehend.
-- Der Pi bleibt unverändert; es wird nur die bestehende `MeasureTags`-Methode benutzt.
+- Hand-eye calibration and joint angles feed directly into the result. Expected ~1–2 mm, **not measured**.
+  A comparison on the Pi against a folding-rule reference is still outstanding.
+- Only tags the own hand camera can see. Other tags remain pending.
+- The Pi remains unchanged; only the existing `MeasureTags` method is used.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` auf `fertig` gesetzt.
-- [x] `vision-server-interface.md`: neuer Abschnitt für `MeasureTagReference`,
-      `PlanTagReferenceView` und `LastTagReference`.
-- [x] `apriltag-referenz.md`: eigener Abschnitt „Tag-Position mit der Kamera einmessen“,
-      dabei das Datenformat `placement`.
-- [x] Nachtrag 20.10.2026 in `modell-flaechen-tag-platzierung.md` mit Link auf diesen Plan.
-- [ ] Am Pi mit Zollstock-Referenz verifiziert, Ergebnis in `doc/projektdoku/` festgehalten.
-- [x] Roboter-Variante umgesetzt und Schnittstellen nachgetragen (Commits `e82bb61`, `15e7bb0`).
+- [x] Status set to `done`, actual interfaces entered.
+- [x] Row in the index `doc/projektdoku/arbeitsplaene/README.md` set to `done`.
+- [x] `vision-server-interface.md`: new section for `MeasureTagReference`,
+      `PlanTagReferenceView` and `LastTagReference`.
+- [x] `apriltag-referenz.md`: own section "Survey tag position with the camera",
+      including the `placement` data format.
+- [x] Addendum 20.10.2026 in `modell-flaechen-tag-platzierung.md` with a link to this plan.
+- [ ] Verified on the Pi against a folding-rule reference, result recorded in `doc/projektdoku/`.
+- [x] Robot variant implemented and interfaces added (commits `e82bb61`, `15e7bb0`).
 
-## Nachtrag 21.10.2026: Live-Ansicht und Testphase
+## Addendum 21.10.2026: live view and test phase
 
-Der erste Versuch am Roboter hat „so semi gut“ funktioniert. Deshalb kommt eine Live-Ansicht der
-Kantensuche dazu: Im Fenster „Tags einmessen“ sieht man, welche Linien der Hand-Pi zieht und warum
-er eine Kante verwirft, mit Debug-Bild und Rohbildern auf dem Pi. Für die Testphase misst jeder
-Lauf alle messbaren Tags neu (`TAG_MEASURE_ALL_TESTPHASE = true`), damit der Versuch oft wiederholt
-werden kann. Die Einmal-Regel (nur ausstehende Tags, einmal pro neuem bzw. bearbeitetem Modul) bleibt
-der Zielzustand für später und ist im Code erhalten. Details in
-[`tag-einmessen-liveview.md`](tag-einmessen-liveview.md).
+The first attempt on the robot worked "so semi gut" (German: "so-so"). Therefore a live view of the edge search is added:
+in the window "Tags einmessen" one sees which lines the hand Pi draws and why it discards an edge, with a debug image and raw images on the Pi.
+For the test phase each run re-measures all measurable tags (`TAG_MEASURE_ALL_TESTPHASE = true`), so that the attempt can be repeated often.
+The once-only rule (only pending tags, once per new or edited module) remains the target state for later and is kept in the code.
+Details in [`tag-einmessen-liveview.md`](tag-einmessen-liveview.md).
 
-## Nachtrag 26.10.2026: Messansicht über 5 Kandidaten, Kanten-Gegenprobe der Roboter-Tags
+## Addendum 26.10.2026: measurement view over 5 candidates, edge cross-check of the robot tags
 
-Anlass: Beim Versuch am Roboter scheiterte Tag 3 an der Messansicht („Keine Gelenkstellung … 77 mm /
-10,2° daneben“). Roboter-Tag 1 meldete eine Streuung von 1,1° über die Ansichten. Beides ist
-nur im Frontend umgesetzt (webskillcomposition, Branch `tag-einmessen-liveview`, Commits `4b6ed6f`,
-`745ea5b`). **An der Pi-Schnittstelle ändert sich nichts.** Genutzt werden nur die schon
-dokumentierten Request-Felder `view.tiltDeg` und `saveDebug`.
+Occasion: during the attempt on the robot, tag 3 failed at the measurement view ("Keine Gelenkstellung … 77 mm / 10,2° daneben"
+— runtime message, meaning "No joint configuration … 77 mm / 10.2° off"). Robot tag 1 reported a spread of 1.1° across the views.
+Both are implemented only in the frontend (webskillcomposition, branch `tag-einmessen-liveview`, commits `4b6ed6f`, `745ea5b`).
+**The Pi interface does not change.** Only the already documented request fields `view.tiltDeg` and `saveDebug` are used.
 
-### Erreichbarkeit der Ansicht
+### Reachability of the view
 
-Die Messansicht (Kamera im Tag-KS vom Pi) wird nicht mehr nur einmal aus der aktuellen
-Stellung gelöst. `planViewMove` probiert drei IK-Startwerte (aktuelle Stellung, Startstellung,
-Mitte der Gelenkbereiche) und dreht die Kamera um ihre Sichtachse: Modul-Tags 0°/180° (der Pi legt
-den Bildausschnitt mittig, eine halbe Drehung zeigt dasselbe), Roboter-Tags 0°/±90°/180°.
-Genommen wird die erste Lösung ohne Wagen- oder Bodenberührung.
+The measurement view (camera in the tag frame from the Pi) is no longer solved only once from the current pose. `planViewMove` tries three IK start values
+(current pose, start pose, middle of the joint ranges) and rotates the camera about its viewing axis: module tags 0°/180°
+(the Pi centres the image section, so a half turn shows the same), robot tags 0°/±90°/180°.
+The first solution without touching the cart or floor is taken.
 
-### 5 Kandidaten-Ansichten (Modul-Tags und Gegenprobe)
+### 5 candidate views (module tags and cross-check)
 
-1. `PlanTagReferenceView` wird für die Kippungen `10, -10, 20, -20, 30°` um Tag-x aufgerufen
-   (`TAG_REFERENCE_VIEW_TILTS_DEG`). Welche Kanten passen (`fits`/`uncovered`), entscheidet
-   die erste Kippung; die übrigen werden für dieselben Kanten geplant.
-2. Jede erreichbare Ansicht wird angefahren. Dort läuft eine kurze `MeasureTagReference` mit
-   `saveDebug: false`. Die Live-Ansicht läuft vom Anfahren an mit.
-3. Die beste Ansicht gewinnt (`referenceScore`). Verglichen wird in dieser Reihenfolge: `dofs`
-   (full > partial > none), dann die Anzahl der Kanten mit `found && !ambiguous`, dann das
-   kleinere `residualMm`, dann die Summe von `supportPx`.
-4. Zurück in die beste Ansicht, dann (bei „Schritt für Schritt“) die Bestätigung und die
-   eigentliche Messung mit Protokoll. Bringt diese Messung nichts Verwertbares, zählt die
-   Prüfmessung derselben Ansicht, mit Warnung.
+1. `PlanTagReferenceView` is called for the tilts `10, -10, 20, -20, 30°` about tag x (`TAG_REFERENCE_VIEW_TILTS_DEG`).
+   Which edges fit (`fits`/`uncovered`) is decided by the first tilt; the others are planned for the same edges.
+2. Each reachable view is driven to. There a short `MeasureTagReference` runs with `saveDebug: false`.
+   The live view runs from the moment of driving on.
+3. The best view wins (`referenceScore`). Compared in this order: `dofs` (full > partial > none), then the number of edges
+   with `found && !ambiguous`, then the smaller `residualMm`, then the sum of `supportPx`.
+4. Back to the best view, then (at "Schritt für Schritt" — "step by step") the confirmation and the actual measurement with log.
+   If this measurement yields nothing usable, the check measurement of the same view counts, with a warning.
 
-Nicht erreichbare oder nicht planbare Kandidaten werden übersprungen und als Warnung genannt. Ist
-keiner erreichbar, scheitert der Tag mit dem Grund des ersten Kandidaten.
+Unreachable or unplannable candidates are skipped and named as warnings. If none is reachable, the tag fails with the reason of the first candidate.
 
-### Kanten-Gegenprobe der Roboter-Tags
+### Edge cross-check of the robot tags
 
-Roboter-Tags, die im Katalog Bezugskanten haben (`placement`), werden nach dem Gelenkwinkel-Lauf
-noch einmal über die Kanten gemessen (Schalter „Roboter-Tags mit Kanten gegenprüfen“, Standard an).
-Die Kantenmessung hängt nicht von Hand-Auge-Kalibrierung und Kinematik ab und ist deshalb eine
-unabhängige Probe. **Gespeichert wird weiter nur das Ergebnis `robot-fk`.** Der Vergleich wird
-nur in der Zeile des Tags angezeigt; das Katalogformat bleibt unverändert.
+Robot tags that have reference edges in the catalog (`placement`) are measured again over the edges after the joint-angle run
+(switch "Roboter-Tags mit Kanten gegenprüfen" — "cross-check robot tags with edges", default on).
+The edge measurement does not depend on hand-eye calibration and kinematics and is therefore an independent check.
+**Only the `robot-fk` result continues to be saved.** The comparison is shown only in the row of the tag; the catalog format remains unchanged.
 
-- Startwert der Kantenmessung: der Katalogwert. Gesucht wird dort, wo die Gelenkwinkel den Tag
-  gefunden haben (sonst am Katalogwert). Das Modul-KS des Roboters ist das Basis-KS.
-- Vergleich (`compareRobotTagWithEdges`): Kanten minus Gelenkwinkel, im Tag-KS des
-  Gelenkwinkel-Ergebnisses. Verglichen werden die Verschiebung in der Tag-Ebene (x, y) und die
-  Drehung um Tag-z. Die Normale wird nicht verglichen, weil die Kanten sie nicht messen. Bei nur
-  einer Kante (`partial`) zählt nur die Verschiebung quer zu ihr.
-- Grenzen: 2 mm in der Ebene, 1° Drehung. Darüber steht der Hinweis in Bernstein:
-  „Hand-Auge-Kalibrierung oder Kantenmaße im Katalog prüfen“.
+- Start value of the edge measurement: the catalog value. It is searched where the joint angles found the tag (otherwise at the catalog value).
+  The module frame of the robot is the base frame.
+- Comparison (`compareRobotTagWithEdges`): edges minus joint angles, in the tag frame of the joint-angle result.
+  Compared are the shift in the tag plane (x, y) and the rotation about tag z. The normal is not compared, because the edges do not measure it.
+  With only one edge (`partial`), only the shift perpendicular to it counts.
+- Limits: 2 mm in the plane, 1° rotation. Above this, the hint in amber reads
+  "Hand-Auge-Kalibrierung oder Kantenmaße im Katalog prüfen" (check hand-eye calibration or edge dimensions in the catalog).
 
-## Nachtrag 27.10.2026: Ansichten vereinen (gewichteter Schätzer), Kippung um x und y, Kantenabstände
+## Addendum 27.10.2026: fuse views (weighted estimator), tilt about x and y, edge distances
 
-### Anlass
+### Occasion
 
-Am Roboter war bei Tag 3 (nah am Sockel) nur 1 von 5 Ansichten erreichbar („bestenfalls 112 mm /
-91,6° daneben“). Bisher wurde nur die beste Ansicht genommen, nicht gemittelt. Jetzt werden alle
-erreichbaren Ansichten gemessen und zu einem Ergebnis vereint.
+On the robot, for tag 3 (close to the pedestal) only 1 of 5 views was reachable ("bestenfalls 112 mm / 91,6° daneben" — "at best 112 mm / 91.6° off").
+Until now only the best view was taken, not averaged. Now all reachable views are measured and fused into one result.
 
-### Ansichten
+### Views
 
-Fünf Kandidaten:
+Five candidates:
 
-| # | Kippung | Achse | Geplant durch |
+| # | Tilt | Axis | Planned by |
 | --- | --- | --- | --- |
-| 1 | +10° | Tag-x | Pi (`view.tiltDeg`) |
-| 2 | −10° | Tag-x | Pi (`view.tiltDeg`) |
-| 3 | +10° | Tag-y | Frontend |
-| 4 | −10° | Tag-y | Frontend |
-| 5 | +20° | Tag-x | Pi (`view.tiltDeg`) |
+| 1 | +10° | tag x | Pi (`view.tiltDeg`) |
+| 2 | −10° | tag x | Pi (`view.tiltDeg`) |
+| 3 | +10° | tag y | Frontend |
+| 4 | −10° | tag y | Frontend |
+| 5 | +20° | tag x | Pi (`view.tiltDeg`) |
 
-Die y-Kippungen rechnet das Frontend. Es holt den Pi-Plan mit Kippung 0° einmal und dreht die Kamera
-dann um die Tag-y-Achse durch den Zielpunkt (Zielpunkt = Kameraposition + `standoffM` entlang der
-Blickachse; Funktion `tiltViewAboutTagY`). Die Rollwinkel um die Blickachse sind jetzt 0°, 180°, 90°
-und −90° (vorher nur 0° und 180°). Die IK-Startwerte kommen zusätzlich aus den Winkeln schon
-geplanter Ansichten.
+The y tilts are calculated by the frontend. It fetches the Pi plan with tilt 0° once and then rotates the camera
+about the tag-y axis through the target point (target point = camera position + `standoffM` along the viewing axis; function `tiltViewAboutTagY`).
+The roll angles about the viewing axis are now 0°, 180°, 90° and −90° (previously only 0° and 180°).
+The IK start values additionally come from the angles of already planned views.
 
-### Ablauf
+### Procedure
 
-- Jede erreichbare Ansicht wird angefahren und voll gemessen (Debug-Protokoll nach Einstellung).
-- Bei „Schritt für Schritt“ wird einmal vor der ersten Messung gefragt.
-- Keine Rückfahrt in die beste Ansicht und keine zusätzliche Messung mehr.
-- Eine fehlgeschlagene Messung einer Ansicht bricht den Tag nicht ab.
-- Ein Stopp wirkt vor der nächsten Ansicht.
+- Each reachable view is driven to and measured in full (debug log according to the setting).
+- At "Schritt für Schritt" (step by step) one is asked once before the first measurement.
+- No return to the best view and no additional measurement any more.
+- A failed measurement of one view does not abort the tag.
+- A stop takes effect before the next view.
 
-### Schätzer
+### Estimator
 
-Umgesetzt in `frontend/src/features/cell-modules/model/tagReferenceFusion.ts`, Funktion
-`fuseReferenceViews`.
+Implemented in `frontend/src/features/cell-modules/model/tagReferenceFusion.ts`, function `fuseReferenceViews`.
 
-- Gerechnet wird im Tag-KS des Katalog-Startwerts. Unbekannt sind (dx, dy, dθ).
-- Eine full-Ansicht liefert 2 Positionszeilen, eine partial-Ansicht 1 Zeile quer zur gefundenen
-  Kante. Zwei partial-Ansichten mit verschiedenen Kanten ergeben zusammen ein full.
-- Die Drehung um Tag-z ist ein gewichtetes Mittel.
-- Gewichte je Ansicht (inverse Varianz): Position 1/(0,1² + `residualMm`² + `spreadMm`²) in mm⁻²,
-  Drehung 1/(0,05² + `spreadDeg`²) in °⁻². `residualMm` ist der Restfehler der Kantenanpassung,
-  `spreadMm`/`spreadDeg` die Streuung über die Bilder dieser einen Messung (beides aus dem
-  Pi-Ergebnis). Die Grundwerte 0,1 mm und 0,05° verhindern, dass eine Ansicht mit zufällig 0,0
-  Streuung alles bestimmt.
-- Ausreißer: Ab 3 Ansichten wird höchstens eine verworfen, und zwar nur, wenn sie mehr als 3σ
-  UND mehr als 1 mm bzw. 0,5° neben der Lösung liegt.
-- Höhe und Kippung des Tags bleiben die des Katalog-Startwerts (wie bisher beim Pi).
-- Streuung im Ergebnis = gewichtete RMS-Abweichung der Ansichten von der Lösung. Warnung ab 1 mm
-  bzw. 0,5°.
-- Mit nur einer nutzbaren Ansicht wird deren Ergebnis unverändert übernommen.
+- Calculated in the tag frame of the catalog start value. Unknowns are (dx, dy, dθ).
+- A full view yields 2 position rows, a partial view 1 row perpendicular to the found edge. Two partial views with different edges together yield a full.
+- The rotation about tag z is a weighted mean.
+- Weights per view (inverse variance): position 1/(0.1² + `residualMm`² + `spreadMm`²) in mm⁻², rotation 1/(0.05² + `spreadDeg`²) in °⁻².
+  `residualMm` is the residual error of the edge fit, `spreadMm`/`spreadDeg` the spread across the images of this one measurement
+  (both from the Pi result). The base values 0.1 mm and 0.05° prevent a view with a spread of 0.0 by chance from dominating everything.
+- Outliers: from 3 views on, at most one is discarded, and only if it lies more than 3σ AND more than 1 mm resp. 0.5° away from the solution.
+- Height and tilt of the tag remain those of the catalog start value (as before on the Pi).
+- Spread in the result = weighted RMS deviation of the views from the solution. Warning from 1 mm resp. 0.5°.
+- With only one usable view, its result is taken over unchanged.
 
-Warum symmetrische Kippungen: Blickwinkelabhängige Fehler (z. B. eine Kante, die nicht in der
-angenommenen Höhe liegt, oder ein Kippfehler der Tag-Pose) heben sich in erster Ordnung auf.
+Why symmetric tilts: view-angle-dependent errors (e.g. an edge that does not lie at the assumed height, or a tilt error of the tag pose) cancel to first order.
 
-### Anzeige
+### Display
 
-Ergebniszeile:
+Result line (UI text, stays German):
 
 `Δ … · Kante A 50,5 mm (Katalog 50,0) · Kante B … · k von 5 Ansichten vereint, Streuung x mm / y°`
 
-- Kantenabstand = Abstand der Tag-Mitte von der Kantengeraden in der Tag-Ebene, senkrecht zur
-  Kante. Gemessen wird wie mit dem Lineal auf der Fläche, ein Höhenunterschied zählt nicht.
-  Verglichen wird gegen den Katalog-Startwert (`tagEdgeDistance.ts`).
-- Bei der Kanten-Gegenprobe der Roboter-Tags steht dort „(Gelenke …)“ statt „(Katalog …)“.
-- Im Katalog wird zusätzlich `views` gespeichert (Anzahl vereinter Ansichten). Sonst bleibt das
-  Format unverändert.
+Meaning: Δ … · edge A 50.5 mm (catalog 50.0) · edge B … · k of 5 views fused, spread x mm / y°.
 
-### Schnittstellen
+- Edge distance = distance of the tag centre from the edge line in the tag plane, perpendicular to the edge. It is measured as with a ruler on the surface;
+  a height difference does not count. Compared against the catalog start value (`tagEdgeDistance.ts`).
+- In the edge cross-check of the robot tags it reads "(Gelenke …)" (joints …) instead of "(Katalog …)" (catalog …).
+- In the catalog, `views` is additionally saved (number of fused views). Otherwise the format remains unchanged.
 
-Keine Änderung an der Pi-Schnittstelle. Genutzt werden nur die vorhandenen Felder `view.tiltDeg`,
-`standoffM` und `saveDebug`. Die Änderung steckt im Frontend-Commit `509fbe4` (webskillcomposition,
-Branch `tag-einmessen-liveview`).
+### Interfaces
 
-### Offen
+No change to the Pi interface. Only the existing fields `view.tiltDeg`, `standoffM` and `saveDebug` are used.
+The change is in frontend commit `509fbe4` (webskillcomposition, branch `tag-einmessen-liveview`).
 
-- Am Roboter noch nicht geprüft.
+### Open
 
-## Nachtrag 27.10.2026: Tags zum Anfahren auswählen
+- Not yet checked on the robot.
 
-- Anlass: Der Nutzer will wählen, welche Tags angefahren werden, statt immer alle.
-- Im Panel „Tags einmessen“ hat jede Zeile (Modul- und Roboter-Tags) ein Häkchen. Darüber steht „Auswahl: alle / keine“ (ab 2 auswählbaren Zeilen; gilt für Modul- und Roboter-Tags zusammen). Zeilen ohne Bezugskanten oder ohne Layer-1-Lage haben kein Häkchen (nicht messbar).
-- Neue Zeilen sind automatisch angehakt. Ohne Eingriff werden wie bisher alle angefahren. Die Auswahl gilt für die Sitzung (nur im Fenster, nicht gespeichert) und bleibt über „Liste neu lesen“ und weitere Läufe erhalten.
-- Angefahren werden nur die angehakten Tags. Die Kanten-Gegenprobe der Roboter-Tags läuft ebenfalls nur für angehakte. Der Startknopf zählt die Auswahl („… einmessen (2 Module, 1 Roboter)“). Ist nichts angehakt, steht dort „Kein Tag ausgewählt.“
-- Umsetzung: `tickedRows` in `frontend/src/features/cell-modules/model/tagMeasurementState.ts`, Panel `TagReferencePanel.tsx`. Frontend-Commit `471a73f` (webskillcomposition, Branch `tag-einmessen-liveview`). Keine Schnittstellenänderung.
+## Addendum 27.10.2026: select tags to drive to
 
-## Nachtrag 27.10.2026: Testphase speichert nicht automatisch
+- Occasion: the user wants to choose which tags are driven to, instead of always all of them.
+- In the panel "Tags einmessen", every row (module and robot tags) has a checkbox. Above it stands "Auswahl: alle / keine" ("selection: all / none")
+  (from 2 selectable rows on; applies to module and robot tags together). Rows without reference edges or without a layer-1 position have no checkbox (not measurable).
+- New rows are automatically ticked. Without intervention all are driven to, as before. The selection applies to the session
+  (only in the window, not saved) and is kept across "Liste neu lesen" ("re-read list") and further runs.
+- Only the ticked tags are driven to. The edge cross-check of the robot tags also runs only for ticked ones.
+  The start button counts the selection ("… einmessen (2 Module, 1 Roboter)" — "… survey (2 modules, 1 robot)").
+  If nothing is ticked, it reads "Kein Tag ausgewählt." ("No tag selected.")
+- Implementation: `tickedRows` in `frontend/src/features/cell-modules/model/tagMeasurementState.ts`, panel `TagReferencePanel.tsx`.
+  Frontend commit `471a73f` (webskillcomposition, branch `tag-einmessen-liveview`). No interface change.
 
-- Anlass: Im Testmodus („Alle Tags neu einmessen (Testphase)“, Einstellung `measureAll`) hat jeder Lauf sein Ergebnis in den Katalog geschrieben. Der nächste Lauf startete dann vom letzten Messergebnis statt von der Eingabe des Nutzers, und „(Katalog …)“ in der Ergebniszeile zeigte das letzte Ergebnis (Beispiel MOD-7 Tag 3: Eingabe 50,0 / 50,0 mm, angezeigt 51,6 / 49,0 mm aus dem Lauf davor).
-- Neu: Im Testmodus legt ein Lauf die Ergebnisse (Modul- und Roboter-Tags) nur bereit. Die Ergebniszeile endet mit „· Testphase: nicht in den Katalog übernommen“, darunter ein Knopf „In Katalog übernehmen“. Erst der Klick speichert (wie bisher über `applyTagMeasurement`); danach „· in den Katalog übernommen“ und der Hinweis, Layer 1 neu zu scannen. Bei einem Fehler bleibt der Knopf und „Nicht gespeichert: …“ erscheint.
-- Bereitgelegte Ergebnisse verfallen beim nächsten Lauf und bei „Liste neu lesen“.
-- Außerhalb des Testmodus wird wie bisher sofort gespeichert. Die Kanten-Gegenprobe der Roboter-Tags speichert ohnehin nie.
-- Umsetzung: `frontend/src/features/cell-modules/components/TagReferencePanel.tsx` (State `pendingKeeps`), Schalter-Hinweis in `TagReferenceWindow.tsx`. Frontend-Commit `373f386` (webskillcomposition, Branch `tag-einmessen-liveview`). Keine Schnittstellen- und keine Katalogformat-Änderung.
+## Addendum 27.10.2026: test phase does not save automatically
+
+- Occasion: in test mode ("Alle Tags neu einmessen (Testphase)" — "re-survey all tags (test phase)", setting `measureAll`) every run wrote its result into the catalog.
+  The next run then started from the last measurement result instead of the user's input, and "(Katalog …)" in the result line showed the last result
+  (example MOD-7 tag 3: input 50,0 / 50,0 mm, shown 51,6 / 49,0 mm from the run before).
+- New: in test mode a run only stages the results (module and robot tags). The result line ends with
+  "· Testphase: nicht in den Katalog übernommen" ("· test phase: not taken over into the catalog"), below it a button
+  "In Katalog übernehmen" ("take over into catalog"). Only the click saves (as before, via `applyTagMeasurement`);
+  afterwards "· in den Katalog übernommen" ("· taken over into the catalog") and the hint to re-scan layer 1.
+  On an error the button remains and "Nicht gespeichert: …" ("Not saved: …") appears.
+- Staged results expire at the next run and at "Liste neu lesen" ("re-read list").
+- Outside test mode, saving is immediate, as before. The edge cross-check of the robot tags never saves anyway.
+- Implementation: `frontend/src/features/cell-modules/components/TagReferencePanel.tsx` (state `pendingKeeps`), switch hint in `TagReferenceWindow.tsx`.
+  Frontend commit `373f386` (webskillcomposition, branch `tag-einmessen-liveview`). No interface or catalog format change.

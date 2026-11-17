@@ -104,7 +104,9 @@ documents:
    (`MeasureTags`), or plans the run itself (`StartLayer2Run` → `Layer2Target` →
    `ReportRobotPose`). The camera pose is the flange pose times the hand-eye transform.
 3. **Calibration:**
-   - Ceiling Pi: `StartCalibration` … `FinishCalibration` (intrinsics only).
+   - Ceiling Pi: `StartCalibration` … `FinishCalibration` (intrinsics only). The board
+     is chosen with `StartCalibration`'s `OptionsJson` (since 17.11.2026); empty means the
+     configured board.
    - Hand Pi: `StartHandEyeCalibration` with `fullCalibration: true`. The robot moves
      through the poses; at the end the Pi writes intrinsics and hand-eye, keeps the old
      files as `.bak`, and applies both live.

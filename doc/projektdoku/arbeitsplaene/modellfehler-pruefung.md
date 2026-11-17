@@ -1,60 +1,59 @@
-# Modellfehler der Modul-Lage prüfen und korrigierbar machen
+# Check the model errors of the module pose and make them correctable
 
-**Status:** geplant — 10.11.2026
-**Verantwortlich:** Meric
-**Thema:** apriltag
-**Branch:** apriltag-aufraeumen (Umsetzung offen)
+**Status:** planned — 10.11.2026
+**Owner:** Meric
+**Topic:** apriltag
+**Branch:** apriltag-aufraeumen (implementation open)
 
-## Ziel
+## Goal
 
-Die systematischen Modellfehler der Modul-Lage werden geprüft und korrigierbar.
-Der Roboter greift an einem Punkt des Moduls, gemessen wird aber nur der Tag.
-Der Versatz Tag→Modul steckt im Katalog. Ist er falsch, wirkt der Fehler bei
-jeder Messung gleich. Ziel ist ein Abnahmetest je Modul, der diesen Anteil
-sichtbar macht, und ein Korrekturvorschlag für den Katalog, der erst nach
-Bestätigung übernommen wird.
+The systematic model errors of the module pose are checked and made correctable.
+The robot grips at one point of the module, but only the tag is measured.
+The offset tag→module is stored in the catalog. If it is wrong, the error has the same
+effect on every measurement. The goal is an acceptance test per module that makes this
+share visible, and a correction proposal for the catalog that is only adopted after
+confirmation.
 
-Ein Klebe- oder CAD-Fehler wirkt bei jeder Messung gleich. Er wird durch
-Mittelung oder Kalibrierläufe nicht sichtbar und nicht kleiner. Beispiel: 1°
-Verdrehung bei 200 mm Hebel ergibt rund 3,5 mm Versatz am Greifpunkt.
+An adhesive or CAD error has the same effect on every measurement. It is not made visible
+and not made smaller by averaging or calibration runs. Example: a 1° rotation with a 200 mm
+lever arm gives roughly 3.5 mm offset at the gripping point.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, Abschnitt „Bevor du anfängst“
-- `doc/projektdoku/arbeitsplaene/README.md` (kein offener Plan zu diesem Thema außer den bereits fertigen Hand-Auge-Plänen)
-- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md`, inkl. Nachtrag 10.11.2026
+- `CLAUDE.md`, section „Before you start“
+- `doc/projektdoku/arbeitsplaene/README.md` (no open plan on this topic apart from the hand-eye plans that are already done)
+- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md`, including addendum of 10.11.2026
 - `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`
-- `doc/projektdoku/apriltag-lokalisierung.md`, Abschnitte 1.1–1.5
+- `doc/projektdoku/apriltag-lokalisierung.md`, sections 1.1–1.5
 
-## Betroffene Dateien
+## Affected files
 
-Noch nicht festgelegt. Die Umsetzung findet im Frontend (webskillcomposition)
-statt. Bekannte Anknüpfungspunkte:
+Not yet fixed. The implementation takes place in the frontend (webskillcomposition).
+Known connection points:
 
-- `ApproachPlanPanel.tsx` (Layer-2-Frontend, Hand-Auge-Panel mit „Versatz-Prüfung“)
-- `layer2.ts` (Anker- und Modulberechnung)
-- `usePickPlaceRun` (Rückrechnung über die Basis des Zwillings)
-- Modulkatalog in webskillcomposition (Ort noch zu klären)
+- `ApproachPlanPanel.tsx` (layer 2 frontend, hand-eye panel with „Versatz-Prüfung“ (offset check))
+- `layer2.ts` (anchor and module calculation)
+- `usePickPlaceRun` (back-calculation via the base of the twin)
+- Module catalog in webskillcomposition (location still to be clarified)
 
-Im Repo `apriltag` ist voraussichtlich nichts anzufassen. Eine Datei, die
-parallel angefasst wird, wird vorher abgestimmt.
+In the `apriltag` repo nothing is expected to be touched. A file that is touched in parallel
+will be agreed on beforehand.
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Keine neuen Knoten, falls die Prüfung im Frontend läuft (Roboterfahrt und
-Eingabe durch den Bediener). Läuft sie stattdessen über den Hand-Pi oder den
-Roboter-Server, ist das offen (siehe Offene Fragen).
+No new nodes, if the check runs in the frontend (robot motion and input by the operator).
+If it instead runs via the hand Pi or the robot server, that is open (see Open questions).
 
 ### Python
 
-Nicht vorgesehen. Die Prüfung ist Frontend-Logik; die reine Mathematik
-(Korrekturberechnung aus den Abweichungen) wird bei Umsetzung entschieden.
+Not planned. The check is frontend logic; the pure mathematics (correction calculation from
+the deviations) will be decided during implementation.
 
-### Daten / Payload
+### Data / payload
 
-**Modulkatalog (Erweiterung je Modul):**
+**Module catalog (extension per module):**
 
 ```json
 {
@@ -69,13 +68,13 @@ Nicht vorgesehen. Die Prüfung ist Frontend-Logik; die reine Mathematik
 }
 ```
 
-- `positionM`: Prüfpunkt im Modul-KS in Metern.
-- `label`: Bezeichnung für den Bediener.
-- `approachDirection`: Anfahrrichtung, Einheitsvektor im Modul-KS. Die
-  Werkzeugspitze steht vor dem Punkt, mit Sicherheitsabstand (Vorbild: 10 mm
-  vor der ersten Brettecke in der Versatz-Prüfung).
+- `positionM`: check point in the module CS, in metres.
+- `label`: label for the operator.
+- `approachDirection`: approach direction, unit vector in the module CS. The
+  tool tip stands in front of the point, with a safety distance (model: 10 mm
+  before the first board corner in the Versatz-Prüfung).
 
-**Ergebnisdatensatz `wsc.modelcheck.result/1`:**
+**Result record `wsc.modelcheck.result/1`:**
 
 ```json
 {
@@ -91,11 +90,11 @@ Nicht vorgesehen. Die Prüfung ist Frontend-Logik; die reine Mathematik
 }
 ```
 
-- `targetInBase`: Soll-Position des Prüfpunkts im Roboterbasis-KS.
-- `measuredDeviationMm`: gemessene Abweichung (Ist minus Soll) in Millimetern.
-- `calibrationId`: Hand-Auge- bzw. Intrinsik-Kalibrierung, mit der gemessen wurde.
+- `targetInBase`: target position of the check point in the robot base CS.
+- `measuredDeviationMm`: measured deviation (actual minus target) in millimetres.
+- `calibrationId`: hand-eye or intrinsics calibration with which the measurement was made.
 
-**Korrekturvorschlag `wsc.modelcheck.correction/1`:**
+**Correction proposal `wsc.modelcheck.correction/1`:**
 
 ```json
 {
@@ -108,52 +107,50 @@ Nicht vorgesehen. Die Prüfung ist Frontend-Logik; die reine Mathematik
 }
 ```
 
-- Der Vorschlag wird nur mit `status: "vorschlag"` erzeugt. Die Übernahme
-  erfolgt erst nach Bestätigung.
+- The proposal is only created with `status: "vorschlag"`. It is adopted
+  only after confirmation.
 
-### Netz / Betrieb
+### Network / operations
 
-Keine neuen Dienste, Ports oder mDNS-Namen, solange die Prüfung im Frontend
-läuft.
+No new services, ports or mDNS names as long as the check runs in the frontend.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Prüfpunkt nicht erreichbar oder Kollision | Anfahrt abbrechen, Punkt als „nicht geprüft“ markieren, kein Ersatzpunkt ohne Bestätigung |
-| Abweichung größer als Schwelle | Abbruch der Prüfung, kein Auto-Korrigieren |
-| Kalibrierung (Intrinsik oder Hand-Auge) seit der Messung geändert | Ergebnis verwerfen oder als veraltet kennzeichnen, neu messen |
-| Modul seit Layer 2 bewegt | Prüfung ungültig, Layer 2 neu fahren |
+| Check point unreachable or collision | Abort the approach, mark the point as „nicht geprüft“ (not checked), no substitute point without confirmation |
+| Deviation greater than threshold | Abort the check, no auto-correction |
+| Calibration (intrinsics or hand-eye) changed since the measurement | Discard the result or mark it as outdated, measure again |
+| Module moved since layer 2 | Check invalid, re-run layer 2 |
 
-## Vorgehen
+## Approach
 
-1. Abnahmetest je Modul, analog zur „Versatz-Prüfung“ im Hand-Auge-Panel:
-   Nach Layer 2 fährt der Roboter mit der Werkzeugspitze definierte Prüfpunkte
-   am Modul an, mit Sicherheitsabstand.
-2. Prüfpunkte sind im Modulkatalog hinterlegt (Ecken, Bohrungen,
-   Anschlagkanten). Mindestens zwei, besser drei Punkte je Modul, damit
-   Verschiebung und Verdrehung getrennt werden.
-3. Der Bediener misst die Abweichung (Fühlerlehre oder Messschieber) oder
-   bestätigt einen Treffer.
-4. Aus den Abweichungen wird der Korrekturvorschlag für Tag-Position und
-   Tag-Drehung im Katalog berechnet.
-5. Übernahme erst nach Bestätigung. Keine automatische Korrektur.
+1. Acceptance test per module, analogous to the „Versatz-Prüfung“ (offset check) in the hand-eye panel:
+   after layer 2 the robot moves the tool tip to defined check points on the
+   module, with a safety distance.
+2. Check points are stored in the module catalog (corners, bores,
+   stop edges). At least two, better three points per module, so that displacement and
+   rotation can be separated.
+3. The operator measures the deviation (feeler gauge or vernier caliper) or
+   confirms a hit.
+4. The correction proposal for tag position and tag rotation in the catalog is calculated
+   from the deviations.
+5. Adoption only after confirmation. No automatic correction.
 
-## Offene Fragen
+## Open questions
 
-- Wer misst die Abweichung: Bediener, Taster oder eine zweite Kamera?
-- Toleranz je Modul, bzw. Schwelle für den Abbruch?
-- Welche Module werden zuerst geprüft (Tische für Pick & Place)?
-- Wird die Höhe (bisher aus Katalog und Boden) ebenfalls geprüft und korrigiert?
-- Liegt die Prüfung im Frontend, oder braucht sie eine OPC-UA-Methode auf dem
-  Hand-Pi bzw. Roboter-Server?
+- Who measures the deviation: operator, probe or a second camera?
+- Tolerance per module, or threshold for aborting?
+- Which modules are checked first (tables for pick & place)?
+- Is the height (so far from catalog and floor) also checked and corrected?
+- Does the check lie in the frontend, or does it need an OPC UA method on the hand Pi or the robot server?
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-Noch nicht umgesetzt.
+Not yet implemented.
 
-## Nach Abschluss
+## After completion
 
-- [ ] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [ ] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
-- [ ] Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/` übernommen.
+- [ ] Status set to `done`, actual interfaces entered.
+- [ ] Line in the index `doc/projektdoku/arbeitsplaene/README.md` updated.
+- [ ] Lasting topic knowledge carried over into the matching topic doc under `doc/`.

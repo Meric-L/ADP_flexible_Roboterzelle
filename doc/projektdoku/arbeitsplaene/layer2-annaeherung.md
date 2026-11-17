@@ -1,100 +1,113 @@
-# Layer-2-Lauf: schrittweise Annäherung an den Tag
+# Layer 2 run: gradual approach to the tag
 
-**Status:** fertig — 12.10.2026 (an echter Hardware nicht getestet, siehe Offene Fragen)
-**Verantwortlich:** `Agent: Layer-2-Annäherung auf dem Hand-Pi`; Frontend: Sitzung `opcua-f1` (`webskillcomposition`, Branch `Ungetestet`)
-**Thema:** apriltag
+**Status:** done — 12.10.2026 (not tested on real hardware, see open questions)
+**Owner:** `Agent: Layer 2 approach on the hand Pi`; frontend: session `opcua-f1` (`webskillcomposition`, branch `Ungetestet`)
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Bisher fuhr der Roboter in einem Schritt auf 0,3 m vor den Tag. Das Ziel stammte aus der groben Pose aus Layer 1. Lag diese Pose ein paar Zentimeter daneben, lag der Tag im nahen Bild schief oder gar nicht im Bild.
+So far the robot drove in one step to 0.3 m in front of the tag. The target came
+from the rough pose from Layer 1. If this pose was a few centimeters off, the tag
+lay skewed in the near image or not in the image at all.
 
-Jetzt läuft jeder Anker- und Mess-Schritt so ab:
-1. Der Roboter fährt zuerst auf 0,6 m Abstand vor den Tag (Annäherung).
-2. Der Pi erkennt den Tag im Bild und misst dabei seine Pose.
-3. Der Pi plant das nahe Ziel aus dieser **gemessenen** Pose neu.
-4. Erst im nahen Bild wird geankert bzw. gemessen.
+Now every anchor and measure step proceeds as follows:
+1. The robot first drives to a distance of 0.6 m in front of the tag (approach).
+2. The Pi detects the tag in the image and measures its pose in the process.
+3. The Pi re-plans the near target from this **measured** pose.
+4. Only in the near image is anchoring or measuring performed.
 
-Grundlage bleibt [`layer2-lauf-hand-pi.md`](layer2-lauf-hand-pi.md).
+The basis remains [`layer2-lauf-hand-pi.md`](layer2-lauf-hand-pi.md).
 
-## Bereits gelesen
+## Already read
 
-- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md` (Ablauf, Schemas, Fehlerfälle)
-- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (Anker, `T_flansch_cam`)
-- `doc/projektdoku/vision-server-interface.md` Abschnitt 14
+- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md` (procedure, schemas, failure cases)
+- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (anchor, `T_flansch_cam`)
+- `doc/projektdoku/vision-server-interface.md` section 14
 
-## Betroffene Dateien
+## Affected files
 
 - `src/vision_server/layer2/plan.py`, `src/vision_server/layer2/run.py`
 - `tests/test_layer2_plan.py`, `tests/test_layer2_run.py`, `tests/test_layer2_opcua.py`
-- `doc/projektdoku/vision-server-interface.md` Abschnitt 14
-- `doc/projektdoku/arbeitsplaene/README.md`: Indexzeile
+- `doc/projektdoku/vision-server-interface.md` section 14
+- `doc/projektdoku/arbeitsplaene/README.md`: index line
 
-## Schnittstellen
+## Interfaces
 
-Die OPC-UA-Knoten und die Methoden bleiben unverändert. Die Schemas behalten ihre Versionen, alle Änderungen kommen nur hinzu.
+The OPC UA nodes and the methods remain unchanged. The schemas keep their
+versions; all changes are additions only.
 
-### Daten
+### Data
 
-**`RunJson`** (`wsc.vision.layer2.run/1`) hat eine neue Option:
+**`RunJson`** (`wsc.vision.layer2.run/1`) has a new option:
 
 ```json
 "options": { "standoffM": 0.3, "reachM": 0.85, "approachStandoffM": 0.6 }
 ```
 
-- `approachStandoffM`: Abstand der Kamera vor dem Tag beim Annäherungsbild, in Metern.
-  - Standard: `0.6`.
-  - `0` schaltet die Annäherung ab. Der Lauf ist dann genau der von vorher.
-  - Andere Werte müssen größer als `standoffM` sein, sonst antwortet der Pi mit `INVALID_ARGUMENT`.
+- `approachStandoffM`: distance of the camera in front of the tag for the approach image, in meters.
+  - Default: `0.6`.
+  - `0` disables the approach. The run is then exactly that of before.
+  - Other values must be greater than `standoffM`, otherwise the Pi answers with `INVALID_ARGUMENT`.
 
-**Neuer `purpose`-Wert `"approach"`** in `Layer2Target` und `Layer2Status.steps[]`:
-- Jedem Schritt mit `anchor` oder `measure` geht ein Schritt mit `approach` voraus. `stepIndex` zählt dabei streng fortlaufend weiter.
-- Die Liste der Schritte steht ab dem Start vollständig in `steps[]`, alle mit dem Status `pending`.
-- Ein Annäherungsschritt hat dieselben `name`, `moduleId` und `tagId` wie der nahe Schritt danach.
+**New `purpose` value `"approach"`** in `Layer2Target` and `Layer2Status.steps[]`:
+- Every step with `anchor` or `measure` is preceded by a step with `approach`. `stepIndex` continues strictly sequentially.
+- The list of steps is fully present in `steps[]` from the start, all with status `pending`.
+- An approach step has the same `name`, `moduleId` and `tagId` as the near step after it.
 
-Beispiel mit einem Modul:
+Example with one module:
 
 | stepIndex | purpose | name |
 | --- | --- | --- |
-| 0 | approach | Welttag 583 |
-| 1 | anchor | Welttag 583 |
-| 2 | approach | Modul A |
-| 3 | measure | Modul A |
+| 0 | approach | World tag 583 |
+| 1 | anchor | World tag 583 |
+| 2 | approach | Module A |
+| 3 | measure | Module A |
 
-Der Client fährt einen `approach`-Schritt genauso wie jeden anderen Schritt: auf `flangeInBase` fahren und danach `ReportRobotPose` mit der **gemeldeten** Flanschpose aufrufen. Das Ziel des nahen Schritts ändert sich erst, nachdem die Annäherung ausgewertet ist. Der Client fährt deshalb immer das aktuelle `Layer2Target`.
+The client drives an `approach` step exactly like every other step: move to
+`flangeInBase` and then call `ReportRobotPose` with the **reported** flange pose.
+The target of the near step only changes after the approach has been evaluated.
+The client therefore always drives the current `Layer2Target`.
 
-`steps[].detail` nach einer erfolgreichen Annäherung, zum Beispiel: `"Tag 7 gesehen, nahes Ziel um 42 mm korrigiert"`. `result` bleibt bei der Annäherung `null`.
+`steps[].detail` after a successful approach, for example:
+`"Tag 7 gesehen, nahes Ziel um 42 mm korrigiert"` (German runtime text: "tag 7
+seen, near target corrected by 42 mm"). `result` stays `null` during the approach.
 
-### Rechnung
+### Calculation
 
-`view_target` bleibt unverändert und wird zweimal aufgerufen: einmal mit `approachStandoffM`, einmal mit `standoffM`. Beide Bilder liegen auf derselben Blickachse.
+`view_target` remains unchanged and is called twice: once with
+`approachStandoffM`, once with `standoffM`. Both images lie on the same line of sight.
 
-Nach dem Annäherungsbild gilt:
-- **Welttag:** Ein Welttag erscheint nicht als Detection, sondern als neuer `RobotAnchor` in der Quelle. Dessen `T_world_base` stammt aus dem weiten Bild und dient nur dem Zielen. Die Pose des Welttags selbst bleibt die exakte aus der Tag-Map. Das nahe Ziel wird geplant mit:
+After the approach image, the following applies:
+- **World tag:** A world tag does not appear as a detection, but as a new `RobotAnchor` in the source. Its `T_world_base` comes from the wide image and serves only for aiming. The pose of the world tag itself remains the exact one from the tag map. The near target is planned with:
 
   ```
-  T_base_flansch = inv(T_world_base_weit) · T_world_tag · T_tag_cam · inv(T_flansch_cam)
+  T_base_flansch = inv(T_world_base_wide) · T_world_tag · T_tag_cam · inv(T_flansch_cam)
   ```
 
-  Der Lauf übernimmt diesen Anker **nicht**. `Layer2Status.anchor` bleibt `null`, bis der nahe Anker-Schritt gelingt.
-- **Modultag:** Die Detection des Tags liefert `T_world_tag`. Kennt die Tag-Map den Tag, ist die gemeldete Pose die des Moduls. Dann wird der CAD-Versatz zurückgerechnet: `T_world_tag = T_world_modul · inv(tag_to_module)`. Das nahe Ziel wird mit dieser Pose und dem Anker des Laufs geplant.
+  The run does **not** adopt this anchor. `Layer2Status.anchor` stays `null` until the near anchor step succeeds.
+- **Module tag:** The detection of the tag yields `T_world_tag`. If the tag map knows the tag, the reported pose is that of the module. Then the CAD offset is computed back: `T_world_tag = T_world_module · inv(tag_to_module)`. The near target is planned with this pose and the anchor of the run.
 
-Iteriert wird **nicht**: Es gibt genau eine Annäherung je Schritt. So steht die Liste der Schritte schon zum Start fest. Außerdem ist das nahe Bild selbst die Messung, eine weitere Korrektur davor würde nichts bringen.
+There is **no** iteration: there is exactly one approach per step. This way the
+list of steps is already fixed at the start. In addition, the near image is
+itself the measurement; a further correction before it would bring nothing.
 
-### Flansch-Frame
+### Flange frame
 
-Mit dem Frontend abgestimmt (Sitzung `opcua-f1`, 12.10.2026): „Flansch“ ist der mechanische Werkzeugflansch ohne Greifer. Für diese URDF-Links gelten:
-- `flangeInBase` (das Frontend rechnet es per FK aus den echten Gelenkwinkeln),
-- die IK für das Fahrziel,
-- **die Roboterposen der Hand-Auge-Aufnahmen**. `T_flansch_cam` ist nur gültig, wenn es auf denselben Link kalibriert wird.
+Coordinated with the frontend (session `opcua-f1`, 12.10.2026): "Flansch"
+(flange) is the mechanical tool flange without gripper. The following URDF links
+apply:
+- `flangeInBase` (the frontend computes it via FK from the real joint angles),
+- the IK for the target,
+- **the robot poses of the hand-eye captures**. `T_flansch_cam` is only valid if it is calibrated to the same link.
 
-| Roboter | URDF-Link |
+| Robot | URDF link |
 | --- | --- |
-| EVA, Demo1 | `model_6` (letztes Glied; `tool_point` ist die Greiferspitze, 17 cm davor) |
+| EVA, Demo1 | `model_6` (last link; `tool_point` is the gripper tip, 17 cm in front of it) |
 | UR5e | `flange` |
 | FR3 | `eef_attach_point` |
 
-Das Frontend schickt `approachStandoffM` vorerst nicht mit. Es gilt also der Standard 0,6 m.
+For now the frontend does not send `approachStandoffM`. The default of 0.6 m therefore applies.
 
 ### Python
 
@@ -102,146 +115,149 @@ Das Frontend schickt `approachStandoffM` vorerst nicht mit. Es gilt also der Sta
 # src/vision_server/layer2/plan.py
 APPROACH = "approach"
 DEFAULT_APPROACH_STANDOFF_M = 0.6
-RunRequest.approach_standoff_m: float          # 0 = aus
+RunRequest.approach_standoff_m: float          # 0 = off
 RunRequest.standoff_for(purpose) -> float
-StepSpec.seen_tag: tuple[int, Pose] | None     # gemessene Weltpose, ersetzt die grobe
-def find_detection(detections, tag_id) -> dict | None          # auch über attributes.tagIds
+StepSpec.seen_tag: tuple[int, Pose] | None     # measured world pose, replaces the rough one
+def find_detection(detections, tag_id) -> dict | None          # also via attributes.tagIds
 def tag_in_world_from_detection(detection, tag_id, tag_map) -> Pose   # ValueError
 ```
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behavior |
 | --- | --- |
-| Welttag im Annäherungsbild nicht gesehen, Job-Fehler | Annäherung `failed`, Lauf `aborted` (wie beim Anker) |
-| Modultag im Annäherungsbild nicht gesehen, Pose nicht im Welt-KS | Annäherung und Mess-Schritt `skipped` mit Grund, weiter |
-| Job-Fehler bei der Annäherung an ein Modul | Annäherung `failed`, Mess-Schritt `skipped`, weiter |
-| `reached: false` bei der Annäherung (z. B. keine IK-Lösung) | Annäherung `skipped`, der nahe Schritt folgt mit dem Ziel aus der groben Pose |
-| Annäherungsziel außer Reichweite | Annäherung `skipped` ohne Fahrt, der nahe Schritt folgt mit grober Pose |
-| Nahes Modulziel außer Reichweite | Annäherung und Mess-Schritt `skipped` ohne Fahrt |
+| World tag not seen in the approach image, job error | Approach `failed`, run `aborted` (as with the anchor) |
+| Module tag not seen in the approach image, pose not in the world frame | Approach and measure step `skipped` with reason, continue |
+| Job error during the approach to a module | Approach `failed`, measure step `skipped`, continue |
+| `reached: false` during the approach (e.g. no IK solution) | Approach `skipped`; the near step follows with the target from the rough pose |
+| Approach target out of reach | Approach `skipped` without motion; the near step follows with the rough pose |
+| Near module target out of reach | Approach and measure step `skipped` without motion |
 
-## Offene Fragen
+## Open questions
 
-- **Re-Ankern durch Beifang:** Liegt im Bild eines Modul-Schritts (Annäherung oder nah) zufällig ein Welttag, ankert die AprilTag-Quelle neu (`_locate`: „der optische Wert gewinnt immer“). Das war schon vor dieser Änderung so. Durch das weite Annäherungsbild passiert es jetzt aber häufiger, und der Anker kommt dann aus größerer Entfernung. `Layer2Status.anchor` bleibt dabei der Anker des Laufs. Die Weltposen der Module rechnet die Quelle aber mit ihrem eigenen, neuen Anker. Abhilfe wäre ein Job-Parameter „nicht neu ankern“. Bei Bedarf umsetzen.
-- An echter Hardware ist das nicht getestet. `T_flansch_cam` fehlt noch (siehe `apriltag-hand-auge-ankern.md`).
+- **Re-anchoring by incidental capture:** If by chance a world tag lies in the image of a module step (approach or near), the AprilTag source re-anchors (`_locate`: "der optische Wert gewinnt immer", German for "the optical value always wins"). This was already the case before this change. Due to the wide approach image, however, it now happens more often, and the anchor then comes from a greater distance. `Layer2Status.anchor` remains the anchor of the run in this case. The source, however, computes the world poses of the modules with its own new anchor. A remedy would be a job parameter "nicht neu ankern" (German for "do not re-anchor"). Implement if needed.
+- Not tested on real hardware. `T_flansch_cam` is still missing (see `apriltag-hand-auge-ankern.md`).
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Der Vorschlag von `opcua-f1` sah vor, die Tag-Pose im Basis-KS direkt aus `T_flansch_cam` und der gemeldeten Flanschpose zu rechnen. Umgesetzt ist der gleichwertige Weg über das Welt-KS: Die Quelle liefert die Pose bereits mit dem Anker im Welt-KS, und mit derselben Basis geht sie zurück ins Basis-KS. Der Anker kürzt sich dabei heraus. Für den Welttag dient der vorläufige Anker aus dem weiten Bild als Messung.
-- `_evaluate_measure` findet den Tag jetzt auch dann, wenn die Quelle mehrere Tags eines Moduls zu einer Detection zusammenfasst (`attributes.tagIds`).
+- The proposal from `opcua-f1` foresaw computing the tag pose in the base frame directly from `T_flansch_cam` and the reported flange pose. Implemented is the equivalent route via the world frame: the source already delivers the pose with the anchor in the world frame, and with the same base it returns to the base frame. The anchor cancels out in the process. For the world tag, the provisional anchor from the wide image serves as the measurement.
+- `_evaluate_measure` now also finds the tag when the source combines several tags of a module into one detection (`attributes.tagIds`).
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen eingetragen.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 14 ergänzt.
-- [x] Testlauf: 536 Tests, davon 1 Fehlschlag, der nichts mit dieser Änderung zu tun hat (`test_mjpeg_server…viewers_run_faster`, schlägt auch ohne diese Änderung fehl). Neu: `test_layer2_plan.py` (+3), `test_layer2_run.py` (+8, Klasse `Layer2ApproachTest`).
+- [x] Status `done`, interfaces recorded.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` section 14 added.
+- [x] Test run: 536 tests, of which 1 failure that has nothing to do with this change (`test_mjpeg_server…viewers_run_faster`, also fails without this change). New: `test_layer2_plan.py` (+3), `test_layer2_run.py` (+8, class `Layer2ApproachTest`).
 
-## Nachtrag: Arm fährt nicht mehr in den eigenen Wagen
+## Addendum: arm no longer drives into its own cart
 
-Repo `webskillcomposition`, Branch `Ungetestet`.
+Repo `webskillcomposition`, branch `Ungetestet`.
 
 ### Problem
 
-Bei der Layer-2-Fahrt kam der FR3 seinem Wagen sehr nah oder fuhr hinein, obwohl es die Sperrzone gibt (`frontend/src/features/cell-modules/model/cellClearance.ts`, aus `bounds` von ROBOT_FRANKA: x −0,20…0,89 m, y −0,41…0,36 m, Tischplatte z = 0; passt zu `wagon.stl` mit 1,09 × 0,72 m).
+During the Layer 2 run the FR3 came very close to its cart or drove into it, even
+though the exclusion zone exists (`frontend/src/features/cell-modules/model/cellClearance.ts`,
+from `bounds` of ROBOT_FRANKA: x −0.20…0.89 m, y −0.41…0.36 m, table top z = 0;
+matches `wagon.stl` with 1.09 × 0.72 m).
 
-Ursachen:
-1. Es wurden nur Punkte geprüft (Gelenkmittelpunkte, Flansch, Kamera), kein Volumen. Die FR3-Glieder haben etwa 6–8 cm Radius, die Hand etwa 10 cm.
-2. Hand und Finger bis `tool_point` (0,1034 m vor dem Flansch) fehlten.
-3. `legCollision` prüfte fest 10 Schritte, unabhängig davon, wie weit die Fahrt ging.
+Causes:
+1. Only points were checked (joint centers, flange, camera), no volume. The FR3 links have a radius of about 6–8 cm, the hand about 10 cm.
+2. Hand and fingers up to `tool_point` (0.1034 m in front of the flange) were missing.
+3. `legCollision` checked a fixed 10 steps, regardless of how far the motion went.
 
-### Lösung
+### Solution
 
-- Der Arm wird als Kette von Kugeln modelliert. Die Segmente werden in Abständen von höchstens 2 cm abgetastet.
-- `ARM_RADIUS_M = 0,08` gilt für die Glieder, `HAND_RADIUS_M = 0,10` für Flansch, Werkzeugspitze und Kamera.
-- Der Abstand beträgt `TABLE_CLEARANCE_M = 0,05` ab der Kugeloberfläche, der Boden wird entsprechend mit `FLOOR_CLEARANCE_M` geprüft.
-- `flangeKinematics.points()` liefert Flansch und Werkzeugspitze aus dem URDF. Das Feld `toolFrom` markiert, ab wo der Hand-Radius gilt.
-- `legCollision` tastet so fein ab, dass kein Gelenk pro Schritt mehr als 0,05 rad fährt (höchstens 200 Schritte).
-- Link0 (Fuß auf dem Wagen) wird nicht geprüft. Die Kette beginnt an Gelenk 1 (z ≈ 0,333 m).
-- Die Rückgabe bleibt `"Wagen"` | `"Boden"` | `null`, die Aufrufer bleiben unverändert.
-- Zentrier-Korrekturen (`centreOnTag`) prüfen weiterhin nur ihr Ziel. Sie sind klein.
+- The arm is modeled as a chain of spheres. The segments are sampled at intervals of at most 2 cm.
+- `ARM_RADIUS_M = 0.08` applies to the links, `HAND_RADIUS_M = 0.10` to flange, tool tip and camera.
+- The clearance is `TABLE_CLEARANCE_M = 0.05` from the sphere surface; the floor is checked accordingly with `FLOOR_CLEARANCE_M`.
+- `flangeKinematics.points()` provides flange and tool tip from the URDF. The field `toolFrom` marks from where the hand radius applies.
+- `legCollision` samples so finely that no joint moves more than 0.05 rad per step (at most 200 steps).
+- Link0 (foot on the cart) is not checked. The chain starts at joint 1 (z ≈ 0.333 m).
+- The return value remains `"Wagen"` (cart) | `"Boden"` (floor) | `null`; the callers remain unchanged.
+- Centering corrections (`centreOnTag`) still check only their own target. They are small.
 
-### Folge und Risiko
+### Consequence and risk
 
-Die Prüfung ist strenger. Manche Sichtpunkte nah am Wagen werden ausgelassen („Sichtpunkt/Weg würde den Wagen berühren — ausgelassen“). Das ist gewollt. Werden es zu viele, lassen sich die Radien oder `TABLE_CLEARANCE_M` gezielt verkleinern.
+The check is stricter. Some viewpoints close to the cart are skipped ("Sichtpunkt/Weg würde den Wagen berühren — ausgelassen", German runtime text: "viewpoint/path would touch the cart — skipped"). This is intended. If there are too many of them, the radii or `TABLE_CLEARANCE_M` can be reduced specifically.
 
-### Verifikation
+### Verification
 
-- Unit-Tests (`cellClearance.test.ts`) und Typprüfung.
-- Am Roboter noch offen: kein Sichtpunkt und kein Weg unter etwa 5 cm an die Wagenplatte. Die Ausgangsstellung gilt nicht als „Wagen“.
+- Unit tests (`cellClearance.test.ts`) and type check.
+- Still open on the robot: no viewpoint and no path closer than about 5 cm to the cart plate. The home pose does not count as "Wagen" (cart).
 
-## Nachtrag 27.10.2026: Jeden Tag aus 3 Ansichten messen und vereinen
+## Addendum 27.10.2026: measure every tag from 3 views and merge them
 
-### Anlass
+### Reason
 
-- Bisher maß die Layer-2-Fahrt jeden Tag nur aus der zentrierten Stellung: eine Ansicht, 2–8 Bilder.
-- Module wurden nur verschoben. Ihre Drehung blieb die aus Layer 1, weil die Orientierung eines einzelnen Tags bei ~35 cm oft unsicher ist und gespiegelt sein kann.
-- Der Anker setzte die Roboterbasis aus dieser einen Messung.
+- So far the Layer 2 run measured each tag only from the centered position: one view, 2–8 images.
+- Modules were only shifted. Their rotation stayed that from Layer 1, because the orientation of a single tag at ~35 cm is often uncertain and can be mirrored.
+- The anchor set the robot base from this one measurement.
 
-### Ablauf
+### Flow
 
-- Anfahren und Zentrieren wie bisher.
-- Danach 3 weitere Ansichten um die Tag-Mitte, im selben Abstand (Standoff des Sichtpunkts):
+- Approach and centering as before.
+- Then 3 further views around the tag center, at the same distance (standoff of the viewpoint):
 
-| Ansicht | Drehung |
+| View | Rotation |
 | --- | --- |
-| 1 | +12° um Tag-x |
-| 2 | −12° um Tag-x |
-| 3 | +12° um Tag-y |
+| 1 | +12° about tag x |
+| 2 | −12° about tag x |
+| 3 | +12° about tag y |
 
-  Dieselbe Geometrie wie bei den Roboter-Tags.
-- Jede Ansicht wird mit Rollwinkeln 0/90/180/−90° und IK-Startwerten geplant: aktuelle Gelenke, Ausgangsstellung, Bereichsmitte, Winkel schon gemessener Ansichten. Wagen- und Wegprüfung wie bei der Fahrt.
-- Nicht erreichbare oder nicht messbare Ansichten werden übersprungen und in der Zeile genannt.
-- `T_base_tag` je Ansicht = FK(gelesene Gelenke) · T_Flansch_Kamera · T_Kamera_Tag.
+  Same geometry as for the robot tags.
+- Each view is planned with roll angles 0/90/180/−90° and IK starting values: current joints, home pose, center of range, angles of already measured views. Cart and path check as for the drive.
+- Views that are unreachable or not measurable are skipped and named in the status line.
+- `T_base_tag` per view = FK(read joints) · T_flange_cam · T_cam_tag.
 
-### Vereinen (`fuseTagViews`)
+### Merging (`fuseTagViews`)
 
-Datei: `frontend/src/features/cell-modules/model/tagViews.ts` (Repo `webskillcomposition`).
+File: `frontend/src/features/cell-modules/model/tagViews.ts` (repo `webskillcomposition`).
 
-Eingang sind die zentrierte Messung und die Ansichten.
+Input: the centered measurement and the views.
 
-- Position = Mittel.
-- Orientierung = Mittel der nicht gespiegelten (eindeutigen) Ansichten, sonst die geplante Orientierung.
-- Streuung = RMS.
-- Ausreißer: ab 3 Messungen wird höchstens eine verworfen, wenn sie > 3 mm bzw. > 1° vom Mittel der übrigen liegt und die übrigen untereinander auf 1,5 mm / 0,5° übereinstimmen.
-- Weniger als 2 gültige Messungen: wie bisher nur die zentrierte Messung („nur 1 Ansicht“).
+- Position = mean.
+- Orientation = mean of the non-mirrored (unambiguous) views, otherwise the planned orientation.
+- Spread = RMS.
+- Outliers: from 3 measurements on, at most one is discarded if it lies more than 3 mm resp. more than 1° from the mean of the others and the others agree with each other to 1.5 mm / 0.5°.
+- Fewer than 2 valid measurements: as before only the centered measurement ("nur 1 Ansicht", German status text: "only 1 view").
 
-### Ergebnis Modul
+### Module result
 
-- Verschiebung aus dem Mittel.
-- Drehung wird übernommen, wenn mindestens 2 eindeutige Ansichten vorliegen und die Winkelstreuung ≤ 0,5° ist (`LAYER2_HEADING_MAX_SPREAD_DEG`). Dann wird die waagerechte Modulpose wie in Layer 1 aus der Tag-Pose berechnet (`levelModulePose`: nur Gierwinkel, Höhe bleibt die des Bodens).
-- Sonst bleibt die Drehung aus Layer 1 („Drehung aus Layer 1 behalten“).
+- Shift from the mean.
+- Rotation is adopted if at least 2 unambiguous views are available and the angular spread is ≤ 0.5° (`LAYER2_HEADING_MAX_SPREAD_DEG`). Then the level module pose is computed from the tag pose as in Layer 1 (`levelModulePose`: yaw angle only, height remains that of the floor).
+- Otherwise the rotation from Layer 1 is kept ("Drehung aus Layer 1 behalten", German status text: "keep rotation from Layer 1").
 
-### Ergebnis Anker
+### Anchor result
 
-- Basiskorrektur aus dem Mittel.
-- Kurs nur unter derselben Bedingung. Vorher reichte eine einzige nicht gespiegelte Messung.
+- Base correction from the mean.
+- Heading only under the same condition. Previously, a single non-mirrored measurement was sufficient.
 
-### Anzeige in der Zeile
+### Display in the status line
 
-- „N Ansichten, Streuung x,x mm / y,y°“
-- übersprungene und verworfene Ansichten
-- bei gedrehtem Modul „Δ x,x°“
+- "N Ansichten, Streuung x,x mm / y,y°" (German UI text: "N views, spread x.x mm / y.y°")
+- skipped and discarded views
+- for a rotated module "Δ x,x°"
 
-### Grenzen
+### Limits
 
-- Pro Sichtpunkt ~20–30 s länger.
-- Ein fester Versatz der Hand-Auge-Kalibrierung mittelt sich nicht heraus. Dafür neu kalibrieren.
-- Nah am Wagen sind nicht alle Ansichten erreichbar.
+- About 20–30 s longer per viewpoint.
+- A fixed offset of the hand-eye calibration does not average out. Recalibrate for that.
+- Close to the cart, not all views are reachable.
 
-### Schnittstellen
+### Interfaces
 
-- Keine Änderung am Pi. Betroffen ist nur `MeasureTags`.
-- Frontend, Repo `webskillcomposition`, Branch `Ungetestet`:
+- No change on the Pi. Only `MeasureTags` is affected.
+- Frontend, repo `webskillcomposition`, branch `Ungetestet`:
 
-| Commit | Inhalt |
+| Commit | Content |
 | --- | --- |
-| `eaab176` | gemeinsamer Teil `tagViews.ts`, Roboter-Tags unverändert |
-| `a9137d3` | Layer-2-Fahrt |
-| `53a8c55` | Wagen-Prüfung lockerer: Glieder 6 cm, Hand 8 cm, Rand 2 cm |
-| `6bce599` | Layer-2-Vorschlag als Kästen und Basis-Markierung statt Modellkopien |
+| `eaab176` | shared part `tagViews.ts`, robot tags unchanged |
+| `a9137d3` | Layer 2 run |
+| `53a8c55` | cart check looser: links 6 cm, hand 8 cm, edge 2 cm |
+| `6bce599` | Layer 2 proposal as boxes and base marker instead of model copies |
 
-### Offen
+### Open
 
-- Am Roboter noch nicht geprüft.
-- Erwartung: Wiederholgenauigkeit der Modulposition ~1–3 mm, Drehung ~0,3°.
+- Not yet checked on the robot.
+- Expectation: repeatability of the module position ~1–3 mm, rotation ~0.3°.

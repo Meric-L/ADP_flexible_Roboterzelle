@@ -43,7 +43,7 @@ class VisionAddressSpace:
     #: `None` if `config.camera_stream` is not set -- no live stream.
     latest_camera_frame: Node | None
     #: Writable: the frontend selects what the stream shows through this
-    #: ("off", "apriltag", "calibration"). `None` without a livestream.
+    #: ("off", "apriltag", "undistorted", "tagreference"). `None` without a livestream.
     camera_stream_mode: Node | None = None
     #: Live progress of a `CalibrationSession` (JSON string), see
     #: `runner/calibration.py`. `None` if `config.apriltag` is not set.

@@ -1,160 +1,159 @@
-# Altlasten — Stand und Abbaubedingungen
+# Legacy — state and removal conditions
 
-> **Abgelöst (30.10.2026)** durch [`altlasten-zelle.md`](altlasten-zelle.md) (dieses Repo) und [`altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition). Offene Punkte von hier sind dort neu geprüft und mit ihrer alten ID übernommen. Dieses Dokument bleibt als Verlauf stehen.
+> **Superseded (30.10.2026)** by [`altlasten-zelle.md`](altlasten-zelle.md) (this repo) and [`altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition). Open items from here have been re-checked there and carried over under their old IDs. This document is kept as a historical record.
 
-Mitlaufende Liste der Dinge, die wir im Laufe des Projekts eingebaut haben und die
-**nicht zur Lokalisierung gehören**: Demo-Aufbauten, Testinstrumente, Platzhalter und
-Deployment-Behelfe. Zweck ist, dass nichts davon unbemerkt produktiv wird.
+Running list of the things we have added during the project that
+**do not belong to localization**: demo setups, test instruments, placeholders and
+deployment workarounds. The purpose is that none of it quietly becomes productive.
 
-Jeder Eintrag nennt die Bedingung, unter der er wegfallen kann. Erst wenn die erfüllt
-ist, wird gelöscht — und dann auch der Eintrag hier gestrichen.
+Each entry names the condition under which it can be removed. Only once that condition
+is met is it deleted — and then the entry is also struck from here.
 
-**Am 21.09.2026 abgebaut:** die vollständige CPU-Temperatur-Demo (A1–A6) samt ihrer
-Gegenstücke im Uni-Repo (B2, B6). B4 und B5 waren zu dem Zeitpunkt bereits fort. Siehe [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
+**Removed on 21.09.2026:** the complete CPU temperature demo (A1–A6) together with its
+counterparts in the university repo (B2, B6). B4 and B5 were already gone at that point. See [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
 
-Zwei Repos sind betroffen:
+Two repos are affected:
 
-- **Zelle** = `ADP_flexible_Roboterzelle` (dieses Repo), Branch `feature/vision-server`
-- **WSC** = `webskillcomposition` (Uni-Repo), Branch `Ungetestet`
+- **Cell** = `ADP_flexible_Roboterzelle` (this repo), branch `feature/vision-server`
+- **WSC** = `webskillcomposition` (university repo), branch `Ungetestet`
 
-Stand: 2026-09-21. Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
+State as of: 2026-09-21. Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
 ---
 
-## A. CPU-Temperatur-Demo — **vollständig entfernt (21.09.2026)**
+## A. CPU temperature demo — **completely removed (21.09.2026)**
 
-Der ursprüngliche Aufbau, mit dem die OPC-UA-Strecke überhaupt erst zum Laufen gebracht
-wurde. Fachlich hatte nichts davon mit der Zelle zu tun. Alles weg.
+The original setup with which the OPC UA route was first made to run at all.
+Functionally none of it had anything to do with the cell. All of it gone.
 
-| # | Was | Erledigt |
+| # | What | Done |
 |---|---|---|
-| ~~A1~~ | ~~`2:VisionSystem` — zweite, leere `VisionSystemType`-Instanz~~ | Der Adressraum enthält jetzt genau **eine** Instanz; festgehalten in `tests/test_part10_fassade.py` |
-| ~~A2~~ | ~~`CpuTemperatureResult`~~ | Mit A1 entfallen |
-| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | Ersatz im Log ist der Loop-Lag-Watchdog in `runner/machine.py`; das **nach außen sichtbare** Lebenszeichen ist seit 22.09.2026 `VisionAsset/Health/DeviceHealth` (OPC 40100-2, siehe `vision-server-interface.md` 11.4) — kein Zähler ohne Quelle, sondern ein genormter Zustand, der nur bei Änderung geschrieben wird |
-| ~~A4~~ | ~~`RaspiDevice/Setpoint`~~ | Mit B2 entfallen |
-| ~~A5~~ | ~~1-Hz-Endlosschleife im Server~~ | `main()` wartet jetzt nur noch auf das Stopp-Signal |
-| ~~A6~~ | ~~`print_setpoint.py`~~ | Gelöscht |
+| ~~A1~~ | ~~`2:VisionSystem` — second, empty `VisionSystemType` instance~~ | The address space now contains exactly **one** instance; recorded in `tests/test_part10_fassade.py` |
+| ~~A2~~ | ~~`CpuTemperatureResult`~~ | Dropped together with A1 |
+| ~~A3~~ | ~~`RaspiDevice/Counter`~~ | The replacement in the log is the loop-lag watchdog in `runner/machine.py`; the **externally visible** heartbeat since 22.09.2026 is `VisionAsset/Health/DeviceHealth` (OPC 40100-2, see `vision-server-interface.md` 11.4) — not a counter without a source, but a standardized state that is only written when it changes |
+| ~~A4~~ | ~~`RaspiDevice/Setpoint`~~ | Dropped together with B2 |
+| ~~A5~~ | ~~1 Hz endless loop in the server~~ | `main()` now only waits for the stop signal |
+| ~~A6~~ | ~~`print_setpoint.py`~~ | Deleted |
 
-Mit `RaspiDevice` ist auch sein Namensraum `http://launch-rm.de/raspi` gefallen. **Alle
-Namespace-Indizes sind dadurch um eins nach unten gerückt** — der Vision-Namespace liegt
-jetzt auf ns=6. Wer `get_namespace_index(uri)` benutzt, merkt nichts; wer einen Index
-fest verdrahtet hat, greift ins Leere.
+With `RaspiDevice` its namespace `http://launch-rm.de/raspi` has also gone. **All
+namespace indices have thereby shifted down by one** — the vision namespace is now
+at ns=6. Anyone using `get_namespace_index(uri)` will notice nothing; anyone who
+hard-wired an index will end up pointing at nothing.
 
-`VisionMachine` hängt seitdem im Machinery-Standardordner `Objects/Machines` statt
-direkt unter `Objects`. Grund war nicht Technik, sondern Lesbarkeit: unter `Objects`
-standen vier gleichrangige Objekte, und in der Betreuung war unklar, welches der
-Einstieg ist. Jetzt steht dort projektseitig nur noch `VisionProgram`.
+`VisionMachine` has since been placed in the machinery standard folder `Objects/Machines` instead of
+directly under `Objects`. The reason was not technical but readability: under `Objects`
+there were four peer objects, and during maintenance it was unclear which one was the
+entry point. Now only `VisionProgram` remains there on the project side.
 
 ---
 
-## B. Pi-spezifische Einbauten im Uni-Backend/Frontend
+## B. Pi-specific additions in the university backend/frontend
 
-Alles Folgende haben wir ins WSC-Repo eingebracht. Es ist auf unsere zwei Pis
-festverdrahtet und gehört so nicht in ein Uni-Repo, das andere Gruppen weiterbenutzen.
+Everything below we contributed to the WSC repo. It is hard-wired to our two Pis
+and does not belong in a university repo that other groups continue to use.
 
-| # | Was | Wo | Warum es da ist | Abbaubedingung |
+| # | What | Where | Why it is there | Removal condition |
 |---|---|---|---|---|
-| B1 | **Hartcodierte Pi-Adressen** `10.10.38.104` / `.109` | WSC: `frontend/src/features/opcua-server/config/piServers.ts:1-6` | Schnellster Weg zu einer laufenden Verbindung | Server-Auswahl über die vorhandene `ConnectOpcUa`-Eingabe oder über mDNS statt Konstanten. **Teilweise erledigt** 22.09.2026: der Backend-Teil ist mit `config/pi_relay.py` entfallen (die Datei enthielt nur Relay-Konfiguration). Im Frontend hängen die Konstanten noch an sechs Stellen — `ServerManager`, `CameraStreamPanel`, `AutolocateModulesModal`, `ViewportHeaderControls`, `sceneState` |
-| ~~B2~~ | ~~CPU-Temperatur-Relay Pi1↔Pi2~~ | — | — | **Erledigt** 21.09.2026: ersatzlos entfernt, samt `_relay_tasks` in `runtime_registry.py`. Die Zielknoten gibt es nicht mehr |
-| B3 | **„First Layer" / „Second Layer" als Label zweier fester URLs** | WSC: `piServers.ts:4-7`, `ServerManager.tsx:5`, `:100-103` | Zwei Verbindungspunkte in der UI unterscheidbar machen | Wenn die Layer-Zuordnung aus den Serverdaten kommt statt aus der URL |
-| ~~B4~~ | ~~„Test: First Layer CPU-Temperatur" im Autolocate-Popup~~ | — | — | **Erledigt**: war beim Abbau am 22.09.2026 bereits fort — das Popup hatte sich zwischenzeitlich weiterentwickelt. Der Knoten, den es abonnierte, existiert ohnehin nicht mehr |
-| ~~B5~~ | ~~`MOCK_MODULES` — drei erfundene Roboter mit Position 0/0/0~~ | — | — | **Erledigt**: am 22.09.2026 nicht mehr im Popup vorhanden. Wie B4 im Zuge der Autolocate-Arbeit entfallen |
-| ~~B6~~ | ~~`legacy`-Zweig in `resolveVisionBinding`~~ | — | — | **Erledigt** 21.09.2026: mit A1 hinfällig. Der `unknown`-Zweig ist geblieben — er unterscheidet weiterhin „noch nichts bekannt" von „falscher Server" |
-| B7 | **Deployment-Behelf** `if os.getenv("HOST"): mount StaticFiles("./www")` und `host="0.0.0.0"` | WSC: `backend/src/backend/app.py:18-19`, `:30` | Damit das gebaute Frontend mit ausgeliefert wird | Nicht von uns eingeführt — bei einer Rückgabe ans Uni-Repo mit den Betreuern klären |
-| B8 | **Branchname `Ungetestet`** | WSC | Ehrlich benannter Arbeitsbranch | Beim Merge nach `dev`. Der Name sagt inzwischen weniger als er soll — Backend und Vision-Strecke sind gegen beide Pis verifiziert, das Frontend hat Typecheck und Unit-Tests |
+| B1 | **Hard-coded Pi addresses** `10.10.38.104` / `.109` | WSC: `frontend/src/features/opcua-server/config/piServers.ts:1-6` | Fastest route to a working connection | Server selection via the existing `ConnectOpcUa` input or via mDNS instead of constants. **Partly done** 22.09.2026: the backend part has been dropped together with `config/pi_relay.py` (the file contained only relay configuration). In the frontend the constants are still used in six places — `ServerManager`, `CameraStreamPanel`, `AutolocateModulesModal`, `ViewportHeaderControls`, `sceneState` |
+| ~~B2~~ | ~~CPU temperature relay Pi1↔Pi2~~ | — | — | **Done** 21.09.2026: removed without replacement, along with `_relay_tasks` in `runtime_registry.py`. The target nodes no longer exist |
+| B3 | **"First Layer" / "Second Layer" as labels for two fixed URLs** | WSC: `piServers.ts:4-7`, `ServerManager.tsx:5`, `:100-103` | Make the two connection points distinguishable in the UI | When the layer assignment comes from the server data instead of the URL |
+| ~~B4~~ | ~~"Test: First Layer CPU-Temperatur" in the autolocate popup~~ | — | — | **Done**: was already gone when removed on 22.09.2026 — the popup had in the meantime evolved further. The node it subscribed to does not exist anyway |
+| ~~B5~~ | ~~`MOCK_MODULES` — three invented robots at position 0/0/0~~ | — | — | **Done**: no longer present in the popup on 22.09.2026. Like B4, dropped in the course of the autolocate work |
+| ~~B6~~ | ~~`legacy` branch in `resolveVisionBinding`~~ | — | — | **Done** 21.09.2026: obsolete together with A1. The `unknown` branch has remained — it still distinguishes "nothing known yet" from "wrong server" |
+| B7 | **Deployment workaround** `if os.getenv("HOST"): mount StaticFiles("./www")` and `host="0.0.0.0"` | WSC: `backend/src/backend/app.py:18-19`, `:30` | So that the built frontend is served along with it | Not introduced by us — to be clarified with the supervisors when handing back to the university repo |
+| B8 | **Branch name `Ungetestet`** | WSC | Honestly named working branch | At merge into `dev`. The name now says less than it should — backend and vision route are verified against both Pis, the frontend has typecheck and unit tests |
 
 ---
 
-## C. Vision-Server: nicht-fachliche Platzhalter
+## C. Vision server: non-functional placeholders
 
-Im Vision-Server selbst, aber unabhängig davon, wie gut die Erkennung wird.
+In the vision server itself, but independent of how good the detection becomes.
 
-| # | Was | Wo | Warum es da ist | Abbaubedingung |
+| # | What | Where | Why it is there | Removal condition |
 |---|---|---|---|---|
-| ~~C1~~ | ~~`IsSimulated = True` fest verdrahtet~~ | — | — | **Erledigt**: kommt jetzt von der Erkennungsquelle (`DetectionSource.is_simulated`) |
-| C2 | **`IsPartial = False`** fest verdrahtet | Zelle: `src/vision_server/events.py:69`, `result_management.py:91` | Es gibt nur Vollergebnisse | Erst relevant, falls je Teilergebnisse gesendet werden |
-| ~~C3~~ | ~~`vision_system_id` auf beiden Pis identisch~~ | — | — | **Erledigt**: `vision_identity()` in `src/vision_server/server.py` (Env → Hostname-Abbildung → Fallback). Die Hostnamen in `PI_IDENTITIES` sind noch geraten und auf den Pis zu prüfen |
-| ~~C4~~ | ~~`configuration_id` wird von keiner Quelle gesetzt~~ | — | — | **Erledigt**: `AprilTagDetectionSource` füllt ihn mit Tag-Familie, Kalibrier- und Tag-Map-Identität (`tagloc.identity`, ohne numpy und ohne cv2) |
-| ~~C5~~ | ~~Nodeset-XML unter `src/OPCUA/`~~ | — | — | **Erledigt** 22.09.2026: alle vier Nodesets liegen unter `src/vision_server/nodesets/`, `config.py` zeigt per `_NODESET_DIR` dorthin. `src/OPCUA/` gibt es nicht mehr |
-| ~~C6~~ | ~~`caputure.py` — QR-Scanner im AprilTag-Ordner~~ | — | — | **Erledigt**: gelöscht. Die Pi-Kamera spricht jetzt `SharedCamera` an, für CLI-Aufrufe `tagloc.frames.PiCameraSource` |
-| C7 | **Adresse des Discovery-Servers fest im Code** — `opc.tcp://10.10.38.27:4840/` | Zelle: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Ohne Registrierung dort nimmt der Aggregation-Server uns nicht auf, und die Zelle hat genau diesen einen LDS | Wenn die Adresse aus einer Konfigurationsdatei kommt. Seit 21.10.2026 ist die Anmeldung wieder standardmäßig an (vom 23.09. bis 21.10.2026 war sie aus); `OPCUA_LDS_URL=""` schaltet sie ab, eine andere URL biegt sie ohne Codeänderung um |
+| ~~C1~~ | ~~`IsSimulated = True` hard-wired~~ | — | — | **Done**: now comes from the detection source (`DetectionSource.is_simulated`) |
+| C2 | **`IsPartial = False`** hard-wired | Cell: `src/vision_server/events.py:69`, `result_management.py:91` | Only full results exist | Only relevant if partial results are ever sent |
+| ~~C3~~ | ~~`vision_system_id` identical on both Pis~~ | — | — | **Done**: `vision_identity()` in `src/vision_server/server.py` (env → hostname mapping → fallback). The hostnames in `PI_IDENTITIES` are still guesses and have to be checked on the Pis |
+| ~~C4~~ | ~~`configuration_id` is set by no source~~ | — | — | **Done**: `AprilTagDetectionSource` fills it with tag family, calibration and tag-map identity (`tagloc.identity`, without numpy and without cv2) |
+| ~~C5~~ | ~~Nodeset XML under `src/OPCUA/`~~ | — | — | **Done** 22.09.2026: all four nodesets are in `src/vision_server/nodesets/`, `config.py` points there via `_NODESET_DIR`. `src/OPCUA/` no longer exists |
+| ~~C6~~ | ~~`caputure.py` — QR scanner in the AprilTag folder~~ | — | — | **Done**: deleted. The Pi camera now addresses `SharedCamera`; for CLI calls `tagloc.frames.PiCameraSource` |
+| C7 | **Address of the discovery server hard-coded in the code** — `opc.tcp://10.10.38.27:4840/` | Cell: `src/vision_server/discovery/lds.py` (`DEFAULT_LDS_URL`) | Without registration there the aggregation server does not accept us, and the cell has exactly this one LDS | When the address comes from a configuration file. Since 21.10.2026 registration is on again by default (it was off from 23.09. to 21.10.2026); `OPCUA_LDS_URL=""` switches it off, another URL redirects it without a code change |
 
 ---
 
-## D. Umgebung, Build und Repo-Hygiene
+## D. Environment, build and repo hygiene
 
-Keine Altlasten im engeren Sinn, aber Fallen, die uns bereits Zeit gekostet haben.
+Not legacy in the narrower sense, but pitfalls that have already cost us time.
 
-| # | Was | Wo | Problem |
+| # | What | Where | Problem |
 |---|---|---|---|
-| D1 | **`.gitignore` schluckt ganze Dateitypen** — `*.txt`, `*.sh`, `*.bat`, `concept/`, `data/`, `hardware/` | Zelle: `.gitignore` | Bereits getrackte Dateien laufen weiter, **neue** `.sh`/`.txt` und alles Neue unter `concept/` sind still unsichtbar für `git add`. Betrifft jedes künftige Setup- oder Deploy-Skript |
-| ~~D2~~ | ~~Kaputtes `.venv/`~~ | — | **Erledigt**: neu angelegt aus `requirements.txt` (OpenCV 5.0.0, numpy 2.5.3, asyncua 2.0.1, pupil-apriltags). Die gesamte Suite läuft damit **ohne einen einzigen Skip**. Das defekte Verzeichnis liegt als `.venv.kaputt/` daneben und kann gelöscht werden. Offen bleibt: verifiziert ist nur OpenCV **5.0.0**; auf dem Pi läuft 4.x. `tagloc.detector`/`boards` haben dafür Laufzeitweichen, die dort aber noch niemand ausgeführt hat |
-| ~~D3~~ | ~~`requirements.txt` bildet die Realität nicht ab~~ | — | **Teilweise erledigt**: die Datei erklärt jetzt, warum `picamera2` (Decken-Pi) per apt kommt (venv braucht `--system-site-packages`) und wozu `pupil-apriltags` noch dient — seit `tagloc.detector` ein optionales zweites Backend, kein Zwang mehr. `pyrealsense2` (Hand-Pi) ebenso bewusst nicht aufgenommen: auf dem Pi live verifiziert, dass Intel dafür keine ARM/aarch64-Wheels auf PyPI liefert — es muss dort separat installiert sein (bei uns lag es unter `/usr/local/lib/python3.13/dist-packages/`, ebenfalls per `--system-site-packages` sichtbar zu machen). Ein Upper Bound auf OpenCV fehlt weiterhin bewusst, weil die Laufzeitweichen 4.x und 5.x abdecken |
-| D4 | **`setup.sh` / `setup.bat` sind kein Projekt-Setup** | Zelle | Richten nur das ShareLaTeX-Remote und zwei Git-Aliase ein. Der Name legt etwas anderes nahe; ein echtes Setup-Skript existiert nicht |
-| D5 | **systemd-Unit und venv sind nirgends versioniert** | — | `opcua-server.service`, der Repo-Pfad auf dem Pi, die Python-Version und die venv-Erzeugung stehen in keinem Repo. Neuaufsetzen eines Pi ist derzeit undokumentiert. **Am 22.09.2026 hat das zugeschlagen:** Der Paketumzug löschte `src/OPCUA/server.py`, und der Dienst startete nach einem Reboot nicht mehr — niemand konnte im Repo nachsehen, worauf die Unit zeigt. Behoben mit D11 statt mit zwei Handeingriffen |
-| D11 | **`src/OPCUA/server.py` ist ein Starter ohne Logik** | Zelle: `src/OPCUA/server.py` (15 Zeilen) | Hält den Einstiegspunkt fest, auf den die nicht versionierte systemd-Unit zeigt. Der Server selbst liegt in `src/vision_server/server.py`. Wegfallen kann er, sobald D5 erledigt ist — also die Unit im Repo liegt und mit ausgerollt wird; dann ist `ExecStart` dort nachvollziehbar auf `-m vision_server.server` umzustellen |
-| D6 | **Node 18 reicht für das WSC-Frontend nicht** | WSC: `frontend/package.json` | `vite`/`vitest` verlangen `^20.19.0 \|\| >=22.12.0`. Unter Node 18 startet vitest nicht, und `npm install` überspringt **stillschweigend** das native `@rolldown/binding-linux-x64-gnu` — man bekommt ein kaputtes `node_modules` ohne Fehlermeldung |
-| D7 | **`tests/test_asyncua_discovery.py` bricht beim Collect ab** | WSC: Backend | Importiert `discover_variables`, das es in `asyncua_discovery.py` nicht mehr gibt. `uv run pytest` läuft dadurch gar nicht durch. Nicht von uns verursacht |
-| D8 | **Ein fehlschlagender Frontend-Test** | WSC: `entities/robot/model/store.test.ts:188` | Vorbestehend auf dem Branch, reproduziert sich ohne unsere Änderungen. Solange er rot ist, taugt `npm test` nicht als Signal |
-| ~~D9~~ | ~~Die Betreuer-Kurzanleitung zur Discovery stimmt nicht~~ | — | **Erledigt**: Die Anleitung sagte, der Aggregation-Server durchsuche mDNS selbst und eine Anmeldung sei nicht nötig — das hat einen Nachmittag gekostet. Sie ist am 21.09.2026 korrigiert worden und liegt jetzt **im Repo** unter `betreuer/OPC UA-mDNS-Kurzanleitung.md` (vorher nur lokal und untracked), damit andere Gruppen nicht in denselben Nachmittag laufen. Die beiden `.py`-Dateien im selben Ordner bleiben untracked |
-| D10 | **Ein Endpoint auf `0.0.0.0` meldet sich als `0.0.0.0` an** | `asyncua` 2.0.1: `client/client.py`, `register_server` | `register_to_discovery()` trägt `server.endpoint.geturl()` als DiscoveryUrl ein; der Aggregation-Server übernimmt die Adresse wörtlich und verbindet ins Leere. Gelöst über `Server.socket_address` — Endpoint nennt die LAN-IPv4, gelauscht wird weiter auf `0.0.0.0`, siehe `src/vision_server/server.py`. **Kostenfalle:** Wir haben das Attribut zunächst übersehen und den Registrierungsdatensatz von Hand gebaut; das war unnötig |
-| D11 | **`Server.stop()` meldet nicht beim Discovery-Server ab** | `asyncua` 2.0.1: `server/server.py`, `stop()` | Es bricht nur die Erneuerungsschleife ab und trennt die Verbindung. Ohne ein eigenes `unregister_from_discovery()` bleibt der Eintrag bis zum Ablauf stehen, und der Aggregation-Server zeigt ein Modul, das er nicht mehr erreicht. `src/vision_server/discovery/lds.py` ruft es im `finally` |
+| D1 | **`.gitignore` swallows whole file types** — `*.txt`, `*.sh`, `*.bat`, `concept/`, `data/`, `hardware/` | Cell: `.gitignore` | Files already tracked keep running, but **new** `.sh`/`.txt` files and everything new under `concept/` are silently invisible to `git add`. Affects every future setup or deploy script |
+| ~~D2~~ | ~~Broken `.venv/`~~ | — | **Done**: recreated from `requirements.txt` (OpenCV 5.0.0, numpy 2.5.3, asyncua 2.0.1, pupil-apriltags). The entire suite now runs with it **without a single skip**. The defective directory lies next to it as `.venv.kaputt/` and can be deleted. Still open: only OpenCV **5.0.0** has been verified; the Pi runs 4.x. `tagloc.detector`/`boards` have runtime switches for this, but nobody has run them there yet |
+| ~~D3~~ | ~~`requirements.txt` does not reflect reality~~ | — | **Partly done**: the file now explains why `picamera2` (ceiling Pi) comes via apt (venv needs `--system-site-packages`) and what `pupil-apriltags` is still for — since `tagloc.detector` is an optional second backend, no longer a requirement. `pyrealsense2` (hand Pi) is likewise deliberately not included: verified live on the Pi that Intel provides no ARM/aarch64 wheels on PyPI for it — it has to be installed there separately (for us it was under `/usr/local/lib/python3.13/dist-packages/`, likewise made visible via `--system-site-packages`). An upper bound on OpenCV is still deliberately missing, because the runtime switches cover 4.x and 5.x |
+| D4 | **`setup.sh` / `setup.bat` are not a project setup** | Cell | They only set up the ShareLaTeX remote and two git aliases. The name suggests something else; a real setup script does not exist |
+| D5 | **systemd unit and venv are versioned nowhere** | — | `opcua-server.service`, the repo path on the Pi, the Python version and the venv creation are in no repo. Re-setting up a Pi is currently undocumented. **On 22.09.2026 this bit us:** the package move deleted `src/OPCUA/server.py`, and after a reboot the service no longer started — nobody could look in the repo to see what the unit points to. Fixed with D11 instead of with two manual interventions |
+| D11 | **`src/OPCUA/server.py` is a starter without logic** | Cell: `src/OPCUA/server.py` (15 lines) | Holds the entry point that the unversioned systemd unit points to. The server itself lies in `src/vision_server/server.py`. It can go once D5 is done — i.e. the unit lies in the repo and is rolled out with it; then `ExecStart` there is to be switched to `-m vision_server.server` in a traceable way |
+| D6 | **Node 18 is not sufficient for the WSC frontend** | WSC: `frontend/package.json` | `vite`/`vitest` require `^20.19.0 \|\| >=22.12.0`. Under Node 18 vitest does not start, and `npm install` **silently** skips the native `@rolldown/binding-linux-x64-gnu` — you get a broken `node_modules` without an error message |
+| D7 | **`tests/test_asyncua_discovery.py` aborts during collection** | WSC: backend | Imports `discover_variables`, which no longer exists in `asyncua_discovery.py`. As a result `uv run pytest` does not run through at all. Not caused by us |
+| D8 | **One failing frontend test** | WSC: `entities/robot/model/store.test.ts:188` | Pre-existing on the branch, reproducible without our changes. As long as it is red, `npm test` is no useful signal |
+| ~~D9~~ | ~~The supervisors' short guide to discovery is wrong~~ | — | **Done**: the guide said the aggregation server searches mDNS itself and that registration was not necessary — that cost an afternoon. It was corrected on 21.09.2026 and now lies **in the repo** under `betreuer/OPC UA-mDNS-Kurzanleitung.md` (previously only locally and untracked), so that other groups do not run into the same afternoon. The two `.py` files in the same folder remain untracked |
+| D10 | **An endpoint on `0.0.0.0` registers itself as `0.0.0.0`** | `asyncua` 2.0.1: `client/client.py`, `register_server` | `register_to_discovery()` enters `server.endpoint.geturl()` as DiscoveryUrl; the aggregation server takes the address literally and connects into the void. Solved via `Server.socket_address` — the endpoint names the LAN IPv4, listening continues on `0.0.0.0`, see `src/vision_server/server.py`. **Cost trap:** we initially overlooked the attribute and built the registration record by hand; that was unnecessary |
+| D11 | **`Server.stop()` does not deregister from the discovery server** | `asyncua` 2.0.1: `server/server.py`, `stop()` | It only aborts the renewal loop and disconnects. Without a dedicated `unregister_from_discovery()` the entry remains until it expires, and the aggregation server shows a module it can no longer reach. `src/vision_server/discovery/lds.py` calls it in the `finally` |
 
 ---
 
-## Ausdrücklich **nicht** in dieser Liste
+## Explicitly **not** on this list
 
-Das Folgende sind Platzhalter der Lokalisierung selbst, also die eigentliche Arbeit —
-keine Altlasten:
+The following are placeholders of the localization itself, i.e. the actual work —
+not legacy:
 
-- ~~`detection/hello_world.py` und das Profil `hello_world`.~~ **Entfernt** am
-  28.09.2026: ein Start ohne gewählten Job ist jetzt ein Fehler (`UNKNOWN_RECIPE`)
-  statt eines stillen Platzhalterjobs.
-- ~~`frameId = "world"`, obwohl noch kein Weltsystem existiert.~~ **Erledigt**: der
-  Rahmen folgt jetzt dem Bild — `world`, sobald ein Referenz-Tag aus der Tag-Map
-  sichtbar ist, sonst das Kamera-KS der Quelle.
-- ~~Posen fest auf `[0,0,0]` / `[0,0,0,1]`.~~ **Erledigt** für `apriltag`; für
-  `calibration` bleiben sie Null, und das ist dort richtig.
-- ~~Dass `detect_apriltags.py` die Verzerrungskoeffizienten nicht anwendet.~~
-  **Erledigt** in `tagloc.pose`: die Ecken werden vor `solvePnP` entzerrt. Der
-  Prototyp `src/apriltag/detect_apriltags.py` wurde am 30.10.2026 entfernt.
-- **Hand-Auge-Kalibrierung**: Rechnung, Dateiformat und Werkzeug stehen
-  (`tagloc.handeye`, `python -m tagloc.cli.calibrate_handeye`). Offen ist die
-  Durchführung an der echten Hardware — `T_flansch_cam` ist eine Konstante
-  (Kamera starr am Roboter) und muss einmal gemessen werden. Solange keine
-  gemessene Datei unter `data/handeye/cam_flange.json` liegt, wirkt nur der
-  optische Weg: ohne Welttag im Bild liefert die Flanschkamera im Kamera-KS.
-  `auto_execute` bleibt in jedem Fall `False`, bis die Kalibrierung am Roboter
-  belegt ist.
+- ~~`detection/hello_world.py` and the profile `hello_world`.~~ **Removed** on
+  28.09.2026: a start without a chosen job is now an error (`UNKNOWN_RECIPE`)
+  instead of a silent placeholder job.
+- ~~`frameId = "world"`, although no world system exists yet.~~ **Done**: the frame
+  now follows the image — `world` as soon as a reference tag from the tag map is
+  visible, otherwise the camera coordinate system of the source.
+- ~~Poses fixed at `[0,0,0]` / `[0,0,0,1]`.~~ **Done** for `apriltag`; for
+  `calibration` they remain zero, and that is correct there.
+- ~~That `detect_apriltags.py` does not apply the distortion coefficients.~~
+  **Done** in `tagloc.pose`: the corners are undistorted before `solvePnP`. The
+  prototype `src/apriltag/detect_apriltags.py` was removed on 30.10.2026.
+- **Hand-eye calibration**: calculation, file format and tool exist
+  (`tagloc.handeye`, `python -m tagloc.cli.calibrate_handeye`). Open is the execution
+  on the real hardware — `T_flansch_cam` is a constant
+  (camera rigid on the robot) and has to be measured once. As long as no measured file
+  lies under `data/handeye/cam_flange.json`, only the optical route takes effect:
+  without a world tag in the image the flange camera delivers values in the camera CS.
+  `auto_execute` remains `False` in any case until the calibration on the robot is
+  proven.
 
-Siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) und
+See [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) and
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md).
 
 ---
 
-## Reihenfolge, wenn abgebaut wird — **durchlaufen am 21.09.2026**
+## Order of removal — **completed on 21.09.2026**
 
-Die Kette stand hier vorgezeichnet und wurde genau so abgearbeitet:
+The chain was laid out here and was worked through exactly in this way:
 
-1. ~~**B4** (Temperaturanzeige im Popup) und **B2** (Relay)~~ — danach las nichts mehr
-   eine Temperatur über den Vision-Baum.
-2. ~~**A2** (`CpuTemperatureResult`)~~ — damit war **A1** leer.
-3. ~~**A1** (`2:VisionSystem`)~~ — seitdem ist der Adressraum eindeutig, und **B6**
-   (`legacy`-Zweig) konnte fallen.
-4. ~~**A4**, **A5**, **A3**, **A6**~~ — der Rest der Demo, samt Namensraum.
-5. **C3** ist bereits erledigt (siehe Abschnitt C).
+1. ~~**B4** (temperature display in the popup) and **B2** (relay)~~ — after that nothing
+   read a temperature via the vision tree any more.
+2. ~~**A2** (`CpuTemperatureResult`)~~ — with that **A1** was empty.
+3. ~~**A1** (`2:VisionSystem`)~~ — since then the address space has been unambiguous, and **B6**
+   (`legacy` branch) could fall.
+4. ~~**A4**, **A5**, **A3**, **A6**~~ — the rest of the demo, including the namespace.
+5. **C3** is already done (see section C).
 
-Offen bleiben **B1** (nur noch im Frontend), **B3**, **B7**, **B8** im WSC-Repo sowie
-**C2**, **C7** und der Abschnitt D. B1 hängt an der mDNS-Umstellung: die Adressen sind
-noch Konstanten, obwohl der Server sich inzwischen selbst ankündigt.
+Still open are **B1** (only still in the frontend), **B3**, **B7**, **B8** in the WSC repo as well as
+**C2**, **C7** and section D. B1 depends on the mDNS switch: the addresses are
+still constants, although the server now announces itself.
 
-**D5 hat am 22.09.2026 zugeschlagen.** Der Paketumzug löschte `src/OPCUA/server.py`,
-und der Dienst auf dem Pi startete nach einem Reboot nicht mehr — die Unit zeigt auf
-diesen Pfad, und weil sie in keinem Repo liegt, war beim Umbau nicht nachzusehen,
-worauf sie zeigt. Behoben wurde es mit einem Starter an der alten Stelle (**D11**),
-nicht mit zwei Handeingriffen auf den Pis: ein Eingriff, den niemand versioniert,
-wäre beim nächsten Neuaufsetzen wieder weg.
+**D5 bit us on 22.09.2026.** The package move deleted `src/OPCUA/server.py`,
+and the service on the Pi no longer started after a reboot — the unit points to
+this path, and because it lies in no repo, it could not be checked during the restructuring
+what it points to. It was fixed with a starter at the old location (**D11**),
+not with two manual interventions on the Pis: an intervention that nobody versions
+would be gone again at the next re-setup.
 
-Lehre für den nächsten Umbau: **an einem Einstiegspunkt, den ein nicht versioniertes
-Deployment festhält, wird nicht ohne Ersatz gezogen.** Solange D5 offen ist, ist jeder
-Pfad unter `src/`, den die Unit nennt, faktisch öffentliche Schnittstelle.
+Lesson for the next restructuring: **an entry point that an unversioned deployment holds on to is not pulled out without a replacement.** As long as D5 is open, every
+path under `src/` that the unit names is in effect a public interface.

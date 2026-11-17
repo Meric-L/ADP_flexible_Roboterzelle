@@ -1,55 +1,55 @@
-# Zellen-Überwachung mit der Deckenkamera
+# Cell monitoring with the ceiling camera
 
-**Status:** fertig — 13.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** `Agent: Zellen-Überwachung (Layer 1)`; Frontend: Sitzung `opcua-f1` (`webskillcomposition`, Branch `Ungetestet`)
-**Thema:** apriltag
+**Status:** done — 13.10.2026 (not tested on real hardware)
+**Owner:** `Agent: Cell monitoring (layer 1)`; frontend: session `opcua-f1` (`webskillcomposition`, branch `Ungetestet`)
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Die Deckenkamera (Pi 1) wertet laufend aus, ob ein Modul verschoben, hinzugefügt oder entfernt wurde. Sie meldet nur **bestätigte** Änderungen, damit nicht bei jedem Ausreißer ein Alarm kommt. Das Frontend zeigt dann einen Alarm mit „Layer 1 jetzt ausführen“ und mit „Ignorieren“.
+The ceiling camera (Pi 1) continuously evaluates whether a module has been moved, added or removed. It reports only **confirmed** changes, so that not every outlier triggers an alarm. The frontend then shows an alarm with „Layer 1 jetzt ausführen“ (run layer 1 now) and with „Ignorieren“ (ignore).
 
-## Bereits gelesen
+## Already read
 
-- `doc/projektdoku/vision-server-interface.md` (Payload, `worldTags`, `cameraLocalization`, Sperren)
-- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`, `handeye-ueber-opcua.md` (Muster Ports und Fakes)
+- `doc/projektdoku/vision-server-interface.md` (payload, `worldTags`, `cameraLocalization`, locks)
+- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`, `handeye-ueber-opcua.md` (pattern of ports and fakes)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/cellwatch.py` (neu): Tracker, Ablauf, JSON
-- `src/vision_server/detection/apriltag.py`: `observe_cell`, eine Auswertung ohne Seiteneffekte
-- `src/vision_server/result_management.py`: `result_for_job`, die letzten 20 Ergebnisse
-- `src/vision_server/address_space.py`: Knoten `CellWatchStatus`
-- `src/vision_server/runner.py`: Methoden, Verdrahtung, `aclose`
-- `tests/test_cellwatch.py` (neu)
-- `doc/projektdoku/vision-server-interface.md`: Abschnitt 16
+- `src/vision_server/cellwatch.py` (new): tracker, flow, JSON
+- `src/vision_server/detection/apriltag.py`: `observe_cell`, an evaluation without side effects
+- `src/vision_server/result_management.py`: `result_for_job`, the last 20 results
+- `src/vision_server/address_space.py`: node `CellWatchStatus`
+- `src/vision_server/runner.py`: methods, wiring, `aclose`
+- `tests/test_cellwatch.py` (new)
+- `doc/projektdoku/vision-server-interface.md`: section 16
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Alles liegt unter `VisionMachine`, zusätzlich unter `VisionProgram` verlinkt. Es gibt die Knoten **nur auf der Deckenkamera**, also mit AprilTag und ohne `hand_eye_path`.
+Everything lies under `VisionMachine`, additionally linked under `VisionProgram`. The nodes exist **only on the ceiling camera**, i.e. with AprilTag and without `hand_eye_path`.
 
-| Element | NodeId | Typ |
+| Element | NodeId | Type |
 | --- | --- | --- |
 | StartCellWatch | `ns=<vision>;s=VisionMachine.StartCellWatch` | `(OptionsJson: String) -> (Error: Int32)` |
 | StopCellWatch | `ns=<vision>;s=VisionMachine.StopCellWatch` | `() -> (Error: Int32)` |
-| PauseCellWatch | `ns=<vision>;s=VisionMachine.PauseCellWatch` | `(ReasonText: String, MaxPauseS: Double) -> (Error: Int32)` (Nachtrag 22.10.2026, siehe `vision-server-interface.md` Abschnitt 16) |
-| ResumeCellWatch | `ns=<vision>;s=VisionMachine.ResumeCellWatch` | `() -> (Error: Int32)` (Nachtrag 22.10.2026) |
-| CellWatchStatus | `ns=<vision>;s=VisionMachine.CellWatchStatus` | String (JSON), Lesen/Abo |
+| PauseCellWatch | `ns=<vision>;s=VisionMachine.PauseCellWatch` | `(ReasonText: String, MaxPauseS: Double) -> (Error: Int32)` (addendum 22.10.2026, see `vision-server-interface.md` section 16) |
+| ResumeCellWatch | `ns=<vision>;s=VisionMachine.ResumeCellWatch` | `() -> (Error: Int32)` (addendum 22.10.2026) |
+| CellWatchStatus | `ns=<vision>;s=VisionMachine.CellWatchStatus` | String (JSON), Read/Subscribe |
 
-| Methode | Code | Wann |
+| Method | Code | When |
 | --- | --- | --- |
-| Start | `OK` | scharf geschaltet. Ein erneuter Aufruf ersetzt die Referenz. |
-| Start | `INVALID_ARGUMENT` | JSON oder Option ungültig, `referenceJobId` unbekannt (nicht unter den letzten 20 Ergebnissen) |
-| Start | `INVALID_STATE` | Referenz-Job fehlgeschlagen oder nicht im Welt-KS; Vision-System nicht `Operational` |
-| Stop | `OK` / `INVALID_STATE` | aus / lief nicht |
+| Start | `OK` | armed. A repeated call replaces the reference. |
+| Start | `INVALID_ARGUMENT` | JSON or option invalid, `referenceJobId` unknown (not among the last 20 results) |
+| Start | `INVALID_STATE` | reference job failed or not in the world CS; vision system not `Operational` |
+| Stop | `OK` / `INVALID_STATE` | off / was not running |
 
-Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie dann neu scharf.
+After a restart the monitoring is at `off`. The frontend then arms it again.
 
-### Daten
+### Data
 
-**`OptionsJson`**, Schema `wsc.vision.cellwatch.start/1`. Alle Felder sind optional.
+**`OptionsJson`**, schema `wsc.vision.cellwatch.start/1`. All fields are optional.
 
 ```json
 { "referenceJobId": "job-000123" | null, "movedThresholdM": 0.05, "rotatedThresholdDeg": 10,
@@ -57,10 +57,10 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
   "persistS": 5, "missingPersistS": 20, "intervalS": 2, "maxCameraErrorPx": 6 }
 ```
 
-- `referenceJobId`: die JobId des Ergebnisses, das im Viewport steht. Referenz ist **je Tag** die Pose der Detektion, zu der dieser Tag gehört. Bei zusammengefassten Detektionen (`attributes.tagIds`) bekommt jeder Tag dieselbe Pose.
-- `null` („Ignorieren“): Referenz sind die Mediane der letzten `persistS` Sekunden, nur Tags aus der Mehrzahl der Bilder. Reicht die Beobachtung noch nicht, bleibt `referenceId` `null`, bis sie reicht.
+- `referenceJobId`: the JobId of the result that is shown in the viewport. The reference is, **per tag**, the pose of the detection to which this tag belongs. For combined detections (`attributes.tagIds`) every tag gets the same pose.
+- `null` („Ignorieren“ (ignore)): the reference is the medians of the last `persistS` seconds, only tags from the majority of the images. If the observation is not yet sufficient, `referenceId` stays `null` until it is.
 
-**`CellWatchStatus`**, Schema `wsc.vision.cellwatch.status/1`:
+**`CellWatchStatus`**, schema `wsc.vision.cellwatch.status/1`:
 
 ```json
 { "schema": "wsc.vision.cellwatch.status/1",
@@ -79,51 +79,51 @@ Nach einem Neustart steht die Überwachung auf `off`. Das Frontend schaltet sie 
                  "distanceM": 0.12 | null, "rotationDeg": 4.0 | null, "since": "ISO" } ] }
 ```
 
-- `referenceId` ändert sich mit jeder neuen Referenz.
-- `changes` enthält nur bestätigte Änderungen. Die Positionen sind Modulposen (mit CAD-Versatz) im Welt-KS.
-- `paused` gilt während eines Jobs oder einer Kamera-Kalibrierung, ohne Kamerabild oder wenn das Bild keine Aussage erlaubt. Der Grund steht in `message`, danach geht es von selbst weiter.
+- `referenceId` changes with every new reference.
+- `changes` contains only confirmed changes. The positions are module poses (with CAD offset) in the world CS.
+- `paused` applies during a job or a camera calibration, without a camera image, or when the image does not allow a statement. The reason is in `message`; afterwards it continues by itself.
 
-### Regeln (`CellWatchTracker`)
+### Rules (`CellWatchTracker`)
 
-- **Gültiges Bild:** Kamerapose aus dem gemeinsamen PnP (`joint`, mindestens zwei Welt-Tags) mit RMS ≤ `maxCameraErrorPx`, **oder** (`minWorldTags` 1, Standard) genau ein Welt-Tag mit der gemerkten Kamerapose, das zu ihr passt (siehe „Ein Welt-Tag genügt“). Alles andere ist „keine Aussage“: Es zählt weder als gesehen noch als fehlend. Der Default ist 6 px: Auf Pi 1 lag das gemeinsame PnP bei einer Kalibrierung mit 0,43 px stabil bei 3,3 px, der Rest ist rund 1 cm Ungenauigkeit der Tag-Map. Bei einer Pause wegen zu großem Fehler nennt `message` den Welttag mit dem größten `jointReprojectionErrorPx`, also den Kandidaten zum Nachmessen.
-- **moved:** Der Median der Position (bzw. Drehung um die Hochachse) der letzten `persistS` Sekunden weicht länger als `persistS` um mehr als den Schwellwert ab. Bei mehrdeutigen Tags zählt nur die Position, außer das Modul liegt flach (Hochachse ≤ 30° zur Welt-Z): Dann zählt auch die Drehung, denn die beiden Lösungen unterscheiden sich nur im Kippen. Nachgeschärft am 19.10.2026: Ein gedrehtes Modul wurde nie gemeldet, weil in der Draufsicht fast jeder flache Tag mehrdeutig ist.
-- **appeared:** Ein Tag außerhalb der Referenz ist seit mindestens `persistS` sichtbar, und zwar in der Mehrzahl der Bilder des Fensters.
-- **disappeared:** Ein Referenz-Tag fehlt länger als `missingPersistS`, und zwar in so vielen gültigen Bildern hintereinander, dass ein zufälliges Verpassen bei seiner bisherigen Erkennungsrate unter 0,001 % liegt (mindestens 3, höchstens 60; Rate vorsichtig als untere 95-%-Grenze). Nachgeschärft am 15.10.2026: Ein Tag an der Erkennungsgrenze (nur in jedem fünften Bild erkannt) löste nach 20 s Lücke einen Fehlalarm aus, obwohl der Scan ihn fand.
-- **Hysterese:**
-  - moved erlischt erst, wenn der Tag `persistS` lang unter dem halben Schwellwert liegt.
-  - disappeared erlischt erst, wenn der Tag wieder in der Mehrzahl der Bilder ist.
-  - appeared erlischt erst, wenn der Tag `persistS` lang nicht mehr zu sehen war.
-- **Welttags:** Sie werden nicht überwacht. `locate_modules` liefert sie gar nicht erst.
+- **Valid image:** camera pose from the joint PnP (`joint`, at least two world tags) with RMS ≤ `maxCameraErrorPx`, **or** (`minWorldTags` 1, default) exactly one world tag that matches the stored camera pose (see "One world tag is enough"). Anything else is "no statement": it counts neither as seen nor as missing. The default is 6 px: on Pi 1 the joint PnP with a calibration of 0.43 px was stable at 3.3 px; the rest is about 1 cm inaccuracy of the tag map. On a pause due to too large an error, `message` names the world tag with the largest `jointReprojectionErrorPx`, i.e. the candidate for re-measuring.
+- **moved:** The median of the position (or rotation about the vertical axis) of the last `persistS` seconds deviates by more than the threshold for longer than `persistS`. For ambiguous tags only the position counts, unless the module lies flat (vertical axis ≤ 30° to world Z): then rotation counts as well, because the two solutions differ only in tilt. Refined on 19.10.2026: a rotated module was never reported, because from above almost every flat tag is ambiguous.
+- **appeared:** A tag outside the reference has been visible for at least `persistS`, namely in the majority of the images of the window.
+- **disappeared:** A reference tag is missing for longer than `missingPersistS`, namely in so many valid images in a row that a random miss at its previous detection rate is below 0.001 % (at least 3, at most 60; the rate is taken cautiously as the lower 95 % bound). Refined on 15.10.2026: a tag at the detection limit (detected only in every fifth image) triggered a false alarm after a 20 s gap, although the scan found it.
+- **Hysteresis:**
+  - moved clears only when the tag has been below half the threshold for `persistS`.
+  - disappeared clears only when the tag is back in the majority of the images.
+  - appeared clears only when the tag has not been seen for `persistS`.
+- **World tags:** they are not monitored. `locate_modules` does not return them at all.
 
-### Ein Welt-Tag genügt (19.10.2026)
+### One world tag is enough (19.10.2026)
 
-Zwei Welt-Tags gleichzeitig zu sehen war oft nicht gegeben, denn einer ist häufig verdeckt. Die Kamera ist fest montiert. Deshalb gilt: Aus Bildern mit mindestens zwei Welt-Tags schätzt der Pi die Pose (gemeinsames PnP) und merkt sie sich. Bei genau einem sichtbaren Welt-Tag nutzt er die gemerkte Pose und prüft den Tag nur auf Konsistenz.
+Seeing two world tags at the same time was often not given, because one is frequently occluded. The camera is firmly mounted. Therefore: from images with at least two world tags, the Pi estimates the pose (joint PnP) and stores it. With exactly one visible world tag it uses the stored pose and only checks the tag for consistency.
 
-- **Warum nicht neu aus einem Tag:** Aus 2,5 m ist die Pose aus nur einem Tag um Zentimeter ungenau (simuliert: Modulfehler Median 29–40 mm, 95 % unter ~90–100 mm, Ausreißer bis 1,5 m durch gekippte Lösungen, 24–38 % der Bilder über 5 cm). Mit gemerkter Pose: Median 12 mm, 95 % unter 33 mm, höchstens 46 mm, 0 % über 5 cm. Der Rest ist der Messfehler des Modul-Tags selbst. In der Simulation hatte der Modul-Tag 19,8 cm, bei 8 cm großen Tags ist der Fehler größer. Das ist aber unabhängig von der Zahl der Welt-Tags.
-- **Konsistenzprüfung:** Die Ecken des einen Welt-Tags werden unter der gemerkten Pose projiziert und mit den gesehenen verglichen. Verglichen wird mit dem Wert, den derselbe Tag beim Speichern der Pose hatte (er enthält den Kartenfehler von ~1 cm). Mehr als `storedPoseMarginPx` (2 px) darüber heißt: Kamera bewegt? Gemessen: unbewegt höchstens ~1 px, 5 mm Verschiebung ~1,4 px, 10 mm ~3,4 px, 0,1° ~1,4 px.
-- **Pausen** (`message` nennt immer „Welt-Tag“):
-  - kein Welt-Tag im Bild,
-  - Start oder nach Verwerfen mit nur einem Welt-Tag („Kamerapose noch nicht bekannt“),
-  - der Welt-Tag passt nicht zur gemerkten Pose („Kamera bewegt?“).
-  Nach 5 unpassenden Bildern in Folge wird die Pose verworfen, und es braucht wieder zwei Welt-Tags gleichzeitig.
-- **Überlebt Neustarts (22.10.2026):** Die Pose liegt in `data/calibration/cellwatch_camera_pose.json` (Schema `wsc.vision.cellwatch.camerapose/1`: Pose, Grundlinie je Welt-Tag, Tag-Map-Schlüssel, Anzahl). Gespeichert ab 5 Posen, danach höchstens alle 10 min, atomar (temporäre Datei, dann ersetzen). Beim Start wird sie geladen. Zusätzlich liefert der Referenz-Scan sie: `cameraLocalization.poseInWorld`/`tagErrorsPx` bei `solver: "joint"`, `StartCellWatch` übernimmt sie, wenn keine gemerkt ist oder die Kamera sich bewegt hat (> 15 mm / 0,5°). Auch eine wiederhergestellte Pose wird auf Konsistenz geprüft: Wurde die Kamera während der Pause bewegt, fällt sie samt Datei weg. Status: `cameraPose: {source: measured|file|scan|null, poseCount, savedAt}`. Schlägt das Schreiben fehl, kommt eine Warnung je Intervall, kein Absturz.
-- **Grenzen:** Ändert sich die Tag-Map, ist die Pose verworfen. Weicht ein neues gemeinsames Ergebnis um mehr als 15 mm oder 0,5° ab, fängt der Verlauf neu an, statt zu mitteln. `minWorldTags: 2` schaltet auf das alte Verhalten zurück.
+- **Why not recalculate from one tag:** from 2.5 m the pose from a single tag is inaccurate by centimetres (simulated: module error median 29–40 mm, 95 % below ~90–100 mm, outliers up to 1.5 m due to tilted solutions, 24–38 % of the images over 5 cm). With the stored pose: median 12 mm, 95 % below 33 mm, at most 46 mm, 0 % over 5 cm. The rest is the measurement error of the module tag itself. In the simulation the module tag was 19.8 cm; with 8 cm tags the error is larger. This is independent of the number of world tags, however.
+- **Consistency check:** the corners of the one world tag are projected under the stored pose and compared with the observed ones. The comparison is made against the value the same tag had when the pose was stored (it contains the map error of ~1 cm). More than `storedPoseMarginPx` (2 px) above that means: camera moved? Measured: unmoved at most ~1 px, 5 mm displacement ~1.4 px, 10 mm ~3.4 px, 0.1° ~1.4 px.
+- **Pauses** (`message` always says „Welt-Tag“ (world tag)):
+  - no world tag in the image,
+  - start, or after a discard, with only one world tag („Kamerapose noch nicht bekannt“ (camera pose not yet known)),
+  - the world tag does not match the stored pose („Kamera bewegt?“ (camera moved?)).
+  After 5 non-matching images in a row the pose is discarded, and two world tags are needed simultaneously again.
+- **Survives restarts (22.10.2026):** the pose lies in `data/calibration/cellwatch_camera_pose.json` (schema `wsc.vision.cellwatch.camerapose/1`: pose, baseline per world tag, tag-map key, count). Saved from 5 poses on, afterwards at most every 10 min, atomically (temporary file, then replace). It is loaded on start. In addition, the reference scan delivers it: `cameraLocalization.poseInWorld`/`tagErrorsPx` with `solver: "joint"`; `StartCellWatch` takes it over if none is stored or the camera has moved (> 15 mm / 0.5°). A restored pose is also checked for consistency: if the camera was moved during the pause, it is dropped along with the file. Status: `cameraPose: {source: measured|file|scan|null, poseCount, savedAt}`. If writing fails, a warning comes once per interval, no crash.
+- **Limits:** if the tag map changes, the pose is discarded. If a new joint result deviates by more than 15 mm or 0.5°, the history starts afresh instead of averaging. `minWorldTags: 2` switches back to the old behaviour.
 
-### Ressourcen
+### Resources
 
-- Die Überwachung liest `SharedCamera.latest_frame`, also dieselben Bilder wie Livestream und Jobs, und nimmt kein eigenes Bild auf. Ein Bild, das schon ausgewertet ist, wird nicht noch einmal ausgewertet.
-- Sie rechnet mit einem **eigenen Detektor** in einem eigenen Thread (`asyncio.to_thread`). `observe_cell` verändert weder Anker noch `world_tags` noch `_localization`.
-- Während eines Jobs pausiert sie, damit ein Layer-1-Job jederzeit volle CPU hat.
-- `intervalS` steht auf 2 statt 1, weil die Erkennung auf 2028×1520 auf Pi 1 teuer ist.
+- The monitoring reads `SharedCamera.latest_frame`, i.e. the same images as the live stream and jobs, and does not capture an image of its own. An image that has already been evaluated is not evaluated again.
+- It computes with its **own detector** in its own thread (`asyncio.to_thread`). `observe_cell` changes neither the anchor nor `world_tags` nor `_localization`.
+- During a job it pauses, so that a layer 1 job always has full CPU.
+- `intervalS` is 2 instead of 1, because detection at 2028×1520 on Pi 1 is expensive.
 
-## Offene Fragen
+## Open questions
 
-- Wie viel CPU die Überwachung auf Pi 1 kostet (alle 2 s eine Vollbild-Erkennung), ist nicht gemessen. Falls sie zu teuer ist: `intervalS` erhöhen oder die Erkennung auf der verkleinerten Stream-Auflösung laufen lassen.
-- An echter Hardware ist das nicht getestet. Die Schwellwerte sind Vorschläge.
+- How much CPU the monitoring costs on Pi 1 (a full-frame detection every 2 s) has not been measured. If it is too expensive: increase `intervalS` or run the detection on the reduced stream resolution.
+- Not tested on real hardware. The thresholds are proposals.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen eingetragen.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 16.
+- [x] Status `done`, interfaces entered.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` section 16.
 - [x] Tests: `tests/test_cellwatch.py` (17).

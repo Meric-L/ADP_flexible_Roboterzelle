@@ -1,312 +1,309 @@
-# AprilTag-Lokalisierung und OPC 40100 — Präsentationsgrundlage
+# AprilTag localization and OPC 40100 — presentation basis
 
-Eine Folie je `##`-Abschnitt. Die Zeilen unter **Dazu sagen** sind Sprechnotizen,
-nicht Folieninhalt. **Alle Zahlen in diesem Dokument sind gemessen**, nicht
-geschätzt; wo etwas ungeprüft ist, steht es ausdrücklich dabei.
+One slide per `##` section. The lines under **Talking points** are speaker notes,
+not slide content. **All numbers in this document are measured**, not
+estimated; where something is unverified, this is stated explicitly.
 
-Quellen je Aussage: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md),
+Sources per statement: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md),
 [`apriltag-referenz.md`](apriltag-referenz.md),
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md),
 [`vision-server-interface.md`](vision-server-interface.md).
 
 ---
 
-## 1 — Ziel
+## 1 — Goal
 
-**Module, die mit AprilTags bestückt sind, in der Zelle lokalisieren.**
+**Localize modules fitted with AprilTags in the cell.**
 
-Zwei Kameras, zwei Raspberry Pis, ein gemeinsames Koordinatensystem.
+Two cameras, two Raspberry Pis, one shared coordinate frame.
 
-> **Dazu sagen:** Das ist der praktische Teil der Arbeit. Der theoretische Teil
-> vergleicht Lokalisierungsverfahren; hier geht es darum, eines davon so zu
-> bauen, dass die Zelle es wirklich benutzen kann.
-
----
-
-## 2 — Die Leitidee
-
-> **Ein AprilTag trägt eine Nummer, keine Bedeutung.**
-
-Die Kamera liefert immer nur eine Sache: `T_cam_tag` — wo der Tag relativ zur
-Kamera steht, in Metern, mit voller Orientierung.
-
-Dass Tag 7 das Modul `MOD-A` ist und dessen Ursprung 40 mm unter der Tag-Mitte
-liegt, steht in **einer Datei**, nicht im Code.
-
-> **Dazu sagen:** Das ist die Entscheidung, aus der alles andere folgt. Der Code
-> kennt nur Tags, Posen und Verkettung. Ein neues Modul heißt: ein Eintrag in
-> der Tag-Map, keine Codeänderung.
+> **Talking points:** This is the practical part of the work. The theoretical part
+> compares localization methods; here the point is to build one of them so that the
+> cell can actually use it.
 
 ---
 
-## 3 — Drei Rollen, ein Codepfad
+## 2 — The guiding idea
 
-| Rolle | Hardware | Pose |
+> **An AprilTag carries a number, not a meaning.**
+
+The camera always delivers only one thing: `T_cam_tag` — where the tag is relative to
+the camera, in meters, with full orientation.
+
+That tag 7 is module `MOD-A`, and that its origin lies 40 mm below the tag center, is
+stated in **one file**, not in the code.
+
+> **Talking points:** This is the decision from which everything else follows. The
+> code knows only tags, poses and chaining. A new module means: one entry in the tag
+> map, no code change.
+
+---
+
+## 3 — Three roles, one code path
+
+| Role | Hardware | Pose |
 |---|---|---|
-| **Welt-Tag** | vier Tags im Randbereich der Zelle | **fest**, steht in der Karte |
-| **Roboter-Tag** | Tags am Roboter | **beweglich — wird gemessen** |
-| **Modul-Tag** | Tag am Modul | **beweglich — wird gemessen** |
+| **World tag** | four tags at the edge of the cell | **fixed**, stored in the map |
+| **Robot tag** | tags on the robot | **movable — is measured** |
+| **Module tag** | tag on the module | **movable — is measured** |
 
-Nur der Welt-Tag steht fest. Der Roboter ist ein Modul wie jedes andere — nur
-dasjenige, das immer verwendet wird.
+Only the world tag is fixed. The robot is a module like any other — just the one that
+is always used.
 
-Referenz- und Mess-Tags durchlaufen denselben Code. Unterschied: steht die
-Weltpose in der Karte oder als `null`?
+Reference and measurement tags run through the same code. The difference: is the
+world pose stored in the map, or is it `null`?
 
 ---
 
-## 4 — Die Kette
+## 4 — The chain
 
 ```
                   T_world_cam              T_cam_tag        T_tag_module
-  Welt-KS  <───────────────────  Kamera-KS ──────────> Tag-KS ──────────> Modul-KS
-              aus Referenz-Tags      gemessen           konstant (CAD)
-              im selben Bild
+  World frame <───────────────────  Camera frame ──────────> Tag frame ──────────> Module frame
+              from reference tags         measured             constant (CAD)
+              in the same image
 ```
 
 ```
 T_world_module = T_world_cam · T_cam_tag · T_tag_module
 ```
 
-**Genau eine Funktion im Code führt diese Verkettung aus** (`localize.locate_modules`).
+**Exactly one function in the code performs this chaining** (`localize.locate_modules`).
 
-> **Dazu sagen:** Einheiten- und Konventionsfehler — mm gegen m, xyzw gegen
-> wxyz, `T_base_cam` gegen `T_cam_base` — sind der klassische stille Fehler in
-> solchen Systemen. Eine einzige Stelle, die verkettet, macht ihn testbar.
+> **Talking points:** Unit and convention errors — mm vs. m, xyzw vs. wxyz,
+> `T_base_cam` vs. `T_cam_base` — are the classic silent errors in such systems. A
+> single place that does the chaining makes them testable.
 
 ---
 
-## 5 — Layer 1 und Layer 2 sind dieselbe Funktionalität
+## 5 — Layer 1 and layer 2 are the same functionality
 
-| | Layer 1 — Decke | Layer 2 — Flansch |
+| | Layer 1 — ceiling | Layer 2 — flange |
 |---|---|---|
-| Aufgabe | grobe Modulposition | genaue 6-DOF-Pose |
-| Kamera | fest montiert | bewegt sich mit dem Roboter |
-| `T_world_cam` | aus Referenz-Tags im Bild | aus der Roboterpose |
-| Ergebnis-`frameId` | `world` | `cam_flange` |
+| Task | coarse module position | precise 6-DOF pose |
+| Camera | fixed mount | moves with the robot |
+| `T_world_cam` | from reference tags in the image | from the robot pose |
+| Result `frameId` | `world` | `cam_flange` |
 
-**Ein Profil, eine Klasse, zwei Konfigurationen.** Die Unterschiede sind
-ausschließlich Konfiguration und die Herkunft **einer** Matrix.
+**One profile, one class, two configurations.** The differences are solely configuration
+and the origin of **one** matrix.
 
 ---
 
-## 6 — Architektur: geschnitten nach Abhängigkeiten
+## 6 — Architecture: cut by dependencies
 
 ```
 tagloc/
-  identity, modes            nur Stdlib — nicht einmal numpy
+  identity, modes            only stdlib — not even numpy
   geometry, calibration,
-  tagmap, localize           numpy, kein OpenCV
+  tagmap, localize           numpy, no OpenCV
   boards, detector, pose,
-  overlay, frames            OpenCV, aber erst in der Funktion importiert
-  cli/                       vier Werkzeuge
+  overlay, frames            OpenCV, but imported only inside the function
+  cli/                       four tools
 ```
 
-Harte Regel, **im Test nachgemessen** (`tests/test_layering.py`, prüft
-`sys.modules` im Unterprozess):
+Hard rule, **verified by measurement in the test** (`tests/test_layering.py`, checks
+`sys.modules` in a subprocess):
 
-- Der Server bildet die `configurationId`, bevor irgendetwas geladen ist
-- Die Rechenschicht ist unabhängig von der installierten OpenCV-Version
-- `tagloc` importiert **nirgends** aus `vision_server`
+- The server builds the `configurationId` before anything is loaded
+- The computation layer is independent of the installed OpenCV version
+- `tagloc` imports from `vision_server` **nowhere**
 
 ---
 
-## 7 — Tags in ein gemeinsames Koordinatensystem bringen
+## 7 — Bringing tags into a shared coordinate frame
 
-Zwei Tags in **einem** Bild ergeben eine kamerafreie Relation:
+Two tags in **one** image yield a camera-free relation:
 
 ```
-T_a_b = T_cam_a⁻¹ · T_cam_b        die Kamerapose kürzt sich heraus
+T_a_b = T_cam_a⁻¹ · T_cam_b        the camera pose cancels out
 ```
 
-Diese Relationen spannen einen Graphen auf; eine Breitensuche vom Anker
-verkettet sie zu einer Karte.
+These relations span a graph; a breadth-first search from the anchor chains them into a
+map.
 
-**`residuals()` liefert die Schließfehler je Kante — die Qualitätszahl der Karte.**
+**`residuals()` returns the loop-closure errors per edge — the quality figure of the map.**
 
-> **Dazu sagen:** Deshalb muss man nicht jeden Tag einzeln einmessen. Man
-> fotografiert die Zelle so, dass sich benachbarte Tags paarweise überlappen.
-> Schließt sich der Ring nicht, stimmt die Kalibrierung oder eine Tag-Größe.
+> **Talking points:** That is why you do not have to survey every tag individually. You
+> photograph the cell so that neighboring tags overlap pairwise. If the ring does not
+> close, the calibration or a tag size is wrong.
 
 ---
 
-## 8 — Gemessen: die Kette gegen bekannte Wahrheit
+## 8 — Measured: the chain against known ground truth
 
-Synthetisch gerenderte Szene, wahre Posen exakt bekannt:
+Synthetically rendered scene, true poses exactly known:
 
-| Größe | gemessen | Schranke |
+| Quantity | measured | bound |
 |---|---|---|
-| Position | max **0,29 mm** | 2 mm |
-| Winkel | Median **0,031°**, max 0,50° | 1° |
-| Reprojektionsfehler | max **0,063 px** | 1 px |
-| Schließfehler der Karte | **0,00–0,02 mm / 0,000°** | 1 mm / 0,05° |
+| Position | max **0.29 mm** | 2 mm |
+| Angle | median **0.031°**, max 0.50° | 1° |
+| Reprojection error | max **0.063 px** | 1 px |
+| Loop-closure error of the map | **0.00–0.02 mm / 0.000°** | 1 mm / 0.05° |
 
-> **Dazu sagen:** Der eine Winkel-Ausreißer bei 0,50° ist keine Mehrdeutigkeit —
-> die zweite IPPE-Lösung ist dort 82-fach schlechter. Es ist die
-> Pixelquantisierung des gerenderten Markers bei 34° Schrägblick. Die Schranke
-> steht deshalb begründet auf 1°, nicht auf den 0,5° aus dem Konzept.
+> **Talking points:** The one angle outlier at 0.50° is not an ambiguity — the second
+> IPPE solution there is 82 times worse. It is the pixel quantization of the rendered
+> marker at a 34° oblique view. The bound is therefore justified at 1°, not at the 0.5°
+> from the concept.
 
 ---
 
-## 9 — OPC 40100: die beiden Teile
+## 9 — OPC 40100: the two parts
 
 | | **Part 1** (40100-1) | **Part 2** (40100-2) |
 |---|---|---|
-| Frage | *Wie bediene ich das System?* | *Woraus besteht es, wie geht es ihm?* |
-| Inhalt | Zustandsautomaten, Jobs, Rezepte, Ergebnisse | Kamera, Objektiv, Recheneinheit, Zustand |
-| Zielgruppe | Zelle, SPS, MES | Service und Instandhaltung |
-| Version bei uns | 1.0.0 (2019) | 1.00.0 (17.05.2024) |
+| Question | *How do I operate the system?* | *What is it made of, and how is it doing?* |
+| Content | state machines, jobs, recipes, results | camera, lens, computing device, state |
+| Target audience | cell, PLC, MES | service and maintenance |
+| Version in use | 1.0.0 (2019) | 1.00.0 (17.05.2024) |
 
-> **Häufiges Missverständnis:** Das „NodeSet2" im Dateinamen ist das
-> **XML-Dateiformat**, nicht die Teilnummer. Jede Companion Spec liefert
-> `*.NodeSet2.xml` aus — auch eine reine Part-1-Datei.
+> **Common misunderstanding:** The „NodeSet2" in the file name is the **XML file
+> format**, not the part number. Every companion spec delivers `*.NodeSet2.xml` — even a
+> pure Part 1 file.
 
 ---
 
-## 10 — Part 1: was verlinkt ist
+## 10 — Part 1: what is linked
 
-Das Nodeset bringt **alle** Methoden mit der Typdefinition mit. Ob sie etwas
-tun, entscheidet `link_method`.
+The nodeset brings **all** methods along with the type definition. Whether they do
+anything is decided by `link_method`.
 
-**Verlinkt:** `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`, `Reset`
+**Linked:** `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`, `Reset`
 
-**Bewusst nicht**, jeweils mit Begründung dokumentiert:
+**Deliberately not**, each with its documented reason:
 
-| Methode | Warum nicht |
+| Method | Why not |
 |---|---|
-| `SimulationMode` | es gibt keine simulierte Datenquelle |
-| `SelectModeAutomatic` | es gibt nur eine Betriebsart |
-| Configuration- / RecipeManagement | setzt ein Rezept-Datenmodell voraus, das die Zelle nicht hat |
+| `SimulationMode` | there is no simulated data source |
+| `SelectModeAutomatic` | there is only one operating mode |
+| Configuration- / RecipeManagement | presupposes a recipe data model that the cell does not have |
 
-> **Dazu sagen:** Eine verlinkte Methode, die nichts tut, wäre schlimmer als
-> eine erkennbar nicht verlinkte — die antwortet ehrlich `BadNothingToDo`.
+> **Talking points:** A linked method that does nothing would be worse than a clearly
+> unlinked one — the latter honestly answers `BadNothingToDo`.
 
 ---
 
-## 11 — Part 2: die Anlagensicht
+## 11 — Part 2: the asset view
 
 ```
 ns=<vision>;s=VisionMachine.VisionAsset
-├── Identification        Hersteller, Modell, Seriennummer, Softwarestand
+├── Identification        manufacturer, model, serial number, software version
 ├── ComputingDevices/ComputingDevice
 ├── ImageSensors/ImageSensor
 └── Lenses/Lens
 ```
 
-Angelegt wird nur, was wirklich verbaut ist. **Ein leeres Modellfeld heißt
-„nicht bekannt" und erzeugt keinen Eintrag** — in einer Instandhaltungssicht ist
-eine Lücke ehrlicher als ein erfundenes Modell.
+Only what is really installed is created. **An empty model field means „nicht bekannt“
+(unknown) and creates no entry** — from a maintenance point of view, a gap is more
+honest than an invented model.
 
 ---
 
-## 12 — Part 2: erst gemessen, dann gebaut
+## 12 — Part 2: measured first, then built
 
-Part 2 bringt **DI 1.04.0** und **Machinery 1.03.0** mit — vier Nodesets statt
-einem.
+Part 2 brings **DI 1.04.0** and **Machinery 1.03.0** with it — four nodesets instead of one.
 
-| | RSS | Startzeit |
+| | RSS | Startup time |
 |---|---|---|
-| nur Part 1 | 108,5 MB | 0,65 s |
-| mit Part 2 | 121,3 MB | +1,6 s |
-| Anlagensicht instanziiert | +2,9 MB | |
+| Part 1 only | 108.5 MB | 0.65 s |
+| with Part 2 | 121.3 MB | +1.6 s |
+| asset view instantiated | +2.9 MB | |
 
-**Rund 16 MB und knapp zwei Sekunden.** Abschaltbar: ohne `assets` wird nichts
-davon geladen.
+**About 16 MB and just under two seconds.** Can be switched off: without `assets`, none
+of it is loaded.
 
-> **Dazu sagen:** Der Pi bedient nebenher die Kamera, deshalb war die erste
-> Frage nicht „wie baue ich das", sondern „passt das überhaupt". Das Messwerkzeug
-> liegt im Repo und läuft auf dem Pi genauso.
+> **Talking points:** The Pi also serves the camera, so the first question was not „how
+> do I build this“, but „does this fit at all“. The measurement tool is in the repo and
+> runs on the Pi just the same.
 
 ---
 
-## 13 — Was die Messung an Fallen aufgedeckt hat
+## 13 — What the measurement revealed as pitfalls
 
-| Fund | Konsequenz |
+| Finding | Consequence |
 |---|---|
-| **DI 1.05.0 lässt sich nicht importieren** — fordert UA-Basis 1.05.04, scheitert an asyncua mit `BadParentNodeIdInvalid` | Versionen exakt auf die `RequiredModel`-Angaben gepinnt |
-| **asyncua legt Platzhalter als echte Knoten an** (`<VisionItem>`, Modelling Rule `MandatoryPlaceholder`) | nachträgliches Löschen kostete **9 s für 26 Knoten** → jetzt wird nur aufgebaut, was gefüllt wird: ~50 statt ~700 Knoten |
-| **Der Namensraumindex verschiebt sich** von 3 auf 6 | Clients müssen ihn zur Laufzeit auflösen |
+| **DI 1.05.0 cannot be imported** — requires UA base 1.05.04, fails in asyncua with `BadParentNodeIdInvalid` | versions pinned exactly to the `RequiredModel` entries |
+| **asyncua creates placeholders as real nodes** (`<VisionItem>`, modelling rule `MandatoryPlaceholder`) | deleting them afterwards cost **9 s for 26 nodes** → now only what is filled is built: ~50 instead of ~700 nodes |
+| **The namespace index shifts** from 3 to 6 | clients must resolve it at runtime |
 
 ---
 
-## 14 — Drei Fehler, die wir unterwegs gefunden haben
+## 14 — Three bugs we found along the way
 
-**1. Numerische NodeIds im Livestream.** Die Stream-Knoten bekamen automatisch
-vergebene Ids (`ns=3;i=1`). Die verschieben sich, sobald jemand einen Knoten
-davor anlegt — und das Backend abonniert sie fest. Jetzt explizite String-Ids.
+**1. Numeric NodeIds in the live stream.** The stream nodes got automatically assigned
+IDs (`ns=3;i=1`). These shift as soon as someone creates a node before them — and the
+backend subscribes to them hard-coded. Now explicit string IDs.
 
-**2. NaN hätte den Job getötet.** `nan > schranke` ist in Python `False`: der
-Qualitätsfilter ließ entartete Posen durch, und `payload` serialisiert mit
-`allow_nan=False`. Der Job wäre nicht als `DETECTION_FAILED` gescheitert,
-sondern als `INTERNAL`.
+**2. NaN would have killed the job.** `nan > schranke` is `False` in Python: the quality
+filter let degenerate poses through, and `payload` serializes with `allow_nan=False`.
+The job would not have failed as `DETECTION_FAILED`, but as `INTERNAL`.
 
-**3. Das Frontend bot einen Job an, den es nicht mehr gibt.** `image-recognition`
-stand nach dem QR-Ausbau weiter in der Liste und endete in `Error=4`.
+**3. The frontend offered a job that no longer exists.** `image-recognition` remained in
+the list after the QR removal and ended in `Error=4`.
 
-> **Dazu sagen:** Alle drei wären im Betrieb schwer zu finden gewesen — sie
-> scheitern still oder mit irreführender Meldung.
+> **Talking points:** All three would have been hard to find in operation — they fail
+> silently or with a misleading message.
 
 ---
 
-## 15 — Livestream als Debugwerkzeug
+## 15 — Live stream as a debugging tool
 
-Umschaltbar über einen beschreibbaren OPC-UA-Knoten:
+Switchable via a writable OPC UA node:
 
-| Modus | Was man sieht |
+| Mode | What you see |
 |---|---|
-| `off` | Rohbild |
-| `apriltag` | Umriss, **Achsenkreuz im Tag**, ID, Modulname, Distanz, Reprojektionsfehler |
-| `calibration` | gefundene Board-Ecken und Bildabdeckung |
+| `off` | raw image |
+| `apriltag` | outline, **axis cross in the tag**, ID, module name, distance, reprojection error |
+| `calibration` | detected board corners and image coverage |
 
-Standardmäßig **aus** und hinter den Settings versteckt: er kostet auf dem Pi
-Rechenzeit und gehört nicht dauerhaft ins Bild.
+Off by default and hidden behind the settings: it costs computing time on the Pi and
+does not belong in the picture permanently.
 
-> **Dazu sagen:** Das Achsenkreuz ist die eigentliche Information — ein
-> verdrehtes Kreuz fällt sofort auf, eine falsche Zahl in einer Tabelle nicht.
+> **Talking points:** The axis cross is the actual information — a twisted cross is
+> noticed immediately, a wrong number in a table is not.
 
-> **Anmerkung, Stand 21.10.2026:** Der Livestream zeigt im Modus `apriltag`
-> jetzt nur noch einen grünen Kasten und die Tag-ID. Das Achsenkreuz (samt
-> Modulname, Distanz, Reprojektionsfehler) gibt es weiter über die CLI
-> (`python -m tagloc.cli.detect --overlay`).
+> **Note, as of 21.10.2026:** In mode `apriltag`, the live stream now shows only a green
+> box and the tag ID. The axis cross (together with module name, distance and
+> reprojection error) is still available via the CLI (`python -m tagloc.cli.detect --overlay`).
 
 ---
 
-## 16 — Stand der Prüfung
+## 16 — State of testing
 
 | | |
 |---|---|
-| Tests gesamt | **204, grün, kein Skip** |
-| davon Mathematik mit Golden Values | Verkettung, Quaternionen, Mittelung |
-| End-to-End auf gerendertem Bild | Detektor → Pose → Karte → Modulpose |
-| Architekturregeln | im Unterprozess an `sys.modules` gemessen |
+| Tests total | **204, green, no skips** |
+| of which math with golden values | chaining, quaternions, averaging |
+| end-to-end on rendered image | detector → pose → map → module pose |
+| architecture rules | measured on `sys.modules` in a subprocess |
 
-**Ungeprüft:** alles, was echte Hardware braucht. Die Zahlen sind
-Desktop-Zahlen; auf dem Pi läuft OpenCV 4.x, wofür Laufzeitweichen existieren,
-die dort noch niemand ausgeführt hat.
-
----
-
-## 17 — Offene Punkte
-
-| Punkt | Stand |
-|---|---|
-| **Hand-Auge-Kalibrierung** für Layer 2 | offen — bis dahin liefert Layer 2 im Kamera-KS, `auto_execute` bleibt `False` |
-| Abnahme an der Pi-Kamera | Anleitung steht (`apriltag-e2e-test.md`, vier Stufen mit Abbruchkriterien) |
-| Übergabeformat Layer 1 → Layer 2 | Vorschlag: 3D-Pose im Welt-KS, Schema bleibt unverändert |
-| Stream über 5 fps | ginge nur mit anderem Transport — OPC UA deckelt bei 10 fps |
-
-> **Dazu sagen:** Die Hand-Auge-Kalibrierung ist die einzige offene Frage, die
-> Code nach sich zieht. Alles andere sind Entscheidungen, keine Untersuchungen.
+**Unverified:** everything that requires real hardware. The numbers are desktop numbers;
+OpenCV 4.x runs on the Pi, for which runtime switches exist that nobody has executed
+there yet.
 
 ---
 
-## 18 — Wo alles steht
+## 17 — Open points
 
-| Dokument | Inhalt |
+| Point | State |
 |---|---|
-| `doc/apriltag-lokalisierung.md` | Konzept und Umsetzungsplan |
-| `doc/apriltag-referenz.md` | Funktions- und CLI-Referenz, Dateiformate |
-| `doc/apriltag-e2e-test.md` | Testanleitung bis zur Pi-Kamera |
-| `doc/vision-server-interface.md` | OPC-UA-Schnittstelle, Part 1 und Part 2 |
-| `doc/altlasten.md` | was warum noch offen ist |
-| `src/vision_server/nodesets/README.md` | warum die Nodeset-Versionen gepinnt sind |
+| **Hand-eye calibration** for layer 2 | open — until then layer 2 delivers in the camera frame, `auto_execute` stays `False` |
+| Acceptance on the Pi camera | instructions exist (`apriltag-e2e-test.md`, four stages with abort criteria) |
+| Handover format layer 1 → layer 2 | proposal: 3D pose in the world frame, schema stays unchanged |
+| Stream above 5 fps | would only work with a different transport — OPC UA caps at 10 fps |
+
+> **Talking points:** The hand-eye calibration is the only open question that entails
+> code. Everything else is decisions, not investigations.
+
+---
+
+## 18 — Where everything is
+
+| Document | Content |
+|---|---|
+| `doc/apriltag-lokalisierung.md` | concept and implementation plan |
+| `doc/apriltag-referenz.md` | function and CLI reference, file formats |
+| `doc/apriltag-e2e-test.md` | test instructions up to the Pi camera |
+| `doc/vision-server-interface.md` | OPC UA interface, Part 1 and Part 2 |
+| `doc/altlasten.md` | what is still open, and why (legacy items) |
+| `src/vision_server/nodesets/README.md` | why the nodeset versions are pinned |

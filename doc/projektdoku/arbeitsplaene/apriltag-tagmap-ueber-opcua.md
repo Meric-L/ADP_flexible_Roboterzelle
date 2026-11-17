@@ -1,188 +1,170 @@
-# Tag-Map über OPC UA setzen, und die Größenregel der Tags
+# Set the tag map via OPC UA, and the size rule for tags
 
-**Status:** fertig — 22.09.2026
-**Verantwortlich:** `Agent: Tag-Map per OPC-UA-Methode setzen`
-**Thema:** apriltag
+**Status:** done — 22.09.2026
+**Owner:** `Agent: Tag-Map per OPC-UA-Methode setzen`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Ein neues Modul einzufügen kostet **keinen Eingriff auf dem Pi**. Zwei Teile:
+Adding a new module requires **no intervention on the Pi**. Two parts:
 
-1. **Größenregel festschreiben.** Die Welttags werden in einer anderen Größe
-   gedruckt als alle übrigen Tags; alle Modultags haben untereinander dieselbe
-   Größe. Damit steht die Modulgröße einmal im Profil (`tag_size_m`), und in
-   der Tag-Map stehen nur noch die Welttags — mit ihrer abweichenden `sizeM`.
-   Ein neues Modul braucht dann genau einen Eintrag im Frontend-Katalog.
-2. **Variante A als Erweiterungsweg.** Sollte doch einmal ein Tag in einer
-   dritten Größe dazukommen, muss der Pi das wissen. Statt dafür eine Datei
-   von Hand zu bearbeiten, setzt das Backend die Tag-Map über eine
-   OPC-UA-Methode. Der Pi schreibt sie lokal weg und benutzt sie sofort.
+1. **Fix the size rule.** The world tags are printed in a different size
+   from all other tags; all module tags have the same size among themselves. The module size is thus stated
+   once in the profile (`tag_size_m`), and the tag map contains only the world tags — with their deviating `sizeM`.
+   A new module then needs exactly one entry in the frontend catalog.
+2. **Variant A as the extension path.** Should a tag in a third size ever be added, the Pi must know about it.
+   Instead of editing a file by hand for this, the backend sets the tag map via an OPC UA method.
+   The Pi writes it locally and uses it immediately.
 
-## Warum die Karte trotzdem auf dem Pi liegt
+## Why the map nevertheless lives on the Pi
 
-`localize_camera` braucht `T_world_tag` und `sizeM` **je Bild** im
-Erkennungsjob. Läge die Karte im Backend, müsste der Pi rohe `T_cam_tag`
-liefern, `frameId` wäre immer das Kamera-KS, und jeder Konsument bräuchte die
-Verkettung — gegen die Regel aus `apriltag-lokalisierung.md` Abschnitt 1.2,
-dass genau **eine** Funktion sie ausführt. Die lokale Datei bleibt außerdem der
-Grund, warum der Pi ohne Backend messen kann.
+`localize_camera` needs `T_world_tag` and `sizeM` **per image** in the detection job. If the map lived in the
+backend, the Pi would have to deliver raw `T_cam_tag`, `frameId` would always be the camera frame, and every
+consumer would need the chaining — against the rule from `apriltag-lokalisierung.md` section 1.2 that exactly **one**
+function performs it. The local file also remains the reason why the Pi can measure without a backend.
 
-Variante A ändert daran nichts: das Backend wird zur **Pflegestelle**, die
-Datei bleibt der lokale Zwischenspeicher.
+Variant A changes nothing here: the backend becomes the **maintenance point**, the file remains the local cache.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (kein offener `apriltag`-Plan)
-- `doc/projektdoku/apriltag-lokalisierung.md` (Abschnitte 1.2, 3.2)
-- `doc/projektdoku/apriltag-referenz.md` (Tag-Map-Schema, `tagloc`-Schnittstellen)
-- `doc/projektdoku/vision-server-interface.md` (Adressraum, Methoden, Fehlercodes)
-- `doc/projektdoku/arbeitsplaene/apriltag-tagmap-robustheit.md` (Vorgänger)
+- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (no open `apriltag` plan)
+- `doc/projektdoku/apriltag-lokalisierung.md` (sections 1.2, 3.2)
+- `doc/projektdoku/apriltag-referenz.md` (tag-map schema, `tagloc` interfaces)
+- `doc/projektdoku/vision-server-interface.md` (address space, methods, error codes)
+- `doc/projektdoku/arbeitsplaene/apriltag-tagmap-robustheit.md` (predecessor)
 
-## Betroffene Dateien
+## Affected files
 
 - `src/tagloc/tagmap.py` — `tag_map_from_json` / `tag_map_to_json`
 - `src/vision_server/detection/apriltag.py` — `apply_tag_map`
-- `src/vision_server/runner.py` — Methode `SetTagMap`, Knoten `TagMapJson`
-- `src/vision_server/address_space.py` — Knoten `TagMapJson`
-- `src/vision_server/server.py` — `tag_size_m` je Pi (Modultag-Größe)
+- `src/vision_server/runner.py` — method `SetTagMap`, node `TagMapJson`
+- `src/vision_server/address_space.py` — node `TagMapJson`
+- `src/vision_server/server.py` — `tag_size_m` per Pi (module tag size)
 - `tests/test_tag_map.py`, `tests/test_apriltag_source.py`
 - `doc/projektdoku/apriltag-lokalisierung.md`, `apriltag-referenz.md`,
   `vision-server-interface.md`
 
-## Schnittstellen
+## Interfaces
 
-### Größenregel
+### Size rule
 
-| Tag | Größe woher | Änderungsort |
+| Tag | Size from | Where changed |
 | --- | --- | --- |
-| **Welttag** | `sizeM` des Eintrags in `config/tagmap.json` | Tag-Map (ändert sich nur bei Umbau der Zelle) |
-| **Modultag** | `tag_size_m` des Profils, `PI_APRILTAG_PRESETS` | einmalig, gilt für alle Module |
-| **abweichender Tag** | eigener Eintrag mit `sizeM` in der Tag-Map | über `SetTagMap`, kein Dateizugriff nötig |
+| **World tag** | `sizeM` of the entry in `config/tagmap.json` | Tag map (changes only when the cell is rebuilt) |
+| **Module tag** | `tag_size_m` of the profile, `PI_APRILTAG_PRESETS` | once, applies to all modules |
+| **deviating tag** | own entry with `sizeM` in the tag map | via `SetTagMap`, no file access needed |
 
-`TagMap.size_for(tag_id, default_m)` setzt das bereits um: steht der Tag in der
-Karte, gewinnt dessen `sizeM`, sonst gilt der Profilwert. Neu ist nur, dass
-`tag_size_m` ab jetzt ausdrücklich die **Modultag-Größe** bezeichnet.
+`TagMap.size_for(tag_id, default_m)` already implements this: if the tag is in the map, its `sizeM` wins,
+otherwise the profile value applies. The only new thing is that `tag_size_m` now explicitly denotes the
+**module tag size**.
 
-Eine falsche Tag-Größe skaliert die gemessene Distanz linear mit und fällt
-sonst nicht auf — deshalb gehört sie an genau eine Stelle je Sorte.
+A wrong tag size scales the measured distance linearly and otherwise goes unnoticed — that is why it belongs
+in exactly one place per type.
 
 ### OPC UA
 
-| Element | NodeId | Typ | Richtung | Bedeutung |
+| Element | NodeId | Type | Direction | Meaning |
 | --- | --- | --- | --- | --- |
-| `SetTagMap` | `ns=<vision>;s=<VisionSystemName>.SetTagMap` | Methode | Aufruf | Setzt die Tag-Map der Zelle |
-| `TagMapJson` | `ns=<vision>;s=VisionMachine.TagMapJson` | Variable (String) | Lesen | Die aktuell geladene Karte, als JSON |
+| `SetTagMap` | `ns=<vision>;s=<VisionSystemName>.SetTagMap` | Method | Call | Sets the cell's tag map |
+| `TagMapJson` | `ns=<vision>;s=VisionMachine.TagMapJson` | Variable (String) | Read | The currently loaded map, as JSON |
 
 ```
 SetTagMap(
-    TagMapJson : String     -- vollstaendige Karte, Schema wsc.vision.tagmap/2
+    TagMapJson : String     -- complete map, schema wsc.vision.tagmap/2
 ) -> (
     Error : Int32           -- VisionErrorCode
 )
 ```
 
-| `Error` | Wann |
+| `Error` | When |
 | --- | --- |
-| `OK` (0) | Karte übernommen, Datei geschrieben, Quelle nutzt sie sofort |
-| `INVALID_ARGUMENT` (2) | kein gültiges JSON, unbekanntes Schema, unbekannte Rolle |
-| `BUSY` (3) | ein Job oder eine Kalibrier-Session läuft |
-| `INTERNAL` (6) | Datei nicht schreibbar |
+| `OK` (0) | map accepted, file written, source uses it immediately |
+| `INVALID_ARGUMENT` (2) | invalid JSON, unknown schema, unknown role |
+| `BUSY` (3) | a job or a calibration session is running |
+| `INTERNAL` (6) | file not writable |
 
-Die Karte wird **erst geprüft, dann geschrieben**: eine abgelehnte Karte lässt
-die laufende unangetastet. Beanstandungen aus `validate_tag_map` (z. B. nur ein
-Welttag statt vier) sind **kein** Fehler — sie werden protokolliert, die Karte
-wird übernommen.
+The map is **checked first, then written**: a rejected map leaves the running one untouched. Complaints from
+`validate_tag_map` (e.g. only one world tag instead of four) are **not** an error — they are logged and the map
+is accepted.
 
 ### Python
 
 ```python
-# Modul: src/tagloc/tagmap.py
+# Module: src/tagloc/tagmap.py
 def tag_map_from_json(text: str, *, source: str = "<string>") -> TagMap:
-    """Karte aus JSON-Text. Wirft ValueError bei Schema/Rolle, wie load_tag_map."""
+    """Map from JSON text. Raises ValueError on schema/role, like load_tag_map."""
 
 def tag_map_to_json(tag_map: TagMap) -> str:
-    """Karte als JSON-Text, Schema /2, nach Tag-Id sortiert."""
+    """Map as JSON text, schema /2, sorted by tag id."""
 
-# Modul: src/vision_server/detection/apriltag.py
+# Module: src/vision_server/detection/apriltag.py
 def apply_tag_map(self, tag_map: TagMap) -> None:
-    """Uebernimmt eine neue Karte in die laufende Quelle.
+    """Takes over a new map into the running source.
 
-    Verwirft den Anker: er wurde gegen die alte Karte gerechnet und waere
-    gegenueber der neuen stumm falsch.
+    Discards the anchor: it was calculated against the old map and would
+    silently be wrong with respect to the new one.
     """
 ```
 
-### Daten
+### Data
 
-Payload der Methode ist exakt der Dateiinhalt von `config/tagmap.json`
-(Schema `wsc.vision.tagmap/2`). Damit ist die Methode und die Datei dasselbe
-Format — was das Backend schickt, kann man unverändert in die Datei legen und
-umgekehrt.
+The method's payload is exactly the file content of `config/tagmap.json` (schema `wsc.vision.tagmap/2`).
+Thus the method and the file are the same format — what the backend sends can be put unchanged into the
+file, and vice versa.
 
-### Betrieb
+### Operation
 
-Geschrieben wird nach `config/tagmap.json` (Pfad aus
-`AprilTagProfileConfig.tag_map_path`). Nach einem Neustart ist die zuletzt
-gesetzte Karte also weiterhin aktiv — der Pi bleibt ohne Backend arbeitsfähig.
+Written to `config/tagmap.json` (path from `AprilTagProfileConfig.tag_map_path`). After a restart the most
+recently set map therefore remains active — the Pi stays operable without a backend.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Job oder Kalibrierung läuft | `BUSY`, Karte unverändert |
-| Ungültiges JSON / Schema / Rolle | `INVALID_ARGUMENT`, Karte unverändert |
-| Datei nicht schreibbar | `INTERNAL`, **Karte trotzdem aktiv** — messen geht vor Persistenz, beim nächsten Start gilt wieder die alte |
-| Karte ohne Welttag | `OK` mit Protokollhinweis; Posen bleiben dann im Kamera-KS |
-| Anker der Handkamera | wird verworfen, siehe `apply_tag_map` |
+| job or calibration running | `BUSY`, map unchanged |
+| invalid JSON / schema / role | `INVALID_ARGUMENT`, map unchanged |
+| file not writable | `INTERNAL`, **map nevertheless active** — measuring takes precedence over persistence; at the next start the old one applies again |
+| map without world tag | `OK` with log note; poses then remain in the camera frame |
+| hand camera anchor | discarded, see `apply_tag_map` |
 
-## Vorgehen
+## Approach
 
-1. `tagmap.py`: `tag_map_from_json` / `tag_map_to_json`, `load`/`save` darauf ziehen.
+1. `tagmap.py`: `tag_map_from_json` / `tag_map_to_json`, pull `load`/`save` onto them.
 2. `detection/apriltag.py`: `apply_tag_map`.
-3. `runner.py` + `address_space.py`: Methode `SetTagMap`, Knoten `TagMapJson`.
-4. `server.py`: `tag_size_m` als Modultag-Größe kommentieren.
+3. `runner.py` + `address_space.py`: method `SetTagMap`, node `TagMapJson`.
+4. `server.py`: comment `tag_size_m` as module tag size.
 5. Tests.
-6. Fach-MDs: Größenregel und Methode nachtragen.
+6. Topic docs: add size rule and method.
 
-## Offene Fragen
+## Open questions
 
-- Die tatsächlichen Kantenlängen (Welttag vs. Modultag) sind noch nicht
-  gemessen. Bis dahin bleiben die bisherigen Werte stehen.
-- **Frontend nutzt `SetTagMap`/`TagMapJson` noch nicht.** Im Repo
-  `webskillcomposition` (`frontend/src/features/opcua-server/`) gibt es bisher
-  keinen Treffer für `TagMap`/`SetTagMap` -- weder Typ/Parser analog
-  `cameraCalibration.ts` (`parseCalibrationProgress`), noch Hook analog
-  `useCameraCalibration.ts`, noch UI-Komponente analog
-  `CameraCalibrationModal.tsx`. Für die Aufnahme eines neuen Moduls über die
-  Oberfläche fehlt also noch:
-  - ein Modell für die Tag-Map (Parsen/Validieren des JSON aus `TagMapJson`,
-    Bauen des JSON für `SetTagMap`),
-  - ein Hook, der `TagMapJson` abonniert und `SetTagMap` aufruft, inkl.
-    Behandlung von `BUSY` / `INVALID_ARGUMENT` / `INTERNAL`,
-  - eine UI-Stelle, an der ein neues Modul (Tag-Id, Rolle, ggf. abweichende
-    `sizeM`) eingetragen und übernommen werden kann, statt die Karte von Hand
-    auf dem Pi zu bearbeiten.
+- The actual edge lengths (world tag vs. module tag) have not yet been measured. Until then the previous values remain.
+- **Frontend does not use `SetTagMap`/`TagMapJson` yet.** In the repo `webskillcomposition`
+  (`frontend/src/features/opcua-server/`) there has so far been no hit for `TagMap`/`SetTagMap` -- neither a
+  type/parser analogous to `cameraCalibration.ts` (`parseCalibrationProgress`), nor a hook analogous to
+  `useCameraCalibration.ts`, nor a UI component analogous to `CameraCalibrationModal.tsx`. For entering a new
+  module via the interface, the following is therefore still missing:
+  - a model for the tag map (parsing/validating the JSON from `TagMapJson`, building the JSON for `SetTagMap`),
+  - a hook that subscribes to `TagMapJson` and calls `SetTagMap`, including handling of `BUSY` / `INVALID_ARGUMENT` / `INTERNAL`,
+  - a UI location where a new module (tag ID, role, possibly deviating `sizeM`) can be entered and accepted,
+    instead of editing the map by hand on the Pi.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **`TagMapJson` und `SetTagMap` hängen an der `apriltag`-Quelle, nicht an der
-  Kalibrier-Session.** Im Plan stand nur „wenn es eine Quelle gibt"; im Code
-  war der nächstgelegene Aufhänger der Block der Kalibriermethoden. Die
-  Methode wird deshalb über dieselbe `calibration_methods`-Sammlung auch unter
-  `VisionProgram` gespiegelt — das ist kein Zufall, sondern derselbe Weg, den
-  die Kalibriermethoden schon nehmen.
-- **`tag_size_m` wurde nicht geändert.** Die echten Kantenlängen sind noch
-  nicht gemessen; ein geratener Wert wäre schlechter als der bisherige. Die
-  Regel steht in der Fach-MD, die Zahl tragt ihr nach dem Messen ein.
+- **`TagMapJson` and `SetTagMap` hang on the `apriltag` source, not on the calibration session.** The plan
+  said only "if there is a source"; in the code the nearest hook was the block of calibration methods. The method
+  is therefore mirrored under `VisionProgram` via the same `calibration_methods` collection — this is not
+  coincidence, but the same route the calibration methods already take.
+- **`tag_size_m` was not changed.** The real edge lengths have not yet been measured; a guessed value would be
+  worse than the previous one. The rule is in the topic doc; the number is entered after measuring.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index `doc/projektdoku/arbeitsplaene/README.md`.
-- [x] Größenregel in `apriltag-lokalisierung.md` Abschnitt 3.2, Methode in
-      `vision-server-interface.md` Abschnitt 12.5a/12.5b und im Adressraum-Baum.
-- [x] Testlauf: **333 Tests, OK** (vorher 328).
+- [x] Status set to `done`, actual interfaces entered.
+- [x] Index line in `doc/projektdoku/arbeitsplaene/README.md`.
+- [x] Size rule in `apriltag-lokalisierung.md` section 3.2, method in `vision-server-interface.md` section 12.5a/12.5b and in the address-space tree.
+- [x] Test run: **333 tests, OK** (previously 328).
 
-Offen bleibt das Eintragen der **gemessenen** Kantenlängen: `sizeM` der
-Welttags in `config/tagmap.json`, `tag_size_m` der Modultags im Profil.
+Still open is entering the **measured** edge lengths: `sizeM` of the world tags in `config/tagmap.json`,
+`tag_size_m` of the module tags in the profile.

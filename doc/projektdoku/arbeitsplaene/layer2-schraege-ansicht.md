@@ -1,42 +1,48 @@
-# Layer 2: schräger Blick auf Tags, die frontal außer Reichweite liegen
+# Layer 2: oblique view of tags that lie out of reach head-on
 
-**Status:** fertig — 13.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** John Glanz, `Agent: Layer 2 schräge Ansicht`
-**Thema:** apriltag
+**Status:** done — 13.10.2026 (not tested on real hardware)
+**Owner:** John Glanz, `Agent: Layer 2 oblique view`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Der Planer hat die Handkamera bisher immer **frontal** vor einen Tag gesetzt, also bei einem Welttag am Boden senkrecht darüber. Der FR3 steht aber auf einem Wagen, etwa 1 m über dem Boden, und die Welttags liegen 0,9–1 m neben der Basis. Dort lag schon die Annäherung (0,6 m frontal) außer Reichweite, und der Anker scheiterte.
+The planner has so far always set the hand camera **head-on** in front of a tag,
+i.e. for a world tag on the floor, vertically above it. The FR3, however, stands
+on a cart, about 1 m above the floor, and the world tags lie 0.9–1 m beside the
+base. There, even the approach (0.6 m head-on) was already out of reach, and the
+anchor failed.
 
-Jetzt kippt die Kamera um die Tag-Mitte zur Basis hin, in Stufen von 15° bis `maxTiltDeg` (Standard 60°). Abstand und Blick auf die Tag-Mitte bleiben dabei gleich. Genommen wird der frontalste Blick, der mit etwas Luft in Reichweite liegt.
+Now the camera tilts around the tag center toward the base, in steps from 15°
+up to `maxTiltDeg` (default 60°). Distance and view onto the tag center stay the
+same. The most head-on view that lies within reach with some margin is taken.
 
-## Bereits gelesen
+## Already read
 
-- `arbeitsplaene/layer2-lauf-hand-pi.md` (Rechnung `view_target`, Optionen)
-- `arbeitsplaene/layer2-annaeherung.md` (Annäherungsschritt, `approachStandoffM`)
-- `vision-server-interface.md` Abschnitt 14
+- `arbeitsplaene/layer2-lauf-hand-pi.md` (calculation `view_target`, options)
+- `arbeitsplaene/layer2-annaeherung.md` (approach step, `approachStandoffM`)
+- `vision-server-interface.md` Section 14
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/layer2/plan.py`: `view_target(..., tilt_deg)`, `plan_step(..., max_tilt_deg)`, Option `maxTiltDeg`
-- `src/vision_server/layer2/run.py`: Neuplanung reicht `max_tilt_deg` durch; `Layer2Target.tiltDeg`
+- `src/vision_server/layer2/plan.py`: `view_target(..., tilt_deg)`, `plan_step(..., max_tilt_deg)`, option `maxTiltDeg`
+- `src/vision_server/layer2/run.py`: re-planning passes `max_tilt_deg` through; `Layer2Target.tiltDeg`
 - `tests/test_layer2_plan.py`: `TiltedViewTest`
 
-## Schnittstellen
+## Interfaces
 
-### Daten
+### Data
 
-**`RunJson`**, `options` zusätzlich:
+**`RunJson`**, additionally `options`:
 
 ```json
 "options": { "standoffM": 0.3, "approachStandoffM": 0.6, "reachM": 0.85, "maxTiltDeg": 60 }
 ```
 
-- `maxTiltDeg` liegt zwischen 0 und 80. `0` heißt immer frontal, das alte Verhalten. Ein Wert außerhalb ergibt `INVALID_ARGUMENT`.
+- `maxTiltDeg` is between 0 and 80. `0` always means head-on, the old behavior. A value outside this range gives `INVALID_ARGUMENT`.
 
-**`Layer2Target`**, zusätzlich:
-- `"tiltDeg": 45.0` sagt, wie schräg die Kamera auf den Tag schaut. `0` heißt frontal.
+**`Layer2Target`**, additionally:
+- `"tiltDeg": 45.0` states how obliquely the camera looks at the tag. `0` means head-on.
 
 ### Python
 
@@ -48,30 +54,32 @@ ViewTarget.tilt_deg: float
 RunRequest.max_tilt_deg: float = 60.0
 ```
 
-### Rechnung
+### Calculation
 
 ```
-T_tag_cam(tilt) = Rot(a, tilt) · T_tag_cam(frontal),   a = z × (Basis im Tag-Frame, in die Tag-Ebene gelegt)
+T_tag_cam(tilt) = Rot(a, tilt) · T_tag_cam(frontal),   a = z × (base in tag frame, laid into the tag plane)
 ```
 
-Die Drehung geht um die Tag-Mitte. Die Kamera bleibt also `standoff_m` vom Tag entfernt und schaut auf seine Mitte.
+The rotation is around the tag center. The camera thus stays `standoff_m` away
+from the tag and looks at its center.
 
-Wahl des Blicks:
-1. Der kleinste Kippwinkel mit `reach ≤ 0,9 · reachM`.
-2. Gibt es keinen, der kleinste mit `reach ≤ reachM`.
-3. Sonst der Blick mit der kleinsten Reichweite. Er gilt dann als `reachable: false` und wird übersprungen.
+Choice of view:
+1. The smallest tilt angle with `reach ≤ 0.9 · reachM`.
+2. If there is none, the smallest with `reach ≤ reachM`.
+3. Otherwise the view with the smallest reach. It is then marked `reachable: false` and skipped.
 
-### Fehlerfälle
+### Failure cases
 
-Wie bisher. Ein Tag, der auch schräg nicht erreichbar ist, bleibt `skipped` mit „außer Reichweite“.
+As before. A tag that is also not reachable at an angle stays `skipped` with
+„außer Reichweite“ (out of reach).
 
-## Offene Fragen
+## Open questions
 
-- Die Reichweite wird vom Basis-Ursprung aus gemessen, nicht von der Schulter. Ob der FR3 eine Pose mit der verlangten Orientierung tatsächlich erreicht, prüft erst die IK im Frontend (Geist-Vorschau).
+- Reach is measured from the base origin, not from the shoulder. Whether the FR3 actually reaches a pose with the required orientation is only checked later by the IK in the frontend („Geist-Vorschau“, ghost preview).
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 14.1.
-- [x] Testlauf (siehe Commit).
+- [x] Status `done`.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` Section 14.1.
+- [x] Test run (see commit).

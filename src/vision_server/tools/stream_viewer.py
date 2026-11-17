@@ -1,10 +1,9 @@
 """Local live viewer for the camera stream, for Pis with a monitor attached.
 
 No frontend has to run for it. Reads `LatestCameraFrame` (Base64 JPEG) and
-shows it in an OpenCV window. Defaults to `CameraStreamMode="calibration"`, so
-the image carries the same board detection (running on the small preview image)
-as in the frontend (`stream_overlay.py`). Handy during a running
-`CalibrationSession` (started e.g. via `calibration_client.py`) to see directly
+shows it in an OpenCV window. Defaults to `CameraStreamMode="off"`, the raw
+image (the board-corner overlay `"calibration"` was removed on 17.11.2026).
+Handy during a running `CalibrationSession` (started e.g. via `calibration_client.py`) to see directly
 whether the board is visible or, for example, the image is blurred. This is
 only a positioning aid: whether a given capture was actually usable only shows
 after `FinishCalibration` (capture and evaluation are decoupled, see
@@ -94,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vision-system", default="VisionMachine")
     parser.add_argument(
         "--mode",
-        default="calibration",
-        help="CameraStreamMode vor der Anzeige setzen ('off'/'apriltag'/'calibration'); "
+        default="off",
+        help="CameraStreamMode vor der Anzeige setzen ('off'/'apriltag'/'undistorted'); "
         "leerer String laesst den aktuellen Modus unangetastet",
     )
     parser.add_argument("--fps", type=float, default=10.0)

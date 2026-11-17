@@ -1,21 +1,24 @@
-# AprilTag-Posenschätzung effizienter ausführen
+# AprilTag pose estimation: run more efficiently
 
-**Status:** fertig — 23.09.2026
-**Verantwortlich:** Agent: AprilTag-Optimierung
-**Thema:** apriltag
+**Status:** done — 23.09.2026
+**Owner:** Agent: AprilTag optimization
+**Topic:** apriltag
 **Branch:** apriltag-optimierung
 
-## Ziel
+## Goal
 
-Bei mehreren Tags im selben Bild werden gemeinsame Kameradaten und Tag-Geometrien nur einmal vorbereitet. Der Livestream zeichnet die Markierungen erst auf die kleinere Ausgabeauflösung, erkennt die Tags aber weiterhin auf dem Originalbild. Die ermittelten Posen und Qualitätswerte bleiben gleich.
+When several tags are in the same image, shared camera data and tag geometries
+are prepared only once. The live stream draws the markers only onto the smaller
+output resolution, but still detects the tags on the original image. The
+determined poses and quality values stay the same.
 
-## Bereits gelesen
+## Already read
 
 - `doc/projektdoku/apriltag-lokalisierung.md`
 - `doc/projektdoku/apriltag-referenz.md`
 - `doc/projektdoku/arbeitsplaene/README.md`
 
-## Betroffene Dateien
+## Affected files
 
 - `src/tagloc/pose.py`
 - `src/vision_server/stream_overlay.py`
@@ -23,45 +26,45 @@ Bei mehreren Tags im selben Bild werden gemeinsame Kameradaten und Tag-Geometrie
 - `tests/test_stream_overlay.py`
 - `doc/projektdoku/apriltag-referenz.md`
 
-## Schnittstellen
+## Interfaces
 
 ### Python
 
-`estimate_tag_pose(observation, size_m, calibration) -> TagPose` und `estimate_tag_poses(observations, calibration, *, tag_map=None, default_size_m=0.05, max_reprojection_error_px=None) -> list[TagPose]` behalten Signatur, Rückgabewerte und Fehlerverhalten. Die gemeinsame Vorbereitung ist intern.
+`estimate_tag_pose(observation, size_m, calibration) -> TagPose` and `estimate_tag_poses(observations, calibration, *, tag_map=None, default_size_m=0.05, max_reprojection_error_px=None) -> list[TagPose]` keep their signature, return values and error behavior. The shared preparation is internal.
 
-`AprilTagStreamAnnotator.annotate(image, mode) -> image` behält seine Signatur. Bei gesetzter `detection_max_width` wird das markierte AprilTag-Bild bereits hier auf diese Ausgabebreite gebracht; die Detektion erhält weiterhin das unskalierte Eingabebild.
+`AprilTagStreamAnnotator.annotate(image, mode) -> image` keeps its signature. If `detection_max_width` is set, the annotated AprilTag image is already brought to this output width here; the detection still receives the unscaled input image.
 
-### Daten / Payload
+### Data / payload
 
-Keine Formatänderung. `pose_cam_tag`, Reprojektionsfehler und Mehrdeutigkeitsverhältnis behalten ihre Definition.
+No format change. `pose_cam_tag`, reprojection error and ambiguity ratio keep their definition.
 
-### Fehlerfälle
+### Failure cases
 
-Nicht lösbare einzelne Tags werden weiterhin übersprungen und protokolliert; Programmierfehler brechen weiterhin ab.
+Individual tags that cannot be solved are still skipped and logged; programming errors still abort.
 
-## Vorgehen
+## Approach
 
-1. Bestehende Laufzeit mit reproduzierbaren synthetischen Beobachtungen messen.
-2. Gemeinsame Eingaben pro Bild vorbereiten und die numerische Gleichheit prüfen.
-3. Zeichnen auf die Ausgabeauflösung verlegen und die Koordinatenskalierung testen.
-4. Relevante Tests und Messung wiederholen.
+1. Measure the existing runtime with reproducible synthetic observations.
+2. Prepare shared inputs per image and verify numerical equality.
+3. Move drawing to the output resolution and test the coordinate scaling.
+4. Repeat the relevant tests and measurement.
 
-## Offene Fragen
+## Open questions
 
-- Keine.
+- None.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Zusätzlich zur Posenschätzung wurde das Zeichnen des Livestream-Overlays auf die Ausgabeauflösung verlegt; die Detektion bleibt auf voller Auflösung.
+- In addition to the pose estimation, drawing of the live-stream overlay was moved to the output resolution; detection stays at full resolution.
 
-## Ergebnis
+## Result
 
-- Synthetische Messung auf diesem Rechner: 24 Tags × 300 Bilder, Median aus fünf Läufen: 0,962 s vorher, 0,880 s nachher.
-- Livestream-Pfad ohne laufende Erkennung: 40 Frames bei 2028×1520 → 640 px, Median aus drei Läufen: 0,304 s vorher, 0,243 s nachher.
-- Die Messungen isolieren diese Pfade; sie sind keine Framerate-Messung auf dem Raspberry Pi.
+- Synthetic measurement on this machine: 24 tags × 300 images, median of five runs: 0.962 s before, 0.880 s after.
+- Live-stream path without running detection: 40 frames at 2028×1520 → 640 px, median of three runs: 0.304 s before, 0.243 s after.
+- The measurements isolate these paths; they are not a frame-rate measurement on the Raspberry Pi.
 
-## Nach Abschluss
+## After completion
 
-- Öffentliche Signaturen, Payload und Fehlercodes unverändert.
-- Numerische Gleichheit von Einzel- und Bildverarbeitung mit synthetischen Tags geprüft.
-- Dauerhafter Ablauf in `doc/projektdoku/apriltag-referenz.md` beschrieben.
+- Public signatures, payload and error codes unchanged.
+- Numerical equality of single and image processing checked with synthetic tags.
+- The permanent flow is described in `doc/projektdoku/apriltag-referenz.md`.

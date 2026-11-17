@@ -6,14 +6,13 @@ configured. `tagloc.overlay` re-exports both so that drawing code finds them the
 """
 
 #: Order = order of selection in the frontend.
-OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted", "tagreference")
+OVERLAY_MODES = ("off", "apriltag", "undistorted", "tagreference")
 DEFAULT_OVERLAY_MODE = "apriltag"
 
 #: Labels shown to the operator.
 OVERLAY_MODE_LABELS = {
     "off": "Rohbild",
     "apriltag": "AprilTags markieren",
-    "calibration": "Kalibrierboard markieren",
     "undistorted": "Entzerrt",
     "tagreference": "Tag einmessen",
 }
