@@ -1,0 +1,251 @@
+{
+ "schema": "wsc.vision.floortags.result/1",
+ "frameId": "cam_ceiling",
+ "heightM": 0.68,
+ "calibrationId": "cam_ceiling@2026-11-02T14:47:53.213779+00:00",
+ "intrinsicsSource": "calibration",
+ "imageSize": [
+  4056,
+  3040
+ ],
+ "markers": "apriltag",
+ "arucoDictionary": null,
+ "framesRequested": 5,
+ "framesUsed": 5,
+ "variants": {
+  "entzerrt": {
+   "camera": {
+    "frames": 5,
+    "positionInWorld": [
+     1.173441,
+     1.494921,
+     1.955251
+    ],
+    "reprojectionErrorPx": 0.4263,
+    "solvers": [
+     "single"
+    ],
+    "worldTagIds": [
+     585
+    ]
+   },
+   "tags": [
+    {
+     "tagId": 0,
+     "label": "0",
+     "world": false,
+     "position": [
+      1.301842,
+      1.471717,
+      0.68
+     ],
+     "sdMm": [
+      5.466151,
+      7.090703,
+      0.0
+     ],
+     "spreadM": 0.011604,
+     "edgeM": 0.051289,
+     "count": 5
+    },
+    {
+     "tagId": 1,
+     "label": "1",
+     "world": false,
+     "position": [
+      1.135763,
+      1.472369,
+      0.68
+     ],
+     "sdMm": [
+      5.223461,
+      7.101862,
+      0.0
+     ],
+     "spreadM": 0.011849,
+     "edgeM": 0.049981,
+     "count": 5
+    },
+    {
+     "tagId": 2,
+     "label": "2",
+     "world": false,
+     "position": [
+      0.655961,
+      1.472918,
+      0.68
+     ],
+     "sdMm": [
+      4.603109,
+      11.15304,
+      0.0
+     ],
+     "spreadM": 0.013229,
+     "edgeM": 0.047915,
+     "count": 3
+    },
+    {
+     "tagId": 2,
+     "label": "2b",
+     "world": false,
+     "position": [
+      0.972577,
+      1.472911,
+      0.68
+     ],
+     "sdMm": [
+      4.962559,
+      7.756555,
+      0.0
+     ],
+     "spreadM": 0.0124,
+     "edgeM": 0.049629,
+     "count": 5
+    },
+    {
+     "tagId": 3,
+     "label": "3",
+     "world": false,
+     "position": [
+      0.812703,
+      1.472974,
+      0.68
+     ],
+     "sdMm": [
+      4.102328,
+      7.752277,
+      0.0
+     ],
+     "spreadM": 0.011572,
+     "edgeM": 0.048651,
+     "count": 5
+    }
+   ]
+  },
+  "roh": {
+   "camera": {
+    "frames": 5,
+    "positionInWorld": [
+     1.043447,
+     1.244105,
+     1.927432
+    ],
+    "reprojectionErrorPx": 0.4417,
+    "solvers": [
+     "single"
+    ],
+    "worldTagIds": [
+     585
+    ]
+   },
+   "tags": [
+    {
+     "tagId": 0,
+     "label": "0",
+     "world": false,
+     "position": [
+      1.25363,
+      1.381788,
+      0.68
+     ],
+     "sdMm": [
+      3.441066,
+      4.874077,
+      0.0
+     ],
+     "spreadM": 0.008273,
+     "edgeM": 0.051079,
+     "count": 5
+    },
+    {
+     "tagId": 1,
+     "label": "1",
+     "world": false,
+     "position": [
+      1.089221,
+      1.380457,
+      0.68
+     ],
+     "sdMm": [
+      3.411119,
+      4.937445,
+      0.0
+     ],
+     "spreadM": 0.008847,
+     "edgeM": 0.049042,
+     "count": 5
+    },
+    {
+     "tagId": 2,
+     "label": "2",
+     "world": false,
+     "position": [
+      0.664071,
+      1.372124,
+      0.68
+     ],
+     "sdMm": [
+      4.154154,
+      7.918331,
+      0.0
+     ],
+     "spreadM": 0.009067,
+     "edgeM": 0.040056,
+     "count": 3
+    },
+    {
+     "tagId": 2,
+     "label": "2b",
+     "world": false,
+     "position": [
+      0.933507,
+      1.378412,
+      0.68
+     ],
+     "sdMm": [
+      3.514341,
+      5.551633,
+      0.0
+     ],
+     "spreadM": 0.009812,
+     "edgeM": 0.046949,
+     "count": 5
+    },
+    {
+     "tagId": 3,
+     "label": "3",
+     "world": false,
+     "position": [
+      0.791013,
+      1.375465,
+      0.68
+     ],
+     "sdMm": [
+      3.203776,
+      5.517857,
+      0.0
+     ],
+     "spreadM": 0.009558,
+     "edgeM": 0.04356,
+     "count": 5
+    }
+   ]
+  }
+ },
+ "error": null,
+ "request": {
+  "frames": 5,
+  "heightM": 0.68,
+  "tagIds": [
+   0,
+   1,
+   2,
+   3
+  ],
+  "markers": "apriltag",
+  "arucoDictionary": "auto"
+ },
+ "bilder": [
+  "bild_01.png"
+ ]
+}

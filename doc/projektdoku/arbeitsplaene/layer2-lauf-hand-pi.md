@@ -1,76 +1,76 @@
-# Layer-2-Lauf auf dem Hand-Pi: ankern, planen, messen
+# Layer-2 run on the hand Pi: anchor, plan, measure
 
-**Status:** fertig — 29.09.2026 (Fahrbefehl am Roboter offen, siehe Offene Fragen)
-**Verantwortlich:** Meric, `Agent: Layer-2-Lauf auf dem Hand-Pi`
-**Thema:** apriltag
+**Status:** done — 29.09.2026 (drive command on the robot still open, see Open questions)
+**Owner:** Meric, `Agent: layer-2 run on the hand Pi`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Der Hand-Pi führt die Feinmessung (Layer 2) selbst:
-1. Er plant, wohin der Flansch muss, um den nächsten Welttag zu sehen.
-2. Er ankert sich dort (`apriltag-hand-auge-ankern.md`).
-3. Er plant danach jedes Modul aus der **gemessenen** statt der groben Roboterbasis.
-4. Er misst jedes Modul.
+The hand Pi performs the fine measurement (layer 2) itself:
+1. It plans where the flange has to go in order to see the next world tag.
+2. It anchors itself there (`apriltag-hand-auge-ankern.md`).
+3. It then plans every module from the **measured** instead of the coarse robot base.
+4. It measures every module.
 
-Frontend und Backend reichen nur noch Posen weiter:
-- vom Frontend an den Pi: grobe Posen aus Layer 1 und die Tag-Lagen aus dem Modulkatalog;
-- vom Pi an den Roboter: das nächste Fahrziel;
-- vom Roboter an den Pi: die erreichte Pose.
+The frontend and backend only pass on poses:
+- from the frontend to the Pi: coarse poses from layer 1 and the tag positions from the module catalog;
+- from the Pi to the robot: the next motion target;
+- from the robot to the Pi: the reached pose.
 
-Alles läuft über OPC UA.
+Everything runs via OPC UA.
 
-Vorher lag die Planung im Frontend (`webskillcomposition`, `cell-modules/model/layer2.ts`). Ihr fehlte der Anker-Schritt, und sie plante immer mit der groben Basis aus Layer 1.
+Previously the planning lay in the frontend (`webskillcomposition`, `cell-modules/model/layer2.ts`). It lacked the anchor step, and it always planned with the coarse base from layer 1.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (kein Plan zu einem Layer-2-Lauf; `deckenkamera-volle-aufloesung.md` in Arbeit, anderes Thema)
-- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (Anker-Rechnung, Roboterpose als Job-Parameter)
-- `doc/projektdoku/arbeitsplaene/apriltag-tagmap-ueber-opcua.md` (Muster SetTagMap/TagMapJson)
-- `doc/projektdoku/vision-server-interface.md` (Methoden, Fehlercodes, Sperren 12.7)
-- `doc/projektdoku/apriltag-lokalisierung.md` Abschnitt zur Repositionierung: „nicht Teil dieser Bibliothek … gehört in die Ablaufsteuerung“. Deshalb liegt der Lauf in `vision_server/`, nicht in `tagloc/`.
+- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (no plan for a layer-2 run; `deckenkamera-volle-aufloesung.md` in progress, different topic)
+- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (anchor calculation, robot pose as job parameter)
+- `doc/projektdoku/arbeitsplaene/apriltag-tagmap-ueber-opcua.md` (pattern SetTagMap/TagMapJson)
+- `doc/projektdoku/vision-server-interface.md` (methods, error codes, locks 12.7)
+- `doc/projektdoku/apriltag-lokalisierung.md`, section on repositioning: "not part of this library … belongs in the sequence control". Therefore the run lives in `vision_server/`, not in `tagloc/`.
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/layer2/__init__.py`, `plan.py`, `run.py` (neu)
-- `src/vision_server/address_space.py`: Knoten `Layer2Target` und `Layer2Status`
-- `src/vision_server/runner.py`: Methoden, Verdrahtung, Sperren, Stop
-- `tests/test_layer2_plan.py`, `tests/test_layer2_run.py` (neu)
-- `doc/projektdoku/vision-server-interface.md`: neuer Abschnitt
-- `doc/projektdoku/arbeitsplaene/README.md`: Indexzeile
+- `src/vision_server/layer2/__init__.py`, `plan.py`, `run.py` (new)
+- `src/vision_server/address_space.py`: nodes `Layer2Target` and `Layer2Status`
+- `src/vision_server/runner.py`: methods, wiring, locks, stop
+- `tests/test_layer2_plan.py`, `tests/test_layer2_run.py` (new)
+- `doc/projektdoku/vision-server-interface.md`: new section
+- `doc/projektdoku/arbeitsplaene/README.md`: index line
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vision`. Es gibt sie **nur auf dem Hand-Pi**, also wenn `AprilTagProfileConfig.hand_eye_path` gesetzt ist. Sie werden zusätzlich unter `VisionProgram` verlinkt, wie die Kalibriermethoden.
+All elements are located under `VisionMachine` in the namespace `http://launch-rm.de/vision`. They exist **only on the hand Pi**, i.e. when `AprilTagProfileConfig.hand_eye_path` is set. They are additionally linked under `VisionProgram`, like the calibration methods.
 
-| Element | NodeId | Typ | Richtung | Bedeutung |
+| Element | NodeId | Type | Direction | Meaning |
 | --- | --- | --- | --- | --- |
-| StartLayer2Run | `ns=<vision>;s=VisionMachine.StartLayer2Run` | Methode | Aufruf | startet einen Lauf |
-| ReportRobotPose | `ns=<vision>;s=VisionMachine.ReportRobotPose` | Methode | Aufruf | meldet die erreichte Flanschpose, startet die Messung |
-| Layer2Target | `ns=<vision>;s=VisionMachine.Layer2Target` | String (JSON) | Lesen/Abo | nächstes Fahrziel; `""`, wenn der Lauf gerade keins hat |
-| Layer2Status | `ns=<vision>;s=VisionMachine.Layer2Status` | String (JSON) | Lesen/Abo | Zustand des Laufs samt Schritten und Ergebnissen |
-| Stop | vorhanden | Methode | Aufruf | bricht zusätzlich einen laufenden Layer-2-Lauf ab |
+| StartLayer2Run | `ns=<vision>;s=VisionMachine.StartLayer2Run` | Method | Call | starts a run |
+| ReportRobotPose | `ns=<vision>;s=VisionMachine.ReportRobotPose` | Method | Call | reports the reached flange pose, starts the measurement |
+| Layer2Target | `ns=<vision>;s=VisionMachine.Layer2Target` | String (JSON) | Read/subscribe | next motion target; `""` if the run currently has none |
+| Layer2Status | `ns=<vision>;s=VisionMachine.Layer2Status` | String (JSON) | Read/subscribe | state of the run including steps and results |
+| Stop | present | Method | Call | additionally aborts a running layer-2 run |
 
-**Methodensignaturen:**
+**Method signatures:**
 - `StartLayer2Run(RunJson: String) -> (Error: Int32)`
 - `ReportRobotPose(ReportJson: String) -> (Error: Int32)`
 
-**Fehlercodes** (`errors.py`):
+**Error codes** (`errors.py`):
 
-| Code | Wann |
+| Code | When |
 | --- | --- |
-| `OK` | angenommen |
-| `INVALID_ARGUMENT` | JSON ungültig oder Schema falsch |
-| `INVALID_STATE` | Vision-System nicht `Ready`; keine Hand-Auge-Datei geladen; `ReportRobotPose` ohne wartendes Ziel oder mit falschem `stepIndex` |
-| `BUSY` | ein Job, eine Kalibrierung oder schon ein Lauf aktiv (StartLayer2Run); ein Job läuft (ReportRobotPose) |
+| `OK` | accepted |
+| `INVALID_ARGUMENT` | JSON invalid or schema wrong |
+| `INVALID_STATE` | vision system not `Ready`; no hand-eye file loaded; `ReportRobotPose` without a waiting target or with a wrong `stepIndex` |
+| `BUSY` | a job, a calibration or already a run active (StartLayer2Run); a job is running (ReportRobotPose) |
 
-**Sperren während eines Laufs:** `StartCalibration` und `SetTagMap` antworten `BUSY`, weil `SetTagMap` den Anker verwirft. `StartSingleJob` bleibt erlaubt, zum Debuggen.
+**Locks during a run:** `StartCalibration` and `SetTagMap` answer `BUSY`, because `SetTagMap` discards the anchor. `StartSingleJob` remains allowed, for debugging.
 
-### Daten
+### Data
 
-**`RunJson`**, Schema `wsc.vision.layer2.run/1`. Posen sind überall `{"position": [x,y,z], "orientation": [qx,qy,qz,qw]}`, in Metern, Quaternion xyzw.
+**`RunJson`**, schema `wsc.vision.layer2.run/1`. Poses are everywhere `{"position": [x,y,z], "orientation": [qx,qy,qz,qw]}`, in metres, quaternion xyzw.
 
 ```json
 {
@@ -88,12 +88,12 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
 }
 ```
 
-- `robotBase`: `T_world_base` aus Layer 1, grob.
-- `modules[].pose`: `T_world_module` aus Layer 1, grob. Der Roboter selbst gehört nicht in die Liste.
-- `modules[].tags[].poseInModule`: `T_module_tag` aus dem Modulkatalog. Der Tag-Frame ist der der Bibliothek: +X rechts, +Y zur Oberkante des Drucks, +Z aus dem Tag heraus.
-- `options` ist optional. Die Defaults sind 0,3 m Abstand und 0,85 m Reichweite. Die Reichweite ist nur ein Hinweis.
+- `robotBase`: `T_world_base` from layer 1, coarse.
+- `modules[].pose`: `T_world_module` from layer 1, coarse. The robot itself does not belong in the list.
+- `modules[].tags[].poseInModule`: `T_module_tag` from the module catalog. The tag frame is the library's: +X right, +Y toward the upper edge of the print, +Z out of the tag.
+- `options` is optional. The defaults are a 0.3 m standoff and a 0.85 m reach. The reach is only a hint.
 
-**`ReportJson`**, Schema `wsc.vision.layer2.report/1`:
+**`ReportJson`**, schema `wsc.vision.layer2.report/1`:
 
 ```json
 { "schema": "wsc.vision.layer2.report/1", "stepIndex": 0, "reached": true,
@@ -102,9 +102,9 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
   "reason": "außer Reichweite" }
 ```
 
-`flangeInBase` ist die Pose, die der Roboter **meldet**, nicht das Ziel. Nur mit ihr darf geankert werden (`apriltag-hand-auge-ankern.md`).
+`flangeInBase` is the pose that the robot **reports**, not the target. Only with it may anchoring be performed (`apriltag-hand-auge-ankern.md`).
 
-**`Layer2Target`**, Schema `wsc.vision.layer2.target/1`:
+**`Layer2Target`**, schema `wsc.vision.layer2.target/1`:
 
 ```json
 { "schema": "wsc.vision.layer2.target/1", "runId": "l2-000001", "stepIndex": 0,
@@ -113,11 +113,11 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
   "reachM": 0.62, "reachable": true }
 ```
 
-- `purpose` ist `"anchor"` oder `"measure"`.
-- `flangeInBase` ist das Fahrziel für den Roboter.
-- `cameraInWorld` und `tagInWorld` dienen der Anzeige.
+- `purpose` is `"anchor"` or `"measure"`.
+- `flangeInBase` is the motion target for the robot.
+- `cameraInWorld` and `tagInWorld` are for display.
 
-**`Layer2Status`**, Schema `wsc.vision.layer2.status/1`:
+**`Layer2Status`**, schema `wsc.vision.layer2.status/1`:
 
 ```json
 { "schema": "wsc.vision.layer2.status/1", "runId": "l2-000001",
@@ -128,23 +128,23 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
                "status": "done", "detail": "", "result": null } ] }
 ```
 
-- `state` ist einer von: `idle`, `waitingForRobot`, `measuring`, `finished`, `aborted`.
-- `steps[].status` ist einer von: `pending`, `target`, `measuring`, `done`, `failed`, `skipped`.
-- `anchor` ist `null`, bis dieser Lauf geankert hat.
-- `steps[].result` gibt es nur bei Mess-Schritten: `{"frameId", "detections"}` aus dem Payload des Jobs (`wsc.vision.detections/1`).
+- `state` is one of: `idle`, `waitingForRobot`, `measuring`, `finished`, `aborted`.
+- `steps[].status` is one of: `pending`, `target`, `measuring`, `done`, `failed`, `skipped`.
+- `anchor` is `null` until this run has anchored.
+- `steps[].result` exists only for measurement steps: `{"frameId", "detections"}` from the job's payload (`wsc.vision.detections/1`).
 
 ### Python
 
 ```python
-# Modul: src/vision_server/layer2/plan.py   (numpy, tagloc; kein asyncua)
+# Module: src/vision_server/layer2/plan.py   (numpy, tagloc; no asyncua)
 @dataclass(frozen=True)
 class RunRequest: robot_base: Pose; modules: tuple[ModuleRequest, ...]; standoff_m: float; reach_m: float
-def parse_run_request(text: str) -> RunRequest          # ValueError mit Klartext
+def parse_run_request(text: str) -> RunRequest          # ValueError with plain text
 def parse_report(text: str) -> RobotReport              # ValueError
 def view_target(T_world_tag, T_world_base, T_flange_cam, standoff_m) -> ViewTarget
 def plan_run(request, tag_map, pose_world_base, T_flange_cam) -> list[PlannedStep]
 
-# Modul: src/vision_server/layer2/run.py   (asyncio, kein asyncua)
+# Module: src/vision_server/layer2/run.py   (asyncio, no asyncua)
 class Layer2Run:
     active: bool
     def start(self, request_json: str) -> VisionErrorCode
@@ -153,61 +153,61 @@ class Layer2Run:
     async def abort(self, reason: str) -> None
 ```
 
-### Rechnung
+### Calculation
 
-Welttag und Modultag gehen durch **dieselbe** Funktion `view_target`:
+World tag and module tag go through **the same** function `view_target`:
 
 ```
-T_tag_cam      = Drehung 180° um x, 0,3 m entlang +z des Tags  (Kamera schaut auf den Tag)
+T_tag_cam      = rotation 180° about x, 0.3 m along +z of the tag  (camera looks at the tag)
 T_world_cam    = T_world_tag · T_tag_cam
 T_world_flange = T_world_cam · inv(T_flansch_cam)
-T_base_flange  = inv(T_world_base) · T_world_flange             <- Fahrziel
+T_base_flange  = inv(T_world_base) · T_world_flange             <- motion target
 ```
 
-Die beiden Tag-Arten unterscheiden sich nur darin, **woher** `T_world_tag` kommt:
-- Welttag: aus der Tag-Map (`nearest_world_tag`, der der Basis nächste).
-- Modultag: `T_world_module · T_module_tag` des Tags, der am meisten zur Basis zeigt.
+The two tag types differ only in **where** `T_world_tag` comes from:
+- World tag: from the tag map (`nearest_world_tag`, the one nearest to the base).
+- Module tag: `T_world_module · T_module_tag` of the tag that points most towards the base.
 
-Außerdem wird `T_world_base` gewechselt:
-- vor dem Ankern: die grobe Basis aus Layer 1;
-- danach: die gemessene aus `RobotAnchor.pose_world_base`.
+In addition, `T_world_base` is switched:
+- before anchoring: the coarse base from layer 1;
+- afterwards: the measured one from `RobotAnchor.pose_world_base`.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Welttag nicht gesehen, keine Hand-Auge-Datei, Roboterpose fehlt | Anker-Schritt `failed`, Lauf `aborted`, Rest `skipped` |
-| Roboter meldet `reached: false` | Schritt `failed`; beim Anker Abbruch, sonst weiter |
-| Modul-Tag nicht gesehen oder Pose nicht im Welt-KS | Schritt `skipped` mit Grund, weiter |
-| Job-Fehler (Timeout, Kamera) | Schritt `failed`, weiter; beim Anker Abbruch |
-| Modul außer Reichweite | Schritt `skipped` ohne Fahrt |
-| `Stop` | Lauf `aborted`, `Layer2Target = ""`, laufender Job wird abgebrochen |
+| World tag not seen, no hand-eye file, robot pose missing | anchor step `failed`, run `aborted`, rest `skipped` |
+| Robot reports `reached: false` | step `failed`; at the anchor abort, otherwise continue |
+| Module tag not seen or pose not in the world frame | step `skipped` with reason, continue |
+| Job error (timeout, camera) | step `failed`, continue; at the anchor abort |
+| Module out of reach | step `skipped` without motion |
+| `Stop` | run `aborted`, `Layer2Target = ""`, running job is cancelled |
 
-Hinweis zum Anker-Schritt: `locate_modules` überspringt Welttags. Ein Bild nur mit dem Welttag liefert deshalb `DETECTION_FAILED`, obwohl dabei geankert wurde. Der Schritt gilt als erfolgreich, wenn der Job einen **neuen** `RobotAnchor` hinterlassen hat, egal mit welchem Code.
+Note on the anchor step: `locate_modules` skips world tags. An image with only the world tag therefore yields `DETECTION_FAILED`, although anchoring was performed. The step counts as successful if the job left behind a **new** `RobotAnchor`, regardless of which code it returned.
 
-## Vorgehen
+## Approach
 
-1. `plan.py` mit Tests: Parser, `view_target`, Tag-Wahl, Reihenfolge, Neuplanung.
-2. `run.py` mit Tests gegen Fakes: Ablauf, Anker, Abbruch, Report-Prüfung.
-3. Knoten und Methoden in `address_space.py`/`runner.py`, Sperren, Stop.
-4. Fach-MD `vision-server-interface.md`: neuer Abschnitt.
+1. `plan.py` with tests: parser, `view_target`, tag selection, order, replanning.
+2. `run.py` with tests against fakes: sequence, anchor, abort, report check.
+3. Nodes and methods in `address_space.py`/`runner.py`, locks, stop.
+4. Topic doc `vision-server-interface.md`: new section.
 
-## Offene Fragen
+## Open questions
 
-- **Fahrbefehl am Roboter:** Die Roboter-Server bieten heute nur `go_to` mit Gelenkwinkeln. Ein kartesischer Befehl (Flanschpose im Basis-KS) und das Auslesen der echten Flanschpose fehlen. Bis dahin füllt das Frontend den Report im Trockenlauf mit dem Ziel selbst. Das ist nur zum Ausprobieren gedacht.
-- `T_flansch_cam` ist an der echten Hardware noch nicht gemessen (siehe `apriltag-hand-auge-ankern.md`). Ohne die Datei lehnt `StartLayer2Run` mit `INVALID_STATE` ab.
+- **Drive command on the robot:** the robot servers today offer only `go_to` with joint angles. A Cartesian command (flange pose in the base frame) and reading out the actual flange pose are missing. Until then the frontend fills the report itself with the target in the dry run. This is intended only for trying things out.
+- `T_flansch_cam` has not yet been measured on the real hardware (see `apriltag-hand-auge-ankern.md`). Without the file `StartLayer2Run` rejects with `INVALID_STATE`.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- `Layer2Status` hat zusätzlich `stepIndex` (aktueller Schritt, `-1` ohne) und `anchor.spreadM`.
-- Die Methoden hängen nicht an `jobs.busy` allein: `StartLayer2Run` prüft auch die Kalibrier-Session (`calibration_session.busy`).
-- **Stop über die Part-10-Fassade** (`VisionProgram`) bricht nur den Job ab, nicht den Lauf. Der Lauf wertet den abgebrochenen Job dann als `failed` (`CANCELLED`); beim Anker-Schritt bricht er ab. Den ganzen Lauf beendet `AutomaticModeStateMachine/Stop`.
-- Der OPC-UA-Test (`tests/test_layer2_opcua.py`) fährt `runner._install_layer2_run` gegen einen echten asyncua-Server mit Fake-JobRunner und Fake-Quelle. Über die ganze Maschine mit Kamera ist der Lauf nicht getestet.
-- **Frontend** (`webskillcomposition`, Branch `Ungetestet`): Das Fenster „Autolocate Layer 2“ hat „Tags erkennen (Debug)“ und den Bereich „Feinmessung: Ankern und Module“. Die alte Planung im Browser ist entfernt.
+- `Layer2Status` additionally has `stepIndex` (current step, `-1` for none) and `anchor.spreadM`.
+- The methods do not depend on `jobs.busy` alone: `StartLayer2Run` also checks the calibration session (`calibration_session.busy`).
+- **Stop via the Part-10 facade** (`VisionProgram`) aborts only the job, not the run. The run then evaluates the aborted job as `failed` (`CANCELLED`); at the anchor step it aborts. The whole run is ended by `AutomaticModeStateMachine/Stop`.
+- The OPC UA test (`tests/test_layer2_opcua.py`) runs `runner._install_layer2_run` against a real asyncua server with a fake job runner and fake source. The run has not been tested across the whole machine with a camera.
+- **Frontend** (`webskillcomposition`, branch `Ungetestet` (untested)): the window "Autolocate Layer 2" has "Tags erkennen (Debug)" (detect tags (debug)) and the section "Feinmessung: Ankern und Module" (fine measurement: anchor and modules). The old planning in the browser has been removed.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index aktualisiert.
-- [x] Fachwissen in `vision-server-interface.md` Abschnitt 14 übernommen.
-- [x] Testlauf: 522 Tests, OK. Neu: `test_layer2_plan.py` (11), `test_layer2_run.py` (8), `test_layer2_opcua.py` (1).
+- [x] Status set to `done`, actual interfaces entered.
+- [x] Index line updated.
+- [x] Topic knowledge carried over into `vision-server-interface.md` section 14.
+- [x] Test run: 522 tests, OK. New: `test_layer2_plan.py` (11), `test_layer2_run.py` (8), `test_layer2_opcua.py` (1).

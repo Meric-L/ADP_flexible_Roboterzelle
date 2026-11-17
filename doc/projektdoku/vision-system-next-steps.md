@@ -1,202 +1,198 @@
-# Vision-System — Stand & nächste Schritte (für Agenten)
+# Vision system — state and next steps (for agents)
 
-Kurzorientierung, damit ein Agent ohne vorherigen Kontext weiß, wo das
-Vision-Server-Vorhaben gerade steht. Ausführlicher Ist-Stand:
-[`vision-system.md`](vision-system.md). Backend-Schnittstelle:
-[`vision-server-interface.md`](vision-server-interface.md). Vollständiger Plan:
-[`vision-system-integration.md`](vision-system-integration.md) (Teil 9 = Phasenplan,
-Teil 4 = Soll-Architektur).
+Short orientation, so that an agent without prior context knows where the
+vision-server project currently stands. Detailed current state:
+[`vision-system.md`](vision-system.md). Backend interface:
+[`vision-server-interface.md`](vision-server-interface.md). Complete plan:
+[`vision-system-integration.md`](vision-system-integration.md) (part 9 = phase plan,
+part 4 = target architecture).
 
-## Aktueller Stand
+## Current state
 
-- [x] **Phase 1 (Spike)**: `Opc.Ua.MachineVision.NodeSet2.xml` ist vendoriert,
-  lässt sich per `import_xml()` laden und instanziieren. Die bekannten
-  `asyncua`-Importrisiken (Issue #651) sind ausgeschlossen.
-- [x] **Phase 2**: eigenes Paket `src/vision_server/` mit eigenem Namespace
-  (`http://launch-rm.de/vision`), `VisionMachine`-Instanz unter einer stabilen
-  String-NodeId und `HasNotifier` vom Server-Objekt. Modulaufteilung nach
-  Teil 4.1, aber im `src/`-Layout dieses Repos statt als eigenes uv-Projekt.
-  **Abweichung von Teil 4.1/4.6:** *kein* eigener Serverprozess. Das Paket wird
-  per `install_vision_machine(server, config)` in den Server der Zelle
-  (`src/vision_server/server.py`, Port 4840) eingebaut. Der Split aus dem Plan war für
-  das WSC-Monorepo mit zwei simulierten Servern (2D+3D) gedacht; bei einer
-  Kamera auf einem Pi kostet er nur doppelten Adressraum (~110 MB RSS je
-  Prozess gemessen) und zwingt das Backend zu zwei Sessions. Standalone-Start
-  (`python -m vision_server`) bleibt für Entwicklung erhalten.
-- [x] **Phase 3 (Server 1, mit Platzhalter-Erkennung)**: Zustandsautomaten,
-  `StartSingleJob` mit Guard und Validierung, ResultManagement-Ablage,
-  vier Events, JSON-Payload im Schema aus Teil 4.3, Fehlerpfad über den
-  `Error`-Zustand. Erkennung ist eine `DetectionSource`-Strategie; aktiv ist
+- [x] **Phase 1 (spike)**: `Opc.Ua.MachineVision.NodeSet2.xml` is vendored,
+  can be loaded and instantiated via `import_xml()`. The known
+  `asyncua` import risks (issue #651) are ruled out.
+- [x] **Phase 2**: own package `src/vision_server/` with its own namespace
+  (`http://launch-rm.de/vision`), `VisionMachine` instance under a stable
+  string NodeId and `HasNotifier` from the server object. Module split according to
+  part 4.1, but in the `src/` layout of this repo instead of as its own uv project.
+  **Deviation from parts 4.1/4.6:** *no* separate server process. The package is
+  built into the cell's server (`src/vision_server/server.py`, port 4840) via
+  `install_vision_machine(server, config)`. The split from the plan was intended for
+  the WSC monorepo with two simulated servers (2D+3D); with a
+  camera on a Pi it only costs duplicate address space (~110 MB RSS per
+  process measured) and forces the backend to use two sessions. Standalone start
+  (`python -m vision_server`) is kept for development.
+- [x] **Phase 3 (server 1, with placeholder detection)**: state machines,
+  `StartSingleJob` with guard and validation, ResultManagement storage,
+  four events, JSON payload in the schema from part 4.3, error path via the
+  `Error` state. Detection is a `DetectionSource` strategy; the active one is
   `hello_world.py`.
-- [x] Der Raspi-Server läuft auf dem Pi als systemd-Service
-  `opcua-server.service` (`Restart=always`, `RestartSec=5`, nicht in diesem
-  Repo versioniert). Für den Vision-Server ist `vision-server.service` analog
-  vorgesehen. **Vorsicht beim manuellem Testen**: ein Vordergrundstart
-  kollidiert mit dem laufenden Service (Port belegt) — `systemctl restart`
-  benutzen oder einen freien Port wählen.
-- [x] Der alte Hello-World-Smoke-Test in `src/vision_server/server.py` ist entfallen —
-  seine Aufgabe erfüllt jetzt das eingebaute Vision-System am selben Server.
-- [x] Am 21.09.2026 ist auch der Rest der CPU-Temperatur-Demo gefallen:
-  `RaspiDevice`, die alte `VisionSystem`-Instanz, `CpuTemperatureResult`, die
-  Polling-Schleife und der Namensraum `http://launch-rm.de/raspi`. Der
-  Adressraum enthält seitdem **genau eine** `VisionSystemType`-Instanz, und sie
-  liegt unter `Objects/Machines`. Eine Typsuche ist damit unschädlich geworden;
-  die feste NodeId `ns=<vision>;s=VisionMachine` bleibt trotzdem der
-  empfohlene Weg, weil sie keine Browse-Runde kostet.
-- [x] **Phase 4 (echte Erkennung, 22.09.2026)**: das Rezept `apriltag` liefert
-  reale AprilTag-Posen (`detection/apriltag.py`), inklusive Welttag-Konzept
-  (Arbeitsplan `apriltag-welttag-konzept.md`) und Hand-Auge-Kalibrierung/
-  -Ankerung für Layer 2 (Arbeitsplan `apriltag-hand-auge-ankern.md`, beide
-  Status fertig). Details: [`apriltag-referenz.md`](apriltag-referenz.md).
-- [x] **Kamera-Livestream und interaktive Kalibrierung**: `camera.py`
-  (geteilter Capture-Loop), `camera_stream.py`/`stream_overlay.py`
-  (`LatestCameraFrame`, `CameraStreamMode`) sowie `calibration_session.py`
+- [x] The Raspi server runs on the Pi as the systemd service
+  `opcua-server.service` (`Restart=always`, `RestartSec=5`, not versioned in this
+  repo). A `vision-server.service` is planned analogously for the vision server. **Caution when testing manually**: a foreground start
+  collides with the running service (port occupied) — use `systemctl restart`
+  or choose a free port.
+- [x] The old hello-world smoke test in `src/vision_server/server.py` has been removed —
+  its task is now fulfilled by the built-in vision system on the same server.
+- [x] On 21.09.2026 the rest of the CPU temperature demo was also removed:
+  `RaspiDevice`, the old `VisionSystem` instance, `CpuTemperatureResult`, the
+  polling loop and the namespace `http://launch-rm.de/raspi`. The
+  address space has since contained **exactly one** `VisionSystemType` instance, and it
+  lies under `Objects/Machines`. A type search has thereby become harmless;
+  the fixed NodeId `ns=<vision>;s=VisionMachine` nevertheless remains the
+  recommended way, because it costs no browse round.
+- [x] **Phase 4 (real detection, 22.09.2026)**: the recipe `apriltag` delivers
+  real AprilTag poses (`detection/apriltag.py`), including the world-tag concept
+  (work plan `apriltag-welttag-konzept.md`) and hand-eye calibration/
+  anchoring for layer 2 (work plan `apriltag-hand-auge-ankern.md`, both
+  status done). Details: [`apriltag-referenz.md`](apriltag-referenz.md).
+- [x] **Camera live stream and interactive calibration**: `camera.py`
+  (shared capture loop), `camera_stream.py`/`stream_overlay.py`
+  (`LatestCameraFrame`, `CameraStreamMode`) as well as `calibration_session.py`
   (`StartCalibration`/`CaptureCalibrationSample`/`FinishCalibration`/
-  `AbortCalibration`) — siehe [`vision-server-interface.md`](vision-server-interface.md)
-  Abschnitt 10/12.
-- [x] **Part 2 (AMCM) und Part-10-Programmfassade**: `asset_model.py`
-  (`VisionAsset`) sowie `src/ua_program/program.py` +
-  `vision_server/vision_program.py` (`VisionProgram`) — siehe
-  [`vision-server-interface.md`](vision-server-interface.md) Abschnitt 11 und
+  `AbortCalibration`) — see [`vision-server-interface.md`](vision-server-interface.md)
+  sections 10/12.
+- [x] **Part 2 (AMCM) and Part-10 program facade**: `asset_model.py`
+  (`VisionAsset`) as well as `src/ua_program/program.py` +
+  `vision_server/vision_program.py` (`VisionProgram`) — see
+  [`vision-server-interface.md`](vision-server-interface.md) section 11 and
   [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
-- [x] **mDNS-Ankündigung und LDS-Registrierung** (`discovery/mdns.py`,
-  `discovery/lds.py`): der Aggregation-Server der Zelle nimmt beide
-  Vision-Server automatisch auf, siehe
+- [x] **mDNS announcement and LDS registration** (`discovery/mdns.py`,
+  `discovery/lds.py`): the cell's aggregation server automatically adds both
+  vision servers, see
   [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
 
-### Verifiziert (lokal, asyncua 2.0.1, Produktionszuschnitt auf Port 4840)
+### Verified (locally, asyncua 2.0.1, production setup on port 4840)
 
-Happy Path (Payload, Event-Reihenfolge, Korrelation über `jobId`,
-`ResultState`/`IsPartial`/`IsSimulated`/`CreationTime` im Event, beide
-Ergebnisknoten) · `BUSY` bei zwei gleichzeitigen Aufrufen ·
-`INVALID_ARGUMENT` bei überlanger `MeasId` · `UNKNOWN_RECIPE` bei unbekanntem
-Rezept · Fehlerpfad `--parameter force-error` mit `resultState=5`, Durchlauf
-über den `Error`-Zustand und funktionierender Wiederaufnahme.
+Happy path (payload, event order, correlation via `jobId`,
+`ResultState`/`IsPartial`/`IsSimulated`/`CreationTime` in the event, both
+result nodes) · `BUSY` with two simultaneous calls ·
+`INVALID_ARGUMENT` with an overlong `MeasId` · `UNKNOWN_RECIPE` with an unknown
+recipe · error path `--parameter force-error` with `resultState=5`, passage
+via the `Error` state and working resumption.
 
-## Verifizierte Fakten, die den Docs widersprachen
+## Verified facts that contradicted the docs
 
-Diese Punkte sind gegen das Nodeset und den asyncua-Quellcode geprüft; die
-alten Aussagen in Teil 2/4.2/4.4 des Plans sind falsch:
+These points have been checked against the nodeset and the asyncua source code; the
+old statements in parts 2/4.2/4.4 of the plan are wrong:
 
-1. **`ResultReadyEventType` (i=1024) hat kein `Result: ResultDataType`**,
-   sondern 15 flache Felder. Ohne `load_data_type_definitions()` dekodierbar
-   sind nur `ResultContent` (`BaseDataType`, ValueRank 1), `CreationTime`,
-   `IsPartial`, `IsSimulated`, `ResultState`. ⇒ Das Payload reist **im Event**
-   in `ResultContent[0]`; ein zweiter Read ist unnötig.
-2. **Die `ResultManagement`-Methoden sind vom asyncua-Client unbenutzbar** —
-   nicht wegen der Rückgabe, sondern weil schon die **Eingabe**
-   (`ResultIdDataType`, `JobIdDataType`) ein ExtensionObject ist (Issue #1693).
-   Kein Handle ⇒ der Handle-Leak aus Teil 6.4 ist gegenstandslos.
-3. **Es gibt keinen Übergang `Halted → Operational`.** Die früher
-   dokumentierte Folge `Preoperational → Halted → Operational` ist nicht
-   konform. Korrekt: `Preoperational → Operational`
-   (`PreoperationalToOperationalAuto`), innen `Initialized → Ready`.
-4. **Der `Error`-State ist nicht `i=5030`.** Die States der äußeren
-   `VisionStateMachine` sind Mandatory-Kinder der Instanz
-   (`get_child(f"{mv}:Error")`); `i=5030` ist der **Typ**knoten und würde
-   instanzübergreifend wirken. Nur die States der `AutomaticModeStateMachine`
-   (i=5056–5059) kommen per fester NodeId.
-5. **`LastTransition` existiert auf der Instanz nicht.** asyncuas
-   `change_state(..., transition=...)` schreibt dorthin und würde scheitern ⇒
-   Zustandswechsel ohne `Transition`-Objekt, Übergangsname in der
-   Event-Nachricht.
-6. **`ResultContent` kommt mit einer Null-NodeId als DataType.** Deshalb
-   scheitert *jeder* Write mit `BadTypeMismatch` — auch der in Teil 4.2
-   (Stolperstein 4) empfohlene `[ua.Variant(...)]`-Write. Erst der
-   DataType-Override auf `String` macht den **Array**-Write möglich, womit die
-   `ResultContent[0]`-Semantik erhalten bleibt.
-7. **Event-Felder brauchen fertige `ua.Variant`-Objekte.** asyncua leitet den
-   Feldtyp aus dem Nodeset ab und erhält für diese Felder VariantType `Null`;
-   ein roher Python-Wert kommt beim Client als `None` an.
-8. **`@uamethod`-Handler müssen `async` sein**, wenn sie einen Task starten:
-   synchrone Handler laufen in einem ThreadPoolExecutor ohne Event-Loop.
-9. **Methodenrückgaben müssen ein `tuple` sein.** Eine `list` wird von
-   asyncua als *ein* Variant verpackt, der Client bekommt dann verschachtelte
-   Variants. Betrifft auch `src/vision_server/server.py`.
-10. **Kein Event-Bubbling über `HasNotifier`** (bereits bekannt): asyncua
-    matcht `emitting_node` exakt, ein Abo auf `i=2253` empfängt nichts. Alle
-    Generatoren — auch der der State Machine — müssen aus dem
-    `VisionSystem`-Knoten emittieren.
+1. **`ResultReadyEventType` (i=1024) has no `Result: ResultDataType`**,
+   but 15 flat fields. Without `load_data_type_definitions()` only
+   `ResultContent` (`BaseDataType`, ValueRank 1), `CreationTime`,
+   `IsPartial`, `IsSimulated`, `ResultState` can be decoded. ⇒ The payload travels **in the event**
+   in `ResultContent[0]`; a second read is unnecessary.
+2. **The `ResultManagement` methods are unusable from the asyncua client** —
+   not because of the return value, but because already the **input**
+   (`ResultIdDataType`, `JobIdDataType`) is an ExtensionObject (issue #1693).
+   No handle ⇒ the handle leak from part 6.4 is moot.
+3. **There is no transition `Halted → Operational`.** The previously
+   documented sequence `Preoperational → Halted → Operational` is not
+   conformant. Correct: `Preoperational → Operational`
+   (`PreoperationalToOperationalAuto`), inside `Initialized → Ready`.
+4. **The `Error` state is not `i=5030`.** The states of the outer
+   `VisionStateMachine` are mandatory children of the instance
+   (`get_child(f"{mv}:Error")`); `i=5030` is the **type** node and would
+   act across instances. Only the states of the `AutomaticModeStateMachine`
+   (i=5056–5059) come via a fixed NodeId.
+5. **`LastTransition` does not exist on the instance.** asyncua's
+   `change_state(..., transition=...)` writes there and would fail ⇒
+   state changes without a `Transition` object, transition name in the
+   event message.
+6. **`ResultContent` comes with a null NodeId as DataType.** Therefore *every* write fails
+   with `BadTypeMismatch` — including the `[ua.Variant(...)]` write recommended in part 4.2
+   (stumbling block 4). Only the DataType override to `String` makes the **array** write possible, which
+   keeps the `ResultContent[0]` semantics intact.
+7. **Event fields need finished `ua.Variant` objects.** asyncua derives the field type
+   from the nodeset and gives these fields VariantType `Null`;
+   a raw Python value reaches the client as `None`.
+8. **`@uamethod` handlers must be `async`** if they start a task:
+   synchronous handlers run in a ThreadPoolExecutor without an event loop.
+9. **Method return values must be a `tuple`.** A `list` is packed by
+   asyncua as *one* Variant, and the client then receives nested
+   Variants. This also affects `src/vision_server/server.py`.
+10. **No event bubbling via `HasNotifier`** (already known): asyncua
+    matches `emitting_node` exactly, a subscription to `i=2253` receives nothing. All
+    generators — including that of the state machine — must emit from the
+    `VisionSystem` node.
 
-## Naht fuer die Erkennung — erledigt
+## Seam for detection — done
 
-Bevor eine echte Erkennung eingesteckt werden kann, war eine Reihe von
-Uebergabestellen zu bauen. Die stehen jetzt:
+Before a real detection could be plugged in, a number of hand-over points had to be
+built. They now exist:
 
-- **RecipeId waehlt die Quelle** (`config.recipe_profiles`, siehe
-  `DEFAULT_RECIPE_PROFILES` in `config.py`). Zugelassen sind aktuell `""`
-  (→ `hello_world`), `"hello-world"`, `"calibration"` (→ Bereitschaftsprüfung,
-  `script_runner.py`) und `"apriltag"` (→ echte Erkennung). Das frühere
-  Rezept `"image-recognition"` (QR-Code-Vorläufer) gibt es nicht mehr, und
-  `"calibration"` wird **nicht** mehr abgelehnt.
-- **`DetectionRequest`** statt nur `parameters`, und `run_blocking()` auf der
-  Basisklasse: jede OpenCV-Operation gehoert dort hinein, sonst friert der
-  gemeinsame Event-Loop ein.
-- **`open()`/`close()`** plus Signal-Handler in beiden Einstiegspunkten. Eine
-  Quelle, die nicht oeffnet, laesst den Automaten in Preoperational, statt
-  jeden Job mit `DETECTION_FAILED` zu beantworten.
-- **Job-Timeout** (aktuell 20 s, `config.job_timeout`). Vorher konnte eine
-  haengende Kamera den Server dauerhaft verklemmen; Rettung war nur
+- **RecipeId selects the source** (`config.recipe_profiles`, see
+  `DEFAULT_RECIPE_PROFILES` in `config.py`). Currently permitted are `""`
+  (→ `hello_world`), `"hello-world"`, `"calibration"` (→ readiness check,
+  `script_runner.py`) and `"apriltag"` (→ real detection). The former
+  recipe `"image-recognition"` (QR-code precursor) no longer exists, and
+  `"calibration"` is **no longer** rejected.
+- **`DetectionRequest`** instead of only `parameters`, and `run_blocking()` on the
+  base class: every OpenCV operation belongs there, otherwise the
+  shared event loop freezes.
+- **`open()`/`close()`** plus signal handlers in both entry points. A
+  source that does not open leaves the state machine in Preoperational, instead of
+  answering every job with `DETECTION_FAILED`.
+- **Job timeout** (currently 20 s, `config.job_timeout`). Previously a
+  hanging camera could permanently jam the server; the only rescue was
   `systemctl restart`.
-- **`frameId`, `frameConvention`, `configurationId`, `IsSimulated`** kommen
-  von der Quelle, nicht mehr aus Modulkonstanten.
-- **JSON-Sicherheit**: numpy-Werte und `NaN` brechen das Payload nicht mehr
-  stillschweigend.
-- **`vision_system_id` pro Pi** ueber Env, Hostname-Abbildung oder Fallback.
-- **Testgeruest** (inzwischen deutlich über 300 Tests, Stand 22.09.2026 316):
+- **`frameId`, `frameConvention`, `configurationId`, `IsSimulated`** come
+  from the source, no longer from module constants.
+- **JSON safety**: numpy values and `NaN` no longer silently break the payload.
+- **`vision_system_id` per Pi** via env, hostname mapping or fallback.
+- **Test framework** (now well over 300 tests, as of 22.09.2026 316):
   `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
-Damit ist eine neue Erkennungsquelle: eine Datei unter `detection/`, ein
-Registry-Eintrag mit Lazy-Import, **eine Zeile** in `DEFAULT_RECIPE_PROFILES`
-und ein `AprilTagProfileConfig` je Pi. Nichts in `job.py`, `payload.py`,
-`events.py`, `result_management.py`, `state_machine.py` oder
-`address_space.py` muss sich dafuer noch bewegen.
+Thus a new detection source is: one file under `detection/`, a registry
+entry with lazy import, **one line** in `DEFAULT_RECIPE_PROFILES`
+and an `AprilTagProfileConfig` per Pi. Nothing in `job.py`, `payload.py`,
+`events.py`, `result_management.py`, `state_machine.py` or
+`address_space.py` needs to change for this.
 
-## Nächste Schritte
+## Next steps
 
-1. **Auf dem Pi durchspielen** — `git pull`, `systemctl restart
-   opcua-server.service`, dann den Testclient dagegen laufen lassen. Wichtig,
-   weil bisher nur gegen asyncua 2.0.1 lokal verifiziert wurde; auf dem Pi kann
-   eine ältere Version liegen (`requirements.txt` pinnt nur `>=1.1.5`).
-2. **Gemeinsamer Test mit dem Teamkollegen (Backend)** — Schnittstelle einmal
-   durchspielen, Grundlage ist
+1. **Run through on the Pi** — `git pull`, `systemctl restart
+   opcua-server.service`, then run the test client against it. Important,
+   because so far only verified locally against asyncua 2.0.1; an older version may
+   be installed on the Pi (`requirements.txt` only pins `>=1.1.5`).
+2. **Joint test with the team colleague (backend)** — walk through the interface once;
+   the basis is
    [`vision-server-interface.md`](vision-server-interface.md).
-3. ~~Altlast `2:VisionSystem` entfernen~~ — **erledigt am 21.09.2026**. ~~Nodeset-XML
-   nach `src/vision_server/nodesets/` verschieben~~ — **ebenfalls erledigt**
-   (Altlast C5, siehe [`altlasten.md`](altlasten.md)).
-4. ~~**Echtes Ergebnis-Payload**~~ — **erledigt**: `detection/apriltag.py`
-   liefert echte Posen im Schema `wsc.vision.detections/1`, Koordinatensystem
-   und Kalibrierung sind über das Welttag-Konzept und die Hand-Auge-Kalibrierung
-   geklärt (siehe [`apriltag-referenz.md`](apriltag-referenz.md)).
-5. **Danach das 3D-Profil** — weiterhin offen. Als zweite `VisionSystemType`-
-   Instanz im *selben* Server (eigener Instanzname, eigene `visionSystemId`),
-   nach Teil 4.5. Ein zweiter Serverprozess wie in Teil 4.6 ist dafür nicht
-   nötig.
+3. ~~Remove legacy `2:VisionSystem`~~ — **done on 21.09.2026**. ~~Move nodeset XML
+   to `src/vision_server/nodesets/`~~ — **likewise done**
+   (legacy item C5, see [`altlasten.md`](arbeitsplaene/altlasten.md)).
+4. ~~**Real result payload**~~ — **done**: `detection/apriltag.py`
+   delivers real poses in the schema `wsc.vision.detections/1`; the coordinate system
+   and calibration have been clarified via the world-tag concept and the hand-eye calibration
+   (see [`apriltag-referenz.md`](apriltag-referenz.md)).
+5. **Then the 3D profile** — still open. As a second `VisionSystemType`
+   instance in the *same* server (own instance name, own `visionSystemId`),
+   according to part 4.5. A second server process as in part 4.6 is not
+   needed for this.
 
-> Phase 0 und Phasen 4–12 aus Teil 9 betreffen das **WebSkillComposition-
-> Backend/Frontend** (separates Repo, existiert hier **nicht**). Für dieses
-> Repo sind nur Phasen 1–3 relevant.
+> Phase 0 and phases 4–12 from part 9 concern the **WebSkillComposition
+> backend/frontend** (separate repo, does **not** exist here). For this
+> repo only phases 1–3 are relevant.
 
-## Offene Entscheidungen (noch nicht getroffen)
+## Open decisions (not yet made)
 
-- **Dispatch-Modus** (Teil 6.3): wie eine erkannte Pose zu einer Roboterbewegung
-  wird (`cartesian` via `LinMoveTcp` vs. `frontendIk`) — abhängig davon, ob der
-  reale Robotics-Server `LinMoveTcp`/`RotMoveTcp` exponiert. Betrifft die
-  Backend-Seite, nicht diesen Server.
-- ~~**Hand-Auge-Kalibrierung** — noch nicht spezifiziert.~~ **Erledigt**
-  (Arbeitsplan [`apriltag-hand-auge-ankern.md`](arbeitsplaene/apriltag-hand-auge-ankern.md)):
-  `AprilTagProfileConfig.hand_eye_path` + `detection/apriltag.py` verketten
-  Kamera → Flansch → Roboterbasis und liefern die Drift-Metadaten im Payload.
-  Ein Flag `auto_execute` gibt es im Code nicht (auch nicht mehr in Plänen) —
-  das Backend entscheidet anhand der gelieferten Posen/Drift-Werte selbst,
-  ob automatisch angefahren wird.
-- **Konzeptionelle Lücken aus der Lokalisierung selbst** — Koordinatensystem-
-  Kette Welt-Tag → Kamera → Roboter, Format der Layer-1→Layer-2-Übergabe,
-  Repositionierungsstrategie: größtenteils durch das Welttag-Konzept
-  (Arbeitsplan [`apriltag-welttag-konzept.md`](arbeitsplaene/apriltag-welttag-konzept.md))
-  geklärt, siehe [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md).
-  Verbleibende offene Punkte: [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
-  Diese bestimmen, was `frameId`/`position`/`orientation` im Ergebnis-Payload
-  konkret bedeuten müssen.
-- **Strukturtypisierte Event-Felder** befüllen, sobald asyncua-Issue #1693
-  gefixt ist. Das JSON-Payload bleibt auch dann die maßgebliche Quelle.
+- **Dispatch mode** (part 6.3): how a detected pose becomes a robot motion
+  (`cartesian` via `LinMoveTcp` vs. `frontendIk`) — depends on whether the
+  real robotics server exposes `LinMoveTcp`/`RotMoveTcp`. Concerns the
+  backend side, not this server.
+- ~~**Hand-eye calibration** — not yet specified.~~ **Done**
+  (work plan [`apriltag-hand-auge-ankern.md`](arbeitsplaene/apriltag-hand-auge-ankern.md)):
+  `AprilTagProfileConfig.hand_eye_path` + `detection/apriltag.py` chain
+  camera → flange → robot base and deliver the drift metadata in the payload.
+  An `auto_execute` flag does not exist in the code (nor in plans any more) —
+  the backend itself decides, based on the delivered poses/drift values,
+  whether to move automatically.
+- **Conceptual gaps from the localisation itself** — coordinate system
+  chain world tag → camera → robot, format of the layer 1 → layer 2 hand-over,
+  repositioning strategy: largely clarified by the world-tag concept
+  (work plan [`apriltag-welttag-konzept.md`](arbeitsplaene/apriltag-welttag-konzept.md)),
+  see [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md).
+  Remaining open points: [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
+  These determine what `frameId`/`position`/`orientation` must concretely mean in the result payload.
+- **Fill structure-typed event fields** once asyncua issue #1693
+  is fixed. The JSON payload remains the authoritative source even then.

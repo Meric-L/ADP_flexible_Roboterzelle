@@ -1,0 +1,257 @@
+{
+ "schema": "wsc.vision.floortags.result/1",
+ "frameId": "cam_ceiling",
+ "heightM": 0.0,
+ "calibrationId": "cam_ceiling@2026-11-02T14:47:53.213779+00:00",
+ "intrinsicsSource": "calibration",
+ "imageSize": [
+  4056,
+  3040
+ ],
+ "markers": "apriltag",
+ "reference": "camera",
+ "tagSizeM": 0.08,
+ "arucoDictionary": null,
+ "framesRequested": 5,
+ "framesUsed": 5,
+ "variants": {
+  "entzerrt": {
+   "camera": {
+    "frames": 5,
+    "planeDistanceM": 1.977711,
+    "tiltDeg": 5.2002,
+    "scaleTagId": 0,
+    "positionInWorld": [
+     0.0,
+     0.0,
+     1.986352
+    ],
+    "reprojectionErrorPx": null,
+    "solvers": [
+     "plane"
+    ],
+    "worldTagIds": []
+   },
+   "tags": [
+    {
+     "tagId": 0,
+     "label": "0",
+     "world": false,
+     "position": [
+      0.05838,
+      -0.020358,
+      0.0
+     ],
+     "sdMm": [
+      0.290343,
+      0.329735,
+      0.0
+     ],
+     "spreadM": 0.000546,
+     "edgeM": 0.07938,
+     "count": 5
+    },
+    {
+     "tagId": 1,
+     "label": "1",
+     "world": false,
+     "position": [
+      0.03135,
+      0.238618,
+      0.0
+     ],
+     "sdMm": [
+      0.256242,
+      1.960677,
+      0.0
+     ],
+     "spreadM": 0.00274,
+     "edgeM": 0.079705,
+     "count": 5
+    },
+    {
+     "tagId": 2,
+     "label": "2",
+     "world": false,
+     "position": [
+      -0.055338,
+      1.020047,
+      0.0
+     ],
+     "sdMm": [
+      1.255432,
+      17.279501,
+      0.0
+     ],
+     "spreadM": 0.019988,
+     "edgeM": 0.079521,
+     "count": 3
+    },
+    {
+     "tagId": 2,
+     "label": "2b",
+     "world": false,
+     "position": [
+      0.002746,
+      0.500598,
+      0.0
+     ],
+     "sdMm": [
+      0.257877,
+      6.054937,
+      0.0
+     ],
+     "spreadM": 0.009234,
+     "edgeM": 0.080769,
+     "count": 5
+    },
+    {
+     "tagId": 3,
+     "label": "3",
+     "world": false,
+     "position": [
+      -0.026378,
+      0.764293,
+      0.0
+     ],
+     "sdMm": [
+      0.768189,
+      12.020667,
+      0.0
+     ],
+     "spreadM": 0.018904,
+     "edgeM": 0.080671,
+     "count": 5
+    }
+   ]
+  },
+  "roh": {
+   "camera": {
+    "frames": 5,
+    "planeDistanceM": 1.977711,
+    "tiltDeg": 5.2002,
+    "scaleTagId": 0,
+    "positionInWorld": [
+     0.0,
+     0.0,
+     1.986352
+    ],
+    "reprojectionErrorPx": null,
+    "solvers": [
+     "plane"
+    ],
+    "worldTagIds": []
+   },
+   "tags": [
+    {
+     "tagId": 0,
+     "label": "0",
+     "world": false,
+     "position": [
+      0.058328,
+      -0.02034,
+      0.0
+     ],
+     "sdMm": [
+      0.289618,
+      0.329721,
+      0.0
+     ],
+     "spreadM": 0.000544,
+     "edgeM": 0.079305,
+     "count": 5
+    },
+    {
+     "tagId": 1,
+     "label": "1",
+     "world": false,
+     "position": [
+      0.031177,
+      0.2373,
+      0.0
+     ],
+     "sdMm": [
+      0.255207,
+      1.944348,
+      0.0
+     ],
+     "spreadM": 0.002717,
+     "edgeM": 0.078896,
+     "count": 5
+    },
+    {
+     "tagId": 2,
+     "label": "2",
+     "world": false,
+     "position": [
+      -0.050956,
+      0.939256,
+      0.0
+     ],
+     "sdMm": [
+      1.111893,
+      14.863974,
+      0.0
+     ],
+     "spreadM": 0.017194,
+     "edgeM": 0.067844,
+     "count": 3
+    },
+    {
+     "tagId": 2,
+     "label": "2b",
+     "world": false,
+     "position": [
+      0.002687,
+      0.489888,
+      0.0
+     ],
+     "sdMm": [
+      0.254618,
+      5.840799,
+      0.0
+     ],
+     "spreadM": 0.008895,
+     "edgeM": 0.077425,
+     "count": 5
+    },
+    {
+     "tagId": 3,
+     "label": "3",
+     "world": false,
+     "position": [
+      -0.025137,
+      0.728481,
+      0.0
+     ],
+     "sdMm": [
+      0.723315,
+      11.049617,
+      0.0
+     ],
+     "spreadM": 0.017363,
+     "edgeM": 0.073434,
+     "count": 5
+    }
+   ]
+  }
+ },
+ "error": null,
+ "request": {
+  "frames": 5,
+  "heightM": 0.0,
+  "tagIds": [
+   0,
+   1,
+   2,
+   3
+  ],
+  "markers": "apriltag",
+  "arucoDictionary": "auto",
+  "reference": "camera",
+  "tagSizeM": 0.08
+ },
+ "bilder": [
+  "bild_01.png"
+ ]
+}

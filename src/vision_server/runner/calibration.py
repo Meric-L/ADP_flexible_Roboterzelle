@@ -9,7 +9,7 @@ from typing import Any
 
 from asyncua import Node, ua, uamethod
 
-from ..calibration_session import CalibrationSession
+from ..calibration_session import CalibrationSession, parse_start_options
 from ..config import VisionServerConfig
 from ..detection import DetectionSource
 from ..errors import VisionErrorCode
@@ -191,6 +191,12 @@ def _start_calibration_method(wiring: Wiring):
 
     No calibration run may run at the same time as a job or a second session.
     Both share the camera and the detector.
+
+    Input `OptionsJson` (String): empty uses the configured board; otherwise
+    `wsc.vision.calibration.start/1` with the board chosen in the frontend
+    (see `calibration_session.parse_start_options`). An unusable board answers
+    `INVALID_ARGUMENT`, starts nothing and leaves the reason in
+    `CalibrationProgress.startError`.
     """
 
     def busy_reason() -> str | None:
@@ -209,17 +215,25 @@ def _start_calibration_method(wiring: Wiring):
         return None
 
     @uamethod
-    async def method(parent):
+    async def method(parent, options_json: str = ""):
         reason = busy_reason()
         if reason is not None:
             _log.warning(reason)
             return code_reply(VisionErrorCode.BUSY)
         if not wiring.states.is_ready():
             return code_reply(VisionErrorCode.INVALID_STATE)
-        wiring.calibration_session.start()
+        session = wiring.calibration_session
+        try:
+            board = parse_start_options(options_json)
+        except ValueError as error:
+            _log.warning("StartCalibration: Optionen abgelehnt: %s", error)
+            session.start_error = str(error)
+            await _write_calibration_progress(wiring)
+            return code_reply(VisionErrorCode.INVALID_ARGUMENT)
+        session.start(board)
         if wiring.annotator is not None:
-            wiring.annotator.set_calibration_session(wiring.calibration_session)
-        _log.info("Kalibrier-Session gestartet")
+            wiring.annotator.set_calibration_session(session)
+        _log.info("Kalibrier-Session gestartet (Brett %s)", session.board_spec.as_dict())
         return code_reply(VisionErrorCode.OK)
 
     return method
@@ -313,16 +327,22 @@ async def install_calibration_methods(wiring: Wiring) -> None:
     space = wiring.space
     if wiring.calibration_session is None or space.calibration_progress is None:
         return
-    for name, handler, outputs in (
-        ("StartCalibration", _start_calibration_method(wiring), [ua.VariantType.Int32]),
-        ("CaptureCalibrationSample", _capture_calibration_method(wiring), [ua.VariantType.Int32]),
+    for name, handler, inputs, outputs in (
+        (
+            "StartCalibration",
+            _start_calibration_method(wiring),
+            [ua.VariantType.String],
+            [ua.VariantType.Int32],
+        ),
+        ("CaptureCalibrationSample", _capture_calibration_method(wiring), [], [ua.VariantType.Int32]),
         (
             "FinishCalibration",
             _finish_calibration_method(wiring),
+            [],
             [ua.VariantType.String, ua.VariantType.Int32],
         ),
-        ("AbortCalibration", _abort_calibration_method(wiring), [ua.VariantType.Int32]),
+        ("AbortCalibration", _abort_calibration_method(wiring), [], [ua.VariantType.Int32]),
     ):
         await add_vision_method(
-            space, wiring.config, wiring.methods, name, handler, [], outputs
+            space, wiring.config, wiring.methods, name, handler, inputs, outputs
         )

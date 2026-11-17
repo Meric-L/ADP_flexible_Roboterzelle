@@ -22,7 +22,7 @@ class ResourcesMixin:
         """Join the tag family, calibration and tag map into one string.
 
         Later this shows which calibration and which tag map were active behind a
-        bad pose (doc/projektdoku/altlasten.md C4). It deliberately uses no OpenCV
+        bad pose (doc/projektdoku/arbeitsplaene/altlasten.md C4). It deliberately uses no OpenCV
         and does not read the files.
         """
         from tagloc.identity import calibration_identity, tag_map_identity
@@ -169,8 +169,13 @@ class ResourcesMixin:
             corner_refinement_method=self._config.corner_refinement_method,
             apriltag_quad_decimate=self._config.apriltag_quad_decimate,
             detector_parameters=self._config.detector_parameters,
+            roi=getattr(self._config, "detection_roi", None),
+            roi_reference_size=getattr(self._config, "resolution", None),
         )
         self._detector = await self.run_blocking(build)
+        roi = getattr(self._detector, "roi", None)
+        if roi is not None:
+            _log.info("Tag-Detektion nur im Ausschnitt x=%d y=%d %dx%d", *roi)
         changed = getattr(self._detector, "changed_parameters", None)
         if changed:
             _log.info(

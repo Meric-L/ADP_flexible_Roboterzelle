@@ -1,68 +1,68 @@
-# Layer 2: MeasureTags — Tags in Kamerakoordinaten messen
+# Layer 2: MeasureTags — measure tags in camera coordinates
 
-**Status:** fertig — 15.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** `Agent: MeasureTags auf dem Hand-Pi`; Frontend: Sitzung `opcua-4c` (`webskillcomposition`, Branch `Ungetestet`)
-**Thema:** apriltag
+**Status:** done — 15.10.2026 (not tested on real hardware)
+**Owner:** `Agent: MeasureTags on the hand Pi`; frontend: session `opcua-4c` (`webskillcomposition`, branch `Ungetestet`)
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Layer 2 ist neu aufgeteilt:
-- Die **Steuerung** (webskillcomposition) plant und fährt. Aus Layer 1 berechnet sie je Tag eine Kamerapose etwa 35 cm vor dem Tag und fährt hin.
-- Danach regelt sie im Stop-and-go nach: fahren → Stillstand → messen → `T_base_tag = FK(Gelenke) · T_flansch_cam · T_cam_tag` → neues Flanschziel.
-- Der **Hand-Pi misst nur.** Er plant nichts und kennt weder Roboter noch Kinematik.
+Layer 2 is newly split:
+- The **controller** (webskillcomposition) plans and moves. From layer 1 it calculates, for each tag, a camera pose about 35 cm in front of the tag and moves there.
+- Afterwards it corrects in a stop-and-go manner: move → standstill → measure → `T_base_tag = FK(joints) · T_flansch_cam · T_cam_tag` → new flange target.
+- The **hand Pi only measures.** It plans nothing and knows neither the robot nor the kinematics.
 
-`StartLayer2Run` und das Ankern bleiben bestehen, werden aber vorerst nicht genutzt.
+`StartLayer2Run` and the anchoring remain in place, but are not used for now.
 
-## Bereits gelesen
+## Already read
 
 - `layer2-lauf-hand-pi.md`, `layer2-annaeherung.md`, `layer2-schraege-ansicht.md`
-- `handeye-ueber-opcua.md`: `measure_tag` ist dieselbe Rechnung, `T_flansch_cam` passt also dazu
-- `vision-server-interface.md` Abschnitte 14, 15
+- `handeye-ueber-opcua.md`: `measure_tag` is the same calculation, so `T_flansch_cam` fits it
+- `vision-server-interface.md` sections 14, 15
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/measuretag.py` (neu): Anfrage, Zusammenführung, Ergebnis-JSON
-- `src/vision_server/detection/apriltag.py`: `measure_tags`, `intrinsics_source`, Rückfall auf die Werks-Intrinsik in `open()`
+- `src/vision_server/measuretag.py` (new): request, merging, result JSON
+- `src/vision_server/detection/apriltag.py`: `measure_tags`, `intrinsics_source`, fallback to the factory intrinsics in `open()`
 - `src/vision_server/camera.py`: `SharedCamera.factory_calibration`, `_realsense_calibration`
-- `src/vision_server/address_space.py`: Knoten `LastTagMeasurement`
+- `src/vision_server/address_space.py`: node `LastTagMeasurement`
 - `src/vision_server/runner.py`: `_install_measure_tags`
-- `tests/test_measuretag.py` (neu)
+- `tests/test_measuretag.py` (new)
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Die Elemente gibt es nur auf dem Hand-Pi, also mit `hand_eye_path`. Sie liegen unter `VisionMachine` und sind unter `VisionProgram` verlinkt.
+The elements exist only on the hand Pi, i.e. with `hand_eye_path`. They lie under `VisionMachine` and are linked under `VisionProgram`.
 
-| Element | NodeId | Typ |
+| Element | NodeId | Type |
 | --- | --- | --- |
 | MeasureTags | `ns=<vision>;s=VisionMachine.MeasureTags` | `(RequestJson: String) -> (ResultJson: String, Error: Int32)` |
-| LastTagMeasurement | `ns=<vision>;s=VisionMachine.LastTagMeasurement` | String (JSON), nur zur Anzeige |
+| LastTagMeasurement | `ns=<vision>;s=VisionMachine.LastTagMeasurement` | String (JSON), display only |
 
-Die Methode antwortet erst nach der Messung. Das Ergebnis kommt **direkt zurück**, so gibt es keinen Wettlauf um einen Ergebnis-Knoten. `ResultJson` ist immer gültiges JSON, auch bei einer Ablehnung (dann mit `tags: []` und `error`).
+The method only replies after the measurement. The result comes back **directly**, so there is no race for a result node. `ResultJson` is always valid JSON, including on a rejection (then with `tags: []` and `error`).
 
-| Error | Wann |
+| Error | When |
 | --- | --- |
-| `OK` | gemessen. Auch wenn kein Tag im Bild war (`tags: []`). |
-| `DETECTION_FAILED` | kein frisches Kamerabild (`error: "NO_FRAME"`) |
-| `INVALID_ARGUMENT` | JSON bzw. Werte ungültig |
-| `INVALID_STATE` | Vision-System nicht `Operational` |
-| `BUSY` | Job oder Kamera-Kalibrierung läuft (eine offene Hand-Auge-Sitzung sperrt nicht, seit 22.10.2026) |
+| `OK` | measured. Also when no tag was in the image (`tags: []`). |
+| `DETECTION_FAILED` | no fresh camera image (`error: "NO_FRAME"`) |
+| `INVALID_ARGUMENT` | JSON or values invalid |
+| `INVALID_STATE` | vision system not `Operational` |
+| `BUSY` | a job or camera calibration is running (an open hand-eye session does not block, since 22.10.2026) |
 
-### Daten
+### Data
 
-**Anfrage**, `wsc.vision.measuretag.request/1`. Alle Felder sind optional, `""` bzw. `{}` ist gültig.
+**Request**, `wsc.vision.measuretag.request/1`. All fields are optional; `""` or `{}` is valid.
 
 ```json
 { "schema": "wsc.vision.measuretag.request/1",
   "tagIds": [7] | null, "tagSizeM": {"7": 0.08}, "frames": 3 }
 ```
 
-- `tagIds`: `null` heißt alle erkannten Tags.
-- `frames`: 1–10, Standard 3. So viele frische Bilder werden gemittelt.
+- `tagIds`: `null` means all detected tags.
+- `frames`: 1–10, default 3. This many fresh images are averaged.
 
-**Ergebnis**, `wsc.vision.measuretag.result/1`:
+**Result**, `wsc.vision.measuretag.result/1`:
 
 ```json
 { "schema": "wsc.vision.measuretag.result/1",
@@ -81,45 +81,45 @@ Die Methode antwortet erst nach der Messung. Das Ergebnis kommt **direkt zurück
   "error": null | "NO_FRAME" }
 ```
 
-- **`poseInCamera`** ist `T_cam_tag`. Kamera-KS wie OpenCV: +Z aus der Linse, +X rechts, +Y unten. Tag-KS wie überall: +Z aus dem Tag heraus. Es gibt keine Welt-Transformation und keinen CAD-Versatz.
-- **Nur frische Bilder:** Gemessen wird nur auf Bildern, die **nach** dem Aufruf eintreffen. Ein Bild aus der Fahrt wird nie verwendet.
-- **Zusammenführung je Tag:**
-  - Die Position ist das Mittel über alle Bilder mit dem Tag.
-  - Die Orientierung ist das Mittel über die eindeutigen Bilder. Gibt es keine, wird über alle gemittelt und `ambiguous: true` gesetzt. Dann **nicht** auf die Drehung regeln, die Position bleibt verlässlich.
-- **`frameCount`:** in wie vielen Bildern der Tag gesehen wurde. Die Steuerung macht unter 2 keinen Regelschritt.
-- **`capturedAt`/`capturedUntil`:** Eintreffen des ersten bzw. letzten Bilds auf dem Pi, in UTC. Gemessen wird beim Eintreffen, nicht bei der Belichtung. Das macht rund eine Bildperiode aus.
-- **`cornersPx`/`centerPx`/`decisionMargin`:** aus dem letzten Bild. Die Pixel sind roh (verzeichnet). Die Reihenfolge der Ecken ist die von `tag_object_points`: oben links, im Uhrzeigersinn.
-- **`sizeM`/`sizeSource`:** die Größe, mit der gerechnet wurde. Vorrang hat die Anfrage, dann die Tag-Map, dann der Rückfall von 8 cm. Eine falsche Größe skaliert den Abstand linear.
-- **`viewAngleDeg`:** Winkel zwischen Tag-Normale und Sichtlinie, 0 = frontal.
-- **`nearEdge`** (ergänzt am 19.10.2026): die Bildränder (`left`, `right`, `top`, `bottom`), denen eine Ecke des Tags im letzten Bild näher als 5 % der Bildgröße kommt. Für die Suche nach anfangs unerreichbaren Tags: Die Steuerung fährt bestmöglich heran, misst und schwenkt bei einem randnahen Tag gezielt in diese Richtung nach. Ein angeschnittener Tag wird gar nicht erkannt, deshalb kommt der Hinweis vorher, solange er noch ganz im Bild ist.
+- **`poseInCamera`** is `T_cam_tag`. Camera CS as in OpenCV: +Z out of the lens, +X right, +Y down. Tag CS as everywhere: +Z out of the tag. There is no world transformation and no CAD offset.
+- **Only fresh images:** measurement only uses images that arrive **after** the call. An image from the motion is never used.
+- **Merging per tag:**
+  - The position is the mean over all images containing the tag.
+  - The orientation is the mean over the unambiguous images. If there are none, the mean over all images is used and `ambiguous: true` is set. Then the rotation is **not** controlled; the position remains reliable.
+- **`frameCount`:** in how many images the tag was seen. The controller does not take a control step below 2.
+- **`capturedAt`/`capturedUntil`:** arrival of the first and last image on the Pi, in UTC. Measurement happens on arrival, not at exposure. This accounts for roughly one image period.
+- **`cornersPx`/`centerPx`/`decisionMargin`:** from the last image. The pixels are raw (distorted). The order of the corners is that of `tag_object_points`: top left, clockwise.
+- **`sizeM`/`sizeSource`:** the size used for the calculation. Priority goes to the request, then the tag map, then the fallback of 8 cm. A wrong size scales the distance linearly.
+- **`viewAngleDeg`:** angle between the tag normal and the line of sight, 0 = frontal.
+- **`nearEdge`** (added 19.10.2026): the image edges (`left`, `right`, `top`, `bottom`) that a corner of the tag in the last image comes closer to than 5 % of the image size. For the search for initially unreachable tags: the controller approaches as far as possible, measures, and pans in a targeted way in this direction when a tag is near an edge. A cut-off tag is not detected at all, which is why the hint is given beforehand, while the tag is still fully in the image.
 
-### Intrinsik
+### Intrinsics
 
-Die Kalibrierdatei `data/calibration/cam_flange.json` hat Vorrang. Fehlt sie, gilt auf der **RealSense** die Werks-Intrinsik aus der laufenden Pipeline (`realsense_factory`, `calibrationId` = `realsense-werksintrinsik`).
+The calibration file `data/calibration/cam_flange.json` takes priority. If it is missing, on the **RealSense** the factory intrinsics of the running pipeline apply (`realsense_factory`, `calibrationId` = `realsense-werksintrinsik`).
 
-Bei der Verzeichnung gilt:
-- Brown-Conrady von librealsense entspricht OpenCV und wird übernommen.
-- Andere Modelle werden nur übernommen, wenn alle Koeffizienten 0 sind. Andernfalls rechnet der Pi ohne Verzeichnung und schreibt eine Warnung ins Log.
+Regarding distortion:
+- Brown-Conrady from librealsense corresponds to OpenCV and is adopted.
+- Other models are adopted only if all coefficients are 0. Otherwise the Pi calculates without distortion and writes a warning to the log.
 
-Ohne Werks-Intrinsik gilt der Platzhalter, aber nur mit `allow_placeholder_calibration`. Sonst öffnet die Quelle nicht, wie bisher. Bei `placeholder` regelt die Steuerung nicht.
+Without factory intrinsics the placeholder applies, but only with `allow_placeholder_calibration`. Otherwise the source does not open, as before. With `placeholder` the controller does not regulate.
 
-Achtung: Die Werks-Intrinsik gilt auch für Jobs und Livestream dieses Pis, nicht nur für `MeasureTags`.
+Note: the factory intrinsics also apply to jobs and the live stream of this Pi, not only to `MeasureTags`.
 
-## Fehlerfälle
+## Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Tag nicht im Bild | `tags: []`, `OK` |
-| Kein frisches Bild innerhalb `capture_timeout_s` | `error: "NO_FRAME"`, `DETECTION_FAILED`. Wurden schon einige Bilder ausgewertet, zählen die (`framesUsed` < `framesRequested`). |
-| Tag mehrdeutig | Pose kommt mit `ambiguous: true` |
+| Tag not in the image | `tags: []`, `OK` |
+| No fresh image within `capture_timeout_s` | `error: "NO_FRAME"`, `DETECTION_FAILED`. If some images were already evaluated, those count (`framesUsed` < `framesRequested`). |
+| Tag ambiguous | pose comes with `ambiguous: true` |
 
-## Offene Fragen
+## Open questions
 
-- An echter Hardware ist das nicht getestet. Ob die Werks-Intrinsik der verbauten RealSense Brown-Conrady meldet, zeigt erst der Pi.
+- Not tested on real hardware. Whether the factory intrinsics of the installed RealSense report Brown-Conrady only shows on the Pi.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen eingetragen.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 17.
+- [x] Status `done`, interfaces entered.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` section 17.
 - [x] Tests: `tests/test_measuretag.py` (14).

@@ -1,68 +1,69 @@
-# Hand-Auge und Ankern: einmal am Welttag, dann alle Module in Reichweite
+# Hand-eye and anchoring: once at the world tag, then all modules in reach
 
-**Status:** fertig — 22.09.2026
-**Verantwortlich:** `Agent: Hand-Auge-Kalibrierung und Ankern am Welttag`
-**Thema:** apriltag
+**Status:** done — 22.09.2026
+**Owner:** `Agent: hand-eye calibration and anchoring at the world tag`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Der Roboter ankert sich **einmal zu Beginn eines Lokalisierungsvorgangs** am
-Welttag und misst danach **alle Module in seiner Reichweite** fein ein — ohne
-dass dabei noch ein Welttag im Bild sein muss. Die Lücke zwischen zwei
-Welttag-Sichtungen schließt die Kinematik.
+The robot **anchors itself once at the start of a localization run** to the
+world tag and afterwards finely surveys **all modules within its reach** —
+without a world tag needing to be in the image any more. The gap between two
+world-tag sightings is closed by the kinematics.
 
-Vorher ging das nicht: `localize_camera` braucht einen Welttag **im selben
-Bild** wie das Modul. Steht die Handkamera 0,3 m vor einem Modul, liegt der
-nächste Welttag ein bis zwei Meter entfernt außerhalb des Bildfelds — die Posen
-blieben dann im Kamera-KS und damit unbrauchbar für „immer auf die Welttags
-bezogen".
+Previously this was not possible: `localize_camera` needs a world tag **in the
+same image** as the module. If the hand camera is 0.3 m in front of a module,
+the nearest world tag lies one to two meters away, outside the field of view —
+the poses would then remain in the camera frame and thus be unusable for
+"always referenced to the world tags".
 
-## Die Rechnung
+## The math
 
-Die Kamera sitzt **starr** am Roboter; nur der Roboter als Ganzes bewegt sich.
-`T_flansch_cam` ist deshalb eine Konstante und wird **einmal** kalibriert.
+The camera sits **rigidly** on the robot; only the robot as a whole moves.
+`T_flansch_cam` is therefore a constant and is calibrated **once**.
 
 ```
-Einmalig (Hand-Auge):   T_flansch_cam
+Once (hand-eye):        T_flansch_cam
 
-Einmal je Vorgang:      T_world_base = T_world_cam · inv(T_flansch_cam) · inv(T_base_flansch)
-   (Ankern am Welttag)   mit T_world_cam optisch aus dem Welttag
+Once per run:           T_world_base = T_world_cam · inv(T_flansch_cam) · inv(T_base_flansch)
+   (anchoring at the    with T_world_cam optically from the world tag
+    world tag)
 
-Je Modul danach:        T_world_cam  = T_world_base · T_base_flansch(jetzt) · T_flansch_cam
-   (kein Welttag noetig)
+Per module afterwards:  T_world_cam  = T_world_base · T_base_flansch(now) · T_flansch_cam
+   (no world tag needed)
 ```
 
-Kommt doch wieder ein Welttag ins Bild, wird neu geankert. Die Abweichung
-zwischen optischem und weitergerechnetem Wert ist die gemessene Drift — sie
-wird berichtet, nicht verschwiegen.
+If a world tag comes into view again, the robot is re-anchored. The deviation
+between the optical value and the value computed forward is the measured
+drift — it is reported, not concealed.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (kein offener `apriltag`-Plan)
-- `doc/arbeitsplaene/apriltag-welttag-konzept.md` (Vorgänger, `fertig`)
+- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (no open `apriltag` plan)
+- `doc/arbeitsplaene/apriltag-welttag-konzept.md` (predecessor, `done`)
 - `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md`
-- `doc/vision-server-interface.md` (Payload, Methoden, `frameId`-Regel)
-- `doc/vision-system-integration.md` Abschnitt 6.2 (Hand-Auge, `auto_execute`)
-- `doc/altlasten.md` (Hand-Auge als offener Punkt)
+- `doc/vision-server-interface.md` (payload, methods, `frameId` rule)
+- `doc/vision-system-integration.md` section 6.2 (hand-eye, `auto_execute`)
+- `doc/altlasten.md` (hand-eye as an open item)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/handeye.py` (neu) — Datei-Format, Ankerrechnung, Solver
+- `src/tagloc/handeye.py` (new) — file format, anchor computation, solver
 - `src/vision_server/profiles.py` — `hand_eye_path`
-- `src/vision_server/server.py` — Hand-Auge nur fuer `cam_flange`
-- `src/tagloc/localize.py` — `CameraLocalization.origin`, Anker-Pfad
-- `src/tagloc/cli/calibrate_handeye.py` (neu) — die einmalige Kalibrierfahrt
-- `src/vision_server/detection/apriltag.py` — Anker halten, Roboterpose je Job
-- `tests/test_handeye.py` (neu), `tests/test_layering.py`
+- `src/vision_server/server.py` — hand-eye only for `cam_flange`
+- `src/tagloc/localize.py` — `CameraLocalization.origin`, anchor path
+- `src/tagloc/cli/calibrate_handeye.py` (new) — the one-time calibration drive
+- `src/vision_server/detection/apriltag.py` — hold the anchor, robot pose per job
+- `tests/test_handeye.py` (new), `tests/test_layering.py`
 - `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md`
 
-## Schnittstellen
+## Interfaces
 
-### Daten — `data/handeye/cam_flange.json`
+### Data — `data/handeye/cam_flange.json`
 
-Maschinenspezifisch wie die Kalibrierung, deshalb unter `data/` und nicht
-versioniert. Schema **`wsc.vision.handeye/1`**:
+Machine-specific like the calibration, therefore under `data/` and not
+versioned. Schema **`wsc.vision.handeye/1`**:
 
 ```json
 {
@@ -80,15 +81,15 @@ versioniert. Schema **`wsc.vision.handeye/1`**:
 }
 ```
 
-`rmsPositionM`/`rmsRotationDeg` sind die Streuung des rekonstruierten
-Zielorts über alle Aufnahmen: steht der Tag fest, muss
-`T_base_flansch(i) · T_flansch_cam · T_cam_tag(i)` für alle `i` dieselbe Pose
-ergeben. Tut es das nicht, stimmt die Kalibrierung nicht.
+`rmsPositionM`/`rmsRotationDeg` are the scatter of the reconstructed target
+location across all captures: if the tag is fixed, `T_base_flansch(i) ·
+T_flansch_cam · T_cam_tag(i)` must yield the same pose for all `i`. If it does
+not, the calibration is wrong.
 
 ### Python
 
 ```python
-# Modul: src/tagloc/handeye.py   (nur numpy, kein cv2 -- siehe Abweichungen)
+# Module: src/tagloc/handeye.py   (numpy only, no cv2 -- see deviations)
 SCHEMA = "wsc.vision.handeye/1"
 
 @dataclass(frozen=True)
@@ -105,10 +106,10 @@ def save_hand_eye(path, hand_eye: HandEye) -> None
 
 @dataclass(frozen=True)
 class RobotAnchor:
-    """Wo die Roboterbasis im Welt-KS steht, samt Herkunft."""
+    """Where the robot base stands in the world frame, including provenance."""
     pose_world_base: Pose
-    world_tag_id: int          # Welttag, an dem geankert wurde
-    spread_m: float            # Guete der Welttag-Lokalisierung beim Ankern
+    world_tag_id: int          # world tag at which anchoring was done
+    spread_m: float            # quality of the world-tag localization during anchoring
     spread_rad: float
 
 def anchor_world_base(pose_world_cam: Pose, pose_base_flange: Pose,
@@ -121,29 +122,29 @@ def camera_pose_from_robot(pose_world_base: Pose, pose_base_flange: Pose,
 
 def target_spread(poses_base_flange, poses_cam_tag, pose_flange_cam
                   ) -> tuple[float, float]:
-    """Streuung des rekonstruierten Tag-Orts -- das Guetemass."""
+    """Scatter of the reconstructed tag location -- the quality measure."""
 
 def solve_hand_eye(poses_base_flange, poses_cam_tag) -> tuple[Pose, float, float]:
-    """Park und Martin ueber N Roboterposen auf einen festen Tag, in numpy.
+    """Park and Martin over N robot poses to a fixed tag, in numpy.
 
-    Liefert T_flansch_cam und die Streuung des rekonstruierten Zielorts.
-    Braucht mindestens 3 Posen mit Drehung um mehrere Achsen.
+    Returns T_flansch_cam and the scatter of the reconstructed target location.
+    Requires at least 3 poses with rotation about several axes.
     """
 
-# Modul: src/tagloc/localize.py
-ORIGIN_WORLD_TAGS = "world_tags"   # optisch, genau
-ORIGIN_ROBOT_POSE = "robot_pose"   # aus Anker + Kinematik weitergerechnet
-# CameraLocalization bekommt `origin: str`
+# Module: src/tagloc/localize.py
+ORIGIN_WORLD_TAGS = "world_tags"   # optical, precise
+ORIGIN_ROBOT_POSE = "robot_pose"   # computed forward from anchor + kinematics
+# CameraLocalization gets `origin: str`
 
 def anchor_from_localization(localization, pose_base_flange, hand_eye) -> RobotAnchor
 def localize_camera_from_anchor(anchor, pose_base_flange, hand_eye) -> CameraLocalization
 def anchor_drift(anchor, localization, pose_base_flange, hand_eye) -> tuple[float, float]
 
-# Modul: src/vision_server/detection/apriltag.py
+# Module: src/vision_server/detection/apriltag.py
 def robot_pose_from_parameters(parameters) -> Pose | None
 ```
 
-CLI der einmaligen Kalibrierfahrt:
+CLI for the one-time calibration drive:
 
 ```
 python -m tagloc.cli.calibrate_handeye --samples fahrt/aufnahmen.json \
@@ -151,119 +152,139 @@ python -m tagloc.cli.calibrate_handeye --samples fahrt/aufnahmen.json \
     --out data/handeye/cam_flange.json
 ```
 
-Aufnahmeliste `wsc.vision.handeye.samples/1`: je Eintrag ein Bild und die
-zugehoerige Roboterpose; der Tag muss waehrend der ganzen Fahrt liegen bleiben.
+Sample list `wsc.vision.handeye.samples/1`: one image and the associated robot
+pose per entry; the tag must stay in place for the entire drive.
 
-### Annahme zur Roboterpose (bestätigungsbedürftig)
+### Assumption about the robot pose (needs confirmation)
 
-`T_base_flansch` kommt als **Job-Parameter** an den Hand-Pi, über das bereits
-vorhandene Feld `DetectionRequest.parameters` — sieben Floats
-`(x, y, z, qx, qy, qz, qw)`, Meter und Quaternion xyzw wie überall. Begründung:
-der Roboter steht während der `samples_per_job` Aufnahmen ohnehin still, damit
-entfällt jedes Zeitstempel-Abgleichproblem, und es entsteht keine neue
-Netzabhängigkeit zwischen Hand-Pi und Roboter-Server.
+`T_base_flansch` arrives as a **job parameter** at the hand Pi, via the
+already existing field `DetectionRequest.parameters` — seven floats
+`(x, y, z, qx, qy, qz, qw)`, meters and quaternion xyzw as everywhere.
+Rationale: the robot stands still during the `samples_per_job` captures
+anyway, so any timestamp matching problem disappears, and no new network
+dependency arises between the hand Pi and the robot server.
 
-Die Alternative — der Hand-Pi abonniert `urn:plcm:robot-server:ur5e` als
-OPC-UA-Client — bleibt additiv nachrüstbar, ohne dass sich der Payload ändert.
+The alternative — the hand Pi subscribes to `urn:plcm:robot-server:ur5e` as an
+OPC UA client — remains retrofittable additively, without the payload changing.
 
-Fehlt der Parameter und ist kein Welttag im Bild, bleibt alles wie bisher im
-Kamera-KS. Kein Raten.
+If the parameter is missing and no world tag is in the image, everything
+remains in the camera frame as before. No guessing.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behavior |
 | --- | --- |
-| Keine Hand-Auge-Datei | Ankern nicht möglich; nur der optische Pfad wirkt, Warnung beim Öffnen |
-| Noch nicht geankert, kein Welttag im Bild | Posen im Kamera-KS, `frameId = cam_flange` |
-| Roboterpose fehlt am Job | wie „nicht geankert" — es wird nicht geraten |
-| Welttag sichtbar **und** geankert | optischer Wert gewinnt, Drift gegen den Anker wird als Attribut berichtet |
-| `solve_hand_eye` mit < 3 Posen | `ValueError` mit Klartext |
+| No hand-eye file | Anchoring not possible; only the optical path applies, warning when opening |
+| Not yet anchored, no world tag in the image | Poses in the camera frame, `frameId = cam_flange` |
+| Robot pose missing on the job | Same as "not anchored" — no guessing |
+| World tag visible **and** anchored | Optical value wins, drift against the anchor is reported as an attribute |
+| `solve_hand_eye` with < 3 poses | `ValueError` with a plain-text message |
 
-## Vorgehen
+## Approach
 
-1. `handeye.py`: Format, `anchor_world_base`, `camera_pose_from_robot`, Solver.
-2. `localize.py`: `origin`, `RobotAnchor`-Anbindung.
-3. `detection/apriltag.py`: Anker halten, Roboterpose je Job auswerten.
-4. CLI `calibrate_handeye` für die einmalige Kalibrierfahrt.
-5. Tests: synthetische Kette, Solver gegen bekannte Wahrheit, Drift.
-6. Fach-MDs nachziehen; `auto_execute` bleibt trotzdem `False`.
+1. `handeye.py`: format, `anchor_world_base`, `camera_pose_from_robot`, solver.
+2. `localize.py`: `origin`, `RobotAnchor` hookup.
+3. `detection/apriltag.py`: hold the anchor, evaluate the robot pose per job.
+4. CLI `calibrate_handeye` for the one-time calibration drive.
+5. Tests: synthetic chain, solver against known truth, drift.
+6. Update the topic docs; `auto_execute` nevertheless stays `False`.
 
-## Offene Fragen
+## Open questions
 
-- Transport der Roboterpose (siehe Annahme oben) — Job-Parameter vs. OPC-UA-Abo.
-- Ob nach jedem Modul oder nur am Ende eines Vorgangs nachgeankert wird, sobald
-  ein Welttag zufällig wieder im Bild ist. Vorerst: immer, wenn er da ist.
+- Transport of the robot pose (see assumption above) — job parameter vs. OPC UA subscription.
+- Whether re-anchoring happens after every module or only at the end of a run, once a world tag happens to be back in the image. For now: always, whenever it is there.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Der Solver rechnet in numpy statt über `cv2.calibrateHandEye`.** Die
-  Funktion ist in OpenCV 5.0 nicht mehr nach Python exportiert — nur die
-  `CALIB_HAND_EYE_*`-Konstanten sind übrig, im venv dieses Rechners
-  (OpenCV 5.0.0) also nicht aufrufbar. Das Repo trägt bewusst 4.x **und** 5.x
-  (`doc/altlasten.md` D3), und eine Versionsverzweigung an einer Stelle, die
-  einmal im Leben der Zelle läuft, wäre schlechter als dreißig Zeilen
-  Mathematik nach Park und Martin. Nebeneffekt: `tagloc.handeye` bleibt
-  komplett OpenCV-frei und steht in `test_layering.PURE_MODULES` statt in
-  `LAZY_CV2_MODULES`.
-- **`RobotAnchor` liegt in `handeye.py`, nicht in `localize.py`.** Sonst hätten
-  sich die beiden Module gegenseitig importiert. `localize.py` legt nur die
-  Hülle drum (`anchor_from_localization`, `localize_camera_from_anchor`,
+- **The solver computes in numpy instead of via `cv2.calibrateHandEye`.** The
+  function is no longer exported to Python in OpenCV 5.0 — only the
+  `CALIB_HAND_EYE_*` constants remain, so in this machine's venv (OpenCV 5.0.0)
+  it is not callable. The repo deliberately carries 4.x **and** 5.x
+  (`doc/altlasten.md` D3), and a version branch at a spot that runs once in the
+  cell's lifetime would be worse than thirty lines of math after Park and
+  Martin. Side effect: `tagloc.handeye` stays completely OpenCV-free and is
+  listed in `test_layering.PURE_MODULES` instead of `LAZY_CV2_MODULES`.
+- **`RobotAnchor` lives in `handeye.py`, not in `localize.py`.** Otherwise the
+  two modules would have imported each other. `localize.py` only adds the
+  wrapper around it (`anchor_from_localization`, `localize_camera_from_anchor`,
   `anchor_drift`).
-- **`AprilTagProfileConfig.hand_eye_path` ist standardmäßig `None`.** Nur der
-  Hand-Pi bekommt in `server.py` einen Pfad gesetzt; die Deckenkamera sitzt
-  nicht am Roboter, ein Pfad für sie wäre eine Datei, die nie entsteht, und
-  erzeugte bei jedem Start eine Warnung.
-- **`NUMERIC_NOISE_RAD = 1e-6` im Test.** Bei rechnerisch exakten Eingaben
-  bleibt eine Winkelstreuung von rund 2e-08 rad (1,2e-06 Grad) aus der
-  Eigenwertzerlegung in `average_poses` übrig. Ein echter Fehler liegt
-  Größenordnungen darüber, was `test_the_spread_exposes_a_wrong_transform` an
-  einem um 10 mm verschobenen Versatz zeigt.
+- **`AprilTagProfileConfig.hand_eye_path` defaults to `None`.** Only the hand
+  Pi gets a path set in `server.py`; the ceiling camera is not mounted on the
+  robot, a path for it would be a file that never gets created, and it would
+  trigger a warning on every start.
+- **`NUMERIC_NOISE_RAD = 1e-6` in the test.** With mathematically exact inputs
+  an angular scatter of roughly 2e-08 rad (1.2e-06 degrees) remains from the
+  eigenvalue decomposition in `average_poses`. A real error lies orders of
+  magnitude above that, as `test_the_spread_exposes_a_wrong_transform` shows
+  for an offset shifted by 10 mm.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index `doc/arbeitsplaene/README.md`.
-- [x] Konzept in `doc/apriltag-lokalisierung.md` (1.2, neue 1.4, 1.5, 9),
+- [x] Status set to `done`, actual interfaces recorded.
+- [x] Entry in the index `doc/arbeitsplaene/README.md`.
+- [x] Concept in `doc/apriltag-lokalisierung.md` (1.2, new 1.4, 1.5, 9),
       `doc/apriltag-referenz.md`, `doc/vision-server-interface.md`,
       `doc/altlasten.md`.
-- [x] Testlauf: **316 Tests, OK** (vorher 291; `tests/test_handeye.py` bringt
-      25 neue).
+- [x] Test run: **316 tests, OK** (previously 291; `tests/test_handeye.py` adds
+      25 new).
 
-**Offen und bewusst so:** `T_flansch_cam` ist an der echten Hardware noch nicht
-gemessen. Bis `data/handeye/cam_flange.json` existiert, wirkt nur der optische
-Weg — ohne Welttag im Bild bleiben die Posen im Kamera-KS. `auto_execute` bleibt
-`False`, bis die Kalibrierung am Roboter belegt ist.
+**Open and deliberately so:** `T_flansch_cam` has not yet been measured on the
+real hardware. Until `data/handeye/cam_flange.json` exists, only the optical
+path works — without a world tag in the image the poses remain in the camera
+frame. `auto_execute` stays `False` until the calibration is verified on the
+robot.
 
-## Nachtrag 10.11.2026: Anker nach neuem Layer-1-Scan immer neu, Modul-Drehung immer aus Layer 2
+## Addendum 10.11.2026: anchor always redone after a new Layer 1 scan, module rotation always from Layer 2
 
-**Ablauf (Frontend-Layer-2, `ApproachPlanPanel.tsx` in webskillcomposition):**
+**Flow (frontend layer 2, `ApproachPlanPanel.tsx` in webskillcomposition):**
 
-- Deckenkamera (Layer 1) liefert grobe Basis und Module in Welt.
-- Layer 2 ankert die Roboterbasis an einem Welttag mit der Handkamera (geplant 1,0 m, `DEFAULT_ANCHOR_STANDOFF_M`): `T_base_tag = FK(q) · T_flange_cam · T_cam_tag`.
-- `baseCorrection`: Basis in Welt = `T_world_tag · inv(T_base_tag)`, nur x, y und Gierwinkel; die Höhe kommt aus dem Katalog.
-- Module werden bei 0,35 m (`DEFAULT_APPROACH_STANDOFF_M`) direkt im Roboterbasis-Rahmen gemessen und mit der Ankerbasis in die Welt geschrieben (`measuredModule`).
-- Pick & Place rechnet mit der Basis des Zwillings zurück (`usePickPlaceRun`).
-- Ist es dieselbe Basis, kürzt sich der Anker-/Weltfehler für die Relativlage Roboter↔Modul heraus. Es zählen dann nur Hand-Auge bei 0,35 m, Roboterpose, Tag-Messung und der Katalogversatz Tag→Modul.
+- The ceiling camera (Layer 1) provides a rough base and modules in the world.
+- Layer 2 anchors the robot base at a world tag with the hand camera (planned
+  1.0 m, `DEFAULT_ANCHOR_STANDOFF_M`): `T_base_tag = FK(q) · T_flange_cam · T_cam_tag`.
+- `baseCorrection`: base in world = `T_world_tag · inv(T_base_tag)`, only x, y
+  and yaw angle; the height comes from the catalog.
+- Modules are measured at 0.35 m (`DEFAULT_APPROACH_STANDOFF_M`) directly in the
+  robot base frame and written into the world with the anchor base
+  (`measuredModule`).
+- Pick & place computes back with the base of the twin (`usePickPlaceRun`).
+- If it is the same base, the anchor/world error cancels out of the relative
+  position robot↔module. Then only hand-eye at 0.35 m, robot pose, tag
+  measurement and the catalog offset tag→module count.
 
-**Behobener Fehler:**
+**Fixed bug:**
 
-- Nach einem neuen Layer-1-Scan setzte der Scan den Zwilling auf die grobe Layer-1-Basis.
-- Layer 2 behielt aber die alte Ankerkorrektur, wenn der Roboter laut Layer 1 höchstens 5 cm und 5° am alten Ort stand (`robotStayedPut`, `ROBOT_STILL_DISTANCE_M` / `ROBOT_STILL_YAW_RAD` in `layer2.ts`).
-- Dann wurde kein Anker angefahren, und der Vorschlag enthielt keinen Roboter.
-- Folge: Module lagen auf der Ankerbasis, der Zwilling auf der Layer-1-Basis. Die ganze frühere Basiskorrektur ging als Fehler ins Greifen ein.
+- After a new Layer 1 scan, the scan set the twin to the rough Layer 1 base.
+- Layer 2, however, kept the old anchor correction if, according to Layer 1,
+  the robot stood at most 5 cm and 5° at the old place (`robotStayedPut`,
+  `ROBOT_STILL_DISTANCE_M` / `ROBOT_STILL_YAW_RAD` in `layer2.ts`).
+- Then no anchor was approached, and the proposal contained no robot.
+- Consequence: modules lay on the anchor base, the twin on the Layer 1 base.
+  The whole earlier base correction entered the grasp as an error.
 
-**Neu:**
+**New:**
 
-1. Jeder neue Layer-1-Scan verwirft die Ankerkorrektur. Der nächste Layer-2-Lauf fährt den Anker immer neu an, die ganze Kette läuft neu.
-2. Werden Module mit der Ankerbasis abgelegt, enthält der Vorschlag immer auch den Roboter auf dieser Basis. Nach „Übernehmen“ passen Zwilling und Module zusammen.
-3. Der Gierwinkel eines Moduls kommt immer aus Layer 2, auch wenn die Messung als mehrdeutig gilt. Die IPPE-Mehrdeutigkeit betrifft die Kippung; übernommen wird nur der Gierwinkel (`levelModulePose`). Mehrdeutigkeit steht nur noch als Hinweis im Fortschrittstext.
-   - Der Anker selbst übernimmt den Gierwinkel weiterhin nur bei eindeutiger Messung.
+1. Every new Layer 1 scan discards the anchor correction. The next Layer 2 run
+   approaches the anchor anew; the whole chain runs again.
+2. If modules are placed on the anchor base, the proposal always also contains
+   the robot on this base. After "Übernehmen" (German UI button, "Accept"),
+   twin and modules fit together.
+3. A module's yaw angle always comes from Layer 2, even when the measurement is
+   considered ambiguous. The IPPE ambiguity concerns the tilt; only the yaw
+   angle is taken over (`levelModulePose`). Ambiguity now only appears as a hint
+   in the progress text.
+   - The anchor itself still takes over the yaw angle only for an unambiguous
+     measurement.
 
-**Wo umgesetzt:** webskillcomposition, Branches `handauge-schachbrett-offline` (`5cebd68`) und `layer2-nah-ran-2` (`999c80d`). Das Remote ist archiviert, die Commits liegen lokal. Zusätzlich entfallen `robotStayedPut`, `ROBOT_STILL_DISTANCE_M` und `ROBOT_STILL_YAW_RAD` (`layer2.ts`); neu ist `robotOriginsEqual` (gleiche Roboter-Origin auf 0,1 mm bzw. 0,1 mrad).
+**Where implemented:** webskillcomposition, branches `handauge-schachbrett-offline`
+(`5cebd68`) and `layer2-nah-ran-2` (`999c80d`). The remote is archived; the
+commits exist locally. In addition, `robotStayedPut`, `ROBOT_STILL_DISTANCE_M`
+and `ROBOT_STILL_YAW_RAD` (`layer2.ts`) are removed; new is `robotOriginsEqual`
+(same robot origin to 0.1 mm resp. 0.1 mrad).
 
-**Bleibende Fehlerquellen Roboter↔Modul:**
+**Remaining error sources robot↔module:**
 
-- Hand-Auge bei 0,35 m: Laufvergleich vom 10.11. zeigt einen gemessenen Punkt in Bildmitte mit 0,4–0,9 mm Abweichung zwischen Kalibrierläufen.
-- Roboterpose.
-- Tag-Messung.
-- Systematischer Katalogversatz Tag→Modul, siehe Plan `modellfehler-pruefung.md`.
+- Hand-eye at 0.35 m: the run comparison of 10.11 shows a measured point in the
+  image center with 0.4–0.9 mm deviation between calibration runs.
+- Robot pose.
+- Tag measurement.
+- Systematic catalog offset tag→module, see plan `modellfehler-pruefung.md`.

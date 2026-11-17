@@ -1,72 +1,58 @@
-# Part-10-Programm und mDNS — Schnittstelle für Backend und Frontend
+# Part 10 program and mDNS — interface for backend and frontend
 
-Diese Datei beschreibt **zwei neue Fähigkeiten** des Vision-Servers und was
-Backend und Frontend dafür tun müssen. Sie ist ohne Kenntnis dieses Repos
-benutzbar.
+This file describes **two new capabilities** of the vision server and what backend and frontend have to do for them. It is usable
+without knowledge of this repo.
 
-Stand: 2026-09-21, alle Angaben gegen einen laufenden Server verifiziert
-(asyncua 2.0.1, Python 3.12).
+State: 2026-09-21, all details verified against a running server (asyncua 2.0.1, Python 3.12).
 
-> **Nichts bricht.** Beides ist **additiv**. Die bestehende OPC-40100-Schnittstelle
-> aus [`vision-server-interface.md`](vision-server-interface.md) — `StartSingleJob`,
-> `Stop`, die 40100-Events, `LatestResultJson`, das Payload-Schema
-> `wsc.vision.detections/1` — bleibt unverändert gültig und funktioniert weiter.
-> Ein Backend, das heute läuft, läuft nach diesem Update unverändert weiter.
+> **Nothing breaks.** Both are **additive**. The existing OPC 40100 interface from [`vision-server-interface.md`](vision-server-interface.md) —
+> `StartSingleJob`, `Stop`, the 40100 events, `LatestResultJson`, the payload schema `wsc.vision.detections/1` — remains valid unchanged and
+> keeps working. A backend that runs today keeps running unchanged after this update.
 
 ---
 
-## 1. Warum das hier gebaut wurde
+## 1. Why this was built
 
-Der Vision-Server ist bisher der Sonderfall im Netz: Um ihn zu bedienen, muss
-ein Client OPC 40100 (Machine Vision) verstehen — zwei geschachtelte
-Zustandsautomaten, `StartSingleJob` mit fünf getypten Argumenten, eine
-projekteigene Fehlercode-Tabelle. Dieses Wissen lässt sich für kein anderes
-Modul der Zelle wiederverwenden.
+Until now the vision server has been the special case on the network: to operate it, a client must understand OPC 40100 (Machine Vision) —
+two nested state machines, `StartSingleJob` with five typed arguments, a project-specific error code table. This knowledge cannot be reused
+for any other module in the cell.
 
-Die übrigen Module benutzen dagegen **OPC-UA Teil 10 „Programs"**. Nachgesehen
-am 2026-09-21 im Laborsubnetz:
+The other modules, by contrast, use **OPC UA Part 10 "Programs"**. Checked on 2026-09-21 in the lab subnet:
 
-| Modul | Endpoint | Programme |
+| Module | Endpoint | Programs |
 | --- | --- | --- |
-| Conveyor | `opc.tcp://10.10.38.41:4840/conveyor/` | `RunContinuous`, `MoveDistance`, `MoveUntilSensor` — alle vom Typ `ProgramStateMachineType` |
-| CardDispenser | `opc.tcp://10.10.38.40:4840/card-dispenser/` | (DI/Machinery, im geprüften Bereich keine Programme) |
+| Conveyor | `opc.tcp://10.10.38.41:4840/conveyor/` | `RunContinuous`, `MoveDistance`, `MoveUntilSensor` — all of type `ProgramStateMachineType` |
+| CardDispenser | `opc.tcp://10.10.38.40:4840/card-dispenser/` | (DI/Machinery, no programs in the checked area) |
 
-Der Vision-Server bekommt deshalb **zusätzlich** ein Part-10-Programm in
-derselben Form. Ein Frontend, das die Conveyor-Skills bedienen kann, kann damit
-ohne neuen Code auch die Vision starten, anhalten und ihren Zustand anzeigen.
+The vision server therefore **additionally** gets a Part 10 program in the same form. A frontend that can operate the conveyor skills can thus
+also start and stop the vision and display its state, without new code.
 
-**Was generisch wird:** Starten, Anhalten, Zurücksetzen, Zustandsanzeige,
-Knopf-Freigabe, Zustandswechsel-Events.
-**Was vision-spezifisch bleibt:** das Erkennungsergebnis (Posen, Tag-Ids,
-Bezugsrahmen) und der Kamera-Livestream. Teil 10 sagt über Ergebnisse nichts;
-dafür bleibt der Weg aus `vision-server-interface.md` maßgeblich.
+**What becomes generic:** start, halt, reset, state display, button release, state-change events.
+**What stays vision-specific:** the detection result (poses, tag IDs, reference frames) and the camera live stream. Part 10 says nothing about
+results; for those, the route from `vision-server-interface.md` remains authoritative.
 
 ---
 
-## 2. Verbindung: mDNS statt hartcodierter IP
+## 2. Connection: mDNS instead of a hard-coded IP
 
-Der Zellserver kündigt sich jetzt selbst im lokalen Netz an. Damit entfallen
-die hartcodierten Pi-Adressen (`10.10.38.104` / `.109` in
-`backend/src/backend/config/pi_relay.py` und
-`frontend/src/features/opcua-server/config/piServers.ts`, siehe Altlast B1).
+The cell server now announces itself on the local network. The hard-coded Pi addresses (`10.10.38.104` / `.109` in
+`backend/src/backend/config/pi_relay.py` and `frontend/src/features/opcua-server/config/piServers.ts`, see legacy item B1) are therefore
+no longer needed.
 
-| | Wert |
+| | Value |
 | --- | --- |
-| Dienst-Typ | `_opcua-tcp._tcp.local.` |
-| Instanzname | die Vision-Identität des Pi, z. B. `vision-ceiling-01`, `vision-flange-01` |
+| Service type | `_opcua-tcp._tcp.local.` |
+| Instance name | the vision identity of the Pi, e.g. `vision-ceiling-01`, `vision-flange-01` |
 | Hostname | `<instanzname>.local.` |
 | Port | `4840` |
 | TXT `path` | `/raspi/server/` |
 | TXT `caps` | `DA` |
 
-**Endpoint-URL zusammenbauen:** `opc.tcp://<adresse>:<port><path>` — also
-`opc.tcp://10.10.38.104:4840/raspi/server/`. Den Pfad **aus dem TXT-Eintrag
-lesen**, nicht annehmen; die Nachbarn benutzen andere Pfade
-(`/conveyor/`, `/card-dispenser/`).
+**Assembling the endpoint URL:** `opc.tcp://<adresse>:<port><path>` — i.e. `opc.tcp://10.10.38.104:4840/raspi/server/`. **Read the path from
+the TXT entry**, do not assume it; the neighbours use other paths (`/conveyor/`, `/card-dispenser/`).
 
-So sieht eine Suche im Netz aus (real gemessen am 21.09.2026; die Pi-Adressen
-kommen per DHCP und wechseln, deshalb immer den Eintrag lesen statt die IP
-abzuschreiben):
+This is what a search on the network looks like (really measured on 21.09.2026; the Pi addresses come via DHCP and change, so always read the
+entry instead of copying the IP):
 
 ```
 vision-ceiling-01._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.104:4840/raspi/server/   caps=DA
@@ -75,277 +61,216 @@ Conveyor-Conveyor._opcua-tcp._tcp.local.   -> opc.tcp://10.10.38.41:4840/conveyo
 CardDispenser-Black-CDBlack._opcua-tcp._tcp.local. -> opc.tcp://10.10.38.40:4840/card-dispenser/  caps=DA
 ```
 
-### Der Aggregation-Server findet uns *nicht* von selbst
+### The aggregation server does *not* find us by itself
 
-> **Korrektur vom 21.09.2026.** Hier stand, der Aggregation-Server durchsuche
-> mDNS selbst und `RegisterServer2` sei nicht nötig — so steht es auch in
-> `betreuer/OPC UA-mDNS-Kurzanleitung.md`. Das trifft nicht zu und hat einen
-> Nachmittag gekostet. Die Messung steht unten.
+> **Correction of 21.09.2026.** This section used to say that the aggregation server searches mDNS itself and that `RegisterServer2` is not
+> needed — the same claim appears in `betreuer/OPC UA-mDNS-Kurzanleitung.md`. That is not true and cost an afternoon. The measurement is below.
 
-Die Zelle betreibt unter `opc.tcp://10.10.38.27:48400/` einen
-`AggregationServer` (`roboteach.plcm.tu-darmstadt.de/agg-server`), der die
-Module einsammelt. Auf **demselben Rechner** läuft unter
-`opc.tcp://10.10.38.27:4840/` ein **open62541 Local Discovery Server (LDS)**.
+The cell operates an `AggregationServer` under `opc.tcp://10.10.38.27:48400/` (`roboteach.plcm.tu-darmstadt.de/agg-server`), which collects
+the modules. On the **same machine**, an **open62541 Local Discovery Server (LDS)** runs under `opc.tcp://10.10.38.27:4840/`.
 
-Der Aggregation-Server führt genau die Module, die im LDS registriert sind —
-und in den LDS kommt man nur durch einen aktiven **`RegisterServer`**-Aufruf
-(`RegisterServer2` tut es auch). Eine mDNS-Ankündigung allein trägt sich dort
-nicht ein.
+The aggregation server lists exactly the modules that are registered in the LDS — and one gets into the LDS only through an active
+**`RegisterServer`** call (`RegisterServer2` does so too). An mDNS announcement alone does not get entered there.
 
-**Wie das gemessen wurde (21.09.2026):**
+**How this was measured (21.09.2026):**
 
-- Beide Pis waren per mDNS sauber sichtbar und per OPC UA direkt erreichbar,
-  mit korrekter ApplicationUri — der Aggregation-Server führte sie trotzdem
-  nicht.
-- `FindServers` am LDS lieferte exakt die Module, die der Aggregation-Server
-  unter `Objects` zeigte.
-- Der Aggregation-Server startete um 15:56 neu und nahm beim frischen Scan
-  alle fünf registrierten Module auf. Unsere Pis liefen da seit zehn Minuten
-  und funkten — sie blieben aussen vor. Es liegt also nicht am Scan-Zeitpunkt.
-- Die Namen im LDS-Bestand (`Festo Conveyor OPC UA Server-10-10-38-41`,
-  `OJIES-Aggregation-LDS-reuther`) stehen in 15 s Avahi-Suche **nirgends auf
-  dem Draht**: das ist sein Registrierungsbestand, nicht sein mDNS-Empfang.
-- Gegenprobe: eine einzelne `RegisterServer2`-Anfrage für
-  `urn:plcm:camera-server:ceiling-01` — **31 Sekunden später** stand das Modul
-  samt aller neun Namespaces im Aggregation-Server. Nach dem Abmelden war es
-  wieder weg.
+- Both Pis were cleanly visible via mDNS and directly reachable via OPC UA, with the correct ApplicationUri — the aggregation server nevertheless
+  did not list them.
+- `FindServers` at the LDS returned exactly the modules that the aggregation server showed under `Objects`.
+- The aggregation server restarted at 15:56 and, on the fresh scan, took up all five registered modules. Our Pis had been running and
+  transmitting for ten minutes at that point — they were left out. So it is not down to the scan time.
+- The names in the LDS inventory (`Festo Conveyor OPC UA Server-10-10-38-41`, `OJIES-Aggregation-LDS-reuther`) do **not appear anywhere on the
+  wire** in a 15 s Avahi search: that is its registration inventory, not its mDNS reception.
+- Cross-check: a single `RegisterServer2` request for `urn:plcm:camera-server:ceiling-01` — **31 seconds later** the module, together with all
+  nine namespaces, stood in the aggregation server. After deregistering it was gone again.
 
-**Umgesetzt in `src/vision_server/discovery/lds.py`**, aufgerufen aus `src/vision_server/server.py` neben
-der mDNS-Ankündigung. Beide Wege bleiben nebeneinander bestehen: der LDS
-bringt uns in den Aggregation-Server, mDNS bedient Clients im Subnetz direkt.
+**Implemented in `src/vision_server/discovery/lds.py`**, called from `src/vision_server/server.py` alongside the mDNS announcement. Both paths
+remain side by side: the LDS brings us into the aggregation server, mDNS serves clients in the subnet directly.
 
-| | Wert |
+| | Value |
 | --- | --- |
-| Discovery-Server | `opc.tcp://10.10.38.27:4840/` |
-| Dienst | `RegisterServer`, **ohne** `MdnsDiscoveryConfiguration` |
-| Verbindung | sessionlos, `NoSecurity` |
-| Erneuerung | alle 60 s — **notwendig**, siehe unten |
-| Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
-| Abschalten / umbiegen | `OPCUA_LDS_URL=""` bzw. `OPCUA_LDS_URL=opc.tcp://host:4840/` |
+| Discovery server | `opc.tcp://10.10.38.27:4840/` |
+| Service | `RegisterServer`, **without** `MdnsDiscoveryConfiguration` |
+| Connection | sessionless, `NoSecurity` |
+| Renewal | every 60 s — **required**, see below |
+| Registered DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
+| Disable / redirect | `OPCUA_LDS_URL=""` resp. `OPCUA_LDS_URL=opc.tcp://host:4840/` |
 
-**Einmal anmelden genügt nicht.** Das ist keine Vorsichtsmaßnahme, sondern
-gemessen: Der LDS wurde am 21.09.2026 um 15:56 neu gestartet
-(`LastCounterResetTime` springt mit). Conveyor läuft seit dem 08.09. und
-CardDispenser seit dem 07.09. durch — beide haben **nicht** neu gestartet, und
-beide stehen nach dem LDS-Neustart wieder im Anmeldebestand. Eine Anmeldung,
-die nur einmal beim eigenen Start gesendet wurde, lag im alten LDS-Prozess und
-wäre weg. Also erneuern die Nachbarmodule periodisch.
+**Registering once is not enough.** This is not a precaution but a measured fact: the LDS was restarted on 21.09.2026 at 15:56
+(`LastCounterResetTime` jumps along). Conveyor has been running since 08.09. and CardDispenser since 07.09. — both have **not** restarted, and
+both are back in the registration inventory after the LDS restart. A registration that was sent only once at one's own start lived in the old
+LDS process and would be gone. Therefore the neighbouring modules renew periodically.
 
-Man sieht das in deren Code nur nicht — und in unserem auch nicht mehr:
-`asyncua.Server.register_to_discovery()` startet die Erneuerungsschleife
-selbst, Standardabstand **60 s** (`period`). Bei jedem Durchlauf baut sie einen
-frischen Kanal auf, übersteht also auch einen LDS-Neustart. Wer die Methode
-benutzt, bekommt das geschenkt und hält es für nicht vorhanden.
+You cannot see this in their code — and in ours no longer either: `asyncua.Server.register_to_discovery()` starts the renewal loop itself,
+default interval **60 s** (`period`). On each pass it builds a fresh channel, so it survives an LDS restart too. Whoever uses the method gets
+this for free and considers it non-existent.
 
-Was sie **nicht** tut: abmelden. `Server.stop()` bricht nur die Schleife ab und
-trennt. Ohne `unregister_from_discovery()` bliebe der Eintrag bis zum Ablauf
-stehen, und der Aggregation-Server zeigte ein Modul, das er nicht mehr
-erreicht. `discovery.lds.register()` ruft es im `finally`.
+What it does **not** do: deregister. `Server.stop()` only aborts the loop and disconnects. Without `unregister_from_discovery()` the entry would
+stay until it expires, and the aggregation server would show a module it can no longer reach. `discovery.lds.register()` calls it in the
+`finally`.
 
-Wie lange eine Anmeldung ohne Erneuerung genau überlebt, haben wir **nicht**
-gemessen — open62541 räumt alte Einträge nach einem eigenen Timeout ab. Die
-verbreitete Angabe „mindestens alle 10 Minuten" stammt aus dem Docstring von
-`asyncua`, nicht aus einer Messung an dieser Zelle.
+How long a registration survives without renewal we have **not** measured — open62541 removes old entries after its own timeout. The
+widespread statement "at least every 10 minutes" comes from the docstring of `asyncua`, not from a measurement on this cell.
 
-**Falle 1:** `register_to_discovery()` trägt `server.endpoint.geturl()` als
-DiscoveryUrl ein. Ein Endpoint auf `0.0.0.0` — naheliegend, damit der Server
-über jede Schnittstelle erreichbar ist — meldet dem Aggregation-Server also
-`0.0.0.0`, und der verbindet ins Leere.
+**Trap 1:** `register_to_discovery()` enters `server.endpoint.geturl()` as the DiscoveryUrl. An endpoint on `0.0.0.0` — obvious, so that the
+server is reachable via every interface — thus reports `0.0.0.0` to the aggregation server, and it connects into the void.
 
-Beides gleichzeitig geht mit **`Server.socket_address`**: Der Endpoint nennt
-die LAN-IPv4, gelauscht wird weiter auf `0.0.0.0`. Genau dafür ist das Attribut
-gedacht („used when the IP address of the network interface is different from
-the endpoint IP offered to the client during discovery"). `server.py` setzt
-beides; die URL baut `discovery.lds.advertised_endpoint()`.
+Both at once works with **`Server.socket_address`**: the endpoint names the LAN IPv4, while listening continues on `0.0.0.0`. The attribute is
+meant exactly for this ("used when the IP address of the network interface is different from the endpoint IP offered to the client during
+discovery"). `server.py` sets both; the URL is built by `discovery.lds.advertised_endpoint()`.
 
-Verifiziert am 21.09.2026 mit dem echten `server.py` lokal: Log meldet
-`Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/` und
-`Listening on 0.0.0.0:4840`, erreichbar über `127.0.0.1` **und** die LAN-IP.
-Das ist wichtig, weil `print_setpoint.py` und der Handshake-Client (`tools/handshake_client.py`) auf dem Pi
-über `127.0.0.1` gehen.
+Verified on 21.09.2026 locally with the real `server.py`: the log reports `Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/`
+(German log message: "server starts on") and `Listening on 0.0.0.0:4840`, reachable via `127.0.0.1` **and** the LAN IP. This matters because
+`print_setpoint.py` and the handshake client (`tools/handshake_client.py`) on the Pi go via `127.0.0.1`.
 
-**Falle 2 — einmal beobachtet, nicht reproduziert:** Bei einer Anmeldung per
-`RegisterServer2` mit `MdnsDiscoveryConfiguration` stand im
-`FindServersOnNetwork` des LDS einmal die DiscoveryUrl
-`opc.tcp://10.10.38.104.local:4840/…` — ein an eine IP gehängtes `.local`, das
-nicht auflöst. Eine spätere Anmeldung desselben Codewegs (`flange-01`) ergab
-dagegen einen sauberen Eintrag, der Effekt ist also **nicht deterministisch**;
-vermutlich ein Timing-Artefakt beim Auflösen des mDNS-Namens durch den LDS.
-Den Aggregation-Server betrifft es ohnehin nicht, der nimmt die angemeldete
-Url. Wir melden uns trotzdem mit dem schlichten `RegisterServer` an — nicht
-weil der Fehler bewiesen wäre, sondern weil das exakt die Konfiguration ist,
-mit der Conveyor, CardDispenser und die Roboter nachweislich laufen. Eine
-Variable weniger.
+**Trap 2 — observed once, not reproduced:** when registering via `RegisterServer2` with `MdnsDiscoveryConfiguration`, the DiscoveryUrl
+`opc.tcp://10.10.38.104.local:4840/…` once appeared in the LDS's `FindServersOnNetwork` — a `.local` appended to an IP, which does not resolve.
+A later registration by the same code path (`flange-01`), however, produced a clean entry; the effect is therefore **not deterministic**;
+probably a timing artefact when the LDS resolves the mDNS name. The aggregation server is not affected by it anyway, since it takes the
+registered URL. We nevertheless register with the plain `RegisterServer` — not because the error is proven, but because this is exactly the
+configuration with which Conveyor, CardDispenser and the robots demonstrably run. One variable fewer.
 
-Dort erscheint ein Modul unter seiner **ApplicationUri**, nicht unter dem
-mDNS-Namen. Vorhandene Einträge und unsere:
+There a module appears under its **ApplicationUri**, not under its mDNS name. Existing entries and ours:
 
-| Modul | ApplicationUri |
+| Module | ApplicationUri |
 | --- | --- |
 | UR5e | `urn:plcm:robot-server:ur5e` |
 | CardDispenser | `urn:smart-business-card-factory:card-dispenser-system` |
 | Conveyor | `urn:smart-business-card-factory:conveyor-system` |
-| **Vision Decke** | **`urn:plcm:camera-server:ceiling-01`** |
-| **Vision Roboterhand** | **`urn:plcm:camera-server:roboter-hand-01`** |
+| **Vision ceiling** | **`urn:plcm:camera-server:ceiling-01`** |
+| **Vision robot hand** | **`urn:plcm:camera-server:roboter-hand-01`** |
 
-Der Aggregation-Server hängt die ApplicationUri an jeden Namespace des Moduls
-an (z. B. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01`) und
-legt das Modul als Objekt unter `Objects` in seinem eigenen ns=1 ab. Wer über
-den Aggregation-Server auf unsere Knoten zugreift, löst den Namensraum also
-über die **zusammengesetzte** URI auf — direkt am Pi bleibt es bei
-`http://launch-rm.de/vision`.
+The aggregation server appends the ApplicationUri to every namespace of the module (e.g. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01`)
+and places the module as an object under `Objects` in its own ns=1. Anyone who accesses our nodes via the aggregation server therefore resolves
+the namespace via the **composite** URI — directly on the Pi it remains `http://launch-rm.de/vision`.
 
-Zu beachten:
+To note:
 
-- **Keine feste IP nötig.** Die Adresse wird beim Start ermittelt; eine
-  DHCP-Reservierung im Router reicht. Wechselt der Lease im laufenden Betrieb,
-  zeigt die Ankündigung bis zum Dienstneustart ins Leere.
-- **mDNS endet an der Subnetzgrenze** (UDP-Multicast `224.0.0.251:5353`, TTL 1).
-  Aus einem anderen VLAN oder aus dem Gast-WLAN findet man nichts, obwohl der
-  Server läuft. Das ist der häufigste „geht nicht"-Fall. Die
-  LDS-Registrierung ist davon **nicht** betroffen — sie ist eine normale
-  TCP-Verbindung zu `10.10.38.27:4840`.
-- **Die manuelle Eingabe muss bleiben.** Die vorhandene `ConnectOpcUa`-Eingabe
-  ist weiterhin der Rückfallweg, wenn mDNS blockiert ist.
-- Beim geordneten Beenden werden Ankündigung **und** Registrierung
-  zurückgezogen; nach einem harten Abbruch steht die Ankündigung noch bis zum
-  TTL-Ablauf in den Client-Caches, und der LDS-Eintrag bleibt bis zum Ablauf
-  seiner Frist stehen — der Aggregation-Server zeigt das Modul dann noch, kommt
-  aber nicht mehr dran.
-- **Der Aggregation-Server räumt Namespaces nicht auf.** Franka und EVA hatten
-  nach ihrem Verschwinden noch Namespaces, aber kein Objekt mehr. Ein fehlendes
-  Objekt ist das verlässliche Zeichen, kein fehlender Namespace.
+- **No fixed IP needed.** The address is determined at start; a DHCP reservation in the router is enough. If the lease changes during
+  operation, the announcement points into the void until the service is restarted.
+- **mDNS ends at the subnet boundary** (UDP multicast `224.0.0.251:5353`, TTL 1). From another VLAN or from the guest WiFi one finds nothing,
+  although the server is running. This is the most common "it does not work" case. The LDS registration is **not** affected by this — it is a
+  normal TCP connection to `10.10.38.27:4840`.
+- **Manual entry must remain.** The existing `ConnectOpcUa` input remains the fallback when mDNS is blocked.
+- On orderly shutdown the announcement **and** the registration are withdrawn; after a hard abort the announcement remains in client caches
+  until the TTL expires, and the LDS entry remains until its deadline — the aggregation server then still shows the module, but can no longer
+  reach it.
+- **The aggregation server does not clean up namespaces.** Franka and EVA still had namespaces after they disappeared, but no object any more.
+  A missing object is the reliable sign, not a missing namespace.
 
 ---
 
-## 3. Namespace — niemals hartcodieren
+## 3. Namespace — never hard-code
 
 | Namespace | URI |
 | --- | --- |
-| Vision (dieses Dokument) | `http://launch-rm.de/vision` |
+| Vision (this document) | `http://launch-rm.de/vision` |
 | OPC 40100 | `http://opcfoundation.org/UA/MachineVision` |
-| Machinery (trägt `Objects/Machines`) | `http://opcfoundation.org/UA/Machinery/` |
+| Machinery (carries `Objects/Machines`) | `http://opcfoundation.org/UA/Machinery/` |
 
-Immer `await client.get_namespace_index("<uri>")` benutzen.
+Always use `await client.get_namespace_index("<uri>")`.
 
-> **Achtung, der Index hat sich zweimal verschoben.** Der Vision-Namespace lag
-> ursprünglich auf ns=4, wanderte mit den Part-2-Nodesets (DI, Machinery, AMCM)
-> auf ns=7 und liegt seit dem Abbau der CPU-Temperatur-Demo auf **ns=6** — mit
-> `RaspiDevice` ist auch dessen Namensraum entfallen. Aktuelle Reihenfolge,
-> am 21.09.2026 gegen einen laufenden Server ausgelesen:
+> **Caution, the index has shifted twice.** The vision namespace originally sat at ns=4, moved to ns=7 with the Part 2 nodesets (DI, Machinery,
+> AMCM), and since the removal of the CPU temperature demo has been at **ns=6** — with `RaspiDevice` its namespace was dropped as well. Current
+> order, read on 21.09.2026 from a running server:
 
 ```
 ns=0  http://opcfoundation.org/UA/
 ns=1  urn:plcm:camera-server:<einbauort>                  <- ApplicationUri
 ns=2  http://opcfoundation.org/UA/MachineVision           <- OPC 40100
 ns=3  http://opcfoundation.org/UA/DI/
-ns=4  http://opcfoundation.org/UA/Machinery/              <- trägt Objects/Machines
+ns=4  http://opcfoundation.org/UA/Machinery/              <- carries Objects/Machines
 ns=5  http://opcfoundation.org/UA/MachineVision/AMCM/
 ns=6  http://launch-rm.de/vision                          <- VisionMachine, VisionProgram
 ```
 
-Wer irgendeinen dieser Indizes fest verdrahtet hat, greift ins Leere. Das ist
-der einzige Punkt in diesem Dokument, der bestehenden Code **brechen kann** —
-und er betrifft den 40100-Pfad genauso. Deshalb ausnahmslos über die URI
-auflösen.
+Anyone who has hard-wired one of these indices reaches nothing. This is the only point in this document that can **break** existing code — and
+it affects the 40100 path just as much. Therefore resolve it via the URI without exception.
 
 ---
 
-## 4. Adressraum des Programms
+## 4. Address space of the program
 
-Alle NodeIds sind sprechende String-Ids und über Neustarts stabil. Browsen ist
-möglich, aber nicht nötig.
+All NodeIds are descriptive string IDs and stable across restarts. Browsing is possible, but not necessary.
 
 ```
 Objects/
-├── VisionProgram                     ns=<vision>;s=VisionProgram   (Typ: ProgramStateMachineType, ns=0;i=2391)
+├── VisionProgram                     ns=<vision>;s=VisionProgram   (Type: ProgramStateMachineType, ns=0;i=2391)
 │   ├── CurrentState                  LocalizedText: Halted | Ready | Running | Suspended
 │   ├── LastTransition                LocalizedText
 │   ├── AvailableStates               NodeId[]
 │   ├── AvailableTransitions          NodeId[]
-│   ├── Start                         Methode, **keine** Eingaben
-│   ├── Halt                          Methode, keine Eingaben
-│   ├── Reset                         Methode, keine Eingaben
-│   ├── Suspend                       Methode, keine Eingaben (lehnt immer ab)
-│   ├── Resume                        Methode, keine Eingaben (lehnt immer ab)
-│   ├── ParameterSet                  <- Eingaben VOR dem Start hierhin schreiben
-│   │   ├── RecipeId     String       **beschreibbar**
-│   │   └── Continuous   Boolean      **beschreibbar**
-│   └── ResultSet                     <- Ausgaben
+│   ├── Start                         Method, **no** inputs
+│   ├── Halt                          Method, no inputs
+│   ├── Reset                         Method, no inputs
+│   ├── Suspend                       Method, no inputs (always rejects)
+│   ├── Resume                        Method, no inputs (always rejects)
+│   ├── ParameterSet                  <- write inputs HERE, BEFORE the start
+│   │   ├── RecipeId     String       **writable**
+│   │   └── Continuous   Boolean      **writable**
+│   └── ResultSet                     <- outputs
 │       ├── JobId           String
 │       ├── ErrorCode       Int32
 │       ├── ExecutionMode   String    idle | single | continuous
-│       ├── LatestResultJson          Verweis auf denselben Knoten wie unten
-│       ├── LatestCameraFrame         Verweis  (Base64-JPEG, nur mit Kamera)
-│       ├── CameraStreamMode          Verweis, **beschreibbar**
-│       └── CalibrationProgress       Verweis  (JSON, nur mit AprilTag-Profil)
-├── StartCalibration                  Verweis auf die 40100-Methode, keine Eingaben
-├── CaptureCalibrationSample          Verweis; Error: Int32
-├── FinishCalibration                 Verweis; Summary: String, Error: Int32
-└── AbortCalibration                  Verweis; Error: Int32
+│       ├── LatestResultJson          reference to the same node as below
+│       ├── LatestCameraFrame         reference (Base64 JPEG, only with camera)
+│       ├── CameraStreamMode          reference, **writable**
+│       └── CalibrationProgress       reference (JSON, only with AprilTag profile)
+├── StartCalibration                  reference to the 40100 method, input OptionsJson (String, empty = board of the configuration)
+├── CaptureCalibrationSample          reference; Error: Int32
+├── FinishCalibration                 reference; Summary: String, Error: Int32
+└── AbortCalibration                  reference; Error: Int32
 
 Machines/
-└── VisionMachine                     ns=<vision>;s=VisionMachine   (OPC 40100, unverändert)
+└── VisionMachine                     ns=<vision>;s=VisionMachine   (OPC 40100, unchanged)
     └── ... StartSingleJob, Stop, ResultManagement, LatestResultJson, LatestCameraFrame ...
 ```
 
-**`VisionProgram` genügt sich selbst.** Alles, was ein Client zum Fahren und
-Auswerten eines Jobs braucht, hängt darunter — als Referenz, nicht als Kopie.
-Es gibt keinen zweiten Wert und keine zweite Implementierung. `VisionMachine`
-liegt seit dem 21.09.2026 im Machinery-Standardordner `Machines` und nicht mehr
-gleichrangig daneben, damit beim Browsen klar ist, wo man anfängt.
+**`VisionProgram` is self-sufficient.** Everything a client needs to run and evaluate a job hangs below it — as a reference, not a copy. There
+is no second value and no second implementation. Since 21.09.2026 `VisionMachine` sits in the Machinery standard folder `Machines` and no
+longer alongside it at the same level, so that when browsing it is clear where to start.
 
-Feste NodeIds:
+Fixed NodeIds:
 
-| Knoten | NodeId |
+| Node | NodeId |
 | --- | --- |
-| Programm | `ns=<vision>;s=VisionProgram` |
-| Zustand | `ns=<vision>;s=VisionProgram` → Kind `0:CurrentState` |
+| Program | `ns=<vision>;s=VisionProgram` |
+| State | `ns=<vision>;s=VisionProgram` → child `0:CurrentState` |
 | Start | `ns=<vision>;s=VisionProgram.Start` |
 | Halt | `ns=<vision>;s=VisionProgram.Halt` |
 | Reset | `ns=<vision>;s=VisionProgram.Reset` |
-| Rezept (schreiben) | `ns=<vision>;s=VisionProgram.ParameterSet.RecipeId` |
-| Dauerbetrieb (schreiben) | `ns=<vision>;s=VisionProgram.ParameterSet.Continuous` |
+| Recipe (write) | `ns=<vision>;s=VisionProgram.ParameterSet.RecipeId` |
+| Continuous operation (write) | `ns=<vision>;s=VisionProgram.ParameterSet.Continuous` |
 | JobId | `ns=<vision>;s=VisionProgram.ResultSet.JobId` |
-| Fehlercode | `ns=<vision>;s=VisionProgram.ResultSet.ErrorCode` |
-| Ausführungsart | `ns=<vision>;s=VisionProgram.ResultSet.ExecutionMode` |
-| Ergebnis-JSON | `ns=<vision>;s=VisionMachine.LatestResultJson` |
+| Error code | `ns=<vision>;s=VisionProgram.ResultSet.ErrorCode` |
+| Execution mode | `ns=<vision>;s=VisionProgram.ResultSet.ExecutionMode` |
+| Result JSON | `ns=<vision>;s=VisionMachine.LatestResultJson` |
 
-**Generisch finden** geht ebenfalls: nach Instanzen von `ProgramStateMachineType`
-(`ns=0;i=2391`) browsen. Das ist der Weg, der auch beim Conveyor funktioniert —
-dessen Programme haben numerische Ids (`ns=7;i=6100`) und sind nur so auffindbar.
+**Generic discovery** also works: browse for instances of `ProgramStateMachineType` (`ns=0;i=2391`). This is the route that also works for the
+conveyor — its programs have numeric IDs (`ns=7;i=6100`) and can only be found this way.
 
-### Implementierung: `src/ua_program` + `vision_server.vision_program`
+### Implementation: `src/ua_program` + `vision_server.vision_program`
 
-`VisionProgram` ist keine Insellösung, sondern die konkrete Instanz eines
-generischen, wiederverwendbaren Teil-10-Programmgerüsts:
+`VisionProgram` is not a standalone solution, but the concrete instance of a generic, reusable Part 10 program framework:
 
-- **`src/ua_program/program.py`** (Paket-Exporte in `src/ua_program/__init__.py`:
-  `Program`, `ProgramException`, `ProgramStateMachine`) — herkunftsmäßig aus
-  einer Betreuer-Vorlage übernommen (Docstring nennt die vier Abweichungen
-  davon: konkretes `__init__`, `resume_inputs` statt eines Vorlagenbugs,
-  optionale String-NodeIds, zusammengezogene Methodenschleife). `Program` ist
-  eine abstrakte Basisklasse: `init()` legt die Instanz im Adressraum an,
-  `start`/`halt`/`reset`/`suspend`/`resume` sind von der Unterklasse zu
-  implementieren (`async … -> str | None`; `None` = Zustandswechsel erfolgt,
-  `str` = Ablehnung mit dieser Meldung). `ProgramStateMachine` bindet die
-  festen ns=0-Zustands-/Übergangsknoten (`i=2406…2424`) an eine Instanz von
-  `ProgramStateMachineType` (`ua.NodeId(2391,0)`), inklusive einer dokumentierten
-  Umgehung eines asyncua-2.0.1-Bugs bei `set_available_transitions()`.
-- **`src/vision_server/vision_program.py`** — `class VisionProgram(Program)`,
-  die vision-spezifische Umsetzung: verdrahtet Start/Halt/Reset/Suspend/Resume
-  mit dem `JobRunner` aus `runner/install.py` und legt `ParameterSet`/`ResultSet` wie
-  oben beschrieben an.
+- **`src/ua_program/program.py`** (package exports in `src/ua_program/__init__.py`: `Program`, `ProgramException`, `ProgramStateMachine`) —
+  taken over in origin from a supervisor's template (the docstring names the four deviations from it: concrete `__init__`, `resume_inputs`
+  instead of a template bug, optional string NodeIds, consolidated method loop). `Program` is an abstract base class: `init()` creates the
+  instance in the address space; `start`/`halt`/`reset`/`suspend`/`resume` are to be implemented by the subclass (`async … -> str | None`;
+  `None` = state change happens, `str` = rejection with this message). `ProgramStateMachine` binds the fixed ns=0 state/transition nodes
+  (`i=2406…2424`) to an instance of `ProgramStateMachineType` (`ua.NodeId(2391,0)`), including a documented workaround for an asyncua 2.0.1 bug
+  in `set_available_transitions()`.
+- **`src/vision_server/vision_program.py`** — `class VisionProgram(Program)`, the vision-specific implementation: wires Start/Halt/Reset/Suspend/Resume
+  to the `JobRunner` from `runner/install.py` and creates `ParameterSet`/`ResultSet` as described above.
 
-Wer ein weiteres Teil-10-Programm für ein anderes Modul dieses Repos bauen
-will, erbt von `ua_program.Program` statt bei null anzufangen.
+Anyone who wants to build a further Part 10 program for another module in this repo inherits from `ua_program.Program` instead of starting from
+scratch.
 
 ---
 
-## 5. Ablauf: einen Job fahren
+## 5. Flow: running a job
 
-**Die Reihenfolge ist bindend: erst abonnieren, dann Parameter schreiben, dann
-`Start()`.** `Start` nimmt keine Argumente — genau wie bei den anderen Modulen.
+**The order is binding: first subscribe, then write parameters, then `Start()`.** `Start` takes no arguments — just like with the other modules.
 
 ```
 Frontend                                    VisionProgram
@@ -353,38 +278,31 @@ Frontend                                    VisionProgram
    |  2. write ParameterSet/RecipeId   = "apriltag"
    |  3. write ParameterSet/Continuous = false
    |------------------- Start() ---------------------->|
-   |                                                   |  Guard + Validierung (synchron)
-   |<-- ProgramTransitionEvent  Ready -> Running ------|  angenommen
-   |      (bei Ablehnung: KEIN Zustandswechsel,
-   |       stattdessen Event mit Severity 500)
+   |                                                   |  guard + validation (synchronous)
+   |<-- ProgramTransitionEvent  Ready -> Running ------|  accepted
+   |      (on rejection: NO state change,
+   |       instead an event with Severity 500)
    |                                                   |
-   |<-- (die 40100-Events laufen unverändert weiter)   |
-   |<-- ProgramTransitionEvent  Running -> Ready ------|  fertig
+   |<-- (the 40100 events continue unchanged)          |
+   |<-- ProgramTransitionEvent  Running -> Ready ------|  done
    |  4. read ResultSet/JobId, ResultSet/ErrorCode
-   |  5. read ResultSet/LatestResultJson               |  das eigentliche Ergebnis
+   |  5. read ResultSet/LatestResultJson               |  the actual result
 ```
 
-> **Wichtig für einen reinen Part-10-Client.** Die 40100-Events erreichen ein
-> Abo auf `VisionProgram` **nicht**. Am 21.09.2026 gegen asyncua 2.0.1
-> nachgemessen: Events gehen ausschließlich an Abos auf dem emittierenden
-> Knoten; die `HasNotifier`/`HasEventSource`-Hierarchie wird serverseitig nicht
-> abgelaufen. Eine `HasEventSource`-Referenz von `VisionProgram` auf
-> `VisionMachine` ändert daran nichts — geprüft.
+> **Important for a pure Part 10 client.** The 40100 events do **not** reach a subscription on `VisionProgram`. Measured against asyncua 2.0.1
+> on 21.09.2026: events go exclusively to subscriptions on the emitting node; the `HasNotifier`/`HasEventSource` hierarchy is not followed on the
+> server side. A `HasEventSource` reference from `VisionProgram` to `VisionMachine` changes nothing — checked.
 >
-> Die 40100-Events zusätzlich auf `VisionProgram` zu emittieren wäre eine echte
-> Doppelung (zwei Events pro Ursache), deshalb tun wir es nicht. Der vollständige
-> Part-10-Weg ohne eine einzige 40100-NodeId lautet stattdessen:
+> Emitting the 40100 events additionally on `VisionProgram` would be a real duplication (two events per cause), so we do not do it. The complete
+> Part 10 route without a single 40100 NodeId is instead:
 >
-> 1. `ProgramTransitionEvent` auf `VisionProgram` abonnieren — sagt, **dass**
->    der Job fertig ist.
-> 2. Wertänderung von `VisionProgram/ResultSet/LatestResultJson` abonnieren —
->    liefert, **was** erkannt wurde (Schema `wsc.vision.detections/1`).
-> 3. Bei Fehler `ResultSet/ErrorCode` lesen.
+> 1. Subscribe to `ProgramTransitionEvent` on `VisionProgram` — says **that** the job is done.
+> 2. Subscribe to value changes of `VisionProgram/ResultSet/LatestResultJson` — delivers **what** was detected (schema `wsc.vision.detections/1`).
+> 3. On error, read `ResultSet/ErrorCode`.
 >
-> Wer die 40100-Events will, abonniert weiterhin `VisionMachine` direkt. Beides
-> geht nebeneinander.
+> Whoever wants the 40100 events continues to subscribe to `VisionMachine` directly. Both work side by side.
 
-Beispiel (asyncua):
+Example (asyncua):
 
 ```python
 ns = await client.get_namespace_index("http://launch-rm.de/vision")
@@ -399,24 +317,23 @@ await recipe.write_value("apriltag", ua.VariantType.String)
 await prog.call_method(client.get_node(ua.NodeId("VisionProgram.Start", ns)))
 ```
 
-### Zustände
+### States
 
-| Zustand | Nr. | ns=0 NodeId | Bedeutung hier |
+| State | No. | ns=0 NodeId | Meaning here |
 | --- | --- | --- | --- |
-| `Halted` | 11 | `i=2406` | Vision-System nicht betriebsbereit (z. B. Kamera ging nicht auf) oder per `Halt` angehalten |
-| `Ready` | 12 | `i=2400` | aufnahmebereit |
-| `Running` | 13 | `i=2402` | ein Job läuft |
-| `Suspended` | 14 | `i=2404` | **wird nie erreicht** |
+| `Halted` | 11 | `i=2406` | vision system not operational (e.g. camera did not come up) or halted via `Halt` |
+| `Ready` | 12 | `i=2400` | ready to capture |
+| `Running` | 13 | `i=2402` | a job is running |
+| `Suspended` | 14 | `i=2404` | **never reached** |
 
-Übergänge sind die Standardknoten `ns=0;i=2408` … `i=2424`.
+Transitions are the standard nodes `ns=0;i=2408` … `i=2424`.
 
-### Welcher Knopf darf gedrückt werden
+### Which button may be pressed
 
-Nicht selbst nachbauen: Der Server pflegt das **`Executable`-Attribut** jeder
-Methode. Das Frontend liest es und graut Knöpfe danach aus — dieselbe Logik wie
-für jedes andere Modul.
+Do not rebuild this yourself: the server maintains the **`Executable` attribute** of each method. The frontend reads it and greys out buttons
+accordingly — the same logic as for every other module.
 
-| Zustand | ausführbar |
+| State | executable |
 | --- | --- |
 | `Halted` | `Reset` |
 | `Ready` | `Start`, `Halt` |
@@ -425,11 +342,9 @@ für jedes andere Modul.
 
 ### `Suspend` / `Resume`
 
-Existieren, weil Teil 10 sie vorschreibt, **lehnen aber immer ab**: Ein
-Vision-Job dauert 250 ms bis 20 s und lässt sich nicht sinnvoll pausieren. Der
-Aufruf ändert den Zustand nicht und liefert ein Event mit Severity 500 und dem
-Text „Ein Vision-Job kann nicht pausiert werden; Halt verwenden." Das Frontend
-sollte beide Knöpfe gar nicht erst anbieten.
+They exist because Part 10 prescribes them, but they **always reject**: a vision job takes 250 ms to 20 s and cannot sensibly be paused. The call
+does not change the state and yields an event with Severity 500 and the text "Ein Vision-Job kann nicht pausiert werden; Halt verwenden."
+(runtime text, meaning "A vision job cannot be paused; use Halt."). The frontend should not offer either button at all.
 
 ---
 
@@ -437,169 +352,142 @@ sollte beide Knöpfe gar nicht erst anbieten.
 
 | | |
 | --- | --- |
-| Event-Typ | `ProgramTransitionEventType`, `ns=0;i=2378` |
-| Emittierender Knoten | **`VisionProgram`** |
+| Event type | `ProgramTransitionEventType`, `ns=0;i=2378` |
+| Emitting node | **`VisionProgram`** |
 
-**Zwei Fallen, beide verifiziert:**
+**Two traps, both verified:**
 
-1. **Die Event-Typ-Liste ist zwingend.** `subscribe_events(prog)` ohne zweites
-   Argument liefert zwar Events, aber `FromState`, `ToState` und `Transition`
-   sind dann `None` — nur `Message` ist gefüllt. Mit
-   `subscribe_events(prog, [client.get_node(ua.NodeId(2378, 0))])` sind alle
-   Felder da. Dieselbe Falle wie bei den 40100-Events.
-2. **Auf `VisionProgram` abonnieren, nicht auf dem Server-Objekt.** asyncua
-   bubbelt Events serverseitig nicht.
+1. **The event type list is mandatory.** `subscribe_events(prog)` without a second argument does deliver events, but `FromState`, `ToState` and
+   `Transition` are then `None` — only `Message` is filled. With `subscribe_events(prog, [client.get_node(ua.NodeId(2378, 0))])` all fields are
+   present. The same trap as with the 40100 events.
+2. **Subscribe on `VisionProgram`, not on the server object.** asyncua does not bubble events on the server side.
 
-Gemessene Felder eines erfolgreichen Jobs:
+Measured fields of a successful job:
 
 ```
 FromState=Ready    ToState=Running  Transition=ReadyToRunning  Message="ReadyToRunning"
 FromState=Running  ToState=Ready    Transition=RunningToReady  Message="RunningToReady ; Job job-000001 abgeschlossen"
 ```
 
-Bei einem **abgelehnten** Start gibt es keinen Zustandswechsel, sondern nur ein
-Event mit `Severity=500` und z. B.
-`Message="Start abgelehnt: UNKNOWN_RECIPE (4)"`.
+With a **rejected** start there is no state change, only an event with `Severity=500` and e.g.
+`Message="Start abgelehnt: UNKNOWN_RECIPE (4)"` (runtime text, meaning "start rejected").
 
 ---
 
-## 7. Fehler
+## 7. Errors
 
-`Start()` hat — wie bei allen Part-10-Programmen — **keinen Rückgabewert**.
-Ob der Job angenommen wurde, erfährt das Frontend auf zwei Wegen:
+`Start()` has — as with all Part 10 programs — **no return value**. The frontend learns whether the job was accepted by two routes:
 
-1. **Sofort:** Kommt ein Zustandswechsel nach `Running`, ist er angenommen.
-   Kommt stattdessen ein Event mit `Severity=500`, ist er abgelehnt; der Grund
-   steht im Klartext in `Message`.
-2. **Maschinenlesbar:** `ResultSet/ErrorCode` trägt den Code.
+1. **Immediately:** if a state change to `Running` comes, it is accepted. If an event with `Severity=500` comes instead, it is rejected; the reason
+   is stated in plain text in `Message`.
+2. **Machine-readable:** `ResultSet/ErrorCode` carries the code.
 
-| Code | Name | Bedeutung |
+| Code | Name | Meaning |
 | --- | --- | --- |
-| 0 | `OK` | angenommen bzw. sauber beendet |
-| 1 | `INVALID_STATE` | Vision-System nicht betriebsbereit |
-| 2 | `INVALID_ARGUMENT` | Parameter unbrauchbar |
-| 3 | `BUSY` | es läuft bereits ein Job |
-| 4 | `UNKNOWN_RECIPE` | `RecipeId` nicht bekannt |
-| 5 | `DETECTION_FAILED` | Erkennung fehlgeschlagen oder Zeitüberschreitung |
-| 6 | `INTERNAL` | unerwarteter Serverfehler |
-| 7 | `CANCELLED` | durch `Halt` abgebrochen |
+| 0 | `OK` | accepted resp. cleanly finished |
+| 1 | `INVALID_STATE` | vision system not operational |
+| 2 | `INVALID_ARGUMENT` | parameters unusable |
+| 3 | `BUSY` | a job is already running |
+| 4 | `UNKNOWN_RECIPE` | `RecipeId` not known |
+| 5 | `DETECTION_FAILED` | detection failed or timeout |
+| 6 | `INTERNAL` | unexpected server error |
+| 7 | `CANCELLED` | cancelled by `Halt` |
 
-**Bewusste Abweichung von Teil 10:** Ein *fehlgeschlagener* Job (5, 6) führt
-**nicht** nach `Halted`, sondern zurück nach `Ready`. Sonst müsste das Frontend
-nach jeder misslungenen Erkennung erst `Reset` drücken, und die beiden
-Automaten liefen auseinander — der 40100-Automat kehrt nach einem Fehler
-ebenfalls nach `Ready` zurück. Nach `Halted` kommt man nur durch **`Halt`** oder
-wenn das System beim Start gar nicht hochkam.
+**Deliberate deviation from Part 10:** a *failed* job (5, 6) does **not** lead to `Halted`, but back to `Ready`. Otherwise the frontend would have
+to press `Reset` after every failed detection, and the two state machines would diverge — the 40100 state machine likewise returns to `Ready`
+after an error. `Halted` is reached only through **`Halt`**, or when the system did not come up at all at start.
 
 ---
 
-## 8. Das Ergebnis holen
+## 8. Fetching the result
 
-Teil 10 definiert keinen Ergebnistransport. **Hier ändert sich nichts** gegenüber
-[`vision-server-interface.md`](vision-server-interface.md) Abschnitt 6:
+Part 10 defines no result transport. **Nothing changes here** compared to [`vision-server-interface.md`](vision-server-interface.md) section 6:
 
-- Der JSON-String steht in `ns=<vision>;s=VisionMachine.LatestResultJson`
-  (unter `ResultSet` zusätzlich verlinkt — **derselbe Knoten**, nicht zwei).
-- Schema unverändert `wsc.vision.detections/1`: `detections[]` mit `moduleId`,
-  `position` (Meter), `orientation` (Quaternion `xyzw`), `frameId`,
+- The JSON string is in `ns=<vision>;s=VisionMachine.LatestResultJson` (additionally linked under `ResultSet` — **the same node**, not two).
+- Schema unchanged `wsc.vision.detections/1`: `detections[]` with `moduleId`, `position` (metres), `orientation` (quaternion `xyzw`), `frameId`,
   `frameConvention`, `attributes`.
-- Wer bereits die 40100-`ResultReadyEvent`-Auswertung hat, behält sie. Das
-  Payload reist dort unverändert mit.
-- Zuordnung Ergebnis → Job über `payload["jobId"]`, abgleichbar mit
-  `ResultSet/JobId`.
-- Livestream weiterhin über `VisionMachine.LatestCameraFrame` (Base64-JPEG).
+- Whoever already has the 40100 `ResultReadyEvent` evaluation keeps it. The payload travels there unchanged.
+- Mapping result → job via `payload["jobId"]`, comparable with `ResultSet/JobId`.
+- Live stream still via `VisionMachine.LatestCameraFrame` (Base64 JPEG).
 
 ---
 
-## 9. Verfügbare Rezepte (`ParameterSet/RecipeId`)
+## 9. Available recipes (`ParameterSet/RecipeId`)
 
-Der Server nennt die zugelassenen Werte selbst: in der **Description** des
-Knotens `ParameterSet/RecipeId`. Ein generisches Frontend kann sie also
-auslesen, statt sie zu kennen.
+The server names the permitted values itself: in the **description** of the node `ParameterSet/RecipeId`. A generic frontend can therefore read
+them out instead of knowing them.
 
-Aktuell auf diesem Stand:
+Currently at this state:
 
 | `RecipeId` | Job |
 | --- | --- |
-| `"calibration"` | Messbereitschaft der Zelle prüfen |
-| `"apriltag"` | **Module lokalisieren** — echte Posen aus der Kamera |
+| `"calibration"` | check the cell's measurement readiness |
+| `"apriltag"` | **localise modules** — real poses from the camera |
 
-`apriltag` ist inzwischen gemergt und damit die eigentliche Erkennung. Die
-frühere QR-Erkennung `image-recognition` ist entfallen; wer sie noch fest
-verdrahtet hat, bekommt `ErrorCode=4` (`UNKNOWN_RECIPE`). **Genau deshalb die
-Rezeptauswahl datengetrieben aus der Description bauen statt fest zu
-verdrahten** — die Liste hat sich schon einmal geändert.
+`apriltag` has meanwhile been merged and is thus the actual detection. The former QR detection `image-recognition` has been dropped; whoever still
+has it hard-wired receives `ErrorCode=4` (`UNKNOWN_RECIPE`). **That is exactly why the recipe selection should be built data-driven from the
+description instead of being hard-wired** — the list has already changed once.
 
-An dieser Schnittstelle ändert die echte Erkennung **nichts**: derselbe
-`Start()`, dasselbe `ParameterSet`, dasselbe Payload-Schema. Nur die Werte in
-`detections[]` sind echt, und `attributes` trägt zusätzlich `tagId`,
-`reprojErrorPx`, `ambiguous`, `sampleCount`. Ein AprilTag-Job dauert deutlich
-länger als der Platzhalter (mehrere Aufnahmen je Job), der Zustand bleibt
-entsprechend länger auf `Running`.
+At this interface the real detection changes **nothing**: the same `Start()`, the same `ParameterSet`, the same payload schema. Only the values in
+`detections[]` are real, and `attributes` additionally carries `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`. An AprilTag job takes
+considerably longer than the placeholder (several captures per job), and the state correspondingly stays longer in `Running`.
 
 ---
 
-## 10. Was Backend und Frontend konkret tun müssen
+## 10. What backend and frontend concretely have to do
 
-Nichts davon ist Pflicht, um weiterzulaufen — alles ist Gewinn.
+None of this is required to keep running — everything is a gain.
 
-**Muss (sonst bricht etwas):**
+**Must (otherwise something breaks):**
 
-- [ ] `ns=4` für den Vision-Namespace **überall** durch
-      `get_namespace_index("http://launch-rm.de/vision")` ersetzen. Der Index
-      ist jetzt 7 (Abschnitt 3).
+- [ ] Replace `ns=4` for the vision namespace **everywhere** with `get_namespace_index("http://launch-rm.de/vision")`. The index is now 7
+      (section 3).
 
-**Soll (dafür wurde es gebaut):**
+**Should (this is what it was built for):**
 
-- [ ] mDNS-Suche nach `_opcua-tcp._tcp.local.` einbauen; Endpoint-URL aus
-      Adresse, Port und TXT-`path` zusammensetzen (Abschnitt 2).
-- [ ] Hartcodierte Pi-Adressen entfernen (`pi_relay.py`, `piServers.ts`),
-      manuelle Eingabe als Rückfall behalten.
-- [ ] Eine **generische Programm-Komponente** bauen: Instanzen von
-      `ProgramStateMachineType` finden, `ParameterSet` als Formular rendern,
-      `Start`/`Halt`/`Reset` anbieten, Knöpfe nach `Executable` freigeben,
-      `CurrentState` anzeigen, `ProgramTransitionEvent` abonnieren. Dieselbe
-      Komponente bedient danach auch Conveyor und CardDispenser.
-- [ ] Rezeptauswahl aus der Description von `ParameterSet/RecipeId` speisen.
+- [ ] Build an mDNS search for `_opcua-tcp._tcp.local.`; assemble the endpoint URL from address, port and TXT `path` (section 2).
+- [ ] Remove the hard-coded Pi addresses (`pi_relay.py`, `piServers.ts`), keep manual entry as fallback.
+- [ ] Build a **generic program component**: find instances of `ProgramStateMachineType`, render `ParameterSet` as a form, offer
+      `Start`/`Halt`/`Reset`, release buttons according to `Executable`, display `CurrentState`, subscribe to `ProgramTransitionEvent`. The same
+      component then also serves the conveyor and CardDispenser.
+- [ ] Feed the recipe selection from the description of `ParameterSet/RecipeId`.
 
-**Kann bleiben, wie es ist:**
+**Can stay as it is:**
 
-- [ ] Die gesamte 40100-Auswertung: `StartSingleJob`, `Stop`, `ResultReadyEvent`,
-      `LatestResultJson`, `LatestCameraFrame`, Payload-Parser.
+- [ ] All of the 40100 evaluation: `StartSingleJob`, `Stop`, `ResultReadyEvent`, `LatestResultJson`, `LatestCameraFrame`, payload parser.
 
 ---
 
-## 11. Stolpersteine
+## 11. Pitfalls
 
-| # | Punkt |
+| # | Point |
 | --- | --- |
-| 11.1 | **Parameter vor dem Start schreiben.** `Start()` liest `ParameterSet` erst beim Aufruf. Wer die Reihenfolge dreht, startet mit den alten Werten. |
-| 11.2 | **`ParameterSet` ist Zustand, kein Aufrufargument.** Zwei Clients, die gleichzeitig verschiedene Rezepte schreiben, überschreiben sich. Bei nur einem Frontend unkritisch, aber bewusst so — es ist die Konvention der Zelle. |
-| 11.3 | **Nur ein Job gleichzeitig.** Ein zweiter `Start` wird mit `BUSY` (3) abgelehnt — egal ob über das Programm oder über `StartSingleJob`. Beide Oberflächen teilen sich denselben Job. |
-| 11.4 | **Beide Oberflächen zeigen denselben Job.** Wird ein Job über `StartSingleJob` gestartet, geht auch `VisionProgram` nach `Running` und am Ende zurück nach `Ready`. Das Frontend darf also mischen. |
-| 11.5 | **`Halt` ohne laufenden Job** ist erlaubt und geht trotzdem nach `Halted`. Zurück nur über `Reset`. |
-| 11.6 | **`Start()` hat keinen Rückgabewert** — anders als `StartSingleJob`, das `(JobId, Error)` liefert. Wer die JobId sofort braucht, liest `ResultSet/JobId` nach dem Zustandswechsel. |
-| 11.7 | **`caps=DA`.** Die Betreuer-Kurzanleitung nennt `NA`; wir kündigen `DA` an, weil Conveyor und CardDispenser das tun und ein Filter uns sonst übersieht. |
+| 11.1 | **Write parameters before the start.** `Start()` reads `ParameterSet` only at the time of the call. Whoever reverses the order starts with the old values. |
+| 11.2 | **`ParameterSet` is state, not a call argument.** Two clients that write different recipes at the same time overwrite each other. With only one frontend this is uncritical, but deliberate — it is the convention of the cell. |
+| 11.3 | **Only one job at a time.** A second `Start` is rejected with `BUSY` (3) — regardless of whether via the program or via `StartSingleJob`. Both interfaces share the same job. |
+| 11.4 | **Both interfaces show the same job.** If a job is started via `StartSingleJob`, `VisionProgram` also goes to `Running` and at the end back to `Ready`. The frontend may therefore mix them. |
+| 11.5 | **`Halt` without a running job** is allowed and nevertheless goes to `Halted`. Back only via `Reset`. |
+| 11.6 | **`Start()` has no return value** — unlike `StartSingleJob`, which returns `(JobId, Error)`. Whoever needs the JobId immediately reads `ResultSet/JobId` after the state change. |
+| 11.7 | **`caps=DA`.** The supervisor's quick guide names `NA`; we announce `DA`, because Conveyor and CardDispenser do so and a filter would otherwise overlook us. |
 
 ---
 
-## 12. Selbst ausprobieren
+## 12. Try it yourself
 
 ```bash
-pip install -r requirements.txt          # bringt jetzt auch `zeroconf` mit
+pip install -r requirements.txt          # now also brings `zeroconf`
 
-# Zellserver starten (VisionMachine + VisionProgram + mDNS + LDS)
+# start the cell server (VisionMachine + VisionProgram + mDNS + LDS)
 python3 -m vision_server.server
 
-# Auf dem Pi laeuft er als Service:
+# on the Pi it runs as a service:
 sudo systemctl restart opcua-server.service
 ```
 
-Im Netz suchen:
+Search the network:
 
 ```bash
 avahi-browse -rt _opcua-tcp._tcp
 ```
 
-Mit UaExpert: `VisionProgram` browsen, `ParameterSet/RecipeId` auf
-`calibration` schreiben, `Start` aufrufen, `CurrentState` beobachten.
+With UaExpert: browse `VisionProgram`, write `ParameterSet/RecipeId` to `calibration`, call `Start`, observe `CurrentState`.

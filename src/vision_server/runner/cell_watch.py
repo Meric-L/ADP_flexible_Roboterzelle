@@ -112,6 +112,8 @@ async def _install_cell_watch(
         corner_refinement_method=getattr(apriltag, "corner_refinement_method", "subpix"),
         apriltag_quad_decimate=apriltag.apriltag_quad_decimate,
         detector_parameters=apriltag.detector_parameters,
+        roi=getattr(apriltag, "detection_roi", None),
+        roi_reference_size=getattr(apriltag, "resolution", None),
     )
     #: Pose of the fixed-mounted camera, estimated once from >= 2 world tags;
     #: persists across `StartCellWatch` calls (changing timing, new reference).

@@ -1,115 +1,121 @@
-# ADP flexible Roboterzelle — Arbeitsanweisung
+# ADP flexible robot cell — working instructions
 
-Gruppenarbeit zur Positions- und Topologieerfassung mechatronischer Module in
-einer rekonfigurierbaren Labor-Roboterzelle (ca. 5x5 m). Das Repo enthält die
-Implementierung (`src/`, `tests/`, `hardware/`, `data/`), die Projektdokumentation
-(`doc/projektdoku/`) und die LaTeX-Ausarbeitung der Thesis (`doc/`).
+Group project on capturing the position and topology of mechatronic modules in
+a reconfigurable lab robot cell (about 5x5 m). The repo holds the
+implementation (`src/`, `tests/`, `hardware/`, `data/`), the project
+documentation (`doc/projektdoku/`) and the LaTeX thesis (`doc/`).
 
-Diese Datei ist **verbindlich für alle**: für jedes Teammitglied und für jeden
-Agenten (Claude-Chat, Subagent, Hintergrund-Job). Sie liegt im Repository — wer
-klont, hat sie. Claude Code lädt sie automatisch, Menschen lesen sie hier.
+This file is **binding for everyone**: every team member and every agent
+(Claude chat, subagent, background job). It lives in the repository — whoever
+clones it has it. Claude Code loads it automatically; people read it here.
 
-**Sprache: Deutsch, mit Ausnahme der Code-Dokumentation.** Dokumentation und
-Commit-Messages werden auf Deutsch geschrieben. Ausgenommen sind die
-Code-Dokumentation (`doc/projektdoku/code-dokumentation.md` und
-`doc/projektdoku/code/`) sowie Docstrings und Code-Kommentare: Sie sind auf
-**Englisch** (Python: PEP 257, Google-Style mit `Args:`, `Returns:`, `Raises:`).
-Log-, Fehler- und OPC-UA-Meldungen bleiben Deutsch, weil Bediener und Tests sie
-lesen.
+**Language: English, for everything.** Documentation (all Markdown files,
+work plans, topic docs, code documentation under `doc/projektdoku/code/`),
+docstrings, code comments and commit messages are written in **English**
+(Python: PEP 257, Google style with `Args:`, `Returns:`, `Raises:`).
+Exceptions:
 
-## Bevor du anfängst
+- Runtime texts that operators and tests read — log, error and OPC UA
+  messages, frontend UI texts — stay as they are (German) until they are
+  migrated deliberately; do not translate them in passing. Documentation that
+  quotes such a text quotes it verbatim.
+- The LaTeX thesis (`doc/*.tex`) keeps its own language.
+- File and folder names stay as they are (other files link to them).
 
-Vor der **ersten** inhaltlichen Aktion — Code schreiben, Datei ändern, Konzept
-entwerfen — gilt ausnahmslos:
+## Before you start
 
-1. **Schauen, was schon da ist.** `ls doc/projektdoku/*.md doc/projektdoku/arbeitsplaene/*.md`.
-   Die für das Thema relevanten MDs lesen, **bevor** etwas entsteht.
-   `doc/projektdoku/` ist der gemeinsame Wissensstand des Projekts, nicht bloß
-   Beiwerk.
-2. **Doppelarbeits-Check.** [`doc/projektdoku/arbeitsplaene/README.md`](doc/projektdoku/arbeitsplaene/README.md)
-   listet, wer gerade woran arbeitet. Steht dort zum Thema schon ein Plan auf
-   `in Arbeit`, der jemand anderem gehört: **nicht** parallel implementieren,
-   sondern dort andocken oder die Person ansprechen.
-3. **Plan schreiben, dann bauen** — siehe nächster Abschnitt.
+Before the **first** substantive action — writing code, changing a file,
+drafting a concept — without exception:
 
-Wir arbeiten parallel in getrennten Chats und auf getrennten Rechnern. Ohne
-diese zwei Blicke findet jeder dasselbe zweimal heraus oder baut dasselbe
-zweimal.
+1. **Look at what already exists.** `ls doc/projektdoku/*.md doc/projektdoku/arbeitsplaene/*.md`.
+   Read the MDs relevant to the topic **before** anything is created.
+   `doc/projektdoku/` is the shared state of knowledge of the project, not
+   decoration.
+2. **Duplicate-work check.** [`doc/projektdoku/arbeitsplaene/README.md`](doc/projektdoku/arbeitsplaene/README.md)
+   lists who is working on what. If a plan on the topic is already
+   `in progress` and belongs to someone else: do **not** implement in
+   parallel; join that plan or talk to the person.
+3. **Write a plan, then build** — see the next section.
 
-## Arbeitsplan mit Schnittstellen
+We work in parallel in separate chats and on separate machines. Without these
+two looks, everyone finds out the same thing twice or builds the same thing
+twice.
 
-Jede Aufgabe, die mehr ist als ein Einzeiler-Fix, bekommt **vor** der Umsetzung
-eine eigene Datei `doc/projektdoku/arbeitsplaene/<thema>.md`
-(Vorlage: [`doc/projektdoku/arbeitsplaene/_vorlage.md`](doc/projektdoku/arbeitsplaene/_vorlage.md)).
+## Work plan with interfaces
 
-Pflichtangaben im Kopf: Status (`geplant` / `in Arbeit` / `fertig` /
-`verworfen`), Verantwortlich, Thema, Branch. Dazu Ziel, betroffene Dateien,
-gelesene Dokumente, offene Fragen — und vor allem:
+Every task that is more than a one-line fix gets its own file
+`doc/projektdoku/arbeitsplaene/<topic>.md` **before** implementation
+(template: [`doc/projektdoku/arbeitsplaene/_vorlage.md`](doc/projektdoku/arbeitsplaene/_vorlage.md)).
 
-**Schnittstellen.** Der wichtigste Abschnitt, so konkret, dass jemand anderes
-**ohne diesen Code** dagegen entwickeln kann:
+Mandatory header fields: Status (`planned` / `in progress` / `done` /
+`dropped`), Owner, Topic, Branch. Then goal, affected files, documents read,
+open questions — and above all:
 
-- OPC UA: NodeIds und BrowsePaths samt Namespace, Methodensignaturen mit
-  Argumenten, Datentypen, Rückgaben und Fehler-StatusCodes
-- Python: Modul, Funktion, Parameter, Rückgabetyp, geworfene Ausnahmen
-- Daten: JSON-/Payload-Format mit Feldbedeutung
-- Betrieb: Ports, Services, mDNS-Namen, systemd-Units
-- Fehlerfälle: Timeout, fehlende Kamera, ungültiger Job, Abbruch
+**Interfaces.** The most important section, concrete enough that someone else
+can develop against it **without this code**:
 
-Danach eine Zeile in die Tabelle in `doc/projektdoku/arbeitsplaene/README.md`
-eintragen. Nach Abschluss Status auf `fertig` setzen und die **tatsächlichen**
-Schnittstellen nachtragen; weicht die Umsetzung vom Plan ab, wird der Plan
-korrigiert. Eine veraltete Schnittstellenbeschreibung ist schlimmer als keine.
+- OPC UA: NodeIds and BrowsePaths including namespace, method signatures with
+  arguments, data types, return values and error status codes
+- Python: module, function, parameters, return type, raised exceptions
+- Data: JSON/payload format with the meaning of each field
+- Operations: ports, services, mDNS names, systemd units
+- Failure cases: timeout, missing camera, invalid job, abort
 
-Dauerhaftes Fachwissen gehört anschließend in die passende Fach-MD unter
-`doc/projektdoku/` — der Arbeitsplan ist die Planung, die Fach-MD der Stand.
+Then add a row to the table in `doc/projektdoku/arbeitsplaene/README.md`.
+When finished, set the status to `done` and fill in the **actual**
+interfaces; if the implementation deviates from the plan, the plan is
+corrected. An outdated interface description is worse than none.
 
-Für den ganzen Ablauf gibt es die Skill `projektdoku`
-(`.claude/skills/projektdoku/`). Sie liegt im Repo, hat also jeder nach dem
-Clonen: sie findet die relevanten MDs, legt den Plan im festen Format an und
-committet selbstständig, ohne zu pushen.
+Lasting domain knowledge then belongs in the matching topic doc under
+`doc/projektdoku/` — the work plan is the planning, the topic doc is the
+current state.
 
-## Regeln für Änderungen
+The skill `projektdoku` (`.claude/skills/projektdoku/`) covers the whole
+procedure. It lives in the repo, so everyone has it after cloning: it finds
+the relevant MDs, creates the plan in the fixed format and commits on its
+own, without pushing.
 
-- Vor dem Lesen von `doc/projektdoku/` ein `git pull` — die anderen schreiben in
-  dieselben Dateien.
-- Keine parallele Zweitimplementierung eines Themas, das laut
-  `doc/projektdoku/arbeitsplaene/README.md` jemand anderem gehört.
-- Eine dokumentierte Schnittstelle wird nicht stillschweigend geändert: erst den
-  Arbeitsplan bzw. die Fach-MD anpassen, damit es alle sehen, dann den Code.
-- Bestehende Dokumente in `doc/projektdoku/` und `concept/` nicht umschreiben,
-  um etwas Neues unterzubringen. Neues kommt in einen eigenen Abschnitt oder
-  eine eigene Datei.
-- Kein Umbenennen oder Löschen von `doc/projektdoku/*.md` ohne Absprache —
-  andere MDs verweisen darauf.
-- Committen läuft automatisch: Diff zeigen, committen, weiterarbeiten — kein
-  Nachfragen nötig. Nur die Dateien der Aufgabe, nie auf `main`.
-- Nichts pushen ohne ausdrückliche Anweisung. Am Ende jedes Features ein kurzer
-  Hinweis, dass committet, aber nicht gepusht wurde, samt Branch und
+## Rules for changes
+
+- `git pull` before reading `doc/projektdoku/` — the others write to the same
+  files.
+- No parallel second implementation of a topic that belongs to someone else
+  according to `doc/projektdoku/arbeitsplaene/README.md`.
+- A documented interface is not changed silently: first adapt the work plan
+  or the topic doc so everyone sees it, then the code.
+- Do not rewrite existing documents in `doc/projektdoku/` and `concept/` to
+  fit something new in. New material goes into its own section or its own
+  file.
+- No renaming or deleting of `doc/projektdoku/*.md` without agreement — other
+  MDs link to them.
+- Committing is automatic: show the diff, commit, carry on — no need to ask.
+  Only the files of the task, never on `main`.
+- Do not push without explicit instruction. At the end of each feature, a
+  short note that it was committed but not pushed, with the branch and
   `git push origin <branch>`.
-- `main` bekommt nur fertige, funktionierende Features. Gearbeitet wird auf
-  Feature-Branches, aktuell `feature/vision-server`.
-- `doc/*.tex` ist die schriftliche Ausarbeitung. Nur anfassen, wenn die Aufgabe
-  ausdrücklich die Ausarbeitung betrifft.
+- `main` only gets finished, working features. Work happens on feature
+  branches, currently `feature/vision-server`.
+- `doc/*.tex` is the written thesis. Only touch it when the task explicitly
+  concerns the thesis.
 
-## Orientierung im Repo
+## Finding your way in the repo
 
-| Pfad | Inhalt |
+| Path | Content |
 | --- | --- |
-| `doc/projektdoku/*.md` | Fachdokumentation: Schnittstellen, Konzepte, Testanleitungen |
-| `doc/projektdoku/arbeitsplaene/` | Laufende und abgeschlossene Arbeitspläne (siehe oben) |
-| `doc/*.tex` | LaTeX-Ausarbeitung der Thesis |
-| `src/` | Implementierung: OPC-UA-Server, Vision, Sensorik |
-| `tests/` | Pytest-Tests |
-| `tools/` | Hilfsskripte |
+| `doc/projektdoku/*.md` | Topic documentation: interfaces, concepts, test instructions |
+| `doc/projektdoku/arbeitsplaene/` | Running and finished work plans (see above) |
+| `doc/*.tex` | LaTeX thesis |
+| `src/` | Implementation: OPC UA server, vision, sensors |
+| `tests/` | Pytest tests |
+| `tools/` | Helper scripts |
 
-## Technische Durchsetzung
+## Technical enforcement
 
-`.claude/settings.json` ruft bei jedem Sessionstart, bei jedem Subagenten und
-vor dem ersten Schreibzugriff einer Session das Skript
-`.claude/hooks/doku_regeln.py` auf. Es gibt diese Regeln mit und listet auf,
-welche Fach-MDs und welche laufenden Pläne es gerade gibt — kein Agent kann
-behaupten, er habe die Doku nicht gekannt.
+`.claude/settings.json` calls the script `.claude/hooks/doku_regeln.py` at
+every session start, for every subagent and before the first write of a
+session. It passes on these rules and lists which topic docs and which running
+plans exist right now — no agent can claim not to have known the
+documentation.
 
-Der Hook erinnert, er blockiert nicht. Verbindlich sind die Regeln oben, und sie
-gelten auch für Arbeit ohne Claude Code.
+The hook reminds, it does not block. The rules above are binding, and they
+also apply to work without Claude Code.

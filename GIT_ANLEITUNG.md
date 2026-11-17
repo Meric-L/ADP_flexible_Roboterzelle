@@ -1,57 +1,57 @@
-# Git-Anleitung für dieses Projekt
+# Git guide for this project
 
-Dieses Dokument erklärt wie du das Projekt über Git verwaltest — auch wenn du noch nie mit Git gearbeitet hast.
-
----
-
-## Was ist Git?
-
-Git ist ein Versionierungssystem. Es speichert jeden Stand deiner Dateien, sodass du jederzeit auf ältere Versionen zurückgehen kannst. Alle Änderungen werden in einem zentralen Online-Repository (GitHub) gespeichert und automatisch mit ShareLaTeX synchronisiert.
+This document explains how you manage the project with Git — even if you have never worked with Git before.
 
 ---
 
-## Voraussetzungen — Zugang beantragen
+## What is Git?
 
-Bevor du loslegen kannst, brauchst du Zugang zu beiden Systemen. Bitte den Projektverantwortlichen darum:
+Git is a version control system. It stores every state of your files, so you can go back to older versions at any time. All changes are stored in a central online repository (GitHub) and automatically synchronized with ShareLaTeX.
 
-| System | Was du brauchst | Wie |
+---
+
+## Prerequisites — request access
+
+Before you can start, you need access to both systems. Ask the project lead for it:
+
+| System | What you need | How |
 |---|---|---|
-| **GitHub** | GitHub-Account + Einladung zum Repo | Account erstellen auf github.com, dann Benutzernamen mitteilen |
-| **ShareLaTeX** | TU-Account + Einladung zum Projekt | TU-Darmstadt-Login reicht, Projektverantwortlicher lädt dich über den Share-Button ein |
+| **GitHub** | GitHub account + invitation to the repo | Create an account at github.com, then tell the project lead your username |
+| **ShareLaTeX** | TU account + invitation to the project | The TU Darmstadt login is enough; the project lead invites you via the Share button |
 
 ---
 
-## Einmalige Einrichtung
+## One-time setup
 
-### 1. Git installieren
-- **Windows**: https://git-scm.com/download/win → Installer ausführen
-- **Mac**: Terminal öffnen → `git --version` → Git wird automatisch angeboten
+### 1. Install Git
+- **Windows**: https://git-scm.com/download/win → run the installer
+- **Mac**: open Terminal → `git --version` → Git is offered automatically
 - **Linux**: `sudo apt install git`
 
-### 2. Repository klonen (einmalig, pro PC)
-Das lädt das gesamte Projekt auf deinen PC:
+### 2. Clone the repository (once, per PC)
+This downloads the entire project to your PC:
 ```bash
 git clone git@github.com:Meric-L/ADP_flexible_Roboterzelle.git
 cd ADP_flexible_Roboterzelle
 ```
 
-### 3. Git-Identität setzen (einmalig, pro PC)
+### 3. Set your Git identity (once, per PC)
 ```bash
-git config --global user.name "Dein Name"
-git config --global user.email "deine@email.de"
+git config --global user.name "Your Name"
+git config --global user.email "your@email.de"
 ```
 
-### 4. ShareLaTeX Git-Token holen (einmalig)
-Für die Synchronisation mit ShareLaTeX brauchst du ein persönliches Token — **jeder braucht sein eigenes**.
+### 4. Get a ShareLaTeX Git token (once)
+For synchronization with ShareLaTeX you need a personal token — **everyone needs their own**.
 
-> ShareLaTeX → oben rechts auf deinen Namen klicken → **Account-Einstellungen** → Abschnitt **Git Integration** → Token anzeigen/generieren
+> ShareLaTeX → click your name at the top right → **Account-Einstellungen** (account settings) → section **Git Integration** → show/generate token
 
-Dieses Token verwendest du als **Passwort**, wenn git nach Zugangsdaten für ShareLaTeX fragt. Dein Benutzername ist deine TU-Darmstadt E-Mail-Adresse.
+Use this token as your **password** when git asks for credentials for ShareLaTeX. Your username is your TU Darmstadt email address.
 
-### 5. Setup-Skript ausführen (einmalig, pro PC)
-Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
+### 5. Run the setup script (once, per PC)
+The script sets up the ShareLaTeX connection and all commands automatically.
 
-**Windows:** `setup.bat` doppelklicken
+**Windows:** double-click `setup.bat`
 
 **Mac / Linux:**
 ```bash
@@ -60,70 +60,70 @@ Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
 
 ---
 
-## Täglicher Workflow
+## Daily workflow
 
-### Szenario A — Du arbeitest lokal (auf deinem PC)
+### Scenario A — You work locally (on your PC)
 
-**Bevor du anfängst:** Immer zuerst den aktuellen Stand aus GitHub und ShareLaTeX holen:
+**Before you start:** always fetch the current state from GitHub and ShareLaTeX first:
 ```bash
 git pullsl
 ```
 
-**Wenn du fertig bist:** Änderungen speichern und hochladen:
+**When you are done:** save your changes and upload them:
 ```bash
 git add doc/
-git commit -m "Kurze Beschreibung was du gemacht hast"
+git commit -m "Short description of what you did"
 git pushall
 ```
 
-`git pushall` lädt deine Änderungen gleichzeitig zu **GitHub** und **ShareLaTeX** hoch.
+`git pushall` uploads your changes to **GitHub** and **ShareLaTeX** at the same time.
 
 ---
 
-### Szenario B — Jemand hat auf ShareLaTeX gearbeitet
+### Scenario B — Someone has worked on ShareLaTeX
 
-Wenn Änderungen auf ShareLaTeX gemacht wurden, holst du diese mit einem einzigen Befehl:
+If changes were made on ShareLaTeX, you fetch them with a single command:
 ```bash
 git pullsl
 ```
 
-Das holt die Änderungen aus ShareLaTeX, aktualisiert `doc/` und pusht alles zu GitHub.
+That fetches the changes from ShareLaTeX, updates `doc/` and pushes everything to GitHub.
 
 ---
 
-## Die wichtigsten Befehle im Überblick
+## The most important commands at a glance
 
-| Befehl | Was er macht |
+| Command | What it does |
 |---|---|
-| `git pull` | Holt den aktuellen Stand nur von GitHub |
-| `git add doc/` | Markiert Änderungen in `doc/` zum Speichern |
-| `git commit -m "..."` | Speichert die markierten Änderungen lokal |
-| `git pushall` | Lädt alles zu GitHub + ShareLaTeX hoch |
-| `git pullsl` | Holt Änderungen aus ShareLaTeX → GitHub |
-| `git status` | Zeigt welche Dateien geändert wurden |
-| `git log --oneline` | Zeigt die letzten gespeicherten Stände |
+| `git pull` | Fetches the current state from GitHub only |
+| `git add doc/` | Marks changes in `doc/` for saving |
+| `git commit -m "..."` | Saves the marked changes locally |
+| `git pushall` | Uploads everything to GitHub + ShareLaTeX |
+| `git pullsl` | Fetches changes from ShareLaTeX → GitHub |
+| `git status` | Shows which files were changed |
+| `git log --oneline` | Shows the last saved states |
 
 ---
 
-## Goldene Regeln
+## Golden rules
 
-1. **Immer zuerst `git pull`** bevor du anfängst zu arbeiten — sonst riskierst du Konflikte
-2. **Commit-Messages auf Deutsch oder Englisch**, aber immer aussagekräftig — z.B. `"Kapitel 2 Einleitung ergänzt"` statt `"update"`
-3. **Nicht gleichzeitig** lokal und auf ShareLaTeX an derselben Datei arbeiten
+1. **Always run `git pull` first** before you start working — otherwise you risk conflicts
+2. **Commit messages in German or English**, but always meaningful — e.g. `"Chapter 2 introduction added"` instead of `"update"`
+3. **Do not work on the same file locally and on ShareLaTeX at the same time**
 
 ---
 
-## Projektstruktur
+## Project structure
 
 ```
 ADP_flexible_Roboterzelle/
-├── doc/          ← LaTeX-Dokument (wird mit ShareLaTeX synchronisiert)
+├── doc/          ← LaTeX document (synchronized with ShareLaTeX)
 │   ├── PLCM-Thesis.tex
 │   ├── chapters/
 │   ├── appendix/
 │   ├── Bilder/
 │   └── ...
-├── src/          ← Quellcode (Sensorik, Algorithmen)
-├── hardware/     ← CAD-Dateien, Schaltpläne
-└── data/         ← Messdaten, Testdatensätze
+├── src/          ← source code (sensors, algorithms)
+├── hardware/     ← CAD files, circuit diagrams
+└── data/         ← measurement data, test datasets
 ```

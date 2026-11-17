@@ -1,6 +1,6 @@
 {
   "schema": "wsc.vision.calibration/2",
-  "calibrationId": "cam_ceiling@2026-10-28T16:54:58.242773+00:00",
+  "calibrationId": "cam_ceiling@2026-11-17T11:16:12.528827+00:00",
   "frameId": "cam_ceiling",
   "distortionModel": "fisheye",
   "imageSize": [
@@ -9,14 +9,14 @@
   ],
   "cameraMatrix": [
     [
-      1711.5941258216144,
+      1711.9351026655727,
       0.0,
-      2053.8159131377124
+      2057.567573122584
     ],
     [
       0.0,
-      1710.9208041533784,
-      1577.3298587055674
+      1711.4466191157373,
+      1578.5581196107685
     ],
     [
       0.0,
@@ -25,18 +25,20 @@
     ]
   ],
   "distortionCoefficients": [
-    -0.012668841340659107,
-    -0.02877951781359132,
-    0.023786649283019195,
-    -0.009703831793371835
+    -0.01226795987067162,
+    -0.04112064602073757,
+    0.0720897642447583,
+    -0.049432608414499674
   ],
-  "rmsReprojectionError": 0.5666821369206483,
-  "sampleCount": 20,
+  "rmsReprojectionError": 0.2370064786011433,
+  "sampleCount": 36,
   "board": {
-    "type": "chessboard",
-    "cols": 7,
-    "rows": 10,
-    "squareSizeM": 0.023
+    "type": "charuco",
+    "cols": 11,
+    "rows": 7,
+    "squareSizeM": 0.02495,
+    "markerSizeM": 0.0185,
+    "dictionary": "DICT_5X5_100"
   },
-  "createdAt": "2026-10-28T16:54:58.242862+00:00"
+  "createdAt": "2026-11-17T11:16:12.531437+00:00"
 }

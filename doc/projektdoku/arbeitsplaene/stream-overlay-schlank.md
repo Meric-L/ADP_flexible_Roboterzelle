@@ -1,121 +1,109 @@
-# Livestream-Overlay: nur grüner Kasten und Tag-ID
+# Live stream overlay: only green box and tag ID
 
-**Status:** fertig — 21.10.2026 (Tests grün, am echten Pi-Stream nicht angesehen)
-**Verantwortlich:** Meric, `Agent: Stream-Overlay verschlanken`
-**Thema:** frontend
+**Status:** done — 21.10.2026 (tests green, not checked on the real Pi stream)
+**Owner:** Meric, `Agent: Slim down stream overlay`
+**Topic:** frontend
 **Branch:** apriltag-overlay-schlank
 
-## Ziel
+## Goal
 
-Im Livestream (Overlay-Modus `apriltag`, wie ihn das Frontend anzeigt) wird je
-erkanntem Tag nur noch ein **grüner Kasten** (Tag-Umriss) und die **Tag-ID**
-gezeichnet. Entfällt: orange Färbung und Schriftzug „MEHRDEUTIG“, Achsenkreuz,
-Eck-Punkt, Modulname, Distanz, Reprojektionsfehler und die Statusleiste unten
-(„Modus: AprilTag  Familie …“ und die Liste der Tags im Bild).
+In the live stream (overlay mode `apriltag`, as the frontend displays it) only a **green box**
+(tag outline) and the **tag ID** are drawn for each detected tag. Dropped: orange coloring and
+the lettering „MEHRDEUTIG“ (AMBIGUOUS), crosshair, corner point, module name, distance,
+reprojection error, and the status bar at the bottom („Modus: AprilTag  Familie …“ (mode:
+AprilTag family …) and the list of tags in the image).
 
-## Bereits gelesen
+## Already read
 
 - `CLAUDE.md`
 - `doc/projektdoku/arbeitsplaene/README.md`
-- `doc/projektdoku/vision-server-interface.md` (Tabelle der Overlay-Modi)
-- `doc/projektdoku/apriltag-referenz.md` (Abschnitt `tagloc.overlay`)
-- `doc/projektdoku/apriltag-e2e-test.md` (Overlay-Modi, Sichtprüfung)
+- `doc/projektdoku/vision-server-interface.md` (table of overlay modes)
+- `doc/projektdoku/apriltag-referenz.md` (section `tagloc.overlay`)
+- `doc/projektdoku/apriltag-e2e-test.md` (overlay modes, visual check)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/overlay.py` — neue Funktion `draw_tag_boxes`
-- `src/vision_server/stream_overlay.py` — Modus `apriltag` nutzt `draw_tag_boxes`, keine Statusleiste
+- `src/tagloc/overlay.py` — new function `draw_tag_boxes`
+- `src/vision_server/stream_overlay.py` — mode `apriltag` uses `draw_tag_boxes`, no status bar
 - `tests/test_stream_overlay.py`, `tests/test_overlay_scaling.py`
 - `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/apriltag-referenz.md`,
   `doc/projektdoku/apriltag-e2e-test.md`
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Keine Änderung. Die Overlay-Modi (`apriltag`, `calibration`, `undistorted`,
-`off`) und ihre Anzeigenamen bleiben gleich; nur das Bild im Modus `apriltag`
-sieht anders aus.
+No change. The overlay modes (`apriltag`, `calibration`, `undistorted`, `off`) and their
+display names remain the same; only the image in mode `apriltag` looks different.
 
 ### Python
 
 ```python
-# Modul: src/tagloc/overlay.py
+# Module: src/tagloc/overlay.py
 def draw_tag_boxes(image, tag_poses: Sequence[TagPose]) -> Any:
-    """Zeichnet je Tag den Umriss in COLOR_OK (grün) und darüber "#<id>".
+    """Draws per tag the outline in COLOR_OK (green) and above it "#<id>".
 
-    Ändert `image` in-place und gibt es zurück. Mehrdeutige Posen werden
-    nicht anders gezeichnet. Kein Achsenkreuz, kein Eck-Punkt, keine
-    Distanz, kein Reprojektionsfehler. Strichstärke und Schriftgröße skalieren
-    wie bisher mit der Bildbreite (`_scale_for`). Posen ohne `observation`
-    werden übersprungen. Wirft nichts Eigenes.
+    Changes `image` in place and returns it. Ambiguous poses are not drawn
+    differently. No crosshair, no corner point, no distance, no reprojection
+    error. Line thickness and font size scale with the image width as before
+    (`_scale_for`). Poses without `observation` are skipped. Raises nothing
+    of its own.
     """
 ```
 
-`draw_tag_overlay`, `draw_status_bar` und `summarise` bleiben unverändert —
-die CLI (`python -m tagloc.cli.detect --overlay`) zeigt weiterhin das ausführliche Debug-Overlay.
+`draw_tag_overlay`, `draw_status_bar` and `summarise` remain unchanged — the CLI
+(`python -m tagloc.cli.detect --overlay`) still shows the detailed debug overlay.
 
-`AprilTagStreamAnnotator.annotate(image, "apriltag")`: ruft `draw_tag_boxes`
-statt `draw_tag_overlay` und **kein** `draw_status_bar` mehr. Die Modi
-`calibration` und `undistorted` bleiben unverändert (Statusleiste dort
-weiterhin, sie trägt den Kalibrierfortschritt).
+`AprilTagStreamAnnotator.annotate(image, "apriltag")`: calls `draw_tag_boxes` instead of
+`draw_tag_overlay` and **no longer** `draw_status_bar`. The modes `calibration` and
+`undistorted` remain unchanged (the status bar stays there; it carries the calibration progress).
 
-### Daten / Payload
+### Data / payload
 
-Keine Änderung. Mehrdeutigkeit wird weiterhin in den Job-Ergebnissen
-(`ambiguous`, `ambiguityRatio`, `confidence`) gemeldet — nur nicht mehr im
-Stream-Bild.
+No change. Ambiguity is still reported in the job results (`ambiguous`, `ambiguityRatio`,
+`confidence`) — only no longer in the stream image.
 
-### Netz / Betrieb
+### Network / operations
 
-Keine Änderung.
+No change.
 
-### Fehlerfälle
+### Failure cases
 
-Wie bisher: ein Fehler beim Zeichnen wird geloggt, der Stream sendet das
-unmarkierte Bild.
+As before: an error while drawing is logged, and the stream sends the unmarked image.
 
-## Offene Fragen
+## Open questions
 
-- Keine.
+- None.
 
-## Umsetzung
+## Implementation
 
-Wie geplant umgesetzt, Schnittstelle unverändert gegenüber oben.
+Implemented as planned; interface unchanged from the above.
 
-- `draw_tag_boxes`: Umriss per `cv2.polylines` in `COLOR_OK`; Label `#<id>` an
-  der linken Kante der Eck-Bounding-Box, knapp über deren Oberkante
-  (`max(4, round(6 * scale))` px), nach oben auf die Schrifthöhe begrenzt,
-  damit es nicht aus dem Bild fällt.
-- `stream_overlay.py`: Die Pose-Schätzung im Modus `apriltag` läuft wie bisher
-  (ihr Ergebnis liefert die Ecken für die Kästen); nur das Zeichnen ist reduziert.
-- Tests: `tests/test_stream_overlay.py` (Stream ruft `draw_tag_boxes`, kein
-  `draw_status_bar`), `tests/test_overlay_scaling.py` (mehrdeutige Pose wird
-  grün gezeichnet, Pose ohne Observation wird übersprungen). Gesamte Suite:
-  691 Tests OK (`PYTHONPATH=src python -m unittest discover -s tests -t .`).
-- Doku angepasst: `vision-server-interface.md`, `apriltag-referenz.md`,
-  `apriltag-e2e-test.md`, Hinweis in `praesentation.md`.
+- `draw_tag_boxes`: outline via `cv2.polylines` in `COLOR_OK`; label `#<id>` at the left edge
+  of the corner bounding box, just above its upper edge (`max(4, round(6 * scale))` px),
+  limited upwards to the text height so that it does not fall out of the image.
+- `stream_overlay.py`: the pose estimation in mode `apriltag` runs as before (its result
+  provides the corners for the boxes); only the drawing is reduced.
+- Tests: `tests/test_stream_overlay.py` (stream calls `draw_tag_boxes`, no `draw_status_bar`),
+  `tests/test_overlay_scaling.py` (ambiguous pose is drawn green, pose without observation is
+  skipped). Whole suite: 691 tests OK (`PYTHONPATH=src python -m unittest discover -s tests -t .`).
+- Docs adjusted: `vision-server-interface.md`, `apriltag-referenz.md`, `apriltag-e2e-test.md`,
+  note in `praesentation.md`.
 
-## Nachtrag 21.10.2026: Merge mit „Livestream-Tags in voller Auflösung“
+## Addendum 21.10.2026: merge with live-stream tags at full resolution
 
-Zusammengeführt mit [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md).
-Das Overlay schätzt seitdem nicht mehr selbst auf der kleinen Leinwand. Es
-zeichnet das neueste Ergebnis in voller Auflösung (`latest_tags`), mit auf
-Stream-Größe umgerechneten Ecken, über `draw_tag_boxes`. Die Schnittstelle
-oben bleibt gültig.
+Merged with [`livestream-tags-volle-aufloesung.md`](livestream-tags-volle-aufloesung.md).
+Since then the overlay no longer estimates on the small canvas itself. It draws the latest
+result at full resolution (`latest_tags`), with corners rescaled to stream size, via
+`draw_tag_boxes`. The interface above remains valid.
 
+## Addendum 21.10.2026: thinner frame, tag ID with black border
 
-## Nachtrag 21.10.2026: dünnerer Rahmen, Tag-ID mit schwarzem Rand
-
-- Der grüne Rahmen in `draw_tag_boxes` ist genau 2 px breit
-  (`_TAG_BOX_PX`), unabhängig von der Bildbreite. Gezeichnet wird eine
-  1-px-Linie, 2 × 2-mal um je 1 px versetzt. Über `thickness` geht das nicht:
-  OpenCV rastert Strichstärke t als 2t − 1 Pixel, aus 2 werden also 3 px.
-  Vorher waren es bei 960 px rund 5 px (Stärke 3). Ein erster Versuch mit
-  1 px war zu dünn.
-- Die Tag-ID hat einen genau 1 px breiten schwarzen Rand. Gezeichnet wird
-  die Schrift schwarz, um je 1 px in alle acht Richtungen versetzt, dann grün
-  darüber. Eine dickere Strichstärke für die Kontur funktioniert nicht
-  zuverlässig: OpenCV 5 (PC) ignoriert die Strichstärke bei `putText`, OpenCV
-  4.x (Pi) nicht.
-- Die Schnittstelle bleibt unverändert.
+- The green frame in `draw_tag_boxes` is exactly 2 px wide (`_TAG_BOX_PX`), regardless of the
+  image width. It is drawn as a 1-px line, offset 2 × 2 times by 1 px each. Via `thickness` this
+  does not work: OpenCV rasterizes a line thickness t as 2t − 1 pixels, so 2 becomes 3 px.
+  Previously at 960 px it was about 5 px (thickness 3). A first attempt with 1 px was too thin.
+- The tag ID has an exactly 1-px-wide black border. The text is drawn in black, offset by 1 px
+  in all eight directions, then green on top. A thicker line for the outline does not work
+  reliably: OpenCV 5 (PC) ignores the line thickness for `putText`, OpenCV 4.x (Pi) does not.
+- The interface remains unchanged.

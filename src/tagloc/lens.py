@@ -15,6 +15,7 @@ pinhole.
 """
 
 import logging
+import re
 
 import numpy as np
 
@@ -166,11 +167,17 @@ def calibrate(
     exactly 5 coefficients (k1, k2, p1, p2, k3).
 
     `FISHEYE`: `cv2.fisheye.calibrate` (Kannala-Brandt, k1..k4) with
-    `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW`. If `CHECK_COND` fails (one capture
-    is numerically badly conditioned, typically the board almost at the image edge or
-    very flat), the calibration is computed once more without this check. Otherwise a
-    single bad capture would break the whole calibration. If that also fails, the
-    `cv2.error` is propagated.
+    `RECOMPUTE_EXTRINSIC | CHECK_COND | FIX_SKEW`. If `CHECK_COND` fails, OpenCV names
+    the badly conditioned capture ("input array N", typically a board far away,
+    almost at the image edge or very flat); that capture is left out and the
+    calibration computed again, until it succeeds or fewer than three captures
+    are left. Since 17.11.2026: before, the calibration was recomputed without the
+    check, which kept the bad capture and could crash OpenCV later
+    ("Assertion failed ... _rowRange" in `Mat`).
+
+    Returns:
+        `(rms, camera_matrix, distortion, used)`; `used` is the number of captures
+        the result was computed from.
 
     Raises:
         ValueError: If the model is unknown.
@@ -187,6 +194,7 @@ def calibrate(
             float(rms),
             np.asarray(camera_matrix, dtype=np.float64),
             np.asarray(distortion, dtype=np.float64).reshape(-1),
+            len(object_points),
         )
 
     # cv2.fisheye is stricter about shapes than calibrateCamera: float64,
@@ -202,10 +210,10 @@ def calibrate(
     )
     base_flags = _fisheye_flag("CALIB_RECOMPUTE_EXTRINSIC") | _fisheye_flag("CALIB_FIX_SKEW")
 
-    def run(flags: int):
+    def run(kept: list[int], flags: int):
         return cv2.fisheye.calibrate(
-            objects,
-            images,
+            [objects[index] for index in kept],
+            [images[index] for index in kept],
             size,
             np.zeros((3, 3), dtype=np.float64),
             np.zeros((FISHEYE_COEFFICIENTS, 1), dtype=np.float64),
@@ -213,25 +221,29 @@ def calibrate(
             criteria=criteria,
         )
 
-    try:
-        rms, camera_matrix, distortion, _, _ = run(base_flags | _fisheye_flag("CALIB_CHECK_COND"))
-    except cv2.error as error:
-        # Only the conditioning check itself justifies the retry
-        # ("CALIB_CHECK_COND - Ill-conditioned matrix for input array N").
-        # Any other error (shapes, too few points) would also have failed without
-        # the flag and should propagate with its own message.
-        if "ill-conditioned" not in str(error).lower():
-            raise
-        _log.warning(
-            "Fisheye-Kalibrierung: Konditionspruefung schlug an (%s) -- "
-            "rechne ohne CALIB_CHECK_COND nach",
-            str(error).strip().splitlines()[-1],
-        )
-        rms, camera_matrix, distortion, _, _ = run(base_flags)
+    kept = list(range(len(objects)))
+    while True:
+        try:
+            rms, camera_matrix, distortion, _, _ = run(kept, base_flags | _fisheye_flag("CALIB_CHECK_COND"))
+            break
+        except cv2.error as error:
+            # Only the conditioning check names a capture to leave out
+            # ("CALIB_CHECK_COND - Ill-conditioned matrix for input array N").
+            # Any other error (shapes, too few points) propagates with its own message.
+            match = re.search(r"input array (\d+)", str(error))
+            if "ill-conditioned" not in str(error).lower() or match is None or len(kept) <= 3:
+                raise
+            dropped = kept.pop(int(match.group(1)))
+            _log.warning(
+                "Fisheye-Kalibrierung: Aufnahme %d schlecht konditioniert -- ohne sie neu gerechnet (%d uebrig)",
+                dropped + 1,
+                len(kept),
+            )
     return (
         float(rms),
         np.asarray(camera_matrix, dtype=np.float64),
         np.asarray(distortion, dtype=np.float64).reshape(-1),
+        len(kept),
     )
 
 

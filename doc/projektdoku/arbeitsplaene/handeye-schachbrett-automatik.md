@@ -1,65 +1,65 @@
-# Hand-Auge-Kalibrierung mit Schachbrett, Posen fährt der Roboter selbst
+# Hand-eye calibration with a chessboard, the robot moves the poses itself
 
-**Status:** fertig — 13.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** John Glanz, `Agent: Hand-Auge automatisch mit Schachbrett`
-**Thema:** apriltag
+**Status:** done — 13.10.2026 (not tested on real hardware)
+**Owner:** John Glanz, `Agent: Hand-eye automatically with chessboard`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Bisher wird die Hand-Auge-Kalibrierung (`handeye-ueber-opcua.md`) gegen einen einzelnen AprilTag gemacht, und der Bediener fährt jede Pose von Hand. Mit diesem Plan
-1. kann der Pi statt eines Tags ein **Kalibrier-Schachbrett** messen: das gelaserte Brett mit 6×7 Feldern zu 23 mm, also 5×6 Innenecken. Viele Ecken ergeben eine genauere und eindeutige Pose.
-2. erzeugt das Frontend (`webskillcomposition`, Branch `Ungetestet`) die Posen selbst, zeigt sie vorher als Geist-Roboter und fährt sie dann ab. Je Pose meldet es die Aufnahme, am Ende löst es „Berechnen“ aus.
+So far the hand-eye calibration (`handeye-ueber-opcua.md`) is done against a single AprilTag, and the operator moves each pose by hand. With this plan
+1. the Pi can measure a **calibration chessboard** instead of a tag: the laser-engraved board with 6×7 squares of 23 mm, i.e. 5×6 inner corners. Many corners give a more precise and unambiguous pose.
+2. the frontend (`webskillcomposition`, branch `Ungetestet`) generates the poses itself, shows them beforehand as a ghost robot and then runs through them. For each pose it reports the capture; at the end it triggers „Berechnen“ (calculate).
 
-## Bereits gelesen
+## Already read
 
-- `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md` (Sitzung, Methoden, Status, Fehlercodes; offene Frage „Automatisches Anfahren“)
-- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (Solver, Dateiformat)
-- `doc/projektdoku/arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md` (Entzerrung für beide Linsenmodelle)
-- `src/tagloc/boards.py` (Board-Erkennung, Eckenreihenfolge von `findChessboardCornersSB`)
+- `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md` (session, methods, status, error codes; open question "Automatic approach")
+- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md` (solver, file format)
+- `doc/projektdoku/arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md` (undistortion for both lens models)
+- `src/tagloc/boards.py` (board detection, corner order of `findChessboardCornersSB`)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/boards.py`: `chessboard_is_unambiguous`, `canonical_chessboard_corners`, `estimate_board_pose` (neu)
-- `src/vision_server/detection/apriltag.py`: `measure_board` (neu)
-- `src/vision_server/handeye_session.py`: Ziel ist Tag **oder** Board
-- `src/vision_server/runner.py`: Port `measure_board` verdrahten
-- `tests/test_boards_pose.py` (neu), `tests/test_handeye_session.py` (Board-Fälle)
-- `doc/projektdoku/vision-server-interface.md` Abschnitt 15: Nachtrag Board
+- `src/tagloc/boards.py`: `chessboard_is_unambiguous`, `canonical_chessboard_corners`, `estimate_board_pose` (new)
+- `src/vision_server/detection/apriltag.py`: `measure_board` (new)
+- `src/vision_server/handeye_session.py`: target is a tag **or** a board
+- `src/vision_server/runner.py`: wire up the port `measure_board`
+- `tests/test_boards_pose.py` (new), `tests/test_handeye_session.py` (board cases)
+- `doc/projektdoku/vision-server-interface.md` section 15: addendum on the board
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Keine neuen Knoten oder Methoden. `StartHandEyeCalibration(OptionsJson)` nimmt zusätzlich ein Board. Alle anderen Methoden, Codes und Sperren bleiben, wie sie in `handeye-ueber-opcua.md` stehen.
+No new nodes or methods. `StartHandEyeCalibration(OptionsJson)` additionally accepts a board. All other methods, codes and locks remain as described in `handeye-ueber-opcua.md`.
 
-### Daten
+### Data
 
-**`OptionsJson`**, Schema `wsc.vision.handeye.start/1`. Genau **eins** von `tagId` und `board` muss angegeben sein:
+**`OptionsJson`**, schema `wsc.vision.handeye.start/1`. Exactly **one** of `tagId` and `board` must be given:
 
 ```json
 { "schema": "wsc.vision.handeye.start/1",
   "board": { "type": "chessboard", "cols": 5, "rows": 6, "squareSizeM": 0.023 } }
 ```
 
-- `cols`/`rows` sind die **Innenecken**: ein Brett mit 6×7 Feldern hat 5×6.
-- `cols + rows` muss ungerade sein. Nur dann ist das Brett um 180° gedreht vom Original zu unterscheiden. Sonst antwortet der Pi `INVALID_ARGUMENT`.
-- Mit `tagId` gilt die alte Form unverändert, einschließlich `tagInBase`.
+- `cols`/`rows` are the **inner corners**: a board with 6×7 squares has 5×6.
+- `cols + rows` must be odd. Only then can the board be told apart from the original rotated by 180°. Otherwise the Pi replies `INVALID_ARGUMENT`.
+- With `tagId` the old form applies unchanged, including `tagInBase`.
 
-**`HandEyeStatus`**: zusätzlich das Feld `target`.
+**`HandEyeStatus`**: additionally the field `target`.
 
 ```json
 "target": { "type": "tag", "tagId": 12 }
 "target": { "type": "chessboard", "cols": 5, "rows": 6, "squareSizeM": 0.023 }
 ```
 
-- Bei einem Board ist `tagId` gleich `-1`.
-- `samples[].camToTag` ist dann `T_cam_board`.
+- For a board, `tagId` is `-1`.
+- `samples[].camToTag` is then `T_cam_board`.
 
-**Board-Frame:**
-- Ursprung in der ersten Innenecke, so festgelegt, dass das Feld zwischen den ersten vier Ecken **schwarz** ist.
-- +x entlang der Zeile, +y zur nächsten Zeile.
-- +z von der Kamera weg, also ins Brett.
+**Board frame:**
+- Origin at the first inner corner, defined such that the square between the first four corners is **black**.
+- +x along the row, +y towards the next row.
+- +z away from the camera, i.e. into the board.
 
 ### Python
 
@@ -76,48 +76,48 @@ async def AprilTagDetectionSource.measure_board(spec) -> tuple[Pose | None, str]
 HandEyePorts.measure_board: Callable[[BoardSpec], Awaitable[tuple[Pose | None, str]]] | None
 ```
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Board nicht vollständig im Bild | Aufnahme `accepted: false`, `DETECTION_FAILED`, Grund im Status, Sitzung läuft weiter |
-| Reprojektionsfehler > `max_reproj_error_px` (falsche Feldgröße oder falsches Raster) | wie oben, Grund nennt den Fehler in px |
-| `cols + rows` gerade, `tagId` **und** `board`, oder keins von beiden | `Start` → `INVALID_ARGUMENT` |
+| Board not completely in the image | Capture `accepted: false`, `DETECTION_FAILED`, reason in the status, session continues |
+| Reprojection error > `max_reproj_error_px` (wrong square size or wrong grid) | as above, reason names the error in px |
+| `cols + rows` even, `tagId` **and** `board`, or neither | `Start` → `INVALID_ARGUMENT` |
 
-### Frontend (nur zur Orientierung, Code in `webskillcomposition`)
+### Frontend (for orientation only, code in `webskillcomposition`)
 
-- Der Bediener gibt die Board-Mitte im Roboter-Basis-KS, den Abstand Kamera–Board und den Kameraversatz entlang Flansch-z an.
-- Das Frontend erzeugt etwa 12 Kameraposen: über der Mitte, geneigt und um die Blickachse gedreht, die Kamera blickt immer auf die Mitte. Daraus rechnet es Flanschposen und die IK. Unerreichbare Posen fallen weg.
-- Die Posen werden vorher als Geist-Roboter gezeigt.
-- Nach „Start“ fährt das Frontend je Pose mit `go_to`, wartet, bis der Roboter steht, und ruft `CaptureHandEyeSample` mit der **erreichten** Flanschpose. Am Ende ruft es `FinishHandEyeCalibration`.
+- The operator specifies the board centre in the robot base CS, the distance camera–board and the camera offset along flange z.
+- The frontend generates about 12 camera poses: above the centre, tilted and rotated about the viewing axis; the camera always looks at the centre. From these it calculates flange poses and the IK. Unreachable poses are dropped.
+- The poses are shown beforehand as a ghost robot.
+- After „Start“ the frontend moves to each pose with `go_to`, waits until the robot stands still, and calls `CaptureHandEyeSample` with the **reached** flange pose. At the end it calls `FinishHandEyeCalibration`.
 
-## Offene Fragen
+## Open questions
 
-- An der echten Hardware nicht getestet. Die Posen gehen davon aus, dass die Kamera ungefähr entlang Flansch-z blickt. Sitzt sie anders, sieht sie das Board in manchen Posen nicht: Diese Aufnahmen werden verworfen, die Kalibrierung bleibt richtig, sie wird nur kürzer.
+- Not tested on real hardware. The poses assume that the camera looks roughly along flange z. If it sits differently, it will not see the board in some poses: those captures are discarded, the calibration stays correct, it is just shorter.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- `estimate_board_pose` nimmt beide IPPE-Lösungen und verfeinert sie mit Levenberg–Marquardt (`solvePnPRefineLM`). Am gerenderten Brett lag frontal sonst die erste Lösung 2,5° bzw. 2 mm daneben, jetzt unter 0,2 mm und 0,2°.
-- `HandEyePorts.measure_board` ist optional (`None`), der Runner liest es mit `getattr`. Ein Server ohne die Funktion verwirft Board-Aufnahmen mit Grund, statt abzustürzen.
-- Frontend (`webskillcomposition`, Branch `Ungetestet`): Fenster „Hand-Kamera kalibrieren“, Modus „Schachbrett, automatisch“ (`HandEyeAutoPanel.tsx`, `handEyeAutoPoses.ts`). Es gibt 11 Blickposen: senkrecht ±30° um die Blickachse gedreht sowie Ringe mit 20° und 30° Neigung.
+- `estimate_board_pose` takes both IPPE solutions and refines them with Levenberg–Marquardt (`solvePnPRefineLM`). On the rendered board, frontally, the first solution was otherwise 2.5° resp. 2 mm off; now below 0.2 mm and 0.2°.
+- `HandEyePorts.measure_board` is optional (`None`); the runner reads it with `getattr`. A server without the function rejects board captures with a reason instead of crashing.
+- Frontend (`webskillcomposition`, branch `Ungetestet`): window „Hand-Kamera kalibrieren“ (calibrate hand camera), mode „Schachbrett, automatisch“ (chessboard, automatic) (`HandEyeAutoPanel.tsx`, `handEyeAutoPoses.ts`). There are 11 viewing poses: rotated ±30° about the viewing axis vertically, plus rings with 20° and 30° tilt.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen eingetragen.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 15.1.
-- [x] Testlauf: 567 Tests. Einzelne zeitabhängige Livestream-Tests (`test_camera_stream`, `test_mjpeg_server`) schlagen im Gesamtlauf sporadisch fehl, einzeln laufen sie durch, unabhängig von dieser Änderung. Neu: `test_boards_pose.py` (4), `HandEyeBoardTest` (4).
+- [x] Status `done`, interfaces entered.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` section 15.1.
+- [x] Test run: 567 tests. Individual time-dependent live stream tests (`test_camera_stream`, `test_mjpeg_server`) fail sporadically in the full run; run individually they pass, independent of this change. New: `test_boards_pose.py` (4), `HandEyeBoardTest` (4).
 
-## Nachtrag 28.10.2026: Brettgröße
+## Addendum 28.10.2026: board size
 
-Das gelaserte Brett hat **7×8 Felder** zu 23 mm, also **6×7 Innenecken**. So steht es im Code: `src/vision_server/server.py` (Kommentar „Neues Brett seit 19.10.2026: 6x7 innere Ecken, 23 mm/Feld“) und `DEFAULT_BOARD` im Frontend (`cols: 6, rows: 7, squareSizeM: 0.023`).
+The laser-engraved board has **7×8 squares** of 23 mm, so **6×7 inner corners**. That is what the code says: `src/vision_server/server.py` (comment "New board since 19.10.2026: 6x7 inner corners, 23 mm/square") and `DEFAULT_BOARD` in the frontend (`cols: 6, rows: 7, squareSizeM: 0.023`).
 
-Die Angaben „6×7 Felder / 5×6 Innenecken“ weiter oben in diesem Dokument (Abschnitt Ziel, Punkt 1, und die Erläuterung zu `cols`/`rows`) sind damit überholt. Sie bleiben stehen; maßgeblich ist dieser Nachtrag.
+The statements "6×7 squares / 5×6 inner corners" further up in this document (section Goal, point 1, and the explanation of `cols`/`rows`) are thus superseded. They remain in place; this addendum is authoritative.
 
-`tests/test_boards_pose.py` rendert bewusst ein 5×6-Innenecken-Brett (`SPEC`). Das ist ein synthetisches Testbild für die Posenberechnung und kein Widerspruch zur Hardware. Der Kommentar über `SPEC` nennt dort noch „6x7 Felder, also 5x6 Innenecken“ für das Labor-Brett. Das ist dort falsch; geändert wurde es nicht.
+`tests/test_boards_pose.py` deliberately renders a 5×6-inner-corner board (`SPEC`). This is a synthetic test image for the pose calculation and not a contradiction to the hardware. The comment above `SPEC` still says "6x7 squares, i.e. 5x6 inner corners" for the lab board. That is wrong there; it was not changed.
 
-## Nachtrag 28.10.2026 (2): Target 7×10, Brett einstellbar
+## Addendum 28.10.2026 (2): target 7×10, board adjustable
 
-Der Nachtrag „Brettgröße“ oben (6×7 Innenecken) ist für das Hand-Auge-Target überholt. Maßgeblich ist jetzt das Target mit 8×11 Feldern zu 23 mm, also **7×10 Innenecken** (`cols` 7, `rows` 10, `squareSizeM` 0,023). Die Pi-Presets `cam_ceiling` und `cam_flange` stehen seit Commit `c615b36` darauf. Im Frontend ist das Brett im Hand-Auge-Fenster einstellbar; Standard ist 7×10 / 23 mm.
+The addendum "Board size" above (6×7 inner corners) is superseded for the hand-eye target. The target with 8×11 squares of 23 mm, i.e. **7×10 inner corners** (`cols` 7, `rows` 10, `squareSizeM` 0.023), is now authoritative. The Pi presets `cam_ceiling` and `cam_flange` have been set to this since commit `c615b36`. In the frontend the board is adjustable in the hand-eye window; the default is 7×10 / 23 mm.
 
-Befund, Frontend-Modul, Posen und Livestream stehen in `handeye-genauigkeit.md` im Abschnitt „Nachtrag 28.10.2026: Target 7×10, Brett einstellbar, Livestream“. Die Angaben in diesem Dokument oben bleiben unverändert stehen.
+The finding, the frontend module, the poses and the live stream are described in `handeye-genauigkeit.md`, in the section "Addendum 28.10.2026: Target 7×10, board adjustable, live stream". The statements in this document above remain unchanged.

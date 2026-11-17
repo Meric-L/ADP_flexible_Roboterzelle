@@ -1,102 +1,102 @@
-# Hand-Auge-Kalibrierung: fester Versatz beim Anfahren beseitigen
+# Hand-eye calibration: eliminate the fixed offset when approaching
 
-**Status:** in Arbeit — 28.10.2026
-**Verantwortlich:** Meric, `Agent: Hand-Auge-Genauigkeit`
-**Thema:** apriltag
-**Branch:** `apriltag` (Pi), `handeye-genauigkeit` in webskillcomposition (Frontend)
+**Status:** in progress — 28.10.2026
+**Owner:** Meric, `Agent: hand-eye accuracy`
+**Topic:** apriltag
+**Branch:** `apriltag` (Pi), `handeye-genauigkeit` in webskillcomposition (frontend)
 
-## Ziel
+## Goal
 
-Beim Anfahren von Tags und Zielen trifft der FR3 systematisch daneben: ein fester Versatz, der bei jedem Anfahren gleich ist (Größe noch nicht gemessen; Ziel ≤ 1 mm). Die Anfahrrechnung `T_base_tag = F · X · C` (`tagServo.ts:100`) nutzt Flanschpose `F` aus der URDF-FK, Hand-Auge `X = T_flange_cam` vom Hand-Pi und Tag-Messung `C` aus `MeasureTags`. Ein fester Versatz kommt aus Fehlern, die alle Ansichten gleich verschieben. Die heutige Gütezahl (Streuung der Brettlage) zeigt sie deshalb nicht.
+When approaching tags and targets, the FR3 systematically misses: a fixed offset that is the same on every approach (size not yet measured; target ≤ 1 mm). The approach computation `T_base_tag = F · X · C` (`tagServo.ts:100`) uses the flange pose `F` from the URDF FK, the hand-eye `X = T_flange_cam` from the hand Pi, and the tag measurement `C` from `MeasureTags`. A fixed offset comes from errors that shift all views equally. The current quality figure (scatter of the board positions) therefore does not reveal it.
 
-Hinterher soll die Kalibrierung den Versatz sichtbar machen und ihn klein halten: `X` und der Brettmaßstab werden gemeinsam gegen die Pixelmessung verfeinert, der Tag-Pfad misst genauer, und die Kalibrierung meldet einen echten Vorhersagefehler statt nur einer Konsistenzzahl. Vorher ging das nicht, weil die Gütezahl einen festen Versatz nicht erkennt.
+Afterwards the calibration should make the offset visible and keep it small: `X` and the board scale are refined jointly against the pixel measurement, the tag path measures more accurately, and the calibration reports a true prediction error instead of just a consistency figure. This was not possible before, because the quality figure does not detect a fixed offset.
 
-Rahmen (Nutzer, 28.10.2026): Pi läuft auf `apriltag`. Brett = 7×8 Felder, also **6×7 Innenecken**, 23 mm. Keine neue Hardware, Belichtung bleibt, reine Software-Optimierung.
+Scope (user, 28.10.2026): the Pi runs on `apriltag`. Board = 7×8 squares, i.e. **6×7 inner corners**, 23 mm. No new hardware, exposure stays, pure software optimization.
 
-## Bereits gelesen
+## Already read
 
-Ausgewertet für diesen Plan (CLAUDE.md, Abschnitt „Bevor du anfängst“):
+Reviewed for this plan (CLAUDE.md, section „Bevor du anfängst“ (Before you start)):
 
-- `CLAUDE.md` (Repo-Wurzel): Regeln, Arbeitsplan-Pflicht, Schnittstellenteil
-- `.claude/skills/projektdoku/SKILL.md`: Ablauf Lesen, Plan, Umsetzung, Commit
-- `doc/projektdoku/arbeitsplaene/_vorlage.md`: Format des Plans
-- `doc/projektdoku/arbeitsplaene/README.md`: Doppelarbeits-Check; Index mit Plänen zu Hand-Auge und Brett
-- `doc/projektdoku/arbeitsplaene/handeye-schachbrett-automatik.md`: Stilbeispiel, Board-Frame; nennt 5×6 Innenecken, das Brett hat 6×7 (siehe Offene Fragen)
-- `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`: Stilbeispiel, `MeasureBoard`, `reprojectionErrorPx`
-- Freigegebener Plan `/home/meric/.claude/plans/glittery-riding-hartmanis.md`: Befunde, Umsetzung A/B, Verifikation
+- `CLAUDE.md` (repo root): rules, work plan obligation, interface section
+- `.claude/skills/projektdoku/SKILL.md`: flow reading, plan, implementation, commit
+- `doc/projektdoku/arbeitsplaene/_vorlage.md`: format of the plan
+- `doc/projektdoku/arbeitsplaene/README.md`: duplicate-work check; index with plans on hand-eye and board
+- `doc/projektdoku/arbeitsplaene/handeye-schachbrett-automatik.md`: style example, board frame; names 5×6 inner corners, the board has 6×7 (see open questions)
+- `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`: style example, `MeasureBoard`, `reprojectionErrorPx`
+- Approved plan `/home/meric/.claude/plans/glittery-riding-hartmanis.md`: findings, implementation A/B, verification
 
-Noch nicht ausgewertet (vor der Umsetzung nachzulesen): `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`, `doc/projektdoku/vision-server-interface.md` (Abschnitt 15), `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/altlasten.md`.
+Not yet reviewed (to be read before implementation): `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`, `doc/projektdoku/vision-server-interface.md` (section 15), `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/arbeitsplaene/altlasten.md`.
 
-## Betroffene Dateien
+## Affected files
 
-Diese Liste reserviert die Dateien. Parallele Änderungen daran vorher absprechen.
+This list reserves the files. Coordinate any parallel changes to them beforehand.
 
-Hand-Pi (Repo ADP_flexible_Roboterzelle, Branch `apriltag`):
+Hand Pi (repo ADP_flexible_Roboterzelle, branch `apriltag`):
 
-- `src/vision_server/handeye_session.py`: Eckpunkte, Intrinsik und Gelenke je Aufnahme speichern; `intrinsicsSource`; Sitzungsdatensatz; `finish`-Prüfung auf Drehachsen
-- `src/tagloc/handeye.py`: neue Funktion `refine_hand_eye` (Levenberg-Marquardt in numpy, Huber, LOO)
-- `src/tagloc/cli/calibrate_handeye.py`: `--session <dir>`, Offline-Nachrechnung
-- `src/tagloc/pose.py`: IPPE_SQUARE-Lösungen mit `cv2.solvePnPRefineLM` verfeinern (Tag-Pfad)
-- `src/tagloc/detector.py`: Subpixel-Ecken für `cam_flange` standardmäßig an (Wahl per Messung im Test)
-- `data/handeye/sessions/<UTC-Zeit>/`: Sitzungsdatensätze (JSON + ein Bild je Aufnahme)
-- `tests/test_handeye_refine.py` (neu), `tests/test_tag_pipeline.py`, `tests/test_handeye_session.py`
+- `src/vision_server/handeye_session.py`: store corner points, intrinsics and joints per capture; `intrinsicsSource`; session record; `finish` check for rotation axes
+- `src/tagloc/handeye.py`: new function `refine_hand_eye` (Levenberg-Marquardt in numpy, Huber, LOO)
+- `src/tagloc/cli/calibrate_handeye.py`: `--session <dir>`, offline recalculation
+- `src/tagloc/pose.py`: refine IPPE_SQUARE solutions with `cv2.solvePnPRefineLM` (tag path)
+- `src/tagloc/detector.py`: subpixel corners for `cam_flange` on by default (choice by measurement in the test)
+- `data/handeye/sessions/<UTC-Zeit>/`: session records (JSON + one image per capture)
+- `tests/test_handeye_refine.py` (new), `tests/test_tag_pipeline.py`, `tests/test_handeye_session.py`
 
-Frontend (Repo webskillcomposition, Branch `handeye-genauigkeit` von `Ungetestet`):
+Frontend (repo webskillcomposition, branch `handeye-genauigkeit` from `Ungetestet`):
 
-- `robotDrive.ts`: Ankunft nach 3 ruhigen Polls, Gelenke nach der Aufnahme nachlesen
-- `HandEyeAutoPanel.tsx`: Stillstand-Logik, Prüfung „Brettursprung anfahren“
-- `handEye.ts`: Parser für die neuen Felder
-- `HandEyeCalibrationWindow.tsx`: Anzeige der Gütezahlen und Warnhinweise
+- `robotDrive.ts`: arrival after 3 quiet polls, re-read joints after the capture
+- `HandEyeAutoPanel.tsx`: standstill logic, check „Brettursprung anfahren“ (Approach board origin)
+- `handEye.ts`: parser for the new fields
+- `HandEyeCalibrationWindow.tsx`: display of the quality figures and warning notes
 
-Doku (nur im Umsetzungsschritt C, nicht in diesem Plan-Commit):
+Docs (only in implementation step C, not in this plan commit):
 
-- `doc/projektdoku/arbeitsplaene/handeye-schachbrett-automatik.md`: Brett korrigieren (6×7 Innenecken)
-- `doc/projektdoku/vision-server-interface.md`: Abschnitt 15, neue Status- und Ergebnisfelder
+- `doc/projektdoku/arbeitsplaene/handeye-schachbrett-automatik.md`: correct the board (6×7 inner corners)
+- `doc/projektdoku/vision-server-interface.md`: section 15, new status and result fields
 
-## Schnittstellen
+## Interfaces
 
-Stand nach Umsetzung: Pi `c494f71` (Branch `apriltag`), Frontend `6e19c66` und `f5c81ba` (webskillcomposition, Branch `handeye-genauigkeit`). Der frühere Entwurf ist ersetzt; alles hier wurde gegen den Code geprüft.
+State after implementation: Pi `c494f71` (branch `apriltag`), frontend `6e19c66` and `f5c81ba` (webskillcomposition, branch `handeye-genauigkeit`). The earlier draft is superseded; everything here was checked against the code.
 
 ### OPC UA
 
-Keine neuen Knoten oder Methoden. Geändert ist nur das Verhalten von `FinishHandEyeCalibration` und der Inhalt von `HandEyeStatus`. `StartHandEyeCalibration`, `CaptureHandEyeSample`, `AbortHandEyeCalibration` und die Sperren bleiben wie in `handeye-ueber-opcua.md` und Abschnitt 15 der `vision-server-interface.md`.
+No new nodes or methods. Only the behavior of `FinishHandEyeCalibration` and the content of `HandEyeStatus` changed. `StartHandEyeCalibration`, `CaptureHandEyeSample`, `AbortHandEyeCalibration` and the locks remain as in `handeye-ueber-opcua.md` and section 15 of `vision-server-interface.md`.
 
 - `FinishHandEyeCalibration() -> (Error: Int32)`:
-  - `INVALID_STATE`, wenn mindestens 3 Aufnahmen angenommen sind, deren Flanschposen um weniger als 3 Drehachsen gehen (`REQUIRED_AXES = 3`; eine Achse zählt ab 5°, `rotation_diversity`). Die Sitzung bleibt im Zustand `capturing` offen, im Status steht der Grund, der Datensatz wird mit `outcome: "refused"` geschrieben.
-  - `INVALID_STATE` auch bei weniger als 3 verwertbaren Posen (der Solver wirft `ValueError`). Dann bleibt die Sitzung offen, der Datensatz hat `outcome: "failed"`.
-  - `INTERNAL`, wenn die Kalibrierung berechnet, aber nicht gespeichert werden konnte. Die Sitzung geht dann auf `failed`.
-  - `INVALID_STATE` auch, wenn die Sitzung nicht im Zustand `capturing` ist oder gerade gemessen wird.
-  - Bei Erfolg: `OK`, Zustand `finished`, Datensatz mit `outcome: "finished"`.
+  - `INVALID_STATE` if at least 3 captures are accepted but their flange poses differ by fewer than 3 rotation axes (`REQUIRED_AXES = 3`; an axis counts from 5°, `rotation_diversity`). The session stays open in state `capturing`, the status gives the reason, and the record is written with `outcome: "refused"`.
+  - `INVALID_STATE` also with fewer than 3 usable poses (the solver raises `ValueError`). Then the session stays open and the record has `outcome: "failed"`.
+  - `INTERNAL` if the calibration was computed but could not be saved. The session then goes to `failed`.
+  - `INVALID_STATE` also if the session is not in state `capturing` or a measurement is currently running.
+  - On success: `OK`, state `finished`, record with `outcome: "finished"`.
 
 ### Python
 
-**`src/tagloc/handeye.py`** (Verfeinerung gegen die Brettecken, nur Brett)
+**`src/tagloc/handeye.py`** (refinement against the board corners, board only)
 
 ```python
 refine_hand_eye(
-    poses_base_flange: Sequence[Pose],      # T_base_flansch je Aufnahme
-    corners_px: Sequence[np.ndarray],       # je Aufnahme (N, 2), entzerrt (P = K)
-    object_points: np.ndarray,              # (N, 3), Brett-KS, Nennmaß
+    poses_base_flange: Sequence[Pose],      # T_base_flange per capture
+    corners_px: Sequence[np.ndarray],       # per capture (N, 2), undistorted (P = K)
+    object_points: np.ndarray,              # (N, 3), board frame, nominal size
     camera_matrix: np.ndarray,              # (3, 3)
     *,
-    initial_flange_cam: Pose,               # Start X = T_flansch_cam (Park-Martin)
-    initial_base_board: Pose,               # Start T_base_brett (estimate_base_board)
+    initial_flange_cam: Pose,               # start X = T_flange_cam (Park-Martin)
+    initial_base_board: Pose,               # start T_base_board (estimate_base_board)
     initial_scale: float = 1.0,
-    estimate_scale: bool = True,            # Brettmaßstab mitschätzen
+    estimate_scale: bool = True,            # also estimate the board scale
     huber_delta_px: float = 1.0,
     max_iterations: int = 60,
 ) -> HandEyeRefinement
 ```
 
-- `HandEyeRefinement` (frozen dataclass): `pose_flange_cam` (X), `pose_base_board` (Brett-Ursprung = erste Innenecke, +z ins Brett), `board_scale` (1,0 = Feldgröße wie angegeben; bei `estimate_scale=False` der Startwert), `reprojection_rms_px` (RMS des 2D-Abstands über alle Ecken), `iterations`, `converged`, `sample_rms_px` (je Aufnahme RMS in px).
-- Levenberg-Marquardt mit numerischer Jacobi-Matrix in numpy, Huber-Gewichtung (IRLS). Unbekannt sind X (6), T_base_brett (6) und optional s (1).
-- `ValueError`: weniger als 3 Aufnahmen; Posen- und Eckensätze verschieden lang; Eckenzahl passt nicht zu `object_points`.
+- `HandEyeRefinement` (frozen dataclass): `pose_flange_cam` (X), `pose_base_board` (board origin = first inner corner, +z into the board), `board_scale` (1.0 = square size as given; with `estimate_scale=False` the start value), `reprojection_rms_px` (RMS of the 2D distance over all corners), `iterations`, `converged`, `sample_rms_px` (RMS per capture in px).
+- Levenberg-Marquardt with a numerical Jacobian in numpy, Huber weighting (IRLS). Unknowns are X (6), T_base_board (6) and optionally s (1).
+- `ValueError`: fewer than 3 captures; pose and corner sets of different length; number of corners does not match `object_points`.
 
 ```python
 refine_hand_eye_robust(
     poses_base_flange: Sequence[Pose],
     corners_px: Sequence[np.ndarray],
-    poses_cam_board: Sequence[Pose],        # T_cam_brett je Aufnahme
+    poses_cam_board: Sequence[Pose],        # T_cam_board per capture
     object_points: np.ndarray,
     camera_matrix: np.ndarray,
     *,
@@ -106,258 +106,258 @@ refine_hand_eye_robust(
 ) -> tuple[HandEyeRefinement, tuple[int, ...], HandEyeSolution]
 ```
 
-- Liefert `(Verfeinerung der verbliebenen Aufnahmen, Indizes der verworfenen Eingabe-Aufnahmen in der Reihenfolge des Verwerfens, Park-Martin-Start als HandEyeSolution)`.
-- Ausreißer-Regel: Nach jeder Verfeinerung wird der RMS-Pixelfehler je Aufnahme geprüft. Schwelle: `max(1,0 px, Median + 3 · 1,4826 · MAD)`. Liegt die schlechteste darüber, fliegt sie raus, und es wird mit Warmstart neu verfeinert.
-- Grenzen: höchstens 25 % der Aufnahmen (`int(n · 0,25)`); es bleiben immer mindestens 4; die verbleibenden Posen müssen noch um mindestens 3 Achsen gehen. Wird eine Grenze erreicht, endet die Schleife ohne weiteres Verwerfen.
-- `ValueError` wie bei `solve_hand_eye` (siehe unten) und wie bei `refine_hand_eye`.
+- Returns `(refinement of the remaining captures, indices of the rejected input captures in the order of rejection, Park-Martin start as HandEyeSolution)`.
+- Outlier rule: after each refinement, the RMS pixel error per capture is checked. Threshold: `max(1.0 px, median + 3 · 1.4826 · MAD)`. If the worst capture lies above it, it is removed and refinement is repeated with a warm start.
+- Limits: at most 25 % of the captures (`int(n · 0.25)`); at least 4 always remain; the remaining poses must still differ by at least 3 axes. When a limit is reached, the loop ends without further rejection.
+- `ValueError` as for `solve_hand_eye` (see below) and as for `refine_hand_eye`.
 
 ```python
 leave_one_out_errors(
     poses_base_flange, corners_px, poses_cam_board, object_points, camera_matrix,
-    full: HandEyeRefinement,                # Gesamtlösung als Warmstart
+    full: HandEyeRefinement,                # overall solution as warm start
     *,
     estimate_scale: bool = True,
     huber_delta_px: float = 1.0,
 ) -> LeaveOneOutResult
 ```
 
-- Je Aufnahme `i`: ohne `i` verfeinern, die Ecken von `i` vorhersagen.
-- `LeaveOneOutResult`: `error_px` (je Aufnahme, RMS in px), `error_m` (je Aufnahme, mittlerer 3D-Abstand im Kamera-KS in m; Brettpunkte mit `s` skaliert, damit der Massstabsfehler nicht als Vorhersagefehler zählt), `rms_px`, `rms_m` (RMS über alle Aufnahmen).
-- `ValueError`: weniger als 4 Aufnahmen.
+- For each capture `i`: refine without `i`, predict the corners of `i`.
+- `LeaveOneOutResult`: `error_px` (per capture, RMS in px), `error_m` (per capture, mean 3D distance in the camera frame in m; board points scaled with `s` so that the scale error does not count as prediction error), `rms_px`, `rms_m` (RMS over all captures).
+- `ValueError`: fewer than 4 captures.
 
-Hilfsfunktionen in `tagloc.handeye`: `rotation_diversity(poses) -> (größte Drehung in Grad, Anzahl Achsen)`, `estimate_base_board(...)`, `reconstruction_spread(...)`. Konstanten: `MIN_AXES = 3`, `AXIS_THRESHOLD_DEG = 5.0`, `MIN_SAMPLES = 3`, `HUBER_DELTA_PX = 1.0`.
+Helper functions in `tagloc.handeye`: `rotation_diversity(poses) -> (largest rotation in degrees, number of axes)`, `estimate_base_board(...)`, `reconstruction_spread(...)`. Constants: `MIN_AXES = 3`, `AXIS_THRESHOLD_DEG = 5.0`, `MIN_SAMPLES = 3`, `HUBER_DELTA_PX = 1.0`.
 
-`solve_hand_eye` und `solve_hand_eye_robust` (Park-Martin) bleiben unverändert. `solve_hand_eye_robust` wirft `ValueError` bei zu wenigen oder zu ähnlichen Posen.
+`solve_hand_eye` and `solve_hand_eye_robust` (Park-Martin) remain unchanged. `solve_hand_eye_robust` raises `ValueError` for too few or too similar poses.
 
 **`src/vision_server/handeye_session.py`**
 
-- `HandEyeSession.finish() -> VisionErrorCode`: Ablauf und Codes siehe OPC UA oben. Mit Brett wird `_refine_board` verwendet (`refine_hand_eye_robust`, Leave-one-out über die verbliebenen Aufnahmen, falls mehr als 3 bleiben). Ohne Brett, oder wenn die Verfeinerung nicht möglich ist, bleibt es bei Park-Martin.
-- Sitzungsports `HandEyePorts` (Auszug): `measure_board: Callable[[BoardSpec], Awaitable[tuple]] | None`, `intrinsics_source: Callable[[], str | None] | None`, `sessions_dir: Path | None` (Standard: `sessions/` neben `hand_eye_path`).
+- `HandEyeSession.finish() -> VisionErrorCode`: flow and codes see the OPC UA section above. With a board, `_refine_board` is used (`refine_hand_eye_robust`, leave-one-out over the remaining captures if more than 3 remain). Without a board, or if the refinement is not possible, it stays with Park-Martin.
+- Session ports `HandEyePorts` (excerpt): `measure_board: Callable[[BoardSpec], Awaitable[tuple]] | None`, `intrinsics_source: Callable[[], str | None] | None`, `sessions_dir: Path | None` (default: `sessions/` next to `hand_eye_path`).
 
-**`src/vision_server/detection/apriltag.py`, `measure_board(spec) -> (Pose | None, Grund, Info)`**
+**`src/vision_server/detection/apriltag.py`, `measure_board(spec) -> (Pose | None, reason, info)`**
 
-- Mittelt über `samples_per_job` frische Bilder; für `cam_flange` sind das 5 (`server.py`, Preset).
-- `Info` enthält immer `reprojectionErrorPx`. Bei Erfolg zusätzlich:
-  - `corners`: Ecken `(N, 2)` im verzerrten Bild, Mittel über die verwendeten Bilder,
-  - `calibration`: die verwendete `CameraCalibration`,
-  - `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null`,
-  - `image`: das letzte verwendete Bild (für `sample_NNN.png`).
-- Ohne `corners`/`calibration` gibt es keine Verfeinerung, nur Park-Martin.
+- Averages over `samples_per_job` fresh images; for `cam_flange` that is 5 (`server.py`, preset).
+- `Info` always contains `reprojectionErrorPx`. On success additionally:
+  - `corners`: corners `(N, 2)` in the distorted image, mean over the images used,
+  - `calibration`: the `CameraCalibration` used,
+  - `intrinsicsSource`: `"calibration"`, `"realsense_factory"`, `"placeholder"` or `null`,
+  - `image`: the last image used (for `sample_NNN.png`).
+- Without `corners`/`calibration` there is no refinement, only Park-Martin.
 
 **`src/tagloc/cli/calibrate_handeye.py`**
 
 ```
-python -m tagloc.cli.calibrate_handeye --session <ordner|session.json> [--out <datei>] [--no-scale]
-python -m tagloc.cli.calibrate_handeye --samples <liste.json> --calibration <cam.json> --out <datei>   # alter Weg, ohne Verfeinerung
+python -m tagloc.cli.calibrate_handeye --session <folder|session.json> [--out <file>] [--no-scale]
+python -m tagloc.cli.calibrate_handeye --samples <list.json> --calibration <cam.json> --out <file>   # old way, without refinement
 ```
 
-- `--session`: liest `session.json` (Schema `wsc.vision.handeye.session/1`), rechnet Park-Martin, robust, dann die Verfeinerung samt Leave-one-out neu. Ohne `--out` nur Ausgabe; mit `--out` wird die Kalibrierdatei geschrieben.
-- `--no-scale`: Brettmaßstab nicht mitschätzen.
-- Fehlen Ecken oder Intrinsik im Datensatz (z. B. Tag-Sitzung), rechnet die CLI nur Park-Martin.
-- Ausgabe enthält eine Warnung bei `|boardScale − 1| > 0,3 %`.
+- `--session`: reads `session.json` (schema `wsc.vision.handeye.session/1`), computes Park-Martin, robust, then the refinement including leave-one-out again. Without `--out` only output; with `--out` the calibration file is written.
+- `--no-scale`: do not estimate the board scale.
+- If corners or intrinsics are missing in the record (e.g. a tag session), the CLI computes only Park-Martin.
+- The output contains a warning if `|boardScale − 1| > 0.3 %`.
 
 **`src/tagloc/pose.py`, `_solve_tag_pose`**
 
-- Beide IPPE_SQUARE-Lösungen werden mit `cv2.solvePnPRefineLM` verfeinert. Gewonnen hat die mit der kleineren Reprojektion.
-- `ambiguity` (Verhältnis zur zweiten Lösung) wird weiter aus den **rohen** IPPE-Fehlern berechnet, damit `AMBIGUITY_THRESHOLD` (0,6) nach der Verfeinerung nicht falsch auslöst.
+- Both IPPE_SQUARE solutions are refined with `cv2.solvePnPRefineLM`. The one with the smaller reprojection wins.
+- `ambiguity` (ratio to the second solution) is still computed from the **raw** IPPE errors, so that `AMBIGUITY_THRESHOLD` (0.6) does not falsely trigger after the refinement.
 
-**Umgebungsvariable `VISION_SUBPIXEL_CORNER_REFINEMENT`** (`src/vision_server/server.py`, `subpixel_corner_settings`)
+**Environment variable `VISION_SUBPIXEL_CORNER_REFINEMENT`** (`src/vision_server/server.py`, `subpixel_corner_settings`)
 
-| Wert | Wirkung |
+| Value | Effect |
 | --- | --- |
-| `0`, `none`, `false` | Subpixel-Ecken aus |
-| `1`, `true` | an, mit dem Verfahren des Presets |
-| `apriltag` | an, Verfahren `apriltag` |
-| `subpix` | an, Verfahren `subpix` |
-| leer | Preset: `cam_flange` an mit `subpix`, übrige Presets aus |
-| anderes | `ValueError` beim Start |
+| `0`, `none`, `false` | subpixel corners off |
+| `1`, `true` | on, with the method of the preset |
+| `apriltag` | on, method `apriltag` |
+| `subpix` | on, method `subpix` |
+| empty | preset: `cam_flange` on with `subpix`, other presets off |
+| anything else | `ValueError` at start |
 
-### Daten / Payload
+### Data / payload
 
-**`HandEyeStatus`**, Schema `wsc.vision.handeye.status/1`. Neue Felder sind mit (neu) markiert, sonst unverändert.
+**`HandEyeStatus`**, schema `wsc.vision.handeye.status/1`. New fields are marked (new), otherwise unchanged.
 
-- Top-level:
-  - `intrinsicsSource` (neu): `"calibration"`, `"realsense_factory"`, `"placeholder"` oder `null` (unbekannt).
-  - `samples[i]` (neu): `looErrorPx`, `looErrorM`. Nur nach `Finish` und nur für nicht verworfene Aufnahmen, sonst `null`.
-- `result` (nur nach erfolgreichem `Finish`, sonst `null`):
-  - bisherig: `poseFlangeCam`, `rmsPositionM`, `rmsRotationDeg`, `maxPositionM`, `maxRotationDeg`, `sampleCount`, `rejectedCount`, `rejectedSamples`, `knownTagCheckM`, `knownTagCheckDeg`, `path`, `backupPath`.
-  - neu `refinedReprojectionRmsPx`: RMS der gemeinsamen Verfeinerung in px. `null` ohne Brett oder ohne Verfeinerung.
-  - neu `boardScale`: Brettmaßstab gegen Nennmaß (1,0 = richtig). `null` ohne Verfeinerung.
-  - neu `looErrorRmsPx`, `looErrorRmsM`: RMS des Leave-one-out-Vorhersagefehlers, px bzw. m (Kamera-KS). `null`, wenn weniger als 4 Aufnahmen verbleiben.
-  - neu `refinementConverged`: `true` / `false` / `null`.
-  - neu `targetInBase`: `{position: [x, y, z], orientation: [x, y, z, w]}` in m, Basis-KS. Mit Brett der Brettursprung (erste Innenecke, +z ins Brett) aus der Verfeinerung, sonst das Mittel von `F · X · C`. Im Tag-Modus das Tag. Also **nicht** `null` ohne Verfeinerung.
-  - neu `warnings`: Liste deutscher Texte (Pi-Wortlaut mit ASCII-Ersatz wie „--“). Möglich sind:
-    - Intrinsik `realsense_factory`: „Intrinsik: Werkswerte der Kamera, keine eigene Kalibrierung -- Massstab und Verzeichnung koennen abweichen; Kamera neu kalibrieren.“
-    - Intrinsik `placeholder`: „Intrinsik: Platzhalter, die Posen sind nicht massshaltig.“
-    - keine Verfeinerung möglich: „Keine gemeinsame Verfeinerung gegen die Bildpunkte moeglich -- Ergebnis nur aus Park-Martin.“
-    - `|boardScale − 1| > 0,3 %`: „Brettmassstab weicht X,X % vom Nennmass ab -- Brett nachmessen / Intrinsik pruefen.“
-    - Die Liste ist leer, wenn nichts zu melden ist.
-  - neu `sessionPath`: Ordner des Datensatzes, oder `null`, wenn er nicht geschrieben werden konnte.
-- `current` (neu, zusätzlich zu den bisherigen Feldern): `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`. Jeweils aus `cam_flange.json`, `null` wenn nicht gespeichert.
+- Top level:
+  - `intrinsicsSource` (new): `"calibration"`, `"realsense_factory"`, `"placeholder"` or `null` (unknown).
+  - `samples[i]` (new): `looErrorPx`, `looErrorM`. Only after `Finish` and only for non-rejected captures, otherwise `null`.
+- `result` (only after a successful `Finish`, otherwise `null`):
+  - existing: `poseFlangeCam`, `rmsPositionM`, `rmsRotationDeg`, `maxPositionM`, `maxRotationDeg`, `sampleCount`, `rejectedCount`, `rejectedSamples`, `knownTagCheckM`, `knownTagCheckDeg`, `path`, `backupPath`.
+  - new `refinedReprojectionRmsPx`: RMS of the joint refinement in px. `null` without a board or without refinement.
+  - new `boardScale`: board scale against the nominal size (1.0 = correct). `null` without refinement.
+  - new `looErrorRmsPx`, `looErrorRmsM`: RMS of the leave-one-out prediction error, in px and m (camera frame). `null` if fewer than 4 captures remain.
+  - new `refinementConverged`: `true` / `false` / `null`.
+  - new `targetInBase`: `{position: [x, y, z], orientation: [x, y, z, w]}` in m, base frame. With a board, the board origin (first inner corner, +z into the board) from the refinement, otherwise the mean of `F · X · C`. In tag mode the tag. So **not** `null` without refinement.
+  - new `warnings`: list of German texts (Pi wording with ASCII replacements such as „--“). Possible are:
+    - Intrinsics `realsense_factory`: "Intrinsik: Werkswerte der Kamera, keine eigene Kalibrierung -- Massstab und Verzeichnung koennen abweichen; Kamera neu kalibrieren." (Intrinsics: camera factory values, no own calibration -- scale and distortion may deviate; recalibrate the camera.)
+    - Intrinsics `placeholder`: "Intrinsik: Platzhalter, die Posen sind nicht massshaltig." (Intrinsics: placeholder, the poses are not dimensionally accurate.)
+    - No refinement possible: "Keine gemeinsame Verfeinerung gegen die Bildpunkte moeglich -- Ergebnis nur aus Park-Martin." (No joint refinement against the image points possible -- result from Park-Martin only.)
+    - `|boardScale − 1| > 0.3 %`: "Brettmassstab weicht X,X % vom Nennmass ab -- Brett nachmessen / Intrinsik pruefen." (Board scale deviates X,X % from the nominal size -- re-measure the board / check the intrinsics.)
+    - The list is empty if there is nothing to report.
+  - new `sessionPath`: folder of the record, or `null` if it could not be written.
+- `current` (new, in addition to the existing fields): `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`. Each from `cam_flange.json`, `null` if not saved.
 
-**`data/handeye/cam_flange.json`** (Schema `wsc.vision.handeye/1`): bisherige Schlüssel unverändert. Zusätzlich, nur wenn vorhanden: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`. Vor dem Überschreiben wird die alte Datei als `cam_flange.json.<UTC>.bak` gesichert.
+**`data/handeye/cam_flange.json`** (schema `wsc.vision.handeye/1`): existing keys unchanged. Additionally, only if present: `refinedReprojectionRmsPx`, `boardScale`, `looErrorRmsPx`, `looErrorRmsM`, `intrinsicsSource`. Before overwriting, the old file is backed up as `cam_flange.json.<UTC>.bak`.
 
-**Sitzungsdatensatz** `data/handeye/sessions/<UTC-Start>/` (`<UTC-Start>` = `YYYYMMDDTHHMMSSZ`, Zeit des `Start`):
+**Session record** `data/handeye/sessions/<UTC-Start>/` (`<UTC-Start>` = `YYYYMMDDTHHMMSSZ`, time of `Start`):
 
-- `session.json`, Schema `wsc.vision.handeye.session/1`:
-  - `outcome`: `"finished"`, `"refused"` (zu wenige Drehachsen) oder `"failed"` (Solver-Fehler, Speicherfehler).
+- `session.json`, schema `wsc.vision.handeye.session/1`:
+  - `outcome`: `"finished"`, `"refused"` (fewer than 3 rotation axes) or `"failed"` (solver error, save error).
   - `createdAt`, `frameId`, `tagId`, `tagInBase`, `board` (`type`, `cols`, `rows`, `squareSizeM`), `intrinsicsSource`.
-  - `intrinsics`: `cameraMatrix`, `distortionCoefficients`, `distortionModel`, `imageSize`, `calibrationId`, `frameId`; `null` ohne Kalibrierung.
-  - `samples[]`: `index`, `accepted`, `detail`, `flangeInBase`, `camToTarget`, `reprojectionErrorPx`, `cornersPx` (N × 2 im verzerrten Bild), `image` (Dateiname oder `null`).
-  - `result`: wie im Status.
-- `sample_NNN.png` je Aufnahme mit Bild (Nummer = `index`, dreistellig).
-- Ein zweiter Versuch derselben Sitzung überschreibt den Ordner.
+  - `intrinsics`: `cameraMatrix`, `distortionCoefficients`, `distortionModel`, `imageSize`, `calibrationId`, `frameId`; `null` without a calibration.
+  - `samples[]`: `index`, `accepted`, `detail`, `flangeInBase`, `camToTarget`, `reprojectionErrorPx`, `cornersPx` (N × 2 in the distorted image), `image` (file name or `null`).
+  - `result`: as in the status.
+- `sample_NNN.png` per capture with image (number = `index`, three digits).
+- A second attempt of the same session overwrites the folder.
 
-**Pose-Format** überall: `{"position": [x, y, z], "orientation": [x, y, z, w]}`, Meter und Quaternion `xyzw`.
+**Pose format** everywhere: `{"position": [x, y, z], "orientation": [x, y, z, w]}`, meters and quaternion `xyzw`.
 
-### Netz / Betrieb
+### Network / operations
 
-Keine neuen Ports, Services oder mDNS-Namen. Die Datensätze liegen auf dem Hand-Pi unter `data/handeye/sessions/`, `data/` ist nicht versioniert. Der Offline-Lauf (`--session`) braucht nur das Repo und numpy/OpenCV, kein Netz.
+No new ports, services or mDNS names. The records lie on the hand Pi under `data/handeye/sessions/`; `data/` is not versioned. The offline run (`--session`) needs only the repo and numpy/OpenCV, no network.
 
-### Frontend (webskillcomposition, Branch `handeye-genauigkeit`)
+### Frontend (webskillcomposition, branch `handeye-genauigkeit`)
 
-Nur zur Orientierung, nicht Teil des Pi-Vertrags:
+For orientation only, not part of the Pi contract:
 
-- **Ankunft** (`robotDrive.ts`): erst nach 3 ruhigen Lesungen in Folge (`ARRIVAL_STILL_READS = 3`, Abstand 250 ms). Vorher reichte eine.
-- **Stillstand bei der Aufnahme** (`HandEyeAutoPanel.tsx`, `jointSettling.ts`): 5 Gelenk-Lesungen mit 100 ms Abstand. Streuung je Gelenk höchstens `JOINT_SETTLE_TOLERANCE_RAD = 0,0002` rad, sonst Wiederholung bis zu 3 Mal (800 ms Pause). Danach wird die Pose übersprungen; der Hinweis „Nicht ruhig genug“ nennt sie.
-- **Nachlesen**: nach `CaptureHandEyeSample` werden die Gelenke erneut gelesen. Hat sich ein Gelenk um mehr als 0,0002 rad bewegt, wird die Aufnahme **einmal** wiederholt. Die verdächtige Aufnahme bleibt auf dem Pi (der Pi hat keinen Rückzug), der Hinweis nennt ihre Nummer.
-- **Brettursprung anfahren** (`HandEyeAutoPanel.tsx`, Logik in `handEyeBoardOrigin.ts`): nach der Kalibrierung zweistufig, zuerst 60 mm, dann 10 mm vor die erste Innenecke entlang der Brett-Normalen (+z ins Brett, Werkzeug zeigt ins Brett). Werkzeugspitze = Flansch + 0,1034 m (URDF, sonst Standardwert). Der Bediener misst den Abstand der Spitze zur Ecke.
-- **Anzeige** (`HandEyeCalibrationWindow.tsx`): Vorhersagefehler (`looErrorRmsM`), Brettmaßstab (gelb ab 0,3 %), Hinweis zur Intrinsik (`realsense_factory`, `placeholder` und unbekannte Quellen; `calibration` gilt als gut), `result.warnings`.
-- **Brettgröße** (`DEFAULT_BOARD`): 6 × 7 Innenecken, 23 mm.
+- **Arrival** (`robotDrive.ts`): only after 3 quiet readings in a row (`ARRIVAL_STILL_READS = 3`, 250 ms apart). Before, one was enough.
+- **Standstill during capture** (`HandEyeAutoPanel.tsx`, `jointSettling.ts`): 5 joint readings 100 ms apart. Scatter per joint at most `JOINT_SETTLE_TOLERANCE_RAD = 0.0002` rad, otherwise repeated up to 3 times (800 ms pause). Then the pose is skipped; the hint „Nicht ruhig genug“ (Not steady enough) names it.
+- **Re-reading**: after `CaptureHandEyeSample`, the joints are read again. If a joint has moved by more than 0.0002 rad, the capture is repeated **once**. The suspicious capture stays on the Pi (the Pi has no rollback); the hint names its number.
+- **Approach board origin** (`HandEyeAutoPanel.tsx`, logic in `handEyeBoardOrigin.ts`): after the calibration, in two stages: first 60 mm, then 10 mm in front of the first inner corner along the board normal (+z into the board, tool points into the board). Tool tip = flange + 0.1034 m (URDF, otherwise default value). The operator measures the distance of the tip to the corner.
+- **Display** (`HandEyeCalibrationWindow.tsx`): prediction error (`looErrorRmsM`), board scale (yellow from 0.3 %), intrinsics hint (`realsense_factory`, `placeholder` and unknown sources; `calibration` counts as good), `result.warnings`.
+- **Board size** (`DEFAULT_BOARD`): 6 × 7 inner corners, 23 mm.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behavior |
 | --- | --- |
-| `Finish`, mindestens 3 Aufnahmen, aber weniger als 3 Drehachsen | `INVALID_STATE`, Sitzung bleibt offen, Datensatz `refused`, Grund im Status |
-| `Finish`, weniger als 3 verwertbare Posen | `INVALID_STATE`, Sitzung bleibt offen, Datensatz `failed` |
-| `Finish`, Speichern schlägt fehl | `INTERNAL`, Zustand `failed`, Datensatz `failed` |
-| Intrinsik `realsense_factory` oder `placeholder` | `intrinsicsSource` gesetzt, Warnung in `result.warnings` |
-| `|boardScale − 1| > 0,3 %` | Warnung „Brettmassstab weicht …“ |
-| Ausreißer-Aufnahme (Pixelfehler über Schwelle) | verworfen, Index in `result.rejectedSamples`, Verfeinerung ohne sie neu gerechnet |
-| Keine Ecken oder Intrinsik in der Aufnahme | Park-Martin, Warnung „Keine gemeinsame Verfeinerung …“ |
-| Verfeinerung wirft unerwartet | Park-Martin, Fehler ins Log (Kalibrierung scheitert nicht) |
-| Brett nicht vollständig im Bild | Aufnahme verworfen (`DETECTION_FAILED`), Sitzung läuft weiter |
-| Gelenke nach Aufnahme bewegt | Aufnahme einmal wiederholt (Frontend); die erste bleibt auf dem Pi |
-| `refine_hand_eye` mit weniger als 3 Aufnahmen | `ValueError` |
-| `leave_one_out_errors` mit weniger als 4 Aufnahmen | `ValueError` (im Server: kein LOO, Feld `null`) |
-| `VISION_SUBPIXEL_CORNER_REFINEMENT` unbekannt | `ValueError` beim Start |
+| `Finish`, at least 3 captures but fewer than 3 rotation axes | `INVALID_STATE`, session stays open, record `refused`, reason in the status |
+| `Finish`, fewer than 3 usable poses | `INVALID_STATE`, session stays open, record `failed` |
+| `Finish`, saving fails | `INTERNAL`, state `failed`, record `failed` |
+| Intrinsics `realsense_factory` or `placeholder` | `intrinsicsSource` set, warning in `result.warnings` |
+| `|boardScale − 1| > 0.3 %` | warning „Brettmassstab weicht …“ (Board scale deviates …) |
+| Outlier capture (pixel error above threshold) | rejected, index in `result.rejectedSamples`, refinement recomputed without it |
+| No corners or intrinsics in the capture | Park-Martin, warning „Keine gemeinsame Verfeinerung …“ (No joint refinement …) |
+| Refinement throws unexpectedly | Park-Martin, error written to the log (calibration does not fail) |
+| Board not fully in the image | capture rejected (`DETECTION_FAILED`), session continues |
+| Joints moved after the capture | capture repeated once (frontend); the first one stays on the Pi |
+| `refine_hand_eye` with fewer than 3 captures | `ValueError` |
+| `leave_one_out_errors` with fewer than 4 captures | `ValueError` (in the server: no LOO, field `null`) |
+| `VISION_SUBPIXEL_CORNER_REFINEMENT` unknown | `ValueError` at start |
 
-## Vorgehen
+## Approach
 
-Umsetzung in zwei Teilen, parallel bearbeitet, je von einem Umsetzungsagenten. Tests schreibt und prüft der Hauptagent.
+Implementation in two parts, worked on in parallel, each by an implementation agent. Tests are written and run by the main agent.
 
-**A — Hand-Pi (Branch `apriltag`):**
+**A — Hand Pi (branch `apriltag`):**
 
-1. Eckpunkte je Aufnahme speichern (`HandEyeSession.capture`): Brettecken als Mittel über 5 frische Frames, verwendete Intrinsik. Sitzung als Datensatz nach `data/handeye/sessions/<UTC-Zeit>/`.
-2. Gemeinsame Verfeinerung `refine_hand_eye` in `src/tagloc/handeye.py`: Start = Ergebnis von `solve_hand_eye_robust`; Levenberg-Marquardt in numpy (kein scipy auf dem Pi) über `X` (6), `T_base_board` (6) und optional Maßstab `s` (1). Residuen: Reprojektion aller Brettecken aller Aufnahmen in Pixeln, ohne Verzerrung auf entzerrten Punkten wie in `boards.py`. Huber-Gewichtung. Wiederverwendet werden `compose`, `invert`, `rvec_from_rotation`, `average_poses` aus `src/tagloc/geometry.py`.
-3. Leave-one-out-Vorhersagefehler: `X` ohne Aufnahme `i` verfeinern, Ecken in `i` vorhersagen → `looErrorPx` und `looErrorM` je Aufnahme, RMS im Ergebnis.
-4. Status und Prüfungen: `intrinsicsSource` im Status; Hinweis bei `realsense_factory`; Hinweis bei `|boardScale − 1| > 0,3 %`; `finish` verweigert bei weniger als 3 Drehachsen.
-5. Tag-Pfad: beide IPPE_SQUARE-Lösungen in `src/tagloc/pose.py` mit `cv2.solvePnPRefineLM` verfeinern, die kleinere Reprojektion gewinnt (Muster aus `boards.py`, `estimate_board_pose`). Für `cam_flange` Subpixel-Ecken standardmäßig an (`detector.py`).
+1. Store corner points per capture (`HandEyeSession.capture`): board corners as the mean over 5 fresh frames, intrinsics used. Session as record in `data/handeye/sessions/<UTC-Zeit>/`.
+2. Joint refinement `refine_hand_eye` in `src/tagloc/handeye.py`: start = result of `solve_hand_eye_robust`; Levenberg-Marquardt in numpy (no scipy on the Pi) over `X` (6), `T_base_board` (6) and optionally the scale `s` (1). Residuals: reprojection of all board corners of all captures in pixels, without distortion on undistorted points as in `boards.py`. Huber weighting. Reused: `compose`, `invert`, `rvec_from_rotation`, `average_poses` from `src/tagloc/geometry.py`.
+3. Leave-one-out prediction error: refine `X` without capture `i`, predict the corners in `i` → `looErrorPx` and `looErrorM` per capture, RMS in the result.
+4. Status and checks: `intrinsicsSource` in the status; note for `realsense_factory`; note for `|boardScale − 1| > 0.3 %`; `finish` refuses with fewer than 3 rotation axes.
+5. Tag path: refine both IPPE_SQUARE solutions in `src/tagloc/pose.py` with `cv2.solvePnPRefineLM`; the smaller reprojection wins (pattern from `boards.py`, `estimate_board_pose`). For `cam_flange`, subpixel corners on by default (`detector.py`).
 
-**B — Frontend (webskillcomposition, Branch `handeye-genauigkeit`):**
+**B — Frontend (webskillcomposition, branch `handeye-genauigkeit`):**
 
-1. Stillstand: Ankunft nach 3 ruhigen Polls (`robotDrive.ts`, `HandEyeAutoPanel.tsx`). `settledJoints` verwirft Posen bei Streuung über 0,0002 rad. Nach `CaptureHandEyeSample` Gelenke nachlesen; bei Abweichung Aufnahme verwerfen und wiederholen.
-2. Anzeige: `looErrorMm`-Ersatz `looErrorRmsM`, `refinedReprojectionRmsPx`, `boardScale`, `intrinsicsSource` mit Warnhinweisen (`handEye.ts`, `HandEyeCalibrationWindow.tsx`).
-3. Prüfung „Brettursprung anfahren“ in `HandEyeAutoPanel`: nach `Finish` 10 mm über den `targetInBase`-Ursprung (Brett-Normale) fahren, über bestehendes `driver.moveFlangeTo` / `planMove`. Der Bediener misst den Versatz. Damit lässt sich der Hand-Auge-Fehler vom Tag-Messfehler trennen.
+1. Standstill: arrival after 3 quiet polls (`robotDrive.ts`, `HandEyeAutoPanel.tsx`). `settledJoints` discards poses with scatter above 0.0002 rad. After `CaptureHandEyeSample`, re-read the joints; on deviation, discard the capture and repeat it.
+2. Display: `looErrorMm` replaced by `looErrorRmsM`, `refinedReprojectionRmsPx`, `boardScale`, `intrinsicsSource` with warning notes (`handEye.ts`, `HandEyeCalibrationWindow.tsx`).
+3. Check „Brettursprung anfahren“ in `HandEyeAutoPanel`: after `Finish`, move 10 mm above the `targetInBase` origin (board normal), via the existing `driver.moveFlangeTo` / `planMove`. The operator measures the offset. This separates the hand-eye error from the tag measurement error.
 
-**Befunde, die den Plan begründen:**
+**Findings that justify the plan:**
 
-1. Translation aus fixer Rotation (`solve_hand_eye`): Park-Martin für R, danach ungewichtetes `lstsq` für t. Ein Rotationsfehler von 0,1° ergibt etwa 0,5–1 mm Translationsfehler. Es gibt keine gemeinsame Verfeinerung gegen die Pixelmessung.
-2. Maßstab nicht geprüft: Feldgröße des Bretts (23 mm nominal) und Intrinsik (noch vom alten Brett 7×9/22 mm; stiller Rückfall auf Werks-Intrinsik möglich) skalieren alle `t_C` gleich und erzeugen einen Bias in `t_X`. Mit bekannten Roboter-Translationen ist der Maßstab beobachtbar und kann mitgeschätzt werden.
-3. Tag-Pfad unverfeinert: `CORNER_REFINE_NONE` (`profiles.py`, `subpixel_corner_refinement=False`), IPPE_SQUARE ohne `solvePnPRefineLM`, erste Lösung (`src/tagloc/pose.py`). Der Brett-Pfad macht es bereits richtig.
-4. Gütezahl ist nicht Genauigkeit: Konsistenz statt Vorhersagefehler; kein Wert, der einen Versatz zeigt; `intrinsicsSource` fehlt im Status.
-5. Kleinere Punkte: Stillstand = 1 ruhiger Poll (`robotDrive.ts:343`); Gelenke nach der Aufnahme nicht nachgelesen; `Finish` erzwingt keine 3 Drehachsen; `handeye-schachbrett-automatik.md` nennt falsches Brett (5×6 Innenecken).
+1. Translation from fixed rotation (`solve_hand_eye`): Park-Martin for R, then unweighted `lstsq` for t. A rotation error of 0.1° yields about 0.5–1 mm translation error. There is no joint refinement against the pixel measurement.
+2. Scale not checked: the board square size (23 mm nominal) and the intrinsics (still from the old board 7×9/22 mm; silent fallback to factory intrinsics possible) scale all `t_C` equally and create a bias in `t_X`. With known robot translations, the scale is observable and can be co-estimated.
+3. Tag path unrefined: `CORNER_REFINE_NONE` (`profiles.py`, `subpixel_corner_refinement=False`), IPPE_SQUARE without `solvePnPRefineLM`, first solution (`src/tagloc/pose.py`). The board path already does it correctly.
+4. Quality figure is not accuracy: consistency instead of prediction error; no value that shows an offset; `intrinsicsSource` missing from the status.
+5. Smaller points: standstill = 1 quiet poll (`robotDrive.ts:343`); joints not re-read after the capture; `Finish` does not enforce 3 rotation axes; `handeye-schachbrett-automatik.md` names the wrong board (5×6 inner corners).
 
-## Verifikation
+## Verification
 
 **Pi:**
 
-- `tests/test_handeye_refine.py` (neu): synthetische Ecken mit 0,3 px Rauschen → verfeinertes `X` genauer als Park-Martin. Eingebauter Maßstabsfehler von 1 % → `boardScale` ≈ 1,01, und der Translationsbias von `X` verschwindet. Ausreißer-Aufnahme → Huber hält. LOO-Fehler plausibel.
-- `tests/test_tag_pipeline.py`: gerenderter Tag mit LM genauer als ohne.
-- `tests/test_handeye_session.py`: weniger als 3 Achsen wird verweigert; `intrinsicsSource` im Status.
-- Ausführung: `PYTHONPATH=src python -m unittest discover -s tests -t .`
-- Lauf 28.10.2026 mit der Projekt-venv (`.venv/bin/python`): 865 Tests OK. Frontend-Tests in diesem Lauf nicht geprüft.
+- `tests/test_handeye_refine.py` (new): synthetic corners with 0.3 px noise → refined `X` more accurate than Park-Martin. Built-in scale error of 1 % → `boardScale` ≈ 1.01, and the translation bias of `X` disappears. Outlier capture → Huber holds. LOO error plausible.
+- `tests/test_tag_pipeline.py`: rendered tag more accurate with LM than without.
+- `tests/test_handeye_session.py`: fewer than 3 axes is refused; `intrinsicsSource` in the status.
+- Execution: `PYTHONPATH=src python -m unittest discover -s tests -t .`
+- Run 28.10.2026 with the project venv (`.venv/bin/python`): 865 tests OK. Frontend tests not checked in this run.
 
 **Frontend:**
 
-- vitest für Stillstand, Nachlesen der Gelenke und den Status-Parser.
-- `npm test` und `npx tsc --noEmit`.
+- vitest for standstill, re-reading of the joints and the status parser.
+- `npm test` and `npx tsc --noEmit`.
 
-**Am Aufbau (Nutzer):**
+**At the setup (user):**
 
-- Kalibrierfahrt → `looErrorRmsM` und `boardScale` ablesen.
-- „Brettursprung anfahren“ und Tag-Anfahren vorher und nachher messen. Ziel: Versatz ≤ 1 mm.
+- Calibration drive → read `looErrorRmsM` and `boardScale`.
+- Measure „Brettursprung anfahren“ and tag approach before and after. Target: offset ≤ 1 mm.
 
-## Ergebnisse (synthetisch, 28.10.2026)
+## Results (synthetic, 28.10.2026)
 
-Simulation mit 640 × 480 Pixeln, fx = 466, 15 Aufnahmen, 30 Zufallsseeds. Die Zahlen sind Mediane und 90-%-Perzentile (p90) über die Seeds, nicht am Aufbau gemessen. Ein Auswertungsskript liegt nicht im Repo; `tools/make_synthetic_scene.py` erzeugt nur die Szenen.
+Simulation with 640 × 480 pixels, fx = 466, 15 captures, 30 random seeds. The numbers are medians and 90th percentiles (p90) over the seeds, not measured at the setup. No evaluation script is in the repo; `tools/make_synthetic_scene.py` only generates the scenes.
 
-- **Translation `t_X` (Hand-Auge), Park-Martin gegen verfeinert:**
-  - Park-Martin: Median 1,55 mm, p90 2,3 mm.
-  - Verfeinert bei 0,3 px Rauschen: Median 0,20 mm, p90 0,6 mm.
-- **Brettmaßstab 1 % zu groß:**
-  - Park-Martin: 4,8 mm Versatz in `t_X`.
-  - Verfeinert mit Maßstabsschätzung: 0,20 mm, Maßstab auf 0,06 % genau.
-- **Brett korrekt, Maßstabsschätzung eingeschaltet:** kostet etwas Genauigkeit (p90 0,25 mm → 0,6 mm). Deshalb ist `--no-scale` vorhanden, wenn das Brett nachweislich stimmt.
-- **Tag-Ecken gerendert** (Median der Reprojektion): `none` 0,83 px, `apriltag` 0,70 px, `subpix` 0,35 px.
-- **Tag-Pose mit `solvePnPRefineLM`** (frontal): Flip-Anteil 9,8 % → 0 %, Rotationsfehler 2,3° → 1,3° (Reprojektion 0,3 px).
-- **Warum die Ausreißerprüfung nach der Verfeinerung läuft:** Die alte Prüfung auf der Park-Martin-Streuung verwarf bei einem Maßstabsfehler gute Aufnahmen, weil der Maßstab die Streuung aufbläht.
+- **Translation `t_X` (hand-eye), Park-Martin vs. refined:**
+  - Park-Martin: median 1.55 mm, p90 2.3 mm.
+  - Refined at 0.3 px noise: median 0.20 mm, p90 0.6 mm.
+- **Board scale 1 % too large:**
+  - Park-Martin: 4.8 mm offset in `t_X`.
+  - Refined with scale estimation: 0.20 mm, scale accurate to 0.06 %.
+- **Board correct, scale estimation switched on:** costs some accuracy (p90 0.25 mm → 0.6 mm). Therefore `--no-scale` exists, for when the board is demonstrably correct.
+- **Tag corners rendered** (median of the reprojection): `none` 0.83 px, `apriltag` 0.70 px, `subpix` 0.35 px.
+- **Tag pose with `solvePnPRefineLM`** (frontal): flip share 9.8 % → 0 %, rotation error 2.3° → 1.3° (reprojection 0.3 px).
+- **Why the outlier check runs after the refinement:** The old check on the Park-Martin scatter discarded good captures on a scale error, because the scale inflates the scatter.
 
-Die Zahlen sagen nichts über den festen Versatz am echten FR3 aus; das klärt nur die Messung am Aufbau (siehe Offene Fragen).
+The numbers say nothing about the fixed offset on the real FR3; only the measurement at the setup clarifies that (see open questions).
 
-## Offene Fragen
+## Open questions
 
-- **Messung am Aufbau steht aus.** Ob der feste Versatz unter 1 mm liegt, ist noch nicht gemessen. Ablauf: Kalibrierfahrt; `boardScale` ablesen (Abweichung über 0,3 %: Brett nachmessen oder Intrinsik neu kalibrieren); `looErrorRmsM` ablesen; „Brettursprung anfahren“ und Tag-Anfahren vorher und nachher messen.
-- **Pi-Stand:** Der Pi braucht den Stand `c494f71` auf `apriltag`. Ohne ihn fehlen die neuen Status-Felder, und das Frontend zeigt keine Vorhersagefehler.
-- **Status bleibt `in Arbeit`**, bis die Messung am Aufbau vorliegt.
-- Brettgröße: Nachträge stehen in `handeye-schachbrett-automatik.md` (Ende) und in `vision-server-interface.md`, Abschnitt 15. Die älteren Angaben dort (6×7 **Felder**, Beispiel `cols 5 / rows 6`) bleiben unverändert stehen.
+- **Measurement at the setup is pending.** Whether the fixed offset is below 1 mm has not yet been measured. Procedure: calibration drive; read `boardScale` (deviation above 0.3 %: re-measure the board or recalibrate the intrinsics); read `looErrorRmsM`; measure „Brettursprung anfahren“ and tag approach before and after.
+- **Pi state:** The Pi needs the state `c494f71` on `apriltag`. Without it, the new status fields are missing and the frontend shows no prediction errors.
+- **Status remains `in progress`** until the measurement at the setup is available.
+- Board size: addenda are in `handeye-schachbrett-automatik.md` (end) and in `vision-server-interface.md`, section 15. The older statements there (6×7 **squares**, example `cols 5 / rows 6`) remain unchanged.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Python-API:** `refine_hand_eye` nimmt Posen, Eckensätze, Brettpunkte und K direkt entgegen und liefert `HandEyeRefinement`, nicht `HandEyeSample`/`RefineResult`. Die Ausreißerprüfung sitzt in `refine_hand_eye_robust` (Pixelfehler je Aufnahme, siehe Schnittstellen).
-- **`HandEyeSession.finish()`** gibt `VisionErrorCode` zurück, nicht ein `HandEyeResult`. Das Ergebnis steht im Status unter `result`.
-- **Drehachsen-Prüfung** greift nur, wenn mindestens 3 Aufnahmen angenommen sind. Darunter meldet der Solver die Lage.
-- **Subpixel-Ecken** stehen nicht als Standard in `detector.py`, sondern im Preset `cam_flange` (`server.py`) und sind per `VISION_SUBPIXEL_CORNER_REFINEMENT` übersteuerbar.
-- **Sitzungsdatensatz** kennt zusätzlich `outcome: "refused"` und `"failed"`. Bei `refused` und `failed` bleibt die Sitzung offen.
-- **Frontend:** Der Stillstand prüft 5 Lesungen (vorher nicht festgelegt), die Wiederholung ist 3-mal. Die Brettursprung-Prüfung fährt zweistufig, 60 mm und dann 10 mm vor die Ecke, statt nur 10 mm. `looErrorMm` heißt `looErrorRmsM` (Meter).
-- **Schnittstellenkommentar im Frontend:** `handEye.ts` nennt für `intrinsicsSource` den Wert `"file"`. Der Pi liefert `calibration`. Die Logik (`f5c81ba`) ist richtig, nur der Kommentar ist veraltet.
-- **Tests:** Die Pi-Tests liegen in `tests/test_handeye_refine.py`, `tests/test_handeye_session_refine.py` und `tests/test_subpixel_settings.py`. `tests/test_tag_pipeline.py` und `tests/test_handeye_session.py` bestehen weiter. Frontend: `jointSettling.test.ts`, `handEyeBoardOrigin.test.ts`, `HandEyeCalibrationWindow.test.ts`, `handEye.test.ts`.
+- **Python API:** `refine_hand_eye` takes poses, corner sets, board points and K directly and returns `HandEyeRefinement`, not `HandEyeSample`/`RefineResult`. The outlier check sits in `refine_hand_eye_robust` (pixel error per capture, see Interfaces).
+- **`HandEyeSession.finish()`** returns `VisionErrorCode`, not a `HandEyeResult`. The result is in the status under `result`.
+- **Rotation axis check** applies only if at least 3 captures are accepted. Below that, the solver reports the situation.
+- **Subpixel corners** are not the default in `detector.py`, but in the preset `cam_flange` (`server.py`), and can be overridden via `VISION_SUBPIXEL_CORNER_REFINEMENT`.
+- **Session record** additionally knows `outcome: "refused"` and `"failed"`. For `refused` and `failed`, the session stays open.
+- **Frontend:** The standstill check takes 5 readings (previously not specified); the repetition is 3 times. The board origin check moves in two stages, 60 mm and then 10 mm before the corner, instead of only 10 mm. `looErrorMm` is called `looErrorRmsM` (meters).
+- **Interface comment in the frontend:** `handEye.ts` names the value `"file"` for `intrinsicsSource`. The Pi delivers `calibration`. The logic (`f5c81ba`) is correct; only the comment is outdated.
+- **Tests:** The Pi tests are in `tests/test_handeye_refine.py`, `tests/test_handeye_session_refine.py` and `tests/test_subpixel_settings.py`. `tests/test_tag_pipeline.py` and `tests/test_handeye_session.py` still pass. Frontend: `jointSettling.test.ts`, `handEyeBoardOrigin.test.ts`, `HandEyeCalibrationWindow.test.ts`, `handEye.test.ts`.
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
-- Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/projektdoku/` übernommen (nicht nur hier im Plan stehen lassen).
+- Status set to `done`, actual interfaces entered.
+- Line in the index `doc/projektdoku/arbeitsplaene/README.md` updated.
+- Lasting domain knowledge transferred into the appropriate topic doc under `doc/projektdoku/` (not just left in this plan).
 
-## Nachtrag 28.10.2026: Target 7×10, Brett einstellbar, Livestream
+## Addendum 28.10.2026: Target 7×10, board adjustable, live stream
 
-**Befund am Aufbau.** Bei der Hand-Auge-Sitzung wurde jede Aufnahme verworfen, mit der Meldung „Board-Pose passt schlecht (18.0 px)“. Ursache: Das Frontend suchte 6×7 Innenecken. Das Target hat 8×11 Felder, also 7×10 Innenecken zu 23 mm. Die Suche fand dadurch ein Teilraster mit falsch zugeordneten Ecken, und der Reprojektionsfehler blieb weit über der Schwelle. Die Pi-Presets `cam_ceiling` und `cam_flange` in `src/vision_server/server.py` stehen seit Commit `c615b36` (Kollege, 28.10.2026) auf 7×10 innere Ecken, 23 mm je Feld.
+**Finding at the setup.** During the hand-eye session, every capture was discarded with the message „Board-Pose passt schlecht (18.0 px)“ (Board pose fits poorly (18.0 px)). Cause: the frontend searched for 6×7 inner corners. The target has 8×11 squares, i.e. 7×10 inner corners at 23 mm. The search therefore found a partial grid with wrongly assigned corners, and the reprojection error stayed far above the threshold. The Pi presets `cam_ceiling` and `cam_flange` in `src/vision_server/server.py` have been at 7×10 inner corners, 23 mm per square, since commit `c615b36` (colleague, 28.10.2026).
 
-**Frontend** (`webskillcomposition`, Branch `handeye-brett`, Commit `54a96c8`): Das Brett ist im Hand-Auge-Fenster einstellbar: Innenecken quer, Innenecken hoch, Feldgröße in mm. Standard ist 7×10 / 23 mm. Die Eingabe wird geprüft: ganze Zahlen, quer ≥ 3, hoch ≥ 2, Summe ungerade, Feld 5–100 mm. Die Einstellung wird im Browser unter dem localStorage-Schlüssel `wsc.handEye.board/1` gemerkt. Das Modul ist `model/handEyeBoard.ts` mit `HAND_EYE_DEFAULT_BOARD`, `validateHandEyeBoard`, `loadHandEyeBoard` und `saveHandEyeBoard`.
+**Frontend** (`webskillcomposition`, branch `handeye-brett`, commit `54a96c8`): The board is adjustable in the hand-eye window: inner corners across, inner corners up, square size in mm. The default is 7×10 / 23 mm. The input is validated: integers, across ≥ 3, up ≥ 2, sum odd, square 5–100 mm. The setting is remembered in the browser under the localStorage key `wsc.handEye.board/1`. The module is `model/handEyeBoard.ts` with `HAND_EYE_DEFAULT_BOARD`, `validateHandEyeBoard`, `loadHandEyeBoard` and `saveHandEyeBoard`.
 
-**Posen nachgerechnet** (Simulation, neuer Löser, 7×10-Brett, 640 × 480, Rauschen 0,3 px):
-- Die 18 Auto-Ansichten drehen um alle drei Achsen. RMS der Paardrehungen: 28° / 29° / 56°.
-- Das Brett liegt in allen 18 Ansichten ganz im Bild.
-- Fehler von `t_X`: Median 0,30 mm, p90 0,60 mm. Maßstab: 0,06 %.
-- Ein Satz mit stärkeren Neigungen und drei Abständen (15 Ansichten) war schlechter: 0,54 mm bzw. 1,01 mm. Die Posen bleiben deshalb, wie sie sind.
+**Poses recomputed** (simulation, new solver, 7×10 board, 640 × 480, noise 0.3 px):
+- The 18 auto views rotate about all three axes. RMS of the pair rotations: 28° / 29° / 56°.
+- The board lies entirely in the image in all 18 views.
+- Errors of `t_X`: median 0.30 mm, p90 0.60 mm. Scale: 0.06 %.
+- A set with stronger tilts and three distances (15 views) was worse: 0.54 mm and 1.01 mm respectively. The poses therefore stay as they are.
 
-**Livestream im Kalibriermodus** (`CameraStreamMode` = `calibration`, Commit `6e03cca`):
-- Keine schwarze Schriftkontur mehr. Die Texte werden mit `outline=False` gezeichnet.
-- Oben links steht nur „{n} Ecken“ in Brettfarbe, bei nicht erkanntem Brett „0 Ecken“.
-- Unten links steht nur „Kalibriermodus“. Den Sitzungsfortschritt zeigt das Frontend.
-- Gefundene Ecken sind größer markiert (Radius 6 statt 4, jeweils mal Skalierung, mindestens 3 px).
-- `draw_board_overlay` in `src/tagloc/overlay.py` hat die neuen Schalter `outline` (Standard `True`) und `compact` (Standard `False`). Die CLI-Ansicht ruft mit den Standardwerten auf und ist unverändert.
-- Die Pause während einer Messung oder Hand-Auge-Sitzung (`src/vision_server/runner.py`) gilt im Code nur für den Modus `apriltag`: dann zeigt der Stream das Rohbild (`src/vision_server/stream_overlay.py`, `annotate`). Im Modus `calibration` wird das Overlay davon nicht ausgesetzt.
+**Live stream in calibration mode** (`CameraStreamMode` = `calibration`, commit `6e03cca`) — *removed 17.11.2026; the mode no longer exists, and only the `calibration_progress` hook of the annotator remains:*
+- No more black text outline. The texts are drawn with `outline=False`.
+- Top left shows only „{n} Ecken“ (n corners) in board color, or „0 Ecken“ (0 corners) if the board is not detected.
+- Bottom left shows only „Kalibriermodus“ (calibration mode). The frontend shows the session progress.
+- Found corners are marked larger (radius 6 instead of 4, each times the scale, at least 3 px).
+- `draw_board_overlay` in `src/tagloc/overlay.py` has the new switches `outline` (default `True`) and `compact` (default `False`). The CLI view calls it with the default values and is unchanged.
+- The pause during a measurement or hand-eye session (`src/vision_server/runner.py`) applies in the code only to mode `apriltag`: then the stream shows the raw image (`src/vision_server/stream_overlay.py`, `annotate`). In mode `calibration`, the overlay is not suspended.
 
 **Tests:**
 - Frontend: `handEyeBoard.test.ts`.
-- Pi: `tests/test_stream_calibration_overlay.py` (2 Tests; sie brauchen OpenCV und werden sonst übersprungen).
-- Pi-Suite: 867 Tests, OK (Lauf 28.10.2026 mit der Projekt-venv, `PYTHONPATH=src python -m unittest discover -s tests -t .`).
+- Pi: `tests/test_stream_calibration_overlay.py` (2 tests; they need OpenCV and are otherwise skipped).
+- Pi suite: 867 tests, OK (run 28.10.2026 with the project venv, `PYTHONPATH=src python -m unittest discover -s tests -t .`).
 
-**Nächste Schritte am Aufbau:**
-1. Intrinsik der Handkamera mit dem 7×10-Target neu kalibrieren.
-2. Im Hand-Auge-Fenster 7×10 / 23 mm prüfen und „Brett prüfen“ auslösen.
-3. Kalibrierfahrt durchführen.
-4. `boardScale` und den Vorhersagefehler ablesen.
-5. „Brettursprung anfahren“ ausführen und den Versatz messen.
+**Next steps at the setup:**
+1. Recalibrate the intrinsics of the hand camera with the 7×10 target.
+2. In the hand-eye window, check 7×10 / 23 mm and trigger „Brett prüfen“ (Check board).
+3. Carry out the calibration drive.
+4. Read `boardScale` and the prediction error.
+5. Run „Brettursprung anfahren“ and measure the offset.

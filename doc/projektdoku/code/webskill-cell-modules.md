@@ -30,13 +30,15 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/boardCalibrationPoses.ts`
 
-- Taught FR3 poses for ceiling-camera chessboard calibration (`CALIBRATION_POSITION_COUNT`, joint limit margin, tool point).
+- Taught FR3 poses for ceiling-camera board calibration (joint limit margin, tool point). No fixed count since 17.11.2026: any number from `MIN_CALIBRATION_POSITIONS` (3) on.
 - Entry points: `taughtPositionsFromStorage`, `taughtPositionsForStorage`, `stopsFromPositions`, `variedWrist`, `turnedAboutToolPoint`.
+- Driving order (since 17.11.2026): `runSequence(count)` drives every position as taught, then on the way back only every `RETURN_EVERY`-th (5th) position again with the wrist turned (`variedWrist`); `stopAtStep` gives the target of a step (label suffix "· Rückweg" on the way back).
+- The 54 poses taught in the cell on 17.11.2026 are in `config/camera1CalibrationPositions.ts` (`CAMERA1_DEFAULT_POSITIONS`); `useBoardCalibrationRun` uses them when the browser has no taught set of its own.
 
 ### `model/boardCalibrationRunner.ts`
 
 - State machine that drives the taught board poses, takes pictures, and checks the board is seen (`idle` … states in the header comment).
-- Entry points: `BoardRunner`, `stepsForPasses`, `BoardRunState`, `BoardCheck`; constants `TARGET_PICTURES`, `MAX_PASSES`, `MIN_PICTURES`, `SETTLE_MS`.
+- Entry points: `BoardRunner`, `runLength(count)`, `targetPictures(count)`, `BoardRunState`, `BoardCheck`; constants `MIN_PICTURES`, `SETTLE_MS` (1 s rest before measuring), `ANGLE_TRIES`. `runLength`/`targetPictures` are the length of `runSequence` (one picture per step at most). At the end of the run it asks the Pi to evaluate and drives the board back to the neutral pose (`returnHome`), also when there were too few pictures (since 17.11.2026).
 
 ### `model/boardCentring.ts`
 
@@ -132,7 +134,7 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/handEyeBoardOrigin.ts`
 
-- Offset check ("Brettursprung anfahren"): flange target for driving to the board origin after a calibration.
+- Offset check ("Brettursprung anfahren" (drive to board origin)): flange target for driving to the board origin after a calibration.
 - Entry points: `boardOriginFlangeTarget`, `flangeToToolPose`; constants `FR3_TOOL_OFFSET_M`, `BOARD_ORIGIN_STANDOFF_M`, `BOARD_ORIGIN_APPROACH_M`.
 
 ### `model/handEyeBoardOrigin.test.ts`
@@ -597,7 +599,7 @@ Scope: `frontend/src/features/cell-modules/components/` (28 files, grouped by fe
 ### `components/BoardCalibrationRobot.tsx`
 - Three panels for the robot part of the camera 1 board calibration: `BoardRobotSetup` (choose the robot holding the board, page through or teach saved positions, nothing is driven), `BoardRobotStatus` (live run status, checks, gripper and drive controls), and `BoardRobotAfterRun` (result after the run).
 - Entry points: named exports `BoardRobotSetup`, `BoardRobotStatus`, `BoardRobotAfterRun`, each taking a `BoardCalibrationRun`. Private helpers `GripperButton`, `Checks`, `formatSavedAt`.
-- Uses `model/boardCalibrationPoses` (`CALIBRATION_POSITION_COUNT`), `model/boardCalibrationRunner` (`TARGET_PICTURES`), and type `BoardCalibrationRun` from `model/useBoardCalibrationRun`.
+- Uses `model/boardCalibrationPoses` (`MIN_CALIBRATION_POSITIONS`), `model/boardCalibrationRunner` (`targetPictures`), and type `BoardCalibrationRun` from `model/useBoardCalibrationRun`.
 - Used by `opcua-server/components/CameraCalibrationModal.tsx`.
 
 #### Tag reference

@@ -1,49 +1,68 @@
 # ADP_flexible_Roboterzelle
-Theorie &amp; Praxis: Untersuchung und Implementierung von Lokalisierungsmethoden für rekonfigurierbare Roboterzellen.
-# Lokalisierung in modularen Roboterzellen
+Theory &amp; practice: investigation and implementation of localization methods for reconfigurable robot cells.
+# Localization in modular robot cells
 
-Dieses Repository enthält sowohl die praktische Software-Implementierung als auch die LaTeX-Quelldateien unserer Gruppenarbeit zur Positions- und Topologieerfassung von mechatronischen Modulen. 
+This repository contains both the practical software implementation and the LaTeX source files of our group work on position and topology detection of mechatronic modules. 
 
-## Projektfokus
-Ziel der Arbeit ist die Untersuchung, Evaluation und **praktische Umsetzung** verschiedener Lokalisierungstechnologien für den Einsatz in einer flexiblen, modularen Labor-Roboterzelle (ca. 5x5 Meter). Betrachtet werden unter anderem:
-* **optische Marker Erkennung:** 
-* **Topologische Erkennung:** Nahbereichslokalisierung an mechanischen Schnittstellen (z.B. Near Field Magnetic Positioning).
-* **UBW Erkennung:**
+## Project focus
+The goal of the work is the investigation, evaluation and **practical implementation** of various localization technologies for use in a flexible, modular laboratory robot cell (approx. 5x5 meters). Among others, the following are considered:
+* **optical marker detection:** 
+* **Topological detection:** short-range localization at mechanical interfaces (e.g. Near Field Magnetic Positioning).
+* **UBW detection:**
 
-## Repository-Struktur
-Das Projekt ist strikt in Dokumentations- und Code-Bestandteile getrennt:
+## Repository structure
+The project is strictly separated into documentation and code components:
 
-### Dokumentation
-* `/doc` - Die LaTeX-Quelldateien der schriftlichen Ausarbeitung.
-* `/doc/projektdoku` - Die technische Projektdokumentation als Markdown (siehe unten).
-* `/concept` - Ablaufdiagramm und offene Konzeptfragen.
+### Documentation
+* `/latex` - The LaTeX source files of the written thesis (synced with ShareLaTeX, see `GIT_ANLEITUNG.md`).
+* `/doc/projektdoku` - The technical project documentation as Markdown (see below).
+* `/doc/auswertung` - Evaluation reports of calibration and measurement runs.
+* `/concept` - Flow diagram and open concept questions.
 
-### Implementierung (Source Code)
-* `/src/tagloc` - AprilTag-Lokalisierung: Kalibrierung, Erkennung, Koordinatensysteme.
-* `/src/vision_server` - Das Vision-System (OPC 40100 + Teil 10) samt dem Server
-  der Zelle (`server.py`), der Auffindbarkeit (`discovery/`) und den
-  vendorierten Nodesets (`nodesets/`).
-* `/src/ua_program` - Rudimentäre Umsetzung von OPC-UA-Programmen (Spec Teil 10).
-* `/src/jobs` - Prüfauftrag `calibrate.py`, den der Vision-Server als Unterprozess startet.
-* `/deploy` - Vorlage der systemd-Unit `opcua-server.service` für die Pis samt Einspielanleitung.
-* `/tools` - Druckbogen für Tags und Boards, synthetische Testszenen.
-* `/config` - Tag-Map (Zellenlayout), versioniert.
-* `/hardware` - CAD-Dateien, Schaltpläne oder 3D-Druck-Modelle für die Sensorhalterungen.
-* `/data` - Kalibrierdateien und Aufnahmen. Maschinenspezifisch, **nicht** versioniert.
+### Implementation (source code)
+* `/src/tagloc` - AprilTag localization: calibration, detection, coordinate systems.
+* `/src/vision_server` - The vision system (OPC 40100 + Part 10) including the cell's server
+  (`server.py`), discoverability (`discovery/`) and the vendored nodesets (`nodesets/`).
+* `/src/ua_program` - Basic implementation of OPC UA programs (spec Part 10).
+* `/src/jobs` - Inspection job `calibrate.py`, which the vision server starts as a subprocess.
+* `/deploy` - Template of the systemd unit `opcua-server.service` for the Pis, including deployment instructions.
+* `/tools` - Print sheets for tags and boards, synthetic test scenes.
+* `/config` - Tag map (cell layout), versioned.
+* `/hardware` - CAD files, circuit diagrams or 3D-printing models for the sensor mounts.
+* `/data` - Calibration files and recordings. Only selected files are versioned (see [`code/zelle-tools-tests.md`](doc/projektdoku/code/zelle-tools-tests.md)).
 * `/tests` - `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
-## Technische Dokumentation
+## Technical documentation
 
-| Dokument | Wofür |
+The documentation has two levels:
+
+1. **Start here: short documentation of the current code.** Written for people who want to understand
+   and use the code (team members, reviewers of the thesis). It describes only the current state on `main`.
+2. **In-depth documents.** Concepts, full references, test instructions, work plans and audits. Most of
+   them were written while developing with AI agents and also contain history and decisions. Read them
+   when you need the details of one topic.
+
+### 1. Start here
+
+| Document | Purpose |
 | --- | --- |
-| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | Konzept: was AprilTags hier bedeuten, wie Layer 1 und Layer 2 dieselbe Funktionalität benutzen |
-| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Funktions- und CLI-Referenz, Dateiformate, Payload |
-| [`doc/projektdoku/apriltag-e2e-test.md`](doc/projektdoku/apriltag-e2e-test.md) | **Wie man alles durchtestet** — vom PC bis zur Raspberry-Pi-Kamera |
-| [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | OPC-UA-Schnittstelle für das Backend (OPC 40100) |
-| [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | **Part-10-Programm und mDNS** — die generische Bedienoberfläche der Zelle und die Auffindbarkeit im Netz |
-| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | Ist-Stand des Vision-Systems |
-| [`doc/projektdoku/code-dokumentation.md`](doc/projektdoku/code-dokumentation.md) | **Code-Dokumentation**: Überblick über den Code, OPC-UA-Verbindungen und Einstiegspunkte; Details je Bereich unter `doc/projektdoku/code/` |
-| [`doc/projektdoku/altlasten-zelle.md`](doc/projektdoku/altlasten-zelle.md) | Aufräum-Audit dieses Repos: toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken |
-| [`doc/projektdoku/altlasten-wsc.md`](doc/projektdoku/altlasten-wsc.md) | Aufräum-Audit unseres Anteils an webskillcomposition, dazu die Welttag-Kette über beide Repos |
-| [`doc/projektdoku/altlasten.md`](doc/projektdoku/altlasten.md) | Was warum noch drin ist und wann es rausfliegt |
-| [`concept/offene_punkte.md`](concept/offene_punkte.md) | Offene Konzeptfragen der Lokalisierung |
+| [`doc/projektdoku/code-dokumentation.md`](doc/projektdoku/code-dokumentation.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
+| [`doc/projektdoku/vision-server-interface-short.md`](doc/projektdoku/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
+| [`doc/projektdoku/code/`](doc/projektdoku/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |
+| [`doc/projektdoku/apriltag-e2e-test.md`](doc/projektdoku/apriltag-e2e-test.md) | How to test everything end to end, from the PC to the Raspberry Pi camera |
+
+### 2. In-depth documents
+
+| Document | Purpose |
+| --- | --- |
+| [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | Full OPC UA interface reference for the backend (OPC 40100), including pitfalls and details per method |
+| [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | Part 10 program and mDNS: the generic operator interface of the cell and discoverability on the network |
+| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | Concept: what AprilTags mean here, how Layer 1 and Layer 2 use the same functionality |
+| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Function and CLI reference, file formats, payload |
+| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | State of the vision system |
+| [`doc/projektdoku/vision-system-integration.md`](doc/projektdoku/vision-system-integration.md) | Target plan for integrating the two OPC UA vision systems (OPC 40100) into webskillcomposition |
+| [`doc/projektdoku/arbeitsplaene/`](doc/projektdoku/arbeitsplaene/README.md) | Work plans of all features (planning, decisions, status) |
+| [`doc/projektdoku/arbeitsplaene/altlasten-zelle.md`](doc/projektdoku/arbeitsplaene/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
+| [`doc/projektdoku/arbeitsplaene/altlasten-wsc.md`](doc/projektdoku/arbeitsplaene/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
+| [`doc/projektdoku/arbeitsplaene/altlasten.md`](doc/projektdoku/arbeitsplaene/altlasten.md) | What is still in there and why, and when it will be removed |
+| [`concept/offene_punkte.md`](concept/offene_punkte.md) | Open concept questions of the localization |

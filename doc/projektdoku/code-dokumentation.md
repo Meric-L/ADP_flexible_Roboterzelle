@@ -1,6 +1,6 @@
 # Code Documentation: Overview
 
-Status: 2026-11-16. Covers the ADP repository (branch `apriltag-aufraeumen`) and the
+Status: 2026-11-17. Covers the ADP repository (branch `main`) and the
 webskillcomposition repository (branch `ADP_Lokalisierung`, our share of the code).
 
 This page is the entry point. It shows which parts exist, how they connect, and where
@@ -19,9 +19,9 @@ each part is described in detail. The detail pages are in [`code/`](code/).
 
 | Area | Repository and branch | Detail page |
 | --- | --- | --- |
-| Localization library, CLI, jobs, use-case evaluation, UA program (`src/tagloc/`, `src/jobs/`, `src/use_case_eval/`, `src/ua_program/`) | ADP, `apriltag-aufraeumen` | [`code/zelle-tagloc.md`](code/zelle-tagloc.md) |
-| Vision server on the Raspberry Pis, OPC UA (`src/vision_server/`) | ADP, `apriltag-aufraeumen` | [`code/zelle-vision-server.md`](code/zelle-vision-server.md) |
-| Tools, deployment, config, data layout, tests (`tools/`, `deploy/`, `config/`, `data/`, `tests/`) | ADP, `apriltag-aufraeumen` | [`code/zelle-tools-tests.md`](code/zelle-tools-tests.md) |
+| Localization library, CLI, jobs, use-case evaluation, UA program (`src/tagloc/`, `src/jobs/`, `src/use_case_eval/`, `src/ua_program/`) | ADP, `main` | [`code/zelle-tagloc.md`](code/zelle-tagloc.md) |
+| Vision server on the Raspberry Pis, OPC UA (`src/vision_server/`) | ADP, `main` | [`code/zelle-vision-server.md`](code/zelle-vision-server.md) |
+| Tools, deployment, config, data layout, tests (`tools/`, `deploy/`, `config/`, `data/`, `tests/`) | ADP, `main` | [`code/zelle-tools-tests.md`](code/zelle-tools-tests.md) |
 | Cell modules: model and UI (`frontend/src/features/cell-modules/`) | webskillcomposition, `ADP_Lokalisierung` | [`code/webskill-cell-modules.md`](code/webskill-cell-modules.md) |
 | Other frontend code (OPC UA connection, viewport, robot control, tag tool, shared code) | webskillcomposition, `ADP_Lokalisierung` | [`code/webskill-frontend.md`](code/webskill-frontend.md) |
 | Backend: API, WebSocket, OPC UA client, runtime | webskillcomposition, `ADP_Lokalisierung` | [`code/webskill-backend.md`](code/webskill-backend.md) |
@@ -79,7 +79,7 @@ hard-coded. Details: [`code/zelle-vision-server.md`](code/zelle-vision-server.md
 Where the robot and the Pis exchange work, the data formats are fixed in the interface
 documents:
 
-- Pi OPC UA interface (methods, nodes, payloads): [`vision-server-interface.md`](vision-server-interface.md)
+- Pi OPC UA interface (methods, nodes, payloads): short version [`vision-server-interface-short.md`](vision-server-interface-short.md), full reference [`vision-server-interface.md`](vision-server-interface.md)
 - Frontend and backend data model (webskillcomposition): `docs/data-and-interface-model.md`
   in the webskillcomposition repository
 
@@ -87,7 +87,8 @@ documents:
 
 | Document | Use |
 | --- | --- |
-| [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server |
+| [`vision-server-interface-short.md`](vision-server-interface-short.md) | OPC UA interface of the Pi server, short (start here) |
+| [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server, full reference |
 | [`vision-system.md`](vision-system.md) | State of the vision system on the Pis |
 | [`vision-system-integration.md`](vision-system-integration.md) | Integration into webskillcomposition |
 | [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | AprilTag localization concept |
@@ -104,7 +105,9 @@ documents:
    (`MeasureTags`), or plans the run itself (`StartLayer2Run` → `Layer2Target` →
    `ReportRobotPose`). The camera pose is the flange pose times the hand-eye transform.
 3. **Calibration:**
-   - Ceiling Pi: `StartCalibration` … `FinishCalibration` (intrinsics only).
+   - Ceiling Pi: `StartCalibration` … `FinishCalibration` (intrinsics only). The board
+     is chosen with `StartCalibration`'s `OptionsJson` (since 17.11.2026); empty means the
+     configured board.
    - Hand Pi: `StartHandEyeCalibration` with `fullCalibration: true`. The robot moves
      through the poses; at the end the Pi writes intrinsics and hand-eye, keeps the old
      files as `.bak`, and applies both live.

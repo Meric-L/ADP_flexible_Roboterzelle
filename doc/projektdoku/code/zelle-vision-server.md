@@ -1,6 +1,6 @@
 # Zelle: vision server (OPC UA, Pi side)
 
-Detailed reference for `src/vision_server/` in the ADP repository (branch `apriltag-aufraeumen`). Overview: [code-dokumentation.md](../code-dokumentation.md). Interface details: [vision-server-interface.md](../vision-server-interface.md).
+Detailed reference for `src/vision_server/` in the ADP repository (branch `main`, as of 2026-11-17). Overview: [code-dokumentation.md](../code-dokumentation.md). Interface: [short](../vision-server-interface-short.md), [full reference](../vision-server-interface.md).
 
 
 The runtime of the vision server: `runner/` assembles the OPC UA address space methods and nodes into one `VisionMachine` (or runs it as its own process). `layer2/` holds the Layer 2 run on the hand-camera Pi (planning and run logic, numpy/asyncua-free run flow). `discovery/` announces the server on the network (mDNS and the cell's Local Discovery Server). `nodesets/` contains vendored OPC UA companion specifications.
@@ -64,6 +64,7 @@ The runtime of the vision server: `runner/` assembles the OPC UA address space m
 
 - `_build_calibration_session(...)`: a `CalibrationSession` when `config.apriltag` is set and the AprilTag source is open with a camera.
 - Methods: `StartCalibration`, `CaptureCalibrationSample`, `FinishCalibration`, `AbortCalibration`. `FinishCalibration` returns at once; evaluation runs in the background while the live stream is paused and `CalibrationProgress` is written every `CALIBRATION_PROGRESS_INTERVAL_S` (1.0 s).
+- `StartCalibration` takes one input, `OptionsJson` (String) (added 17.11.2026). Empty uses the configured board; otherwise the board is parsed by `parse_start_options`. An unusable board answers `INVALID_ARGUMENT` (2), starts nothing, and writes the reason to `CalibrationProgress.startError`.
 - `ActiveCalibrationInfo` is written at start-up and after a live recalibration (`connect_live_calibration` applies the calibration to the source and the annotator).
 - Details: `doc/projektdoku/vision-server-interface.md`.
 
@@ -221,6 +222,9 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Profile dataclasses with stdlib types only: `AprilTagProfileConfig`, `CameraStreamConfig`, `AssetConfig`. Matrices are not stored here; `K` and `D` come from the calibration file.
 - `CAMERA_BACKENDS` = `picamera2`, `opencv`, `realsense`.
 - Default paths: `DEFAULT_CALIBRATION_PATH` (`data/calibration/camera.json`), `DEFAULT_TAG_MAP_PATH` (`config/tagmap.json`), `DEFAULT_HAND_EYE_PATH` (`None`).
+- `AprilTagProfileConfig.calibration_board_spec()` (added 17.11.2026): the one place that turns the `calibration_board_*` fields into a `tagloc.boards.BoardSpec`. Used by the calibration session and `MeasureBoard`'s default board.
+- `CameraStreamConfig.stream_enabled=False` only suppresses the stream nodes; `resolution` still configures the job camera, so never set the whole `camera_stream` to `None` to switch the stream off (the fallback default would change the job resolution).
+- `AprilTagProfileConfig.detection_roi` hides tags outside the rectangle, world tags included; corners stay in full-frame coordinates.
 
 **Group: job, state, address space and events**
 
@@ -299,8 +303,10 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 
 ### `src/vision_server/calibration_session.py`
 - Interactive camera calibration against the already running shared camera, driven by the frontend. Captures are triggered manually.
-- Entry points: `CalibrationSession` with `start()`, `capture()`, `finish()` (returns `(VisionErrorCode, dict)`), `abort()`, `progress()`, `set_on_calibrated(callback)`.
-- Constants: `MIN_SAMPLES_FOR_CALIBRATION` = 3, `RMS_WARNING_PX` = 0.5, `CAPTURE_DETECT_TIMEOUT_S` = 20. Archive schema `adp.calibration.captures/1`.
+- Entry points: `CalibrationSession` with `start(board=None)`, `capture()`, `finish()` (returns `(VisionErrorCode, dict)`), `abort()`, `progress()`, `set_on_calibrated(callback)`, property `board_spec`, and `start_error` (why the last start options were refused).
+- `parse_start_options(text)` (added 17.11.2026): turns the `OptionsJson` of `StartCalibration` (schema `wsc.vision.calibration.start/1`) into a `BoardSpec`, or `None` for the configured board. Board rules are those of the hand-eye calibration (`handeye_session._parse_board`, `check_raw_board`). Raises `ValueError` with a German message.
+- The board of a session is used for evaluation, the archive (`session.json`, `board`), `progress()` (`board`) and the stream overlay. Without a session it is the configured board.
+- Constants: `MIN_SAMPLES_FOR_CALIBRATION` = 3, `RMS_WARNING_PX` = 0.5, `CAPTURE_DETECT_TIMEOUT_S` = 20. Archive schema `adp.calibration.captures/1`. Start options schema `START_SCHEMA` = `wsc.vision.calibration.start/1`.
 - Used by `runner/calibration.py`. Background: `doc/projektdoku/arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md`.
 
 ### `src/vision_server/handeye_session.py`
@@ -308,6 +314,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Entry points: `HandEyeSession.start`, `capture`, `finish`, `abort`, `status_json`; parsers `parse_start`, `parse_sample`, `check_raw_board`; `save_with_backup`.
 - Constants: `RECOMMENDED_SAMPLES` = 8, `REQUIRED_AXES` = 3. Schemas `wsc.vision.handeye.{start,sample,status}/1`.
 - Used by `runner/hand_eye.py`. Background: `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+- Only the images of the current calibration are kept (since 17.11.2026, like the ceiling camera): `start` deletes the earlier session folders (named by a UTC stamp) under the dataset folder (`data/handeye/sessions/`) and, for a raw-image session, under `data/rohbilder/calibration/`. Calibration files and their `.bak` backups are not touched.
 
 **Group: measurement (hand Pi, ceiling camera, raw images)**
 
@@ -359,14 +366,15 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 **Group: streaming**
 
 ### `src/vision_server/camera_stream.py`
-- Publishes the shared camera's frames as a Base64 JPEG on the node `LatestCameraFrame`. The writable node `CameraStreamMode` selects the overlay: `off`, `apriltag`, `calibration`, `undistorted`.
+- Publishes the shared camera's frames as a Base64 JPEG on the node `LatestCameraFrame`. The writable node `CameraStreamMode` selects the overlay: `off`, `apriltag`, `undistorted`, `tagreference` (the mode `calibration` was removed on 17.11.2026).
 - Entry points: `CameraStreamPublisher` (`start`, `stop`, `latest`, `next_frame`, `viewer`). It also publishes calibration progress and preview status nodes.
 - Takes an annotator object for the overlay. Camera health is not checked here; the image freezes when the camera hangs.
 
 ### `src/vision_server/stream_overlay.py`
-- Overlay for the livestream: draws detected tags, calibration board corners, or the tag reference preview onto a copy of the frame.
+- Overlay for the livestream: draws detected tags or the tag reference preview onto a copy of the frame.
+- Removed 17.11.2026: the `calibration` mode (board corners in the preview image). `set_calibration_session` and `calibration_progress` stay: the publisher still reads the attached session's progress from them.
 - Entry points: `AprilTagStreamAnnotator` with `annotate(image, mode)`, `apply_calibration`, `set_calibration_session`, `set_reference_preview`, `set_reference_measuring`, `close`.
-- Rules: never modifies `SharedCamera.latest_frame`; detection runs at most every `overlay_interval_s`, and the last result is redrawn in between.
+- Rules: never modifies `SharedCamera.latest_frame`; own detection runs at most every `overlay_detect_interval_s`, and the last result is redrawn in between.
 
 ### `src/vision_server/mjpeg_server.py`
 - Serves the live stream as MJPEG over HTTP directly from the Pi to the browser, bypassing the Base64 OPC UA path.
@@ -420,7 +428,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 
 ### `src/vision_server/detection/apriltag/board.py`
 - `BoardMeasureMixin`: `measure_board()` returns `T_cam_board` for hand-eye. `measure_board_view()` gives the centering aid when only part of the grid is visible.
-- Also `capture_board_raw()`, `default_board_spec()`, `_diagnose_board()`. Constant `OBSERVE_MAX_SIDE`.
+- Also `capture_board_raw()`, `default_board_spec()`, `_diagnose_board()`. Constant `OBSERVE_MAX_SIDE`. `default_board_spec()` returns `calibration_board_spec()` (the configured board) and is used when a `MeasureBoard` request has no `board` (since 17.11.2026).
 - Background: `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
 
 ### `src/vision_server/detection/apriltag/reference.py`
@@ -470,7 +478,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Purpose: check whether processing 12 MP images loads the Pi enough to drop the frame rate.
 
 ### `src/vision_server/tools/stream_viewer.py`
-- Local OpenCV window for the camera stream, for a Pi with a monitor attached. Reads `LatestCameraFrame` and defaults to `CameraStreamMode="calibration"`.
+- Local OpenCV window for the camera stream, for a Pi with a monitor attached. Reads `LatestCameraFrame` and defaults to `CameraStreamMode="off"` (was `"calibration"` until 17.11.2026).
 - Entry points: `run`, `main`. Space triggers a calibration capture; `q` or Ctrl+C quits.
 - Positioning aid only, not a measure of whether a capture was usable.
 

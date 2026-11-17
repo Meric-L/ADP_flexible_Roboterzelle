@@ -1,222 +1,221 @@
-# Hand-Auge-Kalibrierung mit Schachbrett-Rohdaten und Offline-Vergleich
+# Hand-Eye Calibration with Chessboard Raw Data and Offline Comparison
 
-**Status:** fertig — 09.11.2026 (ohne Hardwarefahrt)
-**Verantwortlich:** Meric, Codex
-**Thema:** apriltag
-**Branch:** `handauge-schachbrett-offline` (dieses Repo und `webskillcomposition`)
+**Status:** done — 09.11.2026 (no hardware run)
+**Owner:** Meric, Codex
+**Topic:** apriltag
+**Branch:** `handauge-schachbrett-offline` (this repo and `webskillcomposition`)
 
-## Ziel
+## Goal
 
-Die bestehende automatische Hand-Auge-Kalibrierung wird umgebaut: Das Frontend
-fährt bis zu 60 sichere, geometrisch unterschiedliche Posen an. Der Hand-Pi
-speichert pro Pose das Rohbild des bereits konfigurierten Kamerastroms und den gemessenen
-Roboterzustand. Die Berechnung läuft danach beliebig oft offline. Der bestehende
-Button „Kalibrierung starten“ startet die neue Aufnahmefahrt; es gibt keinen
-zusätzlichen Start-Button.
+The existing automatic hand-eye calibration is being reworked: the frontend
+moves to up to 60 safe, geometrically distinct poses. The hand Pi
+stores, per pose, the raw image of the already configured camera stream and the
+measured robot state. The calculation then runs offline as often as needed. The
+existing button "Kalibrierung starten" (start calibration) starts the new capture
+run; there is no additional start button.
 
-Das Schachbrett hat 8 × 11 Felder, also 7 × 10 innere Ecken, bei 0,023 m
-Feldgröße. Die Kameraintrinsik bleibt fest. 0,5 mm sind ein Entwicklungsziel,
-keine aus Reprojektion allein nachweisbare Genauigkeit.
+The chessboard has 8 × 11 squares, i.e. 7 × 10 inner corners, with a 0.023 m
+square size. The camera intrinsics stay fixed. 0.5 mm is a development target,
+not an accuracy that can be demonstrated from reprojection alone.
 
-## Bereits gelesen
+## Already read
 
 - `CLAUDE.md`, `arbeitsplaene/README.md`
 - `handeye-schachbrett-automatik.md`, `handeye-ueber-opcua.md`, `handeye-genauigkeit.md`
 - `src/tagloc/boards.py`, `src/tagloc/handeye.py`, `src/vision_server/handeye_session.py`
 - `webskillcomposition/frontend/src/features/cell-modules/model/handEyeAutoPoses.ts`
 
-## Betroffene Dateien
+## Affected files
 
 - Pi: `src/vision_server/detection/apriltag/board.py`,
   `handeye_session.py`, `runner/hand_eye.py`
 - Offline: `src/tagloc/handeye_offline.py`,
   `src/tagloc/cli/calibrate_handeye_offline.py`, `requirements.txt`
 - Frontend: `HandEyeAutoPanel.tsx`, `handEyeAutoPoses.ts`, `handEye.ts`
-- Tests: Rohdaten- und Solver-Tests; Frontend-Posen-Tests
+- Tests: raw data and solver tests; frontend pose tests
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Die bestehenden Methoden und NodeIds bleiben. `StartHandEyeCalibration`
-akzeptiert bei `board` zusätzlich `captureOnly: true`. In diesem Modus
-schließt `FinishHandEyeCalibration` nur den Datensatz; es berechnet und
-aktiviert keine Transformation. `AbortHandEyeCalibration` erhält bereits
-geschriebene Rohbilder. Der `HandEyeStatus` enthält `sessionPath`.
+The existing methods and NodeIds remain. `StartHandEyeCalibration`
+additionally accepts `captureOnly: true` for `board`. In this mode
+`FinishHandEyeCalibration` only closes the data set; it does not calculate or
+activate any transformation. `AbortHandEyeCalibration` keeps raw images that have
+already been written. The `HandEyeStatus` contains `sessionPath`.
 
-`CaptureHandEyeSample` erhält im Aufnahmemodus zusätzlich `poseId` im Format
-`pose_NNN`, `poseGroup` (`A`–`E`) und `jointAnglesRad` (sieben Winkel). Die
-Flanschpose `flangeInBase` stammt aus FK über diese gemessenen Gelenkwinkel.
+In capture mode, `CaptureHandEyeSample` additionally receives `poseId` in the format
+`pose_NNN`, `poseGroup` (`A`–`E`) and `jointAnglesRad` (seven angles). The flange
+pose `flangeInBase` comes from FK over these measured joint angles.
 
-### Daten
+### Data
 
-Unter `data/rohbilder/calibration/<UTC>_<ID>/` liegen `config.json`,
-`poses/pose_NNN/camera.png`, `poses/pose_NNN/robot_state.json` und `results/`.
-`config.json` enthält Brett, Koordinatenkonventionen, Intrinsik und Bildstrom.
-`robot_state.json` enthält exakt dieselbe `poseId` wie der Ordner, die
-4×4-Matrix `T_base_flange`, Gelenkwinkel, Zeitstempel, Gruppe,
-Aufnahmestatus und Online-Reprojektionsfehler. Bilder werden sofort nach jeder
-Aufnahme geschrieben. Offline-Ergebnisse stehen nur unter `results/`.
+Under `data/rohbilder/calibration/<UTC>_<ID>/` are `config.json`,
+`poses/pose_NNN/camera.png`, `poses/pose_NNN/robot_state.json` and `results/`.
+`config.json` contains the board, coordinate conventions, intrinsics and image stream.
+`robot_state.json` contains exactly the same `poseId` as the folder, the
+4×4 matrix `T_base_flange`, joint angles, timestamp, group,
+capture status and online reprojection error. Images are written immediately after
+each capture. Offline results are stored only under `results/`.
 
-### Python und Betrieb
+### Python and operation
 
-`tagloc.handeye_offline.load_observations(folder, pnp, max_pnp_rms_px)` liest
-alle Originalbilder erneut und cacht Ecken sowie PnP-Diagnosen.
-`solve_subset(...)` berechnet Park, Tsai und Daniilidis und verfeinert
-`T_flange_camera` und `T_base_board` mit SciPy gegen die Bildpunkte.
-`run_experiments(...)` speichert mehrere verteilte Teilmengen und Gruppen.
-Unter `results/` liegen Detektionscache, Experiment-JSON, ein HTML-Vergleich
-und bei konvergierter Gesamtlösung `candidate_handeye_<pnp>.json` im
-bestehenden Hand-Auge-Dateiformat. Diese Kandidatendatei wird nicht aktiviert.
+`tagloc.handeye_offline.load_observations(folder, pnp, max_pnp_rms_px)` reads
+all original images again and caches corners as well as PnP diagnostics.
+`solve_subset(...)` calculates Park, Tsai and Daniilidis and refines
+`T_flange_camera` and `T_base_board` with SciPy against the image points.
+`run_experiments(...)` stores several distributed subsets and groups.
+Under `results/` are the detection cache, experiment JSON, an HTML comparison
+and, when the overall solution has converged, `candidate_handeye_<pnp>.json` in the
+existing hand-eye file format. This candidate file is not activated.
 
-Aufruf: `python -m tagloc.cli.calibrate_handeye_offline <session>`; mit
-`--pnp ippe` wird das alternative planare PnP-Verfahren untersucht.
-Ergebnisse werden nicht automatisch aktiv. Keine neuen Ports oder Dienste.
+Call: `python -m tagloc.cli.calibrate_handeye_offline <session>`; with
+`--pnp ippe` the alternative planar PnP method is examined.
+Results do not become active automatically. No new ports or services.
 
-## Fehlerfälle und Grenzen
+## Failure cases and limits
 
-- Fehlendes Rohbild, falsche Bildgröße oder unvollständiges 7×10-Raster:
-  Aufnahme mit Grund ausschließen.
-- Doppelte oder ungültige Pose-ID und fehlende Gelenkwinkel: Aufnahme ablehnen.
-- Bei Schreibfehler `INTERNAL`; bis dahin geschriebene Daten bleiben erhalten.
-- Keine echte Roboterfahrt ohne die bestehenden Sicherheits- und Bewegungsfreigaben.
-- Eine unabhängige Genauigkeitsvalidierung ist nicht Teil dieses Schritts.
+- Missing raw image, wrong image size or incomplete 7×10 grid:
+  exclude the capture with a reason.
+- Duplicate or invalid pose ID and missing joint angles: reject the capture.
+- On a write error `INTERNAL`; data written up to that point is retained.
+- No real robot motion without the existing safety and motion releases.
+- An independent accuracy validation is not part of this step.
 
-## Offene Prüfung an Hardware
+## Open check on hardware
 
-Konfigurierten RealSense-Strom und zugehörige Intrinsikdatei gegen die
-tatsächliche Auflösung prüfen; die Software kann diese Prüfung ohne Gerät
-nicht durchführen.
+Check the configured RealSense stream and the associated intrinsics file against the
+actual resolution; the software cannot perform this check without the device.
 
-## Stand 09.11.2026: Vergleich mit `cv2.calibrateHandEye` (OpenCV 4.14, offline)
+## State as of 09.11.2026: comparison with `cv2.calibrateHandEye` (OpenCV 4.14, offline)
 
-Beide Sitzungen (`20261109T125050Z_a5c964f0` ChArUco, `20261109T125825Z_a580eaba`
-Schachbrett) wurden in einer separaten Umgebung (`tools/handeye_offline_cv4/`,
-OpenCV 4.14, Pis bleiben auf OpenCV 5) erneut ausgewertet. Bericht:
-`doc/auswertung/calibration_cv4_vergleich.html`, Rohzahlen unter
+Both sessions (`20261109T125050Z_a5c964f0` ChArUco, `20261109T125825Z_a580eaba`
+chessboard) were evaluated again in a separate environment (`tools/handeye_offline_cv4/`,
+OpenCV 4.14; the Pis stay on OpenCV 5). Report:
+`doc/auswertung/calibration_cv4_vergleich.html`, raw figures under
 `doc/auswertung/handeye_cv4/`.
 
-- cv2-Park ist identisch mit `park_numpy`; Tsai/Daniilidis weichen ≤ 0,45 mm ab.
-  Das fehlende `calibrateHandEye` unter OpenCV 5 hat die Ergebnisse nicht verfälscht.
-- Ergebnis bleibt die Reprojektions-Verfeinerung (aus jedem Start dieselbe Lösung);
-  geschlossene Verfahren nur als Startwert, ihre Translation ist bei kleinen
-  Drehwinkeln schlecht bestimmt (6,7 bzw. 8,3 mm daneben).
-- Der Fehler je Pose ist ein starrer Versatz und wächst mit der Aufnahmezeit;
-  ein Modell mit linear wandernder Brettlage erklärt in Sitzung 1 einen großen Teil
-  (Drift 4,1 mm), in Sitzung 2 wenig (2,0 mm). Ursache nicht belegt.
-- 0,5 mm nicht erreichbar mit diesen Daten. Nächster Schritt (braucht Roboterfahrt,
-  erst nach Freigabe): Aufnahme mit warmgefahrenem Roboter, wiederholter
-  Referenzpose und gemischter Gruppenreihenfolge.
+- cv2 Park is identical to `park_numpy`; Tsai/Daniilidis deviate by ≤ 0.45 mm.
+  The missing `calibrateHandEye` under OpenCV 5 did not falsify the results.
+- The result remains the reprojection refinement (the same solution from every start);
+  closed-form methods serve only as a starting value, and their translation is poorly
+  determined for small rotation angles (6.7 and 8.3 mm off, respectively).
+- The error per pose is a rigid offset and grows with capture time;
+  a model with linearly drifting board position explains a large part in session 1
+  (drift 4.1 mm), and little in session 2 (2.0 mm). Cause not established.
+- 0.5 mm is not achievable with this data. Next step (requires a robot motion,
+  only after release): capture with a warmed-up robot, a repeated
+  reference pose and mixed group order.
 
-## Nachtrag 09.11.2026 (2): Sitzungen nach Aufwärmen und Kinematik als Fehlerquelle
+## Addendum 09.11.2026 (2): sessions after warm-up and kinematics as a source of error
 
-Die beiden offenen Punkte aus dem Stand oben (warmgefahrener Roboter, gemischte Gruppenreihenfolge) sind in neuen Sitzungen umgesetzt.
+The two open points from the state above (warmed-up robot, mixed group order) have been implemented in new sessions.
 
-### Neue Sitzungen
+### New sessions
 
-- `20261109T142717Z_a7d466a1` (S3, Schachbrett 7×10): 53 von 55 Posen gültig, nach 15 min Aufwärmen. Gruppen reihum gemischt, Gruppenwechsel 1,00 (kalt S1: 0,32).
-- `20261109T143834Z_6852cbc7` (S4, ChArUco 11×7): 47 von 47 Posen gültig, nach 15 min Aufwärmen. Gruppen reihum gemischt, Gruppenwechsel 0,98 (kalt S2: 0,28).
-- Alle vier Sitzungen mit `analyse.py` und `drift.py --session` offline nachgerechnet.
-- Berichte: `doc/auswertung/handeye_warm_vergleich.html` (Generator `tools/handeye_offline_cv4/warm_report.py`), Einzelberichte `calibration_schachbrett_2.html` und `calibration_charuco_2.html`.
+- `20261109T142717Z_a7d466a1` (S3, chessboard 7×10): 53 of 55 poses valid, after 15 min warm-up. Groups mixed in rotation, group change 1.00 (cold S1: 0.32).
+- `20261109T143834Z_6852cbc7` (S4, ChArUco 11×7): 47 of 47 poses valid, after 15 min warm-up. Groups mixed in rotation, group change 0.98 (cold S2: 0.28).
+- All four sessions recalculated offline with `analyse.py` and `drift.py --session`.
+- Reports: `doc/auswertung/handeye_warm_vergleich.html` (generator `tools/handeye_offline_cv4/warm_report.py`), individual reports `calibration_schachbrett_2.html` and `calibration_charuco_2.html`.
 
-### Endlösungen kalt gegen warm
+### Final solutions cold vs. warm
 
 Translation T_flange_camera in mm (x / y / z):
 
-- S1 kalt: −47,43 / −33,82 / 57,08; RMS 2,01 px
-- S2 kalt: −47,07 / −35,21 / 57,10; RMS 1,58 px
-- S3 warm: −46,79 / −35,45 / 57,28; RMS 1,89 px
-- S4 warm: −47,01 / −34,93 / 56,89; RMS 1,54 px
+- S1 cold: −47.43 / −33.82 / 57.08; RMS 2.01 px
+- S2 cold: −47.07 / −35.21 / 57.10; RMS 1.58 px
+- S3 warm: −46.79 / −35.45 / 57.28; RMS 1.89 px
+- S4 warm: −47.01 / −34.93 / 56.89; RMS 1.54 px
 
-Befunde:
+Findings:
 
-- Spannweite über alle vier Sitzungen: 1,76 mm (Ausreißer S1, größtes Paar S1–S3). Paar S3–S4 (beide warm): 0,69 mm. Paar S1–S2 (beide kalt): 1,43 mm.
-- Lineare Brettdrift erklärt warm nur noch 5 bis 7 % (S3 7,4 %, S4 5,2 %); kalt in S1 27 %.
-- Die zweite Hälfte bleibt schlechter: RMS-Verhältnis zweite zu erster Hälfte S3 1,84, S4 2,10 (kalt S1 1,72, S2 1,37).
-- In S4 bleibt nach Herausrechnen von Kippung und Abstand eine Teilkorrelation RMS–Zeit von 0,53.
-- Aufwärmen allein bringt die 0,5 mm nicht. Das Ziel 0,5 mm ist weiterhin nicht belegt.
+- Range across all four sessions: 1.76 mm (outlier S1, largest pair S1–S3). Pair S3–S4 (both warm): 0.69 mm. Pair S1–S2 (both cold): 1.43 mm.
+- Linear board drift explains only 5 to 7 % when warm (S3 7.4 %, S4 5.2 %); when cold in S1 27 %.
+- The second half remains worse: RMS ratio second to first half S3 1.84, S4 2.10 (cold S1 1.72, S2 1.37).
+- In S4, after removing tilt and distance, a partial correlation RMS–time of 0.53 remains.
+- Warm-up alone does not bring 0.5 mm. The 0.5 mm target is still not demonstrated.
 
-### Kinematik als Fehlerquelle (Experiment, `tools/handeye_offline_cv4/kinematik/`)
+### Kinematics as a source of error (experiment, `tools/handeye_offline_cv4/kinematik/`)
 
-- `T_base_flange` ist exakt die nominelle Franka-Vorwärtskinematik der gemessenen Gelenkwinkel. Der feste Rest ist Rz −45° und z −0,2 mm. Die Soll/Ist-Abweichung der Gelenke aus der Wiederholgenauigkeitsmessung spielt daher keine Rolle, weil die gemessenen Winkel verwendet werden.
-- Die nominellen Parameter weichen aber vom realen Roboter ab. Ein gemeinsamer Bündelausgleich mit trennbaren Kinematikparametern (Nullpunkte Gelenk 2 bis 6, Längen d3, d5, a4, a5, a7) senkt die Reprojektion in jeder zurückgehaltenen Sitzung (Leave-one-session-out):
-  - S1: 2,01 → 1,28 px
-  - S2: 1,58 → 1,07 px
-  - S3: 1,89 → 1,37 px
-  - S4: 1,54 → 1,06 px
-- Geschätzte Werte im gemeinsamen Fit: Nullpunkte 0,0 / −1,8 / −4,2 / 2,0 / 4,3 mrad; Längen 0,7 / 1,6 / 1,1 / −2,8 / −3,5 mm.
-- Spannweite der Hand-Auge-Translation über die Sitzungen: 1,76 mm → 1,34 mm.
-- Ein überparametrisiertes Modell (alle 7 Nullpunkte und Längen) ist nicht von Hand-Auge und Brettlage trennbar und liefert unsinnige Translationen (t_X bis 122,7 mm). Es dient nur als Indiz.
+- `T_base_flange` is exactly the nominal Franka forward kinematics of the measured joint angles. The fixed remainder is Rz −45° and z −0.2 mm. The target/actual deviation of the joints from the repeatability measurement therefore plays no role, because the measured angles are used.
+- However, the nominal parameters deviate from the real robot. A joint bundle adjustment with separable kinematic parameters (zero offsets of joints 2 to 6, lengths d3, d5, a4, a5, a7) reduces the reprojection error in every held-out session (leave-one-session-out):
+  - S1: 2.01 → 1.28 px
+  - S2: 1.58 → 1.07 px
+  - S3: 1.89 → 1.37 px
+  - S4: 1.54 → 1.06 px
+- Estimated values in the joint fit: zero offsets 0.0 / −1.8 / −4.2 / 2.0 / 4.3 mrad; lengths 0.7 / 1.6 / 1.1 / −2.8 / −3.5 mm.
+- Range of the hand-eye translation across the sessions: 1.76 mm → 1.34 mm.
+- An over-parameterised model (all 7 zero offsets and lengths) is not separable from hand-eye and board position and yields nonsensical translations (t_X up to 122.7 mm). It serves only as an indication.
 
-### Bewertung
+### Assessment
 
-- Gemeinsamer Fit über alle vier Sitzungen: RMS 1,79 → 1,16 px. Die Kinematik erklärt damit rund 60 % der Fehlervarianz (1 − (1,16/1,79)² ≈ 0,58).
-- Der Rest liegt bei gut 1 px, gegenüber einem PnP-Niveau von 0,25 px.
+- Joint fit across all four sessions: RMS 1.79 → 1.16 px. Kinematics thus explain roughly 60 % of the error variance (1 − (1.16/1.79)² ≈ 0.58).
+- The remainder is just over 1 px, compared with a PnP level of 0.25 px.
 
-### Nächste Schritte (offen)
+### Next steps (open)
 
-- Kinematik mitkalibrieren: Modell ausbauen, ggf. Durchbiegung unter Schwerkraft für Gelenk 2 und 4 berücksichtigen, Intrinsik mitschätzen.
-- Alternativ lokale Kalibrierung im Arbeits-Orientierungsbereich. Die flachen Gruppen A und E schließen bereits mit 0,45 bis 0,55 px.
-- Genauigkeit unabhängig messen: AprilTag aus verschiedenen Posen anfahren und die Streuung von `tagInBase` auswerten (AprilTag-Modus der Wiederholgenauigkeit).
-- Für neue Aufnahmen echte Zufallsreihenfolge verwenden, damit die Kippung nicht mit der Zeit korreliert.
+- Co-calibrate kinematics: extend the model, possibly account for deflection under gravity for joints 2 and 4, co-estimate intrinsics.
+- Alternatively, local calibration in the working orientation range. The flat groups A and E already close with 0.45 to 0.55 px.
+- Measure accuracy independently: approach an AprilTag from different poses and evaluate the scatter of `tagInBase` (AprilTag mode of the repeatability test).
+- For new captures, use a true random order so that the tilt does not correlate with time.
 
-## Nachtrag 10.11.2026: Posegruppe F (Bildrand) für die Offline-Intrinsik
+## Addendum 10.11.2026: pose group F (image edge) for the offline intrinsics
 
-### Anlass
+### Reason
 
-- Die Intrinsik der Hand-Kamera wird offline neu bestimmt (`doc/auswertung/intrinsik_20261110.md`).
-- Dafür braucht es Ansichten mit dem Brett in den Bildecken und an den Bildrändern sowie starke Kippung. Die Kippung bestimmt die Brennweite.
-- Bisher zielte jede Ansicht auf die Brettmitte. Die Hand-Auge-Rohaufnahme liefert damit in einem automatischen Lauf verlustfreie Bilder für Intrinsik und Hand-Auge.
+- The intrinsics of the hand camera are determined anew offline (`doc/auswertung/intrinsik_20261110.md`).
+- This requires views with the board in the image corners and at the image edges, as well as strong tilt. The tilt determines the focal length.
+- Until now every view aimed at the board centre. The hand-eye raw capture therefore delivers, in one automatic run, lossless images for intrinsics and hand-eye.
 
-### Schnittstellenänderung
+### Interface change
 
-Gilt ab sofort und ersetzt die Angaben zu `poseGroup` und zur Posenzahl oben.
+Effective immediately; replaces the statements on `poseGroup` and the number of poses above.
 
-- `CaptureHandEyeSample.poseGroup` ist `A`–`F`.
-- Pi (`handeye_session.py`) und Offline-Leser (`tagloc.handeye_offline.load_observations`) nutzen die gemeinsame Konstante `tagloc.handeye_offline.POSE_GROUPS = ("A","B","C","D","E","F")`.
-- Andere Werte: `INVALID_ARGUMENT` (Pi) bzw. Ausschluss der Aufnahme mit Grund „Posegruppe fehlt“ (Offline).
+- `CaptureHandEyeSample.poseGroup` is `A`–`F`.
+- Pi (`handeye_session.py`) and offline reader (`tagloc.handeye_offline.load_observations`) use the shared constant `tagloc.handeye_offline.POSE_GROUPS = ("A","B","C","D","E","F")`.
+- Other values: `INVALID_ARGUMENT` (Pi) or exclusion of the capture with the reason "Posegruppe fehlt" (pose group missing) (offline).
 
 ### Frontend (webskillcomposition)
 
-Dateien: `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx`.
+Files: `handEyeAutoPoses.ts`, `HandEyeAutoPanel.tsx`.
 
-- Gruppe F hat 16 Kandidaten.
-- 8 Bildpositionen: 4 Ecken, 4 Kantenmitten. Die Brettmitte liegt bei ±0,30·Bildbreite bzw. ±0,28·Bildhöhe vom Bildzentrum.
-- Je Bildposition zwei Ansichten: eine mit 30°, eine mit 45° Kippung. Eine kippt in Versatzrichtung, die andere senkrecht dazu (welche Kippung welche Richtung bekommt, wechselt von Position zu Position). 8 × 2 = 16.
-- Nur beim ChArUco-Brett, da das Schachbrett vollständig im Bild sein muss.
-- Mit ChArUco bis zu 76 Posen (Quote F 16), mit Schachbrett weiterhin bis zu 60.
-- Gemischte Reihenfolge schließt F ein.
-- Hilfsfunktion `projectBoardCentrePx` und Konstante `GUESS_FOCAL_PX = 605` (Schätzung, nur zum Zielen).
+- Group F has 16 candidates.
+- 8 image positions: 4 corners, 4 edge midpoints. The board centre lies at ±0.30·image width or ±0.28·image height from the image centre.
+- Per image position two views: one with 30° tilt, one with 45° tilt. One tilts in the offset direction, the other perpendicular to it (which tilt gets which direction changes from position to position). 8 × 2 = 16.
+- Only for the ChArUco board, since the chessboard must be fully in the image.
+- With ChArUco up to 76 poses (quota F 16), with chessboard still up to 60.
+- Mixed order includes F.
+- Helper function `projectBoardCentrePx` and constant `GUESS_FOCAL_PX = 605` (estimate, only for aiming).
 
-### Offline-Intrinsik
+### Offline intrinsics
 
-- Aufruf: `python tools/handeye_offline_cv4/intrinsik_offline.py <Sitzungsordner> [--nur-gruppe F]`. Das Skript liest `poses/*/camera.png` direkt.
+- Call: `python tools/handeye_offline_cv4/intrinsik_offline.py <session folder> [--nur-gruppe F]`. The script reads `poses/*/camera.png` directly.
 
-### Erster Befund ohne Gruppe F
+### First finding without group F
 
-- Sitzung `20261109T143834Z_6852cbc7` (47 PNG, Kippung 1–39°) ergibt allein: fx 603,3, fy 603,5, cx 332,0, cy 244,2; k1 0,092, k2 −0,125; RMS 0,11 px.
-- Das deckt sich mit den 18 Einzelaufnahmen vom 10.11. (fx 602,9, fy 603,3, cx 331,8, cy 244,2).
-- Der Werksangabe fx 608,8 liegt die Messung damit etwa 1 % daneben. Gruppe F soll das mit stärkerer Kippung bestätigen.
+- Session `20261109T143834Z_6852cbc7` (47 PNG, tilt 1–39°) alone yields: fx 603.3, fy 603.5, cx 332.0, cy 244.2; k1 0.092, k2 −0.125; RMS 0.11 px.
+- This agrees with the 18 individual captures from 10.11. (fx 602.9, fy 603.3, cx 331.8, cy 244.2).
+- The factory value fx 608.8 is therefore about 1 % off the measurement. Group F is meant to confirm this with stronger tilt.
 
 ### Commits
 
-- ADP `6327a98` (Pi und Offline).
-- Frontend `6c59c40` auf Branch `handauge-schachbrett-offline` in `webskillcomposition` (Remote archiviert, Commit liegt lokal).
+- ADP `6327a98` (Pi and offline).
+- Frontend `6c59c40` on branch `handauge-schachbrett-offline` in `webskillcomposition` (remote archived, commit exists locally).
 
-## Nachtrag 10.11.2026: Handkamera auf volle Auflösung 1920×1080
+## Addendum 10.11.2026: hand camera at full resolution 1920×1080
 
-- `CameraStreamConfig.realsense_resolution` (1920, 1080), `realsense_fps` 8; `cam_flange`-Preset `resolution` ebenso (1920, 1080). Vorher 640×480 @ 15 Hz, ein 4:3-Ausschnitt (1440×1080, um 2,25 verkleinert, horizontal 55° statt 70° Sichtfeld).
-- 8 Hz, weil die D415 über USB 2 (Pi-Kabel, `Usb Type Descriptor 2.1`) 1920×1080 nur so anbietet. Mit USB-3-Kabel gibt es 6/15/30 Hz; dann `realsense_fps` anpassen, 8 Hz wird dort nicht angeboten.
-- Die Intrinsik `data/calibration/cam_flange.json` gilt weiter für 640×480 und passt nicht mehr. Sie wird neu bestimmt; bis dahin lehnen Tag-Erkennung und Online-Prüfung der Hand-Auge-Rohaufnahme die Bilder ab („Kalibrierung gilt für 640x480“). Die Intrinsik-Aufnahme selbst braucht keine Intrinsik.
-- Frontend Gruppe F (`handEyeAutoPoses.ts`): Zielwerte für 1920×1080, `GUESS_FOCAL_PX` 1357 (603 px bei 640×480 mal 2,25).
+- `CameraStreamConfig.realsense_resolution` (1920, 1080), `realsense_fps` 8; `cam_flange` preset `resolution` likewise (1920, 1080). Previously 640×480 @ 15 Hz, a 4:3 crop (1440×1080, scaled down by 2.25, horizontal 55° instead of 70° field of view).
+- 8 Hz, because the D415 over USB 2 (Pi cable, `Usb Type Descriptor 2.1`) only offers 1920×1080 at this rate. With a USB 3 cable there are 6/15/30 Hz; then adjust `realsense_fps`, 8 Hz is not offered there.
+- The intrinsics `data/calibration/cam_flange.json` still apply to 640×480 and no longer fit. They are determined anew; until then tag detection and the online check of the hand-eye raw capture reject the images ("Kalibrierung gilt für 640x480" (calibration applies to 640x480)). The intrinsics capture itself does not need intrinsics.
+- Frontend group F (`handEyeAutoPoses.ts`): target values for 1920×1080, `GUESS_FOCAL_PX` 1357 (603 px at 640×480 times 2.25).
 
-## Nachtrag 11.11.2026: Gesamtkalibrierung auf dem Pi (`fullCalibration`)
+## Addendum 11.11.2026: full calibration on the Pi (`fullCalibration`)
 
-1. **Gesamtkalibrierung:** `StartHandEyeCalibration` mit `fullCalibration: true` nimmt Rohbilder auf wie `captureOnly`. `FinishHandEyeCalibration` rechnet auf dem Pi die Intrinsik (`cv2.calibrateCamera`, volles Modell) und danach das Hand-Auge (Park, dann gemeinsame Reprojektions-Verfeinerung mit scipy). Beide Ergebnisse werden mit `.bak`-Sicherung zusammen nach `data/calibration/cam_flange.json` und `data/handeye/cam_flange.json` geschrieben und live übernommen. Scheitert das Schreiben, werden beide wiederhergestellt. Details: [vision-server-interface.md](../vision-server-interface.md), Abschnitt 15.6.
-2. **Brettmaße frei:** Schachbrett und ChArUco haben frei eintragbare Felder, Maße und Dictionary (Abschnitt 15.7 der Schnittstellendoku). Das Labor-Brett wird mit den nachgemessenen Werten (Feld 24,982 mm, Marker 18,487 mm) ohne Skalierungsfaktor verwendet. Das Frontend (`webskillcomposition`, Branch `ADP_Lokaliserung`) merkt sich die Angaben im Browser.
-3. **Status:** `HandEyeStatus` hat das Feld `fullCalibration`. Bei `fullCalibration` steht in `result` `kind: "intrinsicsAndHandEye"` mit Intrinsik, Hand-Auge, `excluded` und `backups`.
-4. **Abhängigkeiten:** `requirements.txt` nennt `opencv-contrib-python>=4.8.0` ohne Obergrenze `<5`, weil die Pis mit OpenCV 5 laufen. `scipy>=1.11` wird auf dem Pi gebraucht; fehlt es, lautet die Meldung „scipy fehlt auf dem Pi (pip install scipy)“.
+1. **Full calibration:** `StartHandEyeCalibration` with `fullCalibration: true` captures raw images like `captureOnly`. `FinishHandEyeCalibration` calculates on the Pi the intrinsics (`cv2.calibrateCamera`, full model) and then the hand-eye (Park, then joint reprojection refinement with scipy). Both results are written together with `.bak` backup to `data/calibration/cam_flange.json` and `data/handeye/cam_flange.json` and applied live. If writing fails, both are restored. Details: [vision-server-interface.md](../vision-server-interface.md), section 15.6.
+2. **Board dimensions free:** chessboard and ChArUco have freely enterable squares, dimensions and dictionary (section 15.7 of the interface documentation). The lab board is used with the re-measured values (square 24.982 mm, marker 18.487 mm) without a scaling factor. The frontend (`webskillcomposition`, branch `ADP_Lokaliserung`) remembers the entries in the browser.
+3. **Status:** `HandEyeStatus` has the field `fullCalibration`. With `fullCalibration`, `result` contains `kind: "intrinsicsAndHandEye"` with intrinsics, hand-eye, `excluded` and `backups`.
+4. **Dependencies:** `requirements.txt` names `opencv-contrib-python>=4.8.0` without the upper bound `<5`, because the Pis run with OpenCV 5. `scipy>=1.11` is needed on the Pi; if it is missing, the message is "scipy fehlt auf dem Pi (pip install scipy)" (scipy missing on the Pi (pip install scipy)).
 
-Hinweis: Die Offline-Skripte unter `tools/handeye_offline_cv4/` sind auf diesem Branch nicht übernommen. Sie liegen auf `handauge-schachbrett-offline`.
+Note: the offline scripts under `tools/handeye_offline_cv4/` are not carried over to this branch. They are on `handauge-schachbrett-offline`.
 
-Bewusst nicht verwendet werden die Kinematik-Korrektur der Flanschpose und die Werks-Intrinsik. Die Flanschpose ist die nominelle FK aus den gemessenen Gelenkwinkeln. Die Kinematik-Korrektur hat die 1080p-Sitzung verschlechtert: mit Korrektur 4,78 px statt 3,63 px ohne.
+Deliberately not used are the kinematic correction of the flange pose and the factory intrinsics. The flange pose is the nominal FK from the measured joint angles. The kinematic correction worsened the 1080p session: with correction 4.78 px instead of 3.63 px without.

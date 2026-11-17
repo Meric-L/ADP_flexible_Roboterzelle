@@ -5,8 +5,7 @@ from pathlib import Path
 
 from .profiles import _REPO_ROOT, AprilTagProfileConfig, AssetConfig, CameraStreamConfig
 
-#: The nodesets live in the package that needs them. They used to live under
-#: ``src/OPCUA/``, because that directory predates ``vision_server/`` (tech debt C5, done).
+#: The nodesets live in this package, next to the code that needs them.
 _NODESET_DIR = Path(__file__).resolve().parent / "nodesets"
 
 DEFAULT_NODESET_PATH = _NODESET_DIR / "Opc.Ua.MachineVision.NodeSet2.xml"
@@ -19,11 +18,9 @@ DEFAULT_AMCM_NODESET_PATHS: tuple[Path, ...] = (
     _NODESET_DIR / "Opc.Ua.MachineVision.AMCM.NodeSet2.xml",
 )
 
-#: RecipeId -> detection profile. A tuple of pairs, because a dict is not allowed as a
-#: dataclass default, and a mapping would make the frozen dataclass unhashable. The
-#: single source of truth for both admission *and* routing.
-#: Deliberately no entry for ``""``: a start without a selected job is rejected with
-#: UNKNOWN_RECIPE, instead of silently running something.
+#: RecipeId -> detection profile; the single source for admission and routing. A tuple of
+#: pairs keeps the frozen dataclass hashable. No entry for ``""``: a start without a
+#: selected job is rejected with UNKNOWN_RECIPE.
 DEFAULT_RECIPE_PROFILES: tuple[tuple[str, str], ...] = (
     ("calibration", "calibration"),
     ("apriltag", "apriltag"),
@@ -46,31 +43,21 @@ class VisionServerConfig:
     max_id_length: int = 128
     max_parameters: int = 16
     frame_id: str = "world"
-    #: Must exceed the longest job runtime. The AprilTag job is the deciding one:
-    #: ``samples_per_job`` captures, each waiting up to ``capture_timeout_s``, plus
-    #: detection and a margin. It was 20.0 -- measured live on pi1 (A/B test 2026-09-24,
-    #: without livestream/overlay competition, ``subpixel_corner_refinement=True`` at
-    #: full 12 MP): 1 of 4 jobs still hit the 20 s timeout (a real ``asyncio.wait_for``
-    #: timeout according to job.py, not "no tag in image"). Three samples, each with up to
-    #: ``capture_timeout_s`` of waiting, plus detection time (py-spy: ~46% of the profile
-    #: in ``_locate -> detect``) plus ``warmup_s`` left the old budget too little buffer.
-    #: Extra safety margin, until ``apriltag_quad_decimate`` (see ``profiles.py``) has
-    #: itself reduced the detection time -- then lower it again if appropriate.
+    #: Must exceed the longest job runtime: ``samples_per_job`` captures (each up to
+    #: ``capture_timeout_s``) plus detection and a margin. 20 s was too tight at 12 MP
+    #: with subpixel refinement.
     job_timeout: float = 30.0
     #: Deadline for ``JobRunner.stop()``: the abort, including cleanup and the state
     #: change, must be complete by then.
     stop_timeout: float = 5.0
-    #: Pause between two runs in continuous operation. Without it, detection would run as
-    #: fast as the camera delivers images and occupy the Pi completely. Continuous mode is
-    #: meant to observe, not to crowd out other work.
+    #: Pause between two runs in continuous mode, so detection does not occupy the Pi
+    #: completely.
     continuous_interval_s: float = 1.0
     apriltag: AprilTagProfileConfig | None = None
-    #: ``None`` = do not load Part 2. Measured cost: about 13 MB RSS and about 1.6 s of
-    #: startup time. Not needed for the job path.
+    #: ``None`` = do not load Part 2 (costs about 13 MB RSS and 1.6 s startup).
     assets: AssetConfig | None = None
     amcm_nodeset_paths: tuple[Path, ...] = DEFAULT_AMCM_NODESET_PATHS
-    #: ``None`` = no livestream node, no shared camera opened (e.g. local development
-    #: without a camera). On the Pi, ``vision_server/server.py`` sets it.
+    #: ``None`` = no livestream node, no shared camera (e.g. development without one).
     camera_stream: CameraStreamConfig | None = None
     #: Storage for ``SaveRawImage`` (lossless PNG full frames). ``None`` = do not create
     #: the method.

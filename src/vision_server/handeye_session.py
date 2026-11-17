@@ -287,6 +287,27 @@ def _write_session_dataset(
     (folder / SESSION_FILE).write_text(session_json(payload), encoding="utf-8")
 
 
+#: Session folders are named by the UTC stamp of their start (`utc_stamp`, e.g.
+#: `20261117T150000Z`, raw ones with a suffix); only these are ever deleted.
+_SESSION_FOLDER = re.compile(r"^\d{8}T\d{6}Z")
+
+
+def _remove_session_folders(root: Path | None) -> int:
+    """Delete the session folders under `root` (only those named by a UTC stamp).
+
+    Like the camera calibration of Layer 1, only the images of the current
+    calibration are kept. Returns how many folders were deleted.
+    """
+    if root is None or not root.is_dir():
+        return 0
+    removed = 0
+    for child in root.iterdir():
+        if child.is_dir() and _SESSION_FOLDER.match(child.name):
+            shutil.rmtree(child, ignore_errors=True)
+            removed += 1
+    return removed
+
+
 def _write_raw_capture(folder: Path, state: _State, sample: _Sample,
                        calibration, frame_id: str) -> None:
     """Store one image and its robot state under the same pose ID."""
@@ -590,6 +611,7 @@ class HandEyeSession:
         except ValueError as error:
             _log.warning("StartHandEyeCalibration abgelehnt: %s", error)
             return VisionErrorCode.INVALID_ARGUMENT
+        await self._clear_previous_sessions(raw=capture_only or full_calibration)
         self._s = _State(
             state=CAPTURING,
             tag_id=tag_id,
@@ -601,9 +623,7 @@ class HandEyeSession:
         )
         if capture_only or full_calibration:
             from uuid import uuid4
-            root = self._ports.raw_sessions_dir or (Path(__file__).resolve().parents[2] /
-                                                     "data" / "rohbilder" / "calibration")
-            self._s.session_path = str(root / f"{self._s.stamp}_{uuid4().hex[:8]}")
+            self._s.session_path = str(self._raw_root() / f"{self._s.stamp}_{uuid4().hex[:8]}")
         self._s.message = self._hint()
         _log.info("Hand-Auge-Kalibrierung gestartet, Ziel %s", self._target_label())
         await self._publish()
@@ -940,11 +960,38 @@ class HandEyeSession:
                 return str(source)
         return self._s.intrinsics_source
 
+    def _raw_root(self) -> Path:
+        """Folder of the raw-image sessions (capture-only and full calibration)."""
+        return self._ports.raw_sessions_dir or (
+            Path(__file__).resolve().parents[2] / "data" / "rohbilder" / "calibration"
+        )
+
+    def _sessions_root(self) -> Path:
+        """Folder of the session datasets (`_persist`)."""
+        return self._ports.sessions_dir or self._ports.path.parent / "sessions"
+
+    async def _clear_previous_sessions(self, *, raw: bool) -> None:
+        """Delete the images and datasets of earlier calibrations before a new one starts.
+
+        The raw-image folder only when the new session writes raw images itself
+        (`raw`). Errors are only logged: a folder that cannot be deleted must not
+        stop the calibration.
+        """
+        roots = [self._sessions_root()] + ([self._raw_root()] if raw else [])
+        for root in roots:
+            try:
+                removed = await asyncio.to_thread(_remove_session_folders, root)
+            except OSError as error:
+                _log.warning("Alte Hand-Auge-Sitzungen unter %s nicht geloescht: %s", root, error)
+                continue
+            if removed:
+                _log.info("Hand-Auge-Kalibrierung: %d alte Sitzung(en) unter %s geloescht", removed, root)
+
     async def _persist(self, outcome: str) -> str | None:
         """Write the session dataset. Errors go to the log only (never a reason to let the
         calibration fail). Returns the folder, or `None`."""
         s = self._s
-        folder = (self._ports.sessions_dir or self._ports.path.parent / "sessions") / s.stamp
+        folder = self._sessions_root() / s.stamp
         try:
             await asyncio.to_thread(
                 _write_session_dataset, folder, s, outcome, self._intrinsics_source(),

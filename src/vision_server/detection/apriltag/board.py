@@ -121,17 +121,8 @@ class BoardMeasureMixin:
         return pose, "", error_px, corners, calibration
 
     def default_board_spec(self):
-        """Return the board from the camera configuration."""
-        from tagloc.boards import BoardSpec
-
-        return BoardSpec(
-            type=self._config.calibration_board_type,
-            cols=self._config.calibration_board_cols,
-            rows=self._config.calibration_board_rows,
-            square_size_m=self._config.calibration_board_square_size_m,
-            marker_size_m=self._config.calibration_board_marker_size_m,
-            dictionary=self._config.calibration_board_dictionary,
-        )
+        """Return the configured board, used when a `MeasureBoard` request names none."""
+        return self._config.calibration_board_spec()
 
     async def measure_board_view(self, request) -> dict:
         """`MeasureBoard`: measure the board for centering, without motion commands.

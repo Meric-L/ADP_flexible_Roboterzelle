@@ -1,98 +1,90 @@
-# Registrierung beim Local Discovery Server der Zelle
+# Registration with the cell's local discovery server
 
-**Status:** fertig — 21.09.2026
-**Verantwortlich:** `Agent: LDS-Registrierung, damit der Aggregation-Server die Vision-Server aufnimmt`
-**Thema:** mdns
+**Status:** done — 21.09.2026
+**Owner:** `Agent: LDS registration, so that the aggregation server takes up the vision servers`
+**Topic:** mdns
 **Branch:** worktree-lds-register-server2
 
-## Ziel
+## Goal
 
-Die beiden Vision-Server erscheinen im Aggregation-Server der Zelle
-(`opc.tcp://10.10.38.27:48400/`) unter ihrer ApplicationUri, ohne dass jemand
-sie dort von Hand einträgt. Vorher ging das nicht: die reine mDNS-Ankündigung
-aus `src/ua_mdns.py` reicht dafür nicht aus.
+The two vision servers appear in the cell's aggregation server (`opc.tcp://10.10.38.27:48400/`) under
+their ApplicationUri, without anyone entering them there by hand. Before, this did not work: the pure
+mDNS announcement from `src/ua_mdns.py` is not sufficient for it.
 
-## Bereits gelesen
+## Already read
 
-- `doc/part10-programm-schnittstelle.md` (Abschnitt „Der Aggregation-Server
-  findet uns von selbst" — inhaltlich widerlegt, siehe unten)
-- `doc/vision-server-interface.md` (Endpoint, ApplicationUri)
-- `doc/vision-system.md` (Ist-Stand auf dem Pi, Port 4840)
-- `doc/altlasten.md` (B1, hartcodierte Pi-Adressen)
+- `doc/part10-programm-schnittstelle.md` (section „Der Aggregation-Server findet uns von selbst" (The
+  aggregation server finds us by itself) — refuted in substance, see below)
+- `doc/vision-server-interface.md` (endpoint, ApplicationUri)
+- `doc/vision-system.md` (current state on the Pi, port 4840)
+- `doc/altlasten.md` (B1, hard-coded Pi addresses)
 - `betreuer/OPC UA-mDNS-Kurzanleitung.md`
 
-## Messung, die den Plan ausgelöst hat
+## Measurement that triggered the plan
 
-Am 21.09.2026 im Labor gemessen, von `10.10.38.110` aus (gleiches Subnetz):
+Measured in the lab on 21.09.2026, from `10.10.38.110` (same subnet):
 
-- Beide Pis waren per mDNS sauber sichtbar
-  (`vision-ceiling-01` → `10.10.38.104:4840`, `vision-flange-01` →
-  `10.10.38.109:4840`, TXT `path=/raspi/server/`, `caps=DA`), OPC UA direkt
-  erreichbar, ApplicationUri korrekt.
-- Der Aggregation-Server führte sie trotzdem nicht.
-- Auf demselben Rechner läuft unter `opc.tcp://10.10.38.27:4840/` ein
-  **open62541 Local Discovery Server**. Dessen `FindServers` liefert genau die
-  Module, die der Aggregation-Server unter `Objects` führt.
-- Der Aggregation-Server startete um 15:56 neu und nahm beim frischen Scan
-  alle fünf dort registrierten Module auf. Unsere Pis liefen zu dem Zeitpunkt
-  seit zehn Minuten und funkten — sie blieben aussen vor.
-- Die Namen im LDS-Bestand (`Festo Conveyor OPC UA Server-10-10-38-41`,
-  `OJIES-Aggregation-LDS-reuther`) stehen in 15 s Avahi-Suche **nirgends auf
-  dem Draht**. Der LDS liest also nicht mDNS, das ist sein eigener
-  Registrierungsbestand.
-- Alle funktionierenden Module haben `ProductUri:
-  urn:freeopcua.github.io:python:server` und `ServerType: ClientAndServer` —
-  es sind asyncua-Server, die sich aktiv registrieren.
+- Both Pis were cleanly visible via mDNS (`vision-ceiling-01` → `10.10.38.104:4840`,
+  `vision-flange-01` → `10.10.38.109:4840`, TXT `path=/raspi/server/`, `caps=DA`), OPC UA directly
+  reachable, ApplicationUri correct.
+- The aggregation server nevertheless did not list them.
+- On the same machine, under `opc.tcp://10.10.38.27:4840/`, an **open62541 Local Discovery Server**
+  runs. Its `FindServers` returns exactly the modules that the aggregation server lists under `Objects`.
+- The aggregation server restarted at 15:56 and took up all five modules registered there during the
+  fresh scan. Our Pis had been running for ten minutes at that time and were broadcasting — they
+  remained outside.
+- The names in the LDS inventory (`Festo Conveyor OPC UA Server-10-10-38-41`,
+  `OJIES-Aggregation-LDS-reuther`) appear **nowhere** on the wire in a 15 s Avahi search. The LDS
+  therefore does not read mDNS; it has its own registration inventory.
+- All working modules have `ProductUri: urn:freeopcua.github.io:python:server` and
+  `ServerType: ClientAndServer` — they are asyncua servers that register actively.
 
-**Schlussfolgerung:** Der Weg in den Aggregation-Server führt über eine aktive
-Anmeldung am LDS (`RegisterServer`), nicht über mDNS. Die Aussage in
-`betreuer/OPC UA-mDNS-Kurzanleitung.md` und in
-`doc/part10-programm-schnittstelle.md`, eine Anmeldung sei nicht nötig,
-trifft nicht zu.
+**Conclusion:** The route into the aggregation server leads via an active registration at the LDS
+(`RegisterServer`), not via mDNS. The statement in `betreuer/OPC UA-mDNS-Kurzanleitung.md` and in
+`doc/part10-programm-schnittstelle.md`, that a registration is not necessary, does not hold.
 
-## Betroffene Dateien
+## Affected files
 
-- `src/ua_lds.py` (neu)
-- `src/OPCUA/server.py` (Einbau in die Server-Schleife)
-- `tests/test_ua_lds.py` (neu)
-- `doc/part10-programm-schnittstelle.md` (Korrektur des Discovery-Abschnitts)
-- `doc/vision-system.md` (Betriebsangaben)
-- `doc/altlasten.md` (Eintrag zur falschen Betreuer-Angabe)
+- `src/ua_lds.py` (new)
+- `src/OPCUA/server.py` (integration into the server loop)
+- `tests/test_ua_lds.py` (new)
+- `doc/part10-programm-schnittstelle.md` (correction of the discovery section)
+- `doc/vision-system.md` (operating information)
+- `doc/altlasten.md` (entry on the wrong betreuer statement)
 
-## Schnittstellen
+## Interfaces
 
-### Netz / Betrieb
+### Network / operations
 
-| Element | Wert |
+| Element | Value |
 | --- | --- |
-| Discovery-Server (LDS) | `opc.tcp://10.10.38.27:4840/` |
-| Aggregation-Server | `opc.tcp://10.10.38.27:48400/` |
-| Dienst | `Server.register_to_discovery()` → `RegisterServer`, ohne `MdnsDiscoveryConfiguration` |
-| Verbindung | sessionlos (`connect_sessionless`), `NoSecurity` |
-| Erneuerung | alle 60 s — notwendig, nicht optional (gemessen, siehe unten) |
-| Registrierte DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
-| Abschaltung | `OPCUA_LDS_URL=""` |
-| Abweichender LDS | `OPCUA_LDS_URL=opc.tcp://host:4840/` |
+| Discovery server (LDS) | `opc.tcp://10.10.38.27:4840/` |
+| Aggregation server | `opc.tcp://10.10.38.27:48400/` |
+| Service | `Server.register_to_discovery()` → `RegisterServer`, without `MdnsDiscoveryConfiguration` |
+| Connection | sessionless (`connect_sessionless`), `NoSecurity` |
+| Renewal | every 60 s — necessary, not optional (measured, see below) |
+| Registered DiscoveryUrl | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
+| Disabling | `OPCUA_LDS_URL=""` |
+| Deviating LDS | `OPCUA_LDS_URL=opc.tcp://host:4840/` |
 
-Die mDNS-Ankündigung aus `src/ua_mdns.py` **bleibt unverändert bestehen** —
-Clients im Subnetz (u. a. das WSC-Frontend) finden uns darüber direkt, ohne
-Umweg über den Discovery-Server.
+The mDNS announcement from `src/ua_mdns.py` **remains unchanged** — clients in the subnet (including
+the WSC frontend) find us directly via it, without a detour through the discovery server.
 
 ### Python
 
 ```python
-# Modul: src/ua_lds.py
+# Module: src/ua_lds.py
 
 DEFAULT_LDS_URL = "opc.tcp://10.10.38.27:4840/"
 DEFAULT_RENEW_SECONDS = 60
 
 def lds_url() -> str:
-    """URL des Discovery-Servers aus `OPCUA_LDS_URL`; leer = nicht anmelden."""
+    """URL of the discovery server from `OPCUA_LDS_URL`; empty = do not register."""
 
 def advertised_endpoint(
     port: int, path: str, address: str | None = None
 ) -> str | None:
-    """Endpoint-URL mit der LAN-IPv4, oder None, wenn keine zu ermitteln war."""
+    """Endpoint URL with the LAN IPv4, or None if none could be determined."""
 
 @contextlib.asynccontextmanager
 async def register(
@@ -100,11 +92,11 @@ async def register(
     url: str | None = None,
     renew_seconds: int = DEFAULT_RENEW_SECONDS,
 ) -> AsyncIterator[str | None]:
-    """Meldet beim LDS an, erneuert periodisch, meldet beim Verlassen ab.
+    """Registers with the LDS, renews periodically, deregisters on exit.
 
-    Liefert die angemeldete DiscoveryUrl, oder None, wenn nicht angemeldet
-    wurde (kein LDS konfiguriert, Endpoint nennt 0.0.0.0, Anmeldung
-    gescheitert). Wirft nichts — Fehler landen im Log.
+    Returns the registered DiscoveryUrl, or None if no registration took place
+    (no LDS configured, endpoint names 0.0.0.0, registration failed). Raises
+    nothing — errors end up in the log.
     """
 ```
 
@@ -112,180 +104,162 @@ In `src/OPCUA/server.py`:
 
 ```python
 endpoint = ua_lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
-server.set_endpoint(endpoint)            # was angekündigt wird: LAN-IPv4
-server.socket_address = ("0.0.0.0", MDNS_PORT)   # woran gelauscht wird
+server.set_endpoint(endpoint)            # what is announced: LAN IPv4
+server.socket_address = ("0.0.0.0", MDNS_PORT)   # what is listened on
 ```
 
-Die Anmeldung selbst macht `asyncua.Server.register_to_discovery()`; `ua_lds`
-ist nur die Klammer darum. Der ursprüngliche Entwurf baute den
-`RegisteredServer` von Hand, weil die Methode `server.endpoint.geturl()`
-einträgt und dort `0.0.0.0` stand. Das war unnötig: `Server.socket_address`
-trennt Bindeadresse und angekündigte Adresse und ist genau dafür gedacht.
-Was die Klammer noch leistet: Anmeldung verweigern, wenn im Endpoint doch
-`0.0.0.0` steht; einen nicht erreichbaren LDS nicht den Serverstart kosten
-lassen; und im `finally` abmelden, weil `Server.stop()` das nicht tut.
+The registration itself is done by `asyncua.Server.register_to_discovery()`; `ua_lds` is only the
+wrapper around it. The original draft built the `RegisteredServer` by hand, because the method enters
+`server.endpoint.geturl()`, and `0.0.0.0` stood there. That was unnecessary: `Server.socket_address`
+separates bind address and announced address and is intended exactly for this. What the wrapper still
+provides: refusing registration if the endpoint nevertheless contains `0.0.0.0`; not letting an
+unreachable LDS cost the server its start; and deregistering in `finally`, because `Server.stop()`
+does not do it.
 
-### Registrierungsdatensatz
+### Registration record
 
-| Feld | Wert |
+| Field | Value |
 | --- | --- |
-| `ServerUri` | ApplicationUri des Moduls, z. B. `urn:plcm:camera-server:ceiling-01` |
+| `ServerUri` | ApplicationUri of the module, e.g. `urn:plcm:camera-server:ceiling-01` |
 | `ProductUri` | `urn:freeopcua.github.io:python:server` |
 | `ServerNames` | `Raspberry Pi OPC UA Server` |
 | `ServerType` | `ClientAndServer` |
 | `DiscoveryUrls` | `opc.tcp://<LAN-IPv4>:4840/raspi/server/` |
-| `IsOnline` | `True`; beim Beenden `False` (Abmeldung) |
-| `DiscoveryConfiguration` | keine — `register_to_discovery()` ohne `discovery_configuration` schickt `RegisterServer`, wie bei den Nachbarmodulen |
+| `IsOnline` | `True`; on shutdown `False` (deregistration) |
+| `DiscoveryConfiguration` | none — `register_to_discovery()` without `discovery_configuration` sends `RegisterServer`, as the neighboring modules do |
 
-Im Aggregation-Server erscheint das Modul danach als Objekt unter `Objects` in
-dessen `ns=1`, benannt nach der ApplicationUri — erwartet also
-`urn:plcm:camera-server:ceiling-01` und `urn:plcm:camera-server:roboter-hand-01`.
+In the aggregation server, the module then appears as an object under `Objects` in its `ns=1`, named
+after the ApplicationUri — so `urn:plcm:camera-server:ceiling-01` and
+`urn:plcm:camera-server:roboter-hand-01` are expected.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behavior |
 | --- | --- |
-| LDS nicht erreichbar | Warnung im Log, Server läuft weiter, mDNS bleibt aktiv |
-| Keine LAN-IPv4 ermittelbar | keine Registrierung, Warnung im Log |
-| Erneuerung scheitert einmalig | Warnung, Schleife läuft weiter |
-| `OPCUA_LDS_URL=""` | Registrierung abgeschaltet, Hinweis im Log |
-| Harter Abbruch (kein SIGTERM) | keine Abmeldung; Eintrag verfällt am LDS |
+| LDS unreachable | warning in the log, server keeps running, mDNS stays active |
+| No LAN IPv4 determinable | no registration, warning in the log |
+| Renewal fails once | warning, loop continues |
+| `OPCUA_LDS_URL=""` | registration disabled, note in the log |
+| Hard abort (no SIGTERM) | no deregistration; the entry expires at the LDS |
 
-## Vorgehen
+## Approach
 
-1. `src/ua_lds.py` schreiben.
-2. Live gegen den laufenden Pi beweisen, dass die Registrierung den
-   Aggregation-Server tatsächlich dazu bringt, das Modul aufzunehmen.
-3. Einbau in `src/OPCUA/server.py`, innerhalb des bestehenden
-   `ua_mdns.announce`-Blocks.
+1. Write `src/ua_lds.py`.
+2. Prove live against the running Pi that the registration actually causes the aggregation server to
+   take up the module.
+3. Integrate into `src/OPCUA/server.py`, within the existing `ua_mdns.announce` block.
 4. Tests.
-5. Doku korrigieren.
+5. Correct the docs.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Erst an `Server.register_to_discovery()` vorbeigebaut, dann doch darauf
-  umgestellt.** Die Methode trägt `server.endpoint.geturl()` als DiscoveryUrl
-  ein, und dort stand `0.0.0.0` — der Aggregation-Server übernimmt das wörtlich
-  und verbindet ins Leere. Der erste Entwurf baute den `RegisteredServer`
-  deshalb von Hand, samt eigener Erneuerungsschleife und Abmeldung: rund 190
-  Zeilen.
+- **First bypassed `Server.register_to_discovery()`, then switched to it after all.** The method enters
+  `server.endpoint.geturl()` as DiscoveryUrl, and there stood `0.0.0.0` — the aggregation server takes
+  this over literally and connects into nothing. The first draft therefore built the `RegisteredServer`
+  by hand, including its own renewal loop and deregistration: around 190 lines.
 
-  Das war unnötig. `Server.socket_address` trennt Bindeadresse und
-  angekündigte Adresse und ist genau für diesen Fall gedacht („used when the IP
-  address of the network interface is different from the endpoint IP offered to
-  the client during discovery"). Damit nennt der Endpoint die LAN-IPv4, und
-  gelauscht wird weiter auf `0.0.0.0`. `ua_lds` ist jetzt nur noch die Klammer
-  um die Bibliotheksmethode. Als Altlast D10 vermerkt, weil das Übersehen des
-  Attributs Zeit gekostet hat.
+  That was unnecessary. `Server.socket_address` separates bind address and announced address and is
+  intended exactly for this case („used when the IP address of the network interface is different from
+  the endpoint IP offered to the client during discovery"). With it, the endpoint names the LAN IPv4, and
+  listening continues on `0.0.0.0`. `ua_lds` is now only the wrapper around the library method. Recorded
+  as legacy D10, because overlooking the attribute cost time.
 
-  Ebenfalls geprüft und entkräftet: die Sorge, die Bibliotheksschleife käme mit
-  einem LDS-Neustart nicht klar. `_renew_registration()` baut bei jedem
-  Durchlauf einen frischen Kanal auf.
-- **Von `RegisterServer2` auf `RegisterServer` zurückgegangen.** Der erste
-  Entwurf schickte eine `MdnsDiscoveryConfiguration` mit. Danach stand im
-  `FindServersOnNetwork` des LDS einmal
-  `opc.tcp://10.10.38.104.local:4840/raspi/server` — ein an eine IP gehängtes
-  `.local`, das nicht auflöst. **Nicht reproduzierbar:** `flange-01` meldete
-  sich über denselben Codeweg an und bekam einen sauberen Eintrag. Der Effekt
-  ist damit nicht als Fehler belegt, und den Aggregation-Server betrifft er
-  ohnehin nicht. Trotzdem melden wir uns jetzt so an wie Conveyor,
-  CardDispenser und die Roboter — eine Variable weniger. `caps=DA` steht
-  ohnehin in der eigenen mDNS-Ankündigung.
-- **Erneuerung ist belegt notwendig.** Ursprünglich mit „die Spezifikation
-  verlangt ≤ 10 min" begründet — das stammt aber aus dem asyncua-Docstring, war
-  also übernommen und nicht gemessen. Der Beleg kam anders (siehe unten).
+  Also checked and refuted: the concern that the library loop would not cope with an LDS restart.
+  `_renew_registration()` builds a fresh channel on each run.
+- **Went back from `RegisterServer2` to `RegisterServer`.** The first draft sent an
+  `MdnsDiscoveryConfiguration`. Afterwards, in the LDS's `FindServersOnNetwork`, there appeared once
+  `opc.tcp://10.10.38.104.local:4840/raspi/server` — a `.local` appended to an IP, which does not
+  resolve. **Not reproducible:** `flange-01` registered via the same code path and got a clean entry.
+  The effect is therefore not proven as an error, and it does not affect the aggregation server anyway.
+  Nevertheless we now register the same way as Conveyor, CardDispenser and the robots — one variable
+  fewer. `caps=DA` is in any case in our own mDNS announcement.
+- **Renewal is proven necessary.** Originally justified with „die Spezifikation verlangt ≤ 10 min“
+  (the specification requires ≤ 10 min) — but that comes from the asyncua docstring, so it was adopted
+  and not measured. The proof came differently (see below).
 
-## Ergebnis der Abnahme
+## Result of acceptance
 
-Live gegen die laufende Zelle gemessen (21.09.2026, Layer 1 = `ceiling-01` auf
-`10.10.38.104`):
+Measured live against the running cell (21.09.2026, layer 1 = `ceiling-01` on `10.10.38.104`):
 
-| Zeit | Beobachtung |
+| Time | Observation |
 | --- | --- |
-| 16:18:05 | `RegisterServer2` für `urn:plcm:camera-server:ceiling-01` gesendet; steht sofort im `FindServers` des LDS |
-| 16:18:36 | Aggregation-Server führt das Modul als Objekt unter `Objects`, mit allen neun Namespaces inkl. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01` |
-| 16:18:37 | Nach dem Abmelden (`IsOnline=False`) wieder aus dem LDS verschwunden |
+| 16:18:05 | `RegisterServer2` for `urn:plcm:camera-server:ceiling-01` sent; appears immediately in the LDS `FindServers` |
+| 16:18:36 | aggregation server lists the module as an object under `Objects`, with all nine namespaces incl. `http://launch-rm.de/vision/urn:plcm:camera-server:ceiling-01` |
+| 16:18:37 | after deregistration (`IsOnline=False`) gone from the LDS again |
 
-Aufnahme also **31 Sekunden** nach der Anmeldung.
+Admission therefore took **31 seconds** after registration.
 
-### Im Betrieb bestätigt
+### Confirmed in operation
 
-Nach Ausrollen auf die Pis und Neustart des Dienstes stehen **beide** Module im
-Aggregation-Server, die Anmeldung kommt aus dem Server selbst:
+After rolling out to the Pis and restarting the service, **both** modules are in the aggregation server;
+the registration comes from the server itself:
 
 ```
 urn:plcm:camera-server:ceiling-01
 urn:plcm:camera-server:roboter-hand-01
 ```
 
-Für `ceiling-01` zusätzlich über 4,5 Minuten und damit mehrere
-Erneuerungszyklen beobachtet: durchgehend im LDS und im Aggregation-Server,
-ohne Aussetzer.
+For `ceiling-01`, additionally observed over 4.5 minutes and thus several renewal cycles: continuously
+in the LDS and in the aggregation server, without gaps.
 
-### Beleg, dass Erneuerung notwendig ist
+### Evidence that renewal is necessary
 
-Kam durch einen Zufall und ist die belastbarste Messung des Tages: Der LDS
-startete am 21.09.2026 um 15:56 neu (`LastCounterResetTime` springt mit).
-Conveyor läuft seit dem 08.09. und CardDispenser seit dem 07.09. durch — beide
-**ohne** eigenen Neustart —, und beide standen danach wieder im
-Anmeldebestand. Eine Anmeldung, die nur einmal beim eigenen Start gesendet
-wurde, lag im alten LDS-Prozess und wäre verloren. Die Nachbarmodule erneuern
-also periodisch; sichtbar ist das in deren Code nicht, weil
-`asyncua.Server.register_to_discovery()` die Schleife selbst startet
-(Standardabstand 60 s).
+It came about by chance and is the most reliable measurement of the day: the LDS restarted on
+21.09.2026 at 15:56 (`LastCounterResetTime` jumps along). Conveyor has been running since 08.09. and
+CardDispenser since 07.09. — both **without** their own restart — and both were back in the registration
+inventory afterwards. A registration that was sent only once at the module's own start would have sat in
+the old LDS process and been lost. The neighboring modules therefore renew periodically; this is not
+visible in their code, because `asyncua.Server.register_to_discovery()` starts the loop itself (default
+interval 60 s).
 
-Nicht gemessen: wie lange ein Eintrag ohne Erneuerung tatsächlich überlebt.
-open62541 räumt nach einem eigenen Timeout ab.
+Not measured: how long an entry actually survives without renewal. open62541 cleans up after its own
+timeout.
 
-### Nach der Umstellung auf `register_to_discovery()`
+### After the switch to `register_to_discovery()`
 
-Lokal mit dem echten `src/OPCUA/server.py` geprüft (LDS-Anmeldung per
-`OPCUA_LDS_URL=""` abgeschaltet, die Zelle also nicht angefasst):
+Checked locally with the real `src/OPCUA/server.py` (LDS registration switched off via
+`OPCUA_LDS_URL=""`, so the cell was not touched):
 
 ```
 INFO:raspi-opcua:Server startet auf opc.tcp://10.10.38.110:4840/raspi/server/
 INFO:asyncua.server.binary_server_asyncio:Listening on 0.0.0.0:4840
 ```
 
-Erreichbar über `127.0.0.1` **und** über die LAN-IP — die Trennung von
-Endpoint und Bindeadresse funktioniert also, und `print_setpoint.py` sowie der
-Hello-World-Client behalten ihren Weg über Loopback.
+Reachable via `127.0.0.1` **and** via the LAN IP — so the separation of endpoint and bind address works,
+and `print_setpoint.py` as well as the Hello World client keep their route via loopback.
 
-**Noch offen:** Die Pis laufen weiter mit dem Stand davor. Erst nach
-`systemctl restart opcua-server.service` kommt die Anmeldung aus
-`register_to_discovery()`; bis dahin ist die Umstellung nur lokal verifiziert.
+**Still open:** the Pis still run the previous state. Only after `systemctl restart opcua-server.service`
+does the registration come from `register_to_discovery()`; until then the switch is verified only
+locally.
 
-Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 241 Tests,
-davon 12 in `tests/test_ua_lds.py`, alle grün.
+Tests: `PYTHONPATH=src python3 -m unittest discover -s tests -t .` — 241 tests, of which 12 in
+`tests/test_ua_lds.py`, all green.
 
-## Nachtrag: Paketumzug vom 22.09.2026
+## Addendum: package move of 22.09.2026
 
-Ein Tag nach diesem Plan hat `altlasten-abbau-part10-fassade.md` das Paket
-umgebaut. Die oben genannten Pfade existieren **nicht mehr**:
+One day after this plan, `altlasten-abbau-part10-fassade.md` restructured the package. The paths named
+above **no longer exist**:
 
-| Dieser Plan nennt | Liegt jetzt unter |
+| This plan names | Now located under |
 | --- | --- |
 | `src/ua_lds.py` | `src/vision_server/discovery/lds.py` |
 | `src/ua_mdns.py` | `src/vision_server/discovery/mdns.py` |
-| Einbau in `src/OPCUA/server.py` | `src/vision_server/server.py` (`src/OPCUA/server.py` ist seither nur noch ein 15-Zeilen-Starter, siehe Altlast D11) |
+| integration into `src/OPCUA/server.py` | `src/vision_server/server.py` (`src/OPCUA/server.py` has since been only a 15-line starter, see legacy D11) |
 | `tests/test_ua_lds.py` | `tests/test_discovery_lds.py` |
 
-Die Python-Schnittstelle selbst (`lds_url()`, `advertised_endpoint()`,
-`register()`, Konstanten, Verhalten) ist unverändert — reine Verschiebung,
-keine Signaturänderung. Der aktuelle Stand steht in
-[`vision-server-interface.md`](../vision-server-interface.md) und
-[`vision-system.md`](../vision-system.md); dieser Plan bleibt als historisches
-Protokoll der Messung stehen.
+The Python interface itself (`lds_url()`, `advertised_endpoint()`, `register()`, constants, behavior)
+is unchanged — a pure move, no signature change. The current state is in
+[`vision-server-interface.md`](../vision-server-interface.md) and [`vision-system.md`](../vision-system.md);
+this plan remains as a historical record of the measurement.
 
-## Offene Fragen
+## Open questions
 
-- Der Aggregation-Server hängt Namespaces dauerhaft an (Franka und EVA hatten
-  nach ihrem Verschwinden noch Namespaces, aber kein Objekt mehr). Ob ein
-  Modulwechsel dort aufräumt, ist ungeklärt — für uns unkritisch.
+- The aggregation server keeps namespaces permanently (Franka and EVA still had namespaces after they
+  disappeared, but no object any longer). Whether a module change cleans up there is unclear — for us
+  it is not critical.
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
-- Fachwissen nach `doc/part10-programm-schnittstelle.md` und
-  `doc/vision-system.md` übernommen.
+- Status set to `done`, actual interfaces entered.
+- Line in the index `doc/arbeitsplaene/README.md` updated.
+- Lasting domain knowledge carried over to `doc/part10-programm-schnittstelle.md` and `doc/vision-system.md`.

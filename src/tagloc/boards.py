@@ -22,6 +22,18 @@ _log = logging.getLogger(__name__)
 CHESSBOARD = "chessboard"
 CHARUCO = "charuco"
 
+#: Smallest ArUco marker perimeter the ChArUco detection accepts, as a fraction of
+#: the longest image edge. OpenCV's default 0.03 means about 30 px edge length at
+#: 4056 px -- on the ceiling camera the 18.5 mm markers measure 30-36 px, so 28 of
+#: 64 captures of the run on 17.11.2026 lost every marker. With 0.01, 59 of 64 are
+#: usable; detection stays below 1 s per 12 MP image.
+CHARUCO_MIN_MARKER_PERIMETER_RATE = 0.01
+
+#: Fewest ChArUco corners a capture needs to count for the lens calibration. With
+#: only a few corners the board's pose in that capture is barely determined and the
+#: fisheye solver fails on it (since 17.11.2026).
+CHARUCO_MIN_CALIBRATION_CORNERS = 8
+
 
 @dataclass(frozen=True)
 class BoardSpec:
@@ -63,6 +75,17 @@ class BoardSample:
         return int(np.asarray(self.corners).reshape(-1, 2).shape[0])
 
 
+def shift_sample(sample: BoardSample, dx: float, dy: float) -> BoardSample:
+    """Return `sample` with all corners shifted by `(dx, dy)`.
+
+    For detection in an image region: corners found in the crop are moved back
+    to coordinates of the full image, so the calibration refers to the full frame.
+    """
+    corners = np.asarray(sample.corners, dtype=np.float32).copy()
+    corners.reshape(-1, 2)[:] += np.array([dx, dy], dtype=np.float32)
+    return BoardSample(corners=corners, ids=sample.ids)
+
+
 def build_board(spec: BoardSpec) -> Any:
     """Build the ChArUco board object. `None` for chessboard."""
     if spec.type != CHARUCO:
@@ -93,7 +116,9 @@ def detect_board(
 
     if spec.type == CHARUCO:
         board = board if board is not None else build_board(spec)
-        detector = cv2.aruco.CharucoDetector(board)
+        marker_parameters = cv2.aruco.DetectorParameters()
+        marker_parameters.minMarkerPerimeterRate = CHARUCO_MIN_MARKER_PERIMETER_RATE
+        detector = cv2.aruco.CharucoDetector(board, cv2.aruco.CharucoParameters(), marker_parameters)
         corners, ids, _, _ = detector.detectBoard(gray)
         if corners is None or ids is None or len(corners) < 4:
             return None
@@ -439,7 +464,7 @@ def calibrate_from_samples(
         board = board if board is not None else build_board(spec)
         for sample in samples:
             matched_object, matched_image = board.matchImagePoints(sample.corners, sample.ids)
-            if matched_object is None or len(matched_object) < 4:
+            if matched_object is None or len(matched_object) < CHARUCO_MIN_CALIBRATION_CORNERS:
                 continue
             object_points.append(matched_object)
             image_points.append(matched_image)
@@ -452,7 +477,7 @@ def calibrate_from_samples(
     if len(object_points) < 3:
         raise ValueError("Zu wenige verwertbare Aufnahmen nach der Zuordnung")
 
-    rms, camera_matrix, distortion = lens.calibrate(
+    rms, camera_matrix, distortion, used = lens.calibrate(
         object_points, image_points, image_size, model
     )
     return CameraCalibration(
@@ -461,7 +486,7 @@ def calibrate_from_samples(
         image_size=(int(image_size[0]), int(image_size[1])),
         frame_id=frame_id,
         rms_reprojection_error=rms,
-        sample_count=len(object_points),
+        sample_count=used,
         board=spec.as_dict(),
         model=model,
     )
@@ -475,6 +500,7 @@ __all__ = [
     "build_board",
     "calibrate_from_samples",
     "canonical_chessboard_corners",
+    "shift_sample",
     "chessboard_is_unambiguous",
     "chessboard_object_points",
     "estimate_board_pose",

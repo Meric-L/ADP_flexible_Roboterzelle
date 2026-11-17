@@ -1,81 +1,80 @@
-# Tag-Map-Robustheit: eine alte Karte darf die Erkennung nicht stilllegen
+# Tag-map robustness: an old map must not switch detection off
 
-**Status:** fertig — 22.09.2026
-**Verantwortlich:** `Agent: Tag-Map-Migration und Platzhalter-Module`
-**Thema:** apriltag
+**Status:** done — 22.09.2026
+**Owner:** `Agent: Tag-map migration and placeholder modules`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Layer 1 lädt die Module wieder so, wie es der Stand vor dem Welttag-Umbau tat:
-jeder erkannte Tag kommt als Modul heraus, auch ohne Karteneintrag, und das
-Frontend bekommt seine Boxen. Eine veraltete oder kaputte `config/tagmap.json`
-kostet ab jetzt Genauigkeit und Modulnamen — aber nicht den ganzen Server.
+Layer 1 loads the modules again the way the state before the world-tag restructuring did:
+every detected tag comes out as a module, even without a map entry, and the frontend gets
+its boxes. An outdated or broken `config/tagmap.json` now costs accuracy and module names —
+but not the entire server.
 
-## Der Fehler
+## The bug
 
-Beim Welttag-Umbau (`apriltag-welttag-konzept.md`) wurden zwei Dinge zu harten
-Fehlern gemacht:
+During the world-tag restructuring (`apriltag-welttag-konzept.md`) two things were turned
+into hard errors:
 
-1. `load_tag_map` warf bei Schema `wsc.vision.tagmap/1` eine `ValueError`.
-2. Ebenso bei den Rollen `robot_table` und `reference`.
+1. `load_tag_map` raised a `ValueError` for schema `wsc.vision.tagmap/1`.
+2. The same for the roles `robot_table` and `reference`.
 
-Die Begründung war, ein stilles Umdeuten sei gefährlicher als eine klare
-Ablehnung. Das stimmt für sich genommen — übersehen wurde aber die
-**Aufrufstelle**: `AprilTagDetectionSource.open` rief `load_tag_map`
-ungeschützt auf. Die Ausnahme lief durch bis `runner._open_source`, die Quelle
-öffnete nicht, und das Vision-System blieb in `Preoperational`. Ergebnis: kein
-Job lief mehr, es kamen keine Detektionen, und im Frontend erschien keine
-einzige Box — wegen einer Textdatei, die aus dem vorherigen Stand stammte.
+The reasoning was that silently reinterpreting is more dangerous than a clear rejection.
+That is right in itself — but the **call site** was overlooked: `AprilTagDetectionSource.open`
+called `load_tag_map` unprotected. The exception propagated up to `runner._open_source`, the
+source did not open, and the vision system stayed in `Preoperational`. Result: no job ran any
+more, no detections came in, and in the frontend not a single box appeared — because of a
+text file left over from the previous state.
 
-Sichtbar war davon nur „keine Referenz gefunden" und dass im Gegensatz zum
-alten `vision-server`-Stand keine Module mehr geladen wurden.
+Of this, only the message "keine Referenz gefunden" (no reference found) was visible, and the
+fact that, unlike the old `vision-server` state, no modules were loaded any more.
 
-## Bereits gelesen
+## Already read
 
 - `CLAUDE.md`, `doc/arbeitsplaene/README.md`
-- `doc/arbeitsplaene/apriltag-welttag-konzept.md` (verursachender Umbau)
+- `doc/arbeitsplaene/apriltag-welttag-konzept.md` (the restructuring that caused it)
 - `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md`
-- `doc/vision-server-interface.md` (Payload, `frameId`-Regel)
+- `doc/vision-server-interface.md` (payload, `frameId` rule)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/tagmap.py` — Migration statt Ablehnung
-- `src/vision_server/detection/apriltag.py` — Rückfall auf leere Karte
+- `src/tagloc/tagmap.py` — migration instead of rejection
+- `src/vision_server/detection/apriltag.py` — fallback to an empty map
 - `tests/test_welttags.py`, `tests/test_apriltag_source.py`
 - `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md`
 
-## Schnittstellen
+## Interfaces
 
-### Migration alter Karten
+### Migration of old maps
 
-`load_tag_map` akzeptiert `wsc.vision.tagmap/1` und bildet die Rollen ab:
+`load_tag_map` accepts `wsc.vision.tagmap/1` and maps the roles:
 
-| alte Rolle | neue Rolle | Weltpose |
+| old role | new role | World pose |
 | --- | --- | --- |
-| `world` | `world` | bleibt |
-| `reference` | `world` | bleibt — war schon immer ein fester Anker mit Weltpose |
-| `robot_table` | `robot` | **wird verworfen** — der Tisch ist beweglich |
-| `module` | `module` | bleibt `null` |
+| `world` | `world` | remains |
+| `reference` | `world` | remains — has always been a fixed anchor with a world pose |
+| `robot_table` | `robot` | **discarded** — the table is movable |
+| `module` | `module` | remains `null` |
 
 ```python
 LEGACY_ROLES = {"reference": WORLD_ROLE, "robot_table": ROBOT_ROLE}
 ```
 
-`moduleId`, `instanceId`, `sizeM` und `tagToModule` bleiben unangetastet — die
-Modulzuordnung der alten Karte geht also nicht verloren.
+`moduleId`, `instanceId`, `sizeM` and `tagToModule` remain untouched — the module assignment
+of the old map therefore does not get lost.
 
-**Jede** Umdeutung wird einzeln über `logging.WARNING` gemeldet, das Verwerfen
-einer Weltpose ausdrücklich mit dem Wort `IGNORIERT`. Damit ist der Einwand aus
-dem Vorgängerplan erledigt, ohne die Karte unbrauchbar zu machen.
+**Every** reinterpretation is reported individually via `logging.WARNING`; discarding a world
+pose is reported explicitly with the word `IGNORIERT` (IGNORED). This settles the objection
+from the predecessor plan without making the map unusable.
 
-Weiterhin `ValueError`: ein **unbekanntes Schema** und ein **Tippfehler in der
-Rolle**. Ein Tag mit der Rolle `wrold` wäre sonst stumm weder Anker noch Modul.
+Still a `ValueError`: an **unknown schema** and a **typo in the role**. A tag with the role
+`wrold` would otherwise silently be neither anchor nor module.
 
-Dauerhaft umstellen: einmal mit `python -m tagloc.cli.build_tagmap` neu
-schreiben lassen — `save_tag_map` schreibt immer `/2`.
+To switch permanently: have it rewritten once with `python -m tagloc.cli.build_tagmap` —
+`save_tag_map` always writes `/2`.
 
-### Rückfall in `open()`
+### Fallback in `open()`
 
 ```python
 try:
@@ -85,42 +84,40 @@ except (ValueError, KeyError, UnicodeDecodeError, json.JSONDecodeError):
     self._tag_map = empty_tag_map()
 ```
 
-Ohne Karte meldet `locate_modules` jeden erkannten Tag als
-`moduleId = "TAG-<id>"`, `instanceId = "tag-<id>"`, ohne CAD-Versatz und im
-Kamera-KS (`frameId = cam_ceiling`). Genau das ist das Platzhalter-Verhalten,
-das das Frontend zum Zeichnen der Boxen braucht.
+Without a map, `locate_modules` reports every detected tag as
+`moduleId = "TAG-<id>"`, `instanceId = "tag-<id>"`, without CAD offset and in the camera CS
+(`frameId = cam_ceiling`). That is exactly the placeholder behaviour the frontend needs to
+draw the boxes.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Karte im Schema `/1` | migriert, Meldungen je umgedeutetem Tag |
-| Karte mit `robot_table` | wird `robot`, Weltpose verworfen, Meldung mit `IGNORIERT` |
-| Karte unlesbar / kaputtes JSON | `ERROR`, weiter **ohne** Karte, Tags als `TAG-<id>` |
-| Unbekanntes Schema | `ERROR`, weiter ohne Karte |
-| Tippfehler in der Rolle | `ERROR`, weiter ohne Karte (die `ValueError` bleibt, `open` fängt sie) |
-| Tag ohne Karteneintrag | wird als `TAG-<id>` gemeldet — kein Fehler, das war schon immer so |
+| Map in schema `/1` | migrated, message per reinterpreted tag |
+| Map with `robot_table` | becomes `robot`, world pose discarded, message with `IGNORIERT` |
+| Map unreadable / broken JSON | `ERROR`, continues **without** a map, tags as `TAG-<id>` |
+| Unknown schema | `ERROR`, continues without a map |
+| Typo in the role | `ERROR`, continues without a map (the `ValueError` remains, `open` catches it) |
+| Tag without a map entry | reported as `TAG-<id>` — no error, that was always so |
 
-## Vorgehen
+## Approach
 
-1. `tagmap.py`: `LEGACY_ROLES`, `_migrate_role`, Schema `/1` akzeptieren.
-2. `detection/apriltag.py`: Laden absichern, auf `empty_tag_map` zurückfallen.
-3. Tests: Migration, verworfene Weltpose, Meldungen, Platzhalter-Module,
-   `open()` mit kaputter Karte.
-4. Fach-MDs nachziehen.
+1. `tagmap.py`: `LEGACY_ROLES`, `_migrate_role`, accept schema `/1`.
+2. `detection/apriltag.py`: secure the loading, fall back to `empty_tag_map`.
+3. Tests: migration, discarded world pose, messages, placeholder modules, `open()` with a broken map.
+4. Update the topic docs.
 
-## Offene Fragen
+## Open questions
 
-- Keine.
+- None.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Keine.
+- None.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index `doc/arbeitsplaene/README.md`.
-- [x] `doc/apriltag-lokalisierung.md` und `doc/apriltag-referenz.md` nachgezogen,
-      Aussage „Schema /1 wird abgelehnt" dort korrigiert.
-- [x] Testlauf: **328 Tests, OK** (vorher 316).
+- [x] Status set to `done`, actual interfaces entered.
+- [x] Line in the index `doc/arbeitsplaene/README.md`.
+- [x] `doc/apriltag-lokalisierung.md` and `doc/apriltag-referenz.md` updated; the statement „Schema /1 wird abgelehnt“ (schema /1 is rejected) there corrected.
+- [x] Test run: **328 tests, OK** (previously 316).

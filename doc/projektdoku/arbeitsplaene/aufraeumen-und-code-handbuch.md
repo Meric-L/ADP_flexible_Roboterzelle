@@ -1,204 +1,182 @@
-# Aufräumen beider Repos und Code-Handbuch
+# Cleaning up both repos and code handbook
 
-**Status:** in Arbeit — 30.10.2026
-**Verantwortlich:** Meric, `Agent: Aufräumen und Code-Handbuch`
-**Thema:** sonstiges
-**Branch:** Doku auf `apriltag`; Code auf `apriltag-aufraeumen` (dieses Repo) und `ADP_Lokaliserung` (webskillcomposition) — beide lokal, ungemergt
+**Status:** in progress — 30.10.2026
+**Owner:** Meric, `Agent: cleanup and code handbook`
+**Topic:** other
+**Branch:** docs on `apriltag`; code on `apriltag-aufraeumen` (this repo) and `ADP_Lokaliserung` (webskillcomposition) — both local, unmerged
 
-## Ziel
+## Goal
 
-Über Wochen paralleler Arbeit haben sich in beiden Repos toter Code, Doppelungen
-(z. B. mehrere Kalibrier-Skripte), Behelfe und unsaubere Stellen angesammelt. Die
-bisherigen Listen ([`../altlasten.md`](../altlasten.md), [`../altlasten-toter-code.md`](../altlasten-toter-code.md))
-sind vom 21.09./21.10. und beziehen sich bei WSC noch auf Branch `tag-einmessen`.
+Over weeks of parallel work, dead code, duplicates (e.g. several calibration scripts), workarounds and unclean spots have accumulated in both repos. The existing lists ([`../altlasten.md`](altlasten.md), [`../altlasten-toter-code.md`](altlasten-toter-code.md))
+date from 21.09./21.10. and, for WSC, still refer to branch `tag-einmessen`.
 
-Hinterher gibt es:
+Afterwards there will be:
 
-1. zwei aktuelle Audits — [`../altlasten-zelle.md`](../altlasten-zelle.md) (dieses Repo, `apriltag`) und
-   [`../altlasten-wsc.md`](../altlasten-wsc.md) (webskillcomposition, nur unser Anteil `origin/dev..Ungetestet`);
-2. ein Code-Handbuch [`../code-dokumentation.md`](../code-dokumentation.md), in dem man für jede Datei unseres
-   Codes nachlesen kann, wozu sie da ist und wo die Details stehen;
-3. die Funde abgearbeitet auf eigenen Branches, die erst auf Ansage gemergt werden.
+1. two current audits — [`../altlasten-zelle.md`](altlasten-zelle.md) (this repo, `apriltag`) and
+   [`../altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition, only our share `origin/dev..Ungetestet`);
+2. a code handbook [`../code-dokumentation.md`](../code-dokumentation.md), in which one can look up for every file of our
+   code what it is for and where the details are;
+3. the findings worked off on separate branches, which are merged only on instruction.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`: Regeln, Arbeitsplan-Pflicht, Deutsch als Sprache, kein Löschen/Umbenennen von Fach-MDs
-- `doc/projektdoku/arbeitsplaene/README.md` und `_vorlage.md`: Index, Format
-- `doc/projektdoku/altlasten.md`, `doc/projektdoku/altlasten-toter-code.md`: bisherige Funde (werden übernommen und neu geprüft)
-- Branch `apriltag-refactoring` (Plan `refactoring-apriltag.md` dort): Stand 23.09., 149 Commits hinter `apriltag`, wird nicht gemergt — nur Ideenquelle
+- `CLAUDE.md`: rules, work-plan obligation, German as the language, no deleting/renaming of topic docs
+- `doc/projektdoku/arbeitsplaene/README.md` and `_vorlage.md`: index, format
+- `doc/projektdoku/arbeitsplaene/altlasten.md`, `doc/projektdoku/arbeitsplaene/altlasten-toter-code.md`: previous findings (will be carried over and re-checked)
+- Branch `apriltag-refactoring` (plan `refactoring-apriltag.md` there): as of 23.09., 149 commits behind `apriltag`, not merged — only a source of ideas
 
-## Betroffene Dateien
+## Affected files
 
-Doku (Branch `apriltag`):
+Docs (branch `apriltag`):
 
-- `doc/projektdoku/altlasten-zelle.md`, `doc/projektdoku/altlasten-wsc.md`, `doc/projektdoku/code-dokumentation.md` (neu)
-- `doc/projektdoku/altlasten.md`, `doc/projektdoku/altlasten-toter-code.md` (nur Kopfhinweis „abgelöst durch …“)
-- `doc/projektdoku/arbeitsplaene/README.md` (Indexzeile, Fachdoku-Tabelle), `README.md` (Doku-Tabelle)
+- `doc/projektdoku/arbeitsplaene/altlasten-zelle.md`, `doc/projektdoku/arbeitsplaene/altlasten-wsc.md`, `doc/projektdoku/code-dokumentation.md` (new)
+- `doc/projektdoku/arbeitsplaene/altlasten.md`, `doc/projektdoku/arbeitsplaene/altlasten-toter-code.md` (only header note "superseded by …")
+- `doc/projektdoku/arbeitsplaene/README.md` (index line, topic-doc table), `README.md` (docs table)
 
-Code: die in den Audits mit ID genannten Stellen. Jede Änderung trägt die Fund-ID in der
-Commit-Message, damit sie sich einzeln nachvollziehen und zurücknehmen lässt.
+Code: the places named with an ID in the audits. Every change carries the finding ID in the
+commit message, so that each one can be traced individually and reverted.
 
-## Schnittstellen
+## Interfaces
 
-Das Aufräumen ändert **keine** dokumentierte Schnittstelle: OPC-UA-NodeIds, Methoden und
-ihre Argumente, Payload-Felder, Dateiformate (`tagmap.json`, Kalibrier-JSON) und die
-CLI-Befehle `python -m tagloc.cli.*` bleiben, wie sie in den Fach-MDs stehen. Wo ein Fund
-das nur mit einer Schnittstellenänderung lösen könnte, bleibt er im Audit offen und wird
-mit dem Team abgestimmt.
+The cleanup changes **no** documented interface: OPC UA NodeIds, methods and their arguments, payload fields, file formats (`tagmap.json`, calibration JSON) and the CLI commands `python -m tagloc.cli.*` remain as stated in the topic docs. Where a finding could only be resolved with an interface change, it stays open in the audit and is coordinated with the team.
 
-Python-Importpfade innerhalb von `src/` können sich ändern, wenn toter Code wegfällt oder
-Doppelungen zusammengeführt werden. Die Tests (`PYTHONPATH=src python -m unittest discover -s tests -t .`)
-müssen danach unverändert grün sein.
+Python import paths within `src/` may change when dead code is removed or duplicates are merged. The tests (`PYTHONPATH=src python -m unittest discover -s tests -t .`)
+must then remain green without modification.
 
-## Vorgehen
+## Approach
 
-1. Audit beider Repos (toter Code, Doppelungen, Behelfe, Richtlinien, Testlücken), Funde mit Beleg und ID.
-2. Audits und Code-Handbuch auf `apriltag` schreiben und pushen.
-3. Aufräumen auf `apriltag-aufraeumen` bzw. `ADP_Lokaliserung`, nach Risiko: toter Code →
-   Doppelungen → Richtlinien → Behelfe (nur, wenn die Abbaubedingung erfüllt ist). Dateien, an
-   denen auf `apriltag` gerade viel gearbeitet wird, nur behutsam anfassen (Konfliktrisiko beim
-   späteren Merge).
-4. Nach jedem Block alle Tests; erledigte Funde im Audit mit Branch und Commit markieren.
+1. Audit of both repos (dead code, duplicates, workarounds, guidelines, test gaps), findings with evidence and ID.
+2. Write and push the audits and code handbook on `apriltag`.
+3. Cleanup on `apriltag-aufraeumen` or `ADP_Lokaliserung`, by risk: dead code →
+   duplicates → guidelines → workarounds (only if the removal condition is met). Touch files on which a lot is currently being worked on
+   on `apriltag` only carefully (conflict risk at the later merge).
+4. After each block, all tests; mark completed findings in the audit with branch and commit.
 
 
-## Aufteilung auf zwei Sitzungen (ab 30.10.2026)
+## Split into two sessions (from 30.10.2026)
 
-Ab hier arbeiten zwei Claude-Sitzungen parallel. Jede hat **ihr eigenes Repo, ihren eigenen Branch,
-ihren eigenen Audit und ihren eigenen Handbuch-Teil**. Dadurch fassen sie nie dieselbe Datei an.
+From here on two Claude sessions work in parallel. Each has **its own repo, its own branch, its own audit and its own handbook part**. This way they never touch the same file.
 
-| | Sitzung A — Zelle | Sitzung B — webskill |
+| | Session A — cell | Session B — webskill |
 | --- | --- | --- |
 | Worktree | `/home/meric/ADP/ADP_flexible_Roboterzelle/.claude/worktrees/apriltag-aufraeumen` | `/home/meric/ADP/webskillcomposition/.claude/worktrees/ungetestet-aufraeumen` |
-| Branch (lokal, ungemergt) | `apriltag-aufraeumen` (Basis `apriltag`) | `ADP_Lokaliserung` (Basis `Ungetestet` `5812275`) |
-| Funde | [`../altlasten-zelle.md`](../altlasten-zelle.md) | [`../altlasten-wsc.md`](../altlasten-wsc.md) |
-| Handbuch | `code-dokumentation.md`, nur **Teil A** | `code-dokumentation.md`, nur **Teil B** |
-| Status nachtragen in | `altlasten-zelle.md`, Abschnitt 12 „Umsetzungsstand“ | `altlasten-wsc.md`, Abschnitt 11 „Umsetzungsstand“ |
-| Tests | `PYTHONPATH=src /home/meric/ADP/ADP_flexible_Roboterzelle/.venv/bin/python -m unittest discover -s tests -t .` (Ausgangsstand 877 OK) | in `frontend/`: `npx tsc --noEmit`, `npx vitest run` (79 Dateien / 836 Tests); in `backend/`: `/home/meric/ADP/webskillcomposition/backend/.venv/bin/python -m pytest -q` (81 + 1 übersprungen) |
+| Branch | `apriltag-aufraeumen` (base `apriltag`; merged into `main` on 17.11.2026) | `ADP_Lokaliserung` (base `Ungetestet` `5812275`; local, unmerged) |
+| Findings | [`../altlasten-zelle.md`](altlasten-zelle.md) | [`../altlasten-wsc.md`](altlasten-wsc.md) |
+| Handbook | `code-dokumentation.md`, only **part A** | `code-dokumentation.md`, only **part B** |
+| Record status in | `altlasten-zelle.md`, section 12 "Implementation status" | `altlasten-wsc.md`, section 11 "Implementation status" |
+| Tests | `PYTHONPATH=src /home/meric/ADP/ADP_flexible_Roboterzelle/.venv/bin/python -m unittest discover -s tests -t .` (starting state 877 OK) | in `frontend/`: `npx tsc --noEmit`, `npx vitest run` (79 files / 836 tests); in `backend/`: `/home/meric/ADP/webskillcomposition/backend/.venv/bin/python -m pytest -q` (81 + 1 skipped) |
 
-**Gemeinsame Regeln**
+**Shared rules**
 
-- Claude Code **im eigenen Worktree starten**, nicht in `/home/meric/ADP` — sonst blockiert der Hook
-  `doku_regeln.py` jedes Write/Edit (Fund B14 in `altlasten-zelle.md`).
-- Ein Commit je Fund-ID oder kleiner Gruppe, ID vorn in der Message (`aufraeumen(T1): …`). Nach jedem Block
-  alle Tests. Code-Branches nicht pushen, nichts mergen, kein Force-Push.
-- Keine dokumentierte Schnittstelle ändern (OPC-UA-Knoten/Methoden, Payloads `wsc.vision.*`, `tagmap.json`,
-  CLI-Optionen). Was nur mit Schnittstellenänderung geht, bleibt offen.
-- Vor jedem Löschen die Verwender-Suche selbst wiederholen; Belege im Audit können veraltet sein.
-- Funde unter „Entscheidung nötig“ werden **nicht** umgesetzt, sondern beim Nutzer nachgefragt.
+- Start Claude Code **in its own worktree**, not in `/home/meric/ADP` — otherwise the hook
+  `doku_regeln.py` blocks every Write/Edit (finding B14 in `altlasten-zelle.md`).
+- One commit per finding ID or small group, ID at the start of the message (`aufraeumen(T1): …`). After each block
+  all tests. Do not push code branches, merge nothing, no force-push.
+- Do not change any documented interface (OPC UA nodes/methods, payloads `wsc.vision.*`, `tagmap.json`,
+  CLI options). What can only be done with an interface change stays open.
+- Before every deletion, repeat the usage search yourself; evidence in the audit may be out of date.
+- Findings under "Entscheidung nötig" (decision needed) are **not** implemented, but are referred back to the user.
 
-### Sitzung A — Zelle (`apriltag-aufraeumen`)
+### Session A — cell (`apriltag-aufraeumen`)
 
-**Nicht anfassen:**
+**Do not touch:**
 
-- heiße Dateien: `src/vision_server/runner.py`, `detection/apriltag.py`, `server.py`, `stream_overlay.py`,
-  `cellwatch.py`, `config.py`, `src/tagloc/overlay.py`, `src/tagloc/boards.py` (Ausnahme: einzeilige
-  Kommentar-/Docstring-Korrektur);
-- vom Plan [`handeye-genauigkeit.md`](handeye-genauigkeit.md) reserviert: `src/vision_server/handeye_session.py`,
+- hot files: `src/vision_server/runner.py`, `detection/apriltag.py`, `server.py`, `stream_overlay.py`,
+  `cellwatch.py`, `config.py`, `src/tagloc/overlay.py`, `src/tagloc/boards.py` (exception: one-line
+  comment/docstring correction);
+- reserved by the plan [`handeye-genauigkeit.md`](handeye-genauigkeit.md): `src/vision_server/handeye_session.py`,
   `src/tagloc/handeye.py`, `src/tagloc/cli/calibrate_handeye.py`, `src/tagloc/pose.py`, `src/tagloc/detector.py`;
-- `apriltag-refactoring` nicht mergen. Einzelne Commits per Cherry-pick (`-x`) nur, wenn sie ohne Konflikt
-  passen und keine der obigen Dateien berühren; sonst Fund offen lassen.
+- do not merge `apriltag-refactoring`. Individual commits via cherry-pick (`-x`) only if they apply without conflict
+  and touch none of the files above; otherwise leave the finding open.
 
-**Nachtrag 30.10.2026 (Entscheidung Nutzer):** `runner.py` und `detection/apriltag.py` werden doch zerlegt —
-auf Basis von `usecase-foto` (aktuellere Fassung, in `apriltag-aufraeumen` eingemergt, `2e6360e`). Die
-Hand-Auge-Dateien sind freigegeben (Stand aus `handeye-genauigkeit` liegt schon auf `apriltag`), mit
-Kompatibilitätsprüfung: Hand-Auge-Payload `wsc.vision.handeye.status/1`, `session.json` und die OPC-UA-Methoden
-müssen vorher/nachher gleich sein, gemessen an dem, was das Frontend liest. Reihenfolge, damit sich die Tests
-nicht überlagern: erst `detection/apriltag.py`, dann `runner.py`, dann Hand-Auge (D4, `finish()`, Übersetzung).
-Die übrigen heißen Dateien bleiben gesperrt.
+**Addendum 30.10.2026 (user decision):** `runner.py` and `detection/apriltag.py` are after all being split —
+based on `usecase-foto` (more recent version, merged into `apriltag-aufraeumen`, `2e6360e`). The
+hand-eye files are released (the state from `handeye-genauigkeit` is already on `apriltag`), subject to a
+compatibility check: hand-eye payload `wsc.vision.handeye.status/1`, `session.json` and the OPC UA methods
+must be identical before and after, measured against what the frontend reads. Order, so that the tests do not overlap:
+first `detection/apriltag.py`, then `runner.py`, then hand-eye (D4, `finish()`, translation).
+The remaining named hot files stay locked.
 
-**Reihenfolge:**
+**Order:**
 
-1. **T1** Prototyp `src/apriltag/` löschen, Verweise in Docstrings und Doku mitziehen.
-2. **Text und Hygiene:** T11, B2 (`.gitignore`-Ausnahmen), B3, B5 (README-Struktur), B6 (`betreuer/`-Verweise), B7 (`cli/calibrate.py`: Taste „S“, `--capture-to` headless), B10 (`diagnose_board` 7x10), B14 (Hook robust machen).
-3. **Toter Code:** T2, T3 (Cherry-pick-Kandidat `7e67251`), T4, T5, T9 (nur `profiles.py`), T10 (ohne heiße/reservierte Dateien), T14 (nur `cancel_running`).
-4. **D11/B9** Hostnamen in `src/jobs/calibrate.py` an die echten Pi-Namen angleichen, ohne `server.py` zu ändern; dazu Test **L3**.
-5. **Doppelungen:** D12 (`tests/_support.py`, Kandidaten `1c938f6`, `9a7942f`), D9, D13, D15 und D10 nur in nicht heißen Dateien, D16.
-6. **Tests:** L1 + L6 (`VisionProgram`, `ua_program`; Vorlage `test_ua_methoden.py` aus `dfcfa4d`), L7, L12.
-7. **U4, U6**; zuletzt **U2** (englische Docstrings übersetzen) nur in nicht heißen, nicht reservierten Dateien.
+1. **T1** Delete prototype `src/apriltag/`, carry references in docstrings and docs along too.
+2. **Text and hygiene:** T11, B2 (`.gitignore` exceptions), B3, B5 (README structure), B6 (`betreuer/` references), B7 (`cli/calibrate.py`: key "S", `--capture-to` headless), B10 (`diagnose_board` 7x10), B14 (make the hook robust).
+3. **Dead code:** T2, T3 (cherry-pick candidate `7e67251`), T4, T5, T9 (only `profiles.py`), T10 (excluding hot/reserved files), T14 (only `cancel_running`).
+4. **D11/B9** align hostnames in `src/jobs/calibrate.py` with the real Pi names, without changing `server.py`; plus test **L3**.
+5. **Duplicates:** D12 (`tests/_support.py`, candidates `1c938f6`, `9a7942f`), D9, D13, D15 and D10 only in non-hot files, D16.
+6. **Tests:** L1 + L6 (`VisionProgram`, `ua_program`; template `test_ua_methoden.py` from `dfcfa4d`), L7, L12.
+7. **U4, U6**; last **U2** (translate English docstrings) only in non-hot, non-reserved files.
 
-**Entscheidung nötig:** T6/T7, T8, T12/T13, B1 (`data/` versionieren?), B11, B13, D4 und alle Zerlegungen aus
-Abschnitt 7 (erst nach Merge von `usecase-foto`; D4 nach `handeye-genauigkeit`).
+**Decision needed:** T6/T7, T8, T12/T13, B1 (version `data/`?), B11, B13, D4 and all decompositions from section 7
+(only after merge of `usecase-foto`; D4 after `handeye-genauigkeit`).
 
-### Sitzung B — webskill (`ADP_Lokaliserung`)
+### Session B — webskill (`ADP_Lokaliserung`)
 
-**Vorab (Übergabe 30.10.2026):** Block 1 ist zum Teil umgesetzt — 12 Commits auf `ADP_Lokaliserung` (T1–T16, T18–T20, Teile von B12), Gesamttests darauf noch **nicht** gelaufen. Offen und von Sitzung B zu übernehmen: **B13** ist in `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` halb bearbeitet und nicht committet (Diff ansehen, fertigstellen oder verwerfen), danach **B9** und der Rest von **B12** (u. a. `RobotRunConfirm` nach `opcua-server/components`). Erst dann alle Tests, dann Reihenfolge-Punkt 1.
+**Preliminary (handover 30.10.2026):** block 1 is partly implemented — 12 commits on `ADP_Lokaliserung` (T1–T16, T18–T20, parts of B12); full tests have **not** yet been run on it. Open and to be taken over by session B: **B13** is half-edited in `frontend/src/features/cell-modules/components/AutolocateLayer1Window.tsx` and not committed (look at the diff, finish it or discard it), then **B9** and the rest of **B12** (incl. `RobotRunConfirm` to `opcua-server/components`). Only then all tests, then order item 1.
 
-**Umgebung:** `frontend/node_modules` und die Inhalte von `frontend/public/urdf/` sind Symlinks aus dem
-Haupt-Checkout (Submodul, `info/exclude`) — nie committen, Dateien immer einzeln hinzufügen. 3D-Modelle sind
-nur LFS-Zeiger. `origin` (git.rwth-aachen.de) braucht einen HTTPS-Login; ohne ihn bleibt `origin/dev` auf
-`d824975`. Kommentare im Code englisch (wie `dev`).
+**Environment:** `frontend/node_modules` and the contents of `frontend/public/urdf/` are symlinks from the main checkout (submodule, `info/exclude`) — never commit them, always add files individually. 3D models are only LFS pointers. `origin` (git.rwth-aachen.de) needs an HTTPS login; without it `origin/dev` stays at `d824975`. Comments in the code are in English (like `dev`).
 
-**Nicht anfassen:** Dateien und Zeilen aus dem Revert `839857c` (Spalte „dev?“ = Revert: `features/task/*`,
-Docs, Backend-Mischdateien), dev-Code, B5 (Spielmodelle, Lizenzfrage), B7 (Testphase-Schalter),
-B8 (Alt-Pi-Zweige), B10, D13/B6 (Katalog-Default), D14/U6 (tag-tool), die Welttag-Kette (Abschnitt 10 —
-eigenes Feature mit eigenem Arbeitsplan).
+**Do not touch:** files and lines from the revert `839857c` (column "dev?" = revert: `features/task/*`, docs, mixed backend files), dev code, B5 (game models, licence question), B7 (test-phase switch), B8 (old-Pi branches), B10, D13/B6 (catalogue default), D14/U6 (tag tool), the world-tag chain (section 10 — its own feature with its own work plan).
 
-**Reihenfolge:**
+**Order:**
 
-1. **Gemeinsame Helfer:** D6 + D15 (`vec3.ts`), D7 (Winkel), D9 (Format/Parse), D17, D18 (eine Geschwindigkeitskonstante), D10 (`createStore`).
-2. **Pi-Aufrufe:** D1 (ein `callPiMethod` mit `MethodSpec`), D4 (`useSubscribedNode`/`usePiBinding`), D5 (`useRobotModelLoaded`), D2 (Warte-Helfer), dann D3 (`usePiCommand`) — **zuerst** Test für den neuen Hook (L1).
-3. **Konfiguration:** D19 + B1–B4 (eine `PI_SERVERS`-Liste mit Rolle, Label, Adresse); U4 (Hook in Schleife in `PiActivity.tsx`).
-4. **Struktur:** U5 (Zyklen zwischen Features auflösen, `index.ts` je Feature), danach U3-Zerlegungen (`ModuleCatalogModal`, `TagReferencePanel`, `ApproachPlanPanel`, `usePickPlaceRun`, `HandEyeAutoPanel`, `modelPlanes`), eine Datei je Commit.
+1. **Shared helpers:** D6 + D15 (`vec3.ts`), D7 (angle), D9 (format/parse), D17, D18 (one speed constant), D10 (`createStore`).
+2. **Pi calls:** D1 (one `callPiMethod` with `MethodSpec`), D4 (`useSubscribedNode`/`usePiBinding`), D5 (`useRobotModelLoaded`), D2 (wait helper), then D3 (`usePiCommand`) — **first** a test for the new hook (L1).
+3. **Configuration:** D19 + B1–B4 (one `PI_SERVERS` list with role, label, address); U4 (hook in a loop in `PiActivity.tsx`).
+4. **Structure:** U5 (resolve cycles between features, `index.ts` per feature), then U3 decompositions (`ModuleCatalogModal`, `TagReferencePanel`, `ApproachPlanPanel`, `usePickPlaceRun`, `HandEyeAutoPanel`, `modelPlanes`), one file per commit.
 
-**Doku von Sitzung B** liegt im Zellen-Repo auf `apriltag`: eigenen temporären Worktree vom aktuellen
-`origin/apriltag` anlegen (nicht den von Sitzung A benutzen), nur `altlasten-wsc.md` (Abschnitt 11) und Teil B
-von `code-dokumentation.md` ändern, committen, mit Rebase auf `origin/apriltag` ziehen, fast-forward pushen
-(Doku-Push auf `apriltag` ist freigegeben), Worktree entfernen.
+**Docs of session B** are in the cell repo on `apriltag`: create a separate temporary worktree from the current
+`origin/apriltag` (do not use the one from session A), change only `altlasten-wsc.md` (section 11) and part B
+of `code-dokumentation.md`, commit, rebase onto `origin/apriltag`, fast-forward push (docs push to `apriltag` is approved), remove the worktree.
 
 
-## Offene Aufgaben auf den Pis (Stand 30.10.2026)
+## Open tasks on the Pis (as of 30.10.2026)
 
-Ohne Zugriff auf die Pis nicht erledigt. Reihenfolge einhalten; vor jedem Neustart prüfen, dass kein Job und
-keine Kalibrierung läuft (eine Zellen-Überwachung darf enden, das Frontend startet sie neu). Vorher sichern:
-`config/tagmap.json`, lokale Änderungen (`diff > …patch`), `override.conf`.
+Not done without access to the Pis. Keep to the order; before each restart check that no job and no calibration is running (a cell monitoring may end, the frontend restarts it). Back up beforehand:
+`config/tagmap.json`, local changes (`diff > …patch`), `override.conf`.
 
-**Decken-Pi `ADP-Roboter-Lokalisierung`** (Repo `/home/adp-roboter/Desktop/ADP_Lokalisierung/ADP_flexible_Roboterzelle`)
+**Ceiling Pi `ADP-Roboter-Lokalisierung`** (repo `/home/adp-roboter/Desktop/ADP_Lokalisierung/ADP_flexible_Roboterzelle`)
 
-1. Prüfen, ob die am 30.10. umgestellte Unit läuft: `ExecStart=<Repo>/.venv/bin/python -m vision_server.server`,
-   `Environment=PYTHONPATH=<Repo>/src`; Sicherung `/etc/systemd/system/opcua-server.service.bak-20261030`.
-   Status aktiv, Journal ohne Traceback, Ports 4840 (OPC UA) und 8080 (MJPEG).
-2. Repo auf `origin/apriltag` setzen. Der Pi stand auf `6ebab91` (drei Commits, die auf dem Remote zurückgenommen
-   wurden) mit lokalen Änderungen an `config/tagmap.json` und `doc/projektdoku/apriltag-referenz.md`: sichern,
-   `fetch`, prüfen, dass sich `src tests tools` gegenüber `origin/apriltag` nicht unterscheiden, dann hart auf
-   `origin/apriltag` zurücksetzen.
-3. **Vorher entscheiden: Welttag-Größe 0,2 oder 0,198.** Lokal auf dem Pi stand 0,2, auf `origin/apriltag` 0,198.
-   Gilt 0,2, zuerst `config/tagmap.json` auf `apriltag` ändern und pushen, dann Schritt 2.
-4. Tippfehler im Drop-in `/etc/systemd/system/opcua-server.service.d/override.conf` beheben:
-   `VISION_APRILTAG_QUAD_DECICMATE` → `VISION_APRILTAG_QUAD_DECIMATE` (Wert 1.5). Wirkte bisher nie;
-   danach wird die Erkennung schneller, kleine/ferne Tags eher übersehen — nach dem Neustart beobachten.
-5. `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` aus dem Drop-in entfernen (Notausgang, im Betrieb nicht nötig, solange
-   `data/calibration/cam_ceiling.json` existiert).
-6. OpenCV bereinigen: installiert sind `opencv` 4.10.0 **und** `opencv-contrib-python` 5.0.0.93 (Paketkonflikt).
-   Nur `opencv-contrib-python` behalten; danach `import cv2; cv2.aruco` und einen Testjob prüfen.
-7. `daemon-reload`, ein Neustart, prüfen wie in 1.
+1. Check whether the unit switched on 30.10. is running: `ExecStart=<Repo>/.venv/bin/python -m vision_server.server`,
+   `Environment=PYTHONPATH=<Repo>/src`; backup `/etc/systemd/system/opcua-server.service.bak-20261030`.
+   Status active, journal without traceback, ports 4840 (OPC UA) and 8080 (MJPEG).
+2. Set the repo to `origin/apriltag`. The Pi was at `6ebab91` (three commits that were reverted on the remote)
+   with local changes to `config/tagmap.json` and `doc/projektdoku/apriltag-referenz.md`: back up,
+   `fetch`, check that `src tests tools` do not differ from `origin/apriltag`, then hard reset to
+   `origin/apriltag`.
+3. **Decide beforehand: world tag size 0.2 or 0.198.** Locally on the Pi it was 0.2, on `origin/apriltag` 0.198.
+   If 0.2 applies, first change and push `config/tagmap.json` on `apriltag`, then step 2.
+4. Fix the typo in the drop-in `/etc/systemd/system/opcua-server.service.d/override.conf`:
+   `VISION_APRILTAG_QUAD_DECICMATE` → `VISION_APRILTAG_QUAD_DECIMATE` (value 1.5). It has never had an effect so far; afterwards detection becomes faster, small/distant tags are more likely to be missed — observe after the restart.
+5. Remove `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` from the drop-in (emergency exit, not needed in operation as long as
+   `data/calibration/cam_ceiling.json` exists).
+6. Clean up OpenCV: installed are `opencv` 4.10.0 **and** `opencv-contrib-python` 5.0.0.93 (package conflict).
+   Keep only `opencv-contrib-python`; afterwards check `import cv2; cv2.aruco` and a test job.
+7. `daemon-reload`, one restart, check as in 1.
 
-**Hand-Pi `ADP-HandInEye-Kamera-Pi`**
+**Hand Pi `ADP-HandInEye-Kamera-Pi`**
 
-1. Bestandsaufnahme wie beim Decken-Pi (Prompt im Chat vom 30.10.: Unit, Drop-ins, Python/venv, OpenCV- und
-   pupil-Version, `VISION_*`-Variablen, Branch/Commit/`status`, `config/tagmap.json` mit sha256 und Welttags,
-   Dateien unter `data/calibration/` und `data/handeye/`).
-2. Unit wie beim Decken-Pi auf `-m vision_server.server` umstellen (Sicherung, `daemon-reload`, Neustart, prüfen).
-3. Repo auf `origin/apriltag`; gleiche Tag-Map wie auf dem Decken-Pi (sha256 vergleichen).
-4. Auf denselben Tippfehler und dieselben Punkte 5–6 prüfen.
+1. Inventory as for the ceiling Pi (prompt in the chat of 30.10.: unit, drop-ins, Python/venv, OpenCV and pupil version, `VISION_*` variables, branch/commit/`status`, `config/tagmap.json` with sha256 and world tags, files under `data/calibration/` and `data/handeye/`).
+2. Switch the unit to `-m vision_server.server` as on the ceiling Pi (backup, `daemon-reload`, restart, check).
+3. Repo on `origin/apriltag`; same tag map as on the ceiling Pi (compare sha256).
+4. Check for the same typo and the same points 5–6.
 
-**Danach im Repo (Sitzung A):**
+**Afterwards in the repo (session A):**
 
-- Wenn **beide** Units umgestellt sind: Unit-Vorlage `deploy/opcua-server.service` versionieren, `src/OPCUA/`
-  löschen, Verweise in `vision-system.md` und im Handbuch anpassen (B13, ex D5, ex D11).
-- Wenn beide Pis OpenCV ≥ 4.7 haben: Rückfallzweige für OpenCV < 4.7 löschen (T12). Entscheidung zu
-  `pupil-apriltags` (T13): auf dem Decken-Pi installiert, im Betrieb ungenutzt (Backend `aruco`).
-- Befunde in `altlasten-zelle.md` und in den Welttag-Abschnitt von `altlasten-wsc.md` eintragen.
+- When **both** units have been switched: version the unit template `deploy/opcua-server.service`, delete `src/OPCUA/`, adjust references in `vision-system.md` and in the handbook (B13, formerly D5, formerly D11).
+- When both Pis have OpenCV ≥ 4.7: delete fallback branches for OpenCV < 4.7 (T12). Decision on `pupil-apriltags` (T13): installed on the ceiling Pi, unused in operation (backend `aruco`).
+- Enter the findings in `altlasten-zelle.md` and in the world-tag section of `altlasten-wsc.md`.
 
-## Offene Fragen
+## Open questions
 
-- Unklare Werkzeuge (z. B. `src/vision_server/tools/pi_load_profiler.py`) werden nicht gelöscht,
-  sondern im Audit als Frage an das Team geführt.
+- Unclear tools (e.g. `src/vision_server/tools/pi_load_profiler.py`) are not deleted,
+  but are recorded in the audit as a question for the team.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-Wird während der Umsetzung gefüllt.
+To be filled in during implementation.
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, Index aktualisiert.
-- Merge von `apriltag-aufraeumen` in `apriltag` und `ADP_Lokaliserung` in `Ungetestet` nur auf Ansage.
+- Status set to `done`, index updated.
+- Merge of `apriltag-aufraeumen` into `apriltag` and `ADP_Lokaliserung` into `Ungetestet` only on instruction.

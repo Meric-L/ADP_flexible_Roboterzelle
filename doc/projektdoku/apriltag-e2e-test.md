@@ -1,36 +1,36 @@
-# AprilTag-Lokalisierung end-to-end testen
+# AprilTag localization end-to-end test
 
-Diese Anleitung führt die gesamte Kette einmal durch — von der leeren Maschine
-bis zur Modulpose im Frontend. Sie ist in Stufen geteilt, die aufeinander
-aufbauen. **Jede Stufe hat ein Abbruchkriterium**: ist es nicht erfüllt, hat es
-keinen Sinn, die nächste zu versuchen — der Fehler steckt dann in einer Schicht,
-die man später nicht mehr isolieren kann.
+This guide runs through the whole chain once — from the empty machine
+to the module pose in the frontend. It is divided into stages that build
+on each other. **Every stage has an abort criterion**: if it is not met,
+there is no point in trying the next one — the error then sits in a layer
+that can no longer be isolated later.
 
-| Stufe | Wo | Hardware | Beantwortet |
+| Stage | Where | Hardware | Answers |
 |---|---|---|---|
-| [0](#0-vorbereitung) | PC | keine | Läuft die Software überhaupt? |
-| [1](#1-stufe-1--ohne-kamera-am-pc) | PC | keine | Rechnet die Kette richtig? |
-| [2](#2-stufe-2--mit-webcam-am-pc) | PC | Webcam | Funktioniert Bild → Pose? |
-| [3](#3-stufe-3--auf-dem-raspberry-pi-mit-pi-kamera) | Pi | **Pi-Kamera** | Funktioniert es in der Zelle? |
-| [4](#4-stufe-4--im-frontend) | Pi + Frontend | Pi-Kamera | Sieht der Bediener, was passiert? |
+| [0](#0-preparation) | PC | none | Does the software run at all? |
+| [1](#1-stage-1--without-a-camera-on-the-pc) | PC | none | Does the chain compute correctly? |
+| [2](#2-stage-2--with-a-webcam-on-the-pc) | PC | Webcam | Does image → pose work? |
+| [3](#3-stage-3--on-the-raspberry-pi-with-the-pi-camera) | Pi | **Pi camera** | Does it work in the cell? |
+| [4](#4-stage-4--in-the-frontend) | Pi + frontend | Pi camera | Can the operator see what is happening? |
 
-Nachbardokumente: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) (warum es
-so gebaut ist), [`apriltag-referenz.md`](apriltag-referenz.md) (Funktions- und
-CLI-Referenz), [`vision-server-interface.md`](vision-server-interface.md) (OPC-UA-Seite).
+Related documents: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) (why it is built
+this way), [`apriltag-referenz.md`](apriltag-referenz.md) (function and CLI
+reference), [`vision-server-interface.md`](vision-server-interface.md) (OPC UA side).
 
 ---
 
-## 0. Vorbereitung
+## 0. Preparation
 
-### 0.1 Umgebung am PC
+### 0.1 Environment on the PC
 
-Die Umgebung in diesem Repo ist einsatzbereit (OpenCV 5.0.0, numpy 2.5.3,
-asyncua 2.0.1, pupil-apriltags) — springe direkt zur Prüfung unten. Das alte,
-defekte `.venv` liegt als `.venv.kaputt/` daneben und kann gelöscht werden.
+The environment in this repo is ready to use (OpenCV 5.0.0, numpy 2.5.3,
+asyncua 2.0.1, pupil-apriltags) — skip straight to the check below. The old,
+broken `.venv` is located next to it as `.venv.kaputt/` and can be deleted.
 
-> **Auf einem anderen Rechner:** `setup.sh` legt **keine** venv an, es richtet
-> nur das ShareLaTeX-Remote ein. Lege sie deshalb selbst an — altes
-> `.venv`-Verzeichnis entfernen, dann
+> **On another machine:** `setup.sh` does **not** create a venv; it only sets
+> up the ShareLaTeX remote. So create one yourself — remove any old
+> `.venv` directory, then
 
 ```bash
 cd ADP_flexible_Roboterzelle
@@ -39,83 +39,83 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-Prüfen — beide Zeilen müssen etwas ausgeben:
+Check — both lines must print something:
 
 ```bash
 .venv/bin/python3 -c "import cv2, numpy; print('opencv', cv2.__version__, '| numpy', numpy.__version__)"
 .venv/bin/python3 -c "import cv2; print('aruco ok:', hasattr(cv2.aruco, 'DICT_APRILTAG_36h11'))"
 ```
 
-**Abbruchkriterium:** `aruco ok: True`. Ohne `opencv-contrib-python` fehlt
-`cv2.aruco` vollständig; das normale `opencv-python` reicht nicht.
+**Abort criterion:** `aruco ok: True`. Without `opencv-contrib-python`,
+`cv2.aruco` is missing entirely; the regular `opencv-python` is not enough.
 
-### 0.2 Tags drucken
+### 0.2 Print the tags
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 tools/make_tag_sheet.py \
     --ids 0 1 2 3 7 12 --size-mm 100 --out /tmp/tags.svg
 ```
 
-Die Ausgabe ist SVG in echten Millimetern — im Browser öffnen und drucken,
-dabei **Skalierung auf „100 % / Originalgröße" stellen**, nicht „an Seite
-anpassen". Auf jedem Bogen steht unten ein 100-mm-Maßstab: **den nach dem
-Drucken mit dem Lineal nachmessen.** Stimmt er nicht, hat der Drucker skaliert
-und alle Tags darauf sind unbrauchbar.
+The output is SVG in real millimetres — open it in the browser and print it,
+setting **scale to "100 % / Originalgröße" (100 % / actual size)**, not
+"an Seite anpassen" (fit to page). Each sheet has a 100 mm scale bar at the
+bottom: **measure it with a ruler after printing.** If it does not match, the
+printer has scaled the output and all tags on it are unusable.
 
-Danach das Wichtigste dieser ganzen Anleitung:
+Then the most important point of this whole guide:
 
-> **Miss die gedruckte Kante mit dem Lineal nach und trage den gemessenen Wert
-> in die Tag-Map ein, nicht den bestellten.**
+> **Measure the printed edge with a ruler and enter the measured value in the
+> tag map, not the ordered one.**
 
-Gemeint ist die Kante des **schwarzen Quadrats** (inklusive schwarzem Rahmen,
-ohne den weißen Rand außen herum). Ein Druckertreiber, der still auf 96 %
-skaliert, erzeugt 4 % Distanzfehler — bei 1,5 m sind das 6 cm, und alles andere
-sieht dabei völlig plausibel aus.
+The edge meant is that of the **black square** (including the black border,
+excluding the white margin around it). A printer driver that silently scales
+to 96 % produces a 4 % distance error — at 1.5 m that is 6 cm, and everything
+else still looks perfectly plausible.
 
-Tags flach aufkleben. Eine Wölbung von 2 mm über 100 mm Kantenlänge kippt die
-geschätzte Orientierung um mehrere Grad.
+Mount the tags flat. A bulge of 2 mm over a 100 mm edge length tilts the
+estimated orientation by several degrees.
 
-### 0.3 Kalibrierboard
+### 0.3 Calibration board
 
-Ein ChArUco-Board ist einem Schachbrett vorzuziehen: es wird auch dann erkannt,
-wenn es teilweise aus dem Bild ragt — und genau das braucht man, um die
-Bildränder abzudecken.
+A ChArUco board is preferable to a chessboard: it is detected even when it
+partly protrudes from the image — and that is exactly what is needed to cover
+the image edges.
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 tools/make_tag_sheet.py \
     --charuco --cols 7 --rows 5 --square-mm 30 --marker-mm 22 --out /tmp/board.svg
 ```
 
-Auf steifen Karton kleben. Ein welliges Board ist der häufigste Grund für eine
-Kalibrierung mit gutem RMS und schlechten Posen.
+Glue it onto stiff cardboard. A wavy board is the most common reason for a
+calibration with good RMS and poor poses.
 
 ---
 
-## 1. Stufe 1 — ohne Kamera am PC
+## 1. Stage 1 — without a camera on the PC
 
-Hier wird nichts fotografiert. Die Bilder werden gerendert, die wahren Posen
-sind exakt bekannt, und jede Abweichung ist ein Rechenfehler.
+Nothing is photographed here. The images are rendered, the true poses are
+known exactly, and every deviation is a computation error.
 
-### 1.1 Automatisierte Tests
+### 1.1 Automated tests
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -t .
 ```
 
-**Abbruchkriterium:** `OK`, und `test_tag_pipeline` darf **nicht** als
-`skipped` erscheinen. Ein übersprungener Pipeline-Test heißt, dass cv2 fehlt —
-dann prüft gerade niemand die Erkennungskette.
+**Abort criterion:** `OK`, and `test_tag_pipeline` must **not** show up as
+`skipped`. A skipped pipeline test means cv2 is missing — in that case nobody
+is checking the detection chain.
 
-Einzeln, wenn etwas rot ist:
+Individually, if something is red:
 
 ```bash
-PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_geometry -v    # Mathematik
-PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_map -v         # Platzierung
-PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_pipeline -v    # Bild -> Pose
-PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_apriltag_source -v # Serverquelle
+PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_geometry -v    # maths
+PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_map -v         # placement
+PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_tag_pipeline -v    # image -> pose
+PYTHONPATH=src .venv/bin/python3 -m unittest tests.test_apriltag_source -v # server source
 ```
 
-### 1.2 Die Werkzeuge einmal von Hand durchspielen
+### 1.2 Run through the tools once by hand
 
 ```bash
 mkdir -p /tmp/e2e
@@ -131,69 +131,67 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
     --anchor 0 --out /tmp/e2e/tagmap.json
 ```
 
-**Abbruchkriterium:** `build_tagmap` platziert alle Tags, die Liste „ohne Pfad
-zum Anker" ist leer, und die Schließfehler liegen **unter 1 mm und 0,05°**. Bei
-gerenderten Bildern gibt es keine Messunsicherheit — größere Werte sind ein
-Rechen- oder Konventionsfehler, kein Rauschen. Zum Vergleich: auf dieser Szene
-gemessen wurden 0,00–0,02 mm und 0,000°.
+**Abort criterion:** `build_tagmap` places all tags, the list
+"ohne Pfad zum Anker" (without path to the anchor) is empty, and the closure
+errors are **below 1 mm and 0.05°**. With rendered images there is no
+measurement uncertainty — larger values are a computation or convention error,
+not noise. For comparison, on this scene 0.00–0.02 mm and 0.000° were measured.
 
 ---
 
-## 2. Stufe 2 — mit Webcam am PC
+## 2. Stage 2 — with a webcam on the PC
 
-Ab hier gibt es Optik, Rauschen und Bewegungsunschärfe. Diese Stufe ist
-optional, spart aber Zeit: jeden Fehler, den man hier findet, hätte man sonst
-auf der Leiter unter der Decke gesucht.
+From here on there is optics, noise and motion blur. This stage is optional,
+but it saves time: every error you find here would otherwise have been hunted
+for on the ladder under the ceiling.
 
 ```bash
-# kalibrieren: Board langsam durchs Bild führen, auch in die Ecken
+# calibrate: move the board slowly through the image, including into the corners
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source camera:0 --board charuco --cols 7 --rows 5 \
     --square-size-m 0.030 --marker-size-m 0.022 \
     --frame-id webcam --out data/calibration/webcam.json \
     --capture-to /tmp/e2e/webcam_bilder
 
-# erkennen, mit Live-Overlay
+# detect, with live overlay
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
     --source camera:0 --calibration data/calibration/webcam.json \
     --tag-size-m 0.100 --overlay
 ```
 
-Tasten beim Kalibrieren: `SPACE` nimmt auf, `C` rechnet und speichert, `Q`
-bricht ab.
+Keys during calibration: `SPACE` captures, `C` computes and saves, `Q` aborts.
 
-**Abbruchkriterien:**
-- RMS-Reprojektionsfehler **unter 0,5 px**
-- Abdeckung in x **und** y über **70 %** (steht am Ende der Kalibrierung). Eine
-  Kalibrierung nur aus der Bildmitte hat gutes RMS und unbrauchbare Verzeichnung
-  am Rand — also genau dort, wo die Module liegen.
-- im Overlay (CLI-Fenster, `--overlay`) sitzt das Achsenkreuz **im** Tag, nicht
-  daneben, und kippt nicht, wenn man den Tag langsam dreht. Der Livestream
-  zeigt nur Kasten und ID, kein Achsenkreuz
+**Abort criteria:**
+- RMS reprojection error **below 0.5 px**
+- Coverage in x **and** y above **70 %** (shown at the end of the calibration).
+  A calibration made only from the image centre has good RMS and unusable
+  distortion at the edges — exactly where the modules are.
+- In the overlay (CLI window, `--overlay`) the axis cross sits **inside** the
+  tag, not beside it, and does not tilt when the tag is slowly rotated. The
+  live stream shows only the box and ID, no axis cross
 
 ---
 
-## 3. Stufe 3 — auf dem Raspberry Pi mit Pi-Kamera
+## 3. Stage 3 — on the Raspberry Pi with the Pi camera
 
-Die Stufe, auf die es ankommt. Alles davor war Vorbereitung.
+The stage that matters. Everything before it was preparation.
 
-### 3.1 Kamera überhaupt prüfen
+### 3.1 Check the camera at all
 
-Erst die Kamera, dann die Software. Auf Bookworm:
+First the camera, then the software. On Bookworm:
 
 ```bash
 rpicam-hello --list-cameras     # Bullseye: libcamera-hello --list-cameras
 rpicam-still -o /tmp/test.jpg   # Bullseye: libcamera-still
 ```
 
-**Abbruchkriterium:** Die Kamera wird aufgelistet und `/tmp/test.jpg` ist scharf
-und richtig belichtet. Ein unscharfes Bild wird durch keinen Algorithmus besser
-— bei Fixfokus-Modulen entscheidet der Arbeitsabstand, bei Autofokus muss der
-Fokus sitzen.
+**Abort criterion:** The camera is listed and `/tmp/test.jpg` is sharp and
+correctly exposed. No algorithm makes a blurred image better — with fixed-focus
+modules the working distance decides, with autofocus the focus has to be right.
 
-### 3.2 Umgebung auf dem Pi
+### 3.2 Environment on the Pi
 
-`picamera2` kommt per apt, nicht per pip. Die venv muss die System-Pakete sehen:
+`picamera2` comes via apt, not pip. The venv must see the system packages:
 
 ```bash
 sudo apt update && sudo apt install -y python3-picamera2
@@ -205,25 +203,24 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/python3 -c "import cv2; print('aruco ok:', hasattr(cv2.aruco,'DICT_APRILTAG_36h11'))"
 ```
 
-> Ohne `--system-site-packages` ist `picamera2` in der venv unsichtbar, die
-> `SharedCamera` fällt beim Öffnen mit `ModuleNotFoundError` aus, und der Server
-> bleibt in `Preoperational` — ohne dass das offensichtlich mit der Kamera zu
-> tun hätte.
+> Without `--system-site-packages`, `picamera2` is invisible inside the venv,
+> `SharedCamera` fails on opening with `ModuleNotFoundError`, and the server
+> stays in `Preoperational` — without it being obvious that this has anything
+> to do with the camera.
 
-### 3.3 Kalibrieren mit der Pi-Kamera
+### 3.3 Calibrating with the Pi camera
 
-> **Server vorher stoppen.** `tagloc.cli.calibrate` öffnet die Kamera selbst
-> und exklusiv -- genau wie `SharedCamera` im laufenden Server. Beide
-> gleichzeitig geht nicht (RSUSB/libuvc bzw. Picamera2 lassen nur einen
-> offenen Zugriff zu). Solange kalibriert wird, gibt es also **keinen**
-> Livestream im Frontend; `sudo systemctl stop opcua-server.service` vorher,
-> `start` danach.
+> **Stop the server first.** `tagloc.cli.calibrate` opens the camera itself and
+> exclusively -- just like `SharedCamera` in the running server. Both at the
+> same time does not work (RSUSB/libuvc or Picamera2 allow only one open access).
+> So while calibrating there is **no** live stream in the frontend; run
+> `sudo systemctl stop opcua-server.service` beforehand and `start` afterwards.
 
-Der Pi hat meist keinen Bildschirm. Zwei Wege, hier für den Decken-Pi
-(`--source picamera`) — für den Hand-Pi `--source realsense --resolution 640 480`
-statt `--source picamera --resolution 2028 1520` einsetzen, sonst identisch:
+The Pi usually has no screen. Two ways, here for the ceiling Pi
+(`--source picamera`) — for the hand Pi use `--source realsense --resolution 640 480`
+instead of `--source picamera --resolution 2028 1520`, otherwise identical:
 
-**Weg A — mit Display (X11-Weiterleitung oder VNC), interaktiv:**
+**Option A — with a display (X11 forwarding or VNC), interactive:**
 
 ```bash
 ssh -X pi@pi-decke
@@ -237,11 +234,12 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
 sudo systemctl start opcua-server.service
 ```
 
-**Weg B — ohne Display, zweistufig.** Robuster, und mit Nebennutzen: die Bilder
-bleiben liegen, die Kalibrierung ist am PC exakt reproduzierbar.
+**Option B — without a display, two steps.** More robust, and with a side
+benefit: the images are kept, and the calibration can be reproduced exactly
+on the PC.
 
 ```bash
-# auf dem Pi: Server stoppen, dann nur aufnehmen
+# on the Pi: stop the server, then only capture
 sudo systemctl stop opcua-server.service
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source picamera --resolution 2028 1520 --no-gui \
@@ -249,7 +247,7 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --frame-id cam_ceiling --out data/calibration/cam_ceiling.json
 sudo systemctl start opcua-server.service
 
-# am PC nachrechnen (identischer Rechenkern)
+# recompute on the PC (identical computation core)
 scp -r pi@pi-decke:~/ADP_flexible_Roboterzelle/data/calibration/aufnahmen_decke /tmp/
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
     --source /tmp/aufnahmen_decke --board charuco \
@@ -257,44 +255,44 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate \
 scp data/calibration/cam_ceiling.json pi@pi-decke:~/ADP_flexible_Roboterzelle/data/calibration/
 ```
 
-Beim Aufnehmen: **mindestens 15, besser 20 Ansichten**, Board jeweils gekippt
-(±30°) und einmal durch alle vier Bildecken geführt. Ein Board, das immer
-parallel zur Bildebene steht, lässt die Brennweite unbestimmt — die Kalibrierung
-konvergiert trotzdem und liefert falsche Werte.
+When capturing: **at least 15, better 20 views**, board tilted each time (±30°)
+and once moved through all four image corners. A board that always stands
+parallel to the image plane leaves the focal length undetermined — the
+calibration still converges and returns wrong values.
 
-**Abbruchkriterium:** RMS unter **0,5 px**, Abdeckung x und y über **70 %**. Die
-Datei heißt exakt `data/calibration/<frame_id>.json`, also `cam_ceiling.json`
-für die Decke und `cam_flange.json` für den Flansch — unter diesem Namen sucht
-der Server sie.
+**Abort criterion:** RMS below **0.5 px**, coverage in x and y above **70 %**.
+The file must be named exactly `data/calibration/<frame_id>.json`, i.e.
+`cam_ceiling.json` for the ceiling and `cam_flange.json` for the flange — the
+server looks for it under that name.
 
-### 3.4 Erkennung live prüfen
+### 3.4 Check detection live
 
-Server bleibt gestoppt (siehe 3.3) — auch hier öffnet das CLI-Tool die Kamera
-exklusiv. Für den Hand-Pi wieder `--source realsense --resolution 640 480`.
+The server stays stopped (see 3.3) — here too the CLI tool opens the camera
+exclusively. For the hand Pi again `--source realsense --resolution 640 480`.
 
 ```bash
-# mit Display
+# with display
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
     --source picamera --resolution 2028 1520 \
     --calibration data/calibration/cam_ceiling.json \
     --tag-size-m 0.100 --overlay
 
-# ohne Display: ein Frame, Ergebnis als Text und JSON
+# without display: one frame, result as text and JSON
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
     --source picamera --resolution 2028 1520 \
     --calibration data/calibration/cam_ceiling.json \
     --tag-size-m 0.100 --limit 1 --json /tmp/posen.json
 ```
 
-### 3.5 Die zwei Messungen, die wirklich etwas beweisen
+### 3.5 The two measurements that really prove something
 
-Eine Pose sieht immer plausibel aus. Diese beiden Tests zeigen, ob sie stimmt —
-beide brauchen nur einen Zollstock.
+A pose always looks plausible. These two tests show whether it is correct —
+both need only a folding ruler.
 
-**Messung A — Maßstab.** Deckt falsche Tag-Größe und falsche Kalibrierung auf.
-Zwei Tags in bekanntem Abstand auf ein Brett kleben, Mitte zu Mitte messen
-(z. B. exakt 400 mm), beide in einem Bild erfassen und den Abstand aus den
-gemessenen Posen rechnen:
+**Measurement A — scale.** Reveals a wrong tag size and a wrong calibration.
+Glue two tags onto a board at a known distance, measure centre to centre (e.g.
+exactly 400 mm), capture both in one image and compute the distance from the
+measured poses:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
@@ -309,12 +307,11 @@ print("gemessener Abstand:", round(math.dist(a, b) * 1000, 1), "mm")
 PY
 ```
 
-**Abnahme:** Abweichung vom Sollwert unter **1 %**. Ist sie größer und
-systematisch, stimmt die eingetragene Tag-Größe nicht — sie geht linear in die
-Distanz ein.
+**Acceptance:** deviation from the nominal value below **1 %**. If it is larger
+and systematic, the entered tag size is wrong — it enters the distance linearly.
 
-**Messung B — Wiederholbarkeit.** Deckt Rauschen, Unschärfe und schlechte
-Beleuchtung auf. Tag fest stehen lassen, 50 Frames messen, Streuung betrachten:
+**Measurement B — repeatability.** Reveals noise, blur and poor lighting. Keep
+the tag fixed, measure 50 frames, look at the scatter:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
@@ -322,21 +319,21 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
     --tag-size-m 0.100 --limit 50 | tee /tmp/serie.txt
 ```
 
-**Abnahme Layer 1** (Decke, ca. 2 m, 100-mm-Tags): Standardabweichung seitlich
-unter **2 mm**, in der Tiefe unter **10 mm**, Orientierung unter **1°**.
-**Abnahme Layer 2** (Flansch, ca. 0,3 m, 50-mm-Tags): seitlich unter **0,5 mm**,
-Tiefe unter **2 mm**, Orientierung unter **0,5°**.
+**Acceptance Layer 1** (ceiling, approx. 2 m, 100 mm tags): standard deviation
+laterally below **2 mm**, in depth below **10 mm**, orientation below **1°**.
+**Acceptance Layer 2** (flange, approx. 0.3 m, 50 mm tags): laterally below
+**0.5 mm**, depth below **2 mm**, orientation below **0.5°**.
 
-Die Tiefe ist bei einem einzelnen Marker immer die schlechteste Achse. Das ist
-Physik, kein Fehler: die Tiefe folgt aus der scheinbaren Größe, und die ändert
-sich über die Distanz nur langsam. Genau deshalb steht `ambiguous` im Ergebnis —
-schaut man zu flach auf den Tag, kippt die Lösung.
+For a single marker, depth is always the worst axis. That is physics, not a
+fault: depth follows from the apparent size, and that changes only slowly with
+distance. That is exactly why `ambiguous` appears in the result — if you look at
+the tag too flatly, the solution flips.
 
-### 3.6 Tag-Map aufnehmen
+### 3.6 Capture the tag map
 
-Jetzt die Tags im Raum in ein gemeinsames Koordinatensystem bringen. Bilder so
-aufnehmen, dass **jedes Bild mindestens zwei Tags zeigt** und die Paare eine
-Kette bis zum Anker-Tag bilden:
+Now bring the tags in the room into a common coordinate system. Capture images
+such that **every image shows at least two tags** and the pairs form a chain
+to the anchor tag:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
@@ -345,25 +342,24 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.build_tagmap \
     --tag-map config/tagmap.json --anchor 0 --out config/tagmap.json
 ```
 
-Danach die Datei von Hand nachbearbeiten: Rollen setzen (`world` fuer die vier
-Welttags, `robot` fuer die Tags am Roboter, sonst `module`), bei den
-beweglichen Tags `poseInWorld` auf `null` setzen, Modulzuordnung
-(`moduleId`, `instanceId`) und den
-CAD-Versatz `tagToModule` eintragen. Vorlage:
-[`config/tagmap.example.json`](../../config/tagmap.example.json), Feldbeschreibung
-in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 5.
+Then post-edit the file by hand: set roles (`world` for the four world tags,
+`robot` for the tags on the robot, otherwise `module`), set `poseInWorld` to
+`null` for the movable tags, and enter the module assignment (`moduleId`,
+`instanceId`) and the CAD offset `tagToModule`. Template:
+[`config/tagmap.example.json`](../../config/tagmap.example.json), field
+description in [`apriltag-referenz.md`](apriltag-referenz.md) section 5.
 
-#### Kleiner Aufbautest: ein Welttag, ein Modul
+#### Small setup test: one world tag, one module
 
-Für den ersten Funktionstest braucht es die vier Welttags **nicht**. Ein
-Welttag und ein Modultag genügen, und `build_tagmap` entfällt dabei ganz:
-liegt der Welttag im Ursprung mit Identitätspose, *ist* er das Welt-KS, es
-gibt also nichts einzumessen.
+For the first functional test the four world tags are **not** needed. One world
+tag and one module tag are enough, and `build_tagmap` is skipped entirely: if
+the world tag lies at the origin with identity pose, it *is* the world
+coordinate system (CS), so there is nothing to survey.
 
-Vorlage dafür:
-[`config/tagmap.test.example.json`](../../config/tagmap.test.example.json) — nach
-`config/tagmap.json` kopieren, Tag-IDs und die **gemessenen** Kantenlängen
-anpassen, fertig:
+Template for this:
+[`config/tagmap.test.example.json`](../../config/tagmap.test.example.json) — copy
+it to `config/tagmap.json`, adjust the tag IDs and the **measured** edge
+lengths, done:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
@@ -372,32 +368,31 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.detect \
     --tag-map config/tagmap.json --save-overlay overlays/
 ```
 
-Beim Start meldet `validate_tag_map` zwei Beanstandungen — „Erwartet 4 Welttags
-… gefunden 1" und „Kein Tag mit der Rolle 'robot'". Das ist **kein Abbruch**,
-sondern genau der Hinweis, dass der Endausbau noch fehlt; die Erkennung läuft
-vollständig. Die zweite Meldung verschwindet, sobald ein Robotertag in der
-Karte steht.
+On startup `validate_tag_map` reports two complaints — "Erwartet 4 Welttags
+… gefunden 1" (expected 4 world tags … found 1) and "Kein Tag mit der Rolle
+'robot'" (no tag with role 'robot'). These are **not an abort**, but exactly the
+hint that the final setup is still missing; detection runs in full. The second
+message disappears as soon as a robot tag is in the map.
 
-Was dieser Aufbau **nicht** liefert: `cameraSpreadM` bleibt bei einem einzigen
-Welttag immer 0. Die Zahl misst die Uneinigkeit *zwischen* Welttags, es gibt
-hier also keine Gegenprobe — die Genauigkeit hängt vollständig an diesem einen
-Tag und an seiner eingetragenen Größe. Aussagekräftig wird der Wert erst mit
-dem zweiten Welttag.
+What this setup does **not** provide: `cameraSpreadM` always stays 0 with a
+single world tag. The number measures the disagreement *between* world tags, so
+there is no cross-check here — the accuracy depends entirely on this one tag and
+its entered size. The value only becomes meaningful with the second world tag.
 
-Für die Handkamera gilt ohne gemessene Hand-Auge-Datei weiterhin: Welttag und
-Modul müssen im **selben Bild** liegen. Das Ankern (Abschnitt 1.4 der
-[Konzeptdoku](apriltag-lokalisierung.md)) greift erst mit
-`data/handeye/cam_flange.json`.
+For the hand camera, without a measured hand-eye file, the following still
+applies: world tag and module must lie in the **same image**. Anchoring
+(section 1.4 of the [concept doc](apriltag-lokalisierung.md)) only takes effect
+with `data/handeye/cam_flange.json`.
 
-**Abbruchkriterium:** Schließfehler unter **3 mm** und **0,5°**. Größere Werte
-heißen: Kalibrierung oder eine eingetragene Tag-Größe stimmt nicht. Eine Karte,
-die sich nicht schließt, ist wertlos — dann zurück zu Schritt 3.3.
+**Abort criterion:** closure error below **3 mm** and **0.5°**. Larger values
+mean: the calibration or an entered tag size is wrong. A map that does not close
+is worthless — then go back to step 3.3.
 
-### 3.6a Hand-Auge kalibrieren und ankern (nur Handkamera / Layer 2)
+### 3.6a Calibrate and anchor hand-eye (hand camera / Layer 2 only)
 
-Ohne diesen Schritt liefert die Handkamera Posen im Kamera-KS, sobald kein
-Welttag im selben Bild liegt (siehe oben). Für `frameId: world` ohne
-Welttag-Zwang braucht sie `data/handeye/cam_flange.json`:
+Without this step the hand camera returns poses in the camera CS as soon as no
+world tag lies in the same image (see above). For `frameId: world` without the
+world-tag requirement it needs `data/handeye/cam_flange.json`:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate_handeye \
@@ -406,27 +401,27 @@ PYTHONPATH=src .venv/bin/python3 -m tagloc.cli.calibrate_handeye \
     --out data/handeye/cam_flange.json
 ```
 
-Aufnahme davor: einen Tag ortsfest hinlegen, den Roboter mindestens ein
-Dutzend deutlich verschiedene Posen anfahren lassen (**um mehrere Achsen
-drehen**), je Pose ein Bild und `T_base_flansch` notieren — Format und Ablauf
-in [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 9.3a.
+Capture beforehand: lay one tag down in a fixed position, let the robot move to
+at least a dozen clearly different poses (**rotating about several axes**), take
+one image per pose and note `T_base_flansch` — format and procedure in
+[`apriltag-referenz.md`](apriltag-referenz.md) section 9.3a.
 
-**Abnahmekriterien:**
+**Acceptance criteria:**
 
-| Prüfung | Erwartung |
+| Check | Expectation |
 |---|---|
-| `target_spread` (Ausgabe von `calibrate_handeye`) | unter `SPREAD_WARNING_M` (5 mm); sonst neu aufnehmen mit stärker variierten Posen |
-| Job ohne Welttag im Bild, mit Hand-Auge-Datei | `frameId = world`, Payload trägt `anchorWorldTagId` und `attributes.cameraPoseOrigin = "robot_pose"` |
-| Welttag wieder ins Bild bringen | `cameraPoseOrigin` wechselt zurück auf `"world_tags"`, `anchorDriftM`/`anchorDriftDeg` zeigen die Abweichung zum Anker |
-| Hand-Auge-Datei entfernt/verschoben | Server startet weiterhin, Layer 2 fällt auf Kamera-KS zurück (kein Absturz) |
+| `target_spread` (output of `calibrate_handeye`) | below `SPREAD_WARNING_M` (5 mm); otherwise record again with more varied poses |
+| Job without a world tag in the image, with hand-eye file | `frameId = world`, payload carries `anchorWorldTagId` and `attributes.cameraPoseOrigin = "robot_pose"` |
+| Bring a world tag back into the image | `cameraPoseOrigin` switches back to `"world_tags"`, `anchorDriftM`/`anchorDriftDeg` show the deviation from the anchor |
+| Hand-eye file removed/moved | server still starts, Layer 2 falls back to the camera CS (no crash) |
 
-### 3.7 Server starten und über OPC UA messen
+### 3.7 Start the server and measure via OPC UA
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 -m vision_server.server
 ```
 
-Im Log muss stehen:
+The log must show:
 
 ```
 Vision-Identitaet: vision-ceiling-01 (Rahmen cam_ceiling)
@@ -435,11 +430,11 @@ Livestream aus Profil 'apriltag' mit Overlay
 Vision-System 'VisionMachine' bereit (Profile apriltag, calibration, hello_world)
 ```
 
-> Steht dort **„bleibt in Preoperational"**, hat eine Quelle nicht geöffnet.
-> Fast immer fehlt die Kalibrierdatei, oder `picamera2` ist in der venv
-> unsichtbar (siehe 3.2). Die Ursache steht eine Zeile darüber im Log.
+> If it says **"bleibt in Preoperational"** (stays in Preoperational), a source
+> has not opened. Almost always the calibration file is missing, or `picamera2`
+> is invisible in the venv (see 3.2). The cause is one line above in the log.
 
-Jobs auslösen — zuerst die Bereitschaftsprüfung, dann die Messung:
+Trigger jobs — first the readiness check, then the measurement:
 
 ```bash
 PYTHONPATH=src .venv/bin/python3 - <<'PY'
@@ -467,98 +462,107 @@ asyncio.run(main())
 PY
 ```
 
-**Abnahmekriterien:**
+**Acceptance criteria:**
 
-| Prüfung | Erwartung |
+| Check | Expectation |
 |---|---|
-| `calibration`-Job | `attributes.message` nennt Kalibrier-Id, Auflösung, RMS und Tag-Map |
-| `apriltag`-Job, Error | `0` |
+| `calibration` job | `attributes.message` names calibration ID, resolution, RMS and tag map |
+| `apriltag` job, Error | `0` |
 | `resultState` | `0` |
-| `detections` | eine Detektion je sichtbarem Modul-Tag |
-| `frameId` | `world`, sobald ein Referenz-Tag im Bild ist; sonst `cam_ceiling` |
+| `detections` | one detection per visible module tag |
+| `frameId` | `world` as soon as a reference tag is in the image; otherwise `cam_ceiling` |
 | `frameConvention` | `z_forward_x_right_y_down` |
-| `configurationId` | enthält Tag-Familie, Kalibrier- **und** Tag-Map-Identität |
-| `attributes` | mindestens `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `recipeId`, `source`, `role`; zusätzlich `referenceTagId`/`referencePosition`/`referenceOrientation`/`referenceDistanceM` sobald ein Welttag als Bezug bekannt ist, `worldTagIds`/`cameraSpreadM`/`cameraSpreadDeg`/`cameraPoseOrigin` sobald die Kamera lokalisiert ist, `anchorWorldTagId`/`anchorDriftM`/`anchorDriftDeg` mit Hand-Auge-Anker — volle Liste [`apriltag-referenz.md`](apriltag-referenz.md) Abschnitt 10.2 |
-| `sampleCount` | gleich `samples_per_job` des Profils (Decke 3, Flansch 5) |
-| Kein Tag im Bild | `resultState = 5` (`DETECTION_FAILED`), **kein** leeres Erfolgsergebnis |
-| `Stop` während des Jobs | `resultState = 7` (`CANCELLED`) |
+| `configurationId` | contains tag family, calibration **and** tag-map identity |
+| `attributes` | at least `tagId`, `reprojErrorPx`, `ambiguous`, `sampleCount`, `recipeId`, `source`, `role`; additionally `referenceTagId`/`referencePosition`/`referenceOrientation`/`referenceDistanceM` as soon as a world tag is known as reference, `worldTagIds`/`cameraSpreadM`/`cameraSpreadDeg`/`cameraPoseOrigin` as soon as the camera is localized, `anchorWorldTagId`/`anchorDriftM`/`anchorDriftDeg` with a hand-eye anchor — full list in [`apriltag-referenz.md`](apriltag-referenz.md) section 10.2 |
+| `sampleCount` | equal to the profile's `samples_per_job` (ceiling 3, flange 5) |
+| No tag in the image | `resultState = 5` (`DETECTION_FAILED`), **not** an empty success result |
+| `Stop` during the job | `resultState = 7` (`CANCELLED`) |
 
-Und die Gegenprobe, die den ganzen Aufbau bindet: **die Pose aus dem Payload muss
-mit der aus `tagloc.cli.detect` gemessenen übereinstimmen** (unter 1 mm). Weicht
-sie ab, benutzen Stream und Job unterschiedliche Kalibrierungen — dann
-`configurationId` vergleichen.
+And the cross-check that ties the whole setup together: **the pose from the
+payload must match the one measured by `tagloc.cli.detect`** (within 1 mm). If
+it deviates, stream and job use different calibrations — then compare
+`configurationId`.
 
 ---
 
-## 4. Stufe 4 — im Frontend
+## 4. Stage 4 — in the frontend
 
-Der Livestream ist das Debugwerkzeug für alles oben. Er zeigt nicht nur, dass ein
-Bild ankommt, sondern was die Erkennung darin sieht.
+The live stream is the debugging tool for everything above. It shows not only
+that an image arrives, but what the detection sees in it.
 
-### 4.1 Die Knoten
+### 4.1 The nodes
 
-| Knoten | NodeId | Richtung | Inhalt |
+| Node | NodeId | Direction | Content |
 |---|---|---|---|
-| Livestream | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | nur lesen | Base64-JPEG, ca. 5 fps |
-| Modusauswahl | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **beschreibbar** | `off`, `apriltag`, `calibration` |
+| Live stream | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | read only | Base64 JPEG, approx. 5 fps |
+| Mode selection | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **writable** | `off`, `apriltag`, `undistorted`, `tagreference` (`calibration` removed 17.11.2026) |
 
-`<vision>` ist der Index von `http://launch-rm.de/vision` — auf dem Pi-Server
-`4`, im eigenständigen Vision-Server `3`. **Den Index immer zur Laufzeit über
-`get_namespace_index` holen, nie hart eintragen.**
+`<vision>` is the index of `http://launch-rm.de/vision` — on the Pi server `4`,
+in the standalone vision server `3`. **Always fetch the index at runtime via
+`get_namespace_index`, never hard-code it.**
 
-### 4.2 Die drei Modi
+### 4.2 The modes
 
-| Wert | Anzeige | Was markiert wird |
+> **Removed 17.11.2026:** the mode `calibration` ("Kalibrierboard markieren", mark
+> calibration board) no longer exists; an unknown value falls back to `apriltag`.
+> `undistorted` and `tagreference` are described in `vision-server-interface.md`
+> section 10.1.
+
+
+| Value | Display label | What is marked |
 |---|---|---|
-| `off` | „Rohbild" | nichts — das unveränderte Kamerabild |
-| `apriltag` | „AprilTags markieren" | je erkanntem Tag nur ein **grüner Kasten** (Umriss) und die ID `#<id>`, keine Statusleiste. Achsenkreuz, Modulname, Distanz, Reprojektionsfehler und orange Färbung mehrdeutiger Posen gibt es nur im ausführlichen CLI-Overlay (`python -m tagloc.cli.detect --overlay`) |
-| `calibration` | „Kalibrierboard markieren" | die gefundenen Board-Ecken und die Abdeckung — damit sieht man, was die Kalibrierung sieht |
+| `off` | "Rohbild" (raw image) | nothing — the unchanged camera image |
+| `apriltag` | "AprilTags markieren" (mark AprilTags) | for each detected tag only a **green box** (outline) and the ID `#<id>`, no status bar. Axis cross, module name, distance, reprojection error and orange colouring of ambiguous poses are only available in the detailed CLI overlay (`python -m tagloc.cli.detect --overlay`) |
 
-Umschalten ist ein einfacher Schreibzugriff:
+Switching is a simple write access:
 
 ```python
 mode_node = client.get_node(ua.NodeId("VisionMachine.CameraStreamMode", vis))
-await mode_node.write_value("calibration")
+await mode_node.write_value("off")
 ```
 
-Ein ungültiger Wert hält den Stream **nicht** an — er fällt auf `apriltag`
-zurück. Das ist Absicht: das Bild ist wichtiger als die Markierung.
+An invalid value does **not** stop the stream — it falls back to `apriltag`.
+This is intentional: the image matters more than the marking.
 
-### 4.3 Was im Frontend noch zu tun ist
+### 4.3 What still remains to be done in the frontend
 
-Die Serverseite ist fertig; das Frontend (`webskillcomposition`) braucht noch die
-Auswahl. Der Vertrag ist genau der oben: ein Dropdown mit den drei Werten, das
-beim Wechsel `CameraStreamMode` schreibt. Der Livestream-Knoten selbst bleibt
-unverändert — die bestehende `subscribeNode`-Infrastruktur trägt weiter. Die
-Beschriftungen stehen serverseitig in `tagloc.modes.OVERLAY_MODE_LABELS`.
+The server side is done; the frontend (`webskillcomposition`) still needs the
+selection. The contract is exactly the one above: a dropdown with the three
+values that writes `CameraStreamMode` on change. The live-stream node itself
+stays unchanged — the existing `subscribeNode` infrastructure continues to carry
+it. The labels are on the server side in `tagloc.modes.OVERLAY_MODE_LABELS`.
 
-### 4.4 Abnahme
+### 4.4 Acceptance
 
-- Bild kommt an, ca. 5 fps, keine über Minuten wachsende Verzögerung
-- Umschalten auf `apriltag` zeigt innerhalb von rund einer Sekunde Markierungen
-- der grüne Kasten sitzt auf dem Tag und folgt ihm, wenn man den Tag bewegt; daneben steht `#<id>`. Das Achsenkreuz prüft man nicht im Stream, sondern mit `python -m tagloc.cli.detect --source camera --overlay`
-- Umschalten auf `off` zeigt sofort wieder das Rohbild
-- ein laufender `apriltag`-Job unterbricht den Stream **nicht** — beide lesen aus
-  derselben `SharedCamera`
-- im Serverlog erscheint keine Meldung „Event-Loop … ms blockiert"
+- Image arrives, approx. 5 fps, no delay that grows over minutes
+- Switching to `apriltag` shows markings within about one second
+- the green box sits on the tag and follows it when the tag is moved; `#<id>`
+  stands beside it. The axis cross is not checked in the stream but with
+  `python -m tagloc.cli.detect --source camera --overlay`
+- Switching to `off` immediately shows the raw image again
+- a running `apriltag` job does **not** interrupt the stream — both read from the
+  same `SharedCamera`
+- no message "Event-Loop … ms blockiert" (event loop … ms blocked) appears in the server log
 
-> Zum letzten Punkt: Das Overlay rechnet höchstens alle `overlay_interval_s`
-> (Standard 0,5 s) neu und zeichnet dazwischen das letzte Ergebnis weiter. Bei
-> fest montierter Kamera sieht man davon nichts. Erscheinen trotzdem
-> Loop-Warnungen: `overlay_interval_s` erhöhen oder Stream-Auflösung senken.
+> On the last point: the overlay detects by itself at most every
+> `overlay_detect_interval_s` (default 5 s) and in between keeps drawing the last
+> result. With a fixed camera you see nothing of this. If loop warnings still
+> appear: increase `overlay_detect_interval_s` or lower the stream resolution.
+> (`overlay_interval_s` was removed on 17.11.2026 together with the `calibration`
+> stream mode.)
 
 ---
 
-## 5. Kurzreferenz Fehlersuche
+## 5. Quick reference: troubleshooting
 
-| Symptom | Was man zuerst prüft |
+| Symptom | What to check first |
 |---|---|
-| Distanz systematisch um festen Faktor daneben | gedruckte Tag-Größe ≠ eingetragene `sizeM` (siehe 0.2) |
-| Alle Posen falsch, Erkennung aber stabil | Kalibrierung gehört zu anderer Auflösung — die Quelle meldet beide Größen |
-| Pose kippt zwischen zwei Lagen | `ambiguous: true`, zu flacher Blickwinkel |
-| Posen am Bildrand viel schlechter | Kalibrierabdeckung zu gering — nicht das RMS ansehen, die Abdeckung |
-| `build_tagmap` findet weniger Tags als aufgenommen | kein Pfad zum Anker; es fehlt ein Bild mit zwei bereits verbundenen Tags |
-| Server bleibt in Preoperational | fehlende Kalibrierdatei oder `picamera2` unsichtbar (3.2); Ursache steht im Log |
-| Livestream weg, obwohl konfiguriert | keine geöffnete Quelle hält eine Kamera |
-| Stream läuft, aber ohne Markierung | Quelle ohne geladenen Detektor/Kalibrierung; Log sagt „ohne Overlay" |
-| `DETECTION_FAILED` trotz sichtbarem Tag | falsche Tag-Familie, oder alle Tags über `max_reproj_error_px` verworfen — mit `-v` im CLI sichtbar |
+| Distance systematically off by a fixed factor | printed tag size ≠ entered `sizeM` (see 0.2) |
+| All poses wrong, but detection stable | calibration belongs to a different resolution — the source reports both sizes |
+| Pose flips between two positions | `ambiguous: true`, viewing angle too flat |
+| Poses at the image edge much worse | calibration coverage too low — look at the coverage, not the RMS |
+| `build_tagmap` finds fewer tags than captured | no path to the anchor; an image with two already-connected tags is missing |
+| Server stays in Preoperational | missing calibration file or `picamera2` invisible (3.2); cause is in the log |
+| Live stream gone, although configured | no open source holds a camera |
+| Stream running, but without markings | source without loaded detector/calibration; log says "ohne Overlay" (without overlay) |
+| `DETECTION_FAILED` despite a visible tag | wrong tag family, or all tags discarded above `max_reproj_error_px` — visible with `-v` in the CLI |

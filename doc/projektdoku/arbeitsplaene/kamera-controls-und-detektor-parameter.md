@@ -1,45 +1,44 @@
-# Kamera-Controls und Detektor-Parameter ohne Codeänderung einstellen
+# Set camera controls and detector parameters without code changes
 
-**Status:** fertig — 19.10.2026
-**Verantwortlich:** Meric (`Agent: Kamera-Controls`)
-**Thema:** vision
+**Status:** done — 19.10.2026
+**Owner:** Meric (`Agent: camera controls`)
+**Topic:** vision
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Die Deckenkamera ist neu fokussiert, die festen Dekodier-Werte aus
+The ceiling camera has been refocused, and the fixed decoding values from
 [`apriltag-erkennung-unscharfe-tags.md`](apriltag-erkennung-unscharfe-tags.md)
-(1.0 / 0.3 / 8, gemessen am unscharfen Bild) gelten nicht mehr. Hinterher lassen
-sich **OpenCV-Detektor-Parameter** und **Picamera2-Kamera-Controls** per
-Preset oder Umgebungsvariable einstellen, ohne Code zu ändern. Gebaut wird nur
-die Mechanik; die konkreten Werte folgen nach Messung (beide Presets sind
-vorerst leer).
+(1.0 / 0.3 / 8, measured on the blurred image) no longer apply. Afterwards
+**OpenCV detector parameters** and **Picamera2 camera controls** can be set
+via preset or environment variable, without changing code. Only the mechanism
+is built; the concrete values follow after measurement (both presets are empty for now).
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (kein anderer Plan
-  zum Thema)
+- `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (no other plan
+  on the topic)
 - `doc/projektdoku/arbeitsplaene/apriltag-erkennung-unscharfe-tags.md`
-- `doc/projektdoku/apriltag-referenz.md` (Abschnitt 13), `vision-system.md`
+- `doc/projektdoku/apriltag-referenz.md` (section 13), `vision-system.md`
 
-## Betroffene Dateien
+## Affected files
 
 - `src/tagloc/detector.py`, `src/tagloc/cli/_common.py`, `detect.py`,
   `build_tagmap.py`, `calibrate_handeye.py`
 - `src/vision_server/profiles.py`, `server.py`, `camera.py`, `runner.py`,
   `detection/apriltag.py`
 - `tests/test_detector.py`, `test_camera.py`, `test_camera_owner.py`,
-  `test_cellwatch.py`, `test_server_config.py` (neu bzw. passende Datei)
-- `doc/projektdoku/apriltag-referenz.md` (Nachtrag), `vision-system.md`
-  (neuer Abschnitt), `arbeitsplaene/apriltag-erkennung-unscharfe-tags.md`
-  (Nachtrag), `arbeitsplaene/README.md`
+  `test_cellwatch.py`, `test_server_config.py` (new or matching file)
+- `doc/projektdoku/apriltag-referenz.md` (addendum), `vision-system.md`
+  (new section), `arbeitsplaene/apriltag-erkennung-unscharfe-tags.md`
+  (addendum), `arbeitsplaene/README.md`
 
-## Schnittstellen
+## Interfaces
 
 ### Python
 
 ```python
-# Modul: src/tagloc/detector.py
+# Module: src/tagloc/detector.py
 class ArucoTagDetector:
     def __init__(self, family="tag36h11", *, parameters=None,
                  subpixel_corner_refinement=False, apriltag_quad_decimate=0.0,
@@ -50,59 +49,59 @@ def build_detector(family="tag36h11", backend="aruco", *,
                    detector_parameters: Mapping[str, Any] | None = None) -> TagDetector: ...
 ```
 
-`detector_parameters`: Attributname von `cv2.aruco.DetectorParameters` → Wert,
-z. B. `{"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}`. Jeder
-Eintrag wird vor dem Bau des `ArucoDetector` gesetzt. Der Wert wird auf den
-Typ des vorhandenen Attributs gebracht (int/float/bool). Wirft `ValueError`
-bei unbekanntem Namen (Tippfehler fallen beim Start auf) und bei einem Wert,
-der nicht in den Typ passt. `pupil` ignoriert das Mapping.
-Reihenfolge: `subpixel_corner_refinement` setzt `cornerRefinementMethod`
-zuerst, ein Eintrag `cornerRefinementMethod` in `detector_parameters` gewinnt.
+`detector_parameters`: attribute name of `cv2.aruco.DetectorParameters` → value,
+e.g. `{"errorCorrectionRate": 0.8, "adaptiveThreshWinSizeMax": 33}`. Each
+entry is set before the `ArucoDetector` is built. The value is converted to the type of the
+existing attribute (int/float/bool). Raises `ValueError` for an unknown name
+(typos show up at start) and for a value that does not fit the type. `pupil`
+ignores the mapping.
+Order: `subpixel_corner_refinement` sets `cornerRefinementMethod` first;
+an entry `cornerRefinementMethod` in `detector_parameters` wins.
 
 ```python
-# Modul: src/vision_server/profiles.py
-AprilTagProfileConfig.detector_parameters: dict[str, Any]   # Default {}
-CameraStreamConfig.camera_controls: dict[str, Any]          # Default {}, nur Picamera2
+# Module: src/vision_server/profiles.py
+AprilTagProfileConfig.detector_parameters: dict[str, Any]   # default {}
+CameraStreamConfig.camera_controls: dict[str, Any]          # default {}, Picamera2 only
 
-# Modul: src/vision_server/camera.py
-def picamera2_video_configuration(config) -> dict          # enthält "controls", falls gesetzt
-def resolve_camera_controls(controls, namespace) -> dict   # String-Enums -> libcamera-Werte
-def validate_camera_controls(controls, available) -> dict  # Namen prüfen, Typen angleichen
+# Module: src/vision_server/camera.py
+def picamera2_video_configuration(config) -> dict          # contains "controls" if set
+def resolve_camera_controls(controls, namespace) -> dict   # string enums -> libcamera values
+def validate_camera_controls(controls, available) -> dict  # check names, align types
 ```
 
-Beide Felder sind aus der Preset-Tabelle plus Env-Override in
-`server.apriltag_config()` bzw. `server.vision_config()` gemerged.
+Both fields are merged from the preset table plus env override in
+`server.apriltag_config()` or `server.vision_config()` respectively.
 
-### Umgebungsvariablen (Daten-Format)
+### Environment variables (data format)
 
-Beide sind ein **JSON-Objekt**. Je Schlüssel gewinnt die Umgebungsvariable
-über das Preset; `null` entfernt einen Preset-Eintrag.
+Both are a **JSON object**. Per key, the environment variable wins over the
+preset; `null` removes a preset entry.
 
-| Variable | Wirkt auf | Beispiel |
+| Variable | Affects | Example |
 | --- | --- | --- |
-| `VISION_APRILTAG_DETECTOR_PARAMS` | `AprilTagProfileConfig.detector_parameters` (Job, Stream-Overlay, Zellüberwachung) | `'{"errorCorrectionRate": 0.8}'` |
-| `VISION_CAMERA_CONTROLS` | `CameraStreamConfig.camera_controls` (nur Picamera2) | `'{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}'` |
+| `VISION_APRILTAG_DETECTOR_PARAMS` | `AprilTagProfileConfig.detector_parameters` (job, stream overlay, cell monitoring) | `'{"errorCorrectionRate": 0.8}'` |
+| `VISION_CAMERA_CONTROLS` | `CameraStreamConfig.camera_controls` (Picamera2 only) | `'{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}'` |
 
-Kamera-Controls: `ExposureTime` in µs (int), `AnalogueGain` (float),
+Camera controls: `ExposureTime` in µs (int), `AnalogueGain` (float),
 `AeEnable` (bool), `ExposureValue`, `Sharpness`, `Contrast`, `Brightness`,
-`Saturation` (float). Die Enum-Controls `NoiseReductionMode`,
-`AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode` dürfen als
-Name angegeben werden (`"HighQuality"`, `"Off"`, `"Fast"`), ganze Zahlen
-bleiben Zahlen. Gültige Namen liefert `Picamera2().camera_controls`.
+`Saturation` (float). The enum controls `NoiseReductionMode`,
+`AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode` may be given
+as a name (`"HighQuality"`, `"Off"`, `"Fast"`); whole numbers remain numbers.
+Valid names are returned by `Picamera2().camera_controls`.
 
-Die bestehenden Schalter (`VISION_SUBPIXEL_CORNER_REFINEMENT`,
-`VISION_APRILTAG_QUAD_DECIMATE`, …) bleiben unverändert.
+The existing switches (`VISION_SUBPIXEL_CORNER_REFINEMENT`,
+`VISION_APRILTAG_QUAD_DECIMATE`, …) remain unchanged.
 
-CLI (`detect`, `build_tagmap`, `calibrate_handeye`): wiederholbar
-`--detector-param NAME=WERT`, Wert per `json.loads`, sonst als String, z. B.
+CLI (`detect`, `build_tagmap`, `calibrate_handeye`): repeatable
+`--detector-param NAME=VALUE`, value parsed via `json.loads`, otherwise taken as a string, e.g.
 `--detector-param errorCorrectionRate=0.8`.
 
-### Netz / Betrieb
+### Network / operation
 
-Der Server läuft auf den Pis als systemd-Service `opcua-server.service`
-(`/etc/systemd/system/opcua-server.service`, siehe `vision-system.md`). Dort
-setzt man die Variablen mit `sudo systemctl edit opcua-server.service`
-(Drop-In `/etc/systemd/system/opcua-server.service.d/override.conf`):
+On the Pis the server runs as the systemd service `opcua-server.service`
+(`/etc/systemd/system/opcua-server.service`, see `vision-system.md`). There the
+variables are set with `sudo systemctl edit opcua-server.service`
+(drop-in `/etc/systemd/system/opcua-server.service.d/override.conf`):
 
 ```ini
 [Service]
@@ -110,73 +109,72 @@ Environment='VISION_CAMERA_CONTROLS={"ExposureValue": -0.5, "NoiseReductionMode"
 Environment='VISION_APRILTAG_DETECTOR_PARAMS={"errorCorrectionRate": 0.8}'
 ```
 
-Danach `sudo systemctl restart opcua-server.service`. Zum Ausprobieren im
-Terminal: Variable vor `python3 src/OPCUA/server.py` setzen (Service vorher
-stoppen). Beim Start loggt der Server, welche Detektor-Parameter vom Standard
-abweichen, welche Kamera-Controls angewendet werden und, nach dem Warmup, die
-tatsächlichen Metadaten (`ExposureTime`, `AnalogueGain`, `DigitalGain`,
-`Lux`, `ColourTemperature`, `FocusFoM`) — daraus wählt man feste
-Belichtungswerte (`journalctl -u opcua-server.service | grep -i "Kamera-Metadaten"`).
+Then `sudo systemctl restart opcua-server.service`. For trying things out in a
+terminal: set the variable before `python3 src/OPCUA/server.py` (stop the service beforehand). At start-up the server logs
+which detector parameters deviate from the default, which camera controls are applied and, after the warm-up, the
+actual metadata (`ExposureTime`, `AnalogueGain`, `DigitalGain`,
+`Lux`, `ColourTemperature`, `FocusFoM`) — from this one selects fixed
+exposure values (`journalctl -u opcua-server.service | grep -i "Kamera-Metadaten"` (camera metadata)).
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Env-Variable kein gültiges JSON oder kein Objekt | `ValueError` beim Start, Meldung nennt die Variable |
-| Unbekannter Detektor-Parameter / falscher Typ | `ValueError` beim Bau des Detektors (Start des Jobs) |
-| Unbekannter Kamera-Control-Name | `ValueError` beim Öffnen der Kamera, Meldung listet die Namen der Kamera; Kamera wird wieder geschlossen |
-| Unbekannter Enum-Name | `ValueError`, Meldung listet die gültigen Namen |
-| Backend RealSense/OpenCV mit `camera_controls` | ignoriert, einmal Warnung im Log |
-| Stream-Overlay mit `cornerRefinementMethod` im Mapping | Eintrag wird für den Stream-Detektor entfernt (Subpixel bleibt dort bewusst aus, CPU-Konkurrenz zum Job) |
-| Metadaten nach Warmup nicht lesbar | Warnung, Kamera läuft weiter |
+| env variable not valid JSON or not an object | `ValueError` at start, message names the variable |
+| Unknown detector parameter / wrong type | `ValueError` when building the detector (start of the job) |
+| Unknown camera control name | `ValueError` when opening the camera, message lists the names of the camera; camera is closed again |
+| Unknown enum name | `ValueError`, message lists the valid names |
+| Backend RealSense/OpenCV with `camera_controls` | ignored, one warning in the log |
+| Stream overlay with `cornerRefinementMethod` in the mapping | entry is removed for the stream detector (subpixel deliberately stays off there, CPU competition with the job) |
+| Metadata not readable after warm-up | warning, camera keeps running |
 
-## Vorgehen
+## Approach
 
-1. Plan (dieses Dokument).
-2. Alte Einzel-Parameter ersetzen durch `detector_parameters`, Preset leer,
-   Env-Override, CLI.
-3. `camera_controls`: Config, Preset, Env, `camera.py`.
-4. Tests, Fach-MDs (Nachträge), README.
+1. Plan (this document).
+2. Replace old individual parameters with `detector_parameters`, empty preset,
+   env override, CLI.
+3. `camera_controls`: config, preset, env, `camera.py`.
+4. Tests, topic docs (addenda), README.
 
-## Offene Fragen
+## Open questions
 
-- Konkrete Werte für `cam_ceiling` (Detektor und Kamera) folgen nach der
-  Messung am neu fokussierten Bild; bis dahin Status `in Arbeit`.
-- Ground Truth für `data/rohbilder/cam_ceiling_20261019-142133.png` wird
-  geklärt, der Regressionstest darauf wird danach ergänzt.
+- Concrete values for `cam_ceiling` (detector and camera) follow after the
+  measurement on the newly focused image; until then status `in progress`.
+- Ground truth for `data/rohbilder/cam_ceiling_20261019-142133.png` is being
+  clarified; the regression test on it will be added afterwards.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Betroffene Dateien: Tests liegen in `test_server_config.py` (Env-Merge),
-  `test_camera.py` (Controls, Enum-Auflösung) und `test_detector.py`; die CLI-
-  Werkzeuge `detect.py`, `build_tagmap.py`, `calibrate_handeye.py` blieben
-  unverändert, sie nutzen `_common.detector_options(args)`.
-- Zusätzliche Schnittstelle: `tagloc.detector.apply_detector_parameters(parameters, values)`
-  (gibt die abweichenden Einträge zurück), `ArucoTagDetector.changed_parameters`
-  (fürs Start-Log), `server.merged_json_object_env(name, preset)`,
+- Affected files: tests are in `test_server_config.py` (env merge),
+  `test_camera.py` (controls, enum resolution) and `test_detector.py`; the CLI
+  tools `detect.py`, `build_tagmap.py`, `calibrate_handeye.py` remained
+  unchanged, they use `_common.detector_options(args)`.
+- Additional interface: `tagloc.detector.apply_detector_parameters(parameters, values)`
+  (returns the deviating entries), `ArucoTagDetector.changed_parameters`
+  (for the start log), `server.merged_json_object_env(name, preset)`,
   `camera.format_camera_metadata`, `camera.CAMERA_ENUM_CONTROLS`.
-- `detector_parameters` und `camera_controls` sind Felder mit `hash=False`, die
-  Dataclasses bleiben hashbar.
-- Die Metadaten werden in `SharedCamera._open_camera` direkt nach dem Warmup
-  gelesen, bevor der Capture-Loop startet (kein Wettlauf um Requests).
-- Die Warnung für RealSense/OpenCV kommt bei jedem Öffnen (auch Neu-Öffnen),
-  nicht streng nur einmal.
+- `detector_parameters` and `camera_controls` are fields with `hash=False`; the
+  dataclasses remain hashable.
+- The metadata is read in `SharedCamera._open_camera` directly after the warm-up,
+  before the capture loop starts (no race for requests).
+- The warning for RealSense/OpenCV appears on every opening (including re-opening),
+  not strictly only once.
 
-## Nachtrag 19.10.2026: Werte im Preset `cam_ceiling`
+## Addendum 19.10.2026: values in preset `cam_ceiling`
 
-Nach dem Einstellungstest (14 Aufnahmen, Bericht
-[`../kamera-und-detektor-analyse.md`](../kamera-und-detektor-analyse.md)) stehen in
+After the settings test (14 captures, report
+[`../kamera-und-detektor-analyse.md`](../kamera-und-detektor-analyse.md)) the following are set in
 `src/vision_server/server.py`:
 
 - `PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]` =
   `{"ExposureValue": -0.5, "Sharpness": 1.5, "Contrast": 1.15, "NoiseReductionMode": "Fast"}`
-  -- Rang 1 nach Erkennungsreserve, kein Ausbrennen der Tags.
+  -- rank 1 by detection reserve, no burning out of the tags.
 - `PI_APRILTAG_PRESETS["cam_ceiling"]["detector_parameters"]` =
-  `{"perspectiveRemovePixelPerCell": 8}` -- kleine Reserve ohne Fehlalarme;
-  `errorCorrectionRate` bleibt beim OpenCV-Standard.
-- Umgebungsvariablen mischen sich weiter je Schluessel darueber.
-- Regressionstest `tests/test_detector.py::CeilingSharpRawImageTest`: das Preset
-  findet auf `data/rohbilder/cam_ceiling_20261019-142133.png` genau
-  0, 1, 1, 2, 3, 583, 586 (585 beschaedigt, optional).
-- Offen: Pruefung am Pi (OpenCV 4.x, libcamera-Enum `NoiseReductionMode`),
-  Neukalibrierung mit diesen Controls.
+  `{"perspectiveRemovePixelPerCell": 8}` -- small reserve without false alarms;
+  `errorCorrectionRate` stays at the OpenCV default.
+- Environment variables continue to override on top of this, per key.
+- Regression test `tests/test_detector.py::CeilingSharpRawImageTest`: the preset
+  finds exactly 0, 1, 1, 2, 3, 583, 586 on `data/rohbilder/cam_ceiling_20261019-142133.png`
+  (585 damaged, optional).
+- Open: check on the Pi (OpenCV 4.x, libcamera enum `NoiseReductionMode`),
+  recalibration with these controls.
