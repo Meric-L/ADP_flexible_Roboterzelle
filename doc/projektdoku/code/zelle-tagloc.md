@@ -15,6 +15,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Calibration boards (chessboard, ChArUco) and their detection, coverage and pose.
 - Entry points: `BoardSpec`, `BoardSample`, `build_board`, `detect_board`, `detect_partial_board`, `diagnose_board`, `compute_coverage`, `estimate_board_pose`, `calibrate_from_samples`.
 - ChArUco detection accepts markers down to `CHARUCO_MIN_MARKER_PERIMETER_RATE` (0.01 of the longest image edge, OpenCV default 0.03). Since 17.11.2026: with the default the ceiling camera's 30-36 px markers were lost on 28 of 64 captures; with 0.01, 59 of 64 are usable.
+- `calibrate_from_samples` uses a ChArUco capture only with at least `CHARUCO_MIN_CALIBRATION_CORNERS` (8) corners: `cv2.fisheye.calibrate` crashes on views with 4-5 points ("Assertion failed ... _rowRange"), measured 17.11.2026. `lens.calibrate` leaves out a capture OpenCV reports as ill-conditioned and computes again, and returns how many captures it used.
 - Input: grayscale image plus `BoardSpec` (geometry is a parameter, not a module global). Output: samples and `CameraCalibration`-ready point sets.
 - Details: `doc/projektdoku/arbeitsplaene/handauge-charuco-auswahl.md`, `doc/projektdoku/code-dokumentation.md`.
 

@@ -29,6 +29,11 @@ CHARUCO = "charuco"
 #: usable; detection stays below 1 s per 12 MP image.
 CHARUCO_MIN_MARKER_PERIMETER_RATE = 0.01
 
+#: Fewest ChArUco corners a capture needs to count for the lens calibration. With
+#: only a few corners the board's pose in that capture is barely determined and the
+#: fisheye solver fails on it (since 17.11.2026).
+CHARUCO_MIN_CALIBRATION_CORNERS = 8
+
 
 @dataclass(frozen=True)
 class BoardSpec:
@@ -459,7 +464,7 @@ def calibrate_from_samples(
         board = board if board is not None else build_board(spec)
         for sample in samples:
             matched_object, matched_image = board.matchImagePoints(sample.corners, sample.ids)
-            if matched_object is None or len(matched_object) < 4:
+            if matched_object is None or len(matched_object) < CHARUCO_MIN_CALIBRATION_CORNERS:
                 continue
             object_points.append(matched_object)
             image_points.append(matched_image)
@@ -472,7 +477,7 @@ def calibrate_from_samples(
     if len(object_points) < 3:
         raise ValueError("Zu wenige verwertbare Aufnahmen nach der Zuordnung")
 
-    rms, camera_matrix, distortion = lens.calibrate(
+    rms, camera_matrix, distortion, used = lens.calibrate(
         object_points, image_points, image_size, model
     )
     return CameraCalibration(
@@ -481,7 +486,7 @@ def calibrate_from_samples(
         image_size=(int(image_size[0]), int(image_size[1])),
         frame_id=frame_id,
         rms_reprojection_error=rms,
-        sample_count=len(object_points),
+        sample_count=used,
         board=spec.as_dict(),
         model=model,
     )
