@@ -1,6 +1,6 @@
-# Intrinsik-Experiment 10.11.2026 (Konsolenausgabe)
+# Intrinsics experiment 10.11.2026 (console output)
 
-Vergleich alte Intrinsik (cam_flange.json vom 23.09.2026) gegen Werks-Intrinsik der D415 (Color 640x480: fx 608,81, fy 607,11, cx 331,60, cy 243,39, Verzeichnung 0). Brett laut Nutzer mit Stahllineal 274,6 +- 2 mm statt 275,0 mm (ChArUco, 11 Felder). Skript: `tools/handeye_offline_cv4/kinematik/intr.py`.
+Comparison of the old intrinsics (cam_flange.json from 23.09.2026) against the factory intrinsics of the D415 (Color 640x480: fx 608.81, fy 607.11, cx 331.60, cy 243.39, distortion 0). Board per the user, measured with a steel ruler, 274.6 +- 2 mm instead of 275.0 mm (ChArUco, 11 squares). Script: `tools/handeye_offline_cv4/kinematik/intr.py`.
 
 ```
 == je Sitzung starr: RMS px | t_X mm

@@ -1,123 +1,124 @@
-# Use-Case-Foto: OPC-UA-Methode SaveUseCaseImage
+# Use-case photo: OPC UA method SaveUseCaseImage
 
-**Status:** in Arbeit — 29.10.2026
-**Verantwortlich:** Meric, `Agent: Use-Case-Foto`
-**Thema:** vision
+**Status:** in progress — 29.10.2026
+**Owner:** Meric, `Agent: Use-Case-Foto`
+**Topic:** vision
 **Branch:** `usecase-foto`
 
-## Ziel
+## Goal
 
-Nach dem Ablegen eines Würfels in Use Case 1 der Web-App fährt der Roboter
-die Handkamera (Hand-Pi, PI_2) in die Fotopose: 20 cm senkrecht über der
-Soll-Mitte der Ablage, aus der Hand-Auge-Kalibrierung. Dort wird ein Foto
-aufgenommen. Bild und Metadaten landen pro Versuch auf dem Pi, und das Bild
-wird direkt gemessen (Δx, Δy, Δθ, siehe `use-case-messung.md`). Damit lassen
-sich Genauigkeit und Wiederholgenauigkeit der Ablage auswerten. Vorher gab
-es dafür keine Ablage, die Versuche ließen sich nicht einzeln nachvollziehen.
+After a cube has been placed in Use Case 1 of the web app, the robot moves the
+hand camera (hand Pi, PI_2) into the photo pose: 20 cm vertically above the
+target center of the placement, from the hand-eye calibration. A photo is taken
+there. Image and metadata end up on the Pi per trial, and the image is measured
+directly (Δx, Δy, Δθ, see `use-case-messung.md`). This makes it possible to
+evaluate the accuracy and repeatability of the placement. Previously there was
+no storage for this; the trials could not be traced individually.
 
-## Bereits gelesen
+## Already read
 
 - `CLAUDE.md`
 - `doc/projektdoku/arbeitsplaene/README.md`, `_vorlage.md`, `rohbild-speichern.md`
-- `doc/projektdoku/vision-server-interface.md` (Abschnitt 18 SaveRawImage, 13.6 Betrieb)
+- `doc/projektdoku/vision-server-interface.md` (section 18 SaveRawImage, 13.6 operations)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/use_case_image.py` (neu): Dateiablage, Versuchsnummer, JSON
-- `src/vision_server/config.py`: Feld `use_case_dir`
+- `src/vision_server/use_case_image.py` (new): file storage, trial number, JSON
+- `src/vision_server/config.py`: field `use_case_dir`
 - `src/vision_server/runner.py`: `_install_save_use_case_image`, `_build_use_case_pi_meta`
-- `src/use_case_eval/live.py` (neu): Anbindung der Messung an die Methode (`measure_for_save`, Aufkleber-Versatz, `pi.intrinsics`)
-- `tests/test_use_case_image.py` (neu)
-- `doc/projektdoku/vision-server-interface.md` (Abschnitt 18a)
-- `doc/projektdoku/arbeitsplaene/use-case-messung.md` (Messung, Zielscheibe)
-- Frontend (Web-App): Versuchsreihe-Feld, Aufruf der Methode nach Use Case 1,
-  Übergabe des Client-JSON (Schema `wsc.usecase.trial/1`)
+- `src/use_case_eval/live.py` (new): hookup of the measurement to the method (`measure_for_save`, sticker offset, `pi.intrinsics`)
+- `tests/test_use_case_image.py` (new)
+- `doc/projektdoku/vision-server-interface.md` (section 18a)
+- `doc/projektdoku/arbeitsplaene/use-case-messung.md` (measurement, target)
+- Frontend (web app): trial-series field, call of the method after Use Case 1,
+  handover of the client JSON (schema `wsc.usecase.trial/1`)
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-| Element | NodeId / BrowsePath | Typ | Richtung | Bedeutung |
+| Element | NodeId / BrowsePath | Type | Direction | Meaning |
 | --- | --- | --- | --- | --- |
-| `SaveUseCaseImage` | `ns=<own_idx>;s=<vision_system_name>.SaveUseCaseImage` | Methode | Aufruf | speichert Kamerabild und Metadaten als Versuch |
+| `SaveUseCaseImage` | `ns=<own_idx>;s=<vision_system_name>.SaveUseCaseImage` | Method | Call | stores camera image and metadata as a trial |
 
-Am Vision-System angelegt und – wie `SaveRawImage` – über `calibration_methods`
-gespiegelt. Namespace-Index über die URI auflösen, nie hartcodieren.
+Created on the vision system and — like `SaveRawImage` — mirrored via
+`calibration_methods`. Resolve the namespace index via the URI, never hard-code it.
 
-Signatur: `SaveUseCaseImage(Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`
+Signature: `SaveUseCaseImage(Series: Int32, MetadataJson: String) -> (FileName: String, ResultJson: String, Error: Int32)`
 
-- `Series`: Versuchsreihe aus der Web-App, muss `>= 1` sein.
-- `MetadataJson`: JSON-Text des Web-Clients. Der Server prüft den Inhalt nicht.
-- `FileName`: PNG-Pfad relativ zur Repo-Wurzel mit `/`, z. B.
-  `data/use-case/reihe_003/versuch_012.png`. Liegt das Ziel außerhalb der
-  Repo-Wurzel, der absolute Pfad. Bei Fehler `""`.
-- `ResultJson`: Bildmessung des Versuchs als JSON-Text (Felder und Bedeutung
-  siehe `use-case-messung.md`). Bei Fehler-Codes `""`. Ein Messfehler ist
-  **kein** Fehler-Code: das Foto wird gespeichert, `ResultJson` enthält dann
+- `Series`: trial series from the web app, must be `>= 1`.
+- `MetadataJson`: JSON text from the web client. The server does not check the content.
+- `FileName`: PNG path relative to the repo root with `/`, e.g.
+  `data/use-case/reihe_003/versuch_012.png`. If the target lies outside the repo
+  root, the absolute path. On error `""`.
+- `ResultJson`: image measurement of the trial as JSON text (fields and meaning
+  see `use-case-messung.md`). On error codes `""`. A measurement error is **not**
+  an error code: the photo is stored, and `ResultJson` then contains
   `{"ok": false, "grund": "..."}`.
 - `Error` (`VisionErrorCode`):
 
-| Code | Name | Bedeutung |
+| Code | Name | Meaning |
 | --- | --- | --- |
-| `0` | OK | gespeichert |
-| `1` | INVALID_STATE | kein frisches Bild (≥ 0,3 s nach Aufruf) innerhalb 5 s |
+| `0` | OK | stored |
+| `1` | INVALID_STATE | no fresh image (≥ 0.3 s after the call) within 5 s |
 | `2` | INVALID_ARGUMENT | `Series` < 1 |
-| `3` | BUSY | ein Job läuft |
-| `6` | INTERNAL | Speichern fehlgeschlagen, Ausnahme im Log |
+| `3` | BUSY | a job is running |
+| `6` | INTERNAL | saving failed, exception in the log |
 
-Die Codes 4, 5 und 7 kommen bei dieser Methode nicht vor.
+Codes 4, 5 and 7 do not occur with this method.
 
 ### Python
 
 ```python
-# Modul: src/vision_server/use_case_image.py
+# Module: src/vision_server/use_case_image.py
 SCHEMA = "adp.usecase.trial/1"
 
 def next_trial_number(directory: Path) -> int:
-    """Höchste vorhandene Versuchsnummer + 1; leer oder fehlend: 1. Lücken bleiben."""
+    """Highest existing trial number + 1; empty or missing: 1. Gaps remain."""
 
 def save_use_case_image(image, base_dir: Path, series: int, client_meta: str,
                         pi_meta: dict, now: datetime | None = None,
                         measurement: dict | None = None,
                         annotated=None) -> tuple[Path, int]:
-    """Schreibt PNG und JSON, liefert (PNG-Pfad, Versuchsnummer).
-    `measurement` wird als Feld `messung` in die JSON geschrieben, `annotated`
-    (Kontrollbild) als `versuch_NNN_messung.png` (best effort).
-    Wirft ValueError bei series < 1, OSError bei Schreibfehlern.
-    Nie überschreibend: exklusives Anlegen, bei Kollision nächste Nummer."""
+    """Writes PNG and JSON, returns (PNG path, trial number).
+    `measurement` is written into the JSON as field `messung`, `annotated`
+    (check image) as `versuch_NNN_messung.png` (best effort).
+    Raises ValueError for series < 1, OSError on write errors.
+    Never overwrites: exclusive creation, on collision the next number."""
 
-# Modul: src/use_case_eval/live.py (Anbindung an SaveUseCaseImage)
+# Module: src/use_case_eval/live.py (hookup to SaveUseCaseImage)
 def measure_for_save(image, calibration, sticker_offset_mm=(0.0, 0.0)) -> tuple[dict, Any]:
-    """Misst ohne Ausnahmen; liefert (messung_dict, kontrollbild oder None).
-    Ohne Kalibrierung: {"ok": False, "grund": "Keine Kamerakalibrierung verfuegbar"}."""
+    """Measures without exceptions; returns (measurement_dict, check image or None).
+    Without calibration: {"ok": False, "grund": "Keine Kamerakalibrierung verfuegbar"}
+    (German runtime message: "no camera calibration available")."""
 ```
 
-Konfiguration: `VisionServerConfig.use_case_dir: Path | None`, Default
-`<Repo>/data/use-case`. `None` = Methode wird nicht angelegt. Die Methode
-entsteht in `install_vision_machine`, wenn eine Kamera-Quelle vorhanden und
-`use_case_dir` nicht `None` ist.
+Configuration: `VisionServerConfig.use_case_dir: Path | None`, default
+`<Repo>/data/use-case`. `None` = method is not created. The method is created
+in `install_vision_machine` if a camera source is present and `use_case_dir`
+is not `None`.
 
-### Daten: Ablage
+### Data: storage
 
 ```
 data/use-case/
 └── reihe_003/
     ├── versuch_001.png
     ├── versuch_001.json
-    ├── versuch_001_messung.png   (Kontrollbild, nur bei vorliegender Messung)
+    ├── versuch_001_messung.png   (check image, only if a measurement is available)
     └── versuch_002.png
 ```
 
-Außerdem liegt `data/use-case/aufkleber_versatz.json` (eine Datei je
-Use-Case-Ordner, nicht je Reihe) mit dem Aufkleber-Versatz, falls kalibriert.
+In addition, `data/use-case/aufkleber_versatz.json` (one file per use-case
+folder, not per series) holds the sticker offset, if calibrated.
 
-- Ordner `reihe_NNN` und Dateien `versuch_NNN` dreistellig, bei mehr als 999
-  Versuchen wächst die Nummer einfach weiter.
-- Die Versuchsnummer ist die höchste vorhandene Nummer (PNG oder JSON) plus 1.
-  Gelöschte Versuche werden nicht aufgefüllt, solange ein höherer existiert.
-- Schlägt das Schreiben der JSON fehl, wird das PNG wieder entfernt.
+- Folder `reihe_NNN` and files `versuch_NNN` have three digits; with more than
+  999 trials the number simply keeps growing.
+- The trial number is the highest existing number (PNG or JSON) plus 1. Deleted
+  trials are not filled in as long as a higher one exists.
+- If writing the JSON fails, the PNG is removed again.
 
-### Daten: JSON je Versuch
+### Data: JSON per trial
 
 ```json
 {
@@ -126,124 +127,125 @@ Use-Case-Ordner, nicht je Reihe) mit dem Aufkleber-Versatz, falls kalibriert.
   "versuch": 12,
   "bild": "versuch_012.png",
   "gespeichert": "2026-10-29T14:03:12",
-  "pi": { "...": "siehe unten" },
-  "client": { "...": "Objekt aus MetadataJson, Schema wsc.usecase.trial/1" }
+  "pi": { "...": "see below" },
+  "client": { "...": "object from MetadataJson, schema wsc.usecase.trial/1" }
 }
 ```
 
-| Feld | Bedeutung |
+| Field | Meaning |
 | --- | --- |
-| `schema` | Kennung `adp.usecase.trial/1` |
+| `schema` | identifier `adp.usecase.trial/1` |
 | `reihe` | `Series` |
-| `versuch` | fortlaufende Nummer in der Reihe |
-| `bild` | Dateiname des PNG neben der JSON |
-| `gespeichert` | Zeitpunkt des Speicherns, lokale Zeit des Pi, ISO 8601 ohne Zeitzone, Sekunden genau |
-| `pi` | Metadaten des Pi (siehe unten) |
-| `messung` | Bildmessung (`TrialMeasurement`, gleiche Felder wie `ResultJson`). Vor dem Speichern berechnet; bei Messfehler `{"ok": false, "grund": ...}` |
-| `client` | `MetadataJson` als Objekt. Schema `wsc.usecase.trial/1` (Soll-Pose, Tisch, Route, Ist-Gelenke usw.) |
-| `client_raw` | statt `client`: der Text, wenn `MetadataJson` kein gültiges JSON-Objekt ist |
+| `versuch` | consecutive number within the series |
+| `bild` | file name of the PNG next to the JSON |
+| `gespeichert` | time of saving, local time of the Pi, ISO 8601 without time zone, to the second |
+| `pi` | metadata of the Pi (see below) |
+| `messung` | image measurement (`TrialMeasurement`, same fields as `ResultJson`). Computed before saving; on measurement error `{"ok": false, "grund": ...}` |
+| `client` | `MetadataJson` as an object. Schema `wsc.usecase.trial/1` (target pose, table, route, actual joints, etc.) |
+| `client_raw` | instead of `client`: the text, if `MetadataJson` is not a valid JSON object |
 
-Felder von `pi`, jeweils nur vorhanden, wenn ermittelbar:
+Fields of `pi`, each only present if determinable:
 
-- `frame_timestamp`, `frame_age_s` (Alter des Bildes beim Speichern, s), `image_shape` (`[H, W, C]`)
+- `frame_timestamp`, `frame_age_s` (age of the image at saving, s), `image_shape` (`[H, W, C]`)
 - `frame_id`, `vision_system_name`, `vision_system_id`, `hostname`, `endpoint`
-- `camera_stream` (Kameraeinstellungen als Objekt)
-- `intrinsics` (nur bei geladener Kalibrierung): `source` (`calibration` / `realsense_factory` / `placeholder`), `calibrationId`, `imageSize` (`[Breite, Höhe]`), `cameraMatrix` (3x3), `distortionCoefficients`, `distortionModel` (`pinhole` / `fisheye`). Damit nimmt die Offline-Auswertung dieselbe Intrinsik wie die Live-Messung.
-- `apriltag` (Profil als Objekt), `calibration` und `hand_eye` (je `{path, exists, content}`)
+- `camera_stream` (camera settings as an object)
+- `intrinsics` (only when a calibration is loaded): `source` (`calibration` /
+  `realsense_factory` / `placeholder`), `calibrationId`, `imageSize`
+  (`[width, height]`), `cameraMatrix` (3x3), `distortionCoefficients`,
+  `distortionModel` (`pinhole` / `fisheye`). This way the offline evaluation uses
+  the same intrinsics as the live measurement.
+- `apriltag` (profile as an object), `calibration` and `hand_eye` (each `{path, exists, content}`)
 
-`content` ist die geparste Datei (JSON oder YAML), sonst deren Text. Fehlt eine
-Datei, steht `exists: false` und kein `content`.
+`content` is the parsed file (JSON or YAML), otherwise its text. If a file is
+missing, `exists: false` is given and there is no `content`.
 
-### Netz / Betrieb
+### Network / operations
 
-Keine neuen Ports oder Services. Der Server bleibt `opcua-server.service`.
-Bildkodierung mit OpenCV (`cv2`), wird erst beim Aufruf importiert.
-`frame_id` = `config.apriltag.frame_id`, ohne AprilTag-Konfiguration
+No new ports or services. The server remains `opcua-server.service`. Image
+encoding with OpenCV (`cv2`), only imported at call time. `frame_id` =
+`config.apriltag.frame_id`; without AprilTag configuration
 `config.vision_system_name`.
 
-### Fehlerfälle
+### Failure cases
 
-- Kein frisches Bild innerhalb 5 s (z. B. Kamera hängt): `INVALID_STATE`, nichts geschrieben.
-- `Series` < 1: `INVALID_ARGUMENT`, nichts geschrieben.
-- Job läuft: `BUSY`, sofort, ohne Warten auf ein Bild.
-- Platte voll, kein Schreibrecht, PNG-Kodierung fehlgeschlagen: `INTERNAL`, Ausnahme im Log, keine Teildatei übrig (PNG wird bei JSON-Fehler gelöscht).
-- Ungültiges `MetadataJson`: kein Fehler, Versuch wird mit `client_raw` gespeichert.
-- Fehlende Pi-Metadaten: einzelne Felder fehlen, der Versuch wird trotzdem gespeichert.
-- Messfehler (kein Würfelmarker, zu wenige Blattmarker, keine Kalibrierung,
-  Ausnahme in der Messung): kein Fehler-Code. Das Foto wird gespeichert,
-  `messung.ok` ist `false` mit `grund`; ohne Kontrollbild fehlt nur die
-  `_messung.png`.
+- No fresh image within 5 s (e.g. camera hangs): `INVALID_STATE`, nothing written.
+- `Series` < 1: `INVALID_ARGUMENT`, nothing written.
+- Job running: `BUSY`, immediately, without waiting for an image.
+- Disk full, no write permission, PNG encoding failed: `INTERNAL`, exception in
+  the log, no partial file left over (PNG is deleted on JSON error).
+- Invalid `MetadataJson`: no error, the trial is saved with `client_raw`.
+- Missing Pi metadata: individual fields are missing, the trial is saved anyway.
+- Measurement error (no cube marker, too few sheet markers, no calibration,
+  exception in the measurement): no error code. The photo is saved,
+  `messung.ok` is `false` with `grund`; without a check image only the
+  `_messung.png` is missing.
 
-## Vorgehen
+## Approach
 
-1. Plan und Fach-Doku (diese Datei, Abschnitt 18a in `vision-server-interface.md`).
-2. `use_case_image.py`, Config-Feld, Handler in `runner.py`.
-3. Tests in `tests/test_use_case_image.py` (Versuchsnummer, Lücken, Kollision, `client_raw`, Reihe < 1, Fehlercodes).
-4. Frontend: Versuchsreihe-Feld und Aufruf nach Use Case 1.
-5. Inbetriebnahme auf dem Hand-Pi (siehe unten), Probelauf mit echter Ablage.
+1. Plan and topic doc (this file, section 18a in `vision-server-interface.md`).
+2. `use_case_image.py`, config field, handler in `runner.py`.
+3. Tests in `tests/test_use_case_image.py` (trial number, gaps, collision, `client_raw`, series < 1, error codes).
+4. Frontend: trial-series field and call after Use Case 1.
+5. Commissioning on the hand Pi (see below), trial run with a real placement.
 
-## Inbetriebnahme
+## Commissioning
 
-Auf dem Hand-Pi (PI_2):
+On the hand Pi (PI_2):
 
 ```bash
-cd <repo auf dem Pi>
-git pull                                  # Stand mit SaveUseCaseImage holen
+cd <repo on the Pi>
+git pull                                  # get current version with SaveUseCaseImage
 sudo systemctl restart opcua-server.service
 ```
 
-Danach prüfen, ob die Methode am Vision-System vorhanden ist (Browse über den
-Client, z. B. `tools/handshake_client.py` als Vorlage). Fehlt sie, läuft noch
-eine ältere Server-Version oder `use_case_dir` ist `None`. Dann die Pi-Software
-aktualisieren und den Server erneut neu starten.
+Afterwards check whether the method is present on the vision system (browse via
+the client, e.g. `tools/handshake_client.py` as a template). If it is missing, an
+older server version is still running or `use_case_dir` is `None`. Then update the
+Pi software and restart the server again.
 
 ## Test
 
-`tests/test_use_case_image.py` (unittest) deckt ab:
+`tests/test_use_case_image.py` (unittest) covers:
 
-- Ablage: Versuchsnummer ohne und mit Lücken, neue Reihe beginnt bei 1, Kollision
-  (nie überschreiben), JSON-Inhalt, `client_raw`, nicht serialisierbare Werte,
-  `Series` < 1, Kodierfehler.
-- OPC-UA-Methode an einem echten asyncua-Server: Speichern, Warten auf ein Bild
-  nach dem Aufruf, Timeout → `INVALID_STATE`, `INVALID_ARGUMENT`, `BUSY`,
-  `INTERNAL`.
+- Storage: trial number without and with gaps, new series starts at 1, collision
+  (never overwrite), JSON content, `client_raw`, non-serializable values,
+  `Series` < 1, encoding errors.
+- OPC UA method on a real asyncua server: saving, waiting for an image after the
+  call, timeout → `INVALID_STATE`, `INVALID_ARGUMENT`, `BUSY`, `INTERNAL`.
 
-- Messung und Ablage mit Messung: `messung` in der JSON, `ResultJson` bei
-  Erfolg, Kontrollbild, Messfehler ohne Abbruch, Messung ohne Kalibrierung.
-  Details: `use-case-messung.md`.
+- Measurement and storage with measurement: `messung` in the JSON, `ResultJson` on
+  success, check image, measurement error without abort, measurement without
+  calibration. Details: `use-case-messung.md`.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m unittest tests.test_use_case_eval tests.test_use_case_image
 ```
 
-Stand des Worktrees: beide Module zusammen 45 Tests, alle grün (rund 100 s,
-ein Teil davon sind synthetische Messungen).
+State of the worktree: both modules together 45 tests, all green (about 100 s,
+part of them are synthetic measurements).
 
-Manuell am Pi: Methode zweimal mit derselben Reihe aufrufen, dann
-`data/use-case/reihe_NNN/` prüfen: zwei PNG, zwei JSON, Nummern fortlaufend.
+Manually on the Pi: call the method twice with the same series, then check
+`data/use-case/reihe_NNN/`: two PNG, two JSON, numbers consecutive.
 
-## Offene Fragen
+## Open questions
 
-- Aufräumen alter Versuche auf der SD-Karte ist nicht Teil dieser Aufgabe.
+- Cleaning up old trials on the SD card is not part of this task.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **Ausgabe erweitert:** `SaveUseCaseImage` liefert jetzt
-  `(FileName, ResultJson, Error)`. `ResultJson` ist die Bildmessung als JSON
-  (bei Fehler-Codes leer). Der Stand `(FileName, Error)` vom Commit `d0a5e90`
-  ist damit überholt.
-- **Messung im Speichern:** Die Messung läuft vor dem Speichern (in einem Thread)
-  und steht als `messung` in der JSON. Ein Messfehler lässt das Speichern nicht
-  scheitern.
-- **Fotopose:** Nicht mehr Flansch 30 cm über der Ablage, sondern die Kamera
-  20 cm senkrecht über der Soll-Mitte, aus `poseFlangeCam` der
-  Hand-Auge-Kalibrierung berechnet. Bildachsen parallel zur Tisch-x-Achse.
-  Details im Arbeitsplan `use-case-messung.md`. Frontend: webskillcomposition,
-  Branch `usecase-foto`.
+- **Output extended:** `SaveUseCaseImage` now returns `(FileName, ResultJson, Error)`.
+  `ResultJson` is the image measurement as JSON (empty on error codes). The state
+  `(FileName, Error)` from commit `d0a5e90` is thereby superseded.
+- **Measurement during saving:** The measurement runs before saving (in a thread)
+  and appears as `messung` in the JSON. A measurement error does not make saving fail.
+- **Photo pose:** No longer the flange 30 cm above the placement, but the camera
+  20 cm vertically above the target center, computed from `poseFlangeCam` of the
+  hand-eye calibration. Image axes parallel to the table x-axis. Details in the
+  work plan `use-case-messung.md`. Frontend: webskillcomposition, branch `usecase-foto`.
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/projektdoku/arbeitsplaene/README.md` aktualisiert.
-- Dauerhaftes Fachwissen in die passende Fach-MD übernommen (Abschnitt 18a
-  in `vision-server-interface.md` ist bereits angelegt).
+- Status set to `done`, actual interfaces recorded.
+- Entry in the index `doc/projektdoku/arbeitsplaene/README.md` updated.
+- Lasting topic knowledge transferred to the appropriate topic doc (section 18a
+  in `vision-server-interface.md` is already set up).

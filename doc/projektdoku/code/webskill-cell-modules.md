@@ -132,7 +132,7 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/handEyeBoardOrigin.ts`
 
-- Offset check ("Brettursprung anfahren"): flange target for driving to the board origin after a calibration.
+- Offset check ("Brettursprung anfahren" (drive to board origin)): flange target for driving to the board origin after a calibration.
 - Entry points: `boardOriginFlangeTarget`, `flangeToToolPose`; constants `FR3_TOOL_OFFSET_M`, `BOARD_ORIGIN_STANDOFF_M`, `BOARD_ORIGIN_APPROACH_M`.
 
 ### `model/handEyeBoardOrigin.test.ts`

@@ -1,36 +1,41 @@
-# Hand-Auge: Brett zentrieren (MeasureBoard) und Aufnahme-Güte
+# Hand-eye: center board (MeasureBoard) and capture quality
 
-**Status:** fertig — 22.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** `Agent: Hand-Auge-Brett zentrieren auf dem Hand-Pi`; Frontend: Sitzung `opcua-1a`
-**Thema:** apriltag
+**Status:** done — 22.10.2026 (not tested on real hardware)
+**Owner:** `Agent: Hand-eye center board on hand Pi`; frontend: session `opcua-1a`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Vor `CaptureHandEyeSample` soll die Steuerung das Kalibrier-Schachbrett (6x7 Innenecken, 23 mm) mittig ins Kamerabild bringen. Dafür braucht sie eine Messung, die auch bei einem nur teilweise sichtbaren Brett etwas liefert. Außerdem soll jede Aufnahme ihre Güte zeigen und nie ein Bild von vor dem Aufruf verwenden.
+Before `CaptureHandEyeSample`, the controller should bring the calibration
+chessboard (6x7 inner corners, 23 mm) centrally into the camera image. For this
+it needs a measurement that also yields something when the board is only
+partially visible. In addition, each capture should show its quality and never
+use an image from before the call.
 
-## Umfang
+## Scope
 
-1. **Erstes Bild nach dem Aufruf:** `measure_tag`, `measure_board` und `MeasureBoard` nutzen nur Bilder, die nach dem Aufruf eintreffen. Das zuletzt gepufferte Bild zählt nur für den Zeitstempel.
-2. **`reprojectionErrorPx` je Aufnahme:** `samples[i].reprojectionErrorPx` im `HandEyeStatus`, Mittel über die Bilder der Aufnahme, auch bei verworfenen Aufnahmen. `null`, wenn nichts gefunden wurde.
-3. **`MeasureBoard(RequestJson) -> (ResultJson, Error)`:** misst das Brett ohne Fahrbefehle. Siehe `vision-server-interface.md`, Abschnitt 15.4.
+1. **First image after the call:** `measure_tag`, `measure_board` and `MeasureBoard` only use images that arrive after the call. The most recently buffered image only counts for the timestamp.
+2. **`reprojectionErrorPx` per capture:** `samples[i].reprojectionErrorPx` in `HandEyeStatus`, mean over the images of the capture, also for discarded captures. `null` if nothing was found.
+3. **`MeasureBoard(RequestJson) -> (ResultJson, Error)`:** measures the board without motion commands. See `vision-server-interface.md`, Section 15.4.
 
-Eine Prüfung auf eine zu kleine Rastergröße ist bewusst **nicht** eingebaut: Es gibt nur ein Kalibrierbrett (6x7), die Größe wird nicht je Aufruf geprüft.
+A check for a too-small grid size is deliberately **not** built in: there is only
+one calibration board (6x7), and the size is not checked per call.
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/measureboard.py` (neu): Anfrage, Ergebnis-JSON
+- `src/vision_server/measureboard.py` (new): request, result JSON
 - `src/tagloc/boards.py`: `partial_patterns`, `detect_partial_board`
-- `src/vision_server/detection/apriltag.py`: `_latest_timestamp`, 3-Tupel-Rückgaben mit Info, `measure_board_view`, `default_board_spec`
-- `src/vision_server/handeye_session.py`: `reprojectionErrorPx` je Aufnahme
+- `src/vision_server/detection/apriltag.py`: `_latest_timestamp`, 3-tuple returns with info, `measure_board_view`, `default_board_spec`
+- `src/vision_server/handeye_session.py`: `reprojectionErrorPx` per capture
 - `src/vision_server/runner.py`: `_install_measure_board`
-- `tests/test_measureboard.py` (neu), `tests/test_apriltag_source.py`
+- `tests/test_measureboard.py` (new), `tests/test_apriltag_source.py`
 
-## Schnittstelle `MeasureBoard`
+## Interface `MeasureBoard`
 
-`ns=<vision>;s=VisionMachine.MeasureBoard`, `(RequestJson: String) -> (ResultJson: String, Error: Int32)`. Nur auf dem Hand-Pi. Antwortet erst nach der Messung. Läuft auch **während** einer Hand-Auge-Sitzung.
+`ns=<vision>;s=VisionMachine.MeasureBoard`, `(RequestJson: String) -> (ResultJson: String, Error: Int32)`. Only on the hand Pi. Replies only after the measurement. Also runs **during** a hand-eye session.
 
-Anfrage `wsc.vision.measureboard.request/1`, alle Felder optional (`""`/`{}` gültig):
+Request `wsc.vision.measureboard.request/1`, all fields optional (`""`/`{}` valid):
 
 ```json
 { "schema": "wsc.vision.measureboard.request/1",
@@ -38,18 +43,20 @@ Anfrage `wsc.vision.measureboard.request/1`, alle Felder optional (`""`/`{}` gü
   "frames": 3 }
 ```
 
-`frames`: 1 bis 10, Standard 3. Ohne `board` gilt das Brett aus der Konfiguration.
+`frames`: 1 to 10, default 3. Without `board`, the board from the configuration applies.
 
-| Error | Wann |
+| Error | When |
 | --- | --- |
-| `OK` | gemessen, auch wenn nichts gefunden wurde (`found: false`) |
-| `DETECTION_FAILED` | kein frisches Kamerabild (`error: "NO_FRAME"`) |
-| `INVALID_ARGUMENT` | JSON bzw. Brett ungültig |
-| `INVALID_STATE` | Vision-System nicht `Operational` |
-| `BUSY` | Job oder Kamera-Kalibrierung läuft |
+| `OK` | measured, even if nothing was found (`found: false`) |
+| `DETECTION_FAILED` | no fresh camera image (`error: "NO_FRAME"`) |
+| `INVALID_ARGUMENT` | JSON or board invalid |
+| `INVALID_STATE` | vision system not `Operational` |
+| `BUSY` | job or camera calibration running |
 
-Ergebnis `wsc.vision.measureboard.result/1` (immer gültiges JSON): siehe Abschnitt 15.4 der Schnittstellenbeschreibung.
+Result `wsc.vision.measureboard.result/1` (always valid JSON): see Section 15.4 of the interface description.
 
 ## Tests
 
-`tests/test_measureboard.py` (gerenderte 6x7-Bretter in mehreren Lagen, Teilraster am Bildrand, Sitzung, OPC UA), angepasste `MeasureTagTest`. Volle Suite: nur der bekannte `test_mjpeg_server`-Fan-out-Test schlägt fehl.
+`tests/test_measureboard.py` (rendered 6x7 boards in several poses, partial grid
+at the image edge, session, OPC UA), adapted `MeasureTagTest`. Full suite: only
+the known `test_mjpeg_server` fan-out test fails.

@@ -1,106 +1,106 @@
-# MJPEG-Livestream, Kamera-Watchdog und Welt-Tag-Map auf feature/vision-server
+# MJPEG live stream, camera watchdog and world-tag map on feature/vision-server
 
-**Status:** fertig — 22.09.2026
-**Verantwortlich:** John Glanz, `Agent: Übernahme von Branch John`
-**Thema:** vision
-**Branch:** feature/vision-server (übernommen von `John`)
+**Status:** done — 22.09.2026
+**Owner:** John Glanz, `Agent: Takeover of branch John`
+**Topic:** vision
+**Branch:** feature/vision-server (taken over from `John`)
 
-## Ziel
+## Goal
 
-Die Pis laufen auf `feature/vision-server`, drei Dinge lagen aber nur auf dem
-Branch `John`: ein flüssiger Livestream direkt vom Pi in den Browser (statt
-Base64 über OPC UA), ein Watchdog gegen die hängende Kamera auf Pi 1 und die
-Tag-Map mit dem Welt-Tag. Danach reicht auf beiden Pis ein
-`git pull` auf `feature/vision-server`.
+The Pis run on feature/vision-server, but three things existed only on the
+branch `John`: a smooth live stream directly from the Pi into the browser
+(instead of Base64 over OPC UA), a watchdog against the hanging camera on Pi 1,
+and the tag map with the world tag. Afterwards, a git pull on
+feature/vision-server is enough on both Pis.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (kein laufender Plan zum Thema)
-- `doc/vision-server-interface.md` (Abschnitt 1, 10, 12)
+- `CLAUDE.md`, `doc/arbeitsplaene/README.md` (no running plan on this topic)
+- `doc/vision-server-interface.md` (sections 1, 10, 12)
 - `doc/vision-system.md`
 - `doc/altlasten.md`
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/camera.py`, `camera_stream.py`, `mjpeg_server.py` (neu),
+- `src/vision_server/camera.py`, `camera_stream.py`, `mjpeg_server.py` (new),
   `profiles.py`, `address_space.py`, `runner.py`
-- `tests/test_shared_camera.py` (neu), `tests/test_mjpeg_server.py` (neu),
+- `tests/test_shared_camera.py` (new), `tests/test_mjpeg_server.py` (new),
   `tests/test_camera_stream.py`
-- `config/tagmap.json` (neu)
-- `doc/vision-server-interface.md` (Adressraum, Abschnitt 10, 10.2), `doc/vision-system.md`
+- `config/tagmap.json` (new)
+- `doc/vision-server-interface.md` (address space, sections 10, 10.2), `doc/vision-system.md`
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-| Element | NodeId / BrowsePath | Typ | Richtung | Bedeutung |
+| Element | NodeId / BrowsePath | Type | Direction | Meaning |
 | --- | --- | --- | --- | --- |
-| Port des MJPEG-Streams | `ns=<vision>;s=VisionMachine.CameraStreamHttpPort` | Int32 | Lesen/Abo | Port auf dem Pi; `0`, solange kein HTTP-Server lauscht (aus, Port belegt, Server startet noch). Fehlt der Knoten, ist der Pi älter als diese Änderung |
+| Port of the MJPEG stream | `ns=<vision>;s=VisionMachine.CameraStreamHttpPort` | Int32 | Read/subscribe | Port on the Pi; `0` as long as no HTTP server is listening (off, port in use, server still starting). If the node is missing, the Pi is older than this change |
 
-Unverändert: `LatestCameraFrame` bleibt der Rückfallweg (höchstens
-`stream_fps`), `CameraStreamMode` wählt weiter das Overlay — für beide Wege
-gleich.
+Unchanged: `LatestCameraFrame` remains the fallback path (at most
+`stream_fps`); `CameraStreamMode` still selects the overlay — the same for both
+paths.
 
-### Netz / Betrieb
+### Network / operations
 
-| | Wert |
+| | Value |
 | --- | --- |
-| Stream | `GET http://<pi>:<port>/stream.mjpg` — `multipart/x-mixed-replace; boundary=frame`, spielt in jedem `<img>` |
-| Einzelbild | `GET http://<pi>:<port>/snapshot.jpg` — neuestes JPEG, `503`, solange keins da ist |
-| Port | `CameraStreamConfig.http_port`, Standard `8080`; `0` schaltet ab |
-| Rate | `http_fps` 15 mit mindestens einem Zuschauer, sonst `stream_fps` 5; Aufnahme `capture_fps` 15 |
-| Abhängigkeiten | keine neuen (nur `asyncio.start_server`) |
+| Stream | `GET http://<pi>:<port>/stream.mjpg` — `multipart/x-mixed-replace; boundary=frame`, plays in any `<img>` |
+| Single image | `GET http://<pi>:<port>/snapshot.jpg` — newest JPEG, `503` as long as none is available |
+| Port | `CameraStreamConfig.http_port`, default `8080`; `0` disables it |
+| Rate | `http_fps` 15 with at least one viewer, otherwise `stream_fps` 5; capture `capture_fps` 15 |
+| Dependencies | none new (only `asyncio.start_server`) |
 
-Das Frontend baut die URL aus der Adresse, unter der es den OPC-UA-Server
-erreicht, und dem Port aus dem Knoten. Port 8080 muss vom Browser-Rechner
-aus erreichbar sein.
+The frontend builds the URL from the address under which it reaches the OPC UA
+server, and the port from the node. Port 8080 must be reachable from the
+browser machine.
 
-### Konfiguration (`CameraStreamConfig`, Watchdog)
+### Configuration (`CameraStreamConfig`, watchdog)
 
-| Feld | Standard | Bedeutung |
+| Field | Default | Meaning |
 | --- | --- | --- |
-| `frame_timeout_s` | 3.0 | so lange darf eine einzelne Aufnahme dauern, danach gilt die Kamera als hängend |
-| `max_capture_failures` | 3 | Fehler in Folge bis zum Neu-Öffnen; ein Hänger zählt sofort voll |
-| `max_reopen_attempts` | 2 | Neu-Öffnungen ohne ein Bild dazwischen, danach beendet sich der Prozess hart und systemd startet neu |
-| `stale_frame_s` | 2.0 | älter ist ein Frame kein Live-Bild mehr: der Knoten wird einmal geleert, MJPEG-Zuschauer bekommen nichts Altes |
-| `overlay_timeout_s` | 2.0 | hängt das Overlay länger, geht das Rohbild raus |
+| `frame_timeout_s` | 3.0 | a single capture may take this long; after that the camera counts as hanging |
+| `max_capture_failures` | 3 | consecutive failures until reopening; a hang counts as a full failure immediately |
+| `max_reopen_attempts` | 2 | reopenings without an image in between; after that the process exits hard and systemd restarts it |
+| `stale_frame_s` | 2.0 | a frame older than this is no longer a live image: the node is cleared once, MJPEG viewers get nothing stale |
+| `overlay_timeout_s` | 2.0 | if the overlay hangs longer, the raw image is sent out |
 
-Gilt für alle Kamera-Backends gleich (Picamera2, RealSense, OpenCV), weil der
-Watchdog im gemeinsamen Capture-Loop sitzt.
+Applies equally to all camera backends (Picamera2, RealSense, OpenCV), because
+the watchdog sits in the shared capture loop.
 
-### Daten
+### Data
 
-`config/tagmap.json`: nur Tag 0 als Welt-Tag (`role: world`, `sizeM` 0,1,
-Ursprung des Welt-KS). Modul-Tags stehen **bewusst nicht** darin — der Pi
-meldet sie als `TAG-<id>` mit Weltpose, die Zuordnung Tag → Modul samt
-Versatz macht das Frontend (WSC `features/cell-modules/config/moduleCatalog.ts`).
+`config/tagmap.json`: only tag 0 as world tag (`role: world`, `sizeM` 0.1,
+origin of the world coordinate system). Module tags are **deliberately not**
+included — the Pi reports them as `TAG-<id>` with a world pose; the mapping of
+tag → module including offset is done by the frontend (WSC
+`features/cell-modules/config/moduleCatalog.ts`).
 
-### Fehlerfälle
+### Failure cases
 
-- Port belegt: Server startet ohne HTTP-Stream, Knoten bleibt `0`, Frontend
-  fällt auf `LatestCameraFrame` zurück.
-- Kamera hängt: Neu-Öffnen, notfalls Prozessneustart durch systemd; während
-  des Hängers kein veraltetes Bild auf keinem der beiden Wege.
-- Zu viele Zuschauer: weitere Verbindungen bekommen `503` (Limit in
-  `mjpeg_server.py`); unbekannter Pfad `404`.
+- Port in use: server starts without the HTTP stream, node stays `0`, frontend
+  falls back to `LatestCameraFrame`.
+- Camera hangs: reopen, if necessary a process restart by systemd; during the
+  hang no stale image on either path.
+- Too many viewers: further connections get `503` (limit in `mjpeg_server.py`);
+  unknown path `404`.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Die Fernkalibrierung von `John` (`VisionMachine.Calibration.*`) ist **nicht**
-  übernommen — auf diesem Branch gilt die eigene Kalibrierung
-  (`StartCalibration` / `CaptureCalibrationSample` / `FinishCalibration` /
-  `AbortCalibration`, `CalibrationProgress`, Abschnitt 12 der
-  Schnittstellendoku). Offen: der Kalibrierdialog im WSC-Frontend
-  (`Ungetestet`) spricht noch die `John`-Schnittstelle an und muss auf diese
-  umgestellt werden.
-- `SharedCamera.is_open` kam mit, weil die Watchdog-Tests es brauchen.
-- `max_stream_width` (dieser Branch) und die MJPEG-Kodierung (`John`)
-  zusammengeführt: verkleinert wird einmal beim Kodieren, beide Wege bekommen
-  dasselbe Bild. Der Kalibrier-Fortschritt wird im Knotentakt geschrieben.
+- The remote calibration of `John` (`VisionMachine.Calibration.*`) was **not**
+  taken over — on this branch the own calibration applies (`StartCalibration` /
+  `CaptureCalibrationSample` / `FinishCalibration` / `AbortCalibration`,
+  `CalibrationProgress`, section 12 of the interface docs). Open: the calibration
+  dialog in the WSC frontend (`untested`) still addresses the
+  `John` interface and must be switched to this one.
+- `SharedCamera.is_open` came along because the watchdog tests need it.
+- `max_stream_width` (this branch) and the MJPEG encoding (`John`) were merged:
+  scaling down is done once while encoding, and both paths get the same image.
+  The calibration progress is written at the node cycle.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen wie umgesetzt
-- [x] Zeile im Index
-- [x] Fachwissen in `doc/vision-server-interface.md` (Abschnitt 10.2) und
+- [x] Status `done`, interfaces as implemented
+- [x] Index line
+- [x] Topic knowledge in `doc/vision-server-interface.md` (section 10.2) and
   `doc/vision-system.md`

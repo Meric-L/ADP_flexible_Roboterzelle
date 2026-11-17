@@ -1,85 +1,85 @@
-# Hand-Auge-Kalibrierung per OPC UA
+# Hand-eye calibration via OPC UA
 
-**Status:** fertig — 13.10.2026 (an echter Hardware nicht getestet)
-**Verantwortlich:** `Agent: Hand-Auge-Kalibrierung per OPC UA`; Frontend: Sitzung `opcua-f1` (`webskillcomposition`, Branch `Ungetestet`, Fenster „Hand-Kamera kalibrieren“)
-**Thema:** apriltag
+**Status:** done — 13.10.2026 (not tested on real hardware)
+**Owner:** `Agent: Hand-eye calibration via OPC UA`; frontend: session `opcua-f1` (`webskillcomposition`, branch `Ungetestet`, window „Hand-Kamera kalibrieren“ (calibrate hand camera))
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-`T_flansch_cam` lässt sich bisher nur über die CLI (`tagloc.cli.calibrate_handeye`) bestimmen. Mit dieser Änderung geht das per Knopf aus dem Frontend:
-1. Der Bediener fährt den Roboter in mehrere Posen über einem liegenden Tag.
-2. Pro Pose meldet das Frontend die Flanschpose.
-3. Der Pi misst dazu den Tag, rechnet am Ende `T_flansch_cam` aus, speichert das Ergebnis und nutzt es sofort, ohne Neustart.
+`T_flansch_cam` can so far only be determined via the CLI (`tagloc.cli.calibrate_handeye`). With this change it is done from the frontend at the push of a button:
+1. The operator moves the robot into several poses above a lying tag.
+2. For each pose the frontend reports the flange pose.
+3. For this the Pi measures the tag, calculates `T_flansch_cam` at the end, saves the result and uses it immediately, without a restart.
 
-Ohne diese Datei startet kein Layer-2-Lauf (`layer2-lauf-hand-pi.md`).
+Without this file no layer 2 run starts (`layer2-lauf-hand-pi.md`).
 
-## Bereits gelesen
+## Already read
 
-- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md`: Solver, Dateiformat `wsc.vision.handeye/1`
-- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`, `layer2-annaeherung.md`: Muster Ports/Fakes, Flansch-Links
-- `doc/projektdoku/vision-server-interface.md` Abschnitt 12: Kamera-Kalibrierung, Sperren
+- `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md`: solver, file format `wsc.vision.handeye/1`
+- `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`, `layer2-annaeherung.md`: pattern of ports/fakes, flange links
+- `doc/projektdoku/vision-server-interface.md` section 12: camera calibration, locks
 
-## Betroffene Dateien
+## Affected files
 
-- `src/vision_server/handeye_session.py` (neu)
-- `src/vision_server/detection/apriltag.py`: neue Methoden `measure_tag` und `apply_hand_eye`; `_calibration_for` aus `_locate` herausgezogen
-- `src/vision_server/address_space.py`: Knoten `HandEyeStatus`
-- `src/vision_server/runner.py`: Methoden, Verdrahtung, Sperren, `aclose`
-- `tests/test_handeye_session.py`, `tests/test_handeye_opcua.py` (neu); `tests/test_apriltag_source.py` (`MeasureTagTest`)
-- `doc/projektdoku/vision-server-interface.md`: Abschnitt 15
+- `src/vision_server/handeye_session.py` (new)
+- `src/vision_server/detection/apriltag.py`: new methods `measure_tag` and `apply_hand_eye`; `_calibration_for` extracted from `_locate`
+- `src/vision_server/address_space.py`: node `HandEyeStatus`
+- `src/vision_server/runner.py`: methods, wiring, locks, `aclose`
+- `tests/test_handeye_session.py`, `tests/test_handeye_opcua.py` (new); `tests/test_apriltag_source.py` (`MeasureTagTest`)
+- `doc/projektdoku/vision-server-interface.md`: section 15
 
-## Schnittstellen
+## Interfaces
 
 ### OPC UA
 
-Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vision`. Es gibt sie nur auf dem Hand-Pi (`hand_eye_path` gesetzt). Sie sind zusätzlich unter `VisionProgram` verlinkt.
+All elements lie under `VisionMachine` in the namespace `http://launch-rm.de/vision`. They exist only on the hand Pi (`hand_eye_path` set). They are additionally linked under `VisionProgram`.
 
-| Element | NodeId | Typ | Richtung |
+| Element | NodeId | Type | Direction |
 | --- | --- | --- | --- |
-| StartHandEyeCalibration | `ns=<vision>;s=VisionMachine.StartHandEyeCalibration` | `(OptionsJson: String) -> (Error: Int32)` | Aufruf |
-| CaptureHandEyeSample | `ns=<vision>;s=VisionMachine.CaptureHandEyeSample` | `(SampleJson: String) -> (Error: Int32)` | Aufruf |
-| FinishHandEyeCalibration | `ns=<vision>;s=VisionMachine.FinishHandEyeCalibration` | `() -> (Error: Int32)` | Aufruf |
-| AbortHandEyeCalibration | `ns=<vision>;s=VisionMachine.AbortHandEyeCalibration` | `() -> (Error: Int32)` | Aufruf |
-| HandEyeStatus | `ns=<vision>;s=VisionMachine.HandEyeStatus` | String (JSON) | Lesen/Abo |
+| StartHandEyeCalibration | `ns=<vision>;s=VisionMachine.StartHandEyeCalibration` | `(OptionsJson: String) -> (Error: Int32)` | Call |
+| CaptureHandEyeSample | `ns=<vision>;s=VisionMachine.CaptureHandEyeSample` | `(SampleJson: String) -> (Error: Int32)` | Call |
+| FinishHandEyeCalibration | `ns=<vision>;s=VisionMachine.FinishHandEyeCalibration` | `() -> (Error: Int32)` | Call |
+| AbortHandEyeCalibration | `ns=<vision>;s=VisionMachine.AbortHandEyeCalibration` | `() -> (Error: Int32)` | Call |
+| HandEyeStatus | `ns=<vision>;s=VisionMachine.HandEyeStatus` | String (JSON) | Read/Subscribe |
 
-**Alle Methoden antworten erst, wenn sie fertig sind.**
-- `CaptureHandEyeSample` macht `samples_per_job` Bilder (Standard 3) und mittelt die Tag-Pose. Das dauert etwa so lange wie ein Job.
-- `FinishHandEyeCalibration` rechnet und speichert. Mit einer Handvoll Posen dauert das Millisekunden.
+**All methods only reply once they are finished.**
+- `CaptureHandEyeSample` takes `samples_per_job` images (default 3) and averages the tag pose. This takes about as long as one job.
+- `FinishHandEyeCalibration` calculates and saves. With a handful of poses this takes milliseconds.
 
-| Methode | Code | Wann |
+| Method | Code | When |
 | --- | --- | --- |
-| alle | `OK` | angenommen bzw. erledigt |
-| Start | `BUSY` | Sitzung läuft schon; Job, Kamera-Kalibrierung oder Layer-2-Lauf aktiv |
-| Start, Capture | `INVALID_ARGUMENT` | JSON oder Schema falsch, `tagId` fehlt oder ist negativ |
-| Capture | `INVALID_STATE` | keine Sitzung im Zustand `capturing` |
-| Capture | `BUSY` | eine Aufnahme misst noch, oder ein Job belegt die Kamera |
-| Capture | `DETECTION_FAILED` | Aufnahme verworfen: Tag nicht gesehen, mehrdeutig oder kein Kamerabild. Der Grund steht in `samples[].detail` und `message`. Die Sitzung läuft weiter. |
-| Capture | `CANCELLED` | Während der Messung wurde abgebrochen. |
-| Finish | `INVALID_STATE` | keine Sitzung; **oder** zu wenige bzw. zu ähnliche Posen. Der Grund steht in `message`, die Sitzung bleibt `capturing`, und weitere Aufnahmen sind möglich. |
-| Finish | `INTERNAL` | Berechnet, aber nicht gespeichert (Dateifehler). Der Zustand wird `failed`. |
-| Abort | `INVALID_STATE` | keine Sitzung aktiv |
+| all | `OK` | accepted or completed |
+| Start | `BUSY` | session already running; job, camera calibration or layer 2 run active |
+| Start, Capture | `INVALID_ARGUMENT` | JSON or schema wrong, `tagId` missing or negative |
+| Capture | `INVALID_STATE` | no session in state `capturing` |
+| Capture | `BUSY` | a capture is still measuring, or a job occupies the camera |
+| Capture | `DETECTION_FAILED` | capture discarded: tag not seen, ambiguous or no camera image. The reason is in `samples[].detail` and `message`. The session continues. |
+| Capture | `CANCELLED` | aborted during the measurement. |
+| Finish | `INVALID_STATE` | no session; **or** too few or too similar poses. The reason is in `message`, the session stays `capturing`, and further captures are possible. |
+| Finish | `INTERNAL` | calculated, but not saved (file error). The state becomes `failed`. |
+| Abort | `INVALID_STATE` | no session active |
 
-### Daten
+### Data
 
-**`OptionsJson`**, Schema `wsc.vision.handeye.start/1`:
+**`OptionsJson`**, schema `wsc.vision.handeye.start/1`:
 
 ```json
 { "schema": "wsc.vision.handeye.start/1", "tagId": 12,
   "tagInBase": { "position": [..], "orientation": [..] } }
 ```
 
-`tagInBase` (`T_base_tag` aus dem Katalog-Eintrag des Roboters) ist optional, `null` ist erlaubt. Es dient nur der Gegenprobe.
+`tagInBase` (`T_base_tag` from the catalog entry of the robot) is optional, `null` is allowed. It serves only as a cross-check.
 
-**`SampleJson`**, Schema `wsc.vision.handeye.sample/1`:
+**`SampleJson`**, schema `wsc.vision.handeye.sample/1`:
 
 ```json
 { "schema": "wsc.vision.handeye.sample/1", "flangeInBase": { "position": [..], "orientation": [..] } }
 ```
 
-`flangeInBase` ist die **gemeldete** Pose: FK aus den echten Gelenkwinkeln, auf den Flansch-Link. Die Links sind EVA/Demo1 `model_6`, UR5e `flange`, FR3 `eef_attach_point`, wie in `layer2-annaeherung.md`. Kalibriert man hier auf einen anderen Link als bei Layer 2, ist der Versatz falsch.
+`flangeInBase` is the **reported** pose: FK from the real joint angles, on the flange link. The links are EVA/Demo1 `model_6`, UR5e `flange`, FR3 `eef_attach_point`, as in `layer2-annaeherung.md`. If one calibrates here on a different link than at layer 2, the offset is wrong.
 
-**`HandEyeStatus`**, Schema `wsc.vision.handeye.status/1`:
+**`HandEyeStatus`**, schema `wsc.vision.handeye.status/1`:
 
 ```json
 { "schema": "wsc.vision.handeye.status/1",
@@ -91,11 +91,11 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
   "result": null }
 ```
 
-- `state` ist einer von: `idle`, `capturing`, `solving`, `finished`, `failed`.
-- `rotationSpreadDeg`: die größte Drehung zwischen zwei angenommenen Flanschposen.
-- `rotationAxes` (0–3): um wie viele unabhängige Achsen deutlich gedreht wurde, mit mindestens 5° Drehung je Achse. Unter 2 ist die Rotation nicht bestimmt, und `message` sagt das.
-- `message` bei `capturing`: der Hinweis für den Bediener, d. h. wie viele Aufnahmen noch fehlen (Minimum 3, empfohlen 8) und ob um eine weitere Achse gedreht werden muss.
-- `result` nach `finished`:
+- `state` is one of: `idle`, `capturing`, `solving`, `finished`, `failed`.
+- `rotationSpreadDeg`: the largest rotation between two accepted flange poses.
+- `rotationAxes` (0–3): about how many independent axes were clearly rotated, with at least 5° of rotation per axis. Below 2 the rotation is not determined, and `message` says so.
+- `message` during `capturing`: the hint for the operator, i.e. how many captures are still missing (minimum 3, recommended 8) and whether a further axis has to be rotated.
+- `result` after `finished`:
 
 ```json
 { "poseFlangeCam": {..}, "rmsPositionM": 0.0012, "rmsRotationDeg": 0.21, "sampleCount": 8,
@@ -104,53 +104,53 @@ Alle Elemente liegen unter `VisionMachine` im Namensraum `http://launch-rm.de/vi
   "path": ".../data/handeye/cam_flange.json", "backupPath": ".../cam_flange.json.20261013T101500Z.bak" | null }
 ```
 
-- `rmsPositionM`/`rmsRotationDeg`: das **echte RMS** der Abweichung der rekonstruierten Brett- bzw. Tag-Lage vom Mittel, über die verwendeten Aufnahmen. `maxPositionM`/`maxRotationDeg` ist die **größte** Abweichung. Bis 21.10.2026 stand hier das Maximum unter dem Namen RMS (`tagloc.handeye.target_spread`). Beides misst nur die Konsistenz der Lage über die Aufnahmen, nicht die Genauigkeit von `T_flansch_cam`.
-- **Ausreißer** (ab 22.10.2026, `tagloc.handeye.solve_hand_eye_robust`): Das Residuum einer Aufnahme ist ihr Abstand zum Mittel **der anderen** (leave-one-out). Liegt das größte über Median + 3 × MAD (mindestens 2 mm bzw. 0,3°), wird genau diese Aufnahme verworfen und neu gelöst, bis nichts mehr auffällt. Höchstens ein Viertel der Aufnahmen, nie unter 4 übrig. Scheitert das Neulösen (die übrigen drehen nicht genug), bleibt die letzte gute Lösung. Das Residuum jeder Aufnahme steht nach `FinishHandEyeCalibration` im Status unter `samples[i]`: `residualM`, `residualDeg`, `rejected` (vorher `null`, auch für nicht angenommene Aufnahmen). `result.rejectedCount` und `result.rejectedSamples` (Indizes in `samples[]`) fassen es zusammen, `sampleCount` zählt nur die verwendeten. Die Datei `cam_flange.json` enthält zusätzlich `maxPositionM`/`maxRotationDeg`, alte Dateien ohne diese Felder lassen sich weiter laden.
-- `knownTagCheckM`/`Deg`: nur mit `tagInBase`. Das ist die Abweichung von `mittel(T_base_flansch · T_flansch_cam · T_cam_tag)` zu `tagInBase`. Ein großer Wert spricht eher gegen den Katalog als gegen die Kalibrierung.
+- `rmsPositionM`/`rmsRotationDeg`: the **actual RMS** of the deviation of the reconstructed board or tag position from the mean, over the captures used. `maxPositionM`/`maxRotationDeg` is the **largest** deviation. Until 21.10.2026 the maximum was shown here under the name RMS (`tagloc.handeye.target_spread`). Both only measure the consistency of the position across the captures, not the accuracy of `T_flansch_cam`.
+- **Outliers** (from 22.10.2026, `tagloc.handeye.solve_hand_eye_robust`): the residual of a capture is its distance to the mean **of the others** (leave-one-out). If the largest lies above median + 3 × MAD (at least 2 mm or 0.3°), exactly that capture is discarded and the solution is recomputed, until nothing stands out any more. At most a quarter of the captures are discarded, never leaving fewer than 4. If the recomputation fails (the remaining ones do not rotate enough), the last good solution remains. The residual of each capture is in the status under `samples[i]` after `FinishHandEyeCalibration`: `residualM`, `residualDeg`, `rejected` (previously `null`, also for captures not accepted). `result.rejectedCount` and `result.rejectedSamples` (indices in `samples[]`) summarize it, `sampleCount` counts only the ones used. The file `cam_flange.json` additionally contains `maxPositionM`/`maxRotationDeg`; old files without these fields can still be loaded.
+- `knownTagCheckM`/`Deg`: only with `tagInBase`. This is the deviation of `mean(T_base_flansch · T_flansch_cam · T_cam_tag)` from `tagInBase`. A large value argues more against the catalog than against the calibration.
 
 ### Python
 
 ```python
-# src/vision_server/handeye_session.py   (numpy, tagloc; kein asyncua)
+# src/vision_server/handeye_session.py   (numpy, tagloc; no asyncua)
 class HandEyeSession:
-    active: bool                                   # capturing oder solving
+    active: bool                                   # capturing or solving
     async def start(options_json) -> VisionErrorCode
     async def capture(sample_json) -> VisionErrorCode
     async def finish() -> VisionErrorCode
     async def abort() -> VisionErrorCode
-def rotation_diversity(poses_base_flange) -> tuple[float, int]   # (Grad, Achsen)
+def rotation_diversity(poses_base_flange) -> tuple[float, int]   # (degrees, axes)
 def save_with_backup(path, hand_eye) -> Path | None
 
 # src/vision_server/detection/apriltag.py
 async def AprilTagDetectionSource.measure_tag(tag_id) -> tuple[Pose | None, str]
-def AprilTagDetectionSource.apply_hand_eye(hand_eye) -> None    # verwirft den Anker
+def AprilTagDetectionSource.apply_hand_eye(hand_eye) -> None    # discards the anchor
 ```
 
-`measure_tag` misst rein im Kamera-KS: ohne Welt-KS und ohne CAD-Versatz aus der Tag-Map. Nur die Tag-Größe kommt aus der Karte. Mehrdeutige Posen (`is_ambiguous`) verwirft es, denn eine falsch gekippte Messung verdirbt die ganze Kalibrierung.
+`measure_tag` measures purely in the camera CS: without world CS and without CAD offset from the tag map. Only the tag size comes from the map. It discards ambiguous poses (`is_ambiguous`), because a wrongly tilted measurement spoils the whole calibration.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behaviour |
 | --- | --- |
-| Tag nicht gesehen, mehrdeutig, kein Kamerabild | Aufnahme `accepted: false` mit Grund, `DETECTION_FAILED`, Sitzung läuft weiter |
-| Weniger als 3 angenommene Posen, Drehung nur um eine Achse | `Finish` → `INVALID_STATE`, Grund in `message`, Sitzung bleibt offen |
-| Datei nicht schreibbar | `Finish` → `INTERNAL`, Zustand `failed`, alte Kalibrierung bleibt aktiv |
-| Abbruch während einer Aufnahme | Diese Aufnahme antwortet `CANCELLED`, Zustand `idle` |
-| Server fährt herunter | Sitzung wird abgebrochen, nichts gespeichert |
+| Tag not seen, ambiguous, no camera image | Capture `accepted: false` with reason, `DETECTION_FAILED`, session continues |
+| Fewer than 3 accepted poses, rotation about only one axis | `Finish` → `INVALID_STATE`, reason in `message`, session stays open |
+| File not writable | `Finish` → `INTERNAL`, state `failed`, old calibration remains active |
+| Abort during a capture | This capture replies `CANCELLED`, state `idle` |
+| Server shuts down | Session is aborted, nothing saved |
 
-## Offene Fragen
+## Open questions
 
-- **Automatisches Anfahren** der Posen um den bekannten Tag kommt später, im Frontend. `tagInBase` und `rotationAxes` sind dafür schon da.
-- An echter Hardware ist das nicht getestet. Wie gut die Kalibrierung wird, hängt an der FK des Frontends (Gelenkwinkel → `model_6`/`flange`/`eef_attach_point`).
+- **Automatic approach** of the poses around the known tag comes later, in the frontend. `tagInBase` and `rotationAxes` are already there for it.
+- Not tested on real hardware. How good the calibration gets depends on the FK of the frontend (joint angles → `model_6`/`flange`/`eef_attach_point`).
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- Zusätzlich zum Vorschlag von `opcua-f1`: `rotationAxes`, `acceptedCount`, `tagInBase`, `knownTagCheckDeg`, `path` und `backupPath` im Status bzw. Ergebnis.
-- Eine fehlgeschlagene Berechnung (zu wenige oder zu ähnliche Posen) führt **nicht** zu `failed`: Die Sitzung bleibt offen, damit keine Aufnahme verloren geht. `failed` gibt es nur, wenn das Speichern scheitert.
+- In addition to the proposal of `opcua-f1`: `rotationAxes`, `acceptedCount`, `tagInBase`, `knownTagCheckDeg`, `path` and `backupPath` in the status or result.
+- A failed calculation (too few or too similar poses) does **not** lead to `failed`: the session stays open so that no capture is lost. `failed` only occurs if saving fails.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status `fertig`, Schnittstellen eingetragen.
-- [x] Indexzeile in `README.md`.
-- [x] `vision-server-interface.md` Abschnitt 15.
-- [x] Testlauf: 547 Tests, davon 1 Fehlschlag, der nichts mit dieser Änderung zu tun hat (`test_mjpeg_server…viewers_run_faster`, schlägt auch ohne diese Änderung fehl). Neu: `test_handeye_session.py` (6), `test_handeye_opcua.py` (1), `MeasureTagTest` (4).
+- [x] Status `done`, interfaces entered.
+- [x] Index line in `README.md`.
+- [x] `vision-server-interface.md` section 15.
+- [x] Test run: 547 tests, of which 1 failure that has nothing to do with this change (`test_mjpeg_server…viewers_run_faster`, also fails without this change). New: `test_handeye_session.py` (6), `test_handeye_opcua.py` (1), `MeasureTagTest` (4).

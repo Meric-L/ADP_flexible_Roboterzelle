@@ -1,54 +1,56 @@
-# Layer 2 und Handkamera-Kalibrierung: Regeln
+# Layer 2 and hand camera calibration: rules
 
-Festgelegt am 15.11.2026 (Branch `ADP_Lokaliserung`).
+Established on 15.11.2026 (branch `ADP_Lokaliserung`).
 
-## Layer 2: Ein Tag pro Modul
+## Layer 2: one tag per module
 
-Hat ein Modul mehrere Tags, fährt Layer 2 nur **einen** davon an, nicht alle.
+If a module has several tags, Layer 2 approaches only **one** of them, not all.
 
-- Gewählt wird der Tag mit dem besten Sichtpunkt, in dieser Reihenfolge:
-  1. erreichbar vor nicht erreichbar,
-  2. echte IK-Lösung vor einer angenäherten Pose,
-  3. Abstand am nächsten am Soll (0,35 m),
-  4. möglichst frontal (kleinste Kippung),
-  5. bei Gleichstand der nächstgelegene Tag.
-- Das sind dieselben Kriterien wie bei der Wahl des Welt-Tags zum Ankern.
-- Die übrigen Tags des Moduls tauchen im Plan nicht auf.
-- Die Modullage kommt aus diesem einen Foto: Lage und Gierwinkel des Tags, über den Katalog auf das Modul umgerechnet.
-- Umsetzung: `planApproach(..., { onePerModule: true })` in `frontend/src/features/cell-modules/model/approachPlan.ts`, eingeschaltet nur in `ApproachPlanPanel.tsx` (Layer 2). Die Tag-Referenzmessung (`TagReferencePanel.tsx`) plant weiter alle Tags.
+- The tag with the best viewpoint is chosen, in this order:
+  1. reachable before not reachable,
+  2. real IK solution before an approximated pose,
+  3. distance closest to the target (0.35 m),
+  4. as head-on as possible (smallest tilt),
+  5. in case of a tie, the nearest tag.
+- These are the same criteria as for choosing the world tag for anchoring.
+- The module's other tags do not appear in the plan.
+- The module pose comes from this one photo: position and yaw angle of the tag, converted to the module via the catalog.
+- Implementation: `planApproach(..., { onePerModule: true })` in `frontend/src/features/cell-modules/model/approachPlan.ts`, enabled only in `ApproachPlanPanel.tsx` (Layer 2). The tag reference measurement (`TagReferencePanel.tsx`) still plans all tags.
 
-## Layer 2: Nicht anfahrbarer Tag wird übersprungen
+## Layer 2: unreachable tag is skipped
 
-Ein Tag, der sich nicht anfahren oder messen lässt, wird **übersprungen**. Layer 2 macht mit dem nächsten Tag weiter.
+A tag that cannot be approached or measured is **skipped**. Layer 2 continues with the next tag.
 
-Übersprungen wird, wenn:
+A tag is skipped if:
 
-- die Planung keine erreichbare Pose findet (der Tag kommt gar nicht erst in die Route),
-- der Sichtpunkt oder der Weg dorthin den Wagen oder den Boden berühren würde,
-- die Fahrt zum Sichtpunkt scheitert (`go_to` meldet einen Fehler). Neu seit 15.11.2026: Vorher endete hier der ganze Lauf. Danach liest der Lauf die Gelenkwinkel neu und fährt den nächsten Tag wie üblich aus der Ausgangsstellung an.
-- der Tag beim Zentrieren nicht gefunden oder nicht gemessen wird,
-- ein Welt-Tag gemessen wird, der nicht im Katalog steht.
+- planning finds no reachable pose (the tag does not even make it into the route),
+- the viewpoint or the path to it would touch the cart or the floor,
+- the move to the viewpoint fails (`go_to` reports an error). New since 15.11.2026: previously the whole run ended here. Afterwards the run re-reads the joint angles and approaches the next tag as usual from the home position.
+- the tag is not found or not measured during centering,
+- a world tag is measured that is not in the catalog.
 
-Der übersprungene Tag steht in der Liste rot mit Grund. Die Schlussmeldung nennt alle übersprungenen Tags, z. B.
+The skipped tag appears in red in the list, with its reason. The final message
+names all skipped tags, e.g.
 „Fertig: 4 von 5 Sichtpunkten angefahren, zurück in der Ausgangsstellung. Übersprungen: Tag 7 (Förderband).“
+(Done: 4 of 5 viewpoints approached, back in the home position. Skipped: tag 7 (conveyor belt).)
 
-Der Lauf endet weiterhin ganz bei:
+The run still ends completely at:
 
-- **Angehalten** (Knopf „Anhalten“),
-- **Ausgangsstellung nicht erreichbar:** Die Fahrt dorthin scheitert, oder der Weg dorthin würde Wagen oder Boden berühren. Dann ist unklar, wo der Arm steht, und weitere Fahrten wären nicht sicher.
-- Gelenkwinkel nicht lesbar.
+- **Stopped** (button „Anhalten“ (stop)),
+- **Home position not reachable:** the move there fails, or the path there would touch the cart or the floor. Then it is unclear where the arm is, and further moves would not be safe.
+- Joint angles not readable.
 
-## Handkamera: Eine Kalibrierung für Intrinsik und Hand-Auge
+## Hand camera: one calibration for intrinsics and hand-eye
 
-- Im Einstellungsmenü hat die Handkamera nur noch **einen** Knopf „Kalibrierung“. Er startet die Gesamtkalibrierung: Der Roboter fährt die Posen selbst ab, der Pi rechnet aus denselben Rohbildern Intrinsik und Hand-Auge (`fullCalibration: true`). Der eigene Knopf „Kalibrierung Hand-Eye“ ist entfallen.
-- Grund: Intrinsik und Hand-Auge gehören zusammen. Eine Hand-Auge-Lösung mit einer anderen Intrinsik passt nicht: Im Drehtest vom 13.11.2026 ergab die alte Hand-Auge-Lösung mit der neuen Intrinsik rund 2° Achsfehler, mit der eigenen nur 0,25°.
-- Die Deckenkamera behält ihre reine Intrinsik-Kalibrierung (`CameraCalibrationModal`), weil sie kein Hand-Auge hat.
-- Gestartet wird nur per Knopf, nicht automatisch. Beim Abschluss rechnet der Pi und übernimmt Intrinsik und Hand-Auge sofort live.
+- In the settings menu, the hand camera now has only **one** button „Kalibrierung“ (calibration). It starts the full calibration: the robot moves through the poses itself, and the Pi computes intrinsics and hand-eye from the same raw images (`fullCalibration: true`). The separate button „Kalibrierung Hand-Eye“ (hand-eye calibration) has been removed.
+- Reason: intrinsics and hand-eye belong together. A hand-eye solution does not fit a different intrinsics: in the rotation test of 13.11.2026, the old hand-eye solution with the new intrinsics gave about 2° axis error, versus only 0.25° with its own.
+- The ceiling camera keeps its pure intrinsics calibration (`CameraCalibrationModal`), because it has no hand-eye.
+- It is started only by button, not automatically. On completion, the Pi computes and applies intrinsics and hand-eye live immediately.
 
-## Alte Kalibrierungen bleiben erhalten
+## Old calibrations are kept
 
-Neue Kalibrierdaten ersetzen die aktiven Dateien, die alten werden aber nicht verworfen.
+New calibration data replaces the active files, but the old ones are not discarded.
 
-- Gesamtkalibrierung der Handkamera: Beide alten Dateien (`data/calibration/<frame>.json` und `data/handeye/<frame>.json`) werden vorher als `<name>.<UTC>.bak` daneben kopiert. Scheitert das Schreiben, stellt der Pi beide aus der Sicherung wieder her.
-- Reine Intrinsik-Kalibrierung (Deckenkamera): seit 15.11.2026 ebenso. Vorher wurde die Datei ohne Sicherung überschrieben. `result.backup` im Status nennt die Sicherung. Umsetzung im Pi-Repo `ADP_flexible_Roboterzelle`, Branch `apriltag-aufraeumen`, `src/vision_server/calibration_session.py`.
-- Jede Sicherung bekommt einen eigenen Namen, keine wird überschrieben. Die Rohbilder jeder Kalibrierung bleiben unter `data/rohbilder/calibration/<UTC>_<id>/` auf dem Pi.
+- Full calibration of the hand camera: both old files (`data/calibration/<frame>.json` and `data/handeye/<frame>.json`) are first copied next to it as `<name>.<UTC>.bak`. If writing fails, the Pi restores both from the backup.
+- Pure intrinsics calibration (ceiling camera): since 15.11.2026 likewise. Previously the file was overwritten without a backup. `result.backup` in the status names the backup. Implemented in the Pi repo `ADP_flexible_Roboterzelle`, branch `apriltag-aufraeumen`, `src/vision_server/calibration_session.py`.
+- Each backup gets its own name; none is overwritten. The raw images of each calibration remain under `data/rohbilder/calibration/<UTC>_<id>/` on the Pi.

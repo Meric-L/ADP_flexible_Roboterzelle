@@ -159,7 +159,7 @@ Source: branch `ADP_Lokalisierung`, working tree. Paths are relative to `fronten
 ### `features/opcua-server/model/piActivity.ts`, `piConnection.ts`, `usePauseWhileRobotMoves.ts`, `useConnectServerWithFeedback.ts`
 - `piActivity.ts`: pure list helpers (`addPiActivity`, `removePiActivity`, `findBlockingPiActivity`) for the Pi busy state.
 - `piConnection.ts`: `isPiConnected(servers, url)`.
-- `usePauseWhileRobotMoves.ts`: pauses the Pi watch while the robot is moving (reason text "Roboter fährt"). Used by `AutolocateActions`.
+- `usePauseWhileRobotMoves.ts`: pauses the Pi watch while the robot is moving (reason text "Roboter fährt", i.e. "robot is moving"). Used by `AutolocateActions`.
 - `useConnectServerWithFeedback.ts`: connect-with-toast hook used by `ConnectOpcUa` and `AutolocateActions`.
 
 ### `features/viewport/components/Viewport.tsx`
@@ -179,7 +179,7 @@ Source: branch `ADP_Lokalisierung`, working tree. Paths are relative to `fronten
 - `SolverConfigProvider`, `useSolverConfig()`. Holds the `SolverConfig` (defaults in `model/solverConfig.ts`: `DEFAULT_SOLVER_CONFIG`, `SOLVE_STATUS_LABELS`).
 
 ### `features/viewport/model/sceneState.ts`
-- `useViewportSceneState()` returns the viewport scene state (settings, camera streams, pose previews, Layer 2 proposals). Defines `LIVESTREAM_CAMERAS` (Kamera 1 and Kamera 2 on the two Pi URLs) and `CameraStreamSettings`.
+- `useViewportSceneState()` returns the viewport scene state (settings, camera streams, pose previews, Layer 2 proposals). Defines `LIVESTREAM_CAMERAS` ("Kamera 1" and "Kamera 2", i.e. camera 1 and camera 2, on the two Pi URLs) and `CameraStreamSettings`.
 
 ### `features/viewport/model/robotIk.ts`, `robotIkModel.ts`, `robotIkConstraints.ts`
 - `robotIk.ts`: `solvePositionIk` and tool-point helpers (`findToolPoint`, `getToolPointWorldPosition`, `getToolPointWorldQuaternion`). Looks for end-effector link names such as `tool_point`, `tool0`, `tcp`.
@@ -246,7 +246,7 @@ Source: branch `ADP_Lokalisierung`, working tree. Paths are relative to `fronten
 
 ### `tag-tool/TagToolApp.tsx` and `tag-tool/main.tsx`
 - `main.tsx` is the entry for `tag-tool.html` (second Rollup input in `vite.config.ts`). Mounts `TagToolApp` in `StrictMode`.
-- `TagToolApp`: standalone tag-placement page (title "Tag-Platzierung"). Loads a bundled or picked module, places AprilTags on surfaces, edits bracket offsets and spin, and exports tag poses and a fixed-link URDF snippet.
+- `TagToolApp`: standalone tag-placement page (title "Tag-Platzierung", i.e. "tag placement"). Loads a bundled or picked module, places AprilTags on surfaces, edits bracket offsets and spin, and exports tag poses and a fixed-link URDF snippet.
 
 ### `tag-tool/loadModule.ts`
 - `BUNDLED_MODULES` (from `ROBOT_MODEL_OPTIONS`), `loadBundledModule`, and `loadPickedModule(folder, urdfPath)`. Picked folders are mapped through `uploadedFiles.ts` to `upload://` URLs.

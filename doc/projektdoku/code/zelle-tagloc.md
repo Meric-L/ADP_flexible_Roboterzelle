@@ -1,4 +1,4 @@
-# Zelle: tagloc library, CLI, jobs, use-case eval, UA program
+# Cell: tagloc library, CLI, jobs, use-case eval, UA program
 
 Detailed reference for the code in the ADP repository (branch `apriltag-aufraeumen`). Overview and system picture: [code-dokumentation.md](../code-dokumentation.md).
 

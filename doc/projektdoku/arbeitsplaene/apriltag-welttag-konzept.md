@@ -1,65 +1,64 @@
-# Welttag-Konzept: vier feste Welttags, alles andere beweglich
+# World-tag concept: four fixed world tags, everything else movable
 
-**Status:** fertig — 22.09.2026
-**Verantwortlich:** `Agent: Koordinatentransformation auf das Welttag-Konzept ziehen`
-**Thema:** apriltag
+**Status:** done — 22.09.2026
+**Owner:** `Agent: Coordinate transformation moved onto the world-tag concept`
+**Topic:** apriltag
 **Branch:** apriltag
 
-## Ziel
+## Goal
 
-Die Koordinatenkette bildet ab, wie die Zelle wirklich aufgebaut ist: **nur die
-vier Welttags im Randbereich der Zelle stehen fest**, alles andere ist
-beweglich — auch der Roboter, der selbst ein Modul ist und immer verwendet
-wird. Die Deckenkamera sieht Welttags, Roboter und Module gleichzeitig und
-liefert daraus die Grobübersicht samt der Antwort, **welcher Welttag dem
-Roboter am nächsten steht**. Die Hand-in-Eye-Kamera lokalisiert sich
-anschließend selbst an genau diesem Welttag und misst die Module genau — immer
-auf die Welttags bezogen.
+The coordinate chain reflects how the cell is actually built: **only the four
+world tags at the edge of the cell are fixed**, everything else is movable —
+including the robot, which is itself a module and is always used. The ceiling
+camera sees world tags, robot and modules at the same time and from that
+delivers the rough overview, including the answer **which world tag is closest
+to the robot**. The hand camera then localizes itself at exactly this world tag
+and measures the modules precisely — always referenced to the world tags.
 
-Vorher ging das nicht: `REFERENCE_ROLES` erklärte neben `world` auch
-`robot_table` und `reference` zu **festen** Ankern. Der Robotertisch galt damit
-als unbeweglich, der Roboter kam als Modul überhaupt nicht vor, und es gab
-weder einen Begriff für „der nächste Welttag" noch eine Zusammenführung von
-Decken- und Handmessung.
+Previously this was not possible: `REFERENCE_ROLES` declared, besides `world`,
+also `robot_table` and `reference` as **fixed** anchors. The robot table thereby
+counted as immovable, the robot did not appear as a module at all, and there was
+neither a concept of "the nearest world tag" nor a merging of ceiling and hand
+measurement.
 
-## Bereits gelesen
+## Already read
 
-- `CLAUDE.md` (verbindliche Regeln, Sprache, Arbeitsplanpflicht)
-- `doc/arbeitsplaene/README.md` (Doppelarbeits-Check — kein `apriltag`-Plan offen)
-- `doc/apriltag-lokalisierung.md` (Konzept, Abschnitte 1–2, 6, 9)
-- `doc/apriltag-referenz.md` (Konventionen, `tagloc`-Schnittstellen, Tag-Map-Schema)
-- `doc/apriltag-e2e-test.md` (Toleranzen, Abnahme Layer 1/2)
-- `doc/vision-server-interface.md` (Payload, `frameId`-Regel, Ergebnisknoten)
-- `doc/vision-system.md`, `doc/vision-system-next-steps.md` (Ist-Stand, offene Punkte)
+- `CLAUDE.md` (binding rules, language, work-plan obligation)
+- `doc/arbeitsplaene/README.md` (duplicate-work check — no `apriltag` plan open)
+- `doc/apriltag-lokalisierung.md` (concept, sections 1–2, 6, 9)
+- `doc/apriltag-referenz.md` (conventions, `tagloc` interfaces, tag-map schema)
+- `doc/apriltag-e2e-test.md` (tolerances, acceptance of Layer 1/2)
+- `doc/vision-server-interface.md` (payload, `frameId` rule, result nodes)
+- `doc/vision-system.md`, `doc/vision-system-next-steps.md` (current state, open items)
 
-## Betroffene Dateien
+## Affected files
 
-- `src/tagloc/tagmap.py` — Rollen, Validierung, `nearest_world_tag`
-- `src/tagloc/geometry.py` — `average_poses` mit optionalen Gewichten
-- `src/tagloc/localize.py` — `CameraLocalization`, Welttag-Bezug, Fusion
-- `src/vision_server/detection/apriltag.py` — Herkunft, neue Attribute
-- `src/tagloc/cli/transform.py`, `src/tagloc/cli/detect.py` — Aufrufstellen
-- `config/tagmap.example.json` — vier Welttags, Robotertags, Modul
-- `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md` — Konzept nachziehen
+- `src/tagloc/tagmap.py` — roles, validation, `nearest_world_tag`
+- `src/tagloc/geometry.py` — `average_poses` with optional weights
+- `src/tagloc/localize.py` — `CameraLocalization`, world-tag reference, fusion
+- `src/vision_server/detection/apriltag.py` — origin, new attributes
+- `src/tagloc/cli/transform.py`, `src/tagloc/cli/detect.py` — call sites
+- `config/tagmap.example.json` — four world tags, robot tags, module
+- `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md` — update the concept
 - `tests/test_tag_map.py`, `tests/test_tag_pipeline.py`, `tests/test_apriltag_source.py`
-- `tests/test_welttags.py` (neu) — Rollen, nächster Welttag, Fusion
+- `tests/test_welttags.py` (new) — roles, nearest world tag, fusion
 
-## Schnittstellen
+## Interfaces
 
-### Rollen in der Tag-Map
+### Roles in the tag map
 
-| Rolle | Weltpose | Bedeutung |
+| Role | World pose | Meaning |
 | --- | --- | --- |
-| `world` | **fest, Pflicht** | Einer der genau vier Welttags im Randbereich der Zelle. Nur diese Rolle liefert `T_world_cam`. |
-| `robot` | **`null`** | Tag am Roboter. Beweglich. Mehrere Tags dürfen dieselbe `moduleId` tragen; sie werden auf ein Roboter-KS gemittelt. |
-| `module` | **`null`** | Tag an einem Modul. Beweglich. |
+| `world` | **fixed, mandatory** | One of exactly four world tags at the edge of the cell. Only this role provides `T_world_cam`. |
+| `robot` | **`null`** | Tag on the robot. Movable. Several tags may share the same `moduleId`; they are averaged onto a robot frame. |
+| `module` | **`null`** | Tag on a module. Movable. |
 
-Die Rollen `robot_table` und `reference` entfallen ersatzlos — sie waren die
-Ursache des falschen Konzepts. Der Robotertisch ist kein fester Anker mehr.
+The roles `robot_table` and `reference` are dropped without replacement — they
+were the cause of the wrong concept. The robot table is no longer a fixed anchor.
 
-### Daten / Payload
+### Data / payload
 
-Tag-Map, Schema **`wsc.vision.tagmap/2`** (`config/tagmap.example.json`):
+Tag map, schema **`wsc.vision.tagmap/2`** (`config/tagmap.example.json`):
 
 ```json
 {
@@ -82,13 +81,13 @@ Tag-Map, Schema **`wsc.vision.tagmap/2`** (`config/tagmap.example.json`):
 }
 ```
 
-Schema `/1` wird **migriert** (`reference` → `world`, `robot_table` → `robot`
-ohne Weltpose), jede Umdeutung einzeln protokolliert. Ursprünglich war es eine
-harte Ablehnung; das legte in der Praxis die ganze Erkennung still — siehe
-`apriltag-tagmap-robustheit.md`.
+Schema `/1` is **migrated** (`reference` → `world`, `robot_table` → `robot`
+without world pose), each reinterpretation logged individually. Originally it
+was a hard rejection; in practice that brought the entire detection to a
+standstill — see `apriltag-tagmap-robustheit.md`.
 
-Ergebnis-Payload je Detektion, zusätzliche `attributes` (additiv, bestehende
-Felder unverändert):
+Result payload per detection, additional `attributes` (additive, existing
+fields unchanged):
 
 ```json
 {
@@ -102,136 +101,135 @@ Felder unverändert):
 }
 ```
 
-`referenceTagId` ist der Welttag, der **diesem Modul** am nächsten steht;
-`referencePosition`/`referenceOrientation` sind `T_worldtag_module`. Das
-gemeinsame Welt-KS bleibt in `position`/`orientation` erhalten — die vier
-Welttags spannen **ein** Welt-KS auf, einmalig per `build_tagmap` vermessen.
+`referenceTagId` is the world tag that is closest to **this module**;
+`referencePosition`/`referenceOrientation` are `T_worldtag_module`. The shared
+world frame remains in `position`/`orientation` — the four world tags span
+**one** world frame, surveyed once via `build_tagmap`.
 
 ### Python
 
 ```python
-# Modul: src/tagloc/tagmap.py
+# Module: src/tagloc/tagmap.py
 WORLD_ROLE = "world"; ROBOT_ROLE = "robot"; MODULE_ROLE = "module"
-REFERENCE_ROLES = frozenset({WORLD_ROLE})      # nur der Welttag ist fest
+REFERENCE_ROLES = frozenset({WORLD_ROLE})      # only the world tag is fixed
 MOVABLE_ROLES  = frozenset({MODULE_ROLE, ROBOT_ROLE})
 EXPECTED_WORLD_TAG_COUNT = 4
 
 def validate_tag_map(tag_map: TagMap) -> list[str]:
-    """Liefert die Beanstandungen der Karte, leer = in Ordnung.
+    """Returns the complaints about the map, empty = OK.
 
-    Prueft: genau vier Welttags, jeder mit Weltpose; kein bewegliches Tag mit
-    Weltpose; Anker ist ein Welttag.
+    Checks: exactly four world tags, each with a world pose; no movable tag with
+    a world pose; the anchor is a world tag.
     """
 
 def nearest_world_tag(tag_map: TagMap, pose_world: Pose) -> tuple[int, float] | None:
-    """Welttag mit dem kleinsten Abstand zu `pose_world`, und dieser Abstand in m.
+    """World tag with the smallest distance to `pose_world`, and this distance in m.
 
-    `None`, wenn die Karte keinen Welttag mit Weltpose kennt.
+    `None` if the map knows no world tag with a world pose.
     """
 
-# Modul: src/tagloc/localize.py
+# Module: src/tagloc/localize.py
 @dataclass(frozen=True)
 class CameraLocalization:
     pose_world_cam: Pose
-    world_tag_ids: tuple[int, ...]   # alle beitragenden Welttags
-    primary_tag_id: int              # der naechste/beste Welttag
-    spread_m: float                  # Streuung der Einzelschaetzungen
+    world_tag_ids: tuple[int, ...]   # all contributing world tags
+    primary_tag_id: int              # the nearest/best world tag
+    spread_m: float                  # spread of the individual estimates
     spread_rad: float
 
 def localize_camera(tag_poses, tag_map, *, max_reprojection_error_px=3.0
                     ) -> CameraLocalization | None:
-    """`T_world_cam` aus den sichtbaren Welttags. `None` ohne Welttag im Bild.
+    """`T_world_cam` from the visible world tags. `None` without a world tag in the image.
 
-    Gewichtet nach Konfidenz; `primary_tag_id` ist der Welttag mit dem
-    kleinsten Kameraabstand — der, an dem sich die Handkamera ausrichtet.
+    Weighted by confidence; `primary_tag_id` is the world tag with the smallest
+    camera distance — the one the hand camera aligns with.
     """
 
 def locate_modules(tag_poses, tag_map, *, localization, frame_id,
                    source="", max_reprojection_error_px=3.0) -> list[ModuleLocation]:
-    """T_world_module = T_world_cam @ T_cam_tag @ T_tag_module. Einzige Kettenstelle."""
+    """T_world_module = T_world_cam @ T_cam_tag @ T_tag_module. Only place in the chain."""
 
 def merge_by_module(locations) -> list[ModuleLocation]:
-    """Mittelt Messungen gleicher (moduleId, instanceId) — mehrere Robotertags."""
+    """Averages measurements of the same (moduleId, instanceId) — several robot tags."""
 
 def merge_locations(*groups) -> list[ModuleLocation]:
-    """Fuehrt Decken- und Handergebnis zusammen; die genauere Quelle gewinnt."""
+    """Merges ceiling and hand result; the more precise source wins."""
 ```
 
-`ModuleLocation` erhält `reference_tag_id: int`, `pose_in_reference_tag: Pose | None`
-und `source: str`.
+`ModuleLocation` gets `reference_tag_id: int`, `pose_in_reference_tag: Pose | None`
+and `source: str`.
 
-### Netz / Betrieb
+### Network / operations
 
-Unverändert. Beide Pis publizieren weiter eigenständig unter ihren bisherigen
-Endpunkten; die Fusion ist eine reine Funktion in `tagloc`, die der Konsument
-(Zellserver/Frontend) aufruft. Keine neue Verbindung zwischen den Pis.
-`config/tagmap.json` bleibt für beide Pis dieselbe Datei.
+Unchanged. Both Pis continue to publish independently under their previous
+endpoints; the fusion is a pure function in `tagloc` that the consumer (cell
+server/frontend) calls. No new connection between the Pis. `config/tagmap.json`
+remains the same file for both Pis.
 
-### Fehlerfälle
+### Failure cases
 
-| Fall | Verhalten |
+| Case | Behavior |
 | --- | --- |
-| Kein Welttag im Bild | `localize_camera` → `None`; Posen bleiben im Kamera-KS, `frameId` = Kamerarahmen (Regel unverändert) |
-| Karte hat nicht genau vier Welttags | `validate_tag_map` beanstandet; `open()` protokolliert eine Warnung, startet aber — eine Zelle im Aufbau darf messen |
-| Bewegliches Tag mit `poseInWorld` | Beanstandung; die Weltpose wird **ignoriert**, nicht verwendet |
-| Tag-Map-Schema `/1` | `ValueError` mit Migrationshinweis beim Laden |
-| Welttags widersprechen sich | `spread_m`/`spread_rad` im Payload; kein Abbruch — die Zahl gehört zum Ergebnis |
+| No world tag in the image | `localize_camera` → `None`; poses remain in the camera frame, `frameId` = camera frame (rule unchanged) |
+| Map does not have exactly four world tags | `validate_tag_map` complains; `open()` logs a warning but starts — a cell under construction may measure |
+| Movable tag with `poseInWorld` | complaint; the world pose is **ignored**, not used |
+| Tag-map schema `/1` | `ValueError` with a migration hint on loading |
+| World tags contradict each other | `spread_m`/`spread_rad` in the payload; no abort — the number belongs to the result |
 
-## Vorgehen
+## Approach
 
-1. `tagmap.py`: Rollen, Schema `/2`, `validate_tag_map`, `nearest_world_tag`.
-2. `localize.py`: `CameraLocalization`, `localize_camera`, Welttag-Bezug in
+1. `tagmap.py`: roles, schema `/2`, `validate_tag_map`, `nearest_world_tag`.
+2. `localize.py`: `CameraLocalization`, `localize_camera`, world-tag reference in
    `ModuleLocation`, `merge_by_module`, `merge_locations`.
-3. `detection/apriltag.py`: Herkunft aus `frame_id`, neue Attribute, Mittelung
-   mehrerer Robotertags.
-4. `config/tagmap.example.json` auf das neue Schema.
-5. Tests: `tests/test_welttags.py` neu, bestehende Tests nachziehen.
-6. Fach-MDs `apriltag-lokalisierung.md` und `apriltag-referenz.md` nachziehen.
+3. `detection/apriltag.py`: origin from `frame_id`, new attributes, averaging of
+   several robot tags.
+4. `config/tagmap.example.json` to the new schema.
+5. Tests: `tests/test_welttags.py` new, adjust existing tests.
+6. Update the topic docs `apriltag-lokalisierung.md` and `apriltag-referenz.md`.
 
-## Offene Fragen
+## Open questions
 
-- Hand-Auge-Kalibrierung (`T_flansch_cam`) bleibt weiterhin offen. Sie wird für
-  dieses Konzept **nicht gebraucht**: die Handkamera lokalisiert sich rein
-  optisch am Welttag. Sie bleibt nur nötig, wenn der Roboter aus der Kamerapose
-  auf seine eigene Flanschpose schließen soll.
-- Die realen Weltposen der vier Welttags werden per
-  `python -m tagloc.cli.build_tagmap` einmalig vermessen; die Zahlen in der
-  Beispielkarte sind Platzhalter.
+- The hand-eye calibration (`T_flansch_cam`) remains open. It is **not needed** for
+  this concept: the hand camera localizes itself purely optically at the world
+  tag. It is only needed if the robot is to infer its own flange pose from the
+  camera pose.
+- The real world poses of the four world tags are surveyed once via
+  `python -m tagloc.cli.build_tagmap`; the numbers in the example map are
+  placeholders.
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-- **`geometry.average_poses` bekam einen optionalen Parameter `weights`.** Im
-  Plan stand „gewichtet nach Konfidenz", ohne zu sagen wo. Die Markley-Mittelung
-  kannte keine Gewichte. Der Parameter ist optional und ohne ihn rechnet die
-  Funktion bitgleich wie vorher — alle 26 bestehenden Geometrie-Tests laufen
-  unverändert durch. Dafür stand `geometry.py` nicht in „Betroffene Dateien";
-  hier nachgetragen.
-- **`ModuleLocation` bekam zusätzlich `role`.** Ohne die Rolle im Ergebnis
-  ließe sich der Roboter nachgelagert nicht von einem Modul unterscheiden, und
-  `world_tag_for_robot` hätte raten müssen.
-- **Reihenfolge in `acquire_and_detect`:** `expected_but_missing` muss **vor**
-  `merge_by_module` laufen. Es vergleicht Tag-IDs, und das Zusammenfassen
-  mehrerer Robotertags zu einem Ergebnis ließe die geschluckten Tags sonst als
-  fehlend erscheinen.
-- **`SPREAD_TOLERANCE_M = 0.008` statt der zunächst angenommenen 3 mm.** Über
-  alle vier Ansichten der synthetischen Szene gemessen: Streuung im
-  schlechtesten Fall 4,21 mm bei 0,444° (Ansicht 0, die schrägste), gegen einen
-  Fehler der **gemittelten** Kamerapose von 0,77 mm. Die Streuung ist eben kein
-  Genauigkeitsmaß, sondern die Uneinigkeit der Einzelschätzungen — die
-  gewichtete Mittelung ist deutlich besser als ihr schlechtestes Glied.
-- **Zusätzlich angefasste Fach-MDs:** `doc/apriltag-e2e-test.md`,
-  `doc/vision-server-interface.md` und `doc/praesentation.md` trugen die alten
-  Rollen noch in Tabellen und Anleitungen.
+- **`geometry.average_poses` got an optional parameter `weights`.** The plan said
+  "weighted by confidence" without saying where. The Markley averaging knew no
+  weights. The parameter is optional, and without it the function computes
+  bit-identically to before — all 26 existing geometry tests pass unchanged. For
+  this, `geometry.py` was not listed under "Affected files"; it is added here
+  afterwards.
+- **`ModuleLocation` additionally got `role`.** Without the role in the result,
+  the robot could not be distinguished downstream from a module, and
+  `world_tag_for_robot` would have had to guess.
+- **Order in `acquire_and_detect`:** `expected_but_missing` must run **before**
+  `merge_by_module`. It compares tag IDs, and merging several robot tags into one
+  result would otherwise make the swallowed tags appear as missing.
+- **`SPREAD_TOLERANCE_M = 0.008` instead of the initially assumed 3 mm.** Measured
+  across all four views of the synthetic scene: spread in the worst case 4.21 mm
+  at 0.444° (view 0, the most oblique), against an error of the **averaged** camera
+  pose of 0.77 mm. The spread is precisely not an accuracy measure but the
+  disagreement of the individual estimates — the weighted averaging is
+  significantly better than its worst member.
+- **Additionally touched topic docs:** `doc/apriltag-e2e-test.md`,
+  `doc/vision-server-interface.md` and `doc/praesentation.md` still carried the
+  old roles in tables and instructions.
 
-## Nach Abschluss
+## After completion
 
-- [x] Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- [x] Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
-- [x] Konzept in `doc/apriltag-lokalisierung.md` (Abschnitte 1.1–1.4, 3.2, 9)
-      und `doc/apriltag-referenz.md` (Abschnitte 5, 7) übernommen.
-- [x] Testlauf: `PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -t .`
-      — **291 Tests, OK** (vorher 260; `tests/test_welttags.py` bringt 31 neue).
+- [x] Status set to `done`, actual interfaces recorded.
+- [x] Entry in the index `doc/arbeitsplaene/README.md` updated.
+- [x] Concept in `doc/apriltag-lokalisierung.md` (sections 1.1–1.4, 3.2, 9) and
+      `doc/apriltag-referenz.md` (sections 5, 7) adopted.
+- [x] Test run: `PYTHONPATH=src .venv/bin/python3 -m unittest discover -s tests -t .`
+      — **291 tests, OK** (previously 260; `tests/test_welttags.py` adds 31 new).
 
-Offen bleibt die einmalige Vermessung der vier echten Welttags per
-`python -m tagloc.cli.build_tagmap`; `config/tagmap.json` existiert noch nicht,
-nur die Vorlage `config/tagmap.example.json`.
+What remains open is the one-time survey of the four real world tags via
+`python -m tagloc.cli.build_tagmap`; `config/tagmap.json` does not exist yet,
+only the template `config/tagmap.example.json`.

@@ -1,83 +1,82 @@
-# <Thema in einer Zeile>
+# <Topic in one line>
 
-**Status:** geplant | in Arbeit | fertig | verworfen — <TT.MM.JJJJ>
-**Verantwortlich:** <Name> bzw. `Agent: <Aufgabenbeschreibung>`
-**Thema:** opcua | vision | apriltag | mdns | frontend | sonstiges
+**Status:** planned | in progress | done | dropped — <DD.MM.YYYY>
+**Owner:** <name> or `Agent: <task description>`
+**Topic:** opcua | vision | apriltag | mdns | frontend | other
 **Branch:** <branch-name>
 
-## Ziel
+## Goal
 
-Ein bis drei Sätze: Was funktioniert hinterher, was vorher nicht ging?
+One to three sentences: what works afterwards, what did not work before?
 
-## Bereits gelesen
+## Already read
 
-Welche MDs unter `doc/` wurden für diesen Plan ausgewertet?
-(CLAUDE.md, Abschnitt „Bevor du anfängst")
+Which topic docs under `doc/` were evaluated for this plan?
+(CLAUDE.md, section "Before you start")
 
 - `doc/…`
 
-## Betroffene Dateien
+## Affected files
 
-Pfade, die angefasst werden. Diese Liste reserviert die Dateien faktisch —
-wer sie parallel anfassen will, spricht sich vorher ab.
+Paths that will be touched. This list effectively reserves the files —
+anyone who wants to touch them in parallel coordinates beforehand.
 
 - `src/…`
 - `tests/…`
 
-## Schnittstellen
+## Interfaces
 
-**Der wichtigste Abschnitt.** So konkret, dass jemand anderes ohne diesen Code
-dagegen entwickeln kann. Nicht Zutreffendes streichen.
+**The most important section.** Concrete enough that someone else can develop against it
+without this code. Do not strike out what does not apply.
 
 ### OPC UA
 
-| Element | NodeId / BrowsePath | Typ | Richtung | Bedeutung |
+| Element | NodeId / BrowsePath | Type | Direction | Meaning |
 | --- | --- | --- | --- | --- |
-| … | `ns=4;s=…` | … | Aufruf / Lesen / Event | … |
+| … | `ns=4;s=…` | … | Call / Read / Event | … |
 
-Methoden mit vollständiger Signatur: Eingangsargumente, Datentypen,
-Rückgabewerte, Fehler-StatusCodes.
+Methods with full signature: input arguments, data types,
+return values, error StatusCodes.
 
 ### Python
 
 ```python
-# Modul: src/…
-def funktion(param: Typ) -> Rueckgabe:
-    """Was sie zusichert, was sie wirft."""
+# Module: src/…
+def function(param: Type) -> Return:
+    """What it guarantees, what it raises."""
 ```
 
-### Daten / Payload
+### Data / payload
 
 ```json
-{ "feld": "Typ und Bedeutung" }
+{ "field": "Type and meaning" }
 ```
 
-### Netz / Betrieb
+### Network / operations
 
-Ports, Services, Hostnamen, mDNS-Namen, Konfigurationsdateien, systemd-Units.
+Ports, services, host names, mDNS names, configuration files, systemd units.
 
-### Fehlerfälle
+### Failure cases
 
-Was passiert bei Timeout, fehlender Kamera, ungültigem Job, Abbruch?
+What happens on timeout, missing camera, invalid job, abort?
 
-## Vorgehen
+## Approach
 
 1. …
 2. …
 
-## Offene Fragen
+## Open questions
 
 - …
 
-## Abweichungen vom Plan
+## Deviations from the plan
 
-Wird während der Umsetzung gefüllt. Weicht die Realität vom Plan ab, wird der
-Plan korrigiert — eine veraltete Schnittstellenbeschreibung ist schlimmer als
-gar keine.
+Filled in during implementation. If reality deviates from the plan, the plan is
+corrected — an outdated interface description is worse than none at all.
 
-## Nach Abschluss
+## After completion
 
-- Status auf `fertig`, tatsächliche Schnittstellen eingetragen.
-- Zeile im Index `doc/arbeitsplaene/README.md` aktualisiert.
-- Dauerhaftes Fachwissen in die passende Fach-MD unter `doc/` übernommen
-  (nicht nur hier im Plan stehen lassen).
+- Status set to `done`, actual interfaces entered.
+- Line in the index `doc/arbeitsplaene/README.md` updated.
+- Lasting topic knowledge carried over into the matching topic doc under `doc/`
+  (not just left in this plan).
