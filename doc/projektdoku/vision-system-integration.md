@@ -32,7 +32,7 @@ Related documents:
 | WSC backend: what is ours, what existed | [`code/webskill-backend.md`](code/webskill-backend.md) |
 | WSC frontend, cell modules | [`code/webskill-frontend.md`](code/webskill-frontend.md), [`code/webskill-cell-modules.md`](code/webskill-cell-modules.md) |
 | WSC's own docs | `docs/architecture.md`, `docs/data-and-interface-model.md`, `docs/vision-workflows.md` in the WSC repo |
-| Open points of the vision system | [`vision-system-next-steps.md`](vision-system-next-steps.md) |
+| Operation, configuration, known limitations | [`vision-system.md`](vision-system.md) |
 
 ---
 
@@ -498,5 +498,7 @@ cd frontend && npm run dev
 | 3 | Reconnect/watchdog (R9) | resolved in `AsyncUaServerConnection` and `_watch_server_liveness` |
 | 4 | Event cap in the frontend store (R14) | open |
 | 5 | OPC UA security (R15) | open |
+| 6 | Second (3D) vision profile | open: would be a second `VisionSystemType` instance in the same server (own instance name and `visionSystemId`), not a second process |
+| 7 | Structure-typed event fields (`ResultId`, `JobId`, …) | open until asyncua issue #1693 is fixed; the JSON payload stays the authoritative source |
 
-Further open points of the vision system: [`vision-system-next-steps.md`](vision-system-next-steps.md).
+Operation, configuration and known limitations of the server: [`vision-system.md`](vision-system.md).

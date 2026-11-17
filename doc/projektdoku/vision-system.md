@@ -1,298 +1,169 @@
-# Vision system — current state
+# Vision server — operation and maintenance
 
-This file describes what is **actually implemented** in the repo. For the backend interface see
-[`vision-server-interface.md`](vision-server-interface.md), for the full target plan
-[`vision-system-integration.md`](vision-system-integration.md).
+How the vision server is run, configured and maintained on the two Pis. Other views of the same
+server:
 
-## Purpose
-
-**One** OPC UA server on the Raspberry Pi (`src/vision_server/server.py`, port 4840,
-endpoint `opc.tcp://<pi>:4840/raspi/server/`) with **two views of the same job**:
-
-| Node | Content |
+| Need | Document |
 | --- | --- |
-| `Machines/VisionMachine` | **OPC 40100 (Machine Vision)** with the full job flow, implemented in the package `src/vision_server/` |
-| `VisionProgram` | **OPC UA Part 10**, generic operator interface on the same `JobRunner` — the entry point for the frontend |
+| Use the interface as a client | [`vision-server-interface-short.md`](vision-server-interface-short.md) (full reference: [`vision-server-interface.md`](vision-server-interface.md)) |
+| Find code: modules, functions | [`code/zelle-vision-server.md`](code/zelle-vision-server.md) |
+| Part 10 program and mDNS | [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
+| Integration into webskillcomposition, plan vs. built | [`vision-system-integration.md`](vision-system-integration.md) |
 
-The endpoint path is still called `/raspi/server/`, although the `RaspiDevice` that gave it its
-name has been removed: it appears in the mDNS announcement, the LDS registration and every client
-configuration.
+## In one paragraph
 
-The vision system implements phases 2 and 3 from part 9 of the plan. The former placeholder recipe
-`hello-world` has been dropped; a start without `RecipeId` is an error (`UNKNOWN_RECIPE`). Detection:
-the recipe `apriltag` delivers real AprilTag poses including the world-tag reference and hand-eye
-anchoring (see [`apriltag-referenz.md`](apriltag-referenz.md)), and `calibration` is a real readiness
-check of the camera calibration. Details on both recipes and on the part-2 asset view (AMCM) are in
-[`vision-server-interface.md`](vision-server-interface.md).
-
-The vision package is built as an **add-in** (`install_vision_machine(server, config)`) and attaches
-its nodes to an existing server. A second server process would be wasteful: it would load the
-40100 address space a second time (measured ~110 MB RSS per process) and force the backend into two
-sessions. For development and isolated tests the package can additionally be started standalone
-(`python -m vision_server`), but that is not the production path.
-
-## Files
-
-| File | Content |
-| --- | --- |
-| [`src/vision_server/`](../../src/vision_server/) | vision server (package, see module table below) |
-| [`src/vision_server/tools/handshake_client.py`](../../src/vision_server/tools/handshake_client.py) | test client: reference implementation of the handshake |
-| [`src/vision_server/server.py`](../../src/vision_server/server.py) | the cell's server: Pi identity, mDNS/LDS, installation of the vision system |
-| [`src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml`](../../src/vision_server/nodesets/Opc.Ua.MachineVision.NodeSet2.xml) | vendored official OPC 40100 nodeset; loaded by **both** servers |
-| [`requirements.txt`](../../requirements.txt) | among others `asyncua` |
-
-## Structure of the vision server
-
-| Module | Task |
-| --- | --- |
-| `__main__.py` | argparse, configuration, start |
-| `server.py` | the cell's server: Pi identity, mDNS/LDS, installation of the vision system + Part-10 program |
-| `config.py` | `VisionServerConfig` (frozen dataclass), recipe profiles |
-| `nodeset_ids.py` | NodeId constants of the nodesets |
-| `address_space.py` | nodeset import (MachineVision, DI, Machinery, AMCM), `VisionMachine` instance, `HasNotifier` |
-| `asset_model.py` | part-2 asset view (AMCM), `VisionAsset` including the state block (`DeviceHealth`, see `camera_health.py`) |
-| `state_machine.py` | binding of both 40100 state machines |
-| `events.py` | event generators, `ResultReadyEvent` with payload |
-| `result_management.py` | result nodes + JSON mirror nodes |
-| `payload.py` | JSON schema `wsc.vision.detections/1` |
-| `errors.py` | `VisionJobError`, error codes for the `Error` output |
-| `job.py` | validation, state guard, job flow, error path |
-| `profiles.py` | `AprilTagProfileConfig` among others — camera, hand-eye path, tag map per Pi |
-| `runner/` | package: `install_vision_machine()` (installation, `install.py`) and `run()` (standalone, `standalone.py`); one module per task, see module docstring and `code/zelle-vision-server.md` |
-| `vision_program.py` | Part-10 program facade `VisionProgram`, see [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) |
-| `camera.py` | `SharedCamera` — one capture loop, shared by detection and live stream |
-| `camera_stream.py` | writes camera frames as Base64 JPEG into `LatestCameraFrame` |
-| `camera_health.py` | camera state as `DeviceHealth` (OPC 40100-2) |
-| `stream_overlay.py` | marks detected tags in the live stream image |
-| `calibration_session.py` | `CalibrationSession` — interactive camera calibration via OPC UA |
-| `discovery/mdns.py` | mDNS announcement |
-| `discovery/lds.py` | LDS registration with the aggregation server |
-| `detection/` | strategy `DetectionSource`: `apriltag/` (package, real AprilTag detection), `script_runner.py` (calibration check, recipe `calibration`) |
-
-Connecting real image recognition = a new file in `detection/` plus a registry entry; the server core
-knows no image processing. Details on all modules and the complete interface are in
-[`vision-server-interface.md`](vision-server-interface.md) section 1.
-
-## Address space (port 4840)
-
-```
-Objects/
-├── Machines/                            ns=<machinery>;i=1001  (standard folder Machinery)
-│   └── VisionMachine                    ns=<vision>;s=VisionMachine  (type: <mv>:VisionSystemType)
-│       ├── VisionStateMachine           Preoperational | Halted | Error | Operational
-│       │   └── AutomaticModeStateMachine  Initialized | Ready | SingleExecution | ContinuousExecution
-│       │       └── StartSingleJob       linked, see vision-server-interface.md 7.5
-│       ├── ResultManagement
-│       │   └── Results/LatestResult     (type: <mv>:ResultType, overwritten per job)
-│       │       └── ResultContent[0]     String  <- JSON payload
-│       └── LatestResultJson             String  <- the same JSON, simple node
-└── VisionProgram                        ns=<vision>;s=VisionProgram  (type: ProgramStateMachineType)
-    ├── ParameterSet/                    RecipeId, Continuous  (writable)
-    └── ResultSet/                       JobId, ErrorCode, ExecutionMode
-                                         + references to LatestResultJson, among others
-```
-
-Shown abridged — the complete, current tree including the part-2 asset view (`VisionAsset` under
-AMCM), the four calibration methods (`StartCalibration`, among others), `LatestCameraFrame` and
-`CameraStreamMode` is in [`vision-server-interface.md`](vision-server-interface.md) section 1.
-
-`VisionMachine` sits in the Machinery standard folder `Machines` instead of directly under `Objects`.
-The reason is not technical but readability: whoever browses the server should see **one** entry
-point. For clients this changes nothing — the string NodeId does not depend on the browse position.
-Without the loaded Machinery nodeset (i.e. without `config.assets`), the structure falls back to
-`Objects`.
-
-The former raspi namespace has been dropped along with `RaspiDevice`; at the same time, with part 2
-(AMCM), three further nodesets were added (DI, Machinery, AMCM). The namespace indices have thereby
-shifted several times — currently (import order MachineVision → DI → Machinery → AMCM → own vision
-namespace): ns=2 MachineVision, ns=4 Machinery, ns=6 the own vision namespace, see
-[`vision-server-interface.md`](vision-server-interface.md) section 1. Whoever resolves them via
-`get_namespace_index(uri)` notices none of the shifts.
-
-The `VisionMachine` instance gets a **string NodeId** (`ns=<vision>;s=VisionMachine`), whereby
-`instantiate()` also creates all children with descriptive, stable NodeIds (e.g.
-`…;s=VisionMachine.VisionStateMachine.AutomaticModeStateMachine.StartSingleJob`). This spares the
-backend any discovery.
-
-The states of the outer `VisionStateMachine` are mandatory children of the instance and are fetched
-by BrowseName. The states of the `AutomaticModeStateMachine`
-(`Initialized`/`Ready`/`SingleExecution`/`ContinuousExecution`) are **not** instance children — they
-exist only as fixed nodes on the type `VisionAutomaticModeStateMachineType` (i=5056–5059) and are
-fetched by NodeId.
-
-## Runtime behavior
-
-- Endpoint `opc.tcp://<LAN-IPv4>:4840/raspi/server/`, listening on `0.0.0.0:4840`
-  (`Server.socket_address`). The separation is necessary because the endpoint lands as DiscoveryUrl
-  at the discovery server, where `0.0.0.0` would be worthless; via `127.0.0.1` the server remains
-  reachable anyway. If no LAN IPv4 can be determined, it stays at `opc.tcp://0.0.0.0:4840/…` and the
-  server runs without LDS registration. `SecurityPolicy: NoSecurity`.
-- At start, two announcements side by side, both withdrawn on orderly shutdown:
-  - **mDNS** (`src/vision_server/discovery/mdns.py`): `_opcua-tcp._tcp.local.`, instance name is the
-    vision identity. For clients in the subnet. **On by default** (again since 21.10.2026; from
-    23.09. to 21.10.2026 it was off); disable with `OPCUA_MDNS=0`.
-  - **LDS registration** (`src/vision_server/discovery/lds.py` via `Server.register_to_discovery()`):
-    **on by default** (again since 21.10.2026; from 23.09. to 21.10.2026 it was off, and the server
-    did not appear in the aggregation server). Registers at `opc.tcp://10.10.38.27:4840/` and renews
-    every 60 s. Disable with `OPCUA_LDS_URL=""`, redirect with another URL. **Only through this** does
-    the cell's aggregation server take up the module — mDNS alone is not enough for it, see
-    [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md) §2.
-  If one of the two fails, the server keeps running and logs a warning.
-- At vision-system start: `Preoperational → Operational`, inside it `Initialized → Ready`.
-- `StartSingleJob` checks state and inputs **synchronously** and acknowledges with `(JobId, Error)`;
-  the job itself runs asynchronously and reports via events.
-- State sequence of a job: `Ready → SingleExecution → Ready`, plus the events `StateChangedEvent`,
-  `JobStartedEvent`, `AcquisitionDoneEvent`, `ResultReadyEvent`, `ReadyEvent` — all emitted by the
-  `VisionMachine` node.
-- The result JSON travels **in the `ResultReadyEvent`** (`ResultContent[0]`); it is additionally
-  written to the result nodes. No polling needed.
-- Only **one** job at a time; a second call is rejected with `BUSY`.
-- Errors in detection lead via `Error` back to `Operational`, and are reported as a
-  `ResultReadyEvent` with `resultState != 0`.
+Each Pi runs **one** OPC UA server (`src/vision_server/server.py`, port 4840, endpoint
+`opc.tcp://<pi>:4840/raspi/server/`). It carries two views of the same jobs: `Machines/VisionMachine`
+(OPC 40100 Machine Vision) and `VisionProgram` (OPC UA Part 10). The vision package is an add-in
+(`install_vision_machine(server, config)`) on that server, not a second process: a second process
+would load the 40100 address space twice (about 110 MB RSS each) and force clients into two
+sessions. Recipes: `apriltag` (AprilTag localisation) and `calibration` (readiness check of the
+camera calibration); an empty `RecipeId` is rejected (`UNKNOWN_RECIPE`).
 
 ## Starting
 
-```bash
-pip install -r requirements.txt
-
-# Cell server (vision system + Part-10 program + mDNS/LDS)
-PYTHONPATH=src python3 -m vision_server.server
-
-# Run the handshake once
-PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py \
-    --url opc.tcp://127.0.0.1:4840/raspi/server/ --recipe-id calibration
-
-# Vision system only, isolated (development)
-PYTHONPATH=src python3 -m vision_server --port 4841 --log-level INFO
-```
-
-Two switches change the address space or the behavior:
-
-| Variable/Option | Effect |
+| How | When |
 | --- | --- |
-| `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` | AprilTag detection also runs without a real camera calibration (poses then not to scale) — a deliberate, temporary bypass for testing detection/overlay/job path before the real calibration; never active by default, see [`apriltag-referenz.md`](apriltag-referenz.md) |
-| `VisionServerConfig.assets` (`config.assets`) | `None` = Part 2 (AMCM) not loaded, saves ~13 MB RSS / ~1.6 s start time; if set, the server additionally loads the DI/Machinery/AMCM nodesets and creates `VisionAsset` |
+| `PYTHONPATH=src python3 -m vision_server.server` | development on a PC |
+| `<repo>/.venv/bin/python -m vision_server.server` via systemd unit `opcua-server.service` | production on the Pis (`Restart=always`, `RestartSec=5`); template and install guide in [`deploy/`](../../deploy/README.md) |
+| `PYTHONPATH=src python3 -m vision_server --port 4841` | vision package alone, for isolated tests (not the production path) |
+| `PYTHONPATH=src python3 src/vision_server/tools/handshake_client.py --url opc.tcp://127.0.0.1:4840/raspi/server/ --recipe-id calibration` | run one job handshake against a running server |
 
-### Two ways to the same server
+- **On the Pi do not start in the foreground**: it collides with the service (port 4840 busy).
+  Use `sudo systemctl restart opcua-server.service` and test with a separate client.
+- Logs: `journalctl -u opcua-server.service`.
+- The endpoint listens on `0.0.0.0:4840` but announces the LAN IPv4 (`OPCUA_ADVERTISE_IP` forces an
+  interface). Without a LAN IPv4 the server runs without mDNS and LDS. Security: `NoSecurity`.
+- At start it announces itself twice, both withdrawn on shutdown; if one fails the server keeps
+  running and logs a warning:
+  - **mDNS** (`discovery/mdns.py`): `_opcua-tcp._tcp.local.`, instance name = vision identity.
+  - **LDS registration** (`discovery/lds.py`) at `opc.tcp://10.10.38.27:4840/`, renewed every 60 s.
+    Only through this does the cell's aggregation server list the Pi.
 
-| Way | Purpose |
+## Configuration
+
+Per-Pi defaults are presets in `src/vision_server/server.py` (`PI_IDENTITIES`, `PI_APRILTAG_PRESETS`,
+`PI_CAMERA_STREAM_PRESETS`, `PI_ASSET_PRESETS`), selected by hostname. Environment variables
+override them; set them per Pi with a drop-in (`sudo systemctl edit opcua-server.service`,
+`Environment='NAME=value'`), then restart the service.
+
+| Variable | Effect |
 | --- | --- |
-| `python3 -m vision_server.server` | development and manual work. Needs `PYTHONPATH=src` or `WorkingDirectory=…/src`. |
-| `<Repo>/.venv/bin/python -m vision_server.server` | **the systemd unit on the Pis** (`PYTHONPATH=<Repo>/src`). Template and installation guide: [`deploy/`](../../deploy/README.md). |
+| `VISION_SYSTEM_ID`, `VISION_FRAME_ID` | identity and camera frame (default: hostname mapping, else `vision-<host>` / `world`) |
+| `VISION_CAMERA_BACKEND` | `picamera2` (default), `realsense` (hand Pi preset) or `opencv` |
+| `VISION_CAMERA_CONTROLS` | libcamera controls as JSON object, see [Camera controls](#camera-controls-picamera2) |
+| `VISION_DETECTION_ROI` | detection region `x,y,width,height` or `off`, see [Detection region](#detection-region-of-the-ceiling-camera) |
+| `VISION_APRILTAG_DETECTOR_PARAMS` | detector parameters as JSON object, merged per key into the preset (`null` removes one) |
+| `VISION_SUBPIXEL_CORNER_REFINEMENT` | `0`/`none` off, `1` on, `apriltag`/`subpix` on with that method (preset: on, `subpix`) |
+| `VISION_APRILTAG_QUAD_DECIMATE` | detector decimation (default `0.0`) |
+| `VISION_CALIBRATION_MODEL` | overrides the preset's lens model (pinhole/fisheye), e.g. for a comparison run |
+| `VISION_ALLOW_PLACEHOLDER_CALIBRATION=1` | detection runs without a real calibration (poses not to scale); for testing only, never default |
+| `VISION_SAVE_CALIBRATION_CAPTURES=1` | archives every calibration capture as PNG under `data/calibration/<frame_id>_captures/` (extra SD-card load) |
+| `VISION_DISABLE_STREAM=1` | no live stream (the job camera keeps running) |
+| `OPCUA_MDNS=0` | no mDNS announcement |
+| `OPCUA_MDNS_NAME` | mDNS instance name (default: vision identity) |
+| `OPCUA_ADVERTISE_IP` | force the announced IPv4 |
+| `OPCUA_LDS_URL` | LDS URL; empty = do not register |
+| `OPCUA_APPLICATION_URI` | ApplicationUri (default `urn:plcm:camera-server:<name>`) |
 
-On the Pi, the server runs productively as the systemd service `opcua-server.service`
-(`Restart=always`, `RestartSec=5`, `/etc/systemd/system/opcua-server.service`, template in `deploy/`).
-**Important when testing on the Pi:** no foreground start, that collides with the service (port 4840
-occupied) — instead use `systemctl restart opcua-server.service` and test against it with a separate
-client.
+Unknown values in `VISION_DETECTION_ROI`, `VISION_SUBPIXEL_CORNER_REFINEMENT` or unknown camera
+controls raise `ValueError` at startup, not during operation.
 
-**Camera watchdog** (`camera.py`): `capture_array()` can hang forever without an error message when
-libcamera no longer delivers a frame (Pi 1, 2026-09-22: the live stream showed a frozen image, jobs
-failed with „Kein Kamerabild innerhalb von 5.0 s“ (no camera image within 5.0 s)). Every capture
-therefore has `frame_timeout_s` (3 s); on a hang the camera is reopened; after `max_reopen_attempts`
-(2) unsuccessful reopenings the process terminates hard and systemd restarts it.
+## Camera watchdog
 
-**The watchdog monitors only the capture, not the live stream.** Externally it reports via OPC
-40100-2: `DeviceHealth` says how the camera is doing, and every state change additionally fires the
-matching DI alarm (`camera_health.py`). The live stream is a pure publisher — it keeps publishing even
-a stale image. When the camera hangs, the live picture therefore stands still; **that** it stands
-still is shown by the traffic light in the frontend, not by the missing image. Fully described in
-[`vision-server-interface.md`](vision-server-interface.md) section 11.4.
+`capture_array()` can hang without an error when libcamera stops delivering frames. Therefore
+(`camera.py`, defaults in `profiles.py`):
 
-Search the journal afterwards with
-`journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|Kamerazustand|beende den Prozess"`.
-If the messages pile up, the cause is usually hardware (flat ribbon cable).
+- every capture has `frame_timeout_s` (3 s); on a hang the camera is reopened;
+- after `max_reopen_attempts` (2) failed reopenings the process exits and systemd restarts it;
+- the camera state is published as OPC 40100-2 `DeviceHealth` plus DI alarms (`camera_health.py`).
+  The live stream keeps publishing the last image, so a frozen picture is no error signal; the
+  frontend's camera light is.
 
-## Verified state
-
-Run end-to-end locally against asyncua 2.0.1, in the production configuration (`src/vision_server/server.py`
-on 4840) and with a separate client: happy path incl. payload and event order, `BUSY` for two
-simultaneous calls, `INVALID_ARGUMENT` for an overlong `MeasId`, `UNKNOWN_RECIPE` for an unknown
-recipe, error path via the `Error` state with subsequent resumption.
-
-After removing the CPU temperature demo (legacy items A1–A6), additionally checked: the address space
-contains exactly **one** `VisionSystemType` instance, it hangs under `Objects/Machines`, and the
-namespace `http://launch-rm.de/raspi` is gone. Recorded in `tests/test_part10_fassade.py`.
-
-## Known limitations
-
-- There is no default job: an empty `RecipeId` is rejected. The recipe `apriltag` delivers real
-  poses, `calibration` a real readiness check.
-- `frameId` follows the detection source: `world` as soon as a reference tag from the tag map is
-  visible, otherwise the camera frame. The hand-eye calibration for layer 2 is implemented
-  (`AprilTagProfileConfig.hand_eye_path`, chained in `detection/apriltag/`) — what remains open is
-  only the real survey of the hand-eye file per cell, see
-  [`vision-server-interface.md`](vision-server-interface.md) section 9.
-- Linked are `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt` and `Reset`.
-  `SimulationMode` and `SelectModeAutomatic` exist in the address space, but deliberately do nothing —
-  reasoning per method in [`vision-server-interface.md`](vision-server-interface.md) section 7.5.
-- The `ResultManagement` methods (`GetResultById` & Co.) are not implemented and cannot be called from
-  the asyncua client either — they expect structure ExtensionObjects as input (asyncua issue #1693).
-- The structure-typed event fields (`ResultId`, `JobId`, …) are sent empty; their values are in the
-  JSON payload.
-- Events reach only a subscription directly on `VisionMachine`. The `HasNotifier` reference is set,
-  but with asyncua it causes no server-side event bubbling.
-- Only one vision instance — a second profile (3D) does not exist yet.
-- Events reach **only** a subscription on the emitting node. A pure Part-10 client that subscribes
-  only to `VisionProgram` therefore does not see the 40100 events; it fetches its result via the value
-  change of `VisionProgram/ResultSet/LatestResultJson`. Re-measured on 21.09.2026 against asyncua
-  2.0.1 — a `HasEventSource` reference changes nothing there either.
-- The ceiling camera (Pi 1) records at full sensor resolution 4056×3040; the live stream and overlay
-  run on a second stream scaled by the ISP (960×720), see
-  [`vision-server-interface.md`](vision-server-interface.md) section 10.3. A calibration for 2028×1520
-  is extrapolated until recalibration (`allow_resolution_mismatch` in the preset `cam_ceiling`) —
-  after recalibration at 4056×3040, remove the switch again.
+Search the log: `journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|Kamerazustand|beende den Prozess"`.
+Frequent entries usually mean hardware (ribbon cable).
 
 ## Camera controls (Picamera2)
 
-For the ceiling camera (Picamera2), libcamera controls can be set without a code change: field
-`CameraStreamConfig.camera_controls`, preset `PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]`
-(empty for now, values follow after measurement), and environment variable `VISION_CAMERA_CONTROLS`
-(JSON object; per key the variable wins, `null` removes a preset entry):
+Ceiling camera only; RealSense and OpenCV ignore the field (one warning per opening).
 
-```
-VISION_CAMERA_CONTROLS='{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}'
-```
+- Source: preset `PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]`, overridden per key by
+  `VISION_CAMERA_CONTROLS` (JSON object, `null` removes a preset key), e.g.
+  `{"ExposureValue": -0.5, "Sharpness": 1.5, "NoiseReductionMode": "Fast"}`.
+- Merged into the Picamera2 defaults (`FrameDurationLimits`, `NoiseReductionMode`), not replacing them.
+- Types: `ExposureTime` µs (int), `AnalogueGain`, `ExposureValue`, `Sharpness`, `Contrast`,
+  `Brightness`, `Saturation` (float), `AeEnable` (bool); enum controls (`NoiseReductionMode`,
+  `AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode`) by name.
+- An unknown name raises `ValueError` on opening and lists the valid names.
+- After warm-up the actual values are logged: `journalctl -u opcua-server.service | grep "Kamera-Metadaten"`.
+- Hardware: M12 lens with fixed aperture; only focus (by hand) and the ISP controls are adjustable.
 
-- The controls are passed as `controls=` into the video configuration and are merged with the
-  Picamera2 defaults (`FrameDurationLimits`, `NoiseReductionMode`), not replaced.
-- Types: `ExposureTime` in µs (int), `AnalogueGain` (float), `AeEnable` (bool), `ExposureValue`,
-  `Sharpness`, `Contrast`, `Brightness`, `Saturation` (float). The enum controls `NoiseReductionMode`,
-  `AeMeteringMode`, `AeExposureMode`, `AeConstraintMode`, `AwbMode` may be given by name (`"HighQuality"`,
-  `"Off"`, `"Fast"`).
-- A name the camera does not know (`Picamera2.camera_controls`), or an unknown enum name, raises
-  `ValueError` on opening; the message lists the valid names.
-- After warmup the server logs the actual metadata (`ExposureTime`, `AnalogueGain`, `DigitalGain`,
-  `Lux`, `ColourTemperature`, `FocusFoM`):
-  `journalctl -u opcua-server.service | grep "Kamera-Metadaten"`. Fixed exposure values are chosen
-  from this.
-- RealSense and OpenCV ignore the field (one-time warning per opening).
-
-**Hardware note:** The ceiling camera has an M12 lens with a fixed aperture. Only the focus (on the
-lens, by hand) and the ISP/exposure controls above are adjustable.
-
-Setting it on the Pi: drop-in via `sudo systemctl edit opcua-server.service` with
-`Environment='VISION_CAMERA_CONTROLS=...'`, then `sudo systemctl restart opcua-server.service`.
-Interfaces: [`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
+Background: [`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md),
+[`analysen/kamera-und-detektor-analyse.md`](analysen/kamera-und-detektor-analyse.md).
 
 ## Detection region of the ceiling camera
 
-Since 17.11.2026 the ceiling camera (`cam_ceiling`) only searches for tags inside the
-cell area: `AprilTagProfileConfig.detection_roi = (917, 568, 2114, 2079)` (x, y, width,
-height at 4056×3040), preset in `server.PI_APRILTAG_PRESETS`. The frame itself stays
-complete: only the detector gets a view of the region (`tagloc.detector.RoiTagDetector`),
-and the corners are shifted back to full-frame coordinates. Calibration, poses, overlay
-and saved images are therefore unaffected. Job, cell watch and live-stream overlay use the
-same region (the overlay scaled to its smaller image). The intrinsic calibration
-(`CalibrationSession`) also searches the board only in the region and shifts the corners
-back; the calibration file therefore stays at 4056×3040, and coverage is measured against
-the region. Not affected: `MeasureBoard`.
+- `cam_ceiling` searches tags only in the cell area: `detection_roi = (917, 568, 2114, 2079)`
+  (x, y, width, height at 4056×3040) in `PI_APRILTAG_PRESETS`. Override: `VISION_DETECTION_ROI`.
+- The frame stays complete: only the detector sees the region (`tagloc.detector.RoiTagDetector`),
+  corners are shifted back to full-frame coordinates. Calibration, poses, overlay and saved images
+  are unaffected.
+- Job, cell watch, live-stream overlay and the intrinsic calibration (`CalibrationSession`) use the
+  same region; `MeasureBoard` does not.
+- Live stream modes `off` and `apriltag` show only the region; `undistorted` and
+  `tagreference` show the whole image.
+- Tags outside the region, world tags included, are not found.
 
-The live stream shows the same region in the modes "Rohbild" (`off`) and "AprilTags
-markieren" (`apriltag`): it is cut after the overlay, and the overlay draws on a
-correspondingly larger canvas, so the stream stays 960 px wide (960×943, no longer 4:3).
-"undistorted" and "tagreference" keep showing the whole image.
+Background: [`arbeitsplaene/deckenkamera-bildausschnitt.md`](arbeitsplaene/deckenkamera-bildausschnitt.md).
 
-Tags outside the region are not found, world tags included. Override without a code
-change: `VISION_DETECTION_ROI="x,y,width,height"` or `VISION_DETECTION_ROI=off`.
-Measurement and background: `arbeitsplaene/deckenkamera-bildausschnitt.md`.
+## Known limitations
+
+- `frameId` is `world` once a world tag of the tag map is visible, otherwise the camera frame.
+- Linked state-machine methods: `StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`,
+  `Reset`. `SimulationMode` and `SelectModeAutomatic` exist but do nothing.
+- `ResultManagement` methods (`GetResultById` etc.) are not implemented: their inputs are
+  ExtensionObjects the asyncua client cannot build (asyncua issue #1693). Structure-typed event
+  fields (`ResultId`, `JobId`, …) are sent empty; the values are in the JSON payload.
+- Events reach only a subscription on the emitting node (`VisionMachine`); `HasNotifier` does not
+  bubble with asyncua. A pure Part 10 client gets results via the value change of
+  `VisionProgram/ResultSet/LatestResultJson`.
+- One vision instance per server; a second (3D) profile does not exist.
+- The ceiling camera captures at 4056×3040; live stream and overlay use a second ISP stream
+  (960×720). `allow_resolution_mismatch` is still set in the `cam_ceiling` preset: remove it once
+  the ceiling camera is calibrated at 4056×3040.
+
+## Maintenance
+
+### Add a detection source (recipe)
+
+1. New source under `src/vision_server/detection/` (subclass of `DetectionSource`; every OpenCV call
+   through `run_blocking()`, otherwise the shared event loop freezes).
+2. Registry entry with lazy import in `detection/__init__.py` (cv2 must not be on the import chain).
+3. One line in `DEFAULT_RECIPE_PROFILES` (`config.py`).
+
+`job.py`, `payload.py`, `events.py`, `result_management.py`, `state_machine.py` and
+`address_space.py` stay unchanged.
+
+### asyncua pitfalls in the server code
+
+Checked against the nodeset and the asyncua source; keep them in mind when changing the address
+space or events:
+
+| # | Pitfall | Consequence in our code |
+| --- | --- | --- |
+| 1 | `ResultReadyEventType` has 15 flat fields, no `Result: ResultDataType` | payload travels in the event in `ResultContent[0]`; no second read |
+| 2 | `ResultManagement` inputs are ExtensionObjects (issue #1693) | methods not implemented |
+| 3 | no transition `Halted → Operational` | start sequence `Preoperational → Operational`, inside `Initialized → Ready` |
+| 4 | outer `VisionStateMachine` states are instance children; `AutomaticModeStateMachine` states exist only on the type (i=5056–5059) | outer states by BrowseName, inner by NodeId |
+| 5 | `LastTransition` does not exist on the instance | state changes without a `Transition` object; transition name in the event message |
+| 6 | `ResultContent` has a null DataType | DataType overridden to `String`, written as array |
+| 7 | event fields need finished `ua.Variant` objects | raw Python values would arrive as `None` |
+| 8 | `@uamethod` handlers that start a task must be `async` | sync handlers run in a thread pool without an event loop |
+| 9 | method return values must be a `tuple` | a `list` arrives as one nested Variant |
+| 10 | no event bubbling via `HasNotifier` | all event generators emit from `VisionMachine` |
+
+### Tests
+
+`PYTHONPATH=src python3 -m unittest discover -s tests -t .` (on the Pis with the project venv).
+`tests/test_part10_fassade.py` checks that the address space has exactly one `VisionSystemType`
+instance under `Objects/Machines`.

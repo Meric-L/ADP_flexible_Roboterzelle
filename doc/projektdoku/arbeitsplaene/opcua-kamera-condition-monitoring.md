@@ -27,7 +27,7 @@ Since the watchdog, the hang is detected and fixed — visible via OPC UA, howev
 - `doc/vision-server-interface.md` — section 11 (OPC 40100-2: asset view), section 10 (camera live stream)
 - `doc/vision-system.md` — module table, address space, runtime behavior, starting
 - `doc/altlasten.md` — A3 (`RaspiDevice/Counter`, retired heartbeat), D5 (systemd unit not versioned)
-- `doc/vision-system-next-steps.md` — state and verified facts
+- `doc/projektdoku/vision-system.md` — state and verified asyncua facts
 - `doc/arbeitsplaene/README.md` — duplicate-work check: no plan with status `in progress`, the topic is free
 - `src/vision_server/nodesets/README.md` — pinned nodeset versions
 

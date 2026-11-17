@@ -83,7 +83,7 @@ Read before creating a plan — here is the documented state:
 | [`../vision-server-interface.md`](../vision-server-interface.md) | OPC UA vision server: address space, methods, backend connection |
 | [`../vision-system.md`](../vision-system.md) | Vision system — current state on the Raspberry Pi |
 | [`../vision-system-integration.md`](../vision-system-integration.md) | Integration of the vision systems into WebSkillComposition |
-| [`../vision-system-next-steps.md`](../vision-system-next-steps.md) | Vision system — open items and next steps |
+| [`../vision-system.md`](../vision-system.md) | Vision server — operation and maintenance |
 | [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | AprilTag localisation, maintainer guide |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag reference |
 | [`../code-dokumentation.md`](../code-dokumentation.md) | Code documentation: overview; details per area under `../code/` |

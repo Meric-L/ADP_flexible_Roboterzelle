@@ -89,7 +89,7 @@ documents:
 | --- | --- |
 | [`vision-server-interface-short.md`](vision-server-interface-short.md) | OPC UA interface of the Pi server, short (start here) |
 | [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server, full reference |
-| [`vision-system.md`](vision-system.md) | State of the vision system on the Pis |
+| [`vision-system.md`](vision-system.md) | Operation and maintenance of the vision server on the Pis |
 | [`vision-system-integration.md`](vision-system-integration.md) | Integration into webskillcomposition |
 | [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | AprilTag localisation, maintainer guide |
 | [`apriltag-referenz.md`](apriltag-referenz.md) | AprilTag reference: functions, CLI, file formats |

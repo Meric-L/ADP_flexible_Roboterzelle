@@ -28,7 +28,7 @@ measurement.
 - `doc/apriltag-lokalisierung.md` (concept, sections 1–2, 6, 9)
 - `doc/apriltag-referenz.md` (conventions, `tagloc` interfaces, tag-map schema)
 - `doc/vision-server-interface.md` (payload, `frameId` rule, result nodes)
-- `doc/vision-system.md`, `doc/vision-system-next-steps.md` (current state, open items)
+- `doc/projektdoku/vision-system.md` (current state)
 
 ## Affected files
 

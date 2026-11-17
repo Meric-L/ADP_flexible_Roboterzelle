@@ -92,7 +92,7 @@ Interface: OPC UA / payload / CLI / file = file format / no.
 | What | Reason |
 |---|---|
 | `src/OPCUA/server.py` (ex D11) | entry point of the non-versioned systemd unit (legacy D5 open); nobody imports it, which is intentional |
-| `vision_server/__main__.py` (`python -m vision_server`) | second server start (port 4841) for development, documented (`vision-system.md:37,178`, `vision-system-next-steps.md:25`); `build_config` untested |
+| `vision_server/__main__.py` (`python -m vision_server`) | second server start (port 4841) for development, documented (`vision-system.md:37,178`); `build_config` untested |
 | `src/jobs/calibrate.py` | check job of recipe `calibration` (OPC UA), started by `ScriptDetectionSource` via `JOBS_DIR` (`detection/__init__.py:12,20`); see section 3 |
 | `tools/make_synthetic_scene.py` (`render_reference_scene`, `_polygon_basis`, ...) | imported by tests (`from tools.make_synthetic_scene import ...`), test oracle |
 | `vision_server/tools/{calibration_client,handshake_client,stream_viewer,diagnose_board,measure_framerate}.py` | named in docs as reference clients/hand tools (`vision-server-interface.md:520,1266-1270`, `frontend-integration-kalibrierung.md:239-247`, `deckenkamera-volle-aufloesung.md:126`) |

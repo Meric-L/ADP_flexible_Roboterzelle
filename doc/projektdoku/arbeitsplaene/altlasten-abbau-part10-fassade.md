@@ -240,7 +240,7 @@ versioned (legacy D5) and must be switched manually to
 - [x] `doc/altlasten.md`: A1–A6, B2, B4, B5, B6, C5 struck out; B1 trimmed to the
       frontend remainder; D5 marked as acute.
 - [x] Topic docs updated: `vision-system.md`, `vision-server-interface.md`,
-      `part10-programm-schnittstelle.md`, `vision-system-next-steps.md`,
+      `part10-programm-schnittstelle.md`,
       `apriltag-referenz.md`, `praesentation.md`,
       `README.md`.
 

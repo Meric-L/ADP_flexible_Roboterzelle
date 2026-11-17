@@ -26,7 +26,7 @@ ausgeliefert.
 - **Wichtiger Fund:** `HasNotifier` allein genügt bei `asyncua` **nicht** —
   ein einzelnes `subscribeEvent(serverUrl, 'i=2253')` fängt die Vision-Events
   nicht mit auf. Details in
-  [`doc/vision-system-next-steps.md`](../doc/vision-system-next-steps.md),
+  [`doc/projektdoku/vision-system.md`](../doc/projektdoku/vision-system.md) (asyncua pitfalls),
   widerlegt Teil 4.2 des Integrationsplans.
 - Der Ergebnis-Payload ist derzeit ein **JSON-String in `ResultContent[0]`**,
   Schema `wsc.vision.test/1`, Inhalt noch „Hello World" — **kein echtes
@@ -40,8 +40,8 @@ ausgeliefert.
 
 ## Stand der Phasen
 
-Kurzfassung — verbindlich ist
-[`doc/vision-system-next-steps.md`](../doc/vision-system-next-steps.md).
+Kurzfassung — verbindlich ist Teil 9 von
+[`doc/projektdoku/vision-system-integration.md`](../doc/projektdoku/vision-system-integration.md).
 
 - **Phase 1 (Spike)** — erledigt: Nodeset lädt, Instanzen anlegbar.
 - **Phase 2** — teilweise: `VisionSystem` ist im Adressraum sichtbar, läuft aber
@@ -55,8 +55,7 @@ Kurzfassung — verbindlich ist
 
 | Dokument | Inhalt | Wann lesen |
 | --- | --- | --- |
-| [`doc/vision-system-next-steps.md`](../doc/vision-system-next-steps.md) | Kurzorientierung Stand & nächste Schritte, explizit für Agenten geschrieben | **Zuerst.** Reicht für die meisten Aufgaben. |
-| [`doc/vision-system.md`](../doc/vision-system.md) | Ist-Stand des implementierten Servers, Adressraum-Baum, bekannte Einschränkungen | Bei Arbeit am bestehenden Server |
+| [`doc/projektdoku/vision-system.md`](../doc/projektdoku/vision-system.md) | Betrieb und Wartung des Servers: Start, Konfiguration, Watchdog, bekannte Einschränkungen, asyncua-Stolperfallen | **Zuerst** bei Arbeit am bestehenden Server |
 | [`doc/projektdoku/vision-system-integration.md`](../doc/projektdoku/vision-system-integration.md) | Integration in WebSkillComposition, ca. 500 Zeilen: Bestand, Blocker-Status, Signalweg, Risiken, Phasenplan mit Stand (Plan vs. gebaut) | Nur bei Bedarf, gezielt einen Teil. Teil 4 = unsere Server, Teil 9 = Phasenplan. |
 | [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server-Implementierung | — |
 | [`src/OPCUA/print_setpoint.py`](../src/OPCUA/print_setpoint.py) | Client-Hilfsskript | — |

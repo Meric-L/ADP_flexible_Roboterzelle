@@ -48,6 +48,7 @@ The documentation has two levels:
 | --- | --- |
 | [`doc/projektdoku/code-dokumentation.md`](doc/projektdoku/code-dokumentation.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
 | [`doc/projektdoku/vision-server-interface-short.md`](doc/projektdoku/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
+| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | **Vision server operation**: start, configuration (env variables), watchdog, known limitations |
 | [`doc/projektdoku/code/`](doc/projektdoku/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |
 
 ### 2. In-depth documents
@@ -58,7 +59,6 @@ The documentation has two levels:
 | [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | Part 10 program and mDNS: the generic operator interface of the cell and discoverability on the network |
 | [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | AprilTag localisation for maintainers: code map, data flow, conventions, maintenance recipes |
 | [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Overview of the AprilTag functions and file formats, linked to the code reference |
-| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | State of the vision system |
 | [`doc/projektdoku/vision-system-integration.md`](doc/projektdoku/vision-system-integration.md) | Integration of the vision Pis (OPC 40100) into webskillcomposition: blocker status, signal path, risks, plan vs. built |
 | [`doc/projektdoku/analysen/`](doc/projektdoku/analysen/README.md) | Analyses of past problems: what was tried and measured (camera and detector, calibration runs) |
 | [`doc/projektdoku/arbeitsplaene/`](doc/projektdoku/arbeitsplaene/README.md) | Work plans of all features (planning, decisions, status) |
