@@ -86,7 +86,6 @@ Read before creating a plan — here is the documented state:
 | [`../vision-system-next-steps.md`](../vision-system-next-steps.md) | Vision system — open items and next steps |
 | [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | Concept of AprilTag localization |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag reference |
-| [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | AprilTag end-to-end test guide |
 | [`../code-dokumentation.md`](../code-dokumentation.md) | Code documentation: overview; details per area under `../code/` |
 | [`../altlasten-zelle.md`](altlasten-zelle.md) | Clean-up audit of this repo (`apriltag`): dead code, duplicates, workarounds, guidelines, test gaps |
 | [`../altlasten-wsc.md`](altlasten-wsc.md) | Clean-up audit of webskillcomposition, only our share (`origin/dev..Ungetestet`) |

@@ -9,13 +9,13 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` on branch `main`. Paths
 - Purpose: prints AprilTag markers or a ChArUco board as an SVG with millimetre-exact size (a PNG would depend on printer DPI).
 - Entry points: `main(argv)`, `build_parser()`, `render_marker`, `render_charuco`, `build_svg`, `layout_tags`.
 - Interface: required `--out <file.svg>`; `--ids`, `--size-mm`, `--family` for tags; `--charuco` with `--cols`, `--rows`, `--square-mm`, `--marker-mm`, `--board-dictionary` for boards.
-- Details: `doc/projektdoku/apriltag-e2e-test.md`, `doc/projektdoku/apriltag-referenz.md`. Smoke-tested in `tests/test_tool_imports.py`.
+- Details: `doc/projektdoku/apriltag-referenz.md`. Smoke-tested in `tests/test_tool_imports.py`.
 
 ### `tools/make_synthetic_scene.py`
 - Purpose: renders synthetic camera images with known ground truth (tag or chessboard poses are given, projected with the real intrinsics), so the detector-to-pose chain can be checked against reference values without a camera.
 - Entry points: `main(argv)`, `build_parser()`, `write_tag_scene`, `write_chessboard_scene`, `render_tags`, `render_reference_scene`, `synthetic_calibration`, `chessboard_object_points`.
 - Interface: `--out <dir>` (required), `--count`, `--width`, `--height`, `--seed`, `--family`, `--cols`, `--rows`, `--square-size-m`. Writes the images and a calibration file.
-- Used by `tests/test_tag_pipeline.py` and `tests/test_reference_edges.py`. Details: `doc/projektdoku/apriltag-e2e-test.md`.
+- Used by `tests/test_tag_pipeline.py` and `tests/test_reference_edges.py`.
 
 ### `tools/make_use_case_target.py`
 - Purpose: prints the use-case target sheet (page 1: angle scale, crosshair, four ArUco markers DICT_4X4_50 IDs 0–3) and the dice-sticker sheet (page 2), A4 at 1:1, as SVG; optional PDF.
@@ -111,7 +111,7 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` on branch `main`. Paths
 
 ### `config/tagmap.example.json` and `config/tagmap.test.example.json`
 - Purpose: templates with the same schema. The example has world, robot and module tags; the test example has one world tag and one module tag (for the small setup test).
-- Not loaded by any code or test in the repo; referenced in docs only (`doc/projektdoku/apriltag-e2e-test.md`, `doc/projektdoku/code-dokumentation.md`). See Flags.
+- Not loaded by any code or test in the repo; referenced in docs only (`doc/projektdoku/code-dokumentation.md`). See Flags.
 
 ### `data/`
 - Purpose: machine-specific calibration, captures and results. Layout below; generated folders are created at runtime by the server or the tools.
@@ -140,7 +140,7 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` on branch `main`. Paths
 
 ### `tests/`
 - Layout: 67 test modules `tests/test_*.py` (`unittest.TestCase` classes), `tests/_support.py` (shared helpers: `RecordingNode`, nodeset check `HAS_NODESETS`; not collected by discovery), `tests/__init__.py` (empty).
-- Run all: from the repository root, `PYTHONPATH=src python3 -m unittest discover -s tests -t .` (`README.md`, `doc/projektdoku/apriltag-e2e-test.md`). One module: `PYTHONPATH=src python3 -m unittest tests.test_tag_pipeline -v`. Dependencies in `requirements.txt`.
+- Run all: from the repository root, `PYTHONPATH=src python3 -m unittest discover -s tests -t .` (`README.md`). One module: `PYTHONPATH=src python3 -m unittest tests.test_tag_pipeline -v`. Dependencies in `requirements.txt`.
 - Tests skip, rather than fail, when optional packages (`cv2`, `asyncua`) or the OPC UA nodesets are missing (`_support.py`, `test_tool_imports.py`).
 
 Coverage by area (from each module's docstring; module names only):

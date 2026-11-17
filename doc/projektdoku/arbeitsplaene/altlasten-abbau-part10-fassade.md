@@ -241,7 +241,7 @@ versioned (legacy D5) and must be switched manually to
       frontend remainder; D5 marked as acute.
 - [x] Topic docs updated: `vision-system.md`, `vision-server-interface.md`,
       `part10-programm-schnittstelle.md`, `vision-system-next-steps.md`,
-      `apriltag-e2e-test.md`, `apriltag-referenz.md`, `praesentation.md`,
+      `apriltag-referenz.md`, `praesentation.md`,
       `README.md`.
 
 ### Checked

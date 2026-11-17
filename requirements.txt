@@ -11,7 +11,7 @@ asyncua>=1.1.5
 zeroconf>=0.131
 # picamera2 (Decken-Pi) fehlt hier bewusst: kommt per apt
 # (sudo apt install -y python3-picamera2), nicht zuverlaessig per pip (siehe
-# doc/projektdoku/arbeitsplaene/altlasten.md D3, doc/projektdoku/apriltag-e2e-test.md). Braucht deshalb eine venv
+# doc/projektdoku/arbeitsplaene/altlasten.md D3). Braucht deshalb eine venv
 # mit --system-site-packages. pyrealsense2 (Hand-Pi) ebenso NICHT
 # aufgenommen: Intel liefert auf PyPI i. d. R. keine ARM/aarch64-Wheels fuer
 # den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,

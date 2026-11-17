@@ -27,7 +27,6 @@ measurement.
 - `doc/arbeitsplaene/README.md` (duplicate-work check — no `apriltag` plan open)
 - `doc/apriltag-lokalisierung.md` (concept, sections 1–2, 6, 9)
 - `doc/apriltag-referenz.md` (conventions, `tagloc` interfaces, tag-map schema)
-- `doc/apriltag-e2e-test.md` (tolerances, acceptance of Layer 1/2)
 - `doc/vision-server-interface.md` (payload, `frameId` rule, result nodes)
 - `doc/vision-system.md`, `doc/vision-system-next-steps.md` (current state, open items)
 
@@ -217,7 +216,7 @@ remains the same file for both Pis.
   pose of 0.77 mm. The spread is precisely not an accuracy measure but the
   disagreement of the individual estimates — the weighted averaging is
   significantly better than its worst member.
-- **Additionally touched topic docs:** `doc/apriltag-e2e-test.md`,
+- **Additionally touched topic docs:**
   `doc/vision-server-interface.md` and `doc/praesentation.md` still carried the
   old roles in tables and instructions.
 

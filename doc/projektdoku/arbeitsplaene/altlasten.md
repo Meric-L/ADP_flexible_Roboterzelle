@@ -127,8 +127,7 @@ not legacy:
   `auto_execute` remains `False` in any case until the calibration on the robot is
   proven.
 
-See [`apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) and
-[`apriltag-e2e-test.md`](../apriltag-e2e-test.md).
+See [`apriltag-lokalisierung.md`](../apriltag-lokalisierung.md).
 
 ---
 

@@ -6,7 +6,6 @@ estimated; where something is unverified, this is stated explicitly.
 
 Sources per statement: [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md),
 [`apriltag-referenz.md`](apriltag-referenz.md),
-[`apriltag-e2e-test.md`](apriltag-e2e-test.md),
 [`vision-server-interface.md`](vision-server-interface.md).
 
 ---
@@ -288,7 +287,6 @@ there yet.
 | Point | State |
 |---|---|
 | **Hand-eye calibration** for layer 2 | open — until then layer 2 delivers in the camera frame, `auto_execute` stays `False` |
-| Acceptance on the Pi camera | instructions exist (`apriltag-e2e-test.md`, four stages with abort criteria) |
 | Handover format layer 1 → layer 2 | proposal: 3D pose in the world frame, schema stays unchanged |
 | Stream above 5 fps | would only work with a different transport — OPC UA caps at 10 fps |
 
@@ -303,7 +301,6 @@ there yet.
 |---|---|
 | `doc/apriltag-lokalisierung.md` | concept and implementation plan |
 | `doc/apriltag-referenz.md` | function and CLI reference, file formats |
-| `doc/apriltag-e2e-test.md` | test instructions up to the Pi camera |
 | `doc/vision-server-interface.md` | OPC UA interface, Part 1 and Part 2 |
 | `doc/altlasten.md` | what is still open, and why (legacy items) |
 | `src/vision_server/nodesets/README.md` | why the nodeset versions are pinned |

@@ -39,7 +39,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Camera calibration, interactive (`SPACE` capture, `C` compute and save, `Q` quit) or headless from an image folder.
 - Entry points: `build_parser`, `main(argv=None) -> int`. Options include `--board`, `--out`, `--frame-id`, `--model` (pinhole or fisheye), `--capture-to`.
 - Output: calibration JSON at `--out`; `--capture-to` only saves images.
-- Details: `doc/projektdoku/apriltag-referenz.md`, `doc/projektdoku/apriltag-e2e-test.md`.
+- Details: `doc/projektdoku/apriltag-referenz.md`.
 
 ### `src/tagloc/cli/calibrate_handeye.py`
 - Hand-eye calibration (flange to camera, `T_flange_cam`), solved from a recorded session folder.

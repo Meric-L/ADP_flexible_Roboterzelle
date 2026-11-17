@@ -49,7 +49,6 @@ The documentation has two levels:
 | [`doc/projektdoku/code-dokumentation.md`](doc/projektdoku/code-dokumentation.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
 | [`doc/projektdoku/vision-server-interface-short.md`](doc/projektdoku/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
 | [`doc/projektdoku/code/`](doc/projektdoku/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |
-| [`doc/projektdoku/apriltag-e2e-test.md`](doc/projektdoku/apriltag-e2e-test.md) | How to test everything end to end, from the PC to the Raspberry Pi camera |
 
 ### 2. In-depth documents
 

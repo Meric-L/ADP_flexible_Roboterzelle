@@ -19,15 +19,13 @@ AprilTag family …) and the list of tags in the image).
 - `doc/projektdoku/arbeitsplaene/README.md`
 - `doc/projektdoku/vision-server-interface.md` (table of overlay modes)
 - `doc/projektdoku/apriltag-referenz.md` (section `tagloc.overlay`)
-- `doc/projektdoku/apriltag-e2e-test.md` (overlay modes, visual check)
 
 ## Affected files
 
 - `src/tagloc/overlay.py` — new function `draw_tag_boxes`
 - `src/vision_server/stream_overlay.py` — mode `apriltag` uses `draw_tag_boxes`, no status bar
 - `tests/test_stream_overlay.py`, `tests/test_overlay_scaling.py`
-- `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/apriltag-referenz.md`,
-  `doc/projektdoku/apriltag-e2e-test.md`
+- `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/apriltag-referenz.md`
 
 ## Interfaces
 
@@ -87,7 +85,7 @@ Implemented as planned; interface unchanged from the above.
 - Tests: `tests/test_stream_overlay.py` (stream calls `draw_tag_boxes`, no `draw_status_bar`),
   `tests/test_overlay_scaling.py` (ambiguous pose is drawn green, pose without observation is
   skipped). Whole suite: 691 tests OK (`PYTHONPATH=src python -m unittest discover -s tests -t .`).
-- Docs adjusted: `vision-server-interface.md`, `apriltag-referenz.md`, `apriltag-e2e-test.md`,
+- Docs adjusted: `vision-server-interface.md`, `apriltag-referenz.md`,
   note in `praesentation.md`.
 
 ## Addendum 21.10.2026: merge with live-stream tags at full resolution

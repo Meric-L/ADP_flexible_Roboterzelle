@@ -673,8 +673,7 @@ Behavior:
   through, and the error appears in the log.
 
 The frontend only needs a selection field that writes this node on change. The
-labels are provided server-side in `tagloc.modes.OVERLAY_MODE_LABELS`. Procedure
-and acceptance: [`apriltag-e2e-test.md`](apriltag-e2e-test.md) section 4.
+labels are provided server-side in `tagloc.modes.OVERLAY_MODE_LABELS`.
 
 ---
 

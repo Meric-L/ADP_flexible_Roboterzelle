@@ -32,7 +32,6 @@ finished, working features go to `main`.
 | Connection to WebSkillComposition, frontend, several vision systems | `doc/projektdoku/vision-system-integration.md` |
 | Open points of the vision system | `doc/projektdoku/vision-system-next-steps.md` |
 | AprilTag: concept, tag families, pose | `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/apriltag-referenz.md` |
-| Testing AprilTag | `doc/projektdoku/apriltag-e2e-test.md` |
 | Unexpected behaviour, historical quirks | `doc/projektdoku/arbeitsplaene/altlasten.md` |
 | Presentation / supervision | `doc/projektdoku/praesentation.md` |
 

@@ -25,7 +25,6 @@ At 12 MP this would be four times as expensive.
 - `doc/arbeitsplaene/livestream-mjpeg-und-watchdog.md`
 - `doc/vision-server-interface.md` (section 10, 10.2)
 - `doc/vision-system.md`
-- `doc/apriltag-e2e-test.md` (section 3.3, calibration)
 
 ## Solution
 
