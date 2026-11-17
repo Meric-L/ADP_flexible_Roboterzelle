@@ -57,7 +57,7 @@
   maxalphanames=1,
   minalphanames=1
 ]{biblatex}
-\addbibresource{Beispielbib.bib}
+\addbibresource{beispielbib.bib}
 
 % Keine automatische Groß-/Kleinschreibung:
 \DeclareFieldFormat{titlecase}{#1}
@@ -182,11 +182,19 @@
 %\titleintro{Masterthesis}%Platz für zusätzliche Informationen wie bspw. ADP oder Studienbereich falls nicht Maschinenbau
 %\author[M. Musterstudi \and B. Musterstudi]{Master Musterstudi \and Bachelor Musterstudi}%optionales Argument (in eckigen Klammern)ist die Signatur,
 
-\newcommand{\NameA}{Vorname Nachname}%vom Studenten
-%\newcommand{\NameB}{Max Mustermann}
-%\newcommand{\NameC}{Maxi Musterfrau}
+\newcommand{\NameA}{Philipp Kreß}%vom Studenten
+\newcommand{\NameB}{Shaoming Zhang}
+\newcommand{\NameC}{Meric Lotz}
+\newcommand{\NameD}{Sven Nachtigal}
+\newcommand{\NameE}{John Glanz}
 
-\author[NameA]{\NameA}
+\author[NameA]{
+    \NameA \and
+    \NameB \and
+    \NameC \and
+    \NameD \and
+    \NameE
+}
 \birthplace{}%Geburtsort, bei Dissertationen zwingend notwendig
 \reviewer{}%Gutachter (leer lassen bei studentischen Abschlussarbeiten, ansonsten im Stil {Gutachter 1 \and Gutachter 2 \and noch einer \and falls das immernoch nicht reicht}
 
@@ -365,7 +373,7 @@ Keywords: Digital Twin, Internet of Things, Virtual product development
 %\onehalfspacing %erhöht den Zeilenabstand auf 1.5-fach
 \input{chapters/1-Einleitung}
 \input{chapters/2-Stand-der-Technik}
-\input{chapters/3-Handlungsbedarf}
+\input{chapters/3-Anforderungen und Konzeptauswahl}
 \input{chapters/4-Konzept}
 \input{chapters/5-Anwendung}
 \input{chapters/6-Validierung}

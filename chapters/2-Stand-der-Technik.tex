@@ -448,3 +448,144 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 
 \end{itemize}
 \end{sloppypar}
+
+\section{Modulare Roboterzellen}
+\label{sec:Modulare Roboterzellen}
+
+\section{Kommunikationstechnologien}
+\label{sec:Kommunikationstechnologien}
+
+\section{Lokalisierungstechnologien}
+\label{sec:Lokalisierungstechnologien}
+Einleitungstext zu den unterschiedlichen Techniken ergänzen
+\subsection{Visuelle Lokalisierung}
+
+Visuelle Lokalisierungsverfahren ermöglichen die Bestimmung der Position und Orientierung von Objekten anhand von Bildinformationen. Hierzu werden Kameras eingesetzt, deren Bilddaten mithilfe geeigneter Bildverarbeitungsalgorithmen ausgewertet werden. Eine Möglichkeit zur Lokalisierung besteht in der Verwendung sogenannter Fiducial Marker. Dabei handelt es sich um künstlich erzeugte, visuell eindeutig identifizierbare Markierungen, die an den zu lokalisierenden Objekten angebracht werden. Durch die Erkennung dieser Marker innerhalb eines Kamerabildes können sowohl eine eindeutige Identifikation des jeweiligen Objekts als auch die Bestimmung seiner räumlichen Lage erfolgen \cite{Kalaitzakis2021}.
+
+Fiducial Marker lassen sich hinsichtlich ihrer geometrischen Gestaltung und ihres Erkennungsverfahrens unterscheiden. Zu den grundlegenden Kategorien zählen kreisförmige, quadratische und topologische Marker sowie auf Deep Learning basierende Ansätze. Kreisförmige Marker besitzen aufgrund ihrer Geometrie Eigenschaften, die bei perspektivischen Verzerrungen vorteilhaft sein können. Quadratische Marker sind insbesondere in der Robotik und im Bereich der Augmented Realitiy weit verbreitet. Topologische Marker ermöglichen die Darstellung einer großen Anzahl unterschiedlicher Identifikationsmuster, während lernbasierte Verfahren trainierte Modelle zur Erkennung und Identifikation der Markierungen einsetzen \cite{Kuzmenko2025}. Abbildung \ref{fig:markerarten} zeigt eine Übersicht der verschiedenen Fiducial-Marker-Typen.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Bilder/Kapt2/marker-overview.jpg}
+    \caption{Übersicht verschiedener Fiducial-Marker-Systeme.
+    \cite{Kuzmenko2025}}
+    \label{fig:markerarten}
+\end{figure}
+
+Für die industrielle Robotik sind insbesondere quadratische Fiducial Marker relevant. Zu den etablierten Verfahren zählen AprilTag, ArUco und ARTag. Diese verwenden charakteristische Muster, anhand derer einzelne Marker identifiziert und ihre Position sowie Orientierung relativ zur Kamera bestimmt werden können. Voraussetzung für eine zuverlässige Positionsbestimmung ist neben der bekannten Markergröße eine geeignete Kalibrierung des Kamerasystems \cite{Kalaitzakis2021}.
+
+Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado-Rodriguez et al. (2023) anhand experimenteller Untersuchungen verglichen. Dabei wurden insgesamt 13 Markererkennungsverfahren hinsichtlich ihrer Positionsgenauigkeit, Erkennungsreichweite, Robustheit gegenüber Verdeckungen und Verarbeitungsgeschwindigkeit untersucht. Die Ergebnisse zeigen, dass insbesondere ArUco3 bei der Positionsbestimmung eine hohe Genauigkeit erreicht. Mit einem mittleren Positionsfehler von 11,5 mm erzielte ArUco3 das beste Ergebnis, gefolgt von STag mit 12,9 mm und ArUco mit 13,2 mm. AprilTag3 und AprilTag2 erreichten dagegen mittlere Positionsfehler von 14,9 mm beziehungsweise 15,9 mm. Diese Werte wurden über die untersuchten Aufnahmen bei unterschiedlichen Aufnahmebedingungen ermittelt, wobei Kamera-Marker-Abstände zwischen 1 und 6 m betrachtet wurden. Die angegebenen mittleren Positionsfehler sind daher nicht als konstante Genauigkeitswerte der jeweiligen Markerverfahren zu verstehen. Auch hinsichtlich der Verarbeitungsgeschwindigkeit zeigte ArUco3 mit 106,1 Bildern pro Sekunde die höchste Leistung. Bei der Untersuchung der zeitlichen Stabilität der erkannten Markerecken erzielten hingegen AprilTag3 und AprilTag2 die besten Ergebnisse. Die erzielbare Positionsgenauigkeit hängt darüber hinaus wesentlich von den jeweiligen Versuchsbedingungen ab. Insbesondere der Abstand zwischen Kamera und Marker, die Markerkantenlänge, die Kameraauflösung sowie der Betrachtungswinkel beeinflussen die Genauigkeit der Positionsbestimmung. Abbildung \ref{fig:markeraccuracy} zeigt den Einfluss des Kamera-Marker-Abstands und des Betrachtungswinkels auf den Positionsfehler der untersuchten Markerverfahren. Dabei ist zu erkennen, dass der Positionsfehler mit zunehmendem Abstand sowie bei abnehmendem Betrachtungswinkel tendenziell ansteigt. Insbesondere ArUco3 weist über einen großen Teil der untersuchten Abstände und Betrachtungswinkel vergleichsweise geringe Positionsfehler auf \cite{JuradoRodriguez2023}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Bilder/Kapt2/marker-distance.png}
+    \caption{Einfluss (a) des Kamera-Marker-Abstands
+    und (b) des Betrachtungswinkels auf den
+    Positionsfehler verschiedener Fiducial-Marker-Verfahren.
+    \cite{JuradoRodriguez2023}}
+    \label{fig:markeraccuracy}
+\end{figure}
+
+Die Untersuchung verdeutlicht somit, dass die Eignung eines Markererkennungsverfahrens sowohl von dessen Genauigkeit, Stabilität und Verarbeitungsgeschwindigkeit als auch von den konkreten Einsatzbedingungen abhängt. Insbesondere Abbildung \ref{fig:markeraccuracy} zeigt, dass bei geringen Kamera-Marker-Abständen deutlich niedrigere Positionsfehler erzielt werden als bei größeren Entfernungen. So lässt sich für ArUco3 bei einem Abstand von 1 m ein Positionsfehler von etwa 1,7 mm ablesen, während der über die verschiedenen Versuchsbedingungen gemittelte Positionsfehler 11,5 mm beträgt. Für Anwendungen mit Abständen unter 1 m erscheint daher eine weitere Verbesserung der Genauigkeit grundsätzlich möglich.
+
+YOLO LOKALISIERUNG NOch VORSTELLEN?
+
+
+\subsection{Ultrabreitbandbasierte Lokalisierung}
+
+Ultra-Wideband (UWB) ist eine funkbasierte Technologie, die zur drahtlosen Kommunikation und zur Positionsbestimmung von Objekten eingesetzt werden kann. Im Gegensatz zu schmalbandigen FUnktechnologie nutzt UWB Signale mit einer besonders großen Bandbreite von mindestens 500 MHz beziehungsweise einer relativen Bandbreite von mindestens 20\%. Insbesondere bei impulsbasierten UWB-Verfahren ermöglichen kurze Funkimpulse eine hohe zeitliche Auflösung der Signallaufzeitmessung und damit eine vergleichsweise präzise Abstandsmessung \cite{Elsanhoury2022}.
+
+Die Positionsbestimmung erfolgt typischerweise mithilfe mehrerer Referenzstationen, sogenannter Anchors, deren räumliche Positionen bekannt sind. Das zu lokalisierende Objekt wird mit einem UWB-Sender beziehungsweise Tag ausgesattet, der Funksignale mit den Referenzstationen austauscht. Aus den empfangenen Signalen können mithilfe unterschiedlicher Verfahren Informationen über die Entferung zu den einzelnen Referenzstationen gewonnen werden. Zu den verbreiteten Methoden zählen Time of Arrival (ToA), Time Difference of Arrival (TDoA) und Two-Way Ranging (TWR). Während ToA auf der Messung der absoluten Signallaufzeit basiert, werden bei TDoA die Laufzeitunterschiede zwischen mehreren Empfangsstationen ausgewertet. TWR ermöglicht dagegen die Entfernungsschätzung anhand eines Signalaustauschs zwischen zwei Geräten \cite{Elsanhoury2022}.
+
+Bei der laufzeitbasierten Entfernungsmessung ergibt sich der Abstand zwischen Sender und Empfänger grundsätzlich aus der Ausbreitungsfeschwindigkeit des Funksignals und dessen Laufzet:
+
+\begin{equation}
+    d = c \cdot \Delta t
+    \label{eq:uwb_distance}
+\end{equation}
+
+
+Dabei bezeichnet \(d\) die Entfernung zwischen Sender und Empfänger, \(c\) die Lichtgeschwindigkeit und \(\Delta t\) die einfache Signallaufzeit. Bei Two-Way Ranging (TWR) wird diese unter Berücksichtigung der Antwortverzögerung aus der gemessenen Hin- und Rücklaufzeit ermittelt. Durch die Kombination mehrerer Entfernungsmessungen zu bekannten Referenzstationen kann anschließend mithilfe der Trilateration die Position des Objekts bestimmt werden. Für die dreidimensionale Positionsbestimmung werden typischerweise mindestens vier geeignet angeordnete Referenzstationen eingesetzt. Bei bekannten Entfernungen können unter geeigneten geometrischen Bedingungen auch drei Referenzstationen ausreichen, sofern die Mehrdeutigkeit der Positionslösung aufgelöst werden kann. Muss zusätzlich eine unbekannte Zeitabweichung geschätzt werden, sind weitere unabhängige Messungen erforderlich. Die Genauigkeit der Positionsschätzung hängt dabei unter anderem von der räumlichen Anordnung der Referenzstationen und der Genauigkeit der einzelnen Entfernungsmessungen ab
+\cite{Elsanhoury2022}.
+
+
+Ein wesentlicher Vorteil der UWB-Technologie liegt in ihrer vergleichsweise hohen Genauigkeit gegenüber vielen anderen funkbasierten Lokalisieungsverfahren. Elsanhoury et al. beschreiben für Anwendungen in der Indoor-Logistik Positionsgenauigkeiten im Bereich von etwa 5 bis 30 cm. Die tatsächlich erreichbare Genauigkeit ist jedoch von der eingesetzten Hardware, dem Lokalisierungsverfahren und den Umgebundsbedingen abhängig. Insbesondere in industriellen Umgebungen können metallische Objekte und andere Hindernisse durch Signalreflexionen und Abscahttungen die Positionsbestimmung beeinträchtigen. Neben den laufzeitbasierten Verfahren kann die Positionsbestimmung auch anhand der Einfallswinkel empfangener Funksignale (Angle of Arrival, AoA) oder der empfangenen Signalstärke (Received Signal Strength, RSS) erfolgen. Während bei AoA die Einfallsrichtung des Signals bestimmt wird, dient bei RSS die empfangene Signalstärke zur Abschätzung der Entfernung zwischen Sender und Empfänger \cite{Elsanhoury2022}. Abbildung \ref{fig:uwb_localization} veranschaulicht die unterschiedlichen Verfahren der funkbasierten Positionsbestimmung anhand von Einfallswinkeln, Entfernungen und Signallaufzeitdifferenzen.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Bilder/Kapt2/UWB.pdf}
+    \caption{Verfahren zur funkbasierten Positionsbestimmung:
+    (a) Angle of Arrival (AoA),
+    (b) Time of Arrival (ToA), Two-Way Ranging (TWR)
+    und Received Signal Strength (RSS) sowie
+    (c) Time Difference of Arrival (TDoA).
+    \cite{Elsanhoury2022}}
+    \label{fig:uwb_localization}
+\end{figure}
+
+Eine besondere Herausforderung stellen sogenannte Non-Line-of-Sight-Bedingungen (NLOS) dar, bei denen keine direkte Sichtverbindung zwischen Sender und Empfänger besteht. In solchen Situationen können Funksignale über reflektierte Ausbreitungswege empfangen werden, wodurch sich die gemessene Signallaufzeit gegenüber dem direkten Übertragungsweg erhöht. Dies kann zu systematischen Fehlern bei der Entfernungsschätzung und damit zu einer ungenauen Positionsbestimmung führen. Trotz der vergleichswiese guten Eigenschaften von UWB bei Mehrwegausbreitung können solche Fehler nicht vollständig vermieden werden \cite{Elsanhoury2022}.
+
+UWB-basierte Lokalisierungssysteme werden insbesondere zur Positionsbestimmung von Fahrzeugen, mobilen Robotern, Materialien und anderen Ressourcen in industriellen Innenräumen eingesetzt. Die Technologie ermöglicht eine funkbasierte Ortung ohne kamerabasierte Erkennung und ist daher nicht unmittelbar von den Beleuchtungsverhältnissen abhängig. Allerdings erfordert die Positionsbestimmung die Installation geeigneter Referenzstationen sowie die Ausstattung der zu lokalisierenden Objekte mit entsprechender Hardware \cite{Elsanhoury2022}.
+
+Bei konventionellen laufzeitbasierten UWB-Systemen wird zunächst die räumliche Position eines einzelnen Tags bestimmt. Aus dieser Position allein lässt sich die vollständige Orientierung eines Moduls jedoch nicht ableiten. Hierfür sind zusätzliche Informationen erforderlich. Chen et al. zeigen, dass durch den Einsatz mehrerer räumlich getrennter UWB-Tags mit bekannter geometrischer Anordnung sowohl die Position als auch die Orientierung eines Objekts bestimmt werden können \cite{Chen2025UWB}.
+
+Zusammenfassend stellt UWB eine Möglichkeit zur flexiblen Positionsbestimmung von Objekten innerhalb industrieller Umgebungen dar. Während die Technologie insbesondere bei der Lokalisierung beweglicher Ressourcen und größerer Arbeitsbereiche Vorteile bietet, müssen bei Anwendungen mit hohen Anforderungen an die Positions- und Orientierungsgenauigkeit die erreichbare Messgenauigkeit, die erforderliche Infrastruktur sowie mögliche Störeinflüsse berücksichtigt werden.
+
+\subsection{Feldbasierte Lokalisierung}
+
+MINI EINLEITUNG ERGÄNZEN
+
+\subsubsection{RFID Grid}
+
+Radio Frequency Identification (RFID) ist eine funkbasierte Technologie, mit der sich Objekte kontaktlos über elektromagnetische Felder identifizieren lassen. Ein typisches System besteht aus einem Lesegerät (Reader) mit Antenne und einem Transponder, dem RFID-Tag. Jeder der verwendeten RFID-Tags besitzt eine eindeutige Kennung, die das Lesegerät erfasst und einem bestimmten Objekt oder einer bekannten Position zuordnen kann. Bei passiven Tags erfolgt die Energieversorgung ausschließlich über das Feld des Readers, sodass keine eigene Stromquelle nötig ist \cite{MiTakahashi2016}.
+
+Für die Positionsbestimmung können die Tags in einem regelmäßigen räumlichen Raster angeordnet werden, dem sogenannten RFID-Grid. Die Positionen der einzelnen Tags sind dabei bekannt und werden in einer Karte hinterlegt. Ein mit RFID-Lesegeräten ausgestatteter Roboter liest die Kennungen der Tags in seinem Erfassungsbereich und kann daraus Informationen über seine eigene Position ableiten. Mi und Takahashi beschreiben ein solches System, bei dem passive Tags rasterförmig im Boden installiert und mehrere Reader an der Unterseite eines mobilen Roboters angebracht sind \cite{MiTakahashi2016}. Abbildung~\ref{fig:rfid_grid} veranschaulicht die Anordnung der RFID-Tags und des mobilen Roboters.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{Bilder/Kapt2/RFID-Grid.pdf}
+    \caption{Prinzip der RFID-Grid-basierten
+    Lokalisierung eines mobilen Roboters
+    anhand rasterförmig angeordneter
+    RFID-Tags \cite{MiTakahashi2016}.}
+    \label{fig:rfid_grid}
+\end{figure}
+
+Die eigentliche Lokalisierung erfolgt über die Zuordnung der erkannten Tag-IDs zu den bekannten Koordinaten im Raster. Da die bloße Erkennung eines Tags nur anzeigt, dass sich dieser im Erfassungsbereich eines Readers befindet, lässt sich die exakte Position nicht aus einer einzelnen Messung ableiten. Für eine genauere Schätzung werden daher mehrere Messungen und Informationen über die Bewegung des Roboters einbezogen. Mi und Takahashi setzen hierzu die Monte-Carlo-Lokalisierung (MCL) ein, ein probabilistisches Verfahren, das mögliche Positionen und Orientierungen anhand eines Bewegungsmodells und der beobachteten Tags bewertet. Auf diese Weise können sowohl die Position als auch die Orientierung des Roboters in der Ebene geschätzt werden \cite{MiTakahashi2016}.
+
+Die erreichbare Genauigkeit hängt unter anderem von der Dichte und Anordnung der Tags, der Zahl und Größe der Reader-Antennen sowie dem gewählten Lokalisierungsverfahren ab. In den Untersuchungen von Mi und Takahashi kam ein HF-RFID-System mit acht Lesegeräten und passiven Tags zum Einsatz, die mit 100 bzw. 16 Tags pro Quadratmeter im Boden verteilt waren. Zur experimentellen Bestimmung der Lokalisierungsfehler
+wurde die Position des Roboters an acht bekannten Messpunkten ausgewertet, wobei der Roboter an jedem Messpunkt für 20 Sekunden angehalten wurde. Bei der höheren Dichte von 100 Tags/m² ergaben sich mit dem kombinierten Wahrscheinlichkeitsmodell mittlere Fehler von 4,7 mm in x-Richtung und 22,8 mm in y-Richtung. Bei der geringeren Dichte von 16 Tags/m² lagen die mittleren Abweichungen bei 13,0 mm bzw. 8,7 mm. Die Ergebnisse verdeutlichen, dass auch bei einer geringeren Tag-Dichte unter den untersuchten Bedingungen eine Lokalisierung mit vergleichsweise geringen Abweichungen möglich ist. Allerdings treten bei niedrigerer Dichte teilweise größere maximale Abweichungen auf \cite{MiTakahashi2016}.
+
+Ein klarer Vorteil der RFID-Grid-Lokalisierung liegt darin, dass die Identifikation der Tags ohne optische Sensoren auskommt und damit weitgehend unabhängig von den Lichtverhältnissen ist. Passive Tags ermöglichen zudem die Installation zahlreicher Referenzpunkte, ohne dass an jedem einzelnen eine Energieversorgung vorgesehen werden muss. Demgegenüber steht der Aufwand für die Installation des Rasters und die Notwendigkeit, die genauen Positionen aller Tags zu kennen. Außerdem beeinflussen die Erfassungsbereiche der Reader und mögliche Störungen bei der Tag-Erkennung sowohl die Genauigkeit als auch die Zuverlässigkeit der Positionsbestimmung \cite{MiTakahashi2016}.
+
+RFID-Grid-Systeme eignen sich damit grundsätzlich zur Lokalisierung von Objekten in strukturierten Umgebungen. Die untersuchten Ansätze sind vor allem für mobile Roboter gedacht, die sich über einem bekannten Tag-Raster bewegen. Für die Lokalisierung modularer Komponenten innerhalb einer Roboterzelle wäre eine entsprechende Anpassung der Tag- und Reader-Anordnung erforderlich. Dabei ist zu beachten, dass die in der Literatur berichteten Genauigkeiten stark von der jeweiligen Systemkonfiguration abhängen und nicht ohne Weiteres auf andere Anwendungen übertragbar sind.
+
+\subsubsection{Hall-Sensor-Array}
+
+Hall-Sensoren ermöglichen die kontaktlose Erfassung magnetischer Felder und können zur Positionsbestimmung von Objekten eingesetzt werden. Sie basieren auf dem Hall-Effekt und liefern ein elektrisches Ausgangssignal in Abhängigkeit von der magnetischen Flussdichte. Werden mehrere Hall-Sensoren in einer definierten räumlichen Anordnung kombiniert, entsteht ein sogenanntes Hall-Sensor-Array. Durch die Auswertung der Messsignale mehrerer Sensoren können Informationen über die Position einer magnetischen Quelle gewonnen werden. Hall-Sensoren zeichnen sich unter anderem durch ihre kompakte Bauform und vergleichsweise geringen Kosten aus \cite{KawatoKim2005}.
+
+Ein mögliches Lokalisierungsprinzip besteht darin, das zu lokalisierende Objekt mit einem Permanentmagneten auszustatten und dessen Magnetfeld mithilfe eines stationären Sensorarrays zu erfassen. Die einzelnen Sensoren messen die magnetische Flussdichte an unterschiedlichen räumlichen Positionen. Da sich die gemessenen Feldstärken mit der Position und Orientierung des Magneten verändern, kann aus der Kombination der Messwerte auf dessen räumliche Lage geschlossen werden. Song et al. untersuchen ein solches System, bei dem ein Permanentmagnet an der Spitze eines flexiblen Roboters angebracht ist. Ein darunter angeordnetes magnetisches Sensorarray erfasst das Magnetfeld und ermöglicht so die Positionsbestimmung der Roboterspitze \cite{Song2026Magnetic}. Abbildung~\ref{fig:hall_localization} zeigt den prinzipiellen Aufbau einer magnetfeldbasierten Lokalisierung mit einem Permanentmagneten und einem stationären Sensorarray.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{Bilder/Kapt2/Hall-Array.pdf}
+    \caption{Magnetfeldbasierte Lokalisierung
+    eines flexiblen Roboters mit Permanentmagnet
+    und stationärem Sensorarray
+    (aus \cite{Song2026Magnetic}, Abb.~1).}
+    \label{fig:hall_localization}
+\end{figure}
+
+Für die eigentliche Positionsberechnung können unterschiedliche Auswerteverfahren eingesetzt werden. Song et al. verwenden ein mathematisches Magnetfeldmodell und einen erweiterten Kalman-Filter (Extended Kalman Filter, EKF), um aus den Sensormessungen die dreidimensionale Position des Permanentmagneten zu schätzen \cite{Song2026Magnetic}. Einen anderen Ansatz verfolgen Németh et al., die ein Hall-Sensor-Array mit einem neuronalen Netz kombinieren. Dabei werden die Messwerte mehrerer Hall-Sensoren als Eingangsgrößen eines zuvor trainierten Regressionsmodells verwendet, das daraus die Position des Magneten vorhersagt. Das Modell wird auf einem Mikrocontroller ausgeführt und ermöglicht somit die Positionsschätzung ohne einen externen Hochleistungsrechner \cite{Nemeth2025Hall}.
+
+Neben der Position kann unter geeigneten Bedingungen auch die Orientierung eines Körpers aus magnetischen Messungen bestimmt werden. Kawato und Kim untersuchen hierzu einen magnetisch gelagerten Positioniertisch, der sich über einer Halbach-Magnetmatrix bewegt. Zwei zweiachsige Hall-Sensoren erfassen dabei unterschiedliche Komponenten des räumlich veränderlichen Magnetfeldes. Mithilfe eines modellbasierten Auswerteverfahrens, der Gaussian Least Squares Differential Correction (GLSDC), bestimmen die Autoren sowohl die Position in der Ebene als auch den Rotationswinkel um die vertikale Achse. Die Untersuchung zeigt damit die Möglichkeit einer magnetfeldbasierten Positions- und Orientierungsbestimmung in drei Freiheitsgraden \cite{KawatoKim2005}.
+
+Die erreichbare Genauigkeit hängt von der jeweiligen Systemkonfiguration und dem eingesetzten Auswerteverfahren ab. Kawato und Kim berichten für ihren magnetisch gelagerten Positioniertisch nach entsprechender Kalibrierung eine Positionsauflösung im Bereich unter 10 µm sowie einen maximalen Positionsfehler von etwa 1,4 mm \cite{KawatoKim2005}. Song et al. erreichen bei der Lokalisierung der Spitze eines flexiblen Roboters einen Positionsfehler von ungefähr 3 mm. Die mithilfe dieser Positionsinformationen realisierte geschlossene Regelung weist bei den untersuchten Bewegungsbahnen einen Positionsregelungsfehler von etwa 5 mm auf \cite{Song2026Magnetic}. Németh et al. berichten für die Positionsvorhersage ihres neuronalen Netzes mittlere absolute Fehler zwischen 0,0263 und 0,0381 mm innerhalb der untersuchten Versuchskonfiguration. Diese Ergebnisse beziehen sich auf ein magnetisches Schwebesystem mit einem begrenzten Arbeitsbereich und lassen sich daher nicht unmittelbar auf andere Anwendungen übertragen \cite{Nemeth2025Hall}.
+
+Ein Vorteil der magnetfeldbasierten Lokalisierung besteht darin, dass keine optische Sichtverbindung zwischen Sensoren und dem zu lokalisierenden Objekt erforderlich ist. Bei Verwendung eines Permanentmagneten benötigt das Objekt zudem weder eine eigene Energieversorgung noch eine elektrische Verbindung zur Sensorik. Allerdings ist die erreichbare Lokalisierungsgenauigkeit unter anderem vom Abstand zwischen Magnet und Sensorarray sowie von der räumlichen Anordnung der Sensoren abhängig. Song et al. weisen außerdem darauf hin, dass externe magnetische Störfelder, beispielsweise durch ferromagnetische Objekte oder elektronische Geräte, die Positionsschätzung beeinträchtigen können \cite{Song2026Magnetic}. Auch Sensorausgangsfehler, Rauschen und Temperatureinflüsse können die Messgenauigkeit begrenzen \cite{KawatoKim2005}.
+
+Hall-Sensor-Arrays stellen somit eine Möglichkeit zur kontaktlosen Lokalisierung magnetisch markierter Objekte dar. Die untersuchten Verfahren zeigen, dass sowohl die Positionsbestimmung als auch unter geeigneten Bedingungen die Erfassung der Orientierung möglich ist. Bei einer Übertragung auf die Lokalisierung modularer Komponenten innerhalb einer Roboterzelle wären insbesondere die Anordnung der Sensoren, die Positionierung der Magnete sowie mögliche magnetische Störeinflüsse zu berücksichtigen. Die in den Untersuchungen erzielten Genauigkeiten sind dabei an die jeweiligen experimentellen Bedingungen gebunden und können nicht ohne Weiteres auf eine andere Systemkonfiguration übertragen werden.
+
+\subsection{Gegenüberstellung der Lokalisierungstechnologien}
+
+
