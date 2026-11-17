@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Injiziert die Projektregeln aus CLAUDE.md in jede Claude-Code-Session.
+"""Inject the project rules from CLAUDE.md into every Claude Code session.
 
-Registriert in .claude/settings.json fuer SessionStart, SubagentStart und den
-ersten Schreibzugriff einer Session. Liest nur, blockiert nie: bei jedem Fehler
-wird still mit Exit-Code 0 beendet, damit eine Session niemals an diesem Hook
-haengen bleibt.
+Registered in .claude/settings.json for SessionStart, SubagentStart and the
+first write of a session. Only reads, never blocks: on any error it exits
+quietly with code 0, so a session never hangs on this hook.
 
-Ausgabe (stdout):
+Output (stdout):
     {"hookSpecificOutput": {"hookEventName": "...", "additionalContext": "..."}}
 """
 
@@ -17,26 +16,29 @@ import re
 import sys
 from pathlib import Path
 
-REGELN = """PROJEKTREGELN (CLAUDE.md, verbindlich fuer alle Teammitglieder und Agenten):
+REGELN = """PROJECT RULES (CLAUDE.md, binding for all team members and agents):
 
-1. VOR der ersten inhaltlichen Aenderung die relevanten MDs unter
-   doc/projektdoku/ lesen.
-2. Aufgaben groesser als ein Einzeiler bekommen VOR der Umsetzung einen Plan
-   unter doc/projektdoku/arbeitsplaene/<thema>.md (Vorlage:
-   doc/projektdoku/arbeitsplaene/_vorlage.md), inklusive Abschnitt
-   "Schnittstellen" (OPC-UA-NodeIds/Methoden, Python-Signaturen, Payloads,
-   Ports) - damit andere ohne diesen Code dagegen entwickeln koennen.
-3. Neuen Plan in die Tabelle in doc/projektdoku/arbeitsplaene/README.md
-   eintragen.
-4. Steht zum Thema bereits ein Plan "in Arbeit" von jemand anderem: nicht
-   parallel implementieren, sondern dort andocken oder nachfragen.
+0. Language: English for all documentation, docstrings, code comments and
+   commit messages. Runtime texts (log, error, OPC UA messages, UI texts)
+   stay German until migrated deliberately.
+1. BEFORE the first substantive change, read the relevant MDs under
+   doc/projektdoku/.
+2. Tasks bigger than a one-liner get a plan BEFORE implementation under
+   doc/projektdoku/arbeitsplaene/<topic>.md (template:
+   doc/projektdoku/arbeitsplaene/_vorlage.md), including the section
+   "Interfaces" (OPC UA NodeIds/methods, Python signatures, payloads, ports)
+   - so others can develop against it without this code.
+3. Add the new plan to the table in doc/projektdoku/arbeitsplaene/README.md.
+4. If a plan on the topic is already "in progress" by someone else: do not
+   implement in parallel; join that plan or ask.
 """
 
-KOPFZEILE = re.compile(r"^\*\*(Status|Verantwortlich):\*\*\s*(.+?)\s*$", re.MULTILINE)
+#: Plan header fields; "Verantwortlich" is the German name of "Owner" in older plans.
+KOPFZEILE = re.compile(r"^\*\*(Status|Owner|Verantwortlich):\*\*\s*(.+?)\s*$", re.MULTILINE)
 
 
 def projekt_wurzel() -> Path:
-    """Repo-Wurzel: das Verzeichnis oberhalb von .claude/hooks/."""
+    """Repo root: the directory above .claude/hooks/."""
     return Path(__file__).resolve().parents[2]
 
 
@@ -56,7 +58,7 @@ def fachdoku(wurzel: Path) -> str:
         f"- doc/projektdoku/{p.name} — {erste_ueberschrift(p)}".rstrip(" —")
         for p in sorted((wurzel / "doc" / "projektdoku").glob("*.md"))
     ]
-    return "\n".join(zeilen) if zeilen else "  (keine)"
+    return "\n".join(zeilen) if zeilen else "  (none)"
 
 
 def arbeitsplaene(wurzel: Path) -> str:
@@ -70,9 +72,9 @@ def arbeitsplaene(wurzel: Path) -> str:
             kopf = {}
         zeilen.append(
             f"- doc/projektdoku/arbeitsplaene/{p.name} — Status: {kopf.get('Status', '?')}"
-            f" | Verantwortlich: {kopf.get('Verantwortlich', '?')}"
+            f" | Owner: {kopf.get('Owner') or kopf.get('Verantwortlich', '?')}"
         )
-    return "\n".join(zeilen) if zeilen else "  (noch keine Arbeitsplaene vorhanden)"
+    return "\n".join(zeilen) if zeilen else "  (no work plans yet)"
 
 
 def main() -> int:
@@ -88,9 +90,9 @@ def main() -> int:
     wurzel = projekt_wurzel()
     kontext = (
         f"{REGELN}\n"
-        f"Vorhandene Fachdokumentation:\n{fachdoku(wurzel)}\n\n"
-        f"Arbeitsplaene:\n{arbeitsplaene(wurzel)}\n\n"
-        "Volltext der Regeln: CLAUDE.md im Wurzelverzeichnis des Repositories."
+        f"Existing topic documentation:\n{fachdoku(wurzel)}\n\n"
+        f"Work plans:\n{arbeitsplaene(wurzel)}\n\n"
+        "Full text of the rules: CLAUDE.md in the root directory of the repository."
     )
 
     json.dump(
@@ -104,5 +106,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:  # ein Hook darf die Session nie blockieren
+    except Exception:  # a hook must never block the session
         sys.exit(0)
