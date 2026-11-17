@@ -121,7 +121,7 @@ class BoardMeasureMixin:
         return pose, "", error_px, corners, calibration
 
     def default_board_spec(self):
-        """Return the board from the camera configuration."""
+        """Return the configured board, used when a `MeasureBoard` request names none."""
         return self._config.calibration_board_spec()
 
     async def measure_board_view(self, request) -> dict:

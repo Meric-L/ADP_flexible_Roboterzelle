@@ -88,7 +88,7 @@ Frontend                                          Vision-Server
 
 | Name | NodeId | Typ | Bedeutung |
 | --- | --- | --- | --- |
-| `StartCalibration` | `ns=<vision>;s=VisionMachine.StartCalibration` | Methode, kein Input, `Error: Int32` | Setzt Aufnahmen zurück, startet Session |
+| `StartCalibration` | `ns=<vision>;s=VisionMachine.StartCalibration` | Methode, Input `OptionsJson: String` (seit 17.11.2026), `Error: Int32` | Setzt Aufnahmen zurück, startet Session mit dem Brett aus `OptionsJson` (leer = Brett der Konfiguration) |
 | `CaptureCalibrationSample` | `ns=<vision>;s=VisionMachine.CaptureCalibrationSample` | Methode, kein Input, `Error: Int32` | Merkt sich das aktuelle Bild (keine Erkennung) |
 | `FinishCalibration` | `ns=<vision>;s=VisionMachine.FinishCalibration` | Methode, kein Input, `Summary: String, Error: Int32` | **Pflichtschritt**: beendet die Aufnahme, stößt die Auswertung im Hintergrund an — `Summary` ist nicht das Ergebnis, siehe oben |
 | `AbortCalibration` | `ns=<vision>;s=VisionMachine.AbortCalibration` | Methode, kein Input, `Error: Int32` | Verwirft ohne auszuwerten/zu speichern |
@@ -97,9 +97,16 @@ Frontend                                          Vision-Server
 | `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64-JPEG), nur lesen | Bild fürs `<img>`/Canvas — liefert während der Auswertung nur noch das letzte Bild vor der Pause |
 | `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **schreibbar** | `"off"` \| `"apriltag"` \| `"calibration"` \| `"undistorted"` — vor/bei Kalibrierstart auf `"calibration"` setzen |
 
-**Kein Board-Parameter wird je vom Frontend gesendet.** Board-Typ,
-Maße, cols/rows stehen serverseitig fest (pro Pi konfiguriert). Das
-Frontend startet/löst aus/liest, sonst nichts.
+**Board-Parameter gehen seit 17.11.2026 mit `StartCalibration` mit** (Eingabe
+`OptionsJson`, Schema `wsc.vision.calibration.start/1`, Feld `board` als
+Schachbrett oder ChArUco, Regeln wie bei der Hand-Auge-Kalibrierung; Details
+in [`vision-server-interface.md`](vision-server-interface.md) Abschnitt 12.1).
+Leer oder `{}` bedeutet: Brett der Pi-Konfiguration. Ein abgelehntes Brett
+kommt mit `Error=2` (`INVALID_ARGUMENT`) und dem Grund in
+`CalibrationProgress.startError`. Das Brett der Session steht in
+`CalibrationProgress.board`. Pi und Frontend nur zusammen aktualisieren (die
+Argumentanzahl wird streng geprüft). Sonst startet/löst das Frontend aus/liest
+es wie bisher.
 
 ### `CalibrationProgress` — das JSON, das du pollst/abonnierst
 
@@ -219,9 +226,9 @@ Server-Neustart.
    Grund; einfach `StartCalibration` neu aufrufen und diesmal das Board
    deutlich kippen (±30°) und im Abstand variieren.
 
-6. **Layer 1 (Deckenkamera) ist über cols/rows/Größe auf dieselbe
-   Board-Geometrie wie Layer 2 eingestellt, aber (Stand jetzt) noch nicht
-   final vermessen/fest montiert** (siehe Abschnitt 12.8 in
+6. **Layer 1 (Deckenkamera) nimmt das Brett seit 17.11.2026 über `OptionsJson`
+   entgegen (Frontend-Einstellung wie bei Layer 2), ist aber (Stand jetzt) noch
+   nicht final vermessen/fest montiert** (siehe Abschnitt 12.8 in
    `vision-server-interface.md`). Für einen ersten Integrationstest ist
    Layer 2 (Hand-Pi, `cam_flange`) der verlässlichere Kandidat.
 

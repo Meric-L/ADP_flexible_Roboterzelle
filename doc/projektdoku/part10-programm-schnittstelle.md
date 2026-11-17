@@ -279,7 +279,7 @@ Objects/
 │       ├── LatestCameraFrame         Verweis  (Base64-JPEG, nur mit Kamera)
 │       ├── CameraStreamMode          Verweis, **beschreibbar**
 │       └── CalibrationProgress       Verweis  (JSON, nur mit AprilTag-Profil)
-├── StartCalibration                  Verweis auf die 40100-Methode, keine Eingaben
+├── StartCalibration                  Verweis auf die 40100-Methode, Eingabe OptionsJson (String, leer = Brett der Konfiguration)
 ├── CaptureCalibrationSample          Verweis; Error: Int32
 ├── FinishCalibration                 Verweis; Summary: String, Error: Int32
 └── AbortCalibration                  Verweis; Error: Int32

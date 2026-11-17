@@ -30,13 +30,13 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/boardCalibrationPoses.ts`
 
-- Taught FR3 poses for ceiling-camera chessboard calibration (`CALIBRATION_POSITION_COUNT`, joint limit margin, tool point).
+- Taught FR3 poses for ceiling-camera board calibration (joint limit margin, tool point). No fixed count since 17.11.2026: any number from `MIN_CALIBRATION_POSITIONS` (3) on.
 - Entry points: `taughtPositionsFromStorage`, `taughtPositionsForStorage`, `stopsFromPositions`, `variedWrist`, `turnedAboutToolPoint`.
 
 ### `model/boardCalibrationRunner.ts`
 
 - State machine that drives the taught board poses, takes pictures, and checks the board is seen (`idle` … states in the header comment).
-- Entry points: `BoardRunner`, `stepsForPasses`, `BoardRunState`, `BoardCheck`; constants `TARGET_PICTURES`, `MAX_PASSES`, `MIN_PICTURES`, `SETTLE_MS`.
+- Entry points: `BoardRunner`, `stepsForPasses`, `targetPictures(count)`, `BoardRunState`, `BoardCheck`; constants `TARGET_PICTURES` (20, the minimum target), `MAX_PASSES`, `MIN_PICTURES`, `SETTLE_MS`. `targetPictures` is `max(TARGET_PICTURES, count)`, so every taught position gets at least one picture (since 17.11.2026).
 
 ### `model/boardCentring.ts`
 
@@ -597,7 +597,7 @@ Scope: `frontend/src/features/cell-modules/components/` (28 files, grouped by fe
 ### `components/BoardCalibrationRobot.tsx`
 - Three panels for the robot part of the camera 1 board calibration: `BoardRobotSetup` (choose the robot holding the board, page through or teach saved positions, nothing is driven), `BoardRobotStatus` (live run status, checks, gripper and drive controls), and `BoardRobotAfterRun` (result after the run).
 - Entry points: named exports `BoardRobotSetup`, `BoardRobotStatus`, `BoardRobotAfterRun`, each taking a `BoardCalibrationRun`. Private helpers `GripperButton`, `Checks`, `formatSavedAt`.
-- Uses `model/boardCalibrationPoses` (`CALIBRATION_POSITION_COUNT`), `model/boardCalibrationRunner` (`TARGET_PICTURES`), and type `BoardCalibrationRun` from `model/useBoardCalibrationRun`.
+- Uses `model/boardCalibrationPoses` (`MIN_CALIBRATION_POSITIONS`), `model/boardCalibrationRunner` (`targetPictures`), and type `BoardCalibrationRun` from `model/useBoardCalibrationRun`.
 - Used by `opcua-server/components/CameraCalibrationModal.tsx`.
 
 #### Tag reference

@@ -657,8 +657,10 @@ Verhalten:
   man im Stream etwas anderes als im Jobergebnis, liegt es folglich nicht an
   zwei verschiedenen Konfigurationen.
 - Im `calibration`-Modus sucht das Overlay mit **derselben Board-Geometrie**
-  wie `CaptureCalibrationSample` (Abschnitt 12.2, aus `AprilTagProfileConfig`)
-  — nicht aus der geladenen Kalibrierdatei. Bei einer Platzhalter-Kalibrierung
+  wie `CaptureCalibrationSample` (Abschnitt 12.2) — nicht aus der geladenen
+  Kalibrierdatei. Seit 17.11.2026 ist das das Brett der laufenden Session
+  (`StartCalibration` mit `OptionsJson`, Abschnitt 12.1); ohne Session oder ohne
+  Angabe das Brett aus `AprilTagProfileConfig`. Bei einer Platzhalter-Kalibrierung
   (Abschnitt 9, `allow_placeholder_calibration`) gibt es dort kein Board-Feld;
   eine andere Geometrie anzunehmen hätte die Ecken-Erkennung im Stream leer
   laufen lassen, obwohl das eigentliche Erfassen die Ecken findet.
@@ -1096,9 +1098,10 @@ Direkt nach dem Speichern übernehmen die laufende Erkennung (`apriltag`-Job)
 und das Stream-Overlay die neuen Werte — der nächste Job nach einer
 erfolgreichen Kalibrierung rechnet bereits damit.
 
-**Board-Geometrie ist serverseitig fest konfiguriert** (`AprilTagProfileConfig`
-in `profiles.py`, pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`) —
-das Frontend sendet und kennt keine Board-Parameter.
+**Board-Geometrie ist seit 17.11.2026 wählbar** (ein Board-Parameter wird
+mit `StartCalibration` mitgeschickt, Abschnitt 12.1). Ohne diese Angabe gilt
+weiter das Brett der Konfiguration (`AprilTagProfileConfig` in `profiles.py`,
+pro Pi in `PI_APRILTAG_PRESETS` in `src/vision_server/server.py`).
 
 ### 12.1 `StartCalibration`
 
@@ -1106,9 +1109,44 @@ Setzt gesammelte Aufnahmen zurück und beginnt eine neue Session. Aufnahmen
 kommen danach ausschließlich über `CaptureCalibrationSample` (Abschnitt
 12.2) — kein automatisches Erfassen.
 
+| Eingabe | Typ | Bedeutung |
+| --- | --- | --- |
+| `OptionsJson` | `String` | seit 17.11.2026. Leer oder `{}`: Brett aus der Konfiguration (wie bisher). Sonst JSON mit `schema` `wsc.vision.calibration.start/1` und `board` (siehe unten). Ein direkter asyncua-Aufruf ohne Argument funktioniert weiter (Standardwert leer) |
+
 | Ausgabe | Typ | Bedeutung |
 | --- | --- | --- |
-| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `3` (`BUSY`, es läuft bereits ein Job, eine Session oder noch eine Auswertung aus einem vorherigen `FinishCalibration`) |
+| `Error` | `Int32` | `0` (`OK`), `1` (`INVALID_STATE`, Automat nicht `Ready`), `2` (`INVALID_ARGUMENT`, seit 17.11.2026: `OptionsJson` kein gültiges JSON, falsches Schema oder unbrauchbares Brett; keine Session gestartet, eine vorherige bleibt unberührt, Grund in `CalibrationProgress.startError`), `3` (`BUSY`, es läuft bereits ein Job, eine Session oder noch eine Auswertung aus einem vorherigen `FinishCalibration`) |
+
+**Brett wählen (seit 17.11.2026).** `board` folgt denselben Regeln wie das Brett
+der Hand-Auge-Kalibrierung (`wsc.vision.handeye.start/1`, Funktionen
+`handeye_session._parse_board` und `check_raw_board`):
+
+- Schachbrett (`"type": "chessboard"`): `cols`/`rows` = Innenecken, `cols + rows`
+  ungerade, Feldgröße 5–100 mm (`squareSizeM`).
+- ChArUco (`"type": "charuco"`): `cols`/`rows` = Felder (mindestens 3×3),
+  `markerSizeM` kleiner als `squareSizeM`, `dictionary` aus
+  `DICT_{4X4,5X5,6X6,7X7}_{50,100,250,1000}` mit genug Markern.
+
+```json
+{
+  "schema": "wsc.vision.calibration.start/1",
+  "board": {
+    "type": "charuco",
+    "cols": 11, "rows": 7,
+    "squareSizeM": 0.025, "markerSizeM": 0.0185,
+    "dictionary": "DICT_5X5_100"
+  }
+}
+```
+
+Fehlt `board` (oder ist `OptionsJson` leer), gilt das Brett der Konfiguration.
+Das Brett der Session steuert Auswertung, Archiv (`session.json`, Feld `board`),
+das Overlay im Modus `calibration` und das Feld `board` in `CalibrationProgress`.
+
+**Kompatibilität:** Das webskillcomposition-Backend prüft die Argumentanzahl
+streng gegen `InputArguments`. Ein altes Frontend (ruft mit `[]`) wird von
+einem neuen Pi abgelehnt, ein neues Frontend (ruft mit `[json]`) von einem
+alten Pi. Pi und Frontend werden deshalb zusammen aktualisiert.
 
 ### 12.2 `CaptureCalibrationSample`
 
@@ -1217,10 +1255,13 @@ Schreibpfad).
 | `samples` | Anzahl bisher aufgenommener Bilder (**nicht** geprüft, ob das Board darauf zu sehen ist — das entscheidet sich erst bei der Auswertung) |
 | `minSamples` | Mindestanzahl, ab der `FinishCalibration` überhaupt eine Auswertung anstößt (Config, Standard 15) |
 | `model` | Linsenmodell dieser Session, `"pinhole"` oder `"fisheye"` — schon während der Aufnahme gesetzt (Abschnitt 12.10). Fehlt im Ruhezustand ohne Session |
+| `board` | seit 17.11.2026: Brett der laufenden bzw. zuletzt gelaufenen Session (`BoardSpec.as_dict()`: `type`, `cols`, `rows`, `squareSizeM`, bei ChArUco zusätzlich `markerSizeM`, `dictionary`). Ist bei jeder Session gesetzt, auch vor dem ersten Start das Brett der Konfiguration. Ältere Pis kennen das Feld nicht |
+| `startError` | seit 17.11.2026: Grund, warum die letzte `StartCalibration`-Option abgelehnt wurde (Klartext für den Bediener). Bleibt gesetzt, bis der nächste Start gelingt; sonst fehlt das Feld |
 | `result` | **nur vorhanden, sobald die Auswertung fertig ist** (siehe unten) |
 
 Im Ruhezustand (keine Session je gestartet, oder nach `AbortCalibration`):
-`{"running": false, "processing": false}`, ohne `result`. Ein typischer
+`{"running": false, "processing": false}`, ohne `result` (ein Pi mit Session
+liefert zusätzlich das Feld `board`, siehe oben). Ein typischer
 Ablauf:
 
 ```jsonc
