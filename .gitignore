@@ -33,3 +33,28 @@ data/calibration/**
 data/handeye/**
 !data/handeye/cam_flange.json
 data/tagreference/
+
+# LaTeX-Ausarbeitung (Sync mit ShareLaTeX): alle Quell- und Bilddateien versionieren,
+# auch .jpg/.txt, die oben global ignoriert werden. Lokale Build-Artefakte bleiben draussen.
+!latex/**
+latex/**/*.aux
+latex/**/*.bbl
+latex/**/*.bcf
+latex/**/*.blg
+latex/**/*.fdb_latexmk
+latex/**/*.fls
+latex/**/*.log
+latex/**/*.out
+latex/**/*.run.xml
+latex/**/*.synctex.gz
+latex/**/*.toc
+latex/**/*.lof
+latex/**/*.lot
+latex/**/*.acn
+latex/**/*.acr
+latex/**/*.alg
+latex/**/*.glo
+latex/**/*.gls
+latex/**/*.glg
+latex/**/*.ist
+latex/PLCM-Thesis.pdf

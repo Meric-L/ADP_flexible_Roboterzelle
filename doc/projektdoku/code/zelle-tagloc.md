@@ -198,7 +198,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Not listed on purpose: `picamera2` (installed with apt on the ceiling Pi) and `pyrealsense2` (hand Pi, manual install). Comments in the file explain why.
 
 ### `setup.sh`
-- One-time setup after clone (Bash): adds the git remote `sharelatex` for the `doc/` subtree and two git aliases, `pushall` and `pullsl`.
+- One-time setup after clone (Bash): adds the git remote `sharelatex` for the `latex/` subtree and three git aliases, `pullsl`, `pushsl` and `pushall` (no force push).
 - Idempotent for the remote (skips if it exists). Echo texts are German.
 - Details: `GIT_ANLEITUNG.md`.
 

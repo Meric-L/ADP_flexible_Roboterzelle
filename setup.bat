@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 
-echo ==> ShareLaTeX Remote wird hinzugefügt...
+echo ==^> ShareLaTeX Remote wird hinzugefügt...
 git remote get-url sharelatex >nul 2>&1
 if %errorlevel% == 0 (
     echo     Remote 'sharelatex' existiert bereits, wird übersprungen.
@@ -10,12 +10,14 @@ if %errorlevel% == 0 (
     echo     Remote 'sharelatex' hinzugefügt.
 )
 
-echo ==> Git-Aliases werden eingerichtet...
-git config alias.pushall "!git push origin main && git push sharelatex $(git subtree split --prefix=doc main):master --force"
-git config alias.pullsl "!git subtree pull --prefix=doc sharelatex master --squash && git push origin main"
-echo     Aliases 'pushall' und 'pullsl' eingerichtet.
+echo ==^> Git-Aliases werden eingerichtet...
+rem Nur der Ordner latex/ wird mit ShareLaTeX synchronisiert (git subtree), ohne --force.
+git config alias.pullsl "!git subtree pull --prefix=latex sharelatex master -m 'latex: Stand von ShareLaTeX übernommen'"
+git config alias.pushsl "!git subtree push --prefix=latex sharelatex master"
+git config alias.pushall "!git push origin HEAD && git subtree push --prefix=latex sharelatex master"
+echo     Aliases 'pullsl', 'pushsl' und 'pushall' eingerichtet.
 
 echo.
-echo Fertig! Du kannst jetzt mit git pushall und git pullsl arbeiten.
+echo Fertig! Du kannst jetzt mit git pullsl, git pushsl und git pushall arbeiten.
 echo Lies GIT_ANLEITUNG.md für eine Übersicht des Workflows.
 pause

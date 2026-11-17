@@ -89,7 +89,7 @@ committet selbstständig, ohne zu pushen.
   `git push origin <branch>`.
 - `main` bekommt nur fertige, funktionierende Features. Gearbeitet wird auf
   Feature-Branches, aktuell `feature/vision-server`.
-- `doc/*.tex` ist die schriftliche Ausarbeitung. Nur anfassen, wenn die Aufgabe
+- `latex/` ist die schriftliche Ausarbeitung (Sync mit ShareLaTeX). Nur anfassen, wenn die Aufgabe
   ausdrücklich die Ausarbeitung betrifft.
 
 ## Orientierung im Repo
@@ -98,7 +98,7 @@ committet selbstständig, ohne zu pushen.
 | --- | --- |
 | `doc/projektdoku/*.md` | Fachdokumentation: Schnittstellen, Konzepte, Testanleitungen |
 | `doc/projektdoku/arbeitsplaene/` | Laufende und abgeschlossene Arbeitspläne (siehe oben) |
-| `doc/*.tex` | LaTeX-Ausarbeitung der Thesis |
+| `latex/` | LaTeX-Ausarbeitung der Thesis, per `git subtree` mit ShareLaTeX synchronisiert. Nur Dateien, die die Ausarbeitung direkt nutzt, keine `.md`-Doku |
 | `src/` | Implementierung: OPC-UA-Server, Vision, Sensorik |
 | `tests/` | Pytest-Tests |
 | `tools/` | Hilfsskripte |

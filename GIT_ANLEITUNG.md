@@ -6,7 +6,7 @@ Dieses Dokument erklärt wie du das Projekt über Git verwaltest — auch wenn d
 
 ## Was ist Git?
 
-Git ist ein Versionierungssystem. Es speichert jeden Stand deiner Dateien, sodass du jederzeit auf ältere Versionen zurückgehen kannst. Alle Änderungen werden in einem zentralen Online-Repository (GitHub) gespeichert und automatisch mit ShareLaTeX synchronisiert.
+Git ist ein Versionierungssystem. Es speichert jeden Stand deiner Dateien, sodass du jederzeit auf ältere Versionen zurückgehen kannst. Alle Änderungen werden in einem zentralen Online-Repository (GitHub) gespeichert. Der Ordner `latex/` (die schriftliche Ausarbeitung) wird zusätzlich mit ShareLaTeX synchronisiert.
 
 ---
 
@@ -46,10 +46,14 @@ Für die Synchronisation mit ShareLaTeX brauchst du ein persönliches Token — 
 
 > ShareLaTeX → oben rechts auf deinen Namen klicken → **Account-Einstellungen** → Abschnitt **Git Integration** → Token anzeigen/generieren
 
-Dieses Token verwendest du als **Passwort**, wenn git nach Zugangsdaten für ShareLaTeX fragt. Dein Benutzername ist deine TU-Darmstadt E-Mail-Adresse.
+Wenn git nach Zugangsdaten für ShareLaTeX fragt:
+- **Username:** `git` (nicht deine E-Mail-Adresse!)
+- **Passwort:** dein Token
+
+Damit du das nicht jedes Mal eingeben musst: `git config --global credential.helper store` (speichert den Token im Klartext in `~/.git-credentials`).
 
 ### 5. Setup-Skript ausführen (einmalig, pro PC)
-Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
+Das Skript richtet die ShareLaTeX-Verbindung und die Befehle `pullsl`, `pushsl` und `pushall` ein. Wer das Setup schon früher ausgeführt hat: **noch einmal ausführen**, die alten Befehle funktionieren nicht mehr.
 
 **Windows:** `setup.bat` doppelklicken
 
@@ -60,34 +64,57 @@ Das Skript richtet die ShareLaTeX-Verbindung und alle Befehle automatisch ein.
 
 ---
 
+## Was wird mit ShareLaTeX synchronisiert?
+
+**Nur der Ordner `latex/`.** Darin liegen ausschließlich die Dateien, die die Ausarbeitung direkt nutzt (`.tex`, `.bib`, Bilder, Logos). Die Markdown-Doku in `doc/` und alles andere bleibt nur auf GitHub und landet **nicht** auf ShareLaTeX.
+
+Technisch ist `latex/` ein `git subtree`: ShareLaTeX sieht den Inhalt von `latex/` als sein Projekt-Wurzelverzeichnis.
+
+**Es wird nichts überschrieben:** Kein Befehl pusht mit `--force`. Hat jemand auf ShareLaTeX weitergeschrieben, lehnt ShareLaTeX deinen Push ab; dann zuerst `git pullsl`, danach erneut pushen. Gelöschte Dateien werden nur gelöscht, wenn jemand sie wirklich gelöscht hat (normaler Git-Merge).
+
+Die Befehle wirken immer auf den Branch, auf dem du gerade bist. Für die Ausarbeitung am besten auf `main` arbeiten.
+
+---
+
 ## Täglicher Workflow
 
-### Szenario A — Du arbeitest lokal (auf deinem PC)
+### Szenario A — Du arbeitest lokal an der Ausarbeitung
 
-**Bevor du anfängst:** Immer zuerst den aktuellen Stand aus GitHub und ShareLaTeX holen:
+**Bevor du anfängst:** aktuellen Stand von GitHub und ShareLaTeX holen:
 ```bash
+git pull
 git pullsl
 ```
 
-**Wenn du fertig bist:** Änderungen speichern und hochladen:
+**Wenn du fertig bist:**
 ```bash
-git add doc/
+git add latex/
 git commit -m "Kurze Beschreibung was du gemacht hast"
 git pushall
 ```
 
-`git pushall` lädt deine Änderungen gleichzeitig zu **GitHub** und **ShareLaTeX** hoch.
+`git pushall` lädt deinen Branch zu **GitHub** und den Ordner `latex/` zu **ShareLaTeX** hoch.
 
 ---
 
 ### Szenario B — Jemand hat auf ShareLaTeX gearbeitet
 
-Wenn Änderungen auf ShareLaTeX gemacht wurden, holst du diese mit einem einzigen Befehl:
 ```bash
 git pullsl
+git push
 ```
 
-Das holt die Änderungen aus ShareLaTeX, aktualisiert `doc/` und pusht alles zu GitHub.
+`git pullsl` merged die Änderungen von ShareLaTeX in `latex/`, `git push` bringt sie zu GitHub.
+
+---
+
+### Wenn `git pushall` / `git pushsl` abgelehnt wird
+
+Meldung wie `rejected ... (fetch first)` heißt: Auf ShareLaTeX gibt es neuere Änderungen. Dann:
+```bash
+git pullsl
+git pushsl
+```
 
 ---
 
@@ -95,11 +122,12 @@ Das holt die Änderungen aus ShareLaTeX, aktualisiert `doc/` und pusht alles zu 
 
 | Befehl | Was er macht |
 |---|---|
-| `git pull` | Holt den aktuellen Stand nur von GitHub |
-| `git add doc/` | Markiert Änderungen in `doc/` zum Speichern |
+| `git pull` | Holt den aktuellen Stand von GitHub |
+| `git pullsl` | Holt Änderungen von ShareLaTeX nach `latex/` (Merge, löscht nichts ungewollt) |
+| `git pushsl` | Lädt `latex/` zu ShareLaTeX hoch (ohne `--force`) |
+| `git pushall` | Lädt den aktuellen Branch zu GitHub + `latex/` zu ShareLaTeX hoch |
+| `git add latex/` | Markiert Änderungen an der Ausarbeitung zum Speichern |
 | `git commit -m "..."` | Speichert die markierten Änderungen lokal |
-| `git pushall` | Lädt alles zu GitHub + ShareLaTeX hoch |
-| `git pullsl` | Holt Änderungen aus ShareLaTeX → GitHub |
 | `git status` | Zeigt welche Dateien geändert wurden |
 | `git log --oneline` | Zeigt die letzten gespeicherten Stände |
 
@@ -117,12 +145,13 @@ Das holt die Änderungen aus ShareLaTeX, aktualisiert `doc/` und pusht alles zu 
 
 ```
 ADP_flexible_Roboterzelle/
-├── doc/          ← LaTeX-Dokument (wird mit ShareLaTeX synchronisiert)
+├── latex/        ← LaTeX-Ausarbeitung (wird mit ShareLaTeX synchronisiert)
 │   ├── PLCM-Thesis.tex
 │   ├── chapters/
 │   ├── appendix/
 │   ├── Bilder/
 │   └── ...
+├── doc/          ← Projektdoku (Markdown), nur auf GitHub
 ├── src/          ← Quellcode (Sensorik, Algorithmen)
 ├── hardware/     ← CAD-Dateien, Schaltpläne
 └── data/         ← Messdaten, Testdatensätze
