@@ -283,8 +283,10 @@ height at 4056×3040), preset in `server.PI_APRILTAG_PRESETS`. The frame itself 
 complete: only the detector gets a view of the region (`tagloc.detector.RoiTagDetector`),
 and the corners are shifted back to full-frame coordinates. Calibration, poses, overlay
 and saved images are therefore unaffected. Job, cell watch and live-stream overlay use the
-same region (the overlay scaled to its smaller image). Not affected: calibration session
-and `MeasureBoard`.
+same region (the overlay scaled to its smaller image). The intrinsic calibration
+(`CalibrationSession`) also searches the board only in the region and shifts the corners
+back; the calibration file therefore stays at 4056×3040, and coverage is measured against
+the region. Not affected: `MeasureBoard`.
 
 The live stream shows the same region in the modes "Rohbild" (`off`) and "AprilTags
 markieren" (`apriltag`): it is cut after the overlay, and the overlay draws on a

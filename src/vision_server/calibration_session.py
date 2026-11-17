@@ -588,11 +588,10 @@ class CalibrationSession:
                     _log.warning("Auswertung: Aufnahme %s nicht lesbar, uebersprungen", path)
                     continue
                 image_size = frame_tools.image_size(image)
+                gray, offset = self._detection_view(frame_tools.to_gray(image), image_size)
                 try:
                     sample = await asyncio.wait_for(
-                        self._run_blocking(
-                            self._detect_board, frame_tools.to_gray(image), spec, board
-                        ),
+                        self._run_blocking(self._detect_board, gray, spec, board),
                         timeout=CAPTURE_DETECT_TIMEOUT_S,
                     )
                 except TimeoutError:
@@ -610,6 +609,10 @@ class CalibrationSession:
                         self._executor = None
                     continue
                 if sample is not None:
+                    if offset != (0, 0):
+                        from tagloc.boards import shift_sample
+
+                        sample = shift_sample(sample, *offset)
                     samples.append(sample)
             _log.info(
                 "Auswertung: %d von %d Aufnahmen zeigten das Board",
@@ -634,6 +637,43 @@ class CalibrationSession:
         finally:
             self._processing = False
             self._processing_done.set()
+
+    def _detection_view(self, gray: Any, image_size: tuple[int, int]) -> tuple[Any, tuple[int, int]]:
+        """Return the part of `gray` to search for the board, and its offset in the image.
+
+        With `detection_roi` set (ceiling camera) only the cell region is searched,
+        the same region as tag detection and live stream. The caller shifts the
+        corners back by the offset: the calibration keeps referring to the full frame
+        (`image_size`), which is what pose estimation works with. Without a region:
+        the whole image, offset `(0, 0)`.
+        """
+        roi = getattr(self._config, "detection_roi", None)
+        if roi is None:
+            return gray, (0, 0)
+        import numpy as np
+        from tagloc.frames import scaled_region
+
+        x0, y0, x1, y1 = scaled_region(roi, self._config.resolution, image_size)
+        if x1 <= x0 or y1 <= y0:
+            return gray, (0, 0)
+        # A contiguous copy: the chessboard functions do not all accept a strided view.
+        return np.ascontiguousarray(gray[y0:y1, x0:x1]), (x0, y0)
+
+    def _coverage_size(self, image_size: tuple[int, int]) -> tuple[int, int]:
+        """Return the size coverage is measured against: the region if set, else the image.
+
+        Measured against the full frame, a board moved through the whole region could
+        reach at most ~52 % width coverage on the ceiling camera and would look poor.
+        """
+        roi = getattr(self._config, "detection_roi", None)
+        if roi is None or image_size == (0, 0):
+            return image_size
+        from tagloc.frames import scaled_region
+
+        x0, y0, x1, y1 = scaled_region(roi, self._config.resolution, image_size)
+        if x1 <= x0 or y1 <= y0:
+            return image_size
+        return (x1 - x0, y1 - y0)
 
     async def _compute_and_save(self) -> tuple[VisionErrorCode, dict]:
         """Compute from the samples detected in `_process()` and save them.
@@ -671,7 +711,7 @@ class CalibrationSession:
             _log.exception("Kalibrierung fehlgeschlagen (%d Aufnahmen)", len(samples))
             return VisionErrorCode.DETECTION_FAILED, {"message": str(error)}
 
-        coverage = self._compute_coverage(samples, image_size)
+        coverage = self._compute_coverage(samples, self._coverage_size(image_size))
         # Assign the ID with its timestamp here already, not only when writing.
         # Otherwise detection and the live-stream overlay would get the object with
         # an empty ID, and the overlay would show no date for the new calibration

@@ -217,5 +217,61 @@ class OverlayCanvasWidthTest(unittest.TestCase):
         self.assertIsNone(_overlay_canvas_width(None, config))
 
 
+class CalibrationRegionTest(unittest.IsolatedAsyncioTestCase):
+    """The calibration searches the board only in the region, corners in full-frame pixels."""
+
+    async def test_board_is_searched_in_the_region_and_shifted_back(self):
+        from dataclasses import replace as dc_replace
+        from types import SimpleNamespace
+
+        from tagloc.boards import BoardSample
+        from tests.test_calibration_session import FAST_CONFIG, _capture_n, make_session
+
+        seen_shapes = []
+        calibrated = {}
+
+        def detect(gray, spec, board):
+            seen_shapes.append(gray.shape)
+            return BoardSample(corners=np.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=np.float32))
+
+        def calibrate(samples, image_size, spec, board, *, frame_id, model):
+            calibrated["corners"] = samples[0].corners.reshape(-1, 2).tolist()
+            calibrated["image_size"] = image_size
+            return SimpleNamespace(rms_reprojection_error=0.1, sample_count=len(samples), model=model)
+
+        coverage_sizes = []
+
+        def coverage(samples, size):
+            coverage_sizes.append(size)
+            return (0.5, 0.5)
+
+        config = dc_replace(FAST_CONFIG, resolution=(40, 30), detection_roi=(10, 5, 20, 15))
+        session, camera, _, _ = make_session(
+            config, detect_board=detect, calibrate_from_samples=calibrate, compute_coverage=coverage
+        )
+        frame = np.zeros((30, 40, 3), dtype=np.uint8)
+        camera.push = lambda: setattr(camera, "latest_frame", SimpleNamespace(image=frame, timestamp=0.0))
+        session.start()
+        await _capture_n(session, camera, 3)
+        await session.finish()
+        await session.wait_for_processing()
+
+        self.assertEqual(seen_shapes, [(15, 20)] * 3)
+        self.assertEqual(calibrated["corners"], [[11.0, 7.0], [13.0, 9.0]])
+        self.assertEqual(calibrated["image_size"], (40, 30))  # file stays full resolution
+        self.assertEqual(coverage_sizes, [(20, 15)])  # coverage measured against the region
+
+    def test_shift_sample_keeps_shape_and_ids(self):
+        from tagloc.boards import BoardSample, shift_sample
+
+        sample = BoardSample(corners=np.zeros((3, 1, 2), np.float32), ids=np.array([[1], [2], [3]]))
+        shifted = shift_sample(sample, 5, 7)
+
+        self.assertEqual(shifted.corners.shape, (3, 1, 2))
+        self.assertEqual(shifted.corners[2, 0].tolist(), [5.0, 7.0])
+        self.assertIs(shifted.ids, sample.ids)
+        self.assertEqual(sample.corners[0, 0].tolist(), [0.0, 0.0])  # original untouched
+
+
 if __name__ == "__main__":
     unittest.main()

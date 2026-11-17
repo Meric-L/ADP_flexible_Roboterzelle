@@ -70,6 +70,17 @@ class BoardSample:
         return int(np.asarray(self.corners).reshape(-1, 2).shape[0])
 
 
+def shift_sample(sample: BoardSample, dx: float, dy: float) -> BoardSample:
+    """Return `sample` with all corners shifted by `(dx, dy)`.
+
+    For detection in an image region: corners found in the crop are moved back
+    to coordinates of the full image, so the calibration refers to the full frame.
+    """
+    corners = np.asarray(sample.corners, dtype=np.float32).copy()
+    corners.reshape(-1, 2)[:] += np.array([dx, dy], dtype=np.float32)
+    return BoardSample(corners=corners, ids=sample.ids)
+
+
 def build_board(spec: BoardSpec) -> Any:
     """Build the ChArUco board object. `None` for chessboard."""
     if spec.type != CHARUCO:
@@ -484,6 +495,7 @@ __all__ = [
     "build_board",
     "calibrate_from_samples",
     "canonical_chessboard_corners",
+    "shift_sample",
     "chessboard_is_unambiguous",
     "chessboard_object_points",
     "estimate_board_pose",

@@ -144,6 +144,25 @@ fisheye frame.
 Shared helper: `tagloc.frames.scaled_region(roi, reference_size, image_size) ->
 (x0, y0, x1, y1)`, also used by `RoiTagDetector`.
 
+## Extension: intrinsic calibration uses the region (17.11.2026)
+
+Requested by NobbisCode after a calibration run on the full image.
+
+- `CalibrationSession._process` searches the board only in `detection_roi` (a contiguous
+  copy of the region) and shifts the corners back with `tagloc.boards.shift_sample(sample,
+  dx, dy) -> BoardSample`. The capture files themselves stay full frames.
+- **The calibration file stays at 4056×3040** (`image_size` of the full frame). This is
+  deliberate: detection, overlay and pose all work in full-frame pixels, and the region is
+  only a view of them. A calibration "for the cropped image" (shifted principal point,
+  image size 2114×2079) would no longer fit those paths.
+- Coverage (`coverageX`, `coverageY`) is measured against the region instead of the whole
+  image, otherwise a board moved through the whole cell would show at most ~52 % width.
+- A calibration made before this change on the full image stays valid: it refers to the
+  same full-frame coordinates. Redoing it is not required; it only changes that boards
+  outside the region are no longer used.
+- The live stream during calibration was already cropped (modes "off"/"apriltag").
+- Not changed: `MeasureBoard`, the hand-eye session (hand camera, no region).
+
 ## Open questions
 
 - Are all world tags inside the region? To be checked on the Pi (live overlay / job).
