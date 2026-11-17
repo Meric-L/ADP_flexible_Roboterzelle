@@ -31,8 +31,7 @@ format `wsc.vision.detections/1` has remained **unchanged**.
 
 > The earlier QR code detection (`image-recognition`) has been removed. It was
 > the feasibility proof for the camera pipeline; what remains of it is the
-> `SharedCamera` underneath. See [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md)
-> Section 6.
+> `SharedCamera` underneath.
 
 ## 1. System layout
 
@@ -1391,8 +1390,8 @@ never affected:**
 1. **2026-09-23 — blocked `CaptureCalibrationSample`.** Saving initially ran
    synchronously in `capture()`, before the OPC UA response went out — `cv2.imwrite`
    at 12 MP can take several seconds, causing the same timeout ("Failed to send
-   request to OPC UA server") that `CALIB_CB_ACCURACY` had caused earlier (section 4,
-   `apriltag-referenz.md`). Fix: saving has since run as a background task;
+   request to OPC UA server") that `CALIB_CB_ACCURACY` had caused earlier (see the comment in
+   `detect_board`, `src/tagloc/boards.py`). Fix: saving has since run as a background task;
    `capture()` returns as soon as the capture has been accepted.
 2. **2026-09-28 — Pi hangs after every photo.** The background task continued to run
    through the same single-worker pool as `detect_board` (`_pool()`). On the SD card,
@@ -2179,7 +2178,7 @@ the module that lie in the same image. It replaces the folding ruler (Zollstock)
 controller asks with `PlanTagReferenceView` where the camera should go (computes only, no
 image), drives there, and calls `MeasureTagReference`. Procedure and rationale are in the
 work plan [`arbeitsplaene/tag-einmessen-bezugskanten.md`](arbeitsplaene/tag-einmessen-bezugskanten.md),
-the method in [`apriltag-referenz.md`](apriltag-referenz.md) (section 14).
+the method in [`apriltag-referenz.md`](apriltag-referenz.md#surveying-tag-positions-with-reference-edges).
 
 | Element | NodeId | Signature / Type |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 """Tag map: what each tag is and where it sits in the shared coordinate system.
 
-Core idea of the whole concept (doc/projektdoku/apriltag-lokalisierung.md section 1):
+Core idea of the whole concept (doc/projektdoku/apriltag-lokalisierung.md section 3.3):
 
     A tag carries a number, not a meaning. That tag 7 is module MOD-A, with its
     origin 40 mm below the tag center, is recorded here -- in a file -- not in

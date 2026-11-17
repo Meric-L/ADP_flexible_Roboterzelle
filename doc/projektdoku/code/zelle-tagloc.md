@@ -23,6 +23,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Camera calibration as JSON (no OpenCV needed to read it); one file per physical camera.
 - Entry points: `CameraCalibration`, `save_calibration`, `load_calibration`, `default_calibration`, `check_resolution`, `scale_to_resolution`.
 - Input/output: `data/calibration/<frame>.json` in, `CameraCalibration` out. `_checked_model` validates the lens model.
+- `default_calibration` is a rough stand-in estimated from an assumed field of view (`DEFAULT_HORIZONTAL_FOV_DEG`, 70°); its `calibration_id` is `PLACEHOLDER_CALIBRATION_ID` (`placeholder-unkalibriert`). Poses are then not to scale.
 - Details: `doc/projektdoku/arbeitsplaene/kalibrierung-linsenmodell-je-kamera.md`.
 
 ### `src/tagloc/cli/__init__.py`
@@ -64,13 +65,14 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 ### `src/tagloc/cli/build_tagmap.py`
 - Places several AprilTags in one shared frame from a capture series. Requires every image to show at least two tags and the pairs to form a chain to the anchor tag.
 - Entry points: `build_parser`, `main(argv=None) -> int`. Options include `--source`, `--calibration`, `--anchor`, `--out`.
-- Output: tag-map JSON (default target `config/tagmap.json`).
+- Output: tag-map JSON to the file given with the required `--out` (usually `config/tagmap.json`).
 - Details: `doc/projektdoku/apriltag-referenz.md`, `doc/projektdoku/arbeitsplaene/apriltag-tagmap-robustheit.md`.
 
 ### `src/tagloc/detector.py`
 - Tag detection behind one interface (`TagDetector` Protocol). Backends: `ArucoTagDetector` (`cv2.aruco`, default) and `PupilAprilTagDetector` (optional `pupil_apriltags`).
 - Entry points: `build_detector(family, backend="aruco", *, ...)`, `predefined_dictionary`, `aruco_dictionary`, `apply_detector_parameters`.
 - Input: grayscale image. Output: `TagObservation` list. Pose estimation is deliberately not here (see `pose.py`).
+- `RoiTagDetector` wraps another detector and detects only inside a fixed rectangle; corners are shifted back to full-image coordinates, so the calibration stays valid.
 - Details: `doc/projektdoku/arbeitsplaene/kamera-controls-und-detektor-parameter.md`.
 
 ### `src/tagloc/frames.py`
@@ -83,12 +85,14 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - Poses, composition and quaternions in numpy only. A pose is a `(4, 4)` float64 array; `T_a_b` is the pose of b in a.
 - Conventions: metres, radians, quaternions in xyzw.
 - Entry points: `from_rvec_tvec`, `to_rvec_tvec` (Rodrigues in numpy), `compose`, `invert`, `average_poses`, `quaternion_from_rotation`, `rotation_from_quaternion`, `pose_to_dict`, `pose_from_dict`.
+- `to_position_quaternion` / `from_position_quaternion` convert between a pose and position plus quaternion xyzw (the payload fields); the quaternion sign is normalised to `w >= 0`.
 - Details: `doc/projektdoku/apriltag-referenz.md` (coordinate conventions).
 
 ### `src/tagloc/handeye.py`
 - Hand-eye math: `T_flange_cam` is a hardware constant, calibrated once. Carries the pose from a world tag seen at the start of a run through the robot kinematics.
 - Entry points: `HandEye`, `solve_hand_eye`, `solve_hand_eye_robust`, `refine_hand_eye`, `refine_hand_eye_robust`, `refine_board_session`, `leave_one_out_errors`, `load_session`, `load_hand_eye`, `save_hand_eye`, `session_payload`.
 - Input: session JSON with robot flange poses and camera-to-board poses. Output: `HandEye` and `HandEyeSolution`, saved as JSON.
+- Anchoring: `RobotAnchor` holds `T_world_base`; `anchor_world_base` computes it from a world-tag sighting and the robot pose, `camera_pose_from_robot` carries the camera pose from the anchor through the kinematics. `target_spread` is the quality measure (spread of the fixed target seen from all robot poses).
 - Details: `doc/projektdoku/arbeitsplaene/apriltag-hand-auge-ankern.md`, `doc/projektdoku/arbeitsplaene/handeye-genauigkeit.md`.
 
 ### `src/tagloc/handeye_offline.py`
@@ -99,7 +103,6 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 ### `src/tagloc/identity.py`
 - Identity string of the active calibration and tag map: file name plus mtime (`calibration_identity`, `tag_map_identity`). Standard library only.
 - Used by the vision server to build `configurationId` before OpenCV or numpy are loaded. A missing file yields `fehlt` (German, from the code).
-- Details: 
 
 ### `src/tagloc/jsonio.py`
 - JSON helpers: `finite_or_none` (NaN and inf become `None`), `utc_now_z`, `utc_stamp`. Standard library only.
@@ -114,15 +117,17 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 - The only place where `T_world_module = T_world_cam @ T_cam_tag @ T_tag_module` is evaluated. Pure numpy.
 - Entry points: `localize_camera`, `camera_pose_from_reference_tags`, `locate_modules`, `merge_locations`, `anchor_from_localization`, `localize_camera_from_anchor`, `anchor_drift`, `world_tag_for_robot`, `expected_but_missing`.
 - Input: `TagPose` lists and a `TagMap`. Output: `CameraLocalization`, `ModuleLocation` lists.
+- `confidence_from` derives the confidence in [0, 1] from reprojection error and ambiguity; `merge_by_module` averages several tags of the same module instance in one image (weighted by confidence); `merge_samples` averages several images of one job per tag and records `sampleCount`.
 - Details: `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md`.
 
 ### `src/tagloc/modes.py`
-- Overlay modes of the live stream: `OVERLAY_MODES` (`off`, `apriltag`, `calibration`, `undistorted`, `tagreference`), `DEFAULT_OVERLAY_MODE = "apriltag"`, `normalise_mode`. Standard library only.
+- Overlay modes of the live stream: `OVERLAY_MODES` (`off`, `apriltag`, `undistorted`, `tagreference`), `DEFAULT_OVERLAY_MODE = "apriltag"`, `normalise_mode`. Standard library only.
 - `tagloc.overlay` re-exports them.
 
 ### `src/tagloc/observations.py`
 - Dataclasses between image and math layers: `TagObservation` (raw detection) and `TagPose` (with pose and quality). No OpenCV.
 - Re-exported by `detector` and `pose`.
+- `TagPose.is_ambiguous` is true above `AMBIGUITY_THRESHOLD` (0.6); `TagPose.is_usable(max_reprojection_error_px)` is false for a NaN/inf reprojection error or one above the threshold.
 
 ### `src/tagloc/overlay.py`
 - Draws detection results on images. `draw_tag_overlay` (outline, axis cross, ID) for the CLI; `draw_tag_boxes` (green box and ID) for the live stream.
@@ -147,6 +152,7 @@ Layering (from `src/tagloc/__init__.py`): `geometry`, `calibration`, `tagmap`, `
 ### `src/tagloc/tagmap.py`
 - Tag map: which tag ID is which module, and where each tag sits in the shared frame. World tags are fixed; modules and the robot are measured.
 - Entry points: `TagMap`, `TagEntry`, `load_tag_map`, `save_tag_map`, `tag_map_from_json`, `validate_tag_map`, `place_tags`, `residuals`, `with_world_poses`, `nearest_world_tag`.
+- `empty_tag_map` returns a map without entries (running without a map is a normal case); `missing_tags` lists observed tags without a path to the anchor; `format_residual_report` turns the `residuals` result into readable text, largest error first.
 - Details: `doc/projektdoku/apriltag-referenz.md` (file format), `doc/projektdoku/apriltag-lokalisierung.md`.
 
 ### `src/jobs/calibrate.py`

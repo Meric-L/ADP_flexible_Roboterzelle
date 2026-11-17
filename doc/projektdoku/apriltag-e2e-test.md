@@ -381,7 +381,7 @@ its entered size. The value only becomes meaningful with the second world tag.
 
 For the hand camera, without a measured hand-eye file, the following still
 applies: world tag and module must lie in the **same image**. Anchoring
-(section 1.4 of the [concept doc](apriltag-lokalisierung.md)) only takes effect
+(section 2 of the [maintainer guide](apriltag-lokalisierung.md)) only takes effect
 with `data/handeye/cam_flange.json`.
 
 **Abort criterion:** closure error below **3 mm** and **0.5°**. Larger values

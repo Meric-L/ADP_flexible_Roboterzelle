@@ -21,7 +21,7 @@ Adding a new module requires **no intervention on the Pi**. Two parts:
 
 `localize_camera` needs `T_world_tag` and `sizeM` **per image** in the detection job. If the map lived in the
 backend, the Pi would have to deliver raw `T_cam_tag`, `frameId` would always be the camera frame, and every
-consumer would need the chaining — against the rule from `apriltag-lokalisierung.md` section 1.2 that exactly **one**
+consumer would need the chaining — against the rule from `apriltag-lokalisierung.md` section 3.3 that exactly **one**
 function performs it. The local file also remains the reason why the Pi can measure without a backend.
 
 Variant A changes nothing here: the backend becomes the **maintenance point**, the file remains the local cache.
@@ -29,7 +29,7 @@ Variant A changes nothing here: the backend becomes the **maintenance point**, t
 ## Already read
 
 - `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md` (no open `apriltag` plan)
-- `doc/projektdoku/apriltag-lokalisierung.md` (sections 1.2, 3.2)
+- `doc/projektdoku/apriltag-lokalisierung.md` (sections 3.3, 4.4)
 - `doc/projektdoku/apriltag-referenz.md` (tag-map schema, `tagloc` interfaces)
 - `doc/projektdoku/vision-server-interface.md` (address space, methods, error codes)
 - `doc/projektdoku/arbeitsplaene/apriltag-tagmap-robustheit.md` (predecessor)
@@ -163,7 +163,7 @@ recently set map therefore remains active — the Pi stays operable without a ba
 
 - [x] Status set to `done`, actual interfaces entered.
 - [x] Index line in `doc/projektdoku/arbeitsplaene/README.md`.
-- [x] Size rule in `apriltag-lokalisierung.md` section 3.2, method in `vision-server-interface.md` section 12.5a/12.5b and in the address-space tree.
+- [x] Size rule in `apriltag-lokalisierung.md` section 4.4, method in `vision-server-interface.md` section 12.5a/12.5b and in the address-space tree.
 - [x] Test run: **333 tests, OK** (previously 328).
 
 Still open is entering the **measured** edge lengths: `sizeM` of the world tags in `config/tagmap.json`,
