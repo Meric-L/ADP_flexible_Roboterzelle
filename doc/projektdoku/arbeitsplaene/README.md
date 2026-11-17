@@ -14,6 +14,7 @@ running, or against an interface that does not exist in that form.
 
 | Plan | Topic | Status | Owner | Updated |
 | --- | --- | --- | --- | --- |
+| [`pi-backend-discovery.md`](pi-backend-discovery.md) | opcua | in progress | `Agent: backend discovers the Pis (Part 10), orchestration Claude, Pi/backend Codex` | 17.11.2026 |
 | [`lds-registrierung.md`](lds-registrierung.md) | mdns | done | `Agent: LDS registration for the aggregation server` | 21.09.2026 |
 | [`altlasten-abbau-part10-fassade.md`](altlasten-abbau-part10-fassade.md) | opcua | done | `Agent: remove RaspiDevice/VisionSystem, Part-10 facade` | 22.09.2026 |
 | [`apriltag-welttag-konzept.md`](apriltag-welttag-konzept.md) | apriltag | done | `Agent: move the coordinate transformation onto the world-tag concept` | 22.09.2026 |
