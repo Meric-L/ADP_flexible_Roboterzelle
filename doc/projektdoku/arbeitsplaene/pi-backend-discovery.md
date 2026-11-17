@@ -1,6 +1,6 @@
 # Backend discovers the Pis as devices (Part 10 as entry point)
 
-**Status:** in progress — 17.11.2026
+**Status:** in progress — 17.11.2026 (WP1 Pi done)
 **Owner:** Agent: orchestration (Claude); Pi side and WSC backend: Codex; WSC frontend: Sonnet agents
 **Topic:** opcua
 **Branch:** Pi: `vision-part10-discovery` (this repo); webskillcomposition: `geraete-discovery-stufe1` (local, from `hefdi/ADP_Lokalisierung`)
@@ -73,7 +73,7 @@ the Pi call helpers in `frontend/src/features/cell-modules/model/`, the componen
 empty). Names are the existing English argument names of the interface doc, e.g.
 `SaveRawImage() → (FileName: String, Error: VisionErrorCode)`,
 `MeasureTags(RequestJson: String) → (ResultJson: String, Error: VisionErrorCode)`,
-`SaveUseCaseImage(Series: String, MetadataJson: String) → (FileName, ResultJson, Error)`.
+`SaveUseCaseImage(Series: Int32, MetadataJson: String) → (FileName, ResultJson, Error)`.
 Every error output is named `Error`.
 
 **`VisionErrorCode`** becomes an OPC UA Enumeration DataType (EnumValues with German
@@ -210,7 +210,8 @@ contract changes it on purpose, e.g. the mirror location in `tests/test_part10_f
 
 ## Deviations from the plan
 
-- none yet
+- `SaveUseCaseImage.Series` stays Int32 (the first draft of this contract said String by
+  mistake; corrected 17.11.2026). Otherwise the Pi implementation matches the interfaces above.
 
 ## After completion
 

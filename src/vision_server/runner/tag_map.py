@@ -109,5 +109,5 @@ async def install_tag_map(wiring: Wiring) -> None:
     await _publish_tag_map(wiring)
     await add_vision_method(
         space, wiring.config, wiring.methods, "SetTagMap", _set_tag_map_method(wiring),
-        [ua.VariantType.String], [ua.VariantType.Int32],
+        [("TagMapJson", ua.VariantType.String, "Neue Tag-Map als JSON.")], [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
     )

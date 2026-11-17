@@ -55,5 +55,5 @@ async def _install_save_raw_image(
 
     await add_vision_method(
         space, config, methods, "SaveRawImage", save_raw_image_method,
-        [], [ua.VariantType.String, ua.VariantType.Int32],
+        [], [("FileName", ua.VariantType.String, "Gespeicherter Dateipfad."), ("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
     )

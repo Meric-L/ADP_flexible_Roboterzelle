@@ -52,5 +52,5 @@ async def _install_measure_board(
     )
     await add_vision_method(
         space, config, methods, "MeasureBoard", handler,
-        [ua.VariantType.String], [ua.VariantType.String, ua.VariantType.Int32],
+        [("RequestJson", ua.VariantType.String, "Messanfrage als JSON.")], [("ResultJson", ua.VariantType.String, "Messergebnis als JSON."), ("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
     )

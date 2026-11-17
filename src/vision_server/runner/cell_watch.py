@@ -74,9 +74,9 @@ def _cell_watch_handlers(cell_watch: Any, states: VisionStateMachines):
         return code_reply(await cell_watch.resume())
 
     return (
-        ("StartCellWatch", start_cell_watch, [ua.VariantType.String]),
+        ("StartCellWatch", start_cell_watch, [("OptionsJson", ua.VariantType.String, "Optionen als JSON.")]),
         ("StopCellWatch", stop_cell_watch, []),
-        ("PauseCellWatch", pause_cell_watch, [ua.VariantType.String, ua.VariantType.Double]),
+        ("PauseCellWatch", pause_cell_watch, [("Reason", ua.VariantType.String, "Grund der Pause."), ("MaxPauseSeconds", ua.VariantType.Double, "Maximale Pausendauer in Sekunden.")]),
         ("ResumeCellWatch", resume_cell_watch, []),
     )
 
@@ -138,6 +138,6 @@ async def _install_cell_watch(
 
     for name, handler, inputs in _cell_watch_handlers(cell_watch, states):
         await add_vision_method(
-            space, config, methods, name, handler, inputs, [ua.VariantType.Int32]
+            space, config, methods, name, handler, inputs, [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")]
         )
     return cell_watch

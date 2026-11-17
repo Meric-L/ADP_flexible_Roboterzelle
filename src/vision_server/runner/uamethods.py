@@ -54,26 +54,49 @@ async def add_vision_method(
     methods: dict[str, Node],
     name: str,
     handler: Callable,
-    inputs: list[ua.VariantType],
-    outputs: list[ua.VariantType],
+    inputs: list[tuple[str, ua.VariantType, str]],
+    outputs: list[tuple[str, ua.VariantType, str]],
 ) -> Node:
-    """Add a method under the vision system and record the node in `methods`.
+    """Add a method with named, described arguments and record its node.
 
     The NodeId is `<vision system name>.<method>` in our own namespace. It is
     explicit instead of the running number that `add_method(own_idx, ...)` would
     assign. That number shifts as soon as someone inserts a node before it, and the
     frontend addresses the methods by fixed addresses. The entries of `methods`
     also appear under `VisionProgram`, in the order of creation.
+
+    Each argument spec is `(name, variant_type, description)`. An output named
+    `Error` declares the custom `VisionErrorCode` DataType; its returned value stays Int32.
     """
     node = await space.vision_system.add_method(
         ua.NodeId(f"{config.vision_system_name}.{name}", space.own_idx),
         ua.QualifiedName(name, space.own_idx),
         handler,
-        inputs,
-        outputs,
+        [_method_argument(space.own_idx, item) for item in inputs],
+        [_method_argument(space.own_idx, item, error=True) for item in outputs],
     )
     methods[name] = node
     return node
+
+
+def _method_argument(
+    namespace_index: int,
+    spec: tuple[str, ua.VariantType, str],
+    *,
+    error: bool = False,
+) -> ua.Argument:
+    """Build a named OPC UA method argument with its description."""
+    name, variant_type, description = spec
+    argument = ua.Argument()
+    argument.Name = name
+    argument.DataType = (
+        ua.NodeId("VisionErrorCode", namespace_index)
+        if error and name == "Error"
+        else ua.NodeId(variant_type.value, 0)
+    )
+    argument.ValueRank = -1
+    argument.Description = ua.LocalizedText(description, "en")
+    return argument
 
 
 def json_method(

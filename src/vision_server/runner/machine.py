@@ -97,6 +97,8 @@ class VisionMachine:
             await self.hand_eye_session.abort()
         if self.cell_watch is not None:
             await self.cell_watch.aclose()
+        if self.program is not None:
+            await self.program.aclose()
         # Before the stream and sources: an orderly camera close would otherwise
         # time out as a hang, and the last value in the address space would be
         # OFF_SPEC instead of the last real state.

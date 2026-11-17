@@ -208,27 +208,34 @@ Objects/
 │   ├── ParameterSet                  <- write inputs HERE, BEFORE the start
 │   │   ├── RecipeId     String       **writable**
 │   │   └── Continuous   Boolean      **writable**
-│   └── ResultSet                     <- outputs
+│   ├── ResultSet                     <- job outputs only
 │       ├── JobId           String
-│       ├── ErrorCode       Int32
+│       ├── ErrorCode       VisionErrorCode Enumeration (Int32 wire value)
 │       ├── ExecutionMode   String    idle | single | continuous
-│       ├── LatestResultJson          reference to the same node as below
-│       ├── LatestCameraFrame         reference (Base64 JPEG, only with camera)
-│       ├── CameraStreamMode          reference, **writable**
-│       └── CalibrationProgress       reference (JSON, only with AprilTag profile)
+│       └── LatestResultJson          reference to VisionMachine.LatestResultJson
+│   └── Status                        <- Organizes references to available status nodes
+│       ├── BusyReason      String    empty = free; German refusal reason
+│       ├── DeviceHealth    DeviceHealthEnumeration (Int32 wire value), when available
+│       └── CameraStreamMode, CameraStreamHttpPort, LatestCameraFrame,
+│           CalibrationProgress, ActiveCalibrationInfo, TagMapJson,
+│           HandEyeStatus, Layer2Target, Layer2Status, CellWatchStatus,
+│           LastTagMeasurement, LastTagReference, TagReferencePreviewStatus
+│   ├── Manufacturer       String property
+│   ├── Model              String property
+│   └── SerialNumber       String property (= visionSystemId)
 ├── StartCalibration                  reference to the 40100 method, input OptionsJson (String, empty = board of the configuration)
-├── CaptureCalibrationSample          reference; Error: Int32
-├── FinishCalibration                 reference; Summary: String, Error: Int32
-└── AbortCalibration                  reference; Error: Int32
+├── CaptureCalibrationSample          reference; Error: VisionErrorCode (Int32 wire value)
+├── FinishCalibration                 reference; Summary: String, Error: VisionErrorCode (Int32 wire value)
+└── AbortCalibration                  reference; Error: VisionErrorCode (Int32 wire value)
 
 Machines/
 └── VisionMachine                     ns=<vision>;s=VisionMachine   (OPC 40100, unchanged)
     └── ... StartSingleJob, Stop, ResultManagement, LatestResultJson, LatestCameraFrame ...
 ```
 
-**`VisionProgram` is self-sufficient.** Everything a client needs to run and evaluate a job hangs below it — as a reference, not a copy. There
-is no second value and no second implementation. Since 21.09.2026 `VisionMachine` sits in the Machinery standard folder `Machines` and no
-longer alongside it at the same level, so that when browsing it is clear where to start.
+**`VisionProgram` is self-sufficient.** `ResultSet` contains only job outputs and a reference to `LatestResultJson`. Camera and operational
+status nodes hang below `Status` as `Organizes` references. `BusyReason` is empty when the Pi is free. The program properties identify the
+device; `SerialNumber` equals `visionSystemId`. `VisionMachine` sits in the Machinery standard folder `Machines`.
 
 Fixed NodeIds:
 
@@ -244,7 +251,9 @@ Fixed NodeIds:
 | JobId | `ns=<vision>;s=VisionProgram.ResultSet.JobId` |
 | Error code | `ns=<vision>;s=VisionProgram.ResultSet.ErrorCode` |
 | Execution mode | `ns=<vision>;s=VisionProgram.ResultSet.ExecutionMode` |
-| Result JSON | `ns=<vision>;s=VisionMachine.LatestResultJson` |
+| Result JSON | `ns=<vision>;s=VisionMachine.LatestResultJson` (reference from `VisionProgram/ResultSet/LatestResultJson`) |
+| Busy reason | `ns=<vision>;s=VisionProgram.Status.BusyReason` |
+| Error DataType | `ns=<vision>;s=VisionErrorCode` (Enumeration; Int32 values) |
 
 **Generic discovery** also works: browse for instances of `ProgramStateMachineType` (`ns=0;i=2391`). This is the route that also works for the
 conveyor — its programs have numeric IDs (`ns=7;i=6100`) and can only be found this way.
@@ -376,22 +385,27 @@ With a **rejected** start there is no state change, only an event with `Severity
 
 ## 7. Errors
 
-`Start()` has — as with all Part 10 programs — **no return value**. The frontend learns whether the job was accepted by two routes:
+`Start()` has — as with all Part 10 programs — **no return value**. Its call waits until the transition handler finishes: an accepted start
+returns in `Running`; a rejected start returns in `Ready` with a non-zero `ResultSet/ErrorCode`.
 
 1. **Immediately:** if a state change to `Running` comes, it is accepted. If an event with `Severity=500` comes instead, it is rejected; the reason
    is stated in plain text in `Message`.
 2. **Machine-readable:** `ResultSet/ErrorCode` carries the code.
 
-| Code | Name | Meaning |
+| Code | Name | EnumValues description (German) |
 | --- | --- | --- |
-| 0 | `OK` | accepted resp. cleanly finished |
-| 1 | `INVALID_STATE` | vision system not operational |
-| 2 | `INVALID_ARGUMENT` | parameters unusable |
-| 3 | `BUSY` | a job is already running |
-| 4 | `UNKNOWN_RECIPE` | `RecipeId` not known |
-| 5 | `DETECTION_FAILED` | detection failed or timeout |
-| 6 | `INTERNAL` | unexpected server error |
-| 7 | `CANCELLED` | cancelled by `Halt` |
+| 0 | `OK` | OK |
+| 1 | `INVALID_STATE` | Im aktuellen Zustand nicht möglich (z. B. noch kein Kamerabild). |
+| 2 | `INVALID_ARGUMENT` | Ungültiger Parameter. |
+| 3 | `BUSY` | Der Pi ist beschäftigt – danach erneut versuchen. |
+| 4 | `UNKNOWN_RECIPE` | Unbekanntes Rezept. |
+| 5 | `DETECTION_FAILED` | Erkennung fehlgeschlagen. |
+| 6 | `INTERNAL` | Interner Fehler auf dem Pi. |
+| 7 | `CANCELLED` | Abgebrochen. |
+
+`VisionErrorCode` is an OPC UA Enumeration DataType with these `EnumValues`. Method error outputs
+are named `Error` and declare this DataType. The values on the wire remain Int32. All method
+arguments have names and descriptions.
 
 **Deliberate deviation from Part 10:** a *failed* job (5, 6) does **not** lead to `Halted`, but back to `Ready`. Otherwise the frontend would have
 to press `Reset` after every failed detection, and the two state machines would diverge — the 40100 state machine likewise returns to `Ready`

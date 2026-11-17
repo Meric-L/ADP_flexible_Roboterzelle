@@ -233,6 +233,6 @@ async def _install_save_use_case_image(
 
     await add_vision_method(
         space, config, methods, "SaveUseCaseImage", save_use_case_image_method,
-        [ua.VariantType.Int32, ua.VariantType.String],
-        [ua.VariantType.String, ua.VariantType.String, ua.VariantType.Int32],
+        [("Series", ua.VariantType.Int32, "Versuchsreihe (>= 1)."), ("MetadataJson", ua.VariantType.String, "Metadaten als JSON.")],
+        [("FileName", ua.VariantType.String, "Gespeicherter Dateipfad."), ("ResultJson", ua.VariantType.String, "Ergebnis als JSON."), ("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
     )

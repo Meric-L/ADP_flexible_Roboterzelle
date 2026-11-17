@@ -35,9 +35,13 @@ Objects/
 └── VisionProgram                          OPC UA Part 10 view of the same jobs
 ```
 
-`VisionProgram` lets a generic Part 10 client start the same jobs (write
-`ParameterSet/RecipeId`, read `ResultSet/JobId`/`ErrorCode`); it also references all
-status nodes and methods. See [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
+`VisionProgram` lets a generic Part 10 client start the same jobs. Its `Start` method waits until
+the state is `Running`, or returns in `Ready` with a non-zero error code. `ResultSet` contains only
+`JobId`, `ErrorCode`, `ExecutionMode` and the reference to `LatestResultJson`. Other available
+operational nodes and `DeviceHealth` are `Organizes` references below `Status`; `Status/BusyReason`
+is empty when the Pi is free. The program properties `Manufacturer`, `Model` and `SerialNumber`
+identify the device; `SerialNumber` is the `visionSystemId`. See
+[`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
 
 ## 2. Connecting
 
@@ -79,7 +83,8 @@ JobStarted, `i=1025` AcquisitionDone, `i=1023` Ready, `i=1018` StateChanged.
 
 Inputs `(MeasId, PartId, RecipeId, ProductId, Parameters)` — all exchanged as strings
 (Ids at most 128 characters), `Parameters` a string array with at most 16 entries.
-Outputs `(JobId: String, Error: Int32)`; `JobId` looks like `job-000001`. The call
+Outputs `(JobId: String, Error: VisionErrorCode)`; `Error` is an OPC UA Enumeration with an
+Int32 wire value and `JobId` looks like `job-000001`. The call
 does not block: it only acknowledges acceptance. The nodeset declares structured Id
 types; plain strings are used because asyncua clients cannot build those
 ExtensionObjects.
@@ -109,16 +114,20 @@ attributes and the camera-pose logic:
 
 Shared by all methods of the vision server (`VisionErrorCode`):
 
-| Code | Name | Meaning | Events? |
-| --- | --- | --- | --- |
-| 0 | `OK` | accepted / done | yes |
-| 1 | `INVALID_STATE` | not `Operational`/`Ready`, or no session/frame | no |
-| 2 | `INVALID_ARGUMENT` | bad input or JSON | no |
-| 3 | `BUSY` | a job, calibration or other exclusive action is running | no |
-| 4 | `UNKNOWN_RECIPE` | `RecipeId` empty or unknown | no |
-| 5 | `DETECTION_FAILED` | nothing detected, no image, or job timeout (30 s) | `resultState=5` |
-| 6 | `INTERNAL` | unexpected server error | `resultState=6` |
-| 7 | `CANCELLED` | aborted by `Stop`/`Abort` | `resultState=7` |
+`VisionErrorCode` is an OPC UA Enumeration DataType with German `EnumValues` descriptions. The
+`ErrorCode` result variable and every method output named `Error` declare this DataType; the values
+on the wire remain Int32. All method input and output arguments have names and descriptions.
+
+| Code | Name | Meaning | EnumValues description (German) | Events? |
+| --- | --- | --- | --- | --- |
+| 0 | `OK` | accepted / done | OK | yes |
+| 1 | `INVALID_STATE` | not `Operational`/`Ready`, or no session/frame | Im aktuellen Zustand nicht möglich (z. B. noch kein Kamerabild). | no |
+| 2 | `INVALID_ARGUMENT` | bad input or JSON | Ungültiger Parameter. | no |
+| 3 | `BUSY` | a job, calibration or other exclusive action is running | Der Pi ist beschäftigt – danach erneut versuchen. | no |
+| 4 | `UNKNOWN_RECIPE` | `RecipeId` empty or unknown | Unbekanntes Rezept. | no |
+| 5 | `DETECTION_FAILED` | nothing detected, no image, or job timeout (30 s) | Erkennung fehlgeschlagen. | `resultState=5` |
+| 6 | `INTERNAL` | unexpected server error | Interner Fehler auf dem Pi. | `resultState=6` |
+| 7 | `CANCELLED` | aborted by `Stop`/`Abort` | Abgebrochen. | `resultState=7` |
 
 Codes 1–4 only come back in the return value. Codes 5–7 arrive as a
 `ResultReadyEvent`, so a client never needs a timeout to see a failure. Only one job

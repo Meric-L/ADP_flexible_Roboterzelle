@@ -52,6 +52,7 @@ class Wiring:
     #: Additional method nodes by name. They also end up as `mirror_methods`
     #: under `VisionProgram`; the order of the entries stays the order of creation.
     methods: dict[str, Node] = field(default_factory=dict)
+    device_health_nodes: tuple[Node, ...] = ()
 
     def calibration_busy(self) -> bool:
         """Return whether a calibration session or its background evaluation is running."""

@@ -85,7 +85,8 @@ class Program(ABC):
         # Only one control task at a time: the lock is taken in the method
         # handler and released again in `_transition`.
         self._lock = asyncio.Lock()
-        self._control_task = None
+        # Strong references to running control tasks; asyncio only keeps weak ones.
+        self._control_tasks: set[asyncio.Task] = set()
 
         await self.state_machine.install(
             ua.ObjectIds.ProgramStateMachineType, True, nodeid=nodeid
@@ -237,16 +238,20 @@ class Program(ABC):
                 sm._current_state.name,
             )
             return ua.StatusCode(ua.StatusCodes.BadInvalidState)
-        self._control_task = asyncio.create_task(
-            self._transition(self.start, sm.running, sm.ready_to_running, *args)
-        )
+        await self._transition(self.start, sm.running, sm.ready_to_running, *args)
+
+    def _spawn_transition(self, transition) -> None:
+        """Run a control transition as a task and keep it referenced until it ends."""
+        task = asyncio.create_task(transition)
+        self._control_tasks.add(task)
+        task.add_done_callback(self._control_tasks.discard)
 
     async def _suspend_method(self, _parent_nodeid: ua.NodeId, *args):
         await self._lock.acquire()
         sm = self.state_machine
         match sm._current_state.number:
             case 13:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.suspend, sm.suspended, sm.running_to_suspended, *args)
                 )
             case _:
@@ -258,7 +263,7 @@ class Program(ABC):
         sm = self.state_machine
         match sm._current_state.number:
             case 14:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.resume, sm.running, sm.suspended_to_running, *args)
                 )
             case _:
@@ -270,15 +275,15 @@ class Program(ABC):
         sm = self.state_machine
         match sm._current_state.number:
             case 12:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.halt, sm.halted, sm.ready_to_halted, *args)
                 )
             case 13:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.halt, sm.halted, sm.running_to_halted, *args)
                 )
             case 14:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.halt, sm.halted, sm.suspended_to_halted, *args)
                 )
             case _:
@@ -290,7 +295,7 @@ class Program(ABC):
         sm = self.state_machine
         match sm._current_state.number:
             case 11:
-                self._control_task = asyncio.create_task(
+                self._spawn_transition(
                     self._transition(self.reset, sm.ready, sm.halted_to_ready, *args)
                 )
             case _:

@@ -84,12 +84,12 @@ async def _install_hand_eye_session(
         return code_reply(await session.abort())
 
     for name, handler, inputs in (
-        ("StartHandEyeCalibration", start_hand_eye, [ua.VariantType.String]),
-        ("CaptureHandEyeSample", capture_hand_eye, [ua.VariantType.String]),
+        ("StartHandEyeCalibration", start_hand_eye, [("OptionsJson", ua.VariantType.String, "Kalibrieroptionen als JSON.")]),
+        ("CaptureHandEyeSample", capture_hand_eye, [("SampleJson", ua.VariantType.String, "Messprobe als JSON.")]),
         ("FinishHandEyeCalibration", finish_hand_eye, []),
         ("AbortHandEyeCalibration", abort_hand_eye, []),
     ):
         await add_vision_method(
-            space, config, methods, name, handler, inputs, [ua.VariantType.Int32]
+            space, config, methods, name, handler, inputs, [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")]
         )
     return session

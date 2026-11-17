@@ -21,6 +21,7 @@ die Erkennungsquelle ist eine Attrappe.
 import asyncio
 import unittest
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest import mock
 
 from asyncua import Server, ua
@@ -177,6 +178,52 @@ class VisionProgramTest(MachineTestCase):
         )
 
         self.assertEqual(await self.state_of("VisionProgram"), "Ready")
+
+    async def test_resultset_schlank_status_referenzen_und_properties(self):
+        program = self.server.get_node(self.nid("VisionProgram"))
+        result_set = await program.get_child(f"{self.idx}:ResultSet")
+        result_names = {(await node.read_browse_name()).Name for node in await result_set.get_children()}
+        self.assertEqual(result_names, {"JobId", "ErrorCode", "ExecutionMode", "LatestResultJson"})
+        status = await program.get_child(f"{self.idx}:Status")
+        status_names = {(await node.read_browse_name()).Name for node in await status.get_children()}
+        self.assertEqual(status_names, {"BusyReason"})
+        self.assertEqual(await (await status.get_child(f"{self.idx}:BusyReason")).read_value(), "")
+        for property_name in ("Manufacturer", "Model", "SerialNumber"):
+            self.assertIn(property_name, {(await node.read_browse_name()).Name for node in await program.get_children()})
+        self.assertEqual(
+            await self.server.get_node(self.nid("VisionProgram.SerialNumber")).read_value(),
+            self.config.vision_system_id,
+        )
+
+    async def test_errorcode_uses_vision_enum_datatype(self):
+        node = self.server.get_node(self.nid("VisionProgram.ResultSet.ErrorCode"))
+        self.assertEqual(await node.read_data_type(), self.nid("VisionErrorCode"))
+        enum = self.server.get_node(self.nid("VisionErrorCode"))
+        enum_values = await enum.get_child(f"{self.idx}:EnumValues")
+        values = await enum_values.read_value()
+        self.assertEqual([value.Value for value in values], list(range(8)))
+        self.assertEqual(values[1].Description.Text, "Im aktuellen Zustand nicht möglich (z. B. noch kein Kamerabild).")
+
+    async def test_method_arguments_have_names_descriptions_and_enum_error(self):
+        from asyncua import uamethod
+        from vision_server.runner.uamethods import add_vision_method
+
+        @uamethod
+        async def handler(parent, request: str):
+            return (ua.Variant(0, ua.VariantType.Int32),)
+
+        vision_system = self.server.get_node(self.nid("VisionMachine"))
+        space = SimpleNamespace(vision_system=vision_system, own_idx=self.idx)
+        node = await add_vision_method(
+            space, self.config, {}, "TestNamedArguments", handler,
+            [("RequestJson", ua.VariantType.String, "Request payload.")],
+            [("Error", ua.VariantType.Int32, "Vision error code.")],
+        )
+        inputs = await (await node.get_child("0:InputArguments")).read_value()
+        outputs = await (await node.get_child("0:OutputArguments")).read_value()
+        self.assertEqual([(arg.Name, arg.Description.Text) for arg in inputs], [("RequestJson", "Request payload.")])
+        self.assertEqual([(arg.Name, arg.Description.Text) for arg in outputs], [("Error", "Vision error code.")])
+        self.assertEqual(outputs[0].DataType, self.nid("VisionErrorCode"))
         self.assertEqual(
             await self.executable("VisionProgram"),
             {"Start": True, "Halt": True, "Reset": False, "Suspend": False, "Resume": False},
@@ -195,11 +242,15 @@ class VisionProgramTest(MachineTestCase):
         self.assertEqual(await self.result("ExecutionMode"), "idle")
 
     async def test_einzeljob_laeuft_nach_running_und_zurueck_nach_ready(self):
+        self.source._delay = 0.5
         await self.write_parameter("RecipeId", RECIPE, ua.VariantType.String)
         result = await self.program_call("Start")
         self.assertTrue(result.StatusCode.is_good())
         self.assertEqual(result.OutputArguments, [])
-        await self.wait_state("VisionProgram", "Running")
+        self.assertEqual(await self.state_of("VisionProgram"), "Running")
+        await asyncio.sleep(0.25)
+        busy_reason = await self.server.get_node(self.nid("VisionProgram.Status.BusyReason")).read_value()
+        self.assertTrue(busy_reason)
         self.assertEqual(await self.result("ExecutionMode"), "single")
         self.assertEqual(
             await self.executable("VisionProgram"),
@@ -215,6 +266,11 @@ class VisionProgramTest(MachineTestCase):
         self.assertEqual(await self.result("JobId"), "job-000001")
         self.assertEqual(await self.result("ErrorCode"), 0)
         self.assertEqual(await self.result("ExecutionMode"), "idle")
+        await asyncio.sleep(0.25)
+        self.assertEqual(
+            await self.server.get_node(self.nid("VisionProgram.Status.BusyReason")).read_value(),
+            "",
+        )
 
     async def test_dauerbetrieb_halt_und_reset(self):
         await self.write_parameter("RecipeId", RECIPE, ua.VariantType.String)

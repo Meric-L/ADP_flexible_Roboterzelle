@@ -66,12 +66,11 @@ async def _install_layer2_run(
         """1:ReportRobotPose -- report the reached flange pose and start the measurement."""
         return code_reply(await layer2_run.report(report_json or ""))
 
-    for name, handler in (
-        ("StartLayer2Run", start_layer2_run),
-        ("ReportRobotPose", report_robot_pose),
+    for name, handler, description in (
+        ("StartLayer2Run", start_layer2_run, "Laufparameter als JSON."),
+        ("ReportRobotPose", report_robot_pose, "Gemeldete Roboterpose als JSON."),
     ):
-        await add_vision_method(
-            space, config, methods, name, handler,
-            [ua.VariantType.String], [ua.VariantType.Int32],
-        )
+        await add_vision_method(space, config, methods, name, handler,
+            [("RequestJson", ua.VariantType.String, description)],
+            [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")])
     return layer2_run
