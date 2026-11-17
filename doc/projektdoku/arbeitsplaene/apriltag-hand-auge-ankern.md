@@ -44,7 +44,7 @@ drift — it is reported, not concealed.
 - `doc/arbeitsplaene/apriltag-welttag-konzept.md` (predecessor, `done`)
 - `doc/apriltag-lokalisierung.md`, `doc/apriltag-referenz.md`
 - `doc/vision-server-interface.md` (payload, methods, `frameId` rule)
-- `doc/vision-system-integration.md` section 6.2 (hand-eye, `auto_execute`)
+- `doc/projektdoku/vision-system-integration.md` section 6.2 (hand-eye)
 - `doc/altlasten.md` (hand-eye as an open item)
 
 ## Affected files

@@ -57,7 +57,7 @@ Kurzfassung — verbindlich ist
 | --- | --- | --- |
 | [`doc/vision-system-next-steps.md`](../doc/vision-system-next-steps.md) | Kurzorientierung Stand & nächste Schritte, explizit für Agenten geschrieben | **Zuerst.** Reicht für die meisten Aufgaben. |
 | [`doc/vision-system.md`](../doc/vision-system.md) | Ist-Stand des implementierten Servers, Adressraum-Baum, bekannte Einschränkungen | Bei Arbeit am bestehenden Server |
-| [`doc/vision-system-integration.md`](../doc/vision-system-integration.md) | Vollständiger Zielplan, 1000+ Zeilen: Bestandsanalyse, Soll-Architektur, Payload-Schema, Job-Ablauf, Signalweg, Phasenplan | Nur bei Bedarf, gezielt einen Teil. Teil 4 = Soll-Architektur, Teil 9 = Phasenplan. |
+| [`doc/projektdoku/vision-system-integration.md`](../doc/projektdoku/vision-system-integration.md) | Integration in WebSkillComposition, ca. 500 Zeilen: Bestand, Blocker-Status, Signalweg, Risiken, Phasenplan mit Stand (Plan vs. gebaut) | Nur bei Bedarf, gezielt einen Teil. Teil 4 = unsere Server, Teil 9 = Phasenplan. |
 | [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server-Implementierung | — |
 | [`src/OPCUA/print_setpoint.py`](../src/OPCUA/print_setpoint.py) | Client-Hilfsskript | — |
 
