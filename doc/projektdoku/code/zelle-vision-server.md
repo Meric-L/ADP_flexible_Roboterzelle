@@ -1,6 +1,6 @@
 # Zelle: vision server (OPC UA, Pi side)
 
-Detailed reference for `src/vision_server/` in the ADP repository (branch `main`, as of 2026-11-17). Overview: [code-dokumentation.md](../code-dokumentation.md). Interface details: [vision-server-interface.md](../vision-server-interface.md).
+Detailed reference for `src/vision_server/` in the ADP repository (branch `main`, as of 2026-11-17). Overview: [code-dokumentation.md](../code-dokumentation.md). Interface: [short](../vision-server-interface-short.md), [full reference](../vision-server-interface.md).
 
 
 The runtime of the vision server: `runner/` assembles the OPC UA address space methods and nodes into one `VisionMachine` (or runs it as its own process). `layer2/` holds the Layer 2 run on the hand-camera Pi (planning and run logic, numpy/asyncua-free run flow). `discovery/` announces the server on the network (mDNS and the cell's Local Discovery Server). `nodesets/` contains vendored OPC UA companion specifications.

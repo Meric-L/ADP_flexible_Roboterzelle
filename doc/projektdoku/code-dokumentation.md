@@ -79,7 +79,7 @@ hard-coded. Details: [`code/zelle-vision-server.md`](code/zelle-vision-server.md
 Where the robot and the Pis exchange work, the data formats are fixed in the interface
 documents:
 
-- Pi OPC UA interface (methods, nodes, payloads): [`vision-server-interface.md`](vision-server-interface.md)
+- Pi OPC UA interface (methods, nodes, payloads): short version [`vision-server-interface-short.md`](vision-server-interface-short.md), full reference [`vision-server-interface.md`](vision-server-interface.md)
 - Frontend and backend data model (webskillcomposition): `docs/data-and-interface-model.md`
   in the webskillcomposition repository
 
@@ -87,7 +87,8 @@ documents:
 
 | Document | Use |
 | --- | --- |
-| [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server |
+| [`vision-server-interface-short.md`](vision-server-interface-short.md) | OPC UA interface of the Pi server, short (start here) |
+| [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server, full reference |
 | [`vision-system.md`](vision-system.md) | State of the vision system on the Pis |
 | [`vision-system-integration.md`](vision-system-integration.md) | Integration into webskillcomposition |
 | [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | AprilTag localization concept |
