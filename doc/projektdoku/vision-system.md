@@ -274,3 +274,18 @@ lens, by hand) and the ISP/exposure controls above are adjustable.
 Setting it on the Pi: drop-in via `sudo systemctl edit opcua-server.service` with
 `Environment='VISION_CAMERA_CONTROLS=...'`, then `sudo systemctl restart opcua-server.service`.
 Interfaces: [`arbeitsplaene/kamera-controls-und-detektor-parameter.md`](arbeitsplaene/kamera-controls-und-detektor-parameter.md).
+
+## Detection region of the ceiling camera
+
+Since 17.11.2026 the ceiling camera (`cam_ceiling`) only searches for tags inside the
+cell area: `AprilTagProfileConfig.detection_roi = (917, 568, 2114, 2079)` (x, y, width,
+height at 4056×3040), preset in `server.PI_APRILTAG_PRESETS`. The frame itself stays
+complete: only the detector gets a view of the region (`tagloc.detector.RoiTagDetector`),
+and the corners are shifted back to full-frame coordinates. Calibration, poses, overlay
+and saved images are therefore unaffected. Job, cell watch and live-stream overlay use the
+same region (the overlay scaled to its smaller image). Not affected: calibration session
+and `MeasureBoard`.
+
+Tags outside the region are not found, world tags included. Override without a code
+change: `VISION_DETECTION_ROI="x,y,width,height"` or `VISION_DETECTION_ROI=off`.
+Measurement and background: `arbeitsplaene/deckenkamera-bildausschnitt.md`.

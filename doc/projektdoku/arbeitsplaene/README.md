@@ -52,6 +52,7 @@ running, or against an interface that does not exist in that form.
 | [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in progress | NobbisCode, `Agent: subpixel corners on the ceiling Pi` | 10.11.2026 |
 | [`kalibrier-aufnahmen-roh.md`](kalibrier-aufnahmen-roh.md) | vision | done | Meric, `Agent: raw calibration images` | 10.11.2026 |
 | [`deckenkamera-kalibrierung-board-wahl.md`](deckenkamera-kalibrierung-board-wahl.md) | vision | done (no hardware run) | Meric, `Agent: layer 1 calibration with selectable board` | 17.11.2026 |
+| [`deckenkamera-bildausschnitt.md`](deckenkamera-bildausschnitt.md) | vision | done (no hardware run) | NobbisCode, `Agent: ceiling camera detection region` | 17.11.2026 |
 
 Topics: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `other`
 Status: `planned` · `in progress` · `done` · `dropped`

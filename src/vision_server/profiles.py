@@ -86,6 +86,14 @@ class AprilTagProfileConfig:
     #: `server.apriltag_config`.
     #: `hash=False`: a dict is not hashable, but the config should stay hashable.
     detector_parameters: dict[str, Any] = field(default_factory=dict, hash=False)
+    #: Tag detection only inside this rectangle, `(x, y, width, height)` in pixels of
+    #: `resolution`; `None` = whole image. The frame itself is not cropped, and the
+    #: corners stay in full-frame coordinates (see `tagloc.detector.RoiTagDetector`), so
+    #: calibration, overlay and poses are unaffected. Tags outside -- world tags too --
+    #: are not found. Job, stream overlay and cell watch use the same region. Preset and
+    #: override via `VISION_DETECTION_ROI`, see `server.apriltag_config`. Work plan
+    #: `deckenkamera-bildausschnitt.md`.
+    detection_roi: tuple[int, int, int, int] | None = None
     #: Scale intrinsics to the actual image size instead of aborting. Only
     #: enable when deliberately running at a resolution other than the one
     #: calibrated for.

@@ -133,6 +133,13 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         # about 46% CPU and loses tags (kamera-und-detektor-analyse.md).
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
+        # Detect tags only in the cell area (x, y, width, height at 4056x3040). Chosen by
+        # NobbisCode on the frame of 17.11.2026 (data/rohbilder/cam_ceiling_20261117-120339.png):
+        # cut off 917 px left, 1025 px right, 568 px top, 393 px bottom -- walls, desks and
+        # printers at the fisheye edge are skipped. Coordinates stay full-frame, the
+        # calibration is unaffected. Override: VISION_DETECTION_ROI (work plan
+        # deckenkamera-bildausschnitt.md).
+        "detection_roi": (917, 568, 2114, 2079),
     },
     "cam_flange": {
         # Subpixel corners on (method subpix): the hand camera measures tags for approach
@@ -266,6 +273,36 @@ def subpixel_corner_settings(preset: dict) -> dict:
     return {"subpixel_corner_refinement": enabled, "corner_refinement_method": method}
 
 
+def detection_roi_setting(
+    preset: tuple[int, int, int, int] | None,
+) -> tuple[int, int, int, int] | None:
+    """Return the tag detection region from preset and ``VISION_DETECTION_ROI``.
+
+    The environment variable overrides the preset: ``"x,y,width,height"`` in pixels of the
+    configured resolution, or ``off``/``none``/``0`` for the whole image. Unset or empty
+    means the preset applies.
+
+    Raises:
+        ValueError: If the value is neither a switch-off word nor four integers. This
+            happens at startup, not in the middle of operation.
+    """
+    raw = os.getenv("VISION_DETECTION_ROI", "").strip().lower()
+    if not raw:
+        return tuple(preset) if preset is not None else None
+    if raw in ("off", "none", "0", "false"):
+        return None
+    parts = [part.strip() for part in raw.split(",")]
+    try:
+        values = tuple(int(part) for part in parts)
+    except ValueError:
+        values = ()
+    if len(values) != 4:
+        raise ValueError(
+            f"VISION_DETECTION_ROI='{raw}': erwartet 'x,y,breite,hoehe' (ganze Zahlen) oder off"
+        )
+    return values
+
+
 def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     """Return this Pi's AprilTag profile.
 
@@ -293,6 +330,7 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     model_override = os.getenv("VISION_CALIBRATION_MODEL")
     if model_override:
         preset["calibration_model"] = model_override
+    preset["detection_roi"] = detection_roi_setting(preset.get("detection_roi"))
     # Hand-eye only where a camera sits on the robot. The ceiling camera is fixed and has no
     # flange -- a path for it would be a file that is never created and would produce a
     # warning at every start.

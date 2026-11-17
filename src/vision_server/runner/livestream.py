@@ -60,6 +60,9 @@ def _build_annotator(source: DetectionSource):
         config.detector_backend,
         subpixel_corner_refinement=False,
         detector_parameters=stream_parameters,
+        # Same region as the job; scaled to the smaller overlay image automatically.
+        roi=getattr(config, "detection_roi", None),
+        roi_reference_size=getattr(config, "resolution", None),
     )
 
     return AprilTagStreamAnnotator(
