@@ -19,7 +19,7 @@ poses for the ceiling camera calibration instead of exactly 16.
 
 - `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md`
 - `doc/projektdoku/vision-server-interface.md`, section 12 (calibration) and the section on
-  the stream overlay `calibration`
+  the stream overlay `calibration` (removed 17.11.2026, see below)
 - `doc/projektdoku/arbeitsplaene/handauge-charuco-auswahl.md` (board JSON of the
   hand-eye calibration, reused here)
 - `doc/projektdoku/part10-programm-schnittstelle.md` (reference to `StartCalibration`)
@@ -56,8 +56,11 @@ session (`BoardSpec.as_dict()`, i.e. `type`, `cols`, `rows`, `squareSizeM`, and 
 additionally `markerSizeM`, `dictionary`). After a rejected start option, additionally
 `startError` (text), until the next successful start.
 
-`MeasureBoard` remains unchanged; during the robot run of the ceiling camera the frontend
-sends the selected board along (`board` in the request, previously `null`).
+`MeasureBoard` remains unchanged. **Changed 17.11.2026:** the robot run of the ceiling camera
+no longer calls `MeasureBoard` before each capture; the frontend takes a picture at every
+taught pose without checking whether the board is visible (that only shows in the
+evaluation). The stream overlay mode `calibration` (board corners in the preview) was
+removed without replacement because it worked badly with the ChArUco board.
 
 ### Data / payload
 
@@ -95,7 +98,7 @@ class CalibrationSession:
 ```
 
 The evaluation (`_process`, `_compute_and_save`), the archive (`session.json`, field `board`)
-and the stream overlay in mode `calibration` take the board of the session. The saved
+take the board of the session (the stream overlay in mode `calibration` did too, until it was removed on 17.11.2026). The saved
 calibration file carries it, as before, in the field `board`.
 
 ### Failure cases
@@ -108,17 +111,18 @@ calibration file carries it, as before, in the field `board`.
 ## Approach
 
 1. Pi: `parse_start_options`, `CalibrationSession.start(board)`, board in progress, archive
-   and overlay; `StartCalibration` with `OptionsJson`.
+   (and, until its removal on 17.11.2026, overlay); `StartCalibration` with `OptionsJson`.
 2. Tests for parser, session and method.
 3. Frontend: board setting (chessboard/ChArUco) in the calibration window of the ceiling
-   camera, stored together with the layer 2 setting; start with options; `MeasureBoard`
-   with the board.
+   camera, stored together with the layer 2 setting; start with options. (`MeasureBoard`
+   with the board was planned for the robot run; dropped 17.11.2026, see above.)
 4. Frontend: teach poses without a fixed count; „Fertig“ (done) saves.
 
 ## Open questions
 
 - How fast is the ChArUco detection on the full 12 MP image of the ceiling camera on the Pi?
-  (`MeasureBoard` before each capture.) Not yet measured on the hardware.
+  Not yet measured on the hardware. (No `MeasureBoard` check before each capture since
+  17.11.2026, so only the evaluation detects.)
 
 ## Deviations from the plan
 

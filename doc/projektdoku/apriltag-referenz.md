@@ -600,7 +600,7 @@ from the anchor). The two do not have the same accuracy, which is why it is in t
 ## 8. `tagloc.overlay` — marking detection results in the image
 
 ```python
-OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted")     # from tagloc.modes
+OVERLAY_MODES = ("off", "apriltag", "undistorted", "tagreference")     # from tagloc.modes; "calibration" removed 17.11.2026
 def normalise_mode(mode) -> str
 
 def draw_tag_outline(image, tag_pose: TagPose, color) -> None

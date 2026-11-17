@@ -110,7 +110,7 @@ New field in `CameraStreamConfig`:
 | --- | --- | --- |
 | `overlay_detect_interval_s` | 5.0 | If the latest result at full resolution is older, the overlay detects itself (background, not during job/calibration). `0` = never detect itself |
 
-`overlay_interval_s` (0.5 s) still applies only to the `calibration` mode.
+`overlay_interval_s` (0.5 s) applied only to the `calibration` mode; both were removed on 17.11.2026.
 
 ### Failure cases
 

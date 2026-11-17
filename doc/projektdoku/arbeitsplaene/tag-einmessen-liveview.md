@@ -212,7 +212,7 @@ def latest_overlay(directory: Path | None) -> Path | None: ...
 ```
 
 Overlay mode: `tagloc/modes.py` `OVERLAY_MODES = ("off", "apriltag", "calibration", "undistorted",
-"tagreference")`, display "Tag einmessen" (tag survey). Stream node `CameraStreamMode`, source full frame as for `apriltag`.
+"tagreference")` (`calibration` removed 17.11.2026), display "Tag einmessen" (tag survey). Stream node `CameraStreamMode`, source full frame as for `apriltag`.
 
 ### Measurement log and HTTP
 

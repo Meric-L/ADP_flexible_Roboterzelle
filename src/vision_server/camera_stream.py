@@ -5,9 +5,9 @@ the usual way through the existing `subscribeNode` infrastructure, so no new
 backend logic is needed. This module therefore knows only the node, not the
 WebSocket or backend details.
 
-The stream can be annotated: an `annotator` draws detected AprilTags or board
-corners onto the image, and a second, **writable** node selects the mode
-("off", "apriltag", "calibration", "undistorted"). The publisher itself knows
+The stream can be annotated: an `annotator` draws detected AprilTags onto the
+image, and a second, **writable** node selects the mode
+("off", "apriltag", "undistorted", "tagreference"). The publisher itself knows
 neither OpenCV nor detection -- it only passes the mode and the image along.
 """
 
@@ -239,8 +239,7 @@ class CameraStreamPublisher:
         key = (frame.timestamp, mode)
         if key == self._encoded_key and self._latest is not None:
             return self._latest
-        # "apriltag" and "off" work from the full frame, not from the small ISP
-        # preview:
+        # Every mode works from the full frame, not from the small ISP preview:
         # - "apriltag" gets the full frame as input and draws on a canvas scaled
         #   down to `detection_max_width`. The tags come from a detection at full
         #   resolution -- usually that of the job or the cell watch, otherwise a
@@ -252,17 +251,11 @@ class CameraStreamPublisher:
         #   sees (to check focus, exposure, framing), not the downscaled preview.
         #   It costs barely more than before -- without detection/overlay only the
         #   larger encode is new.
-        # "calibration" stays with the small preview image: there detection
-        # fidelity does not matter, and the session has its own separately tuned
-        # downscale before `detect_board` (`detection_max_width`).
-        # "undistorted" also uses the full frame: the calibration belongs to the
-        # sensor image, not to the ISP preview with its own crop.
-        if mode in ("apriltag", "off", "undistorted", "tagreference"):
-            source = frame.image
-        else:
-            source = getattr(frame, "preview", None)
-            if source is None:
-                source = frame.image
+        # - "undistorted" also uses the full frame: the calibration belongs to the
+        #   sensor image, not to the ISP preview with its own crop.
+        # The mode "calibration" (board corners on the small preview image) was
+        # removed on 2026-11-17; `CameraFrame.preview` is no longer read here.
+        source = frame.image
         image, complete = source, True
         if mode != "off" and self._annotator is not None:
             image, complete = await self._annotate(loop, source, mode)

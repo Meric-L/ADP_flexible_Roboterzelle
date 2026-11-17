@@ -178,14 +178,14 @@ class OverlayModeTest(unittest.IsolatedAsyncioTestCase):
         annotator = FakeAnnotator()
         mode_node = FakeModeNode(None, fail=True)
         publisher, node = self._publisher(
-            "calibration", annotator=annotator, mode_node=mode_node
+            "undistorted", annotator=annotator, mode_node=mode_node
         )
 
         await run_briefly(publisher, 0.1)
 
         self.assertGreaterEqual(mode_node.reads, 1)
-        self.assertEqual(publisher.mode, "calibration")
-        self.assertEqual(annotator.calls[0], ("frame-1", "calibration"))
+        self.assertEqual(publisher.mode, "undistorted")
+        self.assertEqual(annotator.calls[0], ("frame-1", "undistorted"))
         self.assertGreaterEqual(len(node.written), 1)
 
     async def test_an_annotator_failure_does_not_kill_the_loop(self):
@@ -328,22 +328,22 @@ class NormaliseModeTest(unittest.TestCase):
 
     def test_ignores_case_and_surrounding_whitespace(self):
         self.assertEqual(normalise_mode("  OFF  "), "off")
-        self.assertEqual(normalise_mode("Calibration"), "calibration")
+        self.assertEqual(normalise_mode("Undistorted"), "undistorted")
+
+    def test_the_removed_calibration_mode_falls_back_to_the_default(self):
+        self.assertEqual(normalise_mode("calibration"), DEFAULT_OVERLAY_MODE)
 
 
 
 
 class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
-    """Mit einem kleinen ISP-Bild rechnet der Stream im `calibration`-Modus
-    auf dem verkleinerten Vorschaubild -- genau das liess die Deckenkamera
-    ruckeln, als noch jeder Modus auf dem vollen Frame rechnete.
+    """Mit einem kleinen ISP-Bild nutzt der Stream trotzdem den vollen Frame.
 
-    `apriltag` und `off` nutzen dagegen bewusst den vollen Frame
-    (Absprache 2026-09-22): `apriltag`, damit der Stream dasselbe Bild zeigt
-    wie der echte Job -- sonst laesst sich nicht vertrauenswuerdig sehen, ob
-    der Pi ein Tag wirklich erkennt. `off` ist das Debug-Rohbild und soll
-    zeigen, was der Pi tatsaechlich sieht (Fokus/Belichtung/Ausschnitt),
-    nicht die Vorschau -- kostet ohne Erkennung kaum mehr.
+    `apriltag`, damit der Stream dasselbe Bild zeigt wie der echte Job --
+    sonst laesst sich nicht vertrauenswuerdig sehen, ob der Pi ein Tag wirklich
+    erkennt. `off` ist das Debug-Rohbild und soll zeigen, was der Pi
+    tatsaechlich sieht (Fokus/Belichtung/Ausschnitt), nicht die Vorschau. Den
+    Modus `calibration` (Vorschaubild) gibt es seit 2026-11-17 nicht mehr.
     """
 
     async def test_apriltag_mode_overlays_and_encodes_the_full_frame(self):
@@ -363,25 +363,6 @@ class PreviewSourceTest(unittest.IsolatedAsyncioTestCase):
             f"encoded:annotated:voll:{DEFAULT_OVERLAY_MODE}:{FAST_CONFIG.jpeg_quality}",
             node.written,
         )
-
-    async def test_calibration_mode_still_uses_the_preview(self):
-        camera = FakeCamera()
-        loop = asyncio.get_running_loop()
-        camera.latest_frame = CameraFrame(image="voll", timestamp=loop.time(), preview="klein")
-        node = RecordingNode()
-        annotator = FakeAnnotator()
-        publisher = CameraStreamPublisher(
-            camera,
-            node,
-            FAST_CONFIG,
-            encode_frame=fake_encode,
-            annotator=annotator,
-            mode_node=FakeModeNode("calibration"),
-        )
-
-        await run_briefly(publisher, 0.1)
-
-        self.assertEqual({image for image, _ in annotator.calls}, {"klein"})
 
     async def test_raw_mode_sends_the_full_frame_unmarked(self):
         """'off' ist das Debug-Rohbild: soll zeigen, was der Pi tatsaechlich

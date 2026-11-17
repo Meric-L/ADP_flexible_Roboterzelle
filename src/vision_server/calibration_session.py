@@ -26,10 +26,9 @@ stream for this, to give the Pi the full CPU.
 
 The cost of this decoupling: during capture there is no live feedback on
 whether a given capture actually shows the board, and no running coverage
-display. Both only become known after `finish()`. The live preview stream
-(`CameraStreamMode="calibration"`) still shows board corners on the small
-preview image, independent of this class (`stream_overlay.py`). That helps with
-positioning, but says nothing about which captures were actually accepted.
+display. Both only become known after `finish()`. The live stream no longer
+marks board corners (the `CameraStreamMode="calibration"` overlay was removed on
+17.11.2026); it only publishes this session's progress (`calibration_progress`).
 """
 
 import asyncio

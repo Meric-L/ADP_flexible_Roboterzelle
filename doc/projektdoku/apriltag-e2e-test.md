@@ -495,25 +495,30 @@ that an image arrives, but what the detection sees in it.
 | Node | NodeId | Direction | Content |
 |---|---|---|---|
 | Live stream | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | read only | Base64 JPEG, approx. 5 fps |
-| Mode selection | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **writable** | `off`, `apriltag`, `calibration` |
+| Mode selection | `ns=<vision>;s=VisionMachine.CameraStreamMode` | **writable** | `off`, `apriltag`, `undistorted`, `tagreference` (`calibration` removed 17.11.2026) |
 
 `<vision>` is the index of `http://launch-rm.de/vision` — on the Pi server `4`,
 in the standalone vision server `3`. **Always fetch the index at runtime via
 `get_namespace_index`, never hard-code it.**
 
-### 4.2 The three modes
+### 4.2 The modes
+
+> **Removed 17.11.2026:** the mode `calibration` ("Kalibrierboard markieren", mark
+> calibration board) no longer exists; an unknown value falls back to `apriltag`.
+> `undistorted` and `tagreference` are described in `vision-server-interface.md`
+> section 10.1.
+
 
 | Value | Display label | What is marked |
 |---|---|---|
 | `off` | "Rohbild" (raw image) | nothing — the unchanged camera image |
 | `apriltag` | "AprilTags markieren" (mark AprilTags) | for each detected tag only a **green box** (outline) and the ID `#<id>`, no status bar. Axis cross, module name, distance, reprojection error and orange colouring of ambiguous poses are only available in the detailed CLI overlay (`python -m tagloc.cli.detect --overlay`) |
-| `calibration` | "Kalibrierboard markieren" (mark calibration board) | the board corners found and the coverage — this shows what the calibration sees |
 
 Switching is a simple write access:
 
 ```python
 mode_node = client.get_node(ua.NodeId("VisionMachine.CameraStreamMode", vis))
-await mode_node.write_value("calibration")
+await mode_node.write_value("off")
 ```
 
 An invalid value does **not** stop the stream — it falls back to `apriltag`.
@@ -539,10 +544,12 @@ it. The labels are on the server side in `tagloc.modes.OVERLAY_MODE_LABELS`.
   same `SharedCamera`
 - no message "Event-Loop … ms blockiert" (event loop … ms blocked) appears in the server log
 
-> On the last point: the overlay recomputes at most every `overlay_interval_s`
-> (default 0.5 s) and in between keeps drawing the last result. With a fixed
-> camera you see nothing of this. If loop warnings still appear: increase
-> `overlay_interval_s` or lower the stream resolution.
+> On the last point: the overlay detects by itself at most every
+> `overlay_detect_interval_s` (default 5 s) and in between keeps drawing the last
+> result. With a fixed camera you see nothing of this. If loop warnings still
+> appear: increase `overlay_detect_interval_s` or lower the stream resolution.
+> (`overlay_interval_s` was removed on 17.11.2026 together with the `calibration`
+> stream mode.)
 
 ---
 

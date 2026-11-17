@@ -643,7 +643,6 @@ ns=<vision>;s=VisionMachine.CameraStreamMode     Data type String, writable
 | --- | --- | --- |
 | `off` | "Rohbild" (raw image) | nothing — the unchanged camera image |
 | `apriltag` (default) | "AprilTags markieren" (mark AprilTags) | for each recognized tag only a **green box** (outline) and the tag ID `#<id>` (`tagloc.overlay.draw_tag_boxes`), no status bar. The axis cross, module name, distance, reprojection error and the orange coloring of ambiguous poses are no longer shown by the stream; ambiguity still appears in the job results (`ambiguous`, `ambiguityRatio`, `confidence`). The detailed overlay with axis cross is provided by the CLI `python -m tagloc.cli.detect --overlay` |
-| `calibration` | "Kalibrierboard markieren" (mark calibration board) | the found board corners and the image coverage |
 | `undistorted` | "Entzerrt" (undistorted) | nothing — the image **undistorted** with the active calibration (lens model of the camera, `alpha`/`balance` = 1: whole image with curved black borders). Without a real calibration (placeholder or no file) the raw image with the note "Keine Kalibrierung -- Rohbild" (no calibration -- raw image) |
 | `tagreference` | "Tag einmessen" (survey tag) | only with a running survey preview (`SetTagReferencePreview`, see §19.1): the edge search of the selected tag edges — start-value edge, search band, candidate points, discarded and selected line, label with Δ mm and °, tag frame. The layers can be switched individually (§19.1). Without a preview: tag frame like `apriltag`, with the title "keine Einmess-Vorschau" (no survey preview) |
 
@@ -651,24 +650,22 @@ Behavior:
 
 - An **invalid or empty value does not stop the stream** — it falls back to
   `apriltag`. The image is more important than the marking.
-- The overlay recalculates at most every `overlay_interval_s` (default 0.5 s) and
-  in between keeps drawing the last result. With a fixed-mounted camera you see
-  nothing of this, but the Pi's CPU does.
+- Between runs the overlay keeps drawing the last result. With a fixed-mounted
+  camera you see nothing of this, but the Pi's CPU does. (The config field
+  `overlay_interval_s` was removed on 17.11.2026; it only served the removed
+  `calibration` mode. For `apriltag` see `overlay_detect_interval_s`, 10.4.)
 - Overlay and job use **the same loaded calibration and tag map**. If the stream
   shows something different from the job result, it is therefore not due to two
   different configurations.
-- In `calibration` mode the overlay searches with **the same board geometry** as
-  `CaptureCalibrationSample` (section 12.2) — not from the loaded calibration file.
-  Since 17.11.2026 this is the board of the running session (`StartCalibration`
-  with `OptionsJson`, section 12.1); without a session or without a specification,
-  it is the board from `AprilTagProfileConfig`. With a placeholder calibration
-  (section 9, `allow_placeholder_calibration`) there is no board field there;
-  assuming a different geometry would have left the corner detection in the stream
-  empty, although the actual capture finds the corners.
-- Also only in `calibration` mode: the corner search runs on a copy downscaled to
-  `max_stream_width`, not on the full camera frame — with `cam_ceiling`
-  (2028×1520) the full resolution cost noticeable time on the Pi and pushed down
-  the frame rate.
+- **Removed 17.11.2026: mode `calibration`** ("Kalibrierboard markieren", mark
+  calibration board). It searched the calibration board in the preview image and
+  drew its corners; it worked badly with the ChArUco board and was deleted without
+  replacement. The allowed values of `CameraStreamMode` are now `off`, `apriltag`,
+  `undistorted`, `tagreference`; the value `"calibration"` is treated like any
+  unknown value and falls back to `apriltag`. The progress of a running calibration
+  session is unaffected: it is still published in `CalibrationProgress` (section
+  12.1). To position the board, use `MeasureBoard` (section 15.4) or take a test
+  image.
 - In `undistorted` mode the image is first downscaled to `max_stream_width` and
   then undistorted (`cv2.remap`). The Pi computes the maps once per resolution and
   keeps them in the cache (`tagloc.lens.undistortion_maps`). A new calibration
@@ -722,7 +719,6 @@ is now only used where detection fidelity plays no role:
 | AprilTag job, calibration session | `CameraFrame.image` | 4056×3040 |
 | Live stream/overlay "AprilTags markieren" (mark AprilTags) (MJPEG and node) | `CameraFrame.image` | 4056×3040, scaled down to `max_stream_width` (960 px) for publishing |
 | Live stream "Rohbild" (raw image) (`off`) | `CameraFrame.image` | 4056×3040, scaled down to `max_stream_width` (960 px) for publishing |
-| Overlay "Kalibrierboard markieren" (mark calibration board) (`calibration`) | `CameraFrame.preview` | 960×720 |
 
 > **Changed 2026-09-22:** The modes "AprilTags markieren" and "Rohbild" originally
 > ran on `CameraFrame.preview` (see below; original reason: frame rate). For
@@ -735,8 +731,8 @@ is now only used where detection fidelity plays no role:
 > so the hits themselves are identical to the job. The frame rate drops noticeably
 > as a result (full 12 MP processing/encoding per tick instead of ~0.7 MP), a
 > deliberate trade-off; for "Rohbild" without detection only the larger encode
-> matters. "Kalibrierboard markieren" stays with the small preview image for speed
-> reasons (its own, separately tuned downscale before `detect_board`).
+> matters. (The mode "Kalibrierboard markieren" used the small preview image; it was
+> removed on 17.11.2026, so no mode reads `CameraFrame.preview` any more.)
 
 Both images come from **one** request and therefore always originate from the same
 capture. If an overlay computes on `preview` (960×720), the calibration is
@@ -744,8 +740,8 @@ converted accordingly (`scale_to_resolution`); the aspect ratio deviates by 0.07
 in the process, below the 0.1 % limit.
 
 Settings (`CameraStreamConfig`, preset in `server.py`,
-`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, now only for
-"Kalibrierboard markieren" and the preview fallback), `capture_fps` 10 (upper limit
+`PI_CAMERA_STREAM_PRESETS`): `preview_resolution` (960×720, no mode reads
+the preview image any more since 17.11.2026), `capture_fps` 10 (upper limit
 of the IMX477 at full resolution), `buffer_count` 2 (six buffers of 37 MB each do
 not fit into the CMA memory), `overlay_timeout_s` **8.0** instead of the global
 default of 2.0 (`profiles.py`) — detection plus drawing at 4056×3040 reliably
@@ -1072,10 +1068,9 @@ calibration) as a **background task** and returns immediately; the frontend
 monitors `processing`/`result` in `CalibrationProgress`. The price: during capture
 there is no live feedback anymore on whether a particular capture actually shows
 the board, and no running coverage display — both only become apparent after
-`FinishCalibration`. The live stream (`CameraStreamMode="calibration"`) still shows
-board corners on the small preview image while positioning (unchanged, its own,
-cheaper detection run); this helps with alignment, but says nothing about which
-captures were actually accepted. **During the evaluation the server pauses the live
+`FinishCalibration`. The live stream no longer marks board corners (the mode
+`CameraStreamMode="calibration"` was removed on 17.11.2026); only the progress is
+published. **During the evaluation the server pauses the live
 stream** (`LatestCameraFrame`/MJPEG only deliver the last image before the pause in
 the meantime) to give the Pi the full CPU for it — afterwards it starts again
 automatically and shows the result.
@@ -1127,7 +1122,7 @@ board of the hand-eye calibration (`wsc.vision.handeye.start/1`, functions
 
 If `board` is missing (or `OptionsJson` is empty), the board from the configuration
 applies. The session's board controls the evaluation, the archive (`session.json`,
-field `board`), the overlay in `calibration` mode and the field `board` in
+field `board`), and the field `board` in
 `CalibrationProgress`.
 
 **Compatibility:** The webskillcomposition backend strictly checks the argument
@@ -1356,8 +1351,8 @@ codes).
 **6×7 inner corners, 23 mm per square** (`cols=6`, `rows=7` in `server.py`, both
 cameras). `cols`/`rows` count the **inner corners**, not the squares: the board has
 7×8 squares. With the old setting (7×9, 22 mm) the new board is not found, and the
-overlay display "Board gefunden" (board found) in `calibration` mode then stays
-empty. The numbers below belong to the calibrations with the old board (7×9, 22 mm).
+overlay display "Board gefunden" (board found) in the former `calibration` stream
+mode (removed 17.11.2026) then stayed empty. The numbers below belong to the calibrations with the old board (7×9, 22 mm).
 Already saved calibration files remain valid; they carry their board in the field
 `board`. After the switch, recalibrate both cameras with the new board so that the
 documentation in the file is correct too. Cols + rows = 13 is odd, so the board is

@@ -53,10 +53,10 @@ Frontend                                          Vision server
    |     (BUSY=3 if a job is running OR a session/  (0 = OK, session running)
    |      evaluation is already open)
    |
-   |  2. Show LatestCameraFrame + CameraStreamMode="calibration"
-   |     (board corners are drawn on the small preview image --
-   |      pure positioning aid, says nothing about which
-   |      captures were actually accepted)
+   |  2. Show LatestCameraFrame (e.g. CameraStreamMode="off";
+   |     the mode "calibration" with board corners was removed
+   |     on 17.11.2026 -- the stream does not say which
+   |     captures were actually accepted)
    |
    |  3. CaptureCalibrationSample() ---------------> Error: Int32
    |     on click of "Aufnahme" or similar           (0 = accepted,
@@ -93,7 +93,7 @@ Frontend                                          Vision server
 | `CalibrationProgress` | `ns=<vision>;s=VisionMachine.CalibrationProgress` | String (JSON), **read only** | Live progress of *one session*, the only source for the result, see below |
 | `ActiveCalibrationInfo` | `ns=<vision>;s=VisionMachine.ActiveCalibrationInfo` | String (JSON), **read only** | Metadata of the **currently active** calibration — stays put, independent of a running session, see below |
 | `LatestCameraFrame` | `ns=<vision>;s=VisionMachine.LatestCameraFrame` | String (Base64 JPEG), read only | Image for the `<img>`/canvas — during the evaluation it only returns the last image from before the pause |
-| `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **writable** | `"off"` \| `"apriltag"` \| `"calibration"` \| `"undistorted"` — set to `"calibration"` before/at calibration start |
+| `CameraStreamMode` | `ns=<vision>;s=VisionMachine.CameraStreamMode` | String, **writable** | `"off"` \| `"apriltag"` \| `"undistorted"` \| `"tagreference"`. Since 17.11.2026 there is no `"calibration"` mode any more (an unknown value falls back to `"apriltag"`); nothing has to be set for a calibration |
 
 **Board parameters have been passed with `StartCalibration` since 17.11.2026**
 (input `OptionsJson`, schema `wsc.vision.calibration.start/1`, field `board`

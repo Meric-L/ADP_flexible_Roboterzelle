@@ -232,8 +232,9 @@ The following points describe the original approach and were not implemented:
 **Current architecture (corrected):** The `lores` stream still exists and is
 active for `cam_ceiling` (`PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["preview_resolution"]
 = (960, 720)` in `src/vision_server/server.py`) — but it is only used by the
-`"calibration"` mode of the live stream (`camera_stream.py._encoded` selects
-`frame.preview` only there). The modes `"apriltag"`/`"off"` still start from the
+`"calibration"` mode of the live stream (`camera_stream.py._encoded` selected
+`frame.preview` only there; the mode was removed on 17.11.2026, so now no mode reads
+the preview). The modes `"apriltag"`/`"off"` still start from the
 full `frame.image`; `"apriltag"` has since then itself downscaled in software in
 `annotate()` (see above).
 

@@ -222,7 +222,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Profile dataclasses with stdlib types only: `AprilTagProfileConfig`, `CameraStreamConfig`, `AssetConfig`. Matrices are not stored here; `K` and `D` come from the calibration file.
 - `CAMERA_BACKENDS` = `picamera2`, `opencv`, `realsense`.
 - Default paths: `DEFAULT_CALIBRATION_PATH` (`data/calibration/camera.json`), `DEFAULT_TAG_MAP_PATH` (`config/tagmap.json`), `DEFAULT_HAND_EYE_PATH` (`None`).
-- `AprilTagProfileConfig.calibration_board_spec()` (added 17.11.2026): the one place that turns the `calibration_board_*` fields into a `tagloc.boards.BoardSpec`. Used by the calibration session, the stream overlay and `MeasureBoard`'s default board.
+- `AprilTagProfileConfig.calibration_board_spec()` (added 17.11.2026): the one place that turns the `calibration_board_*` fields into a `tagloc.boards.BoardSpec`. Used by the calibration session and `MeasureBoard`'s default board.
 
 **Group: job, state, address space and events**
 
@@ -363,15 +363,15 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 **Group: streaming**
 
 ### `src/vision_server/camera_stream.py`
-- Publishes the shared camera's frames as a Base64 JPEG on the node `LatestCameraFrame`. The writable node `CameraStreamMode` selects the overlay: `off`, `apriltag`, `calibration`, `undistorted`.
+- Publishes the shared camera's frames as a Base64 JPEG on the node `LatestCameraFrame`. The writable node `CameraStreamMode` selects the overlay: `off`, `apriltag`, `undistorted`, `tagreference` (the mode `calibration` was removed on 17.11.2026).
 - Entry points: `CameraStreamPublisher` (`start`, `stop`, `latest`, `next_frame`, `viewer`). It also publishes calibration progress and preview status nodes.
 - Takes an annotator object for the overlay. Camera health is not checked here; the image freezes when the camera hangs.
 
 ### `src/vision_server/stream_overlay.py`
-- Overlay for the livestream: draws detected tags, calibration board corners, or the tag reference preview onto a copy of the frame.
-- In mode `calibration` the overlay searches for the board of the running session (`session.board_spec`, added 17.11.2026); without a session, the configured board. Never the board from the loaded calibration file.
+- Overlay for the livestream: draws detected tags or the tag reference preview onto a copy of the frame.
+- Removed 17.11.2026: the `calibration` mode (board corners in the preview image). `set_calibration_session` and `calibration_progress` stay: the publisher still reads the attached session's progress from them.
 - Entry points: `AprilTagStreamAnnotator` with `annotate(image, mode)`, `apply_calibration`, `set_calibration_session`, `set_reference_preview`, `set_reference_measuring`, `close`.
-- Rules: never modifies `SharedCamera.latest_frame`; detection runs at most every `overlay_interval_s`, and the last result is redrawn in between.
+- Rules: never modifies `SharedCamera.latest_frame`; own detection runs at most every `overlay_detect_interval_s`, and the last result is redrawn in between.
 
 ### `src/vision_server/mjpeg_server.py`
 - Serves the live stream as MJPEG over HTTP directly from the Pi to the browser, bypassing the Base64 OPC UA path.
@@ -475,7 +475,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Purpose: check whether processing 12 MP images loads the Pi enough to drop the frame rate.
 
 ### `src/vision_server/tools/stream_viewer.py`
-- Local OpenCV window for the camera stream, for a Pi with a monitor attached. Reads `LatestCameraFrame` and defaults to `CameraStreamMode="calibration"`.
+- Local OpenCV window for the camera stream, for a Pi with a monitor attached. Reads `LatestCameraFrame` and defaults to `CameraStreamMode="off"` (was `"calibration"` until 17.11.2026).
 - Entry points: `run`, `main`. Space triggers a calibration capture; `q` or Ctrl+C quits.
 - Positioning aid only, not a measure of whether a capture was usable.
 

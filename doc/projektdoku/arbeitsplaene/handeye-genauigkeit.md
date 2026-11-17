@@ -342,7 +342,7 @@ The numbers say nothing about the fixed offset on the real FR3; only the measure
 - Errors of `t_X`: median 0.30 mm, p90 0.60 mm. Scale: 0.06 %.
 - A set with stronger tilts and three distances (15 views) was worse: 0.54 mm and 1.01 mm respectively. The poses therefore stay as they are.
 
-**Live stream in calibration mode** (`CameraStreamMode` = `calibration`, commit `6e03cca`):
+**Live stream in calibration mode** (`CameraStreamMode` = `calibration`, commit `6e03cca`) — *removed 17.11.2026; the mode no longer exists, and only the `calibration_progress` hook of the annotator remains:*
 - No more black text outline. The texts are drawn with `outline=False`.
 - Top left shows only „{n} Ecken“ (n corners) in board color, or „0 Ecken“ (0 corners) if the board is not detected.
 - Bottom left shows only „Kalibriermodus“ (calibration mode). The frontend shows the session progress.

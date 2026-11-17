@@ -244,14 +244,9 @@ class CameraStreamConfig:
     node_name: str = "LatestCameraFrame"
     #: Writable node through which the frontend selects the overlay mode.
     mode_node_name: str = "CameraStreamMode"
-    #: Initial value; valid values are "off", "apriltag", "calibration"
-    #: (tagloc.overlay).
+    #: Initial value; valid values are "off", "apriltag", "undistorted",
+    #: "tagreference" (tagloc.modes).
     overlay_mode: str = "apriltag"
-    #: Minimum gap between two detection runs for the overlay. The stream is
-    #: meant to help debugging, not load the Pi's CPU -- between runs, the
-    #: last result is redrawn. Since 21.10.2026 this applies only to the mode
-    #: "calibration"; for "apriltag" see `overlay_detect_interval_s`.
-    overlay_interval_s: float = 0.5
     #: Mode "apriltag": the overlay shows the newest result in full resolution from
     #: the job, cell watch or measurement. If that result is older than this value,
     #: the overlay itself detects in full resolution -- in the background, and not
