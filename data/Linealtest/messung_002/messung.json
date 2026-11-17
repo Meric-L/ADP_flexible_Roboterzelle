@@ -1,0 +1,48 @@
+{
+ "schema": "wsc.vision.floortags.result/1",
+ "frameId": "cam_ceiling",
+ "heightM": 0.0,
+ "calibrationId": "cam_ceiling@2026-11-02T14:47:53.213779+00:00",
+ "intrinsicsSource": "calibration",
+ "imageSize": [
+  4056,
+  3040
+ ],
+ "markers": "aruco",
+ "arucoDictionary": null,
+ "framesRequested": 5,
+ "framesUsed": 5,
+ "variants": {
+  "entzerrt": {
+   "camera": {
+    "frames": 0,
+    "positionInWorld": null,
+    "reprojectionErrorPx": null,
+    "solvers": [],
+    "worldTagIds": []
+   },
+   "tags": []
+  },
+  "roh": {
+   "camera": {
+    "frames": 0,
+    "positionInWorld": null,
+    "reprojectionErrorPx": null,
+    "solvers": [],
+    "worldTagIds": []
+   },
+   "tags": []
+  }
+ },
+ "error": null,
+ "request": {
+  "frames": 5,
+  "heightM": 0.0,
+  "tagIds": null,
+  "markers": "aruco",
+  "arucoDictionary": "auto"
+ },
+ "bilder": [
+  "bild_01.png"
+ ]
+}
