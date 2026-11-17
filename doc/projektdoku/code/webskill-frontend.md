@@ -1,93 +1,52 @@
-# webskillcomposition: frontend outside cell modules
+# webskillcomposition: frontend
 
-Reference for the frontend code of webskillcomposition outside `features/cell-modules/`
-(that part: [webskill-cell-modules.md](webskill-cell-modules.md)), branch `ADP_Lokalisierung`,
-as of 2026-11-17. Overview: [code-dokumentation.md](../code-dokumentation.md). Paths are relative
-to `frontend/src/`.
+Reference for the frontend of webskillcomposition outside `features/cell-modules/`
+([webskill-cell-modules.md](webskill-cell-modules.md)), branch `ADP_Lokalisierung`, as of 2026-11-17.
+Overview: [code-dokumentation.md](../code-dokumentation.md). Paths are relative to `frontend/src/`.
 
-## What is ours and what already existed
+## What is new and what already existed
 
-The frontend existed before our project (webskillcomposition team: robot control, viewport, IK,
-OPC UA browser, task editor, WebSocket client). Our group added the whole Pi/vision side, the tag
-tool and shared helpers, and extended the task editor and the viewport.
+The frontend existed before our project. It was written by the webskillcomposition team (robot
+control, 3D viewport and IK, OPC UA browser, task editor, WebSocket client). Our group added the
+whole Pi and vision side (`features/opcua-server/` model, config and most components), the tag tool
+(`tag-tool/`), shared helpers (`shared/`), flange kinematics, and extended the task editor and the
+viewport scene state.
 
-Share of lines (`git blame -w -M -C` on `ADP_Lokalisierung`, translation-only commit `a2509f2`
-ignored): **about 46 % of the lines in this scope are ours.** Labels per heading below: **new**
-(created by us or at least 90 % ours), **extended** (5–90 % ours), **mixed** (folder with both).
+Parts we did not change are not described here: `App.tsx`, `main.tsx`, `index.css`, `app/context/`,
+`app/components/`, `entities/server/`, `shared/api/`, `features/viewport/components/Viewport.tsx`,
+the viewport IK, collision and surface models, and the robot-control contexts, joint sync and axis
+mapping. See the webskillcomposition docs below.
 
-| Area | Lines | Ours | New files (examples) | Extended files |
-| --- | ---: | ---: | --- | --- |
-| `features/opcua-server/` | 7973 | 82 % | `piServers.ts`, `useVisionJob.ts`, `visionResult.ts`, camera, calibration, hand-eye, tag-map sync, cell watch, Pi activity | `ServerManager.tsx`, `ConnectOpcUa.tsx`, `OpcuaServerContext.tsx` |
-| `features/task/` | 5382 | 68 % | `taskDocument.ts` (rewritten) | `TaskProgramPanel.tsx`, `editorGraph.ts`, `TaskEditorContext.tsx`, `GenericEditorNode.tsx`, `TaskInsertionMenu.tsx` |
-| `features/viewport/` | 5293 | 11 % | — | `sceneState.ts`, `ViewportHeaderControls.tsx`, `robotIkModel.ts` |
-| `features/robot-control/` | 4253 | 8 % | `flangeKinematics.ts` | `RobotActionsPanel.tsx`, `robotJointRuntime.ts`, `robotModels.ts` |
-| `app/` | 4146 | ~21 % | — | `applicationController.ts`, `DesktopLayout.tsx` |
-| `entities/` | 2356 | ~11 % | `maxSpeed.ts`, `endEffector.ts` | `robot/model/store.ts` |
-| `shared/` | 2127 | ~49 % | `createStore.ts`, `storage.ts`, `format.ts`, `parse.ts`, `math/angles.ts`, `ui/FloatingWindow.tsx`, `ui/StepButton.tsx`, `ui/SecondsField.tsx` | — |
-| `tag-tool/` | 2505 | 100 % | the whole tool | — |
+**Note:** much of our workflow logic runs in the frontend although it would fit better in the
+backend: run sequencing and Pi orchestration (a run stops when the tab closes), the Pi busy state
+(per page only), the tag-map sync, and the hand-written Pi bindings in `piServers.ts` (the backend
+discovery does not know the Pis). Moving it is not part of this project.
 
-Where it is documented:
+### Documentation sources
 
 | Document | Written by | Covers |
 | --- | --- | --- |
-| webskillcomposition `docs/architecture.md`, `docs/data-and-interface-model.md`, `docs/features.md` | webskillcomposition team (`features.md` with small additions by us) | the existing frontend: structure, WebSocket contracts, features |
-| webskillcomposition `docs/vision-workflows.md` | us | vision, catalog and tag workflows, Pi connection path |
+| `webskillcomposition/docs/architecture.md` | webskillcomposition team | project structure, system overview |
+| `webskillcomposition/docs/data-and-interface-model.md` | webskillcomposition team | WebSocket commands and events |
+| `webskillcomposition/docs/features.md` | webskillcomposition team, small additions by us | features of the application |
+| `webskillcomposition/docs/vision-workflows.md` | us | vision, catalog and tag workflows, Pi connection path |
 | this page | us | module reference with origin |
-
-### Pre-existing parts not described here
-
-Unchanged by us (below 5 % of lines); see the webskillcomposition docs above:
-- `App.tsx`
-- `main.tsx`
-- `index.css`
-- `vite-env.d.ts`
-- `app/context/AppFeedbackContext.tsx`
-- `app/components/`
-- `entities/robot/model/types.ts`
-- `entities/server/model/types.ts`
-- `entities/server/model/store.ts`
-- `shared/api/messages.ts`
-- `shared/api/websocketClient.ts`
-- `shared/api/websocketUrls.ts`
-- `shared/api/surfaceMessages.ts`, `surfaceMessageLog.ts`
-- `shared/api/formatUnknownPayload.ts`
-- `features/viewport/components/Viewport.tsx`
-- `features/viewport/context/SolverConfigContext.tsx`
-- `features/viewport/model/workspaceSurfaceGeneration.ts`
-- `features/viewport/model/robotCollision.ts`
-- `features/robot-control/context/RobotControlContext.tsx`
-- `features/robot-control/context/RobotInteractionContext.tsx`
-- `features/robot-control/model/jointStateManager.ts`
-- `features/robot-control/model/robotJointSync.ts`
-- `features/robot-control/model/axisMapping.ts`
-
-### Note: logic that belongs in the backend
-
-Much of our workflow logic runs in the frontend, although parts of it would fit better in the
-backend. Candidates, if the code is reworked later (not part of this project):
-
-- **Run sequencing and Pi orchestration** (`AutolocateActions.tsx`, the calibration and hand-eye
-  hooks, `piMethodCall.ts` polling, Layer 2 runs in `features/cell-modules/`): a run lives in the
-  browser tab and stops when the page is closed or reloaded.
-- **Pi busy state** (`PiActivityContext.tsx`): coordinated per page only, so two open browsers can
-  start conflicting Pi jobs.
-- **Tag-map sync** (`useTagMapSync.ts`): the backend already stores the module catalog and could
-  push the world-tag map to both Pis itself.
-- **Flange kinematics for planned views** (`flangeKinematics.ts`): needed wherever robot poses for
-  vision runs are planned.
 
 ## Module reference
 
-### `app/model/applicationController.ts` — extended (26 % ours)
+Origin per heading: **new**, **extended** (existing module with our additions), **mixed** (folder
+with new and existing files).
+
+### `app/model/applicationController.ts` — extended
 - Central controller class `ApplicationController` (`createApplicationController` factory, `ApplicationSnapshot` type). Owns the snapshot and dispatches WebSocket messages.
 - Public methods cover server connect/disconnect, address-space browsing, robot create/bind/sync, robot goto (`callRobotGoto`, speed-capped by `capGotoSpeed`), end effector, actions, `callRawMethod`, `writeNodeValue`, and waypoint capture.
 - Details: file header and `applicationController.test.ts` (about 1600 lines of tests).
 
-### `app/layout/DesktopLayout.tsx` — extended (20 % ours)
+### `app/layout/DesktopLayout.tsx` — extended
 - `DesktopLayout`: the single screen. Nested `react-resizable-panels` groups hold the joint panel, `Viewport`, camera streams, the Layout1 (address space, node details, message log) or Layout2 (`TaskPanel`) switch, `CellWatchPanel` and `ServerManager`.
 - Wraps content in the providers for robot control, robot interaction, OPC UA server, Pi activity and task editor. Uses `LIVESTREAM_CAMERAS` from `features/viewport/model/sceneState.ts`.
 
-### `entities/robot/model/store.ts` — extended (7 % ours)
+### `entities/robot/model/store.ts` — extended
 - `RobotStoreState` (`byId`, `activeRobotId`), `initialRobotStoreState`, and `applyRobotMessage(state, ServerMessage)`, a pure reducer over server messages.
 
 ### `entities/robot/model/maxSpeed.ts` — new
@@ -97,7 +56,7 @@ backend. Candidates, if the code is reworked later (not part of this project):
 ### `entities/robot/model/endEffector.ts` — new
 - `findToggleEndEffectorKey` and `findEndEffectorActions` locate the toggle and open/close actions in a robot's action map.
 
-### `entities/` (dependency note) — mixed: 2 new, 1 extended, 3 existing
+### `entities/` (dependency note) — mixed
 - `entities/robot/model/maxSpeed.ts` is the only file in `entities/` that uses `shared/storage.ts`. The two stores import message types from `shared/api/messages.ts`.
 
 ### `shared/createStore.ts` — new
@@ -113,11 +72,11 @@ backend. Candidates, if the code is reworked later (not part of this project):
 ### `shared/math/angles.ts` — new
 - `DEG`, `degToRad`, `radToDeg`.
 
-### `shared/ui/` — mixed: 4 new, 3 existing
+### `shared/ui/` — mixed
 - `FloatingWindow.tsx` (`FloatingWindowProps`, default export) with geometry helpers in `floatingWindowGeometry.ts` (`clampMove`, `clampResize`, `initialWindowRect`, placement presets, pixel constants).
 - Small controls: `DisclosureSection.tsx`, `ResizeHandle.tsx`, `SecondsField.tsx`, `StepButton.tsx`, `Toggle.tsx`. Used by the opcua-server, cell-modules and task components.
 
-### `features/opcua-server/components/` — mixed: 14 new, 3 extended, 6 existing
+### `features/opcua-server/components/` — mixed
 - React UI for the OPC UA side. `index.ts` re-exports the six components used by `DesktopLayout`: `AddressSpaceTree`, `CameraStreamPanel`, `MessageLog`, `NodeDetailsPanel`, `ServerManager`, `CellWatchPanel`.
 - `ServerManager` auto-connects both Pis (`PI_1_SERVER_URL`, `PI_2_SERVER_URL`) on mount and lists other servers. Camera and calibration UI: `CameraView`, `CameraLiveImage`, `CameraZoomModal`, `CameraCalibrationModal`, `CameraPreview`. Vision and cell watch: `AutolocateActions`, `CellWatchPanel`, `RobotRunConfirm`, `TagMapSyncLine`, `PiStatusList`, `PiActivity`.
 - Method and event UI: `RawMethodCallModal`, `EventSubscriptionPanel`, `VariableSubscriptionPanel`, `SaveRawImageButton`, `LastCalibrationBadge`, `ConnectOpcUa`.
@@ -131,7 +90,7 @@ backend. Candidates, if the code is reworked later (not part of this project):
 ### `features/opcua-server/config/robotServers.ts` — new
 - `KNOWN_ROBOT_SERVER_URLS`: static list of robot server URLs shown in the server manager.
 
-### `features/opcua-server/context/OpcuaServerContext.tsx` — extended (9 % ours)
+### `features/opcua-server/context/OpcuaServerContext.tsx` — extended
 - `OpcuaServerProvider` (props `controller`, `snapshot`) and `useOpcuaServer()`. Exposes server state plus `subscribeNode`, `unsubscribeNode`, `subscribeEvent`, `unsubscribeEvent`, `callRawMethod`, `writeNodeValue`, all delegating to `ApplicationController`.
 
 ### `features/opcua-server/context/PiActivityContext.tsx` — new
@@ -181,42 +140,42 @@ backend. Candidates, if the code is reworked later (not part of this project):
 - `usePauseWhileRobotMoves.ts`: pauses the Pi watch while the robot is moving (reason text "Roboter fährt", i.e. "robot is moving"). Used by `AutolocateActions`.
 - `useConnectServerWithFeedback.ts`: connect-with-toast hook used by `ConnectOpcUa` and `AutolocateActions`.
 
-### `features/viewport/components/` (other files) — mixed: 2 extended, 11 existing
+### `features/viewport/components/` (other files) — mixed
 - `index.ts` exports `Viewport` and `ViewportHeaderControls` (used by `DesktopLayout`).
 - `ViewportHeaderControls.tsx`: controls in the viewport header panel (props take the viewport scene state).
 - `DragControls.tsx`, `GoalMarker.tsx`, `OriginGizmo.tsx`, `TaskWaypointMarkers.tsx`, `WorkspacePointCloud.tsx` (memoized): scene objects.
 - `SolverStatusPanel.tsx`, `StatsOverlay.tsx`, `EnvironmentLoader.tsx`, `EnvironmentErrorBoundary.tsx`: status overlays and environment loading.
 
-### `features/viewport/components/URDFLoader.js` and `URDFLoader.d.ts` — mixed: 1 extended, 1 existing
+### `features/viewport/components/URDFLoader.js` and `URDFLoader.d.ts` — mixed
 - Local JavaScript copy of the `urdf-loader` parser (`URDFLoader` class; imports `urdf-loader/src/URDFClasses`). The `.d.ts` gives it types. Used by `Viewport.tsx` and by `tag-tool/loadModule.ts`.
 
-### `features/viewport/model/sceneState.ts` — extended (83 % ours)
+### `features/viewport/model/sceneState.ts` — extended
 - `useViewportSceneState()` returns the viewport scene state (settings, camera streams, pose previews, Layer 2 proposals). Defines `LIVESTREAM_CAMERAS` ("Kamera 1" and "Kamera 2", i.e. camera 1 and camera 2, on the two Pi URLs) and `CameraStreamSettings`.
 
-### `features/viewport/model/robotIk.ts`, `robotIkModel.ts`, `robotIkConstraints.ts` — mixed: 1 extended, 2 existing
+### `features/viewport/model/robotIk.ts`, `robotIkModel.ts`, `robotIkConstraints.ts` — mixed
 - `robotIk.ts`: `solvePositionIk` and tool-point helpers (`findToolPoint`, `getToolPointWorldPosition`, `getToolPointWorldQuaternion`). Looks for end-effector link names such as `tool_point`, `tool0`, `tcp`.
 - `robotIkModel.ts`: `createRobotIkModel` returns `RobotIkModel` with `IkSolveResult` and `IkTargetPose`.
 - `robotIkConstraints.ts`: `prepareIkTarget` and `evaluateIkConvergence` (`pose` or `position` mode).
 
-### `features/robot-control/components/` — mixed: 1 extended, 3 existing
+### `features/robot-control/components/` — mixed
 - `JointAnglesPanel.tsx` (joint values panel), `RobotActionsPanel.tsx`, `RobotDetails.tsx`, `RobotManager.tsx` (robot list with select, sync and take-control toggles; props `RobotManagerProps`).
 
-### `features/robot-control/model/robotJointRuntime.ts` — extended (11 % ours)
+### `features/robot-control/model/robotJointRuntime.ts` — extended
 - `RobotJointRuntime` class (`createRobotJointRuntime()`): per-robot joint managers, sync sessions, manipulation state, sync goto in flight, animation (`advanceAnimation`), and heal of stale manipulation (15 s). Entry points: `startSync`, `update`, `stopSync`, `beginManipulation`.
 
-### `features/robot-control/model/robotModels.ts` — extended (10 % ours)
+### `features/robot-control/model/robotModels.ts` — extended
 - `ROBOT_MODEL_OPTIONS` (models `eva`, `fr3`, `fr3_wagon`, `ur5e`, `demo1`) with URDF paths, home angles and mount rotation.
 - Helpers: `resolveRobotModelFromIdentity`, `resolveHomeAnglesForModel`, `resolveRobotMountRotation`, `defaultRobotOrigin`.
 
 ### `features/robot-control/model/flangeKinematics.ts` — new
 - `createFlangeKinematics` / `loadFlangeKinematics`: forward and inverse kinematics of the flange in the robot base frame, without a viewport. Tolerances: `IK_TRANSLATION_TOLERANCE_M` = 0.002 m, `IK_ROTATION_TOLERANCE_RAD` = 1 degree.
 
-### `features/task/components/` — mixed: 4 extended, 2 existing
+### `features/task/components/` — mixed
 - Task editor UI for the Layout2 panel: `TaskPanel` (program list left, editor right), `TaskProgramPanel` (task list and save; `TaskSaveControls` is exported from the same file), `TaskEditor` (React Flow canvas), `GenericEditorNode` (node renderer), `TaskInsertionMenu` (skill picker, `buildInitialSkillInputs`).
 - `index.ts` exports `TaskPanel`, `TaskEditor`, `TaskInsertionMenu`, `GenericEditorNode`, `TaskProgramPanel`, `TaskEditorProvider`, `useTaskEditor`. `DesktopLayout` imports `TaskPanel` and `TaskEditorProvider` from it.
 - Saving calls the backend's add-task method (`callRawMethod` with `runtimeNodeIds.addTask`) and then re-browses the task list.
 
-### `features/task/context/TaskEditorContext.tsx` — extended (60 % ours)
+### `features/task/context/TaskEditorContext.tsx` — extended
 - `TaskEditorProvider({ snapshot })` and `useTaskEditor()`: editor nodes and edges and node updates. Task-server node ids used for saving (`addTask`, `taskList`) come from `runtimeNodeIds` in `TaskProgramPanel`.
 
 ### `features/task/model/taskDocument.ts` — new
@@ -224,15 +183,15 @@ backend. Candidates, if the code is reworked later (not part of this project):
 - Parsers and serialisers: `parseTaskDocument`, `serializeTaskDocumentForServer`, `createEmptyTaskDocument`, `parseTaskTimelineStep`, `isTaskConstantReference`.
 - Also contains `Legacy*` graph types and parsers for older stored tasks.
 
-### `features/task/model/editorGraph.ts` — extended (71 % ours)
+### `features/task/model/editorGraph.ts` — extended
 - Conversion between the React Flow graph and the task document: `importTaskDocumentToGraph`, `exportTaskDocumentFromGraph`, `validateTaskEditorGraphForSave`, node data builders (`createSkillNodeData`, `createVariableNodeData`, constant nodes), handle ids and value-type compatibility checks.
 
-### `features/task/model/taskScene.ts`, `resolveNodeCollisions.ts`, `types.ts` — mixed: 1 extended, 2 existing
+### `features/task/model/taskScene.ts`, `resolveNodeCollisions.ts`, `types.ts` — mixed
 - `taskScene.ts`: `getTaskSceneWaypointMarkers` produces waypoint markers for `Viewport`.
 - `resolveNodeCollisions.ts`: `resolveNodeCollisions` resolves overlaps between editor nodes (options type `CollisionAlgorithmOptions`).
 - `types.ts`: type re-exports only.
 
-### `features/task/` (status) — mixed: 1 new, 7 extended, 4 existing
+### `features/task/` (status) — mixed
 - Still referenced from `app/layout/DesktopLayout.tsx` (Layout2 is the default). Last commit touching this folder is `839857c`. There is no current `docs/task-editor.md`.
 
 ### `tag-tool/TagToolApp.tsx` and `tag-tool/main.tsx` — new
