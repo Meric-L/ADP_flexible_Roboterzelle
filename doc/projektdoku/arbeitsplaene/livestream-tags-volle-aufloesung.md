@@ -21,7 +21,7 @@ At the same time the problem of 24.09.2026 must not return. Back then the overla
 
 - `doc/projektdoku/vision-server-interface.md`, section 10 (live stream, overlay, two image streams)
 - `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (deviations: overlay detection downscaled, own detector)
-- `doc/projektdoku/kamera-und-detektor-analyse.md`, section 2.1 (runtime of `detect()` on 12 MP: PC 0.09–0.13 s, Pi 4 roughly 5–10× slower)
+- `doc/projektdoku/analysen/kamera-und-detektor-analyse.md`, section 2.1 (runtime of `detect()` on 12 MP: PC 0.09–0.13 s, Pi 4 roughly 5–10× slower)
 - `doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md` (own detector, pause during job/calibration)
 
 ## Solution

@@ -84,7 +84,7 @@ Read before creating a plan — here is the documented state:
 | [`../vision-system.md`](../vision-system.md) | Vision system — current state on the Raspberry Pi |
 | [`../vision-system-integration.md`](../vision-system-integration.md) | Integration of the vision systems into WebSkillComposition |
 | [`../vision-system-next-steps.md`](../vision-system-next-steps.md) | Vision system — open items and next steps |
-| [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | Concept of AprilTag localization |
+| [`../apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) | AprilTag localisation, maintainer guide |
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag reference |
 | [`../code-dokumentation.md`](../code-dokumentation.md) | Code documentation: overview; details per area under `../code/` |
 | [`../altlasten-zelle.md`](altlasten-zelle.md) | Clean-up audit of this repo (`apriltag`): dead code, duplicates, workarounds, guidelines, test gaps |

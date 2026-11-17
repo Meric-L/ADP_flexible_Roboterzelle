@@ -68,23 +68,23 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` on branch `main`. Paths
 ### `tools/handeye_offline_cv4/laeufe_vergleich.py`
 - Purpose: compares several 1080p calibration runs (intrinsics and hand-eye per run) and shows their spread.
 - Entry points: module-level script; `load`, `intrinsics`, `pnp`, `handeye`, `angles`.
-- Interface: session folders as `sys.argv[1:]` (read at import time). No `__main__` guard. Details: `doc/auswertung/handauge_laeufe_vergleich_20261110.md`.
+- Interface: session folders as `sys.argv[1:]` (read at import time). No `__main__` guard. Details: `doc/projektdoku/analysen/handauge_laeufe_vergleich_20261110.md`.
 
 ### `tools/handeye_offline_cv4/intrinsik_offline.py`
 - Purpose: offline intrinsics from ChArUco images of the hand camera (11x7, DICT_5X5_100); compares three distortion models with leave-one-out, against the factory intrinsics. Stores and activates nothing.
 - Entry points: module-level script; helper `evalK`.
 - Interface: positional `muster` (default glob `data/calibration/cam_flange_pending/kalib_*.jpg`), `--nur-gruppe`. Reads `data/calibration/cam_flange.json`.
-- Details: `doc/auswertung/intrinsik_20261110.md`.
+- Details: `doc/projektdoku/analysen/intrinsik_20261110.md`.
 
 ### `tools/handeye_offline_cv4/intrinsik_1080.py`
 - Purpose: offline intrinsics at 1920x1080 from a hand-eye raw recording (ChArUco, measured board scale).
 - Entry points: module-level script; helper `evalK`. No `__main__` guard.
-- Details: `doc/auswertung/handauge_1080_20261110.md`.
+- Details: `doc/projektdoku/analysen/handauge_1080_20261110.md`.
 
 ### `tools/handeye_offline_cv4/kalibrierung_aktivieren.py`
 - Purpose: writes the offline calibration of one session as the active files: intrinsics to `data/calibration/cam_flange.json`, hand-eye to `data/handeye/cam_flange.json`, using the `tagloc` save functions.
 - Entry points: module-level script (argparse at top). Options: `--aufloesung 1920x1080|640x480` (required), `--sitzung` (default `data/rohbilder/calibration/20261110T104151Z_77e0dd17`), `--quelle`.
-- Overwrites both files directly; there is no backup step in the script. Usage in `doc/auswertung/handauge_1080_20261110.md`.
+- Overwrites both files directly; there is no backup step in the script. Usage in `doc/projektdoku/analysen/handauge_1080_20261110.md`.
 
 ### `tools/handeye_offline_cv4/kinematik/`
 - Purpose: experiments on the Franka kinematic model (joint offsets and link lengths) and their effect on hand-eye results. Writes candidate files into the session `results/` folder.

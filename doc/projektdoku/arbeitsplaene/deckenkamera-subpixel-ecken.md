@@ -14,7 +14,7 @@ with `CORNER_REFINE_SUBPIX`.
 
 ## Already read
 
-- `doc/projektdoku/kamera-und-detektor-analyse.md` (sections 2 and 5: `CORNER_REFINE_APRILTAG`
+- `doc/projektdoku/analysen/kamera-und-detektor-analyse.md` (sections 2 and 5: `CORNER_REFINE_APRILTAG`
   discarded, SUBPIX "only 0.1–0.3 px noise")
 - `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (subpixel off on 24.09., ~46 % CPU — measured with `CORNER_REFINE_APRILTAG`)
 - `doc/projektdoku/vision-server-interface.md` (section 15 subpixel corners, 18c brightness test)
@@ -45,7 +45,7 @@ the Pi (`perspectiveRemovePixelPerCell` 8):
 - `src/vision_server/server.py` (preset `cam_ceiling`)
 - `tests/test_subpixel_settings.py`, `tests/test_server_config.py`
 - `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/code-dokumentation.md`,
-  `doc/projektdoku/kamera-und-detektor-analyse.md` (new section)
+  `doc/projektdoku/analysen/kamera-und-detektor-analyse.md` (new section)
 
 ## Interfaces
 

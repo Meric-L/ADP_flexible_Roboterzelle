@@ -31,7 +31,8 @@ finished, working features go to `main`.
 | OPC UA server, OPC 40100, address space, methods, payload | `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/vision-system.md` |
 | Connection to WebSkillComposition, frontend, several vision systems | `doc/projektdoku/vision-system-integration.md` |
 | Open points of the vision system | `doc/projektdoku/vision-system-next-steps.md` |
-| AprilTag: concept, tag families, pose | `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/apriltag-referenz.md` |
+| AprilTag: code map, conventions, maintenance | `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/apriltag-referenz.md` |
+| Analyses of past problems and experiments | `doc/projektdoku/analysen/` |
 | Unexpected behaviour, historical quirks | `doc/projektdoku/arbeitsplaene/altlasten.md` |
 | Presentation / supervision | `doc/projektdoku/praesentation.md` |
 

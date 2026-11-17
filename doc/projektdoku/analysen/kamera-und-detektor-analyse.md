@@ -21,7 +21,7 @@ Related work plans: `arbeitsplaene/apriltag-erkennung-unscharfe-tags.md`,
 
 ## 2. Initial problem: blurred image (A)
 
-![Tags in image A](bilder/kamera-analyse/01_altes_bild_tags.jpg)
+![Tags in image A](../bilder/kamera-analyse/01_altes_bild_tags.jpg)
 
 *Fig. 1: Crops of the five tags in image A. With OpenCV default parameters only 1, 2 and 583 are detected.*
 
@@ -61,7 +61,7 @@ Tested on image A, PC runtime on 12 MP. Pi 4 roughly 5–10× slower.
 
 ## 3. Hardware measure: focus readjusted (B)
 
-![Focus before/after](bilder/kamera-analyse/02_fokus_vorher_nachher.jpg)
+![Focus before/after](../bilder/kamera-analyse/02_fokus_vorher_nachher.jpg)
 
 *Fig. 2: The same tags before and after readjusting the focus. Scene and tag positions changed in between.*
 
@@ -100,11 +100,11 @@ Tested on image A, PC runtime on 12 MP. Pi 4 roughly 5–10× slower.
 
 ### 4.2 Result
 
-![Tag 3 per setting](bilder/kamera-analyse/03_tag3_einstellungen.jpg)
+![Tag 3 per setting](../bilder/kamera-analyse/03_tag3_einstellungen.jpg)
 
 *Fig. 3: The same tag (ID 3, smallest tag in the image) under seven settings. With 05 (contrast) and 08 (matrix metering) the white burns out.*
 
-![Stress ranking](bilder/kamera-analyse/04_stress_rangliste.png)
+![Stress ranking](../bilder/kamera-analyse/04_stress_rangliste.png)
 
 *Fig. 4: Sum of the bit errors under artificial degradation, per setting. The grey band is the scatter of the three identical automatic images (±2–3). Differences from about 8–10 points onward are reliable.*
 
@@ -142,15 +142,15 @@ Tested on image A, PC runtime on 12 MP. Pi 4 roughly 5–10× slower.
   - The number of rejected candidates rises slightly with sharpness and contrast (48 → 61/62).
   - With strongly relaxed parameters, wrong IDs occur (315, 379).
 
-![Detection with setting 12](bilder/kamera-analyse/05_kombi_uebersicht.jpg)
+![Detection with setting 12](../bilder/kamera-analyse/05_kombi_uebersicht.jpg)
 
 *Fig. 5: Image 12 (combi) with the detected tags, OpenCV default.*
 
-![Second ID 1 covered](bilder/kamera-analyse/06_id1_verdeckt.jpg)
+![Second ID 1 covered](../bilder/kamera-analyse/06_id1_verdeckt.jpg)
 
 *Fig. 6: Position of the second ID 1. Left image B (detected), right settings test: covered by the robot arm.*
 
-![Edge profiles](bilder/kamera-analyse/07_kantenprofile.png)
+![Edge profiles](../bilder/kamera-analyse/07_kantenprofile.png)
 
 *Fig. 7: Edge profiles across a black-white edge per setting, with undershoot at higher sharpness.*
 
@@ -210,7 +210,7 @@ runtime rises by 3 % (median 86.7 → 89.0 ms). The warning about range and
 CPU only concerns `CORNER_REFINE_APRILTAG`.
 
 - **Decision:** preset `cam_ceiling` with `subpix` on
-  (work plan [`deckenkamera-subpixel-ecken.md`](arbeitsplaene/deckenkamera-subpixel-ecken.md)).
+  (work plan [`deckenkamera-subpixel-ecken.md`](../arbeitsplaene/deckenkamera-subpixel-ecken.md)).
 - **Open:** confirmation on the Pi with a series of brightness tests. A large part of the
   rotation scatter comes from the IPPE ambiguity
   (about 2/3 of the images `ambiguous`). Subpixel alone presumably does not eliminate it.

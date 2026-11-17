@@ -163,7 +163,7 @@ exposure values (`journalctl -u opcua-server.service | grep -i "Kamera-Metadaten
 ## Addendum 19.10.2026: values in preset `cam_ceiling`
 
 After the settings test (14 captures, report
-[`../kamera-und-detektor-analyse.md`](../kamera-und-detektor-analyse.md)) the following are set in
+[`../kamera-und-detektor-analyse.md`](../analysen/kamera-und-detektor-analyse.md)) the following are set in
 `src/vision_server/server.py`:
 
 - `PI_CAMERA_STREAM_PRESETS["cam_ceiling"]["camera_controls"]` =

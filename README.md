@@ -56,10 +56,11 @@ The documentation has two levels:
 | --- | --- |
 | [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | Full OPC UA interface reference for the backend (OPC 40100), including pitfalls and details per method |
 | [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | Part 10 program and mDNS: the generic operator interface of the cell and discoverability on the network |
-| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | Concept: what AprilTags mean here, how Layer 1 and Layer 2 use the same functionality |
-| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Function and CLI reference, file formats, payload |
+| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | AprilTag localisation for maintainers: code map, data flow, conventions, maintenance recipes |
+| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Overview of the AprilTag functions and file formats, linked to the code reference |
 | [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | State of the vision system |
 | [`doc/projektdoku/vision-system-integration.md`](doc/projektdoku/vision-system-integration.md) | Target plan for integrating the two OPC UA vision systems (OPC 40100) into webskillcomposition |
+| [`doc/projektdoku/analysen/`](doc/projektdoku/analysen/README.md) | Analyses of past problems: what was tried and measured (camera and detector, calibration runs) |
 | [`doc/projektdoku/arbeitsplaene/`](doc/projektdoku/arbeitsplaene/README.md) | Work plans of all features (planning, decisions, status) |
 | [`doc/projektdoku/arbeitsplaene/altlasten-zelle.md`](doc/projektdoku/arbeitsplaene/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
 | [`doc/projektdoku/arbeitsplaene/altlasten-wsc.md`](doc/projektdoku/arbeitsplaene/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |

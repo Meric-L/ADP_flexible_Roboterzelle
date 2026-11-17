@@ -5,7 +5,7 @@ world tags, and report module poses as OPC UA detections. This guide says where 
 it relies on, and how to change it safely.
 
 **Concept and rationale** (what the world tags are for, why both cameras share one code path, why anchoring is
-needed): see the written thesis (LaTeX, `doc/`). They are not repeated here.
+needed): see the written thesis (LaTeX). They are not repeated here.
 
 Function-level reference: [`code/zelle-tagloc.md`](code/zelle-tagloc.md) and
 [`code/zelle-vision-server.md`](code/zelle-vision-server.md). This guide does not repeat them.

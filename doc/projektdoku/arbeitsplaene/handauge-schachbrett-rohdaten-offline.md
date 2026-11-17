@@ -163,7 +163,7 @@ Findings:
 
 ### Reason
 
-- The intrinsics of the hand camera are determined anew offline (`doc/auswertung/intrinsik_20261110.md`).
+- The intrinsics of the hand camera are determined anew offline (`doc/projektdoku/analysen/intrinsik_20261110.md`).
 - This requires views with the board in the image corners and at the image edges, as well as strong tilt. The tilt determines the focal length.
 - Until now every view aimed at the board centre. The hand-eye raw capture therefore delivers, in one automatic run, lossless images for intrinsics and hand-eye.
 

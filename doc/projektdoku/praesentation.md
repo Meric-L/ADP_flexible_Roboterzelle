@@ -299,7 +299,7 @@ there yet.
 
 | Document | Content |
 |---|---|
-| `doc/apriltag-lokalisierung.md` | concept and implementation plan |
+| `doc/apriltag-lokalisierung.md` | maintainer guide (code map, conventions) |
 | `doc/apriltag-referenz.md` | function and CLI reference, file formats |
 | `doc/vision-server-interface.md` | OPC UA interface, Part 1 and Part 2 |
 | `doc/altlasten.md` | what is still open, and why (legacy items) |

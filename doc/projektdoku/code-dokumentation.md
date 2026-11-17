@@ -91,7 +91,7 @@ documents:
 | [`vision-server-interface.md`](vision-server-interface.md) | OPC UA interface of the Pi server, full reference |
 | [`vision-system.md`](vision-system.md) | State of the vision system on the Pis |
 | [`vision-system-integration.md`](vision-system-integration.md) | Integration into webskillcomposition |
-| [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | AprilTag localization concept |
+| [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) | AprilTag localisation, maintainer guide |
 | [`apriltag-referenz.md`](apriltag-referenz.md) | AprilTag reference: functions, CLI, file formats |
 | [`layer2-regeln.md`](layer2-regeln.md) | Layer 2 rules |
 | [`arbeitsplaene/README.md`](arbeitsplaene/README.md) | Index of work plans and their status |

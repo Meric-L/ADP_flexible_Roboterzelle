@@ -92,7 +92,7 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_model": "fisheye",
         # A finer sampling grid (8 instead of 4 px per cell) adds hit reserve without false
         # alarms. errorCorrectionRate stays default: more range, but wrong IDs.
-        # See doc/projektdoku/kamera-und-detektor-analyse.md; try others via
+        # See doc/projektdoku/analysen/kamera-und-detektor-analyse.md; try others via
         # VISION_APRILTAG_DETECTOR_PARAMS.
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
         # Subpixel corners: integer corners jitter 5-10 mm in depth for a tag ~85 px wide.
