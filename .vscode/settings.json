@@ -1,0 +1,35 @@
+{
+  // LaTeX-Ausarbeitung in latex/: wie auf Overleaf mit pdfLaTeX + biber
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk-pdflatex",
+      "command": "latexmk",
+      "args": [
+        "-pdf",
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-outdir=%OUTDIR%",
+        "%DOC%"
+      ],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    { "name": "pdfLaTeX + biber (latexmk)", "tools": ["latexmk-pdflatex"] }
+  ],
+  "latex-workshop.latex.recipe.default": "first",
+  // Hauptdatei nur in latex/ suchen. Hilfsdateien und PDF landen in latex/build/
+  // (per .gitignore ausgeschlossen, kommt also weder auf GitHub noch auf Overleaf).
+  "latex-workshop.latex.search.rootFiles.include": ["latex/**/*.tex"],
+  "latex-workshop.latex.outDir": "%DIR%/build",
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.view.pdf.viewer": "tab",
+  "[latex]": {
+    "editor.wordWrap": "on",
+    "files.encoding": "utf8"
+  },
+  "[bibtex]": {
+    "files.encoding": "utf8"
+  }
+}

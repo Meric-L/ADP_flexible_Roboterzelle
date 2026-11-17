@@ -58,3 +58,5 @@ latex/**/*.gls
 latex/**/*.glg
 latex/**/*.ist
 latex/PLCM-Thesis.pdf
+# Build-Ordner von VS Code / LaTeX Workshop (siehe .vscode/settings.json)
+latex/build/
