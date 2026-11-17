@@ -91,6 +91,12 @@ committet selbstständig, ohne zu pushen.
   Feature-Branches, aktuell `feature/vision-server`.
 - `latex/` ist die schriftliche Ausarbeitung (Sync mit ShareLaTeX). Nur anfassen, wenn die Aufgabe
   ausdrücklich die Ausarbeitung betrifft.
+- **Commits, die Dateien in `latex/` ändern, bekommen nie eine
+  `Co-Authored-By: Claude ...`-Zeile** (und keinen sonstigen Claude-Hinweis in der
+  Commit-Message). Diese Commits landen per `git subtree` auf ShareLaTeX. Diese
+  Regel geht der Standard-Attribution von Claude Code vor. Änderungen in `latex/`
+  und außerhalb davon in getrennten Commits machen, damit der Rest normal
+  attribuiert werden kann.
 
 ## Orientierung im Repo
 
