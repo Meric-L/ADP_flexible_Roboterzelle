@@ -1,9 +1,9 @@
 # Zelle: tools, deployment, config, data, tests
 
-Detailed reference for the non-library parts of the ADP repository (branch `apriltag-aufraeumen`). Overview: [code-dokumentation.md](../code-dokumentation.md).
+Detailed reference for the non-library parts of the ADP repository (branch `main`, as of 2026-11-17). Overview: [code-dokumentation.md](../code-dokumentation.md).
 
 
-Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` in the branch `doku/code-reference`. Paths are relative to the repository root.
+Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` on branch `main`. Paths are relative to the repository root.
 
 ### `tools/make_tag_sheet.py`
 - Purpose: prints AprilTag markers or a ChArUco board as an SVG with millimetre-exact size (a PNG would depend on printer DPI).
@@ -115,14 +115,14 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` in the branch `doku/cod
 
 ### `data/`
 - Purpose: machine-specific calibration, captures and results. Layout below; generated folders are created at runtime by the server or the tools.
-- Versioned data: `data/use-case/` (trial series; `doc/projektdoku/arbeitsplaene/use-case-messung.md` says `data/` is versioned from 02.11.2026 on and should be committed deliberately), `data/rohbilder/` raw captures (`.gitignore` exception), `data/calibration/cam_flange.json`, `data/handeye/cam_flange.json` (exceptions in `.gitignore`), `data/LV1/` (checkerboard images, see Flags).
-- Git rules: `.gitignore` excludes `data/calibration/**` and `data/handeye/**` except the two `cam_flange.json`, excludes `data/tagreference/`, and excludes `*.jpg` everywhere. It has no rule for `data/use-case/`, `data/LV1/` or the other `data/` paths, and `!data/rohbilder/` re-includes raw images. Files already tracked stay tracked.
+- Versioned data: `data/use-case/` (trial series; `doc/projektdoku/arbeitsplaene/use-case-messung.md` says `data/` is versioned from 02.11.2026 on and should be committed deliberately), `data/rohbilder/` raw captures (`.gitignore` exception), `data/calibration/cam_flange.json`, `data/handeye/cam_flange.json` (exceptions in `.gitignore`), `data/Linealtest/` (ruler test, `messung_NNN/`), `data/use_case/` (older trial series). On `main` (since 17.11.2026) older measurement and calibration images (`data/LV1/`, `data/calibration/cam_ceiling_captures/`, older raw captures, part of the PNGs in `data/use_case/reihe_001/`) are no longer versioned; they remain in the git history and on branch `apriltag-aufraeumen`.
+- Git rules: `.gitignore` excludes `data/calibration/**` and `data/handeye/**` except the two `cam_flange.json`, excludes `data/tagreference/`, and excludes `*.jpg` everywhere. It has no rule for `data/use-case/` or the other `data/` paths, and `!data/rohbilder/` re-includes raw images. Files already tracked stay tracked.
 
 #### Layout
 | Path | Content | Created by |
 | --- | --- | --- |
 | `data/calibration/<frame_id>.json` | camera calibration per frame (`cam_flange`, `cam_ceiling`) | calibration job / `tagloc.cli.calibrate`; `src/vision_server/server.py` (path per frame) |
-| `data/calibration/<frame_id>_captures/` | calibration captures (`cam_ceiling_captures`, 3 PNG) | server, when capture is enabled |
+| `data/calibration/<frame_id>_captures/` | calibration captures (not versioned on `main`) | server, when capture is enabled |
 | `data/calibration/cellwatch_camera_pose.json` | stored camera pose for cell watch (`CameraPoseKeeper`) | `src/vision_server/runner/cell_watch.py` (runtime) |
 | `data/calibration/<frame_id>_pending/` | working folder of the calibration session (not present in the repo) | `src/vision_server/calibration_session.py`, emptied on each start |
 | `data/handeye/<frame_id>.json` | hand-eye result | `tagloc.handeye`, hand-eye session |
@@ -132,7 +132,8 @@ Scope: `tools/`, `deploy/`, `config/`, `data/`, `tests/` in the branch `doku/cod
 | `data/use-case/reihe_NNN/` | trials `versuch_NNN.json` and `versuch_NNN_messung.png` | `SaveUseCaseImage` (`config.use_case_dir`); `tools/use_case_auswertung.py` adds `auswertung.csv/json` |
 | `data/tagreference/` | tag-reference debug data | server, `config.tag_reference_debug_dir`; gitignored |
 | `data/use_case_target/` | default output of `tools/make_use_case_target.py` | tool; not present in the repo |
-| `data/LV1/Train`, `data/LV1/Val` | checkerboard image sets for `cam_ceiling` | not read by code (see Flags) |
+| `data/Linealtest/messung_NNN/` | ruler test: `bild_NN.png` and `messung.json` | not written by current code |
+| `data/use_case/reihe_NNN/` | older trial series (`versuch_NNN.json`, PNGs); superseded by `data/use-case/` | not written by current code (`config.use_case_dir` is `data/use-case`) |
 
 - `data/.gitkeep` and `data/rohbilder/.gitkeep` are placeholders.
 - Pi-level details, including the `data/` description in the code handbook: `doc/projektdoku/code-dokumentation.md` (section on `data/`).

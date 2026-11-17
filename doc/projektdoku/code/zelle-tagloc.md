@@ -1,6 +1,6 @@
 # Cell: tagloc library, CLI, jobs, use-case eval, UA program
 
-Detailed reference for the code in the ADP repository (branch `apriltag-aufraeumen`). Overview and system picture: [code-dokumentation.md](../code-dokumentation.md).
+Detailed reference for the code in the ADP repository (branch `main`, as of 2026-11-17). Overview and system picture: [code-dokumentation.md](../code-dokumentation.md).
 
 
 Scope: `src/tagloc/` (incl. `cli/`), `src/jobs/`, `src/use_case_eval/`, `src/ua_program/`, and the repo root files. Paths are relative to the repository root. Project-wide overviews: `doc/projektdoku/code-dokumentation.md` (per-file handbook), `doc/projektdoku/apriltag-referenz.md` (functions, CLI, file formats), `doc/projektdoku/apriltag-lokalisierung.md` (concept).
