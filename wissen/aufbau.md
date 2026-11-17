@@ -26,19 +26,15 @@ physisch steht oder das Zusammenspiel der Bereiche festlegt.
 | --- | --- |
 | [Hardware-Architektur v2](<../hardware/Hardware_Architektur_v2(2).drawio.png>) | Komponenten und Verdrahtung der Zelle |
 | [Ablaufdiagramm v2](../concept/Ablaufdiagramm_v2.drawio.png) | Kalibrierung → Layer 1 → Layer 2, inkl. Fehlerpfade |
-| [`concept/offene_punkte.md`](../concept/offene_punkte.md) | **Sechs offene Konzeptlücken** plus Anforderungen an den Update-Loop. Vor Konzeptarbeit lesen. |
 | [`README.md`](../README.md) | Projektfokus und Repo-Struktur |
 
 ## Offene Fragen
 
-Nicht hier duplizieren — die Liste lebt in
-[`concept/offene_punkte.md`](../concept/offene_punkte.md). Kurzfassung der
-Themen: Koordinatensystem-Kette Kamera → Welt, Übergabeformat Layer 1 → Layer 2,
+Die frühere Liste `concept/offene_punkte.md` ist entfernt. Themen waren: Koordinatensystem-Kette Kamera → Welt, Übergabeformat Layer 1 → Layer 2,
 Repositionierungsstrategie bei nicht gefundenem Tag, Rolle des Robotertisch-Tags,
 Fehlerbehandlung bei Layer-1-Ausfall, Abbruchkriterium für Vollständigkeit.
 
-Wird eine dieser Fragen geklärt, kommt die Entscheidung als Log-Eintrag hierher
-**und** der Punkt wird in `offene_punkte.md` als geklärt markiert.
+Wird eine dieser Fragen geklärt, kommt die Entscheidung als Log-Eintrag hierher.
 
 ## Log
 

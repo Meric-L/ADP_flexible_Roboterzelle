@@ -22,7 +22,7 @@ calibration file, and **all** consumers (pose estimation, overlay, scaling) foll
 - `CLAUDE.md`, `doc/projektdoku/arbeitsplaene/README.md`
 - `doc/projektdoku/arbeitsplaene/deckenkamera-volle-aufloesung.md` (Meric, in progress): concerns resolution/live stream of `cam_ceiling`, **not** the lens model — no overlap in the files except the preset in `server.py` (only one additional key, existing ones remain untouched)
 - `doc/projektdoku/vision-server-interface.md` section 12
-- `doc/frontend-integration-kalibrierung.md`
+- `doc/projektdoku/frontend-integration-kalibrierung.md`
 
 ## Affected files
 
@@ -37,7 +37,7 @@ calibration file, and **all** consumers (pose estimation, overlay, scaling) foll
 - `src/vision_server/calibration_session.py` — pass the model through, report it in the result
 - `src/vision_server/runner.py` — `ActiveCalibrationInfo.model`
 - `tests/test_lens.py` (new), `tests/test_calibration_io.py`, `tests/test_calibration_session.py`
-- `doc/projektdoku/vision-server-interface.md`, `doc/frontend-integration-kalibrierung.md`
+- `doc/projektdoku/vision-server-interface.md`, `doc/projektdoku/frontend-integration-kalibrierung.md`
 
 ## Interfaces
 

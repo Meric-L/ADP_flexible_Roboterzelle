@@ -68,8 +68,7 @@ Regeln dazu:
   Stand.
 - Betrifft der Eintrag zwei Bereiche, kommt er vollständig in den besitzenden
   Bereich und in den anderen nur als eine Zeile mit Link.
-- Wird eine Frage aus `concept/offene_punkte.md` geklärt, dort als geklärt
-  markieren und die Entscheidung hier loggen.
+- Wird eine offene Konzeptfrage geklärt, die Entscheidung hier loggen.
 - Bestehende Dokumente in `doc/` und `concept/` nicht umschreiben, um etwas
   Neues unterzubringen.
 

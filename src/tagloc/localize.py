@@ -600,8 +600,8 @@ def expected_but_missing(
 ) -> list[str]:
     """Return the modules from the map that were not found.
 
-    Answers the abort criterion from concept/offene_punkte.md no. 6 without any extra
-    configuration: the list of expected modules is in the tag map.
+    Answers the completeness abort criterion without any extra configuration: the
+    list of expected modules is in the tag map.
     """
     seen = {location.tag_id for location in located}
     return sorted(

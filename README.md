@@ -65,4 +65,3 @@ The documentation has two levels:
 | [`doc/projektdoku/arbeitsplaene/altlasten-zelle.md`](doc/projektdoku/arbeitsplaene/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
 | [`doc/projektdoku/arbeitsplaene/altlasten-wsc.md`](doc/projektdoku/arbeitsplaene/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
 | [`doc/projektdoku/arbeitsplaene/altlasten.md`](doc/projektdoku/arbeitsplaene/altlasten.md) | What is still in there and why, and when it will be removed |
-| [`concept/offene_punkte.md`](concept/offene_punkte.md) | Open concept questions of the localization |

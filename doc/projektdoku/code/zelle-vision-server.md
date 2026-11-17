@@ -452,7 +452,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 ### `src/vision_server/tools/calibration_client.py`
 - Test client for an interactive calibration. Calls `StartCalibration`, `FinishCalibration` and `AbortCalibration` and logs progress live.
 - Entry points: `run`, `main`, `_start_session`. Ctrl+C finishes the session; `--abort` ends it without saving.
-- Method interface: `doc/projektdoku/vision-server-interface.md` (section 12); frontend side: `doc/frontend-integration-kalibrierung.md`.
+- Method interface: `doc/projektdoku/vision-server-interface.md` (section 12); frontend side: `doc/projektdoku/frontend-integration-kalibrierung.md`.
 
 ### `src/vision_server/tools/diagnose_board.py`
 - Explains why calibration does not find the chessboard. Sets `CameraStreamMode` to `off`, fetches a raw image from the running server, and tries several cols/rows combinations with `tagloc.boards.detect_board`.
