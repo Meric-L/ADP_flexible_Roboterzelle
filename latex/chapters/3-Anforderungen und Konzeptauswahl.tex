@@ -1,0 +1,108 @@
+\cleardoublepage
+
+\chapter{Anforderungsanalyse und Systemkonzeption}
+\label{ch:Kapt3}
+
+Die Literaturecherche hat eine Vielzahl möglicher technologien und kombinatuonsmöglichkeiten beleuchtet. Im nächsten Schritt gilt es diese einzugrenzen und für unseren SPezifischen Anwendungsfall auszuwählen. Hierzu müssen vor allem die gegebenen Rahmenbedingung die das Projekt eingrenzen und durch das PLCM vorgegeben sind berücksichtigt werden. Um diese externen Faktoren im Blick zu haben werden sie nun genauer beleuchetet.
+
+\section{Erfassen externer Randbedingungen}
+\label{sec:Erfassen externer Randbedingungen}
+
+Leichte erweiterbarkeit
+Die Lokalisierung und einbindung neuer Module in den digitallen zwilling ist nur ein Teil des gesmten Forschungsziels der Modularen Fertigung und gleidert sich daher ein in ein dynamisches Projekt, welches nach abschluss des ADP nicht abgeschlossen ist sindern weiterentwickelt wird. Dies muss bei der Auslegung beachtet werden, da folgende Gruppen die erarbeiten Konzept übernehmen, modifieren und leicht verwenden können müsen. Hier wäre eine erweitereung des Arbeitsbereichs, einbundung neuer Module, mehrere Roboter gleichzietig mehere Tags an einem Modul, fahrende Roboter oder Menschen, die sich ebenfals in dem Arbeits bereich befuden denkbare nächste Ergänzungen. Das Erarbeitete Konzept muss daher leicht zu erweitern sein und von anderen Druppen gut nutzbar ohne, zuviel aufwand für die einbingunh unseres Konzepts benötigt. Eine entsprechnd aufschlussreche dokumentation ist daher ebenfalls elementar.
+
+
+Kosten
+Alle kosten für das Projekt werden vom PLCM übernommen und müssen entsprechend der Budget planung entsprechen. Um keine unnötigen Kosten zu verursachen, ist die verwednung von bereits bestehendem Material zu beforzugen und wird entsprecehnd auch in unserem Konzept berücksichtigt. Dies betrifft bereits vorhandene Rechnenleistung wie Raspberry PIs, Kameras, werkzeuge und Mantagematerial. Der finanzielle Rahmen des Projektes wurde mit 1000 Euro festgelegt. Geringere Kosten sind allerdings zu beforzugen.
+
+Robustheit
+Auch wenn es sich bei dem Projekt um ein Forschungsprojekt in einem sehr abgesteckten Rahmen hadelt sollte nicht vergessenw erden, dass die Modulare Fertigung später in einem Industriebetrieb eingesetzt wird. Hier sollten daher erste Schritte und Gedanken in die Spätere Umgebung mit einfließen, welche nicht den bei uns gegebenen Bedingung entsprecehn.
+
+Genauigkeit
+Für die Validierung des Konzepts haben wir uns einen Typischen und erprobten Industrie usecase herausgesucht. Dieser ist universell und lässt sich durch das bestehende nodesystem codefrei nachbauen. Beim Pick und Place wird ein Objekt aus einer vorgegeben Position von einem Roboter aufgehoben und an eine vordefinierte Stelle gelegt. Die benötigte Genauigkeit hierfür hängt von verschieden Faktoren wie Bauteilgeometrie, Zielerreichbarkeit oder Endefektor. Wir haben uns hier für den Bereits montieretn Paralelgreifer entschieden. Die griffbacken Haben eine quadratische Fläche von $313.29mm^2$ mit einer seiten Länge von 17,7mm. Wir haben uns wür ein Symetrisches bauteil entschieden, da hier die Verschiebung zum Ziel einfach messbar ist. Beispielhafte anwendungsfälle haben einen quadratisches Bauteil exemplarisch genutzt (QUELLE ANGEBEN). Nach untenhin ist unsere Genauigkeit von dem Roboter bestimmt, welcher laut datenblatt Eine Punt Widerholgenauigkeit von +-0.1mm. Die Absolutgenauigkeit wird nicht angeben obwohl es für unseren Usecase wichtiger ist die Absolute genauigkeit zu wissen. Unsere Recherche hat ergeben, das diese bei dem Franka R3 nicht besonders gut ist(Quelle suchen). Für unsere Positionierungsgenauigkeit kommen wir so auf +-3mm.
+
+
+Echtzeitfähigkeit
+Eine weitere wichtige Eigenschaft des Technischen systems ist die ectzeit fähigkeit. Das Überwachen der Module sollte eine Veränderung in einem Angemessenen Zeitrahmen von wenigen Sekunde Werkennen. Auch die Auswertung Daten und erkennen der Tags auf diesen Bildern sollte das system in angemessener Zeit von wenigen Sekunen schaffen. Die anfordeung an die echtzeit können daher entspannt werden und müssen nicht im Millibereich wie bei der Überwachung dynamischer systeme stattfinden. Jedr gewinn an geschwindigkeit ist fließt eher in die Nutzerfreundlichkeit als in ein Tatsächlichen technisch notwendigen Punkt.
+Das system sollte dauerhaft laufen und möglichst geringe unterbrechungszeiten besitzen um die 
+
+Sicherheit
+Der verwendete Roboter Franka R3 ist ein Cobot und ist somit für eine sichere Zusammenarbeit mit menschen ausgelegt. Dennoch besteht durch umherfahren des Roboters ein Sucherheitsrisiko, für menschen, die sich in dem SIcherheitsbereich befinden. Zudem müssen alle Mechnischen aufbauten gesichert werden, sodass Personen, die sich in dem Arbeitsbereich befinden nicht gefährdet werden, seinen dies Laser, Spitze teile, Verkabelungen herunterfallende Gegenstände. Hier muss ein besonderes augenmerk auf sicherheit gelegt werden, da es sich nicht um einen bgeschlossenen berech handelt. 
+
+Bereits bestehendes software und hardware
+Für die modulare Zoboterzelle und Prozessplanung wurde bereits durch vorherige arbeiten eine web Schnittstelle zur steuerung des Roboters implementiert. In das bestehende Forntend sollte auch unsere Lokalisierng eingebettet und gesteuert werden.
+
+Umgebungsbedingung der Roboterzelle
+Die Zelle ist im haupt Labor des PLCM aufgebaut und steht in einem Abgesteckten bereich von 2x2 Metern. Außerhalb des bereiches ist der Arbeitsbereich durch Tische physisch abgegrenzt. Damit ist der arbeitsbereich vorgegeben und beträgt 2x2 Meter. Module können aber auch leucht außerhalb dieses Bereiches platziert werden.
+
+Für visuelle erkennungtechnologien ist die Beleuchtung von zentraler bedeutung. Der beschreibene ARbeitsbereich wird von vier LED Deckenpanelen beleuchtet, was eine konstante Beleuchtung des Bereiches garantiert und die erkennung tagesunabhängig macht. Leichte helligkeitsschwankungen durch Tageslicht sind erkennbar, wirken sich aber nicht sichtbar auf die Erkunngsquote aus (Siehe Kapitel Lichttest).
+
+Neben dem Forschungsprojekt tu modularer Fertigung und die Lokalisierung sind auch andere Versuche in dem Arbeitsbereich untergebracht. Das bedeutet, dass in dem Arbeitsbereich immer wieder Personen und Objekte sein werden, welche nicht mit der Lokalisierung zusammen hängen und mit denen das Sytem umgehen muss. So muss eine fehlerbehandlug durch ein Verdecktes Tag, abgeschraubte kamera, oder ausgesteckter Raspberry Pi sichergestellt werden und darf zu keinen SIcherheitsrisiken durch unkontrollierte Roboterfahrten führen. Auch der Roboter Selber darf sich nicht automatisch bewegen sondern bedarf immer einer bestätigung durch einen Menschen, der den arbeitsbereich einsehen und prüfen kann.
+
+Weiterhin werden die Roboterzelle sowie kleinere Tiscmodule innerhalb des Arbeitsberehces verschoben. Kabel die Hier im weg hängen können faher abgerissen werden und zu svhäden führen. Auch Auf dem Boden Befestigte Merker müssen entsprechend robust sein, um diesen Beansprunchungen stand zu halten.
+
+OPCUA wird bereits in dem gesamten Projekt des Virtuellen Zwillings als Kommunikation zwischen Den Robotern und dem Server verwendet. Hier ist es Da sich die Lokalisierung in dieses integrieren soll, müssen auch diese SChnittstellen und Kommunikationsmethoden beachtet werden.
+
+
+Entwicklungszeit
+er zeitliche Rahmen der Arbeit ist auf etwa 6 Monate angesetzt Mai - Ende November geplant. Hiervon waren etwa 3 Monate für die vorbereitung bestellungen, und absprecehn des Konzept eingelant und 3 Monate für die umsetzt, validierung und Dokumentation. An unser Projekt anschließend wurden bereits neue ADPs ausgeschreiben weshalb die umsetzung bis zum Fixtag erfolgen muss und eine verländerung weitere Projekte in verzug bringt. Das Bedeutet konkret für das Konzept,das es in dieser Zeit absehbar umgesetzt und funktionsfähig ist.  69 Tage, also knapp 10 Wochen.
+
+
+
+Warum Level 1 und level 2?
+-erweiterbar auf noch feinere Level (modular)
+-Großer ungenaue Abbildung des gesamten Labores in der Zukunft
+-Deckenmontage später leicht umzusetzten, da konzept darauf aufbaut
+- Schnelle bildauswertung kein Fokus problem, Höhen bereits bekannt
+-reduzieren auf 2d Problem
+
+- Reicht LV1 aus?
+- Reicht LV 2 aus?
+
+Wie wird die absolute Position bestimmt?
+Konzeptvorstellung
+Winkel im Träger
+oder welttags?
+
+
+\section{Anforderungen an die modulare Roboterzelle}
+\label{sec:Anforderungen an die modulare Roboterzelle}
+
+\section{Entwicklung und Bewertung von Systemkonzepten}
+\label{sec:Entwicklung und Bewertung von Systemkonzepten}
+
+Bewerten der Anforderungen
+Aus diesen Begebenheiten lassen sich die Ensprechenden Anforderungen ableiten. Im nächten schritt müssen wir diese gewichten da nicht alle unser Konzept gleich stark beeinflussen. Diese werden für die Konzeptfindung gewichtet. Für eine systemetische vorgehensweise haben wir uns für einen Paarvergleich der einzelnen Kriterien entschieden, wobei diese in einer Matrix miteinander verglichen werden. Dabei teilt man jeder Paarung ein + zu, wenn die ANforderung in der Spalte wichtiger ist als in der reihe. EIn - wenn es andersherum ist und ein = wenn bei kriterien gleich gewichtet werden. Anschließend zählt man - = 0 Punkte, =  = 1Punkt und + = 2 Punkte. Die sume der Pinkte wird in der Letzten SPallte aufgetragen
+
+\section{Auswahl des Systemkonzepts}
+\label{sec:Auswahl des Systemkonzepts}
+
+\section{Systemarchitektur des gewählten Konzepts}
+\label{sec:Systemarchitektur des gewählten Konzepts}
+
+\section{Modulkatalog}
+\section{Aggregation Server}
+\section{Tag einmessen und Platzieren /Kantenerkennung}
+\section{Autokalibrierung lv 1 und 2}
+\section{Livestream}
+\section{MDNS}
+\section{OPCUA Part10 + part2 Programm}
+\section{Companion und statemachine}
+\section{Webskills}
+\section{Kollision detection}
+\section{Posenplanung - keine Trajektorienplanung}
+\section{Ausgangsstellung}
+\section{Take controll und sync nicht selbst gebaut sondern genutzt}
+\section{Zellüberwachung erkennen von Veränderungen}
+\section{Kinematik und umrechenn der Koordinatensysteme}
+\section{Machbar uterstützung}
+\section{BOM}
+\section{Generieren der Tags, kalibierboards, Alle tags, Papir, Laminiert, Gedruckt, Gelasert etc}
+
+\section{Autokalibrierung lv 1 und 2}
+\section{3D Druck teile, Würfel, Würfelhalterung, Tag Halterung, Aufnahme platten im greifer, Camera Halterung, laserlot, }
+\section{8x8 Tags können in einem Radius von 3m um die 1lv Kamera erkannt werden}
+\section{Mehrposen Bilder vs einposen bilder}
+
+
+
