@@ -214,7 +214,7 @@ Objects/
 │       ├── ExecutionMode   String    idle | single | continuous
 │       └── LatestResultJson          reference to VisionMachine.LatestResultJson
 │   └── Status                        <- Organizes references to available status nodes
-│       ├── BusyReason      String    empty = free; German refusal reason
+│       ├── BusyReason      String    empty = free; German reason, e.g. "Job laeuft"
 │       ├── DeviceHealth    DeviceHealthEnumeration (Int32 wire value), when available
 │       └── CameraStreamMode, CameraStreamHttpPort, LatestCameraFrame,
 │           CalibrationProgress, ActiveCalibrationInfo, TagMapJson,

@@ -30,20 +30,16 @@ def _status_nodes(wiring: Wiring) -> dict[str, Node]:
 
 
 def _busy_reason(wiring: Wiring) -> str:
-    """Return the current German reason why the Pi cannot accept work."""
-    from .tag_map import _busy_reason as tag_map_busy_reason
-    from .install import busy_reason as install_busy_reason
-    from .calibration import busy_reason as calibration_busy_reason
+    """Return the current German reason why the Pi cannot accept work ("" = free)."""
+    from .install import busy_reason as camera_busy_reason
 
-    reason = install_busy_reason(wiring)
+    reason = camera_busy_reason(wiring)
     if reason:
         return reason
-    reason = tag_map_busy_reason(wiring)
-    if reason:
-        return reason
-    reason = calibration_busy_reason(wiring)
-    if reason:
-        return reason
+    if wiring.layer2_active():
+        return "Layer-2-Lauf laeuft"
+    if wiring.hand_eye_active():
+        return "Hand-Auge-Kalibrierung laeuft"
     return ""
 
 

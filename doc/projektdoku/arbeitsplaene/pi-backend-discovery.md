@@ -62,7 +62,7 @@ the Pi call helpers in `frontend/src/features/cell-modules/model/`, the componen
 | `ExecutionMode` | `ResultSet/ExecutionMode` | String | Read | unchanged |
 | `LatestResultJson` | `ResultSet/LatestResultJson` (reference) | String | Read | Result JSON `wsc.vision.detections/1` |
 | status nodes | `Status/<Name>` (Organizes references to the existing nodes) | as today | Read / Write where writable today | `CameraStreamMode` (writable), `CameraStreamHttpPort`, `DeviceHealth`, `LatestCameraFrame`, `CalibrationProgress`, `ActiveCalibrationInfo`, `TagMapJson`, `HandEyeStatus`, `Layer2Target`, `Layer2Status`, `CellWatchStatus`, `LastTagMeasurement`, `LastTagReference`, `TagReferencePreviewStatus` — only those the Pi offers |
-| `BusyReason` | `Status/BusyReason` | String | Read | German reason why the Pi refuses new work; `""` = free. Written from the existing busy predicates. |
+| `BusyReason` | `Status/BusyReason` | String | Read | German reason why the Pi refuses new work; `""` = free. One of `Job laeuft`, `Kamera-Kalibrierung laeuft`, `Layer-2-Lauf laeuft`, `Hand-Auge-Kalibrierung laeuft`. |
 | `Manufacturer`, `Model`, `SerialNumber` | properties of `VisionProgram` | String | Read | `SerialNumber` = `visionSystemId` (`vision-ceiling-01`, `vision-flange-01`) |
 | vision methods | method children (references, as today) | Method | Call | all methods of `VisionMachine` (`SaveRawImage`, `MeasureTags`, `StartCalibration`, …) |
 
@@ -188,7 +188,7 @@ Frontend mirrors (`entities/robot/model/types.ts`, `shared/api/messages.ts`): `k
 | --- | --- | --- |
 | `features/opcua-server/model/piMethodCall.test.ts` | 3 | Error/Bad mapping → WSC `backend/tests/test_device_actions.py`; timeout/no device → `features/opcua-server/model/deviceCall.test.ts` |
 | `features/opcua-server/model/useSaveRawImage.test.ts` | 7 | output parsing → `test_device_actions.py` (named outputs); error texts → Pi `tests/test_error_enum.py` (enum descriptions) |
-| `features/opcua-server/model/piActivity.test.ts` | 4 | Pi `tests/test_busy_reason.py` |
+| `features/opcua-server/model/piActivity.test.ts` | 4 | replaced, not ported: the client-side owner lock is gone; the Pi's `BusyReason` is tested in Pi `tests/test_busy_reason.py` |
 | `features/cell-modules/model/tagReferenceCall.test.ts` (call part) | 10 | refusal message, code name, missing method → `test_device_actions.py`; no node id, timeout, unreadable answer → `deviceCall.test.ts` |
 
 All other existing tests stay unchanged (except assertions that check the Pi interface where this

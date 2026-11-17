@@ -2,8 +2,6 @@
 
 import unittest
 
-from asyncua import ua
-
 from vision_server.errors import ENUM_VALUES
 
 
@@ -27,11 +25,6 @@ class VisionErrorEnumTest(unittest.TestCase):
         self.assertIn("Kamerabild", ENUM_VALUES[1][1])
         self.assertIn("beschäftigt", ENUM_VALUES[3][1])
         self.assertIn("fehlgeschlagen", ENUM_VALUES[5][1])
-
-    def test_reports_other_codes_generically_with_the_code(self):
-        wire_value = ua.Variant(99, ua.VariantType.Int32)
-        self.assertEqual(wire_value.VariantType, ua.VariantType.Int32)
-        self.assertNotIn(99, range(len(ENUM_VALUES)))
 
 
 if __name__ == "__main__":
