@@ -32,11 +32,13 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 - Taught FR3 poses for ceiling-camera board calibration (joint limit margin, tool point). No fixed count since 17.11.2026: any number from `MIN_CALIBRATION_POSITIONS` (3) on.
 - Entry points: `taughtPositionsFromStorage`, `taughtPositionsForStorage`, `stopsFromPositions`, `variedWrist`, `turnedAboutToolPoint`.
+- Driving order (since 17.11.2026): `runSequence(count)` drives every position as taught, then on the way back only every `RETURN_EVERY`-th (5th) position again with the wrist turned (`variedWrist`); `stopAtStep` gives the target of a step (label suffix "· Rückweg" on the way back).
+- The 54 poses taught in the cell on 17.11.2026 are in `config/camera1CalibrationPositions.ts` (`CAMERA1_DEFAULT_POSITIONS`); `useBoardCalibrationRun` uses them when the browser has no taught set of its own.
 
 ### `model/boardCalibrationRunner.ts`
 
 - State machine that drives the taught board poses, takes pictures, and checks the board is seen (`idle` … states in the header comment).
-- Entry points: `BoardRunner`, `stepsForPasses`, `targetPictures(count)`, `BoardRunState`, `BoardCheck`; constants `TARGET_PICTURES` (20, the minimum target), `MAX_PASSES`, `MIN_PICTURES`, `SETTLE_MS`. `targetPictures` is `max(TARGET_PICTURES, count)`, so every taught position gets at least one picture (since 17.11.2026).
+- Entry points: `BoardRunner`, `runLength(count)`, `targetPictures(count)`, `BoardRunState`, `BoardCheck`; constants `MIN_PICTURES`, `SETTLE_MS` (1 s rest before measuring), `ANGLE_TRIES`. `runLength`/`targetPictures` are the length of `runSequence` (one picture per step at most). At the end of the run it asks the Pi to evaluate and drives the board back to the neutral pose (`returnHome`), also when there were too few pictures (since 17.11.2026).
 
 ### `model/boardCentring.ts`
 
