@@ -471,23 +471,3 @@ None of this is required to keep running — everything is a gain.
 | 11.7 | **`caps=DA`.** The supervisor's quick guide names `NA`; we announce `DA`, because Conveyor and CardDispenser do so and a filter would otherwise overlook us. |
 
 ---
-
-## 12. Try it yourself
-
-```bash
-pip install -r requirements.txt          # now also brings `zeroconf`
-
-# start the cell server (VisionMachine + VisionProgram + mDNS + LDS)
-python3 -m vision_server.server
-
-# on the Pi it runs as a service:
-sudo systemctl restart opcua-server.service
-```
-
-Search the network:
-
-```bash
-avahi-browse -rt _opcua-tcp._tcp
-```
-
-With UaExpert: browse `VisionProgram`, write `ParameterSet/RecipeId` to `calibration`, call `Start`, observe `CurrentState`.
