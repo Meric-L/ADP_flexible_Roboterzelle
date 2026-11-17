@@ -56,9 +56,6 @@ see [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
 > configuration; renaming it would break every existing connection without
 > improving anything.
 
-Removed (legacy A1–A6): `RaspiDevice` with CPU temperature, counter and setpoint,
-the empty second instance `2:VisionSystem`, `CpuTemperatureResult`, and the
-namespace `http://launch-rm.de/raspi`.
 
 Address space of the vision system:
 
