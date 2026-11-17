@@ -12,12 +12,6 @@ plus the mDNS announcement and LDS registration. The address space is built enti
 To start::
 
     python3 -m vision_server.server
-
-The early CPU-temperature demo -- ``RaspiDevice``, the empty second instance
-``2:VisionSystem``, ``CpuTemperatureResult`` and the namespace
-``http://launch-rm.de/raspi`` -- has been removed (tech debt A1-A6). As a result, all
-namespace indices shift down by one. Anyone resolving them via
-``get_namespace_index(uri)`` will not notice.
 """
 
 import asyncio
@@ -42,168 +36,114 @@ _log = logging.getLogger("vision-cell-server")
 
 NODESET_PATH = DEFAULT_NODESET_PATH
 
-#: Fallback endpoint. Normally the endpoint is set to the LAN IPv4 at runtime (see
-#: ``lds.advertised_endpoint``), because ``register_to_discovery()`` passes exactly this
-#: address on as the DiscoveryUrl to the discovery server. With ``0.0.0.0`` the
-#: aggregation server would connect to nothing. Listening always happens on all interfaces
-#: regardless (``Server.socket_address``), so that local tools can still reach the server
-#: via 127.0.0.1.
-#: If no LAN IPv4 can be determined, this value stays in use, and the server keeps
-#: running without LDS registration.
-#:
-#: The path stays ``/raspi/server/`` even though the Raspi interface has been removed. It
-#: appears in the mDNS announcement, in the LDS registration and in every client
-#: configuration. Renaming it would break every existing connection without improving
-#: anything.
+#: Fallback endpoint. Normally the LAN IPv4 is used at runtime (``lds.advertised_endpoint``),
+#: because the discovery server gets this address as DiscoveryUrl and ``0.0.0.0`` would be
+#: useless there. Listening is always on all interfaces. If no LAN IPv4 is found, this
+#: value stays and the server runs without LDS registration.
+#: Keep the path ``/raspi/server/``: it appears in the mDNS announcement, the LDS
+#: registration and every client configuration.
 ENDPOINT = "opc.tcp://0.0.0.0:4840/raspi/server/"
 SERVER_NAME = "Raspberry Pi OPC UA Server"
 
-#: Port and path for the mDNS announcement, derived from the endpoint instead of being
-#: maintained separately. A client builds ``opc.tcp://<ip>:<port><path>``; a different path
-#: would give every client an unusable URL.
+#: Port and path of the mDNS announcement, derived from the endpoint so that clients
+#: build a valid URL.
 _ENDPOINT_URL = urlparse(ENDPOINT)
 MDNS_PORT = _ENDPOINT_URL.port or 4840
 MDNS_PATH = _ENDPOINT_URL.path or "/"
 
 
-#: Hostname -> identity and reference frame. ``vision_system_name`` must NOT vary:
-#: the interface documentation and the frontend hard-code ``ns=<vision>;s=VisionMachine``,
-#: and a Pi-specific BrowseName would break every client.
+#: Hostname -> identity and reference frame. ``vision_system_name`` must not vary per Pi:
+#: documentation and frontend hard-code ``ns=<vision>;s=VisionMachine``.
 PI_IDENTITIES: dict[str, tuple[str, str]] = {
     "ADP-Roboter-Lokalisierung": ("vision-ceiling-01", "cam_ceiling"),
     "ADP-HandInEye-Kamera-Pi": ("vision-flange-01", "cam_flange"),
 }
 
-#: Hostname -> camera backend (see ``CameraStreamConfig.backend``). The ceiling Pi
-#: still uses Picamera2; the hand Pi uses an Intel RealSense via ``pyrealsense2``. If a
-#: host is missing here, "picamera2" applies as the previous default, so that a freshly
-#: installed third Pi does not fail silently.
+#: Hostname -> camera backend (see ``CameraStreamConfig.backend``). A host missing here
+#: falls back to "picamera2".
 PI_CAMERA_BACKENDS: dict[str, str] = {
     "ADP-Roboter-Lokalisierung": "picamera2",
     "ADP-HandInEye-Kamera-Pi": "realsense",
 }
 
 
-#: What distinguishes Layer 1 from Layer 2 -- nothing else. Both run the same
-#: server with the same detection source; only these values differ.
-#: Ceiling camera: large tags at a distance, full resolution, looser error
-#: bound. Flange camera: small tags up close, more samples, tighter bound
-#: since moves are made from its pose.
+#: Per-camera AprilTag values; the only difference between Layer 1 and Layer 2, which run
+#: the same server. Ceiling: large tags at a distance, full resolution, looser error bound.
+#: Flange: small tags up close, more samples, tighter bound (moves use its pose).
 PI_APRILTAG_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
-        # Full sensor resolution of the HQ camera (IMX477, 12.3 MP). The livestream does
-        # not compute at this resolution, but on the small lores stream
-        # (PI_CAMERA_STREAM_PRESETS below) -- otherwise the overlay would stutter.
+        # Full sensor resolution (IMX477); the livestream uses the small lores stream instead.
         "resolution": (4056, 3040),
-        # Transition until recalibration at 4056x3040 is done: an existing calibration for
-        # 2028x1520 comes from 2x2 binning of the same sensor, hence the same field of view.
-        # Its intrinsics can be doubled exactly (``scale_to_resolution``). Remove this after
-        # recalibration, so that an accidentally wrong resolution is noticed again.
+        # Transition: the old 2028x1520 calibration is 2x2 binning of the same sensor, so its
+        # intrinsics scale exactly. Remove after recalibrating at 4056x3040.
         "allow_resolution_mismatch": True,
-        # Fallback size for tags that are not in the tag map -- that is, for all module and
-        # robot tags. Our module tags are 8 cm (edge of the black square). A wrong size
-        # scales the distance to the camera and pushes the tag sideways (13.10.2026).
+        # Fallback size (edge of the black square) for tags not in the tag map, i.e. all
+        # module and robot tags. A wrong size scales the distance and shifts the tag sideways.
         "tag_size_m": 0.080,
         "samples_per_job": 3,
         "max_reproj_error_px": 3.0,
-        # The same printed board as on the hand Pi (see cam_flange below) -- only the
-        # resolution and camera distance differ, not the sheet. The new board has been in
-        # use since 28.10.2026: 7x10 inner corners (8x11 squares), 23 mm per square.
-        # If it is not found during the calibration run, test several cols/rows combinations
-        # against a real frame with the diagnostic script (``tools/diagnose_board.py``).
+        # Same printed board as cam_flange: 7x10 inner corners, 23 mm squares. If it is not
+        # found, test cols/rows against a real frame with ``tools/diagnose_board.py``.
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
         "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
-        # Kannala-Brandt instead of Brown-Conrady: in the image tests of 29.09.2026, the best
-        # model for the HQ camera at 4056x3040 (work plan kalibrierung-linsenmodell-je-kamera.md).
+        # Kannala-Brandt fits the HQ camera at 4056x3040 best.
         "calibration_model": "fisheye",
-        # Detector parameters (OpenCV DetectorParameters, attribute name -> value).
-        # Status 19.10.2026, camera refocused: the OpenCV default finds all tags. A finer
-        # sampling grid (8 instead of 4 pixels per cell) gives +3 to +5 hits of reserve under
-        # artificial degradation, without false alarms. errorCorrectionRate deliberately NOT
-        # raised -- more range, but wrong IDs. Measurement: doc/projektdoku/kamera-und-detektor-analyse.md.
-        # To try alternatives, set VISION_APRILTAG_DETECTOR_PARAMS.
+        # A finer sampling grid (8 instead of 4 px per cell) adds hit reserve without false
+        # alarms. errorCorrectionRate stays default: more range, but wrong IDs.
+        # See doc/projektdoku/kamera-und-detektor-analyse.md; try others via
+        # VISION_APRILTAG_DETECTOR_PARAMS.
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
-        # Subpixel corners on (method subpix, since 10.11.2026). Without them, ArUco returns
-        # integer corners; a module tag at 1.6 m is only about 85 px in size, and the rounding
-        # jitters as 0.6-1.1 px corner noise and 5-10 mm in depth (brightness test 09.11.).
-        # subpix refines only a window around each corner found: same hits, about 3% more
-        # computing time. NOT "apriltag" -- that searches the whole 12 MP image again, costs
-        # about 46% CPU and loses tags (kamera-und-detektor-analyse.md).
+        # Subpixel corners: integer corners jitter 5-10 mm in depth for a tag ~85 px wide.
+        # "subpix" costs ~3% time; "apriltag" re-searches the whole 12 MP image (~46% CPU)
+        # and loses tags (kamera-und-detektor-analyse.md).
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
-        # Detect tags only in the cell area (x, y, width, height at 4056x3040). Chosen by
-        # NobbisCode on the frame of 17.11.2026 (data/rohbilder/cam_ceiling_20261117-120339.png):
-        # cut off 917 px left, 1025 px right, 568 px top, 393 px bottom -- walls, desks and
-        # printers at the fisheye edge are skipped. Coordinates stay full-frame, the
-        # calibration is unaffected. Override: VISION_DETECTION_ROI (work plan
-        # deckenkamera-bildausschnitt.md).
+        # Detect only in the cell area (x, y, width, height at 4056x3040): skips walls and
+        # desks at the fisheye edge. Override: VISION_DETECTION_ROI.
         "detection_roi": (917, 568, 2114, 2079),
     },
     "cam_flange": {
-        # Subpixel corners on (method subpix): the hand camera measures tags for approach
-        # moves, and every corner rounding acts as a fixed offset. The CPU load (see
-        # AprilTagProfileConfig) was no issue at 640x480; observe it on the Pi at 1920x1080
-        # (since 10.11.2026).
+        # Subpixel corners: tag corner rounding would act as a fixed offset in approach moves.
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
-        # Must match CameraStreamConfig.realsense_resolution: the real frames arrive via
-        # SharedCamera at that resolution, not at the one entered here. A wrong deviation
-        # only shows up at the first job, as a ValueError ("Kalibrierung gilt fuer ...").
-        # Full resolution 1920x1080 since 10.11.2026 (previously 640x480).
+        # Must match CameraStreamConfig.realsense_resolution: frames arrive at that size, and a
+        # mismatch fails the first job with a ValueError.
         "resolution": (1920, 1080),
         # The same 8 cm module tags as on the ceiling (see cam_ceiling).
         "tag_size_m": 0.080,
         "samples_per_job": 5,
         "max_reproj_error_px": 1.5,
-        # Hand-eye / calibration board since 28.10.2026: 8x11 squares = 7x10 inner corners,
-        # 23 mm per square. 7 + 10 = 17 is odd, so it is unambiguous for the automatic
-        # hand-eye calibration (the 180-degree rotation of the board is recognizable). Too
-        # small a corner count finds a partial grid with wrongly assigned corners ("board pose
-        # fits poorly", about 18 px). The hand camera's intrinsics must be recalibrated with
-        # this board (the old 7x9 board with 22 mm per square is obsolete). A plain
-        # chessboard, not a ChArUco board.
+        # Hand-eye / calibration board: plain chessboard (not ChArUco), 7x10 inner corners,
+        # 23 mm. 7 + 10 is odd, so the board's 180-degree rotation is distinguishable for the
+        # hand-eye calibration. Too few corners find a partial grid with wrong assignments.
+        # The hand camera's intrinsics must be recalibrated with this board.
         "calibration_board_type": "chessboard",
         "calibration_board_cols": 7,
         "calibration_board_rows": 10,
         "calibration_board_square_size_m": 0.023,
-        # Brown-Conrady with 5 coefficients: in the image tests of 29.09.2026 the best model
-        # at 640x480. Corresponds to the previous behavior, stated here explicitly only.
+        # Brown-Conrady fits best at 640x480.
         "calibration_model": "pinhole",
     },
 }
 
-#: Camera settings per frame, only for the Picamera2 backend (the RealSense on the hand Pi
-#: has its own fields in ``CameraStreamConfig``).
-#:
-#: cam_ceiling captures at 12 MP. The livestream is fed by the second stream, scaled by the
-#: ISP (lores) -- 960x720 is the stream width (``max_stream_width``) in the sensor's aspect
-#: ratio (4056x3040 -> 719.5, rounded to 720; 0.07% deviation, below the limit of
-#: ``scale_to_resolution``). 10 fps is the upper limit of the IMX477 in full-resolution
-#: mode; requesting more brings nothing. Two buffers instead of the six that Picamera2
-#: allocates for video: 6 x 37 MB does not fit into the CMA memory of the Pi.
+#: Per-camera settings, Picamera2 backend only (RealSense has its own fields in
+#: ``CameraStreamConfig``). cam_ceiling captures at 12 MP; the livestream uses the
+#: ISP-scaled lores stream. 960x720 keeps the sensor's aspect ratio (within the
+#: ``scale_to_resolution`` limit). 10 fps is the IMX477 limit at full resolution. Two
+#: buffers because the default six (6 x 37 MB) do not fit the Pi's CMA memory.
 PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
         "preview_resolution": (960, 720),
         "capture_fps": 10.0,
         "buffer_count": 2,
-        # "off" still encodes the full 12 MP frame in the stream instead of the small lores
-        # stream (agreed 2026-09-22, camera_stream.py._encoded). The global default of 2.0 s
-        # (profiles.py) was not enough: encoding a 4056x3040 image alone reliably exceeded it,
-        # and the overlay fell back to the unmarked raw image on every tick (bug: overlay text
-        # was missing entirely on Pi 1). Since 21.10.2026, "apriltag" only draws a finished
-        # result at full resolution onto the reduced image; its own detection runs in the
-        # background (see stream_overlay.py). The reserve is no longer strictly needed, but
-        # the generous value stays as a safety margin. cam_flange does not need this: its
-        # detection resolution has never changed (640x480 was always the full frame).
+        # Mode "off" still encodes the full 12 MP frame, which alone exceeded the 2.0 s default
+        # and made the overlay fall back to the raw image. Kept as a safety margin.
         "overlay_timeout_s": 8.0,
-        # libcamera controls (ISP/exposure). Best of 14 measured settings (exposure test
-        # 19.10.2026, see doc/projektdoku/kamera-und-detektor-analyse.md): slightly darker, so
-        # that the white of the tags does not burn out (auto: 15-48%), and somewhat more ISP
-        # sharpness and contrast. By contrast, contrast >= 1.25 and matrix metering burn the
-        # tags out completely. The calibration must be recorded with these values. To try
-        # alternatives, set VISION_CAMERA_CONTROLS.
+        # Best of 14 measured settings (kamera-und-detektor-analyse.md): slightly darker so
+        # tag whites do not burn out; contrast >= 1.25 or matrix metering does burn them out.
+        # Calibrate with these values. Try others via VISION_CAMERA_CONTROLS.
         "camera_controls": {
             "ExposureValue": -0.5,
             "Sharpness": 1.5,
@@ -213,9 +153,8 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
     },
 }
 
-#: Root of the repo, three levels up from ``src/vision_server/server.py``. Points to
-#: ``data/`` and ``config/``. Both deliberately sit next to the source code, not in the
-#: package: calibrations belong to the hardware, the tag map to the cell.
+#: Repo root. ``data/`` and ``config/`` sit next to the source, not in the package:
+#: calibrations belong to the hardware, the tag map to the cell.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
@@ -310,30 +249,24 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
     under ``data/`` (not versioned). The tag map describes the cell, is the same for both
     Pis, and lives under ``config/``.
 
-    ``VISION_ALLOW_PLACEHOLDER_CALIBRATION=1`` is a deliberate, temporary bypass
-    (``AprilTagProfileConfig.allow_placeholder_calibration``) for testing the detection,
-    overlay and job path before the real calibration run (test plan section 3.3) exists.
-    Poses are then not to scale. Off by default -- it must be set explicitly per Pi, never
-    baked into the committed default.
+    ``VISION_ALLOW_PLACEHOLDER_CALIBRATION=1`` temporarily allows a missing calibration
+    (``AprilTagProfileConfig.allow_placeholder_calibration``); poses are then not to scale.
+    Off by default, set it explicitly per Pi.
     """
     preset = dict(PI_APRILTAG_PRESETS.get(frame_id, {}))
     subpixel = subpixel_corner_settings(preset)
     for key in subpixel:
         preset.pop(key, None)
-    # OpenCV detector parameters: preset, overridden per key by the environment variable
-    # (``null`` removes an entry).
+    # Detector parameters: preset, overridden per key by the env variable (``null`` removes one).
     preset["detector_parameters"] = merged_json_object_env(
         "VISION_APRILTAG_DETECTOR_PARAMS", preset.get("detector_parameters")
     )
-    # Overrides the preset's lens model, e.g. for a comparison run with the other model,
-    # without touching the code.
+    # Override the preset's lens model, e.g. for a comparison run.
     model_override = os.getenv("VISION_CALIBRATION_MODEL")
     if model_override:
         preset["calibration_model"] = model_override
     preset["detection_roi"] = detection_roi_setting(preset.get("detection_roi"))
-    # Hand-eye only where a camera sits on the robot. The ceiling camera is fixed and has no
-    # flange -- a path for it would be a file that is never created and would produce a
-    # warning at every start.
+    # Hand-eye only for the camera on the robot; the fixed ceiling camera has none.
     hand_eye_path = (
         REPO_ROOT / "data" / "handeye" / f"{frame_id}.json"
         if frame_id == "cam_flange"
@@ -345,33 +278,22 @@ def apriltag_config(frame_id: str) -> AprilTagProfileConfig:
         hand_eye_path=hand_eye_path,
         frame_id=frame_id,
         allow_placeholder_calibration=os.getenv("VISION_ALLOW_PLACEHOLDER_CALIBRATION") == "1",
-        # Debug artifact, off by default (introduced 2026-09-23, first enabled for both Pis
-        # unconditionally, switched to an environment variable on 2026-09-28): every
-        # accepted interactive capture is also saved as a PNG per session here, for checking
-        # or recomputing outside the server. It was still a noticeable extra SD card load
-        # even on the ceiling camera (12 MP) live, even after moving to a separate background
-        # pool (see ``calibration_session.py._schedule_capture_save``). That is why it is no
-        # longer the default and is only enabled when needed. ``data/`` is gitignored, so no
-        # cleanup mechanism is needed; it is emptied by hand.
+        # Debug artifact, off by default (extra SD card load): archives every capture as PNG.
         calibration_capture_dir=(
             REPO_ROOT / "data" / "calibration" / f"{frame_id}_captures"
             if os.getenv("VISION_SAVE_CALIBRATION_CAPTURES") == "1"
             else None
         ),
-        # From the preset (both Pis: on, subpix), see subpixel_corner_settings().
-        # VISION_SUBPIXEL_CORNER_REFINEMENT overrides per Pi.
+        # From the preset; VISION_SUBPIXEL_CORNER_REFINEMENT overrides per Pi.
         **subpixel,
-        # Diagnostic/tuning switch (2026-09-24): try it on the Pi with real tag distances and
-        # py-spy before a production default changes -- see
-        # ``AprilTagProfileConfig.apriltag_quad_decimate``.
+        # Tuning switch, see ``AprilTagProfileConfig.apriltag_quad_decimate``.
         apriltag_quad_decimate=float(os.getenv("VISION_APRILTAG_QUAD_DECIMATE", "0.0")),
         **preset,
     )
 
 
 #: What the two vision systems consist of (OPC 40100-2). Enter only what is actually
-#: installed -- an invented model is worse than an empty field, because the asset view is
-#: meant for service and maintenance.
+#: installed: an invented model is worse than an empty field.
 PI_ASSET_PRESETS: dict[str, dict] = {
     "cam_ceiling": {
         "computing_device_model": "Raspberry Pi",
@@ -379,9 +301,7 @@ PI_ASSET_PRESETS: dict[str, dict] = {
     },
     "cam_flange": {
         "computing_device_model": "Raspberry Pi",
-        #: Exact model (D415? D435?) not yet confirmed -- empty would be worse here than
-        #: "some RealSense", but an invented model (e.g. "D315", which does not exist) would
-        #: be worse still.
+        #: Exact model (D415/D435) not confirmed; do not invent one.
         "image_sensor_model": "Intel RealSense",
     },
 }
@@ -425,14 +345,11 @@ def mdns_instance_name() -> str:
     return os.getenv("OPCUA_MDNS_NAME") or vision_identity()[0]
 
 
-#: Prefix of the ApplicationUri, following the cell's convention: the robot server reports
-#: ``urn:plcm:robot-server:ur5e``, so we use ``camera-server`` accordingly.
+#: Prefix of the ApplicationUri, following the robot server's ``urn:plcm:robot-server:ur5e``.
 APPLICATION_URI_PREFIX = "urn:plcm:camera-server"
 
-#: Vision identity -> name in the ApplicationUri. A separate table on purpose, not the
-#: identity itself: the URI names the *installation point* in the cell, while the vision
-#: identity names the recognition system. An unknown Pi falls back to its identity, so that
-#: it does not appear without a name.
+#: Vision identity -> name in the ApplicationUri. Separate from the identity: the URI names
+#: the installation point, the identity the recognition system. Unknown Pis use their identity.
 PI_APPLICATION_NAMES: dict[str, str] = {
     "vision-ceiling-01": "ceiling-01",
     "vision-flange-01": "roboter-hand-01",
@@ -468,21 +385,14 @@ def vision_config(endpoint: str = ENDPOINT) -> VisionServerConfig:
         frame_id,
         backend,
     )
-    # Picamera2/OpenCV open the shared camera with ``CameraStreamConfig.resolution`` (see
-    # ``camera.py:_open_picamera2``). If that differs from ``AprilTagProfileConfig.resolution``,
-    # the captured image has a different aspect ratio than the calibration (placeholder or
-    # real), and the stream overlay fails with "Seitenverhaeltnis aendert sich"
-    # (``tagloc.calibration.scale_to_resolution``). RealSense is not affected: it has its own
-    # field ``realsense_resolution``, already matched to cam_flange's resolution (640x480).
-    # Diagnostic switch (2026-09-24): ``VISION_DISABLE_STREAM=1`` for an A/B test of a
-    # suspected job timeout, to see whether the stream publisher/overlay is involved at all.
-    # ``stream_enabled=False`` only suppresses the stream nodes, the publisher and the MJPEG
-    # server (see ``CameraStreamConfig.stream_enabled``). ``resolution`` stays set, because
-    # the same ``CameraStreamConfig`` also opens the job camera.
+    # Picamera2/OpenCV open the camera with ``CameraStreamConfig.resolution``; if its aspect
+    # ratio differs from ``AprilTagProfileConfig.resolution``, the overlay fails in
+    # ``scale_to_resolution``. RealSense uses ``realsense_resolution`` instead.
+    # ``VISION_DISABLE_STREAM=1`` only suppresses the stream (see
+    # ``CameraStreamConfig.stream_enabled``); ``resolution`` stays set for the job camera.
     stream_enabled = os.getenv("VISION_DISABLE_STREAM") != "1"
-    # Camera controls: preset, overridden per key by the environment variable. Also read for
-    # the other backends, so that a set ``VISION_CAMERA_CONTROLS`` triggers the "is ignored"
-    # warning there.
+    # Camera controls: preset, overridden per key by the env variable. Read for all backends
+    # so a set ``VISION_CAMERA_CONTROLS`` triggers the "ignored" warning there.
     stream_preset = dict(PI_CAMERA_STREAM_PRESETS.get(frame_id, {}) if backend == "picamera2" else {})
     camera_controls = merged_json_object_env(
         "VISION_CAMERA_CONTROLS", stream_preset.pop("camera_controls", None)
@@ -517,30 +427,23 @@ async def main():
     server = Server()
     await server.init()
 
-    # The endpoint names the LAN IPv4, because ``register_to_discovery()`` passes exactly this
-    # on as the DiscoveryUrl to the discovery server. ``0.0.0.0`` would be useless there.
-    # Listening still happens on all interfaces, otherwise we would lose 127.0.0.1 -- the
-    # handshake client on the Pi uses that.
+    # Advertise the LAN IPv4 (the discovery server needs a reachable address) but listen on
+    # all interfaces, so 127.0.0.1 keeps working for the local handshake client.
     endpoint = lds.advertised_endpoint(MDNS_PORT, MDNS_PATH) or ENDPOINT
     server.set_endpoint(endpoint)
     server.socket_address = ("0.0.0.0", MDNS_PORT)
     server.set_server_name(SERVER_NAME)
-    # Before the address space is built: the ApplicationUri lands in the namespace array at
-    # ns=1 and is the name under which the aggregation server lists this module.
+    # Before the address space is built: the ApplicationUri is the module's name in the
+    # aggregation server.
     await server.set_application_uri(application_uri())
     server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
 
-    # The whole address space is built in ``install_vision_machine``: nodesets,
-    # ``VisionMachine`` under ``Objects/Machines`` and ``VisionProgram`` next to it. This
-    # server no longer creates any nodes itself -- the CPU-temperature demo (``RaspiDevice``,
-    # ``2:VisionSystem``, ``CpuTemperatureResult``) has been removed, along with its namespace
-    # ``http://launch-rm.de/raspi``.
+    # The whole address space is built in ``install_vision_machine``.
     machine = await install_vision_machine(server, vision_config(endpoint))
 
     _log.info("Server startet auf %s", server.endpoint.geturl())
 
-    # Without signal handlers, ``finally`` does not run under systemd: SIGTERM ends the
-    # process without asyncio.run cleaning up.
+    # Signal handlers make SIGTERM (systemd) run the ``finally`` cleanup.
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -551,22 +454,14 @@ async def main():
 
     try:
         async with server:
-            # The server first, then announcement and registration -- whoever finds the
-            # service should also be able to reach it. Both are withdrawn on exit.
-            # Both are enabled by default (``OPCUA_MDNS=0`` or ``OPCUA_LDS_URL=""``
-            # switch them off).
+            # Server first, then announcement and registration; both are withdrawn on exit
+            # (disable with ``OPCUA_MDNS=0`` / ``OPCUA_LDS_URL=""``).
             async with (
                 mdns.announce(instance, MDNS_PORT, MDNS_PATH),
-                # The announcement alone is not enough for the cell's aggregation server: it
-                # only admits what is registered with the discovery server. The measurement
-                # and reasoning are in ``discovery.lds``. On by default; with
-                # ``OPCUA_LDS_URL=""`` this returns immediately, and the module does not
-                # appear there.
+                # The aggregation server only admits modules registered with the discovery
+                # server (see ``discovery.lds``).
                 lds.register(server),
             ):
-                # This used to run a 1 Hz loop that kept the demo values current. It ran in the
-                # same event loop as the vision system; the loop-lag watchdog in ``runner.py``
-                # now reports blockages more reliably than a counter ever could.
                 await stop.wait()
     finally:
         await machine.aclose()

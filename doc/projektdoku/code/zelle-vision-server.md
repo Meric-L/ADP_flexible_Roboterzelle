@@ -223,6 +223,8 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - `CAMERA_BACKENDS` = `picamera2`, `opencv`, `realsense`.
 - Default paths: `DEFAULT_CALIBRATION_PATH` (`data/calibration/camera.json`), `DEFAULT_TAG_MAP_PATH` (`config/tagmap.json`), `DEFAULT_HAND_EYE_PATH` (`None`).
 - `AprilTagProfileConfig.calibration_board_spec()` (added 17.11.2026): the one place that turns the `calibration_board_*` fields into a `tagloc.boards.BoardSpec`. Used by the calibration session and `MeasureBoard`'s default board.
+- `CameraStreamConfig.stream_enabled=False` only suppresses the stream nodes; `resolution` still configures the job camera, so never set the whole `camera_stream` to `None` to switch the stream off (the fallback default would change the job resolution).
+- `AprilTagProfileConfig.detection_roi` hides tags outside the rectangle, world tags included; corners stay in full-frame coordinates.
 
 **Group: job, state, address space and events**
 
