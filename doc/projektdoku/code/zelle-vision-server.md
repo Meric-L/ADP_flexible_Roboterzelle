@@ -314,6 +314,7 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Entry points: `HandEyeSession.start`, `capture`, `finish`, `abort`, `status_json`; parsers `parse_start`, `parse_sample`, `check_raw_board`; `save_with_backup`.
 - Constants: `RECOMMENDED_SAMPLES` = 8, `REQUIRED_AXES` = 3. Schemas `wsc.vision.handeye.{start,sample,status}/1`.
 - Used by `runner/hand_eye.py`. Background: `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+- Only the images of the current calibration are kept (since 17.11.2026, like the ceiling camera): `start` deletes the earlier session folders (named by a UTC stamp) under the dataset folder (`data/handeye/sessions/`) and, for a raw-image session, under `data/rohbilder/calibration/`. Calibration files and their `.bak` backups are not touched.
 
 **Group: measurement (hand Pi, ceiling camera, raw images)**
 
