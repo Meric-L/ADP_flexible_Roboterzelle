@@ -22,6 +22,13 @@ _log = logging.getLogger(__name__)
 CHESSBOARD = "chessboard"
 CHARUCO = "charuco"
 
+#: Smallest ArUco marker perimeter the ChArUco detection accepts, as a fraction of
+#: the longest image edge. OpenCV's default 0.03 means about 30 px edge length at
+#: 4056 px -- on the ceiling camera the 18.5 mm markers measure 30-36 px, so 28 of
+#: 64 captures of the run on 17.11.2026 lost every marker. With 0.01, 59 of 64 are
+#: usable; detection stays below 1 s per 12 MP image.
+CHARUCO_MIN_MARKER_PERIMETER_RATE = 0.01
+
 
 @dataclass(frozen=True)
 class BoardSpec:
@@ -93,7 +100,9 @@ def detect_board(
 
     if spec.type == CHARUCO:
         board = board if board is not None else build_board(spec)
-        detector = cv2.aruco.CharucoDetector(board)
+        marker_parameters = cv2.aruco.DetectorParameters()
+        marker_parameters.minMarkerPerimeterRate = CHARUCO_MIN_MARKER_PERIMETER_RATE
+        detector = cv2.aruco.CharucoDetector(board, cv2.aruco.CharucoParameters(), marker_parameters)
         corners, ids, _, _ = detector.detectBoard(gray)
         if corners is None or ids is None or len(corners) < 4:
             return None
