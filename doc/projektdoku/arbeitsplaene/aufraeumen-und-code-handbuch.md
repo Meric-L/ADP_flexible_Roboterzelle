@@ -60,7 +60,7 @@ From here on two Claude sessions work in parallel. Each has **its own repo, its 
 | | Session A — cell | Session B — webskill |
 | --- | --- | --- |
 | Worktree | `/home/meric/ADP/ADP_flexible_Roboterzelle/.claude/worktrees/apriltag-aufraeumen` | `/home/meric/ADP/webskillcomposition/.claude/worktrees/ungetestet-aufraeumen` |
-| Branch (local, unmerged) | `apriltag-aufraeumen` (base `apriltag`) | `ADP_Lokaliserung` (base `Ungetestet` `5812275`) |
+| Branch | `apriltag-aufraeumen` (base `apriltag`; merged into `main` on 17.11.2026) | `ADP_Lokaliserung` (base `Ungetestet` `5812275`; local, unmerged) |
 | Findings | [`../altlasten-zelle.md`](../altlasten-zelle.md) | [`../altlasten-wsc.md`](../altlasten-wsc.md) |
 | Handbook | `code-dokumentation.md`, only **part A** | `code-dokumentation.md`, only **part B** |
 | Record status in | `altlasten-zelle.md`, section 12 "Implementation status" | `altlasten-wsc.md`, section 11 "Implementation status" |

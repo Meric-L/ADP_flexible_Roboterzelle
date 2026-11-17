@@ -9,7 +9,7 @@ carry the old ID here (column „ex-ID“). Counterpart for webskillcomposition:
 (section 10). What each file does: [`code-dokumentation.md`](code-dokumentation.md), part A. Plan:
 [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
 
-**Cleanup is done on branch `apriltag-aufraeumen`** (local, unmerged). What has been implemented is
+**Cleanup is done on branch `apriltag-aufraeumen`** (merged into `main` on 17.11.2026). What has been implemented is
 listed at the end under „Umsetzungsstand“ (implementation status).
 
 **Not touched during the cleanup:**
