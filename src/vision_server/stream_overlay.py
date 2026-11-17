@@ -235,25 +235,18 @@ class AprilTagStreamAnnotator:
         return cached
 
     def _board_spec(self):
-        """Return the board geometry from config.
+        """Return the board to mark: the running session's board, else the configured one.
 
-        Same source as `CalibrationSession._spec()`. This method used to read
-        `self._calibration.board`. With a placeholder calibration (no `board`
-        field) it fell back to the `BoardSpec()` default (9x6/30 mm). That assumed
-        a different geometry than the session actually running, so corner
-        detection in the stream never found anything, although
-        `CaptureCalibrationSample` (using the config geometry) found the board.
+        Never from the loaded calibration file: a placeholder calibration has no
+        `board` field, and the old fallback to the `BoardSpec()` default
+        (9x6/30 mm) let the stream find nothing although the capture did. With a
+        session attached, its board (chosen in the frontend at
+        `StartCalibration`) is the one the evaluation looks for.
         """
-        from tagloc.boards import BoardSpec
-
-        return BoardSpec(
-            type=self._config.calibration_board_type,
-            cols=self._config.calibration_board_cols,
-            rows=self._config.calibration_board_rows,
-            square_size_m=self._config.calibration_board_square_size_m,
-            marker_size_m=self._config.calibration_board_marker_size_m,
-            dictionary=self._config.calibration_board_dictionary,
-        )
+        session = self._calibration_session
+        if session is not None and hasattr(session, "board_spec"):
+            return session.board_spec
+        return self._config.calibration_board_spec()
 
     def set_overlay_paused(self, paused: Callable[[], bool] | None) -> None:
         """Attach the signal that pauses the tag overlay (`runner.py`)."""

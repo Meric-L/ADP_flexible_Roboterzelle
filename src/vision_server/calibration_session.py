@@ -76,6 +76,43 @@ MIN_SAMPLES_FOR_CALIBRATION = 3
 CAPTURE_DETECT_TIMEOUT_S = 20.0
 
 
+#: Schema of the optional `OptionsJson` argument of `StartCalibration`.
+START_SCHEMA = "wsc.vision.calibration.start/1"
+
+
+def parse_start_options(text: str) -> Any:
+    """Parse the `OptionsJson` of `StartCalibration` into the board to calibrate with.
+
+    Empty text or `{}` (or no `board`) keeps the board of the configuration and
+    returns `None`. A `board` follows exactly the rules of the hand-eye
+    calibration (`handeye_session._parse_board`, `check_raw_board`), so the
+    ceiling and the hand camera accept the same board settings.
+
+    Args:
+        text: `wsc.vision.calibration.start/1` as JSON text, or empty.
+
+    Returns:
+        The `tagloc.boards.BoardSpec` to use, or `None` for the configured board.
+
+    Raises:
+        ValueError: The text is no valid JSON, has another schema, or the board
+            is unusable. The message is plain German for the operator.
+    """
+    try:
+        data = json.loads(text) if text and text.strip() else {}
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Kein JSON: {error}") from None
+    if not isinstance(data, dict) or data.get("schema", START_SCHEMA) != START_SCHEMA:
+        raise ValueError(f"Erwartet schema „{START_SCHEMA}“.")
+    if data.get("board") is None:
+        return None
+    from .handeye_session import _parse_board, check_raw_board
+
+    board = _parse_board(data["board"])
+    check_raw_board(board)
+    return board
+
+
 def _lazy(module: str, name: str) -> Callable:
     """Resolve a `tagloc` function only at call time.
 
@@ -196,7 +233,11 @@ class CalibrationSession:
         self._save_calibration = save_calibration or _lazy(
             "tagloc.calibration", "save_calibration"
         )
-        self._board_spec: Any = None  # lazy: needs cv2, see `_spec()`
+        #: Board of the running (or last) session; `None` until `_spec()` falls
+        #: back to the configured board. Set by `start(board)`.
+        self._board_spec: Any = None
+        #: Why the last `StartCalibration` options were refused; cleared by `start()`.
+        self.start_error: str | None = None
         self._samples: list = []
         self._image_size: tuple[int, int] = (0, 0)
         self._executor: ThreadPoolExecutor | None = None
@@ -253,23 +294,19 @@ class CalibrationSession:
         return self.running or self._processing
 
     def _spec(self):
-        """Build `BoardSpec` from the scalar config values.
-
-        `tagloc` is imported only here, so that `profiles.py` stays free of the
-        dependency.
-        """
+        """Return the board of this session: the one given to `start()`, else the configured one."""
         if self._board_spec is None:
-            from tagloc.boards import BoardSpec
-
-            self._board_spec = BoardSpec(
-                type=self._config.calibration_board_type,
-                cols=self._config.calibration_board_cols,
-                rows=self._config.calibration_board_rows,
-                square_size_m=self._config.calibration_board_square_size_m,
-                marker_size_m=self._config.calibration_board_marker_size_m,
-                dictionary=self._config.calibration_board_dictionary,
-            )
+            self._board_spec = self._config.calibration_board_spec()
         return self._board_spec
+
+    @property
+    def board_spec(self):
+        """Board of the running or last session (`tagloc.boards.BoardSpec`).
+
+        The `calibration` stream overlay searches with it, so it marks the same
+        board the evaluation looks for.
+        """
+        return self._spec()
 
     def _pool(self) -> ThreadPoolExecutor:
         """Own single-worker pool for `detect_board` and `calibrate_from_samples`.
@@ -363,11 +400,18 @@ class CalibrationSession:
         """
         await self._processing_done.wait()
 
-    def start(self) -> None:
+    def start(self, board: Any = None) -> None:
         """Begin a new session: captures are reset and old `_pending_dir` content is discarded.
 
         From now on, captures arrive only via `capture()`.
+
+        Args:
+            board: The `tagloc.boards.BoardSpec` to calibrate with (chosen in the
+                frontend, see `parse_start_options`). `None` uses the board of
+                the configuration.
         """
+        self._board_spec = board
+        self.start_error = None
         self._captured_paths = []
         self._samples = []
         self._image_size = (0, 0)
@@ -401,6 +445,7 @@ class CalibrationSession:
                     directory = self._capture_dir / f"{stamp}_{suffix}"
                     suffix += 1
             cfg = self._config
+            board = self._spec()
             active = None
             try:
                 active = json.loads(cfg.calibration_path.read_text(encoding="utf-8"))
@@ -413,12 +458,12 @@ class CalibrationSession:
                 "imageFormat": _ARCHIVE_IMAGE_SUFFIX.lstrip("."),
                 "pendingFormat": _CAPTURE_IMAGE_SUFFIX.lstrip("."),
                 "board": {
-                    "type": cfg.calibration_board_type,
-                    "cols": cfg.calibration_board_cols,
-                    "rows": cfg.calibration_board_rows,
-                    "squareSizeM": cfg.calibration_board_square_size_m,
-                    "markerSizeM": cfg.calibration_board_marker_size_m,
-                    "dictionary": cfg.calibration_board_dictionary,
+                    "type": board.type,
+                    "cols": board.cols,
+                    "rows": board.rows,
+                    "squareSizeM": board.square_size_m,
+                    "markerSizeM": board.marker_size_m,
+                    "dictionary": board.dictionary,
                 },
                 "model": cfg.calibration_model,
                 "activeCalibration": active,
@@ -473,7 +518,11 @@ class CalibrationSession:
             #: already known during the capture, so the frontend can show it in advance.
             "model": self._config.calibration_model,
             "archiveDir": str(self._archive_dir) if self._archive_dir is not None else None,
+            #: The board this session calibrates with, so the frontend can show it.
+            "board": self._spec().as_dict(),
         }
+        if self.start_error is not None:
+            data["startError"] = self.start_error
         if self.last_result is not None:
             data["result"] = self.last_result
         return data

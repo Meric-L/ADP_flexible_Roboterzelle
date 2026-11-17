@@ -129,6 +129,24 @@ class AprilTagProfileConfig:
     #: file (`.gitignore`).
     calibration_capture_dir: Path | None = None
 
+    def calibration_board_spec(self) -> Any:
+        """Return the configured calibration board as a `tagloc.boards.BoardSpec`.
+
+        The one place that turns the scalar `calibration_board_*` fields into a
+        board, for the calibration session, the `calibration` stream overlay and
+        `MeasureBoard`. `tagloc` is imported only here, at call time.
+        """
+        from tagloc.boards import BoardSpec
+
+        return BoardSpec(
+            type=self.calibration_board_type,
+            cols=self.calibration_board_cols,
+            rows=self.calibration_board_rows,
+            square_size_m=self.calibration_board_square_size_m,
+            marker_size_m=self.calibration_board_marker_size_m,
+            dictionary=self.calibration_board_dictionary,
+        )
+
 
 #: Supported values for `CameraStreamConfig.backend`.
 CAMERA_BACKENDS: tuple[str, ...] = ("picamera2", "opencv", "realsense")

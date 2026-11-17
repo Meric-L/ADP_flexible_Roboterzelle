@@ -52,6 +52,7 @@ nicht gibt.
 | [`modellfehler-pruefung.md`](modellfehler-pruefung.md) | apriltag | geplant | Meric | 10.11.2026 |
 | [`deckenkamera-subpixel-ecken.md`](deckenkamera-subpixel-ecken.md) | vision | in Arbeit | NobbisCode, `Agent: Subpixel-Ecken auf dem Decken-Pi` | 10.11.2026 |
 | [`kalibrier-aufnahmen-roh.md`](kalibrier-aufnahmen-roh.md) | vision | fertig | Meric, `Agent: Kalibrier-Rohbilder` | 10.11.2026 |
+| [`deckenkamera-kalibrierung-board-wahl.md`](deckenkamera-kalibrierung-board-wahl.md) | vision | fertig (ohne Hardwarefahrt) | Meric, `Agent: Layer-1-Kalibrierung mit wählbarem Board` | 17.11.2026 |
 
 Themen: `opcua` · `vision` · `apriltag` · `mdns` · `frontend` · `sonstiges`
 Status: `geplant` · `in Arbeit` · `fertig` · `verworfen`
