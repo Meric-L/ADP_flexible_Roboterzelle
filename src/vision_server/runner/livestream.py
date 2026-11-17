@@ -15,6 +15,31 @@ from .sources import _camera_owner
 _log = logging.getLogger(__package__)
 
 
+def _stream_crop(source: DetectionSource | None) -> tuple[Any, Any]:
+    """Return `(crop, crop_reference_size)` for the stream: the detection region, if any."""
+    config = getattr(source, "_config", None)
+    roi = getattr(config, "detection_roi", None)
+    reference = getattr(config, "resolution", None)
+    if roi is None or reference is None:
+        return None, None
+    return tuple(roi), tuple(reference)
+
+
+def _overlay_canvas_width(max_stream_width: int | None, config: Any) -> int | None:
+    """Width the overlay draws at, so the stream stays `max_stream_width` wide after cropping.
+
+    Without a region this is `max_stream_width`. With one, the stream later cuts the
+    canvas to the region (`camera_stream.CROPPED_MODES`); drawing at 960 px would
+    leave only ~500 px for the ceiling region. So the canvas is enlarged by the ratio
+    full width / region width (960 * 4056 / 2114 = 1842 px).
+    """
+    roi = getattr(config, "detection_roi", None)
+    resolution = getattr(config, "resolution", None)
+    if max_stream_width is None or roi is None or resolution is None:
+        return max_stream_width
+    return min(int(resolution[0]), round(max_stream_width * resolution[0] / roi[2]))
+
+
 def _build_annotator(source: DetectionSource):
     """Build the stream overlay for a source, if it can provide one.
 
@@ -70,7 +95,9 @@ def _build_annotator(source: DetectionSource):
         detector=stream_detector,
         calibration=calibration,
         tag_map=getattr(source, "_tag_map", None),
-        detection_max_width=getattr(camera_config, "max_stream_width", None),
+        detection_max_width=_overlay_canvas_width(
+            getattr(camera_config, "max_stream_width", None), config
+        ),
         full_resolution_tags=lambda: getattr(source, "latest_tags", None),
         detect_interval_s=getattr(camera_config, "overlay_detect_interval_s", 5.0),
     )
@@ -102,6 +129,8 @@ def _start_camera_stream(
         annotator = _build_annotator(source)
     except Exception:
         _log.exception("Stream-Overlay nicht verfuegbar, Stream laeuft ohne Markierung")
+    # The stream shows the same region the detector searches (detection_roi).
+    crop, crop_reference_size = _stream_crop(source)
     stream = CameraStreamPublisher(
         source.camera,
         space.latest_camera_frame,
@@ -110,6 +139,8 @@ def _start_camera_stream(
         mode_node=space.camera_stream_mode,
         progress_node=space.calibration_progress,
         preview_status_node=space.tag_reference_preview_status,
+        crop=crop,
+        crop_reference_size=crop_reference_size,
     )
     stream.start()
     _log.info(

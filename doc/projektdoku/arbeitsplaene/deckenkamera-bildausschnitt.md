@@ -122,6 +122,28 @@ area, while the expensive per-candidate work (contours, decoding, subpixel corne
 happens inside the cell and stays. A crop as a view or as a copy makes no difference
 (231 vs. 218 ms). Still to be measured on Pi 1.
 
+## Extension: live stream shows only the region (17.11.2026)
+
+Requested by NobbisCode after the first version: the stream still showed the whole
+fisheye frame.
+
+- `CameraStreamPublisher(..., crop=roi, crop_reference_size=resolution)`: in the modes
+  `"off"` and `"apriltag"` the published image is cut to the region — **after** the
+  overlay, before downscaling. Tag boxes therefore stay in the right place.
+- Not cropped: `"undistorted"` (different geometry after undistortion) and
+  `"tagreference"` (the title is at the top left, and the reference edges may lie
+  outside the region).
+- So that the stream does not lose sharpness, the overlay draws on a larger canvas:
+  `detection_max_width = max_stream_width × full width / region width`
+  (960 × 4056 / 2114 ≈ 1842 px); after cropping, the image is 960 px wide again.
+- Same setting as detection (`detection_roi`, `VISION_DETECTION_ROI`) — one region, no
+  second configuration. `VISION_DETECTION_ROI=off` also shows the full image again.
+- The stream image is no longer 4:3 but almost square (2114×2079 → 960×944). Anyone who
+  converts click positions in the stream image to camera pixels must add the offset.
+
+Shared helper: `tagloc.frames.scaled_region(roi, reference_size, image_size) ->
+(x0, y0, x1, y1)`, also used by `RoiTagDetector`.
+
 ## Open questions
 
 - Are all world tags inside the region? To be checked on the Pi (live overlay / job).

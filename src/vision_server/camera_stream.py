@@ -75,6 +75,27 @@ def _resize_for_stream(image, max_width: int):
     return cv2.resize(image, (max_width, round(height * scale)), interpolation=cv2.INTER_AREA)
 
 
+#: Modes in which the stream is cut to the detection region. Not "undistorted"
+#: (different geometry after undistortion) and not "tagreference" (title at the top
+#: left, reference edges may lie outside the region).
+CROPPED_MODES = ("off", "apriltag")
+
+
+def _crop_for_stream(image, crop, crop_reference_size):
+    """Cut `image` to the region, scaled proportionally to this image's size.
+
+    `image` may be the full frame ("off") or the overlay canvas already scaled down
+    ("apriltag"); both show the whole field of view, so the same proportional region
+    hits the same scene area. An empty region leaves the image unchanged.
+    """
+    from tagloc.frames import image_size, scaled_region
+
+    x0, y0, x1, y1 = scaled_region(crop, crop_reference_size, image_size(image))
+    if x1 <= x0 or y1 <= y0:
+        return image
+    return image[y0:y1, x0:x1]
+
+
 class CameraStreamPublisher:
     """Periodically write the newest camera frame into a String node.
 
@@ -103,8 +124,15 @@ class CameraStreamPublisher:
         mode_node: Node | None = None,
         progress_node: Node | None = None,
         preview_status_node: Node | None = None,
+        crop: tuple[int, int, int, int] | None = None,
+        crop_reference_size: tuple[int, int] | None = None,
     ) -> None:
+        """`crop`: `(x, y, width, height)` in pixels of `crop_reference_size`; in the
+        modes `CROPPED_MODES` only this region is published (the detection region,
+        `AprilTagProfileConfig.detection_roi`). `None` = full image."""
         self._camera = camera
+        self._crop = tuple(crop) if crop is not None and crop_reference_size is not None else None
+        self._crop_reference_size = crop_reference_size
         self._node = node
         self._config = config
         #: Replaceable for tests that should run without `cv2`.
@@ -261,12 +289,17 @@ class CameraStreamPublisher:
             image, complete = await self._annotate(loop, source, mode)
         elif mode == "undistorted":
             image = await loop.run_in_executor(None, _no_calibration_hint, source)
+        if self._crop is not None and mode in CROPPED_MODES:
+            # After the overlay, so the tag boxes are already in place; a view, no copy.
+            image = _crop_for_stream(image, self._crop, self._crop_reference_size)
         if self._config.max_stream_width is not None:
             # After the overlay, and only for publishing -- both paths (MJPEG and
             # node) get the same downscaled image. In "apriltag" mode `annotate()`
-            # has already downscaled to `detection_max_width` (== `max_stream_width`)
-            # itself, so `_resize_for_stream` is a no-op here (the width already
-            # fits). For "off" (full frame) it does the real work.
+            # has already downscaled to `detection_max_width` itself; without a crop
+            # that equals `max_stream_width` and this is a no-op, with a crop the
+            # canvas was enlarged so the cut region comes out at about this width
+            # (`runner.livestream._overlay_canvas_width`). For "off" (full frame) it
+            # does the real work.
             image = await loop.run_in_executor(
                 None, _resize_for_stream, image, self._config.max_stream_width
             )

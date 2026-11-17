@@ -5,6 +5,7 @@ only restricts where the detector searches; the corners must stay in full-frame
 coordinates, otherwise pose and calibration would no longer fit.
 """
 
+import asyncio
 import os
 import unittest
 from unittest import mock
@@ -139,6 +140,81 @@ class DetectionRoiSettingTest(unittest.TestCase):
             os.environ.pop("VISION_DETECTION_ROI", None)
             self.assertEqual(apriltag_config("cam_ceiling").detection_roi, (917, 568, 2114, 2079))
             self.assertIsNone(apriltag_config("cam_flange").detection_roi)
+
+
+class _ModeNode:
+    def __init__(self, value):
+        self.value = value
+
+    async def read_value(self):
+        return self.value
+
+
+class _Camera:
+    latest_frame = None
+
+
+class StreamCropTest(unittest.IsolatedAsyncioTestCase):
+    """The live stream shows the detection region in the modes "off" and "apriltag"."""
+
+    async def _published_shape(self, mode, *, crop=(100, 50, 300, 200), annotator=None):
+        from vision_server.camera import CameraFrame
+        from vision_server.camera_stream import CameraStreamPublisher
+        from vision_server.profiles import CameraStreamConfig
+
+        shapes = []
+
+        def encode(image, quality):
+            shapes.append(np.asarray(image).shape[:2])
+            return "x"
+
+        publisher = CameraStreamPublisher(
+            _Camera(),
+            node=None,
+            config=CameraStreamConfig(max_stream_width=None),
+            encode_frame=encode,
+            annotator=annotator,
+            mode_node=_ModeNode(mode),
+            crop=crop,
+            crop_reference_size=(1000, 800),
+        )
+        loop = asyncio.get_running_loop()
+        frame = CameraFrame(image=np.zeros((800, 1000, 3), np.uint8), timestamp=loop.time())
+        await publisher._encoded(loop, frame)
+        return shapes[0]
+
+    async def test_raw_mode_is_cropped(self):
+        self.assertEqual(await self._published_shape("off"), (200, 300))
+
+    async def test_apriltag_mode_crops_the_scaled_canvas(self):
+        class HalfSize:
+            def annotate(self, image, mode):
+                return image[::2, ::2]  # canvas at half size, like detection_max_width
+
+        shape = await self._published_shape("apriltag", annotator=HalfSize())
+        self.assertEqual(shape, (100, 150))
+
+    async def test_without_crop_the_full_image_goes_out(self):
+        self.assertEqual(await self._published_shape("off", crop=None), (800, 1000))
+
+    async def test_undistorted_mode_is_not_cropped(self):
+        class Identity:
+            def annotate(self, image, mode):
+                return image
+
+        shape = await self._published_shape("undistorted", annotator=Identity())
+        self.assertEqual(shape, (800, 1000))
+
+
+class OverlayCanvasWidthTest(unittest.TestCase):
+    def test_canvas_is_enlarged_so_the_region_keeps_the_stream_width(self):
+        from vision_server.profiles import AprilTagProfileConfig
+        from vision_server.runner.livestream import _overlay_canvas_width
+
+        config = AprilTagProfileConfig(resolution=(4056, 3040), detection_roi=(917, 568, 2114, 2079))
+        self.assertEqual(_overlay_canvas_width(960, config), 1842)
+        self.assertEqual(_overlay_canvas_width(960, AprilTagProfileConfig()), 960)
+        self.assertIsNone(_overlay_canvas_width(None, config))
 
 
 if __name__ == "__main__":

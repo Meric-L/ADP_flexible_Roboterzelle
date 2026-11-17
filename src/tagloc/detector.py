@@ -311,15 +311,9 @@ class RoiTagDetector:
 
     def region_for(self, image_width: int, image_height: int) -> tuple[int, int, int, int]:
         """Return `(x0, y0, x1, y1)` of the region for an image of this size."""
-        x, y, width, height = self.roi
-        ref_width, ref_height = self.reference_size
-        scale_x = image_width / ref_width
-        scale_y = image_height / ref_height
-        x0 = max(0, int(round(x * scale_x)))
-        y0 = max(0, int(round(y * scale_y)))
-        x1 = min(image_width, int(round((x + width) * scale_x)))
-        y1 = min(image_height, int(round((y + height) * scale_y)))
-        return x0, y0, x1, y1
+        from .frames import scaled_region
+
+        return scaled_region(self.roi, self.reference_size, (image_width, image_height))
 
     def detect(self, gray: Any) -> list[TagObservation]:
         image = np.asarray(gray)

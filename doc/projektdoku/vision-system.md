@@ -286,6 +286,11 @@ and saved images are therefore unaffected. Job, cell watch and live-stream overl
 same region (the overlay scaled to its smaller image). Not affected: calibration session
 and `MeasureBoard`.
 
+The live stream shows the same region in the modes "Rohbild" (`off`) and "AprilTags
+markieren" (`apriltag`): it is cut after the overlay, and the overlay draws on a
+correspondingly larger canvas, so the stream stays 960 px wide (960×943, no longer 4:3).
+"undistorted" and "tagreference" keep showing the whole image.
+
 Tags outside the region are not found, world tags included. Override without a code
 change: `VISION_DETECTION_ROI="x,y,width,height"` or `VISION_DETECTION_ROI=off`.
 Measurement and background: `arbeitsplaene/deckenkamera-bildausschnitt.md`.
