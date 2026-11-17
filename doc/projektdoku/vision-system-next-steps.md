@@ -160,7 +160,7 @@ and an `AprilTagProfileConfig` per Pi. Nothing in `job.py`, `payload.py`,
    [`vision-server-interface.md`](vision-server-interface.md).
 3. ~~Remove legacy `2:VisionSystem`~~ — **done on 21.09.2026**. ~~Move nodeset XML
    to `src/vision_server/nodesets/`~~ — **likewise done**
-   (legacy item C5, see [`altlasten.md`](altlasten.md)).
+   (legacy item C5, see [`altlasten.md`](arbeitsplaene/altlasten.md)).
 4. ~~**Real result payload**~~ — **done**: `detection/apriltag.py`
    delivers real poses in the schema `wsc.vision.detections/1`; the coordinate system
    and calibration have been clarified via the world-tag concept and the hand-eye calibration

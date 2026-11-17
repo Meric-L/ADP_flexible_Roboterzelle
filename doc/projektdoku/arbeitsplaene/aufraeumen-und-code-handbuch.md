@@ -7,13 +7,13 @@
 
 ## Goal
 
-Over weeks of parallel work, dead code, duplicates (e.g. several calibration scripts), workarounds and unclean spots have accumulated in both repos. The existing lists ([`../altlasten.md`](../altlasten.md), [`../altlasten-toter-code.md`](../altlasten-toter-code.md))
+Over weeks of parallel work, dead code, duplicates (e.g. several calibration scripts), workarounds and unclean spots have accumulated in both repos. The existing lists ([`../altlasten.md`](altlasten.md), [`../altlasten-toter-code.md`](altlasten-toter-code.md))
 date from 21.09./21.10. and, for WSC, still refer to branch `tag-einmessen`.
 
 Afterwards there will be:
 
-1. two current audits — [`../altlasten-zelle.md`](../altlasten-zelle.md) (this repo, `apriltag`) and
-   [`../altlasten-wsc.md`](../altlasten-wsc.md) (webskillcomposition, only our share `origin/dev..Ungetestet`);
+1. two current audits — [`../altlasten-zelle.md`](altlasten-zelle.md) (this repo, `apriltag`) and
+   [`../altlasten-wsc.md`](altlasten-wsc.md) (webskillcomposition, only our share `origin/dev..Ungetestet`);
 2. a code handbook [`../code-dokumentation.md`](../code-dokumentation.md), in which one can look up for every file of our
    code what it is for and where the details are;
 3. the findings worked off on separate branches, which are merged only on instruction.
@@ -22,15 +22,15 @@ Afterwards there will be:
 
 - `CLAUDE.md`: rules, work-plan obligation, German as the language, no deleting/renaming of topic docs
 - `doc/projektdoku/arbeitsplaene/README.md` and `_vorlage.md`: index, format
-- `doc/projektdoku/altlasten.md`, `doc/projektdoku/altlasten-toter-code.md`: previous findings (will be carried over and re-checked)
+- `doc/projektdoku/arbeitsplaene/altlasten.md`, `doc/projektdoku/arbeitsplaene/altlasten-toter-code.md`: previous findings (will be carried over and re-checked)
 - Branch `apriltag-refactoring` (plan `refactoring-apriltag.md` there): as of 23.09., 149 commits behind `apriltag`, not merged — only a source of ideas
 
 ## Affected files
 
 Docs (branch `apriltag`):
 
-- `doc/projektdoku/altlasten-zelle.md`, `doc/projektdoku/altlasten-wsc.md`, `doc/projektdoku/code-dokumentation.md` (new)
-- `doc/projektdoku/altlasten.md`, `doc/projektdoku/altlasten-toter-code.md` (only header note "superseded by …")
+- `doc/projektdoku/arbeitsplaene/altlasten-zelle.md`, `doc/projektdoku/arbeitsplaene/altlasten-wsc.md`, `doc/projektdoku/code-dokumentation.md` (new)
+- `doc/projektdoku/arbeitsplaene/altlasten.md`, `doc/projektdoku/arbeitsplaene/altlasten-toter-code.md` (only header note "superseded by …")
 - `doc/projektdoku/arbeitsplaene/README.md` (index line, topic-doc table), `README.md` (docs table)
 
 Code: the places named with an ID in the audits. Every change carries the finding ID in the
@@ -61,7 +61,7 @@ From here on two Claude sessions work in parallel. Each has **its own repo, its 
 | --- | --- | --- |
 | Worktree | `/home/meric/ADP/ADP_flexible_Roboterzelle/.claude/worktrees/apriltag-aufraeumen` | `/home/meric/ADP/webskillcomposition/.claude/worktrees/ungetestet-aufraeumen` |
 | Branch | `apriltag-aufraeumen` (base `apriltag`; merged into `main` on 17.11.2026) | `ADP_Lokaliserung` (base `Ungetestet` `5812275`; local, unmerged) |
-| Findings | [`../altlasten-zelle.md`](../altlasten-zelle.md) | [`../altlasten-wsc.md`](../altlasten-wsc.md) |
+| Findings | [`../altlasten-zelle.md`](altlasten-zelle.md) | [`../altlasten-wsc.md`](altlasten-wsc.md) |
 | Handbook | `code-dokumentation.md`, only **part A** | `code-dokumentation.md`, only **part B** |
 | Record status in | `altlasten-zelle.md`, section 12 "Implementation status" | `altlasten-wsc.md`, section 11 "Implementation status" |
 | Tests | `PYTHONPATH=src /home/meric/ADP/ADP_flexible_Roboterzelle/.venv/bin/python -m unittest discover -s tests -t .` (starting state 877 OK) | in `frontend/`: `npx tsc --noEmit`, `npx vitest run` (79 files / 836 tests); in `backend/`: `/home/meric/ADP/webskillcomposition/backend/.venv/bin/python -m pytest -q` (81 + 1 skipped) |

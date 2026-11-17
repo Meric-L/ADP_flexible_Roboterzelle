@@ -10,7 +10,7 @@ Each entry names the condition under which it can be removed. Only once that con
 is met is it deleted — and then the entry is also struck from here.
 
 **Removed on 21.09.2026:** the complete CPU temperature demo (A1–A6) together with its
-counterparts in the university repo (B2, B6). B4 and B5 were already gone at that point. See [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](arbeitsplaene/altlasten-abbau-part10-fassade.md).
+counterparts in the university repo (B2, B6). B4 and B5 were already gone at that point. See [`arbeitsplaene/altlasten-abbau-part10-fassade.md`](altlasten-abbau-part10-fassade.md).
 
 Two repos are affected:
 
@@ -127,8 +127,8 @@ not legacy:
   `auto_execute` remains `False` in any case until the calibration on the robot is
   proven.
 
-See [`apriltag-lokalisierung.md`](apriltag-lokalisierung.md) and
-[`apriltag-e2e-test.md`](apriltag-e2e-test.md).
+See [`apriltag-lokalisierung.md`](../apriltag-lokalisierung.md) and
+[`apriltag-e2e-test.md`](../apriltag-e2e-test.md).
 
 ---
 

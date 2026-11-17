@@ -3,8 +3,8 @@
 As of: 30.10.2026. Examined was what our group contributed in the university repo `webskillcomposition` on branch `Ungetestet` (`5812275`) relative to `dev` (`d824975`) — comparison `origin/dev..Ungetestet`.
 Code that was already in `dev` is only reported (column "dev?"), not evaluated and not changed.
 
-This document replaces the WSC parts of [`altlasten.md`](altlasten.md) (section B) and [`altlasten-toter-code.md`](altlasten-toter-code.md) (IDs W…); their open points have been re-checked and carry the old ID here in the column "ex-ID". Counterpart for this repo: [`altlasten-zelle.md`](altlasten-zelle.md). Plan: [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
-What each file does is described in [`code-dokumentation.md`](code-dokumentation.md) (part B: `code/webskill-*.md`).
+This document replaces the WSC parts of [`altlasten.md`](altlasten.md) (section B) and [`altlasten-toter-code.md`](altlasten-toter-code.md) (IDs W…); their open points have been re-checked and carry the old ID here in the column "ex-ID". Counterpart for this repo: [`altlasten-zelle.md`](altlasten-zelle.md). Plan: [`arbeitsplaene/aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md).
+What each file does is described in [`code-dokumentation.md`](../code-dokumentation.md) (part B: `code/webskill-*.md`).
 
 **Cleaning up is done on branch `ADP_Lokaliserung`** (webskillcomposition, local, unmerged). What has been implemented is at the end under "Implementation status".
 

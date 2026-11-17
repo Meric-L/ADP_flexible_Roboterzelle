@@ -88,10 +88,10 @@ Read before creating a plan — here is the documented state:
 | [`../apriltag-referenz.md`](../apriltag-referenz.md) | AprilTag reference |
 | [`../apriltag-e2e-test.md`](../apriltag-e2e-test.md) | AprilTag end-to-end test guide |
 | [`../code-dokumentation.md`](../code-dokumentation.md) | Code documentation: overview; details per area under `../code/` |
-| [`../altlasten-zelle.md`](../altlasten-zelle.md) | Clean-up audit of this repo (`apriltag`): dead code, duplicates, workarounds, guidelines, test gaps |
-| [`../altlasten-wsc.md`](../altlasten-wsc.md) | Clean-up audit of webskillcomposition, only our share (`origin/dev..Ungetestet`) |
-| [`../altlasten.md`](../altlasten.md) | Known legacy issues and pitfalls (as of 21.09., superseded by the two audits) |
-| [`../altlasten-toter-code.md`](../altlasten-toter-code.md) | Dead-code audit, as of 21.10. (superseded by the two audits) |
+| [`../altlasten-zelle.md`](altlasten-zelle.md) | Clean-up audit of this repo (`apriltag`): dead code, duplicates, workarounds, guidelines, test gaps |
+| [`../altlasten-wsc.md`](altlasten-wsc.md) | Clean-up audit of webskillcomposition, only our share (`origin/dev..Ungetestet`) |
+| [`../altlasten.md`](altlasten.md) | Known legacy issues and pitfalls (as of 21.09., superseded by the two audits) |
+| [`../altlasten-toter-code.md`](altlasten-toter-code.md) | Dead-code audit, as of 21.10. (superseded by the two audits) |
 | [`../praesentation.md`](../praesentation.md) | Slide basis for the supervisors' presentation |
 
 If a topic doc is added, add a line here. For agents, the script

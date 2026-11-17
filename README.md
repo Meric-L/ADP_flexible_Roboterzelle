@@ -62,7 +62,7 @@ The documentation has two levels:
 | [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | State of the vision system |
 | [`doc/projektdoku/vision-system-integration.md`](doc/projektdoku/vision-system-integration.md) | Target plan for integrating the two OPC UA vision systems (OPC 40100) into webskillcomposition |
 | [`doc/projektdoku/arbeitsplaene/`](doc/projektdoku/arbeitsplaene/README.md) | Work plans of all features (planning, decisions, status) |
-| [`doc/projektdoku/altlasten-zelle.md`](doc/projektdoku/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
-| [`doc/projektdoku/altlasten-wsc.md`](doc/projektdoku/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
-| [`doc/projektdoku/altlasten.md`](doc/projektdoku/altlasten.md) | What is still in there and why, and when it will be removed |
+| [`doc/projektdoku/arbeitsplaene/altlasten-zelle.md`](doc/projektdoku/arbeitsplaene/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
+| [`doc/projektdoku/arbeitsplaene/altlasten-wsc.md`](doc/projektdoku/arbeitsplaene/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
+| [`doc/projektdoku/arbeitsplaene/altlasten.md`](doc/projektdoku/arbeitsplaene/altlasten.md) | What is still in there and why, and when it will be removed |
 | [`concept/offene_punkte.md`](concept/offene_punkte.md) | Open concept questions of the localization |

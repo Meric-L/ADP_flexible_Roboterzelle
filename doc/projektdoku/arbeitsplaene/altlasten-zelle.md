@@ -6,8 +6,8 @@ This document replaces the cell parts of [`altlasten.md`](altlasten.md) and
 [`altlasten-toter-code.md`](altlasten-toter-code.md); their open items have been re-checked and
 carry the old ID here (column „ex-ID“). Counterpart for webskillcomposition:
 [`altlasten-wsc.md`](altlasten-wsc.md) — it also contains the **world-tag chain across both repos**
-(section 10). What each file does: [`code-dokumentation.md`](code-dokumentation.md), part A. Plan:
-[`arbeitsplaene/aufraeumen-und-code-handbuch.md`](arbeitsplaene/aufraeumen-und-code-handbuch.md).
+(section 10). What each file does: [`code-dokumentation.md`](../code-dokumentation.md), part A. Plan:
+[`arbeitsplaene/aufraeumen-und-code-handbuch.md`](aufraeumen-und-code-handbuch.md).
 
 **Cleanup is done on branch `apriltag-aufraeumen`** (merged into `main` on 17.11.2026). What has been implemented is
 listed at the end under „Umsetzungsstand“ (implementation status).
@@ -15,7 +15,7 @@ listed at the end under „Umsetzungsstand“ (implementation status).
 **Not touched during the cleanup:**
 
 - hot files (column „heiß?“ (hot?)) — heavily in progress on `apriltag` or touched by the unmerged branch `usecase-foto`;
-- the files reserved by the plan [`handeye-genauigkeit.md`](arbeitsplaene/handeye-genauigkeit.md) (status „in Arbeit“ (in progress)):
+- the files reserved by the plan [`handeye-genauigkeit.md`](handeye-genauigkeit.md) (status „in Arbeit“ (in progress)):
   `src/vision_server/handeye_session.py`, `src/tagloc/handeye.py`, `src/tagloc/cli/calibrate_handeye.py`,
   `src/tagloc/pose.py`, `src/tagloc/detector.py` — affects D4 and the decomposition of `finish()`;
 - documented interfaces (OPC UA, payload, `tagmap.json`, CLI options).

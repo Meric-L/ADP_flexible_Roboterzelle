@@ -6,7 +6,7 @@ share it and so that it stays testable end-to-end without hardware.
 Neighbouring documents: [`apriltag-referenz.md`](apriltag-referenz.md) (function reference),
 [`apriltag-e2e-test.md`](apriltag-e2e-test.md) (test guide incl. Pi camera),
 [`vision-server-interface.md`](vision-server-interface.md) (OPC UA interface),
-[`altlasten.md`](altlasten.md), [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
+[`altlasten.md`](arbeitsplaene/altlasten.md), [`concept/offene_punkte.md`](../../concept/offene_punkte.md).
 
 > **State:** implemented. What is written here describes the built state; sections 6 and 9 list what of it is still open.
 
@@ -186,13 +186,13 @@ The order is deliberate: **the higher up, the fewer dependencies, the more stric
 
 **Hard rule:** `geometry`, `calibration`, `tagmap` and `localize` import **no cv2**. This is not a matter of style — it means that the
 vision-server core can form the calibration identity for `configurationId` without loading OpenCV, and that these tests run on every
-machine, including with the OpenCV version conflict from [`altlasten.md`](altlasten.md) D2 (locally 5.0.0.93, Pi 4.x, deviating `aruco`
+machine, including with the OpenCV version conflict from [`altlasten.md`](arbeitsplaene/altlasten.md) D2 (locally 5.0.0.93, Pi 4.x, deviating `aruco`
 API). `from_rvec_tvec` therefore implements Rodrigues in five lines of numpy instead of calling `cv2.Rodrigues`.
 
 ### 2.2 Detector adapter
 
 The prototype uses `pupil_apriltags`; the planned architecture per [`profiles.py`](../../src/vision_server/profiles.py) and
-[`altlasten.md`](altlasten.md) D3 is `cv2.aruco`. Instead of deciding now and rebuilding later, both go behind one protocol:
+[`altlasten.md`](arbeitsplaene/altlasten.md) D3 is `cv2.aruco`. Instead of deciding now and rebuilding later, both go behind one protocol:
 
 ```python
 @dataclass(frozen=True)
@@ -365,7 +365,7 @@ rejection silenced the entire detection, because `AprilTagDetectionSource.open` 
 **without a map**: the tags are reported as `TAG-<id>` in the camera frame, so the frontend gets its placeholder boxes.
 
 **New folder `config/`**, because the tag map describes the cell layout and must be versioned — `data/`, `concept/` and `hardware/` are all
-gitignored, and new files there would be silently invisible to `git add` ([`altlasten.md`](altlasten.md) D1).
+gitignored, and new files there would be silently invisible to `git add` ([`altlasten.md`](arbeitsplaene/altlasten.md) D1).
 
 ---
 
@@ -407,7 +407,7 @@ class AprilTagDetectionSource(DetectionSource):
 
 - `frame_id` / `frame_convention` from the config instead of hard-coded
 - `configuration_id` = tag family + calibration identity + tag map identity →
-  closes [`altlasten.md`](altlasten.md) C4 (today the field is built, but empty)
+  closes [`altlasten.md`](arbeitsplaene/altlasten.md) C4 (today the field is built, but empty)
 - `open()` loads calibration and tag map, builds the detector, opens the camera
 - `acquire_and_detect()` takes `samples_per_job` frames, runs **every** cv2 operation via `run_blocking`, averages the poses, discards tags
   via `max_reproj_error_px`, and respects `capture_timeout_s` as its **own** timeout (`asyncio.wait_for` cannot kill the worker thread)
@@ -478,7 +478,7 @@ AprilTags are the marker technology actually planned. The removal, in this order
 | 5 | Adjust expectation lists to `["apriltag", "calibration", "hello_world"]` | `tests/test_recipe_routing.py` | done |
 | 6 | Remove `qr_scan_duration_s` from the shared camera config | `src/vision_server/profiles.py` | done |
 | 7 | `job_timeout` re-justified: `samples_per_job × capture_timeout_s` plus reserve → 20.0 | `src/vision_server/config.py` | done |
-| 8 | Delete the orphaned QR scanner ([`altlasten.md`](altlasten.md) C6) | `src/apriltag/caputure.py` | done |
+| 8 | Delete the orphaned QR scanner ([`altlasten.md`](arbeitsplaene/altlasten.md) C6) | `src/apriltag/caputure.py` | done |
 | 9 | Update the docs: sections 1, 4 (jobs), 9, 10 | [`vision-server-interface.md`](vision-server-interface.md) | done |
 
 > The complete removal was carried out, because otherwise QR would have stood in the production path without a purpose. Everything can be
@@ -573,7 +573,7 @@ Steps 1–7 and 9 are implemented, the suite is green.
 On step 8: the prototype folder initially remained and was marked as superseded in `MANUAL_TEST.md`. Deleting it before the new chain had run
 once on the real Pi camera would remove the only means of comparison. `src/jobs/calibrate.py`, by contrast, is already converted — it is now a
 readiness check instead of a placeholder. **Prototype `src/apriltag/` removed on 30.10.2026** (deletion condition met, see
-[`altlasten-zelle.md`](altlasten-zelle.md) T1).
+[`altlasten-zelle.md`](arbeitsplaene/altlasten-zelle.md) T1).
 
 Two things that were missing from the original plan were added:
 

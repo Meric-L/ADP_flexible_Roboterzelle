@@ -417,7 +417,7 @@ Two points that the prototype currently gets wrong and that are fixed here:
 
 - **The corners are undistorted.** `detect_apriltags.py` (prototype, removed on 30.10.2026)
   passes `D` only to `drawFrameAxes` and estimates the pose on the distorted image
-  ([`altlasten.md`](altlasten.md), "Explicitly not on this list").
+  ([`altlasten.md`](arbeitsplaene/altlasten.md), "Explicitly not on this list").
 - **Ambiguity is reported.** A flat-seen square marker has two almost equally good
   solutions. `solvePnPGeneric` with `SOLVEPNP_IPPE_SQUARE` returns both; the ratio of the
   residual errors is `ambiguity_ratio`. An ambiguous tag is not wrong, but it must not be

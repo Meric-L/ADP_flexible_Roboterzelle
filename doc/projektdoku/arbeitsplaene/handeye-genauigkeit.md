@@ -25,7 +25,7 @@ Reviewed for this plan (CLAUDE.md, section „Bevor du anfängst“ (Before you 
 - `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`: style example, `MeasureBoard`, `reprojectionErrorPx`
 - Approved plan `/home/meric/.claude/plans/glittery-riding-hartmanis.md`: findings, implementation A/B, verification
 
-Not yet reviewed (to be read before implementation): `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`, `doc/projektdoku/vision-server-interface.md` (section 15), `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/altlasten.md`.
+Not yet reviewed (to be read before implementation): `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`, `doc/projektdoku/vision-server-interface.md` (section 15), `doc/projektdoku/apriltag-lokalisierung.md`, `doc/projektdoku/arbeitsplaene/altlasten.md`.
 
 ## Affected files
 

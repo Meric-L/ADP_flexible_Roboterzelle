@@ -1,7 +1,7 @@
 """Tag detection behind one interface: cv2.aruco or pupil_apriltags.
 
 The prototype used `pupil_apriltags`; the target architecture per
-`vision_server/profiles.py` and doc/projektdoku/altlasten.md D3 is `cv2.aruco`.
+`vision_server/profiles.py` and doc/projektdoku/arbeitsplaene/altlasten.md D3 is `cv2.aruco`.
 Instead of deciding now and rewriting later, both sit behind the same
 interface. Pose estimation deliberately lives in `pose.py` and not here --
 otherwise pose quality would depend on the backend, and the two would not be
