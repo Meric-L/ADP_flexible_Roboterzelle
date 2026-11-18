@@ -22,7 +22,7 @@ same calculation with ``approach_standoff_m``, that is from a larger distance. I
 provides the measured tag pose, from which the following close step is planned again. So
 the rough pose from layer 1 is only needed for the wide view, not for the close image.
 
-Oblique instead of frontal (work plan ``layer2-schraege-ansicht.md``): if the frontal
+Oblique instead of frontal (work plan ``layer2-oblique-view.md``): if the frontal
 view is out of reach -- a world tag on the floor, the base a metre higher on the cart --
 the camera tilts around the tag centre towards the base, in steps up to
 ``max_tilt_deg``. The most frontal view within reach is chosen.

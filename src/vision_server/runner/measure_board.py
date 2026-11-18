@@ -26,7 +26,7 @@ async def _install_measure_board(
     check the ceiling camera's calibration run before each capture. It runs on
     both Pis. The method replies only after the measurement, and the result is
     returned directly.
-    See `doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
+    See `doc/project_docs/work-plans/hand-eye-board-centring.md`.
     """
     from ..handeye_session import _parse_board
     from ..measureboard import RESULT_SCHEMA, dumps, parse_request

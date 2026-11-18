@@ -18,7 +18,7 @@ the Pi and let jobs run into the timeout (py-spy, 24.09.2026). Instead, it draws
 the newest result that a job, the cell watch or a measurement has already
 computed anyway (`AprilTagDetectionSource.latest_tags`). Only if that result is
 too old does it detect by itself, rarely, in the background, and never during a
-job. See `doc/projektdoku/arbeitsplaene/livestream-tags-volle-aufloesung.md`.
+job. See `doc/project_docs/work-plans/livestream-tags-full-resolution.md`.
 
 Runs entirely in the publisher's worker thread -- `annotate` is never called
 directly on the event loop.

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doc_rules.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
             "timeout": 15,
             "statusMessage": "Loading project rules and doc/ index"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doc_rules.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
             "timeout": 15,
             "statusMessage": "Passing project rules to subagent"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doku_regeln.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/doc_rules.py\"; [ -f \"$f\" ] && python3 \"$f\" || true",
             "timeout": 15,
             "once": true,
             "statusMessage": "Reminder: read doc/ and create a work plan"

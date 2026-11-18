@@ -15,7 +15,7 @@ The project is strictly separated into documentation and code components:
 
 ### Documentation
 * `/latex` - The LaTeX source files of the written thesis (synced with ShareLaTeX, see `GIT_ANLEITUNG.md`).
-* `/doc/projektdoku` - The technical project documentation as Markdown (see below).
+* `/doc/project_docs` - The technical project documentation as Markdown (see below).
 * `/doc/auswertung` - Evaluation reports of calibration and measurement runs.
 * `/concept` - Flow diagram and open concept questions.
 
@@ -29,7 +29,7 @@ The project is strictly separated into documentation and code components:
 * `/tools` - Print sheets for tags and boards, synthetic test scenes.
 * `/config` - Tag map (cell layout), versioned.
 * `/hardware` - CAD files, circuit diagrams or 3D-printing models for the sensor mounts.
-* `/data` - Calibration files and recordings. Only selected files are versioned (see [`code/zelle-tools-tests.md`](doc/projektdoku/code/zelle-tools-tests.md)).
+* `/data` - Calibration files and recordings. Only selected files are versioned (see [`code/cell-tools-tests.md`](doc/project_docs/code/cell-tools-tests.md)).
 * `/tests` - `PYTHONPATH=src python3 -m unittest discover -s tests -t .`
 
 ## Technical documentation
@@ -46,22 +46,22 @@ The documentation has two levels:
 
 | Document | Purpose |
 | --- | --- |
-| [`doc/projektdoku/code-dokumentation.md`](doc/projektdoku/code-dokumentation.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
-| [`doc/projektdoku/vision-server-interface-short.md`](doc/projektdoku/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
-| [`doc/projektdoku/vision-system.md`](doc/projektdoku/vision-system.md) | **Vision server operation**: start, configuration (env variables), watchdog, known limitations |
-| [`doc/projektdoku/code/`](doc/projektdoku/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |
+| [`doc/project_docs/code/README.md`](doc/project_docs/code/README.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
+| [`doc/project_docs/interfaces/vision-server-interface-short.md`](doc/project_docs/interfaces/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
+| [`doc/project_docs/topics/vision-system.md`](doc/project_docs/topics/vision-system.md) | **Vision server operation**: start, configuration (env variables), watchdog, known limitations |
+| [`doc/project_docs/code/`](doc/project_docs/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |
 
 ### 2. In-depth documents
 
 | Document | Purpose |
 | --- | --- |
-| [`doc/projektdoku/vision-server-interface.md`](doc/projektdoku/vision-server-interface.md) | Full OPC UA interface reference for the backend (OPC 40100), including pitfalls and details per method |
-| [`doc/projektdoku/part10-programm-schnittstelle.md`](doc/projektdoku/part10-programm-schnittstelle.md) | Part 10 program and mDNS: the generic operator interface of the cell and discoverability on the network |
-| [`doc/projektdoku/apriltag-lokalisierung.md`](doc/projektdoku/apriltag-lokalisierung.md) | AprilTag localisation for maintainers: code map, data flow, conventions, maintenance recipes |
-| [`doc/projektdoku/apriltag-referenz.md`](doc/projektdoku/apriltag-referenz.md) | Overview of the AprilTag functions and file formats, linked to the code reference |
-| [`doc/projektdoku/vision-system-integration.md`](doc/projektdoku/vision-system-integration.md) | Integration of the vision Pis (OPC 40100) into webskillcomposition: blocker status, signal path, risks, plan vs. built |
-| [`doc/projektdoku/analysen/`](doc/projektdoku/analysen/README.md) | Analyses of past problems: what was tried and measured (camera and detector, calibration runs) |
-| [`doc/projektdoku/arbeitsplaene/`](doc/projektdoku/arbeitsplaene/README.md) | Work plans of all features (planning, decisions, status) |
-| [`doc/projektdoku/arbeitsplaene/altlasten-zelle.md`](doc/projektdoku/arbeitsplaene/altlasten-zelle.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
-| [`doc/projektdoku/arbeitsplaene/altlasten-wsc.md`](doc/projektdoku/arbeitsplaene/altlasten-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
-| [`doc/projektdoku/arbeitsplaene/altlasten.md`](doc/projektdoku/arbeitsplaene/altlasten.md) | What is still in there and why, and when it will be removed |
+| [`doc/project_docs/interfaces/vision-server-interface.md`](doc/project_docs/interfaces/vision-server-interface.md) | Full OPC UA interface reference for the backend (OPC 40100), including pitfalls and details per method |
+| [`doc/project_docs/interfaces/part10-program-interface.md`](doc/project_docs/interfaces/part10-program-interface.md) | Part 10 program and mDNS: the generic operator interface of the cell and discoverability on the network |
+| [`doc/project_docs/topics/apriltag-localization.md`](doc/project_docs/topics/apriltag-localization.md) | AprilTag localisation for maintainers: code map, data flow, conventions, maintenance recipes |
+| [`doc/project_docs/topics/apriltag-reference.md`](doc/project_docs/topics/apriltag-reference.md) | Overview of the AprilTag functions and file formats, linked to the code reference |
+| [`doc/project_docs/topics/vision-system-integration.md`](doc/project_docs/topics/vision-system-integration.md) | Integration of the vision Pis (OPC 40100) into webskillcomposition: blocker status, signal path, risks, plan vs. built |
+| [`doc/project_docs/analyses/`](doc/project_docs/analyses/README.md) | Analyses of past problems: what was tried and measured (camera and detector, calibration runs) |
+| [`doc/project_docs/work-plans/`](doc/project_docs/work-plans/README.md) | Work plans of all features (planning, decisions, status) |
+| [`doc/project_docs/work-plans/legacy-cell.md`](doc/project_docs/work-plans/legacy-cell.md) | Clean-up audit of this repo: dead code, duplications, stopgap solutions, guidelines, test gaps |
+| [`doc/project_docs/work-plans/legacy-wsc.md`](doc/project_docs/work-plans/legacy-wsc.md) | Clean-up audit of our share of webskillcomposition, plus the world-tag chain across both repos |
+| [`doc/project_docs/work-plans/legacy.md`](doc/project_docs/work-plans/legacy.md) | What is still in there and why, and when it will be removed |

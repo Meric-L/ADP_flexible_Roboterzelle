@@ -20,7 +20,7 @@ Only on the hand Pi (nodes exist only with `hand_eye_path`).
   itself to its request and, if `saveDebug` (default `true`), writes a measurement
   log (`tagreference_log.py`, `debugDir` in the result).
 
-See `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
+See `doc/project_docs/work-plans/tag-survey-reference-edges.md`.
 
 The numpy-dependent modules `tagreference` and `tagreference_log` are imported
 only inside the functions, so the rest of the server does not need numpy.

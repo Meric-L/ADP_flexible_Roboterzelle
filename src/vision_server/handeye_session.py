@@ -4,7 +4,7 @@ Same pattern as the camera calibration (start / capture / finish / abort), only
 with a partner outside: the robot moves, and for each capture the frontend reports
 the **reported** flange pose (forward kinematics from the real joint angles). The
 Pi measures the target in camera coordinates: a tag or a calibration chessboard
-(`handeye-schachbrett-automatik.md`).
+(`hand-eye-chessboard-automation.md`).
 
 At the end, `tagloc.handeye.solve_hand_eye` (Park-Martin) solves over all pairs.
 The tag's position does not need to be known for this, only that it is fixed. If
@@ -17,7 +17,7 @@ backup first. It becomes active immediately, without a restart.
 
 No asyncua is used here: the camera, the file and the nodes are passed in as
 functions (`HandEyePorts`). See
-`doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+`doc/project_docs/work-plans/hand-eye-over-opcua.md`.
 """
 
 from __future__ import annotations

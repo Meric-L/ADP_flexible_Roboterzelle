@@ -27,7 +27,7 @@ async def _install_layer2_run(
     Only on the hand-camera Pi (nodes exist only with `hand_eye_path`). Each step
     starts an ordinary AprilTag job via the JobRunner -- same events, same
     `LatestResultJson`, and `Stop` works as usual. See
-    `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
+    `doc/project_docs/work-plans/layer2-run-hand-pi.md`.
     """
     # Imported here only: `layer2` needs numpy, the rest of the server does not.
     from ..layer2.run import Layer2Ports, Layer2Run

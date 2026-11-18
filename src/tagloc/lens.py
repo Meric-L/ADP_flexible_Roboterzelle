@@ -10,7 +10,7 @@ branching themselves.
 
 The config sets which camera uses which model
 (`AprilTagProfileConfig.calibration_model`, see work plan
-`kalibrierung-linsenmodell-je-kamera.md`): ceiling camera fisheye, hand camera
+`calibration-lens-model-per-camera.md`): ceiling camera fisheye, hand camera
 pinhole.
 """
 

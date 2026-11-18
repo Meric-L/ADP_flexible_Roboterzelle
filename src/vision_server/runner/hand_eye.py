@@ -23,7 +23,7 @@ async def _install_hand_eye_session(
     """Create the hand-eye methods and wire up the session.
 
     Only on the hand Pi (node only with `hand_eye_path`). See
-    `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+    `doc/project_docs/work-plans/hand-eye-over-opcua.md`.
     """
     # Only here: the session needs numpy, the rest of the server does not.
     from ..handeye_session import HandEyePorts, HandEyeSession

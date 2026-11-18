@@ -26,7 +26,7 @@ ausgeliefert.
 - **Wichtiger Fund:** `HasNotifier` allein genügt bei `asyncua` **nicht** —
   ein einzelnes `subscribeEvent(serverUrl, 'i=2253')` fängt die Vision-Events
   nicht mit auf. Details in
-  [`doc/projektdoku/vision-system.md`](../doc/projektdoku/vision-system.md) (asyncua pitfalls),
+  [`doc/project_docs/topics/vision-system.md`](../doc/project_docs/topics/vision-system.md) (asyncua pitfalls),
   widerlegt Teil 4.2 des Integrationsplans.
 - Der Ergebnis-Payload ist derzeit ein **JSON-String in `ResultContent[0]`**,
   Schema `wsc.vision.test/1`, Inhalt noch „Hello World" — **kein echtes
@@ -41,7 +41,7 @@ ausgeliefert.
 ## Stand der Phasen
 
 Kurzfassung — verbindlich ist Teil 9 von
-[`doc/projektdoku/vision-system-integration.md`](../doc/projektdoku/vision-system-integration.md).
+[`doc/project_docs/topics/vision-system-integration.md`](../doc/project_docs/topics/vision-system-integration.md).
 
 - **Phase 1 (Spike)** — erledigt: Nodeset lädt, Instanzen anlegbar.
 - **Phase 2** — teilweise: `VisionSystem` ist im Adressraum sichtbar, läuft aber
@@ -55,8 +55,8 @@ Kurzfassung — verbindlich ist Teil 9 von
 
 | Dokument | Inhalt | Wann lesen |
 | --- | --- | --- |
-| [`doc/projektdoku/vision-system.md`](../doc/projektdoku/vision-system.md) | Betrieb und Wartung des Servers: Start, Konfiguration, Watchdog, bekannte Einschränkungen, asyncua-Stolperfallen | **Zuerst** bei Arbeit am bestehenden Server |
-| [`doc/projektdoku/vision-system-integration.md`](../doc/projektdoku/vision-system-integration.md) | Integration in WebSkillComposition, ca. 500 Zeilen: Bestand, Blocker-Status, Signalweg, Risiken, Phasenplan mit Stand (Plan vs. gebaut) | Nur bei Bedarf, gezielt einen Teil. Teil 4 = unsere Server, Teil 9 = Phasenplan. |
+| [`doc/project_docs/topics/vision-system.md`](../doc/project_docs/topics/vision-system.md) | Betrieb und Wartung des Servers: Start, Konfiguration, Watchdog, bekannte Einschränkungen, asyncua-Stolperfallen | **Zuerst** bei Arbeit am bestehenden Server |
+| [`doc/project_docs/topics/vision-system-integration.md`](../doc/project_docs/topics/vision-system-integration.md) | Integration in WebSkillComposition, ca. 500 Zeilen: Bestand, Blocker-Status, Signalweg, Risiken, Phasenplan mit Stand (Plan vs. gebaut) | Nur bei Bedarf, gezielt einen Teil. Teil 4 = unsere Server, Teil 9 = Phasenplan. |
 | [`src/OPCUA/server.py`](../src/OPCUA/server.py) | Server-Implementierung | — |
 | [`src/OPCUA/print_setpoint.py`](../src/OPCUA/print_setpoint.py) | Client-Hilfsskript | — |
 

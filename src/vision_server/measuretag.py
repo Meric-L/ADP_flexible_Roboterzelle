@@ -8,7 +8,7 @@ world CS, without CAD offset, without knowledge of the robot. From this, the
 controller computes the next flange target with FK and `T_flansch_cam`.
 
 No asyncua and no camera here: measurements come in as data.
-See `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
+See `doc/project_docs/work-plans/layer2-measuretags.md`.
 """
 
 from __future__ import annotations

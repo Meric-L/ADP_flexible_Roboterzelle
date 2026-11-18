@@ -1,6 +1,6 @@
 """Die Abhaengigkeitsrichtung ist eine Regel, also wird sie getestet.
 
-Drei Zusicherungen, auf denen der Rest aufbaut (doc/projektdoku/apriltag-lokalisierung.md 3.4):
+Drei Zusicherungen, auf denen der Rest aufbaut (doc/project_docs/topics/apriltag-localization.md 3.4):
 
 * `tagloc.identity` und `tagloc.modes` brauchen **nicht einmal numpy** -- der
   Server baut die `configurationId` und normalisiert den Stream-Modus, bevor

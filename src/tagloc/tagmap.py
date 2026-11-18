@@ -1,6 +1,6 @@
 """Tag map: what each tag is and where it sits in the shared coordinate system.
 
-Core idea of the whole concept (doc/projektdoku/apriltag-lokalisierung.md section 3.3):
+Core idea of the whole concept (doc/project_docs/topics/apriltag-localization.md section 3.3):
 
     A tag carries a number, not a meaning. That tag 7 is module MOD-A, with its
     origin 40 mm below the tag center, is recorded here -- in a file -- not in
@@ -45,7 +45,7 @@ _log = logging.getLogger(__name__)
 SCHEMA = "wsc.vision.tagmap/2"
 
 #: Schema 1 knew the roles `robot_table` and `reference` as *fixed* anchors.
-#: That was the wrong concept -- see doc/projektdoku/arbeitsplaene/apriltag-welttag-konzept.md.
+#: That was the wrong concept -- see doc/project_docs/work-plans/apriltag-world-tag-concept.md.
 LEGACY_SCHEMA = "wsc.vision.tagmap/1"
 
 #: The only fixed thing in the cell: a world tag at the cell edge.

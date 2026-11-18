@@ -36,7 +36,7 @@ async def _watch_loop_lag(
 
     If a source forgets `run_blocking`, this shows it here. Otherwise it would
     surface as an unexplained connection drop somewhere else. Replaces
-    `RaspiDevice/Counter` as the reference signal (doc/projektdoku/arbeitsplaene/altlasten.md A3/A5).
+    `RaspiDevice/Counter` as the reference signal (doc/project_docs/work-plans/legacy.md A3/A5).
     """
     loop = asyncio.get_running_loop()
     while True:

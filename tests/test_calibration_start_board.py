@@ -2,7 +2,7 @@
 
 `StartCalibration(OptionsJson)` nimmt seit 17.11.2026 optional ein Brett
 (Schachbrett oder ChArUco) nach denselben Regeln wie die Hand-Auge-
-Kalibrierung. Siehe `doc/projektdoku/arbeitsplaene/deckenkamera-kalibrierung-board-wahl.md`.
+Kalibrierung. Siehe `doc/project_docs/work-plans/ceiling-camera-calibration-board-choice.md`.
 """
 
 import asyncio

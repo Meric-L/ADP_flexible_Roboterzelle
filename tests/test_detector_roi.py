@@ -1,6 +1,6 @@
 """Tests for the detection region of the ceiling camera (`tagloc.detector.RoiTagDetector`).
 
-Work plan `doc/projektdoku/arbeitsplaene/deckenkamera-bildausschnitt.md`. The region
+Work plan `doc/project_docs/work-plans/ceiling-camera-crop.md`. The region
 only restricts where the detector searches; the corners must stay in full-frame
 coordinates, otherwise pose and calibration would no longer fit.
 """

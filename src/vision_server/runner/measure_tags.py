@@ -42,7 +42,7 @@ async def _install_measure_tags(
     Only on the hand Pi (the node exists only with `hand_eye_path`). It replies
     only after the measurement, and the result comes back directly. The node
     `LastTagMeasurement` is for display only. See
-    `doc/projektdoku/arbeitsplaene/layer2-measuretags.md`.
+    `doc/project_docs/work-plans/layer2-measuretags.md`.
     """
     from ..measuretag import RESULT_SCHEMA, dumps, parse_request
 

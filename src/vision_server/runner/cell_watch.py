@@ -97,7 +97,7 @@ async def _install_cell_watch(
     jobs, with no separate capture -- and computes with its own detector in its
     own thread. It pauses during a job or a calibration, so that a layer-1 job
     always has the full CPU. See
-    `doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
+    `doc/project_docs/work-plans/cell-watch.md`.
     """
     # Imported only here: the watch needs numpy/OpenCV, the rest of the server does not.
     from tagloc.detector import build_detector

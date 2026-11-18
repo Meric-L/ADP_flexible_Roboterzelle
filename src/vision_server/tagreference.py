@@ -10,7 +10,7 @@ plane -- without robot kinematics and without hand-eye error. The math lives in
 This module holds no asyncua and no camera: it parses the request, builds the
 result JSON, and provides the small pure helpers in between (tag pose across
 images, edge summary, warnings). See
-`doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
+`doc/project_docs/work-plans/tag-survey-reference-edges.md`.
 """
 
 from __future__ import annotations

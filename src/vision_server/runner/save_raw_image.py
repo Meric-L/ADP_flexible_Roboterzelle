@@ -25,7 +25,7 @@ async def _install_save_raw_image(
     """Create the `SaveRawImage` method: save the current full frame as PNG.
 
     Rejected while a job is running: PNG encoding of a 12 MP image must not
-    endanger the job timeout. See `doc/projektdoku/arbeitsplaene/rohbild-speichern.md`.
+    endanger the job timeout. See `doc/project_docs/work-plans/save-raw-image.md`.
     """
     from ..raw_image import save_raw_image
 
