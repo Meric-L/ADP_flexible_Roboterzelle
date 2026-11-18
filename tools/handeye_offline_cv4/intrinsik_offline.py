@@ -9,7 +9,7 @@ Aufruf aus der Repo-Wurzel:
 Ein Sitzungsordner (mit config.json und poses/) nimmt poses/*/camera.png; --nur-gruppe filtert
 ueber poseGroup in poses/*/robot_state.json.
 Standard-Bildmuster: data/calibration/cam_flange_pending/kalib_*.jpg (18 Bilder vom 10.11.2026)
-Ergebnis vom 10.11.2026: doc/auswertung/intrinsik_20261110.md
+Ergebnis vom 10.11.2026: doc/project_docs/analyses/intrinsics-20261110.md
 """
 import cv2, numpy as np, glob, json, sys, os, argparse
 F = 274.8 / 275.0

@@ -16,6 +16,7 @@ from ..asset_model import VisionAssetNodes, attach_asset_model
 from ..camera_health import CameraHealthPublisher
 from ..config import VisionServerConfig
 from ..detection import build_detection_sources
+from ..errors import install_error_enum
 from ..events import create_event_generators
 from ..job import JobRunner
 from ..mjpeg_server import MjpegServer
@@ -178,14 +179,19 @@ async def _install_cell_watch_step(wiring: Wiring):
     if source is None or space.cell_watch_status is None:
         return None
 
-    def busy_reason() -> str:
-        if wiring.jobs.busy:
-            return "Job laeuft"
-        return "Kamera-Kalibrierung laeuft" if wiring.calibration_busy() else ""
-
     return await _install_cell_watch(
-        space, wiring.config, source, wiring.results, wiring.methods, wiring.states, busy_reason
+        space, wiring.config, source, wiring.results, wiring.methods, wiring.states,
+        lambda: busy_reason(wiring),
     )
+
+
+def busy_reason(wiring: Wiring) -> str:
+    """Return why the shared camera cannot accept a new job or calibration."""
+    if wiring.jobs.busy:
+        return "Job laeuft"
+    if wiring.calibration_busy():
+        return "Kamera-Kalibrierung laeuft"
+    return ""
 
 
 async def install_vision_machine(server: Server, config: VisionServerConfig) -> VisionMachine:
@@ -196,6 +202,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     stay untouched.
     """
     space = await attach_vision_system(server, config)
+    await install_error_enum(server, space.own_idx)
     # Part 2 before the state machines: it depends on nothing and should be up
     # even if the job path never reaches Operational -- that is exactly when the
     # question "which camera, which state" is interesting.
@@ -208,6 +215,7 @@ async def install_vision_machine(server: Server, config: VisionServerConfig) -> 
     sources = build_detection_sources(config)
     jobs = JobRunner(config, states, events, results, sources)
     wiring = Wiring(server, space, config, states, results, sources, jobs)
+    wiring.device_health_nodes = assets.device_health if assets is not None else ()
 
     install_job_methods(wiring)
     await _open_sources(wiring)

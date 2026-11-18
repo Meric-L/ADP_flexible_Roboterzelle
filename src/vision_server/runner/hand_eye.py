@@ -23,7 +23,7 @@ async def _install_hand_eye_session(
     """Create the hand-eye methods and wire up the session.
 
     Only on the hand Pi (node only with `hand_eye_path`). See
-    `doc/projektdoku/arbeitsplaene/handeye-ueber-opcua.md`.
+    `doc/project_docs/work-plans/hand-eye-over-opcua.md`.
     """
     # Only here: the session needs numpy, the rest of the server does not.
     from ..handeye_session import HandEyePorts, HandEyeSession
@@ -84,12 +84,12 @@ async def _install_hand_eye_session(
         return code_reply(await session.abort())
 
     for name, handler, inputs in (
-        ("StartHandEyeCalibration", start_hand_eye, [ua.VariantType.String]),
-        ("CaptureHandEyeSample", capture_hand_eye, [ua.VariantType.String]),
+        ("StartHandEyeCalibration", start_hand_eye, [("OptionsJson", ua.VariantType.String, "Kalibrieroptionen als JSON.")]),
+        ("CaptureHandEyeSample", capture_hand_eye, [("SampleJson", ua.VariantType.String, "Messprobe als JSON.")]),
         ("FinishHandEyeCalibration", finish_hand_eye, []),
         ("AbortHandEyeCalibration", abort_hand_eye, []),
     ):
         await add_vision_method(
-            space, config, methods, name, handler, inputs, [ua.VariantType.Int32]
+            space, config, methods, name, handler, inputs, [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")]
         )
     return session

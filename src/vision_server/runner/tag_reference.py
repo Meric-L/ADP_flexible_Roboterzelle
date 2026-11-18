@@ -20,7 +20,7 @@ Only on the hand Pi (nodes exist only with `hand_eye_path`).
   itself to its request and, if `saveDebug` (default `true`), writes a measurement
   log (`tagreference_log.py`, `debugDir` in the result).
 
-See `doc/projektdoku/arbeitsplaene/tag-einmessen-bezugskanten.md`.
+See `doc/project_docs/work-plans/tag-survey-reference-edges.md`.
 
 The numpy-dependent modules `tagreference` and `tagreference_log` are imported
 only inside the functions, so the rest of the server does not need numpy.
@@ -194,7 +194,7 @@ async def _install_tag_reference(
     )
     await add_vision_method(
         space, config, methods, "SetTagReferencePreview", preview,
-        [ua.VariantType.String], [ua.VariantType.Int32],
+        [("OptionsJson", ua.VariantType.String, "Vorschauoptionen als JSON.")], [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
     )
 
     handlers = (
@@ -220,5 +220,5 @@ async def _install_tag_reference(
     for name, handler in handlers:
         await add_vision_method(
             space, config, methods, name, handler,
-            [ua.VariantType.String], [ua.VariantType.String, ua.VariantType.Int32],
+            [("RequestJson", ua.VariantType.String, "Messanfrage als JSON.")], [("ResultJson", ua.VariantType.String, "Messergebnis als JSON."), ("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
         )

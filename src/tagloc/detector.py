@@ -1,7 +1,7 @@
 """Tag detection behind one interface: cv2.aruco or pupil_apriltags.
 
 The prototype used `pupil_apriltags`; the target architecture per
-`vision_server/profiles.py` and doc/projektdoku/arbeitsplaene/altlasten.md D3 is `cv2.aruco`.
+`vision_server/profiles.py` and doc/project_docs/work-plans/legacy.md D3 is `cv2.aruco`.
 Instead of deciding now and rewriting later, both sit behind the same
 interface. Pose estimation deliberately lives in `pose.py` and not here --
 otherwise pose quality would depend on the backend, and the two would not be
@@ -147,8 +147,8 @@ _CORNER_REFINE_CONSTANTS = {
 class ArucoTagDetector:
     """Detection via `cv2.aruco`. The default path.
 
-    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); both
-    Pis and the development machine run OpenCV 5.0.
+    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); 4.x and
+    5.x are supported, the Pis run OpenCV 5.0.
     """
 
     def __init__(

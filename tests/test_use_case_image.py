@@ -153,6 +153,7 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
             lambda: self.busy["value"],
         )
         self.method = server.get_node(ua.NodeId("VisionMachine.SaveUseCaseImage", idx))
+        self.namespace_index = idx
 
     def frame(self, timestamp):
         return types.SimpleNamespace(image=test_image(), timestamp=timestamp)
@@ -186,6 +187,14 @@ class SaveUseCaseImageOpcUaTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("hostname", document["pi"])
         second, _ = await self.call(series=4)
         self.assertEqual(Path(second).name, "versuch_002.png")
+
+    async def test_method_arguments_are_named_and_errors_use_the_enum(self):
+        inputs = await (await self.method.get_child("0:InputArguments")).read_value()
+        outputs = await (await self.method.get_child("0:OutputArguments")).read_value()
+        self.assertEqual([arg.Name for arg in inputs], ["Series", "MetadataJson"])
+        self.assertEqual([arg.Name for arg in outputs], ["FileName", "ResultJson", "Error"])
+        self.assertEqual(inputs[0].DataType, ua.NodeId(ua.ObjectIds.Int32, 0))
+        self.assertEqual(outputs[-1].DataType, ua.NodeId("VisionErrorCode", self.namespace_index))
 
     async def test_measures_the_placed_cube_and_answers_with_the_result(self):
         from use_case_eval import synthetic

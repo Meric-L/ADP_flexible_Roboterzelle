@@ -11,7 +11,7 @@ Geprueft wird die ganze Kette:
     detector -> estimate_tag_pose -> place_tags -> locate_modules
 
 dazu der Kalibrierpfad (gerenderte Schachbretter -> `calibrate_from_samples`).
-Toleranz nach doc/projektdoku/apriltag-lokalisierung.md Abschnitt 7: **2 mm und 0,5 Grad**.
+Toleranz nach doc/project_docs/topics/apriltag-localization.md Abschnitt 6: **2 mm und 0,5 Grad**.
 
 Ohne OpenCV wird uebersprungen statt zu scheitern. Der Probezugriff auf
 `cv2.imread` ist Absicht: Eine unvollstaendige Installation laesst sich noch
@@ -109,7 +109,7 @@ class SyntheticTagSceneTest(unittest.TestCase):
         cls.world_poses = {item.tag_id: item.pose_world_tag for item in cls.placements}
         # Subpixel-Verfeinerung ausdruecklich an: dieser Test prueft die
         # erreichbare Genauigkeit der Kette gegen die 2mm/0.5deg-Toleranz
-        # aus apriltag-lokalisierung.md Abschnitt 7 -- das ist unabhaengig
+        # aus apriltag-localization.md Abschnitt 6 -- das ist unabhaengig
         # vom Produktions-Default auf pi1 (dort seit dem CPU-Fix aus, siehe
         # AprilTagProfileConfig.subpixel_corner_refinement).
         cls.detector = build_detector("tag36h11", "aruco", subpixel_corner_refinement=True)

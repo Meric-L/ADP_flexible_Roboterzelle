@@ -3,7 +3,7 @@ AbortCalibration and log the progress live.
 
 For Pis where the frontend does not offer the calibration yet. It calls the same
 additive methods that a later frontend will use, see
-doc/projektdoku/vision-server-interface.md section 12. It runs until Ctrl+C is
+doc/project_docs/interfaces/vision-server-interface.md section 12. It runs until Ctrl+C is
 pressed; this ends the session via `FinishCalibration` (default), or with
 `--abort` without saving.
 """
@@ -20,7 +20,7 @@ from asyncua import Client, ua
 
 _log = logging.getLogger("calibration-client")
 
-#: Error codes from doc/projektdoku/vision-server-interface.md ("Fehlercodes (Error)") --
+#: Error codes from doc/project_docs/interfaces/vision-server-interface.md ("Fehlercodes (Error)") --
 #: not imported from `vision_server`; this script stays a pure OPC UA client,
 #: independent of the server code.
 BUSY = 3

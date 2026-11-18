@@ -27,6 +27,7 @@ reason is in `ResultSet/ErrorCode` and travels as a `ProgramTransitionEvent`.
 
 import asyncio
 import logging
+from collections.abc import Callable
 
 from asyncua import Node, Server, ua
 
@@ -42,6 +43,7 @@ PROGRAM_NAME = "VisionProgram"
 
 PARAMETER_SET = "ParameterSet"
 RESULT_SET = "ResultSet"
+STATUS = "Status"
 
 #: Execution mode in `ResultSet/ExecutionMode`. Part 10 knows only one `Running`
 #: state and cannot tell single from continuous operation. This node supplies the
@@ -67,6 +69,9 @@ class VisionProgram(Program):
         self._jobs = jobs
         self._parameters: dict[str, Node] = {}
         self._results: dict[str, Node] = {}
+        self._status: dict[str, Node] = {}
+        self._busy_reason: Callable[[], str] = lambda: ""
+        self._status_task: asyncio.Task | None = None
         #: Set while a job ends in response to our own halt or reset.
         #: Without this flag, the completion observer would trigger `Running -> Ready`
         #: while `_transition` is switching to `Halted` -- two state changes for the
@@ -95,6 +100,7 @@ class VisionProgram(Program):
         await self._write_results(
             job_id, error, mode if error is VisionErrorCode.OK else MODE_IDLE
         )
+        await self._write_busy_reason()
         if error is not VisionErrorCode.OK:
             _log.warning("Start ueber das Programm abgelehnt: %s", error.name)
             return f"Start abgelehnt: {error.name} ({int(error)})"
@@ -149,6 +155,7 @@ class VisionProgram(Program):
 
     async def _finish(self, job_id: str, code: VisionErrorCode) -> None:
         await self._write_results(job_id, code, MODE_IDLE)
+        await self._write_busy_reason()
         message = (
             f"Job {job_id} abgeschlossen"
             if code is VisionErrorCode.OK
@@ -162,10 +169,40 @@ class VisionProgram(Program):
 
     # -------------------------------------------------- Parameters / results
 
-    def attach_nodes(self, parameters: dict[str, Node], results: dict[str, Node]) -> None:
+    def attach_nodes(
+        self,
+        parameters: dict[str, Node],
+        results: dict[str, Node],
+        status: dict[str, Node],
+        busy_reason: Callable[[], str],
+    ) -> None:
         """Attach the nodes created by the installer."""
         self._parameters = parameters
         self._results = results
+        self._status = status
+        self._busy_reason = busy_reason
+        self._status_task = asyncio.create_task(self._publish_status())
+
+    async def _publish_status(self) -> None:
+        """Keep `BusyReason` synchronized with the runner's busy predicates."""
+        try:
+            while True:
+                await self._write_busy_reason()
+                await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            raise
+
+    async def _write_busy_reason(self) -> None:
+        """Write the current busy reason when its status node is installed."""
+        node = self._status.get("BusyReason")
+        if node is not None:
+            await node.write_value(self._busy_reason(), ua.VariantType.String)
+
+    async def aclose(self) -> None:
+        """Stop the status publisher."""
+        if self._status_task is not None:
+            self._status_task.cancel()
+            await asyncio.gather(self._status_task, return_exceptions=True)
 
     async def _read_parameter(self, name: str, default):
         """Read an input parameter. A read error must not cause a start; the default is returned instead."""
@@ -205,6 +242,11 @@ async def install_vision_program(
     known_recipes: frozenset[str] | None = None,
     mirror_nodes: dict[str, Node] | None = None,
     mirror_methods: dict[str, Node] | None = None,
+    status_nodes: dict[str, Node] | None = None,
+    busy_reason: Callable[[], str] | None = None,
+    vision_system_id: str = "",
+    manufacturer: str = "",
+    model: str = "",
 ) -> VisionProgram:
     """Attach the Part 10 program next to the vision system.
 
@@ -247,6 +289,10 @@ async def install_vision_program(
     result_set = await program_node.add_object(
         ua.NodeId(f"{PROGRAM_NAME}.{RESULT_SET}", own_idx),
         ua.QualifiedName(RESULT_SET, own_idx),
+    )
+    status_folder = await program_node.add_object(
+        ua.NodeId(f"{PROGRAM_NAME}.{STATUS}", own_idx),
+        ua.QualifiedName(STATUS, own_idx),
     )
 
     recipes = ", ".join(sorted(r for r in (known_recipes or frozenset()) if r))
@@ -291,7 +337,23 @@ async def install_vision_program(
             initial,
             variant,
         )
-    program.attach_nodes(parameters, results)
+    await results["ErrorCode"].write_attribute(
+        ua.AttributeIds.DataType,
+        ua.DataValue(ua.Variant(ua.NodeId("VisionErrorCode", own_idx), ua.VariantType.NodeId)),
+    )
+    status = {"BusyReason": await status_folder.add_variable(
+        ua.NodeId(f"{PROGRAM_NAME}.{STATUS}.BusyReason", own_idx),
+        ua.QualifiedName("BusyReason", own_idx), "", ua.VariantType.String
+    )}
+    for name, node in (status_nodes or {}).items():
+        await status_folder.add_reference(node, ua.ObjectIds.Organizes, forward=True)
+        status[name] = node
+    for name, value in (("Manufacturer", manufacturer), ("Model", model), ("SerialNumber", vision_system_id)):
+        await program_node.add_property(
+            ua.NodeId(f"{PROGRAM_NAME}.{name}", own_idx),
+            ua.QualifiedName(name, own_idx), value,
+        )
+    program.attach_nodes(parameters, results, status, busy_reason or (lambda: ""))
 
     for name, node in (mirror_nodes or {}).items():
         await result_set.add_reference(node, ua.ObjectIds.Organizes, forward=True)

@@ -27,7 +27,7 @@ CAD offset from the tag map, as in the payload). The rules:
 World tags are not monitored -- the source does not deliver them in the first place.
 
 There is no asyncua and no camera here: observations come in as data. See
-`doc/projektdoku/arbeitsplaene/zellen-ueberwachung.md`.
+`doc/project_docs/work-plans/cell-watch.md`.
 """
 
 from __future__ import annotations

@@ -1,5 +1,6 @@
 # Bildverarbeitung und Marker-Erkennung. `contrib`, weil `cv2.aruco` dort liegt.
-opencv-contrib-python>=4.8.0,<5
+# Der Code unterstuetzt OpenCV 4 und 5; die Pis laufen mit 5.0.
+opencv-contrib-python>=4.8.0,<6
 scipy>=1.11
 numpy
 # Optionaler zweiter Detektor-Backend (tagloc.detector, backend="pupil").
@@ -11,7 +12,7 @@ asyncua>=1.1.5
 zeroconf>=0.131
 # picamera2 (Decken-Pi) fehlt hier bewusst: kommt per apt
 # (sudo apt install -y python3-picamera2), nicht zuverlaessig per pip (siehe
-# doc/projektdoku/arbeitsplaene/altlasten.md D3, doc/projektdoku/apriltag-e2e-test.md). Braucht deshalb eine venv
+# doc/project_docs/work-plans/legacy.md D3). Braucht deshalb eine venv
 # mit --system-site-packages. pyrealsense2 (Hand-Pi) ebenso NICHT
 # aufgenommen: Intel liefert auf PyPI i. d. R. keine ARM/aarch64-Wheels fuer
 # den Pi -- `pip install pyrealsense2` schlaegt dort typischerweise fehl,

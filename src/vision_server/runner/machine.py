@@ -36,7 +36,7 @@ async def _watch_loop_lag(
 
     If a source forgets `run_blocking`, this shows it here. Otherwise it would
     surface as an unexplained connection drop somewhere else. Replaces
-    `RaspiDevice/Counter` as the reference signal (doc/projektdoku/arbeitsplaene/altlasten.md A3/A5).
+    `RaspiDevice/Counter` as the reference signal (doc/project_docs/work-plans/legacy.md A3/A5).
     """
     loop = asyncio.get_running_loop()
     while True:
@@ -97,6 +97,8 @@ class VisionMachine:
             await self.hand_eye_session.abort()
         if self.cell_watch is not None:
             await self.cell_watch.aclose()
+        if self.program is not None:
+            await self.program.aclose()
         # Before the stream and sources: an orderly camera close would otherwise
         # time out as a hang, and the last value in the address space would be
         # OFF_SPEC instead of the last real state.

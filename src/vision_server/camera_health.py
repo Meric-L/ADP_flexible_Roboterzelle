@@ -124,7 +124,7 @@ class HealthAlarms:
 
     Emitted by the passed-in `emitter` -- in practice `VisionMachine`, because clients
     subscribe to exactly this node anyway (see
-    `doc/projektdoku/vision-server-interface.md` 7.2). `SourceNode` still names the
+    `doc/project_docs/interfaces/vision-server-interface.md` 7.2). `SourceNode` still names the
     component concerned.
 
     Never raises: a failed alarm must not take down the state variable or the job path.

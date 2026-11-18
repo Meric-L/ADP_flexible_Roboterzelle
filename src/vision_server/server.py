@@ -92,12 +92,12 @@ PI_APRILTAG_PRESETS: dict[str, dict] = {
         "calibration_model": "fisheye",
         # A finer sampling grid (8 instead of 4 px per cell) adds hit reserve without false
         # alarms. errorCorrectionRate stays default: more range, but wrong IDs.
-        # See doc/projektdoku/kamera-und-detektor-analyse.md; try others via
+        # See doc/project_docs/analyses/camera-and-detector-analysis.md; try others via
         # VISION_APRILTAG_DETECTOR_PARAMS.
         "detector_parameters": {"perspectiveRemovePixelPerCell": 8},
         # Subpixel corners: integer corners jitter 5-10 mm in depth for a tag ~85 px wide.
         # "subpix" costs ~3% time; "apriltag" re-searches the whole 12 MP image (~46% CPU)
-        # and loses tags (kamera-und-detektor-analyse.md).
+        # and loses tags (camera-and-detector-analysis.md).
         "subpixel_corner_refinement": True,
         "corner_refinement_method": "subpix",
         # Detect only in the cell area (x, y, width, height at 4056x3040): skips walls and
@@ -141,7 +141,7 @@ PI_CAMERA_STREAM_PRESETS: dict[str, dict] = {
         # Mode "off" still encodes the full 12 MP frame, which alone exceeded the 2.0 s default
         # and made the overlay fall back to the raw image. Kept as a safety margin.
         "overlay_timeout_s": 8.0,
-        # Best of 14 measured settings (kamera-und-detektor-analyse.md): slightly darker so
+        # Best of 14 measured settings (camera-and-detector-analysis.md): slightly darker so
         # tag whites do not burn out; contrast >= 1.25 or matrix metering does burn them out.
         # Calibrate with these values. Try others via VISION_CAMERA_CONTROLS.
         "camera_controls": {

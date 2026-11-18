@@ -14,7 +14,7 @@ commands.
 * **Nothing found:** `found: false`, no error.
 
 There is no asyncua and no camera here. See
-`doc/projektdoku/arbeitsplaene/hand-auge-brett-zentrieren.md`.
+`doc/project_docs/work-plans/hand-eye-board-centring.md`.
 """
 
 from __future__ import annotations

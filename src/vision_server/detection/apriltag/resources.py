@@ -22,7 +22,7 @@ class ResourcesMixin:
         """Join the tag family, calibration and tag map into one string.
 
         Later this shows which calibration and which tag map were active behind a
-        bad pose (doc/projektdoku/arbeitsplaene/altlasten.md C4). It deliberately uses no OpenCV
+        bad pose (doc/project_docs/work-plans/legacy.md C4). It deliberately uses no OpenCV
         and does not read the files.
         """
         from tagloc.identity import calibration_identity, tag_map_identity

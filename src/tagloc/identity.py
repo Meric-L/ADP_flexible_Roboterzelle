@@ -5,7 +5,7 @@ builds the detection source, before anything is loaded. numpy and OpenCV must
 therefore not be on the import chain.
 
 The value later shows which calibration and which map produced a bad pose
-(doc/projektdoku/arbeitsplaene/altlasten.md C4). It is the file name plus the mtime: both
+(doc/project_docs/work-plans/legacy.md C4). It is the file name plus the mtime: both
 are available without parsing, and the mtime changes on every recalibration.
 """
 

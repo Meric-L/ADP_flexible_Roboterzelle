@@ -2,7 +2,7 @@
 
 Phase A des AMCM-Plans: OPC 40100-2 zieht DI, IA und Machinery zusaetzlich zu
 Teil 1 herein, und der Vision-Server laeuft auf einem Raspberry Pi, der auch
-die Kamera bedient. doc/projektdoku/arbeitsplaene/altlasten.md haelt ~110 MB RSS je Prozess
+die Kamera bedient. doc/project_docs/work-plans/legacy.md haelt ~110 MB RSS je Prozess
 allein fuer Teil 1 fest, also ist die Frage, ob vier weitere Nodesets noch
 hineinpassen -- gemessen, nicht geraten.
 

@@ -37,4 +37,4 @@ Spannweite Hand-Auge-Translation (max. Paarabstand) Kinematik: 1.34 mm
 
 ## Addendum 10.11.2026: cross-test on a new session negative
 
-Applied to the 1080p session `20261110T104151Z_77e0dd17`, the kinematic correction estimated from S1–S4 worsens the reprojection from 3.63 to 4.78 px. The leave-one-session-out values above were not independent enough (same board position, nearly the same poses). See `doc/auswertung/handauge_1080_20261110.md`.
+Applied to the 1080p session `20261110T104151Z_77e0dd17`, the kinematic correction estimated from S1–S4 worsens the reprojection from 3.63 to 4.78 px. The leave-one-session-out values above were not independent enough (same board position, nearly the same poses). See `doc/project_docs/analyses/hand-eye-1080-20261110.md`.

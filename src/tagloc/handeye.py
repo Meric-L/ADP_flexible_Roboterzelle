@@ -20,7 +20,7 @@ Afterwards, per module:
 No OpenCV, the solver included. `cv2.calibrateHandEye` would be the obvious
 choice, but OpenCV 5.0 no longer exports it to Python. Only the
 `CALIB_HAND_EYE_*` constants remain. The repo deliberately supports both 4.x and
-5.x (doc/projektdoku/arbeitsplaene/altlasten.md D3). A version branch in a spot that runs once
+5.x (doc/project_docs/work-plans/legacy.md D3). A version branch in a spot that runs once
 in the life of the cell would be worse than thirty lines of math. This follows
 the same approach as `geometry.from_rvec_tvec`, which computes Rodrigues in numpy
 instead of calling `cv2.Rodrigues`.

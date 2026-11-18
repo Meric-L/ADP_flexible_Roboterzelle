@@ -27,7 +27,7 @@ async def _install_layer2_run(
     Only on the hand-camera Pi (nodes exist only with `hand_eye_path`). Each step
     starts an ordinary AprilTag job via the JobRunner -- same events, same
     `LatestResultJson`, and `Stop` works as usual. See
-    `doc/projektdoku/arbeitsplaene/layer2-lauf-hand-pi.md`.
+    `doc/project_docs/work-plans/layer2-run-hand-pi.md`.
     """
     # Imported here only: `layer2` needs numpy, the rest of the server does not.
     from ..layer2.run import Layer2Ports, Layer2Run
@@ -66,12 +66,11 @@ async def _install_layer2_run(
         """1:ReportRobotPose -- report the reached flange pose and start the measurement."""
         return code_reply(await layer2_run.report(report_json or ""))
 
-    for name, handler in (
-        ("StartLayer2Run", start_layer2_run),
-        ("ReportRobotPose", report_robot_pose),
+    for name, handler, description in (
+        ("StartLayer2Run", start_layer2_run, "Laufparameter als JSON."),
+        ("ReportRobotPose", report_robot_pose, "Gemeldete Roboterpose als JSON."),
     ):
-        await add_vision_method(
-            space, config, methods, name, handler,
-            [ua.VariantType.String], [ua.VariantType.Int32],
-        )
+        await add_vision_method(space, config, methods, name, handler,
+            [("RequestJson", ua.VariantType.String, description)],
+            [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")])
     return layer2_run

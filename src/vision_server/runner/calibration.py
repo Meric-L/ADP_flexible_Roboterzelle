@@ -186,6 +186,19 @@ async def _pause_stream_during_processing(wiring: Wiring) -> None:
         stream.start()
 
 
+def busy_reason(wiring: Wiring) -> str | None:
+    """Return why calibration cannot start or why the camera remains busy."""
+    if wiring.jobs.busy:
+        return "StartCalibration waehrend laufendem Job abgelehnt"
+    if wiring.layer2_active():
+        return "StartCalibration waehrend laufendem Layer-2-Lauf abgelehnt"
+    if wiring.hand_eye_active():
+        return "StartCalibration waehrend Hand-Auge-Kalibrierung abgelehnt"
+    if wiring.calibration_busy():
+        return "StartCalibration waehrend laufender Session/Auswertung abgelehnt"
+    return None
+
+
 def _start_calibration_method(wiring: Wiring):
     """Handler for `1:StartCalibration`. It starts a new session. Samples come only via `CaptureCalibrationSample` after that.
 
@@ -199,24 +212,9 @@ def _start_calibration_method(wiring: Wiring):
     `CalibrationProgress.startError`.
     """
 
-    def busy_reason() -> str | None:
-        if wiring.jobs.busy:
-            return "StartCalibration waehrend laufendem Job abgelehnt"
-        if wiring.layer2_active():
-            return "StartCalibration waehrend laufendem Layer-2-Lauf abgelehnt"
-        if wiring.hand_eye_active():
-            return "StartCalibration waehrend Hand-Auge-Kalibrierung abgelehnt"
-        if wiring.calibration_busy():
-            # `.busy` instead of `.running`: a background evaluation from an
-            # earlier `FinishCalibration` still reads from the session's
-            # `_pending_dir`. A new `start()` in that window would empty the
-            # directory it is reading from.
-            return "StartCalibration waehrend laufender Session/Auswertung abgelehnt"
-        return None
-
     @uamethod
     async def method(parent, options_json: str = ""):
-        reason = busy_reason()
+        reason = busy_reason(wiring)
         if reason is not None:
             _log.warning(reason)
             return code_reply(VisionErrorCode.BUSY)
@@ -331,17 +329,17 @@ async def install_calibration_methods(wiring: Wiring) -> None:
         (
             "StartCalibration",
             _start_calibration_method(wiring),
-            [ua.VariantType.String],
-            [ua.VariantType.Int32],
+            [("OptionsJson", ua.VariantType.String, "Kalibrieroptionen als JSON.")],
+            [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
         ),
-        ("CaptureCalibrationSample", _capture_calibration_method(wiring), [], [ua.VariantType.Int32]),
+        ("CaptureCalibrationSample", _capture_calibration_method(wiring), [], [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")]),
         (
             "FinishCalibration",
             _finish_calibration_method(wiring),
             [],
-            [ua.VariantType.String, ua.VariantType.Int32],
+            [("Summary", ua.VariantType.String, "Kalibrierzusammenfassung als JSON."), ("Error", ua.VariantType.Int32, "Vision-Fehlercode.")],
         ),
-        ("AbortCalibration", _abort_calibration_method(wiring), [], [ua.VariantType.Int32]),
+        ("AbortCalibration", _abort_calibration_method(wiring), [], [("Error", ua.VariantType.Int32, "Vision-Fehlercode.")]),
     ):
         await add_vision_method(
             space, wiring.config, wiring.methods, name, handler, inputs, outputs
