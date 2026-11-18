@@ -43,10 +43,9 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-`requirements.txt` pins: `opencv-contrib-python>=4.8.0,<5`, `scipy>=1.11`, `numpy`, `pupil-apriltags` (optional detector), `asyncua>=1.1.5`, `zeroconf>=0.131` (mDNS; the server runs without it but does not announce itself), `tzdata`.
+`requirements.txt` pins: `opencv-contrib-python>=4.8.0,<6` (the code supports OpenCV 4 and 5; the Pis run 5.0), `scipy>=1.11`, `numpy`, `pupil-apriltags` (optional detector), `asyncua>=1.1.5`, `zeroconf>=0.131` (mDNS; the server runs without it but does not announce itself), `tzdata`.
 
 - Repo paths on the Pis: [`deploy/README.md`](../../../deploy/README.md), table "Values per Pi".
-- Note: `deploy/README.md` documents `opencv-contrib-python` 5.0 in the Pi venvs, while `requirements.txt` says `<5`. Check the Pi's installed version before reinstalling.
 
 ### Configuration files
 

@@ -28,3 +28,5 @@ Pi IP addresses change; a hard-coded URL list in the frontend does not scale to 
 Sources: [`../interfaces/part10-program-interface.md`](../interfaces/part10-program-interface.md) §2,
 [`../work-plans/pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md),
 WSC `docs/development.md` (`WSC_MDNS`).
+
+History (how the decision came about): [`pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md), [`lds-registration.md`](../work-plans/lds-registration.md).

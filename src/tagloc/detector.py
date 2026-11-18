@@ -147,8 +147,8 @@ _CORNER_REFINE_CONSTANTS = {
 class ArucoTagDetector:
     """Detection via `cv2.aruco`. The default path.
 
-    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); both
-    Pis and the development machine run OpenCV 5.0.
+    Requires OpenCV >= 4.8 (`ArucoDetector`, `getPredefinedDictionary`); 4.x and
+    5.x are supported, the Pis run OpenCV 5.0.
     """
 
     def __init__(

@@ -28,3 +28,5 @@ cell-watch pause combine robot moves with Pi measurements.
 Sources: [`../work-plans/pi-workflows-robot-target.md`](../work-plans/pi-workflows-robot-target.md) (dropped),
 [`../topics/vision-system-integration.md`](../topics/vision-system-integration.md) §5.3, §6.3,
 [`../topics/layer2-rules.md`](../topics/layer2-rules.md).
+
+History (how the decision came about): [`pi-workflows-robot-target.md`](../work-plans/pi-workflows-robot-target.md), [`layer2-run-hand-pi.md`](../work-plans/layer2-run-hand-pi.md), [`layer2-approach.md`](../work-plans/layer2-approach.md).

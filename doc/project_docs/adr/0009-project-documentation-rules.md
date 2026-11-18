@@ -25,3 +25,5 @@ Several people and agents work in parallel chats and on separate machines and ot
 
 Sources: `CLAUDE.md` (repo root), [`../work-plans/README.md`](../work-plans/README.md),
 [`../work-plans/_template.md`](../work-plans/_template.md).
+
+History (how the decision came about): [`cleanup-and-code-handbook.md`](../work-plans/cleanup-and-code-handbook.md).

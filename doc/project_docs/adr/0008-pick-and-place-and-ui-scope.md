@@ -23,3 +23,5 @@ The group builds on the WebSkillComposition (WSC) repository, whose `dev` branch
 - Upstreaming the use case: not wanted by the group.
 
 Sources: [`../work-plans/pi-workflows-robot-target.md`](../work-plans/pi-workflows-robot-target.md) (out of scope, user decision 17.11.2026).
+
+History (how the decision came about): [`pi-workflows-robot-target.md`](../work-plans/pi-workflows-robot-target.md), [`legacy-wsc.md`](../work-plans/legacy-wsc.md).

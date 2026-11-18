@@ -29,3 +29,5 @@ and ceiling and hand measurements could not be merged.
 Sources: [`../work-plans/apriltag-world-tag-concept.md`](../work-plans/apriltag-world-tag-concept.md),
 [`../topics/apriltag-localization.md`](../topics/apriltag-localization.md) §3.3,
 [`../topics/apriltag-reference.md`](../topics/apriltag-reference.md).
+
+History (how the decision came about): [`apriltag-world-tag-concept.md`](../work-plans/apriltag-world-tag-concept.md), [`apriltag-tagmap-robustness.md`](../work-plans/apriltag-tagmap-robustness.md).

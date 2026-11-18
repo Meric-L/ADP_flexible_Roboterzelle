@@ -25,3 +25,5 @@ Adding a module should need no intervention on the Pi.
 
 Sources: [`../work-plans/apriltag-tagmap-over-opcua.md`](../work-plans/apriltag-tagmap-over-opcua.md),
 [`../topics/apriltag-localization.md`](../topics/apriltag-localization.md) §4.3.
+
+History (how the decision came about): [`apriltag-tagmap-over-opcua.md`](../work-plans/apriltag-tagmap-over-opcua.md).

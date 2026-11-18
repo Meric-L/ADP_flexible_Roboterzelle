@@ -30,3 +30,5 @@ standard-conformant, discoverable interface.
 Sources: [`../topics/vision-system-integration.md`](../topics/vision-system-integration.md) §4.2,
 [`../interfaces/vision-server-interface-short.md`](../interfaces/vision-server-interface-short.md),
 [`../topics/vision-system.md`](../topics/vision-system.md).
+
+History (how the decision came about): [`legacy-removal-part10-facade.md`](../work-plans/legacy-removal-part10-facade.md), [`opcua-camera-condition-monitoring.md`](../work-plans/opcua-camera-condition-monitoring.md).

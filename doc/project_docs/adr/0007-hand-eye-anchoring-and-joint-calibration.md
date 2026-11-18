@@ -30,3 +30,5 @@ The nearest world tag is often outside the hand camera image when it looks at a 
 Sources: [`../work-plans/apriltag-hand-eye-anchoring.md`](../work-plans/apriltag-hand-eye-anchoring.md),
 [`../work-plans/hand-eye-over-opcua.md`](../work-plans/hand-eye-over-opcua.md),
 [`../topics/layer2-rules.md`](../topics/layer2-rules.md).
+
+History (how the decision came about): [`apriltag-hand-eye-anchoring.md`](../work-plans/apriltag-hand-eye-anchoring.md), [`hand-eye-over-opcua.md`](../work-plans/hand-eye-over-opcua.md), [`hand-eye-accuracy.md`](../work-plans/hand-eye-accuracy.md), [`calibration-lens-model-per-camera.md`](../work-plans/calibration-lens-model-per-camera.md).

@@ -15,7 +15,8 @@ what it costs. It is short and not rewritten when the decision changes; a new AD
 ## Alternatives considered
 ```
 
-Files are named `NNNN-short-english-title.md`.
+Files are named `NNNN-short-english-title.md`. Each ADR ends with **Sources** (current-state docs) and
+**History** (the work plans that record how the decision came about).
 
 ## Index
 

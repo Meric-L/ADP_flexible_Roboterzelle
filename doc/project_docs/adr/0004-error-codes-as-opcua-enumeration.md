@@ -30,3 +30,5 @@ caller could neither label inputs nor explain a failure.
 
 Sources: [`../work-plans/pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md),
 [`../interfaces/vision-server-interface-short.md`](../interfaces/vision-server-interface-short.md).
+
+History (how the decision came about): [`pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md), [`hand-eye-over-opcua.md`](../work-plans/hand-eye-over-opcua.md).

@@ -32,3 +32,5 @@ discovered robots (`MotionDeviceType`).
 Sources: [`../work-plans/pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md),
 [`../interfaces/part10-program-interface.md`](../interfaces/part10-program-interface.md),
 [`../components/part10/README.md`](../components/part10/README.md), [`../layers.md`](../layers.md).
+
+History (how the decision came about): [`pi-backend-discovery.md`](../work-plans/pi-backend-discovery.md), [`legacy-removal-part10-facade.md`](../work-plans/legacy-removal-part10-facade.md).
