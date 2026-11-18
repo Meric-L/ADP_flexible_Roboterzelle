@@ -27,7 +27,8 @@ Exceptions:
 Before the **first** substantive action — writing code, changing a file,
 drafting a concept — without exception:
 
-1. **Look at what already exists.** `ls doc/project_docs/*.md doc/project_docs/work-plans/*.md`.
+1. **Look at what already exists.** Start at [`doc/project_docs/README.md`](doc/project_docs/README.md),
+   then `ls doc/project_docs/*/`.
    Read the MDs relevant to the topic **before** anything is created.
    `doc/project_docs/` is the shared state of knowledge of the project, not
    decoration.
@@ -86,7 +87,7 @@ own, without pushing.
 - Do not rewrite existing documents in `doc/project_docs/` and `concept/` to
   fit something new in. New material goes into its own section or its own
   file.
-- No renaming or deleting of `doc/project_docs/*.md` without agreement — other
+- No renaming or deleting of files under `doc/project_docs/` without agreement — other
   MDs link to them.
 - Committing is automatic: show the diff, commit, carry on — no need to ask.
   Only the files of the task, never on `main`.
@@ -102,7 +103,15 @@ own, without pushing.
 
 | Path | Content |
 | --- | --- |
-| `doc/project_docs/*.md` | Topic documentation: interfaces, concepts, test instructions |
+| `doc/project_docs/README.md` | Entry point of the project documentation |
+| `doc/project_docs/layers.md` | Layer 1 and Layer 2 in brief |
+| `doc/project_docs/components/` | One README per component: how it works, where to read more |
+| `doc/project_docs/usage/` | Installation, quickstart, integration via Part 10 |
+| `doc/project_docs/interfaces/` | OPC UA interfaces of the vision server and the Part 10 program |
+| `doc/project_docs/topics/` | Topic documentation: concepts, rules, test instructions |
+| `doc/project_docs/code/` | Per-file and per-function code reference |
+| `doc/project_docs/adr/` | Architecture decision records |
+| `doc/project_docs/analyses/` | Analyses of measurements and experiments |
 | `doc/project_docs/work-plans/` | Running and finished work plans (see above) |
 | `doc/*.tex` | LaTeX thesis |
 | `src/` | Implementation: OPC UA server, vision, sensors |

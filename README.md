@@ -46,7 +46,11 @@ The documentation has two levels:
 
 | Document | Purpose |
 | --- | --- |
-| [`doc/project_docs/code/README.md`](doc/project_docs/code/README.md) | **Entry point**: which parts exist, how they connect, system picture, where each part is described |
+| [`doc/project_docs/README.md`](doc/project_docs/README.md) | **Entry point**: map of the documentation, components, folders |
+| [`doc/project_docs/layers.md`](doc/project_docs/layers.md) | **Layer 1 and Layer 2 in brief**, with links to the code documents |
+| [`doc/project_docs/usage/installation.md`](doc/project_docs/usage/installation.md) | **Installation**: vision Pi, Part 10 program, webskillcomposition |
+| [`doc/project_docs/usage/quickstart.md`](doc/project_docs/usage/quickstart.md) | **Quickstart**: minimal copy-paste examples |
+| [`doc/project_docs/code/README.md`](doc/project_docs/code/README.md) | Code overview: which parts exist, how they connect, system picture, where each part is described |
 | [`doc/project_docs/interfaces/vision-server-interface-short.md`](doc/project_docs/interfaces/vision-server-interface-short.md) | **OPC UA interface of the vision server, short**: addresses, jobs, methods, results |
 | [`doc/project_docs/topics/vision-system.md`](doc/project_docs/topics/vision-system.md) | **Vision server operation**: start, configuration (env variables), watchdog, known limitations |
 | [`doc/project_docs/code/`](doc/project_docs/code/) | Code reference per area (library, vision server, tools/tests, webskillcomposition parts) |

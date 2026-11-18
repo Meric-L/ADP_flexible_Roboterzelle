@@ -19,7 +19,7 @@ finished, working features go to `main`.
 ## 1. Read — always first
 
 1. `git pull` — the others write to the same files.
-2. `ls doc/project_docs/*.md doc/project_docs/work-plans/*.md`
+2. Read `doc/project_docs/README.md` (map of the folders), then `ls doc/project_docs/*/`
 3. Read `doc/project_docs/work-plans/README.md`: **Is someone already working on this?**
    If a plan on the topic is `in progress` and belongs to someone else, do not
    implement in parallel — join it or ask.
@@ -34,6 +34,10 @@ finished, working features go to `main`.
 | Open points of the vision system | `doc/project_docs/topics/vision-system-integration.md` (Open points) |
 | AprilTag: code map, conventions, maintenance | `doc/project_docs/topics/apriltag-localization.md`, `doc/project_docs/topics/apriltag-reference.md` |
 | Analyses of past problems and experiments | `doc/project_docs/analyses/` |
+| How a component works, where to read more | `doc/project_docs/components/<component>/README.md` |
+| Install, quickstart, integrating a device via Part 10 | `doc/project_docs/usage/` |
+| Layer 1 / Layer 2 overview | `doc/project_docs/layers.md` |
+| Why something is built the way it is | `doc/project_docs/adr/` |
 | Unexpected behaviour, historical quirks | `doc/project_docs/work-plans/legacy.md` |
 | Presentation / supervision | `doc/project_docs/topics/presentation.md` |
 
