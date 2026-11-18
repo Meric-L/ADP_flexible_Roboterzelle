@@ -6,12 +6,13 @@ Entry point for the ADP robot cell: what the system does, how to install and use
 
 | I want to … | Read |
 | --- | --- |
-| Understand Layer 1 and Layer 2 in five minutes | [layers.md](layers.md) |
+| Understand Layer 1 and Layer 2 | [layers.md](layers.md) |
 | Install the vision Pi, the Part 10 program and webskillcomposition | [usage/installation.md](usage/installation.md) |
 | Run a minimal example | [usage/quickstart.md](usage/quickstart.md) |
+
 | Integrate a device or program so the backend discovers it | [usage/integration.md](usage/integration.md) |
 | Know why something is built the way it is | [adr/README.md](adr/README.md) |
-| Check whether someone already works on a topic | [work-plans/README.md](work-plans/README.md) |
+| Check whether someone already works on a topic (paused) | [work-plans/README.md](work-plans/README.md) |
 
 ## Components
 
