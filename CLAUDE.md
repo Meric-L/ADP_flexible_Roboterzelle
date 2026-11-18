@@ -20,7 +20,7 @@ Exceptions:
   migrated deliberately; do not translate them in passing. Documentation that
   quotes such a text quotes it verbatim.
 - The LaTeX thesis (`doc/*.tex`) keeps its own language.
-- File and folder names stay as they are (other files link to them).
+- File and folder names are English too; renaming one means updating every link to it.
 
 ## Before you start
 
