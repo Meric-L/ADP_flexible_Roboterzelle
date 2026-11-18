@@ -1,21 +1,18 @@
 # Backend discovers the Pis as devices (Part 10 as entry point)
 
-**Status:** in progress — 17.11.2026 (WP1 Pi done)
+**Status:** done — 18.11.2026
 **Owner:** Agent: orchestration (Claude); Pi side and WSC backend: Codex; WSC frontend: Sonnet agents
 **Topic:** opcua
-**Branch:** Pi: `vision-part10-discovery` (this repo); webskillcomposition: `geraete-discovery-stufe1` (local, from `hefdi/ADP_Lokalisierung`)
+**Branch:** Pi: merged into `apriltag-aufraeumen`; webskillcomposition: merged into `ADP_Lokalisierung`
 
 ## Goal
 
 The webskillcomposition (WSC) backend discovers both vision Pis on its own and exposes them like
-robots: as devices with actions and variables. Today the backend only discovers Robotics
-`MotionDevices`, so the frontend binds every Pi method and node by hand
-(`frontend/src/features/opcua-server/config/piServers.ts`) and repeats the same call/wait/parse
-code in many hooks. Afterwards the frontend uses one generic device path; the Pi carries the
-error texts and the busy reason; the hand-written bindings are gone.
+robots: as devices with actions and variables. The frontend uses one generic device path
+(`visionDevice.ts`, `deviceCall.ts`, `useDevice.ts`); the Pi carries the error texts and the busy
+reason. The workflows (approach, calibration, tag survey, pick and place) run in the frontend.
 
-This plan is the binding contract for everyone implementing it. Deviations go into
-"Deviations from the plan" and "Decisions" before the code changes.
+This plan is the contract between the Pi and the WSC backend and frontend.
 
 ## Already read
 
@@ -62,22 +59,22 @@ the Pi call helpers in `frontend/src/features/cell-modules/model/`, the componen
 | `ExecutionMode` | `ResultSet/ExecutionMode` | String | Read | unchanged |
 | `LatestResultJson` | `ResultSet/LatestResultJson` (reference) | String | Read | Result JSON `wsc.vision.detections/1` |
 | status nodes | `Status/<Name>` (Organizes references to the existing nodes) | as today | Read / Write where writable today | `CameraStreamMode` (writable), `CameraStreamHttpPort`, `DeviceHealth`, `LatestCameraFrame`, `CalibrationProgress`, `ActiveCalibrationInfo`, `TagMapJson`, `HandEyeStatus`, `Layer2Target`, `Layer2Status`, `CellWatchStatus`, `LastTagMeasurement`, `LastTagReference`, `TagReferencePreviewStatus` — only those the Pi offers |
-| `BusyReason` | `Status/BusyReason` | String | Read | German reason why the Pi refuses new work; `""` = free. One of `Job laeuft`, `Kamera-Kalibrierung laeuft`, `Layer-2-Lauf laeuft`, `Hand-Auge-Kalibrierung laeuft`. |
+| `BusyReason` | `Status/BusyReason` | String | Read | German reason why the Pi refuses new work; `""` = free. One of `Job laeuft`, `Kamera-Kalibrierung laeuft`, `Layer-2-Lauf laeuft`, `Hand-Auge-Kalibrierung laeuft`. Written every 0.2 s and after each job start and end (`runner/part10.py`, `vision_program.py`). |
 | `Manufacturer`, `Model`, `SerialNumber` | properties of `VisionProgram` | String | Read | `SerialNumber` = `visionSystemId` (`vision-ceiling-01`, `vision-flange-01`) |
 | vision methods | method children (references, as today) | Method | Call | all methods of `VisionMachine` (`SaveRawImage`, `MeasureTags`, `StartCalibration`, …) |
 
 `ResultSet` contains **only** `JobId`, `ErrorCode`, `ExecutionMode` and the reference to
 `LatestResultJson`. Nothing else is mirrored into `ResultSet` (no camera frame there).
 
-**Method arguments are named.** Every input and output argument has a Name (today all names are
-empty). Names are the existing English argument names of the interface doc, e.g.
+**Method arguments are named.** Every input and output argument has a Name and a Description
+(`add_vision_method`, `runner/uamethods.py`). Names are the English argument names of the interface doc, e.g.
 `SaveRawImage() → (FileName: String, Error: VisionErrorCode)`,
 `MeasureTags(RequestJson: String) → (ResultJson: String, Error: VisionErrorCode)`,
 `SaveUseCaseImage(Series: Int32, MetadataJson: String) → (FileName, ResultJson, Error)`.
-Every error output is named `Error`.
+Every error output is named `Error`. Further names: `StartLayer2Run(RequestJson)`, `ReportRobotPose(RequestJson)`, `SetTagMap(TagMapJson)`, `StartCalibration(OptionsJson)`, `FinishCalibration() → (Summary, Error)`, `PauseCellWatch(Reason: String, MaxPauseSeconds: Double)`, `SetTagReferencePreview(OptionsJson)`.
 
-**`VisionErrorCode`** becomes an OPC UA Enumeration DataType (EnumValues with German
-descriptions); the value on the wire stays Int32:
+**`VisionErrorCode`** is an OPC UA Enumeration DataType (`ns=<vision>;s=VisionErrorCode`, `install_error_enum` in
+`errors.py`, EnumValues with German descriptions); the value on the wire is Int32:
 
 | Value | Name | Description (German, shown to operators) |
 | --- | --- | --- |
@@ -90,14 +87,16 @@ descriptions); the value on the wire stays Int32:
 | 6 | INTERNAL | Interner Fehler auf dem Pi. |
 | 7 | CANCELLED | Abgebrochen. |
 
-The 40100 `VisionMachine` methods and events stay unchanged for 40100 clients; WSC no longer uses
+The 40100 `VisionMachine` methods and events stay unchanged for 40100 clients; WSC does not use
 `StartSingleJob`/`StartContinuous` or the 40100 events.
 
 ### Python (WSC backend)
 
 ```python
 # backend/src/backend/opcua/asyncua_discovery.py
-async def discover_program_device_descriptors(client, namespace_context) -> list[MotionDeviceDescriptor]:
+async def discover_program_device_descriptors(
+    client: Client, namespace_context: NamespaceContext, server_url: str
+) -> list[RobotSessionInfo]:
     """Every Object directly under Objects that passes build_skill_binding_from_node is one device.
 
     kind = "vision" if "http://opcfoundation.org/UA/MachineVision" is in the namespace array,
@@ -107,15 +106,16 @@ async def discover_program_device_descriptors(client, namespace_context) -> list
     normalize_capability_name (SaveRawImage → "save_raw_image"). Variables: the children of
     <P>/Status and <P>/ResultSet, keyed by normalize_capability_name
     (BusyReason → "busy_reason", LatestResultJson → "latest_result_json").
+    A method only referenced by the program (not a child) gets its own name as discovery path.
     Device id: make_robot_id(server_url, <P>.nodeId). Info: Manufacturer/Model/SerialNumber
     properties of <P>.
     """
 ```
 
-- `discover_connected_server` returns robot descriptors **and** program-device descriptors.
+- `discover_connected_server` returns `ServerDiscoveryResult(server, robots, devices)`; the registry holds both lists as sessions.
 - `read_method_arguments` resolves Enumeration DataTypes (EnumValues, else EnumStrings), cached
   per DataType, into `MethodArgument.enum_values`.
-- `discover_methods` and `discover_skills` (unused) are deleted.
+- The unused `discover_methods`, `discover_skills`, `discover_method_bindings` and `discover_skill_bindings` are deleted.
 
 ### Data / payload (WSC wire contract)
 
@@ -140,17 +140,19 @@ Frontend mirrors (`entities/robot/model/types.ts`, `shared/api/messages.ts`): `k
 
 **Skill action (`executeRobotAction` with the program skill):**
 1. Snapshot the ResultSet values, write the ParameterSet inputs, call `Start`.
-2. The watcher ends only when the state is idle **and** at least one holds: a non-idle state was
+2. The watcher (program devices) ends only when the state is idle **and** at least one holds: a non-idle state was
    seen, a ResultSet value changed (e.g. `JobId`), or 1.5 s passed since `Start`.
 3. At the end the ResultSet is read into `state.result` (keys normalized, e.g.
    `{"job_id": …, "error_code": 0, "latest_result_json": "…"}`).
 4. `error_code` ≠ 0 → status `failed`, `error_code` set, `message` = the enum description.
    Otherwise the final status stays `idle` (robot `go_to` semantics unchanged).
+   A refused start of a device program (`RobotActionExecutionError`) starts no watcher.
 
 **Method action (`executeRobotAction` with a method key):**
 - `state.result = {"outputs": {Name: value, …}}` using the OutputArguments names.
-- An output named `Error` with value ≠ 0 → status `failed`, `error_code`, `message` = enum
-  description, `result.outputs` still filled.
+- An output named `Error` (case-insensitive) with value ≠ 0 → status `failed`, `error_code`,
+  `message` = enum description (else `Device error <code>`), `result.outputs` still filled.
+- A method without an `Error` output keeps the text-based failure check.
 - OPC UA Bad status → ErrorEvent `code`: `BadNodeIdUnknown`/`BadMethodInvalid` → `methodMissing`;
   `BadNothingToDo`/`BadInvalidState` → `nothingToDo`.
 
@@ -165,7 +167,7 @@ Frontend mirrors (`entities/robot/model/types.ts`, `shared/api/messages.ts`): `k
 ### Network / operations
 
 - Pis announce themselves already (mDNS `_opcua-tcp._tcp.local.`, instance name = `visionSystemId`).
-- The new Pi build must be deployed on both Pis before the new frontend is used.
+- Both Pis run the Pi build with this interface (named arguments, `VisionErrorCode` enum, `Status` folder). On an older Pi the frontend gets `missing` for the action and shows "Das Gerät bietet das nicht an — neuen Stand aufspielen."
 
 ### Failure cases
 
@@ -210,8 +212,9 @@ contract changes it on purpose, e.g. the mirror location in `tests/test_part10_f
 
 ## Deviations from the plan
 
-- `SaveUseCaseImage.Series` stays Int32 (the first draft of this contract said String by
-  mistake; corrected 17.11.2026). Otherwise the Pi implementation matches the interfaces above.
+- `SaveUseCaseImage.Series` is Int32 (the first draft of this contract said String by mistake; corrected 17.11.2026).
+- `discover_program_device_descriptors` takes `server_url` and returns `RobotSessionInfo` objects (not descriptors).
+- Where the interfaces above and the code differ, the code is right; the interfaces were checked against it on 18.11.2026.
 
 ## After completion
 

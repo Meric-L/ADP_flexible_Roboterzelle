@@ -35,9 +35,8 @@ results; for those, the route from `vision-server-interface.md` remains authorit
 
 ## 2. Connection: mDNS instead of a hard-coded IP
 
-The cell server now announces itself on the local network. The hard-coded Pi addresses (`10.10.38.104` / `.109` in
-`backend/src/backend/config/pi_relay.py` and `frontend/src/features/opcua-server/config/piServers.ts`, see legacy item B1) are therefore
-no longer needed.
+The cell server announces itself on the local network. The webskillcomposition backend browses the announcement (`backend/src/backend/opcua/network_discovery.py`) and
+reports the servers to the frontend, which connects to each one; no Pi address is configured anywhere.
 
 | | Value |
 | --- | --- |
@@ -209,31 +208,29 @@ Objects/
 │   │   ├── RecipeId     String       **writable**
 │   │   └── Continuous   Boolean      **writable**
 │   ├── ResultSet                     <- job outputs only
-│       ├── JobId           String
-│       ├── ErrorCode       VisionErrorCode Enumeration (Int32 wire value)
-│       ├── ExecutionMode   String    idle | single | continuous
-│       └── LatestResultJson          reference to VisionMachine.LatestResultJson
-│   └── Status                        <- Organizes references to available status nodes
-│       ├── BusyReason      String    empty = free; German reason, e.g. "Job laeuft"
-│       ├── DeviceHealth    DeviceHealthEnumeration (Int32 wire value), when available
-│       └── CameraStreamMode, CameraStreamHttpPort, LatestCameraFrame,
-│           CalibrationProgress, ActiveCalibrationInfo, TagMapJson,
-│           HandEyeStatus, Layer2Target, Layer2Status, CellWatchStatus,
-│           LastTagMeasurement, LastTagReference, TagReferencePreviewStatus
+│   │   ├── JobId           String
+│   │   ├── ErrorCode       VisionErrorCode Enumeration (Int32 wire value)
+│   │   ├── ExecutionMode   String    idle | single | continuous
+│   │   └── LatestResultJson          reference to VisionMachine.LatestResultJson
+│   ├── Status                        <- Organizes references to available status nodes
+│   │   ├── BusyReason      String    empty = free; German reason ("Job laeuft", "Kamera-Kalibrierung laeuft", "Layer-2-Lauf laeuft", "Hand-Auge-Kalibrierung laeuft")
+│   │   ├── DeviceHealth    DeviceHealthEnumeration (Int32 wire value), when available
+│   │   └── CameraStreamMode, CameraStreamHttpPort, LatestCameraFrame,
+│   │       CalibrationProgress, ActiveCalibrationInfo, TagMapJson,
+│   │       HandEyeStatus, Layer2Target, Layer2Status, CellWatchStatus,
+│   │       LastTagMeasurement, LastTagReference, TagReferencePreviewStatus
+│   ├── <vision methods>              HasComponent references to the VisionMachine methods that exist on this Pi
+│   │                                 (SaveRawImage, MeasureTags, StartCalibration, ...); named arguments, `Error` is VisionErrorCode
 │   ├── Manufacturer       String property
 │   ├── Model              String property
 │   └── SerialNumber       String property (= visionSystemId)
-├── StartCalibration                  reference to the 40100 method, input OptionsJson (String, empty = board of the configuration)
-├── CaptureCalibrationSample          reference; Error: VisionErrorCode (Int32 wire value)
-├── FinishCalibration                 reference; Summary: String, Error: VisionErrorCode (Int32 wire value)
-└── AbortCalibration                  reference; Error: VisionErrorCode (Int32 wire value)
 
 Machines/
 └── VisionMachine                     ns=<vision>;s=VisionMachine   (OPC 40100, unchanged)
     └── ... StartSingleJob, Stop, ResultManagement, LatestResultJson, LatestCameraFrame ...
 ```
 
-**`VisionProgram` is self-sufficient.** `ResultSet` contains only job outputs and a reference to `LatestResultJson`. Camera and operational
+**`VisionProgram` is self-sufficient.** It is the device root for the webskillcomposition backend. `ResultSet` contains only job outputs and a reference to `LatestResultJson`. Camera and operational
 status nodes hang below `Status` as `Organizes` references. `BusyReason` is empty when the Pi is free. The program properties identify the
 device; `SerialNumber` equals `visionSystemId`. `VisionMachine` sits in the Machinery standard folder `Machines`.
 
@@ -448,27 +445,21 @@ considerably longer than the placeholder (several captures per job), and the sta
 
 ---
 
-## 10. What backend and frontend concretely have to do
+## 10. How the webskillcomposition backend uses the interface
 
-None of this is required to keep running — everything is a gain.
+| Step | Behaviour |
+| --- | --- |
+| Find Pis | Backend browses mDNS `_opcua-tcp._tcp.local.` and reports `serversAnnounced` to the frontend; the endpoint URL is built from address, port and TXT `path` (section 2) |
+| Device root | Every object directly under `Objects` that is a `ProgramStateMachineType` instance is a device; `RobotSessionInfo.kind` is `vision` when the namespace `http://opcfoundation.org/UA/MachineVision` exists, else `device` |
+| Actions | The program is the action `vision_program` (kind `vision`); every method child is an action keyed by the snake_case of its BrowseName (`SaveRawImage` becomes `save_raw_image`) |
+| Variables | Children of `Status` and `ResultSet`, keyed the same way (`BusyReason` becomes `busy_reason`) |
+| Program start | Writes `ParameterSet` (`recipe_id`, `continuous`), calls `Start`, follows `CurrentState`; at the end reads `ResultSet` into the action state |
+| Failure | `ResultSet/ErrorCode` or the method output `Error` is not 0: the action fails with the German `EnumValues` description of `VisionErrorCode` |
+| Namespace | Resolved at runtime with `get_namespace_index("http://launch-rm.de/vision")`, never hard-coded |
+| Manual entry | `ConnectOpcUa` stays as a fallback when mDNS is blocked |
 
-**Must (otherwise something breaks):**
-
-- [ ] Replace `ns=4` for the vision namespace **everywhere** with `get_namespace_index("http://launch-rm.de/vision")`. The index is now 7
-      (section 3).
-
-**Should (this is what it was built for):**
-
-- [ ] Build an mDNS search for `_opcua-tcp._tcp.local.`; assemble the endpoint URL from address, port and TXT `path` (section 2).
-- [ ] Remove the hard-coded Pi addresses (`pi_relay.py`, `piServers.ts`), keep manual entry as fallback.
-- [ ] Build a **generic program component**: find instances of `ProgramStateMachineType`, render `ParameterSet` as a form, offer
-      `Start`/`Halt`/`Reset`, release buttons according to `Executable`, display `CurrentState`, subscribe to `ProgramTransitionEvent`. The same
-      component then also serves the conveyor and CardDispenser.
-- [ ] Feed the recipe selection from the description of `ParameterSet/RecipeId`.
-
-**Can stay as it is:**
-
-- [ ] All of the 40100 evaluation: `StartSingleJob`, `Stop`, `ResultReadyEvent`, `LatestResultJson`, `LatestCameraFrame`, payload parser.
+The 40100 interface (`StartSingleJob`, `Stop`, `ResultReadyEvent`, `LatestResultJson`) stays available for other clients;
+the webskillcomposition backend does not use it. Details: [`arbeitsplaene/pi-backend-discovery.md`](arbeitsplaene/pi-backend-discovery.md).
 
 ---
 

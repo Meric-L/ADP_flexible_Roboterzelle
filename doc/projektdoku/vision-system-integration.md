@@ -21,7 +21,7 @@ paths; new behaviour goes into new files where possible.
 
 This is an in-depth document. It records the analysis of the existing system, the
 blockers it found, the decisions taken and what was actually built. Code references
-to WSC point to branch `hefdi/ADP_Lokalisierung`.
+to WSC point to branch `ADP_Lokalisierung`.
 
 Related documents:
 
@@ -68,7 +68,8 @@ Browser (React/Three.js)          Python backend (FastAPI)         OPC UA server
 | Transport | `websocket/router.py` | `/ws` loop, JSON → Pydantic; live events are deferred while a command runs |
 | Dispatch | `runtime/application_service.py` `handle_client_message` | long sequential `isinstance` chain, one block per command |
 | OPC UA client | `opcua/server_connection.py` `AsyncUaServerConnection` | one asyncua connection per server URL, anonymous, no security |
-| Discovery | `opcua/asyncua_discovery.py`, `opcua/discovery.py` | scan the address space → bindings → robot actions |
+| Discovery | `opcua/asyncua_discovery.py`, `opcua/discovery.py` | scan the address space → bindings → robot actions; Part 10 program objects → devices |
+| Network discovery | `opcua/network_discovery.py` | `NetworkDiscovery` browses mDNS `_opcua-tcp._tcp.local.` |
 | State | `services/runtime_registry.py` `RuntimeRegistry` | servers, robots, discovery cache |
 
 Test seam: `DEFAULT_CONNECTION_FACTORY` in `application_service.py`; tests inject
@@ -79,6 +80,11 @@ Test seam: `DEFAULT_CONNECTION_FACTORY` in `application_service.py`; tests injec
 - `discover_connected_server` looks for `Objects/DeviceSet` (DI) via `find_device_set`,
   then `MotionDeviceSystem/MotionDevices`, and matches the 40010 `MotionDeviceType` by
   TypeDefinition. A server without a DeviceSet yields **no robots**.
+- `discover_program_device_descriptors` additionally treats every Part 10 program object
+  directly under `Objects` as a **device** (`RobotSessionInfo.kind` `vision` or `device`,
+  `robot` for motion devices). A Pi is one device: the program is the action
+  `vision_program`, its methods are method actions, `Status` and `ResultSet` children are
+  variables.
 - Skills are detected **duck-typed**: an object with `ParameterSet`/`ResultSet`/
   `CurrentState` and `Start`/`Halt`/`Reset`/… children. `build_robot_action_bindings`
   turns every discovered skill and method into a robot action.
@@ -95,8 +101,9 @@ Test seam: `DEFAULT_CONNECTION_FACTORY` in `application_service.py`; tests injec
 | Call any method | `callRawMethod` (with DataType coercion) |
 
 **Consequence:** a 40100 server can be operated without a typed vision model in the
-backend — only via raw method calls, node and event subscriptions. This is the lever for
-minimal intervention and is how the integration was finally built (Part 5).
+backend. The Pis are operated through the generic device path: discovery as a Part 10
+device, `executeRobotAction` for the program and its methods, node subscriptions for
+variables (Part 5).
 
 ## 1.5 Frontend
 
@@ -111,7 +118,7 @@ only. Details: [`code/webskill-frontend.md`](code/webskill-frontend.md).
 | Weak spot | State now |
 | --- | --- |
 | Type check in discovery is an exact TypeDefinition comparison, not subtype-aware | unchanged; irrelevant for vision (B1) |
-| `handle_client_message` is a long `isinstance` chain without a dispatch table | unchanged; vision added no block |
+| `handle_client_message` is a long `isinstance` chain without a dispatch table | unchanged; vision added one block (`listAnnouncedServers`) |
 | No security in the OPC UA client | unchanged (R15) |
 | Skill states are polled, not subscribed | unchanged |
 | No reconnect/watchdog | fixed (R9) |
@@ -156,8 +163,8 @@ The code analysis found five blockers. Status checked against the code:
 | # | Blocker | Status |
 | --- | --- | --- |
 | B0 | `FakeConnection.write_node_value` in `tests/test_application_service.py` lacked `coerce_to_existing`, so a skill test was red | **resolved**: the fake accepts `coerce_to_existing` |
-| B1 | A pure vision server returns no robots: discovery needs a DI `DeviceSet` | **bypassed, by design**: the backend still finds no devices on a vision server; the frontend resolves the vision nodes itself from the namespace array (`resolveVisionBinding` in `piServers.ts`) |
-| B2 | `subscribe_events` did not filter by event type, so asyncua selected only `BaseEventType` fields and `ResultContent` never arrived | **resolved**: `SubscribeEventCommand.event_type_node_ids` → `AsyncUaServerConnection.subscribe_events(event_type_node_ids=…)`; the frontend passes the five 40100 event types from `piServers.ts` |
+| B1 | A pure vision server returns no robots: discovery needs a DI `DeviceSet` | **resolved**: the backend discovers the Part 10 program `VisionProgram` under `Objects` as a device (`kind: "vision"`); no DeviceSet needed, and a vision device is never a robot |
+| B2 | `subscribe_events` did not filter by event type, so asyncua selected only `BaseEventType` fields and `ResultContent` never arrived | **resolved**: `SubscribeEventCommand.event_type_node_ids` → `AsyncUaServerConnection.subscribe_events(event_type_node_ids=…)`; the generic subscription supports it; the app's Pi path does not use 40100 events |
 | B3 | `to_jsonable(event)` turned an asyncua `Event` into a `repr` string | **resolved**: `to_jsonable` in `opcua/method_calls.py` has an `Event` branch that returns `{eventType, <fields>}` |
 | B4 | `goto` takes joint angles; the IK lives in the frontend on the loaded URDF | **resolved, frontend IK**: `createRobotDriver` (`cell-modules/model/robotDrive.ts`) solves the flange target with `FlangeKinematics` and sends joint angles via `callRobotGotoForVisualAngles`. The robot servers offer no Cartesian move skill |
 
@@ -175,12 +182,10 @@ that concern the integration.
 
 ## 4.1 One server per Pi, in this repo
 
-The plan proposed a separate `vision-server/` uv project in the WSC monorepo with two
-simulated servers (2D, 3D) in Docker Compose. **Built instead:** the vision server lives
-in this repo under `src/vision_server/`; each Pi runs **one** server
+The vision server lives in this repo under `src/vision_server/`; each Pi runs **one** server
 (`opc.tcp://<pi>:4840/raspi/server/`, systemd unit `opcua-server.service`) with one
-`VisionSystemType` instance `VisionMachine`, installed by `install_vision_machine`. The
-two vision systems of the plan are the two Pis:
+`VisionSystemType` instance `VisionMachine`, installed by `install_vision_machine`, and the
+Part 10 program `VisionProgram`. The two vision systems are the two Pis:
 
 | Pi | `visionSystemId` | `frameId` | Role |
 | --- | --- | --- | --- |
@@ -198,7 +203,7 @@ a `DetectionSource` (`src/vision_server/detection/base.py`); the AprilTag source
 | --- | --- |
 | Subscribe to events **on `VisionMachine`**, not on the server object `i=2253` | asyncua delivers events only to the exact emitting node; the `HasNotifier` reference to the server object exists but does not forward |
 | Custom nodes have **string NodeIds** `ns=<vision>;s=VisionMachine.<Name>` | stable, readable NodeIds; the namespace index is still resolved by URI at runtime |
-| Never hard-code namespace indices | `piServers.ts` resolves `http://launch-rm.de/vision` and the MachineVision URI from the namespace array |
+| Never hard-code namespace indices | the backend resolves `http://launch-rm.de/vision` and the MachineVision URI from the namespace array |
 | `ResultManagement` methods are not used | their inputs are ExtensionObjects the asyncua client cannot build without `load_data_type_definitions()` (asyncua issue #1693); the result arrives in the event instead |
 | State sequence `Preoperational → Operational`, `Initialized → Ready → SingleExecution → Ready` | the nodeset has no `Halted → Operational` transition |
 
@@ -223,6 +228,8 @@ Server-side asyncua pitfalls worth knowing for any further 40100 server (all han
 
 - `ResultReadyEventType` carries `ResultContent` as a flat field, so the JSON travels
   **inside the event**; no second read. Correlation result → job via `jobId` in the payload.
+- The WSC frontend reads the same JSON from `VisionProgram/ResultSet/LatestResultJson`
+  (key `latest_result_json` of the final action state), not from the event.
 - `ResultContent` comes from the nodeset with a null DataType; the server overrides it to
   `String` and writes an array (`src/vision_server/result_management.py`).
 - Schema `wsc.vision.detections/1` (`src/vision_server/payload.py`, parsed in WSC by
@@ -256,47 +263,44 @@ touching the JSON path.
 
 # Part 5 — What was changed in the existing system
 
-The plan had two stages: **stage 1** (visibility: fix B2/B3, a status card, a CAD overlay)
-and **stage 2** (a typed vision model in the backend with discovery, sessions, an
-orchestrator and new message types). **Stage 1 was built, in a different shape. Stage 2
-was not built**: the generic commands (1.4) were enough, and the orchestration moved to
-the frontend.
+The WSC backend discovers the Pis itself and exposes them as devices; the frontend uses
+one generic device call path. The typed vision model (a separate vision session type with
+its own message set) does not exist: devices reuse the robot model with a `kind` field.
 
 ## 5.1 Backend (WSC)
 
 | File | Change |
 | --- | --- |
+| `opcua/network_discovery.py` | `NetworkDiscovery`: mDNS browse of `_opcua-tcp._tcp.local.`, `WSC_MDNS=0` disables it, dependency `zeroconf` |
+| `opcua/asyncua_discovery.py` | `discover_program_device_descriptors`: Part 10 program objects under `Objects` become devices; `read_method_arguments` resolves enumeration DataTypes into `MethodArgument.enum_values` |
+| `opcua/method_calls.py` | `to_jsonable` handles asyncua `Event` (B3); `map_method_outputs` pairs outputs with their argument names |
 | `opcua/server_connection.py` | event subscriptions with custom event types (B2); reconnect with a fresh client and `restore_subscriptions`; keepalive `check_alive`; request timeout 120 s for slow Pi methods |
-| `opcua/method_calls.py` | `to_jsonable` handles asyncua `Event` (B3) |
-| `models/messages.py` | `SubscribeEventCommand.event_type_node_ids` (optional) |
-| `runtime/application_service.py` | server liveness watch `_watch_server_liveness`; OPC UA events forwarded to the client |
+| `models/robot.py`, `models/opcua.py`, `models/messages.py` | `RobotSessionInfo.kind`, `RobotActionState.result` and `error_code`, `MethodArgument.enum_values`, `listAnnouncedServers` / `serversAnnounced`, `SubscribeEventCommand.event_type_node_ids` |
+| `runtime/action_execution.py` | method actions return named outputs and fail on a non-zero `Error`; program actions snapshot the `ResultSet` before `Start` |
+| `runtime/application_service.py` | program watcher reads the final `ResultSet`; `methodMissing` / `nothingToDo` error codes; server liveness watch `_watch_server_liveness` |
+| `app.py`, `websocket/router.py` | `NetworkDiscovery` on startup, broadcast of `serversAnnounced` |
 | `api/module_catalog.py`, `services/module_catalog_store.py` | module catalog `GET`/`PUT /api/module-catalog`, stored in `backend/catalog/module_catalog.json` |
 
-No new vision message type: vision traffic uses `callRawMethod`, `subscribeNode` and
-`subscribeEvent`. Full list with share of changed lines:
-[`code/webskill-backend.md`](code/webskill-backend.md).
+Full list with share of changed lines: [`code/webskill-backend.md`](code/webskill-backend.md).
 
 ## 5.2 Frontend (WSC)
 
 | Area | Files |
 | --- | --- |
-| Pi bindings: NodeIds, method signatures, event types | `features/opcua-server/config/piServers.ts` (`resolveVisionBinding`) |
-| Job flow and payload | `useVisionJob.ts`, `useContinuousVisionJob.ts`, `visionResult.ts` |
-| Status | `useCameraHealth.ts` (OPC 40100-2 `DeviceHealth`), `PiStatusList.tsx`, `PiActivity.tsx`, `LastCalibrationBadge.tsx` |
+| Device lookup and keys | `features/opcua-server/model/visionDevice.ts` (`deviceByRole`, `DEVICE_ACTION`, `DEVICE_VARIABLE`) |
+| Device call | `deviceCall.ts` (`callDevice`, `describeFailure`), `useDevice.ts`, `cell-modules/model/deviceMeasure.ts` |
+| Job flow and payload | `useVisionJob.ts` (the action `vision_program`), `visionResult.ts` |
+| Status | `useCameraHealth.ts` (OPC 40100-2 `DeviceHealth`), `PiStatusList.tsx`, `PiActivity.tsx` (variable `busy_reason`), `LastCalibrationBadge.tsx` |
+| Server list | `ServerManager.tsx`: connects every announced server; `ConnectOpcUa.tsx` for manual entry |
 | Camera image | `CameraStreamPanel.tsx`, `useMjpegStreamUrl.ts` (MJPEG over HTTP from the Pi) |
 | Cell modules, CAD overlay, Layer 1/2, hand-eye | `features/cell-modules/` — see [`code/webskill-cell-modules.md`](code/webskill-cell-modules.md) |
 
 Overview of all flows: WSC `docs/vision-workflows.md`.
 
-## 5.3 Stage 2 — planned, not built
+## 5.3 Not built
 
-For the record, the rejected or deferred stage-2 ideas:
-
-- **Typed vision discovery** (namespace gate, subtype-aware search for `VisionSystemType`,
-  `VisionStateMachine` as duck-typing marker). Not needed: the frontend resolves the
-  nodes from the namespace array.
 - **Backend orchestrator** that subscribes to results, transforms poses and starts robot
-  skills on its own. Replaced by frontend-driven runs (Part 6).
+  skills on its own: workflows are sequenced in the frontend (Part 6).
 - **Disguising the vision server as a DI `MotionDeviceType`** so robot discovery finds it —
   rejected: violates 40100, and the frontend would treat the camera as a robot.
 
@@ -304,38 +308,37 @@ For the record, the rejected or deferred stage-2 ideas:
 
 # Part 6 — The signal path from vision to robot
 
-## 6.1 Chain as built
+## 6.1 Chain
 
 ```
 Vision Pi                       WSC backend                     WSC frontend
 ─────────                       ───────────                     ────────────
-                                callRawMethod ◄──────────────── useVisionJob: StartSingleJob
-JobStartedEvent ─┐
-AcquisitionDone ─┼─► subscribe_events(VisionMachine, [5 types])
-ResultReadyEvent ┘   to_jsonable(Event) ──── opcuaEvent ──────► parseVisionResult(ResultContent[0])
+                                executeRobotAction ◄─────────── useVisionJob: callDevice(vision_program)
+VisionProgram                   writes ParameterSet, Start,
+  CurrentState, ResultSet ────► watcher reads ResultSet ──────► robotActionState.result
                                                                  │
+                                                                 ├─ parseVisionResult(latest_result_json)
                                                                  ├─ cellModules: place modules (CAD)
                                                                  └─ robotDrive: IK → go_to angles
 Robotics server  ◄──────────── go_to skill ◄──────────────────── callRobotGotoForVisualAngles
 ```
 
-Pose planning and sequencing run in the frontend; image processing and calibration
-solving run on the Pis; the backend passes OPC UA calls and events through.
+Pose planning and workflow sequencing run in the frontend; image processing and
+calibration solving run on the Pis; the backend runs the OPC UA calls, watches the
+program state and reports action states.
 
 ## 6.2 Hand-eye transformation
 
-Planned: a backend module with a hand-eye calibration per vision-robot link, loaded from
-a JSON file or set at runtime, and an auto-execute switch that stays off without a
-calibration.
-
-**Built instead:** the hand Pi owns the hand-eye calibration.
+The hand Pi owns the hand-eye calibration.
 
 - Calibration is computed on the Pi (Park–Martin) via `StartHandEyeCalibration` /
   `CaptureHandEyeSample` / `FinishHandEyeCalibration`, driven from the frontend
   (`useHandEyeCalibration.ts`, `HandEyeAutoPanel.tsx`). The result `T_flansch_cam` is
   stored on the Pi in `data/handeye/cam_flange.json`.
-- For a Layer 2 run the frontend reports the **robot-reported** flange pose
-  (`ReportRobotPose`); the Pi transforms camera poses into the robot base.
+- The frontend sends the **robot-reported** flange pose with each capture
+  (`CaptureHandEyeSample`); the Pi transforms camera poses into the robot base.
+- The Pi also offers its own Layer 2 run (`StartLayer2Run`, `ReportRobotPose`); the WSC frontend
+  does not use it: it plans with its own IK, drives the robot and measures with `MeasureTags`.
 - Details: [`vision-server-interface.md`](vision-server-interface.md) sections 14 and 15;
   anchoring at the world tag: [`arbeitsplaene/apriltag-hand-auge-ankern.md`](arbeitsplaene/apriltag-hand-auge-ankern.md).
 
@@ -355,17 +358,16 @@ Consequence: autonomous runs need an open browser.
 
 ## 6.4 Race conditions and safety
 
-Planned in the backend: dedupe by `resultId`, `creationTime` monotonicity, an in-flight
-gate per link, dry run as default, a single writer. As built in the frontend:
+Safeguards in the frontend:
 
-- **Job correlation**: `useVisionJob.ts` subscribes before `StartSingleJob`, matches the
-  result to the returned `JobId` and ignores a `ResultReadyEvent` from an earlier run.
+- **Job correlation**: `useVisionJob.ts` takes the payload from the final action state of its
+  own start and ignores the result of an earlier start (generation counter).
 - **No pose taken as reached unless the robot confirmed it**: a `RobotDriver` reports the
   flange pose the robot reports, never the target.
-- **Explicit arming**: an automatic drive with the real robot starts only after
-  `RobotRunConfirm.tsx` (checks, then confirm).
-- **Pi-side locks**: concurrent jobs answer `BUSY`; calibration and Layer 2 sessions lock
-  each other ([`vision-server-interface.md`](vision-server-interface.md) 12.7).
+- **Explicit arming**: an automatic drive with the real robot starts only after the
+  operator confirms the checks (`CameraCalibrationModal.tsx`, `ApproachPlanPanel.tsx`).
+- **Pi-side locks**: concurrent jobs answer `BUSY`; `Status/BusyReason` names the reason;
+  calibration and Layer 2 sessions lock each other ([`vision-server-interface.md`](vision-server-interface.md) 12.7).
 
 ---
 
@@ -373,36 +375,32 @@ gate per link, dry run as default, a single writer. As built in the frontend:
 
 ## 7.1 Status
 
-Planned: one status card per server that subscribes to the server object `i=2253`
-(W2), instead of a vision entity in the store (W3, ~450 lines in core files).
-
-**Built:** status without a new store entity — per-Pi status in `PiStatusList.tsx` and
-`PiActivity.tsx`, camera health via a node subscription on `DeviceHealth`
-(`useCameraHealth.ts`), job state from the events on `VisionMachine`. The subscription to
-`i=2253` would receive nothing (4.2). `VisionStateMachine.CurrentState` is a variable;
-it is read with `subscribeNode`, not polled.
+No new store entity: the per-Pi status is in `PiStatusList.tsx` and `PiActivity.tsx` (busy
+state from `Status/BusyReason`), camera health is a node subscription on `DeviceHealth`
+(`useCameraHealth.ts`), the job state is the `robotActionState` of `vision_program`.
+`VisionStateMachine.CurrentState` is a variable; it is read with `subscribeNode`, not
+polled.
 
 ## 7.2 CAD overlay
 
-| Topic | Plan | Built |
-| --- | --- | --- |
-| Model format | glTF `.glb` via drei `useGLTF` | `CellModuleModel.tsx` loads glTF, STL and Collada (three.js loaders) |
-| Location | `frontend/public/cad/modules/<moduleId>.glb` | models under `frontend/public/models/`, referenced from the module catalog |
-| Registry | module ID → CAD asset table in the frontend | module catalog (`config/moduleCatalog.ts`, backend `module_catalog.json`): modules, tags, models, world-tag poses |
-| Z-up → Y-up | one central, tested conversion | `worldToScenePosition` in `cellModules.ts`, tested in `cellModules.test.ts` |
-| Placement | overlay component next to the robots | `placeLayer1Detections` / `placeLayer2Detections` (`cellModules.ts`), preview and import via `planLayer1Import` (`layer1Import.ts`) |
+| Topic | Implementation |
+| --- | --- |
+| Model format | `CellModuleModel.tsx` loads glTF, STL and Collada (three.js loaders) |
+| Location | models under `frontend/public/models/`, referenced from the module catalog |
+| Registry | module catalog (`config/moduleCatalog.ts`, backend `module_catalog.json`): modules, tags, models, world-tag poses |
+| Z-up → Y-up | `worldToScenePosition` in `cellModules.ts`, tested in `cellModules.test.ts` |
+| Placement | `placeLayer1Detections` / `placeLayer2Detections` (`cellModules.ts`), preview and import via `planLayer1Import` (`layer1Import.ts`) |
 
-Kept from the plan: modules are **not** `Robot` instances (no joint runtime, IK or drag
+Modules are **not** `Robot` instances (no joint runtime, IK or drag
 controls for them); the world frame is `world` (`WORLD_FRAME_ID`), Z-up, the scene is
 three.js Y-up.
 
-## 7.3 Poses to the frontend: piggyback on `opcuaEvent`
+## 7.3 Poses to the frontend: `robotActionState.result`
 
-Decision: the result rides on the existing `opcuaEvent` (its `event` field is `Any` /
-`unknown`), instead of a new `visionResult` message. This kept `messages.py`,
-`messages.ts`, `websocketClient.ts` and the stores unchanged; only B2/B3 were needed. A
-typed message would only pay off with a backend vision model (stage 2), which was not
-built.
+The result of a program action arrives in `RobotActionState.result` (the final `ResultSet`
+with normalized keys, e.g. `latest_result_json`). A method action carries its named
+outputs in `result.outputs`. This reuses the robot action messages; no vision-specific
+message type exists.
 
 ---
 
@@ -414,12 +412,12 @@ built.
 | R2 | B3 — `opcuaEvent` as `repr` string | resolved (Part 3) |
 | R3 | B4 — no IK in the backend | resolved by frontend IK; autonomous runs need the browser |
 | R4 | B0 — red test suite | resolved |
-| R5 | circular import between discovery modules | moot: no vision discovery in the backend |
-| R6 | discovery cache never invalidated | moot for vision: bindings are resolved per connection in the frontend |
+| R5 | circular import between discovery modules | resolved: `opcua/discovery.py` holds transport-free builders only |
+| R6 | discovery cache never invalidated | bindings are rebuilt on every discovery of a server; enum texts are cached per session and DataType |
 | R7 | exception in a background task disappears silently | open in general; Pi methods report error codes and status JSON |
 | R8 | orchestrator sends to a dead WS connection | moot: no backend orchestrator |
 | R9 | **no reconnect/watchdog** — subscriptions die silently on disconnect | **resolved**: `_watch_server_liveness` + `check_alive`, reconnect with a fresh client, `restore_subscriptions` restores node and event subscriptions |
-| R10 | backend becomes a motion source without an interlock | moot: motion is started from the frontend after `RobotRunConfirm` |
+| R10 | backend becomes a motion source without an interlock | moot: motion is started from the frontend after an operator confirmation |
 | R11 | units/conventions: mm↔m, xyzw↔wxyz, `T_base_cam`↔`T_cam_base` | ongoing: `frameId` on every pose, schema version, tests on the transforms |
 | R12 | result-handle leak | moot: `ResultManagement` methods are not used (4.2) |
 | R13 | asyncua issues #651 / #1693 on nodeset import | resolved: import works; JSON payload avoids #1693 |
@@ -443,10 +441,10 @@ Phase plan and its state. Phases 2–3 concern this repo, the others WSC.
 | 6 | status in the server panel | done (`PiStatusList.tsx`, `useCameraHealth.ts`) |
 | 7 | CAD module at the correct place in the viewport | done (`CellModuleModel.tsx`, Layer 1 import) |
 | 8 | second vision server | done as second Pi (hand camera) |
-| 9 | stage 2: typed vision sessions in the backend | dropped (Part 5.3) |
+| 9 | vision devices in the backend | done: Part 10 program devices, mDNS discovery (5.1) |
 | 10 | hand-eye calibration, poses in the robot base | done, on the hand Pi (6.2) |
 | 11 | lifecycle cleanup, survive client reload | partly: reconnect and subscription restore (R9) |
-| 12 | dispatch mode decided, robot moves on vision results | done: frontend IK (6.3), Layer 2 run |
+| 12 | dispatch mode decided, robot moves on vision results | done: frontend IK (6.3), frontend-driven Layer 2 |
 
 Phases 0–8 changed no existing behaviour logic beyond the additive fixes listed in 5.1.
 
@@ -479,11 +477,11 @@ cd backend && uv run main.py
 cd frontend && npm run dev
 ```
 
-1. Connect to both Pis in the frontend → server cards appear, no robots on them
-   (expected, B1).
-2. Start a job (Layer 1 on the ceiling Pi) → the `MessageLog` shows `opcuaEvent` entries
-   as **objects** with `ResultContent` holding valid JSON.
-3. The Pi status shows the job sequence; camera health is known.
+1. Start both Pis (mDNS announcement) → the server list connects and discovers them; the
+   Pis appear as devices (`kind: "vision"`), not as robots.
+2. Start a job (Layer 1 on the ceiling Pi) → the action `vision_program` ends with a
+   `robotActionState` whose `result.latest_result_json` holds valid JSON.
+3. The Pi status shows the busy reason during the job; camera health is known.
 4. The detected modules appear as CAD bodies in the viewport at the reported poses.
 5. Both Pis run independently, no ID collision (`vision-ceiling-01` / `vision-flange-01`).
 

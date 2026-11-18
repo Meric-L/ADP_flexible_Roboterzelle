@@ -1,9 +1,11 @@
 # Vision workflows on the Pi, robot driving in the backend (stage 2) — handover to Codex
 
-**Status:** planned — 17.11.2026
+**Status:** dropped — 18.11.2026
+**Reason:** phase 2 was tried on branch `vision-workflows-stufe2` and dropped after live tests; workflows stay in the frontend.
+**Note:** none of the interfaces or files below exist in the code.
 **Owner:** `Agent: Codex (handover from Claude orchestration)`
 **Topic:** vision
-**Branch:** Pi: `vision-workflows-stufe2` (from `vision-part10-discovery`); webskillcomposition: `vision-workflows-stufe2` (from `geraete-discovery-stufe1`). Local only, never push.
+**Branch:** Pi: `vision-workflows-stufe2`; webskillcomposition: `vision-workflows-stufe2` (not merged)
 
 This plan is self-contained: it hands the rest of the refactor to Codex. Stage 1 is
 described in [`pi-backend-discovery.md`](pi-backend-discovery.md) (the device contract this
@@ -169,7 +171,7 @@ Du arbeitest an zwei lokalen Repos. Lies zuerst vollständig:
 (dieser Plan, verbindlich), pi-backend-discovery.md (Stufe-1-Vertrag), CLAUDE.md und .claude/skills/projektdoku/.
 
 Erledige zuerst Part A (Stufe 1 abschließen), dann Part B (Stufe 2) in dieser Reihenfolge:
-1. Branches anlegen (lokal, nie pushen): Pi `vision-workflows-stufe2` von `vision-part10-discovery`,
+1. Branches anlegen: Pi `vision-workflows-stufe2` von `vision-part10-discovery`,
    WSC `vision-workflows-stufe2` von `geraete-discovery-stufe1`; je ein eigener git worktree.
    Im WSC-Worktree: node_modules aus /home/meric/ADP/webskillcomposition/frontend verlinken und das
    Submodul frontend/public/urdf lokal aus /home/meric/ADP/webskillcomposition/frontend/public/urdf

@@ -227,8 +227,8 @@ More: [long reference, section 10](vision-server-interface.md#10-camera-live-str
 
 ## 7. Calibration methods
 
-Custom methods declare only argument data types; the argument names below are
-descriptive. JSON arguments and results are strings.
+Custom methods have named input and output arguments (the names below are the OPC UA
+argument names). JSON arguments and results are strings.
 
 ### Camera calibration (both Pis)
 
@@ -293,9 +293,9 @@ the robot.
 
 | Method / node | Inputs → outputs | Notes |
 | --- | --- | --- |
-| `StartLayer2Run` | `RunJson` → `Error` | robot base and Layer 1 modules (`wsc.vision.layer2.run/1`) |
+| `StartLayer2Run` | `RequestJson` → `Error` | robot base and Layer 1 modules (`wsc.vision.layer2.run/1`) |
 | `Layer2Target` | read | next flange target (`flangeInBase`), `""` when none |
-| `ReportRobotPose` | `ReportJson` → `Error` | reached flange pose (or `reached: false`); the Pi then runs an `apriltag` job |
+| `ReportRobotPose` | `RequestJson` → `Error` | reached flange pose (or `reached: false`); the Pi then runs an `apriltag` job |
 | `Layer2Status` | read | progress per step; ends with `finished` or `aborted` |
 
 `Stop` aborts the run. Details:
@@ -310,7 +310,7 @@ confirmed changes.
 | --- | --- | --- |
 | `StartCellWatch` | `OptionsJson` → `Error` | `wsc.vision.cellwatch.start/1`, optional `referenceJobId` (one of the last 20 results) |
 | `StopCellWatch` | – → `Error` | |
-| `PauseCellWatch` | `ReasonText`, `MaxPauseS` → `Error` | e.g. while the robot moves; `<= 0` = 600 s, max 3600 s, resumes on its own |
+| `PauseCellWatch` | `Reason`, `MaxPauseSeconds` → `Error` | e.g. while the robot moves; `<= 0` = 600 s, max 3600 s, resumes on its own |
 | `ResumeCellWatch` | – → `Error` | |
 | `CellWatchStatus` | read | `state` (`off`, `watching`, `changed`, `paused`, `failed`), `changes`, `pending`, `visibleTagIds`, `message` |
 
@@ -336,7 +336,7 @@ image (replaces measuring with a folding ruler).
 | --- | --- | --- |
 | `PlanTagReferenceView` | `RequestJson` → `ResultJson`, `Error` | computes where the camera should look from (`camInTag`, `fits`); takes no image |
 | `MeasureTagReference` | `RequestJson` → `ResultJson`, `Error` | measures; result `correction` with `dofs`, `deltaMm`, `deltaRotDeg` |
-| `SetTagReferencePreview` | `RequestJson` → `Error` | live edge search in stream mode `tagreference` (`""` = off, expires after 120 s) |
+| `SetTagReferencePreview` | `OptionsJson` → `Error` | live edge search in stream mode `tagreference` (`""` = off, expires after 120 s) |
 | `LastTagReference`, `TagReferencePreviewStatus` | read | last measurement / preview state |
 
 Request `wsc.vision.tagreference.request/1`: `tagId`, `moduleTagGuess` (tag pose from

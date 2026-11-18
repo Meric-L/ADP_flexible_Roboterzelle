@@ -1,6 +1,6 @@
 # Zelle: vision server (OPC UA, Pi side)
 
-Detailed reference for `src/vision_server/` in the ADP repository (branch `main`, as of 2026-11-17). Overview: [code-dokumentation.md](../code-dokumentation.md). Interface: [short](../vision-server-interface-short.md), [full reference](../vision-server-interface.md).
+Detailed reference for `src/vision_server/` in the ADP repository. Overview: [code-dokumentation.md](../code-dokumentation.md). Interface: [short](../vision-server-interface-short.md), [full reference](../vision-server-interface.md).
 
 
 The runtime of the vision server: `runner/` assembles the OPC UA address space methods and nodes into one `VisionMachine` (or runs it as its own process). `layer2/` holds the Layer 2 run on the hand-camera Pi (planning and run logic, numpy/asyncua-free run flow). `discovery/` announces the server on the network (mDNS and the cell's Local Discovery Server). `nodesets/` contains vendored OPC UA companion specifications.
@@ -40,7 +40,7 @@ The runtime of the vision server: `runner/` assembles the OPC UA address space m
 ### `src/vision_server/runner/uamethods.py`
 
 - Reply helpers `code_reply(code)` (Int32) and `text_reply(text, code)` (String, Int32). Replies must be tuples of `ua.Variant`.
-- `add_vision_method(...)`: creates a method node with NodeId `<vision system name>.<method>` in the own namespace and records it in `wiring.methods`.
+- `add_vision_method(...)`: creates a method node with NodeId `<vision system name>.<method>` in the own namespace and records it in `wiring.methods`. Every input and output argument is a `(name, type, description)` spec and gets a Name and a Description. An output named `Error` declares the DataType `VisionErrorCode` (value on the wire stays Int32).
 - `json_method(...)`: frame for methods with a JSON request: parse, then the Operational check, then the busy check, then `run`. Used by `MeasureBoard`, `MeasureTags`, `MeasureTagReference`, `PlanTagReferenceView` and `SetTagReferencePreview`.
 - `repo_relative(path)`: path relative to the repo root (POSIX), otherwise the absolute path.
 
@@ -133,7 +133,8 @@ The runtime of the vision server: `runner/` assembles the OPC UA address space m
 
 ### `src/vision_server/runner/part10.py`
 
-- `install_part10_program(wiring)`: installs `VisionProgram` (`vision_program.py`) on the same `JobRunner`, mirrors the result, state and optional nodes, and mirrors `wiring.methods`.
+- `install_part10_program(wiring)`: installs `VisionProgram` (`vision_program.py`) on the same `JobRunner`. `LatestResultJson` is referenced under `ResultSet`; the existing operational nodes (`_status_nodes`) and `DeviceHealth` are `Organizes` references under `Status`; `wiring.methods` are `HasComponent` references under the program.
+- `_busy_reason(wiring)`: German reason why the Pi takes no new work, `""` when free: `Job laeuft`, `Kamera-Kalibrierung laeuft` (`install.busy_reason`), `Layer-2-Lauf laeuft`, `Hand-Auge-Kalibrierung laeuft`. Written to `Status/BusyReason` every 0.2 s and after each job start and end.
 - If the vision system is not Ready, the program is put into Halted with a message.
 
 ### `src/vision_server/runner/standalone.py`
@@ -259,12 +260,14 @@ Paths are relative to the repository root. Units are grouped by role; the group 
 - Keeps the last 20 payloads in memory (`HISTORY`), keyed by JobId. The cell watch uses this as its reference.
 
 ### `src/vision_server/vision_program.py`
-- OPC UA Part 10 `VisionProgram` (a `Program` subtype), an operator interface for the same job as the 40100 methods. It has no job state of its own.
-- Entry point: `install_vision_program(...)`. Modes: `idle`, `single`, `continuous`. Sets: `ParameterSet`, `ResultSet`.
+- OPC UA Part 10 `VisionProgram` (a `Program` subtype), the device root for the webskillcomposition backend and an operator interface for the same job as the 40100 methods. It has no job state of its own.
+- Entry point: `install_vision_program(...)`. Modes: `idle`, `single`, `continuous`. Sets: `ParameterSet` (`RecipeId`, `Continuous`), `ResultSet` (`JobId`, `ErrorCode`, `ExecutionMode`, reference `LatestResultJson`), `Status` (`BusyReason` and the referenced status nodes). Properties `Manufacturer`, `Model`, `SerialNumber` (= `visionSystemId`).
+- `Start` returns only after the transition: state `Running`, or `Ready` with `ResultSet/ErrorCode` not 0 (a rejected start).
 - Uses `JobRunner.add_finish_listener` to return from Running to Ready.
 
 ### `src/vision_server/errors.py`
-- `VisionErrorCode` (IntEnum: OK, INVALID_STATE, INVALID_ARGUMENT, BUSY, UNKNOWN_RECIPE, DETECTION_FAILED, INTERNAL, CANCELLED) for the `Error` output of the 40100 methods.
+- `VisionErrorCode` (IntEnum: OK, INVALID_STATE, INVALID_ARGUMENT, BUSY, UNKNOWN_RECIPE, DETECTION_FAILED, INTERNAL, CANCELLED) for the `Error` output of the methods.
+- `ENUM_VALUES` and `install_error_enum(server, namespace_index)`: publish `VisionErrorCode` as an OPC UA Enumeration DataType (`ns=<vision>;s=VisionErrorCode`) with German `EnumValues` descriptions; the WSC backend shows these texts to operators.
 - `VisionJobError(code, message)` carries a code and a message to the method layer.
 
 ### `src/vision_server/aio.py`

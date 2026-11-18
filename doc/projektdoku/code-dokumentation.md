@@ -1,6 +1,6 @@
 # Code Documentation: Overview
 
-Status: 2026-11-17. Covers the ADP repository (branch `main`) and the
+Covers the ADP repository (branch `main`) and the
 webskillcomposition repository (branch `ADP_Lokalisierung`, our share of the code).
 
 This page is the entry point. It shows which parts exist, how they connect, and where
@@ -45,21 +45,23 @@ flowchart LR
     P1 -- "RegisterServer every 60 s" --> LDS
     P2 -- "RegisterServer every 60 s" --> LDS
     AGG -- "publishes the servers registered at the LDS" --> LDS
-    WSC -- "OPC UA client" --> P1
-    WSC -- "OPC UA client" --> P2
+    WSC -- "OPC UA client (device = VisionProgram)" --> P1
+    WSC -- "OPC UA client (device = VisionProgram)" --> P2
     WSC -- "OPC UA client" --> R
     FE -- "WebSocket" --> WSC
     FE -- "HTTP MJPEG :8080<br/>/stream.mjpg, /snapshot.jpg" --> P2
-    P1 -. "mDNS _opcua-tcp._tcp.local." .-> FE
-    P2 -. "mDNS _opcua-tcp._tcp.local." .-> FE
+    P1 -. "mDNS _opcua-tcp._tcp.local." .-> WSC
+    P2 -. "mDNS _opcua-tcp._tcp.local." .-> WSC
 ```
 
 - **The Pis are OPC UA servers.** They do not open OPC UA connections to other servers.
   The only exception is the registration at the discovery server (`RegisterServer`).
-- **The backend is the client.** It connects to the fixed Pi URLs. In webskillcomposition
-  these are in `frontend/src/features/opcua-server/config/piServers.ts`.
-- **Only the backend moves the robot.** The Pis know the robot only through the poses the
-  backend passes to them (Layer 2, hand-eye captures).
+- **The backend is the client.** It browses mDNS for announced servers and reports them to
+  the frontend, which connects to each one. A Pi is discovered as a device
+  (`RobotSessionInfo.kind` `vision`) with the Part 10 program `VisionProgram` as its root.
+- **The frontend sequences all workflows.** It plans poses, solves the IK and drives the
+  robot through the backend; the Pis know the robot only through the poses the frontend
+  passes to them (hand-eye captures).
 - **The browser reads the live image** directly from the hand Pi over MJPEG. All other
   traffic goes through the backend WebSocket.
 
@@ -67,10 +69,12 @@ flowchart LR
 
 | Path | Mechanism |
 | --- | --- |
-| Frontend to Pi method | Hook → `ApplicationController.callRawMethod()` → `WscWebSocketClient.callRawMethod()` → backend `CallRawMethodCommand` (`runtime/application_service.py`) → `AsyncUaServerConnection` → Pi |
-| Pi subscriptions and results | Pi → backend OPC UA subscription → backend WebSocket → frontend |
+| Pi discovery in WSC | Backend `opcua/network_discovery.py` browses mDNS → `serversAnnounced` → frontend `ServerManager` connects and discovers |
+| Frontend to Pi action | Hook → `callDevice()` (`deviceCall.ts`) → `ApplicationController.executeRobotAction()` → backend `ExecuteRobotActionCommand` (`runtime/application_service.py`) → `AsyncUaServerConnection` → Pi method or `VisionProgram` |
+| Pi results | Action state: `robotActionState` with `result` (outputs by name or final `ResultSet`) and `errorCode`; the Pi's German error text comes from the `VisionErrorCode` enum |
+| Pi variables | Frontend `subscribeNode` on the device variables (`Status`, `ResultSet`), e.g. `busy_reason` |
 | Live image | Pi HTTP server (`vision_server/mjpeg_server.py`), port from `CameraStreamHttpPort` (default 8080) |
-| Pi discovery | Registration at the LDS every 60 s (`vision_server/discovery/lds.py`); mDNS for clients in the subnet (`vision_server/discovery/mdns.py`) |
+| Pi announcement | Registration at the LDS every 60 s (`vision_server/discovery/lds.py`); mDNS for clients in the subnet (`vision_server/discovery/mdns.py`) |
 
 The Pi endpoint is `opc.tcp://0.0.0.0:4840/raspi/server/` with `NoSecurity`. The namespace
 `http://launch-rm.de/vision` must be resolved with `get_namespace_index(uri)`, never
@@ -98,12 +102,14 @@ documents:
 
 ## 5. Run flow in brief
 
-1. **Layer 1 (ceiling Pi):** the backend calls `StartSingleJob` with `apriltag`. The Pi
-   computes the camera pose from the world tags (`localize_camera`), then the module
-   poses (`locate_modules`), and returns both as event and in `LatestResultJson`.
-2. **Layer 2 (hand Pi):** the backend moves the robot. The hand Pi measures each tag
-   (`MeasureTags`), or plans the run itself (`StartLayer2Run` → `Layer2Target` →
-   `ReportRobotPose`). The camera pose is the flange pose times the hand-eye transform.
+1. **Layer 1 (ceiling Pi):** the frontend runs the device action `vision_program` with the
+   recipe `apriltag`. The Pi computes the camera pose from the world tags
+   (`localize_camera`), then the module poses (`locate_modules`), and returns both in
+   `LatestResultJson` (the final `ResultSet` of the action).
+2. **Layer 2 (hand Pi):** the frontend plans the stops, solves the IK and moves the robot;
+   the hand Pi measures each tag (`MeasureTags`). The camera pose is the flange pose times
+   the hand-eye transform. The Pi also has its own run (`StartLayer2Run` → `Layer2Target` →
+   `ReportRobotPose`), which the frontend does not use.
 3. **Calibration:**
    - Ceiling Pi: `StartCalibration` … `FinishCalibration` (intrinsics only). The board
      is chosen with `StartCalibration`'s `OptionsJson` (since 17.11.2026); empty means the

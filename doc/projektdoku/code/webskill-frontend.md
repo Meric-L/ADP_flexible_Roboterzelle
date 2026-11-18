@@ -1,7 +1,7 @@
 # webskillcomposition: frontend
 
 Reference for the frontend of webskillcomposition outside `features/cell-modules/`
-([webskill-cell-modules.md](webskill-cell-modules.md)), branch `ADP_Lokalisierung`, as of 2026-11-17.
+([webskill-cell-modules.md](webskill-cell-modules.md)), branch `ADP_Lokalisierung`.
 Overview: [code-dokumentation.md](../code-dokumentation.md). Paths are relative to `frontend/src/`.
 
 ## What is new and what already existed
@@ -18,9 +18,9 @@ the viewport IK, collision and surface models, and the robot-control contexts, j
 mapping. See the webskillcomposition docs below.
 
 **Note:** much of our workflow logic runs in the frontend although it would fit better in the
-backend: run sequencing and Pi orchestration (a run stops when the tab closes), the Pi busy state
-(per page only), the tag-map sync, and the hand-written Pi bindings in `piServers.ts` (the backend
-discovery does not know the Pis). Moving it is not part of this project.
+backend: run sequencing and Pi orchestration (a run stops when the tab closes), the IK and robot
+driving of the workflows, and the tag-map sync. The Pis themselves are discovered by the backend
+and called through the generic device path (`visionDevice.ts`, `deviceCall.ts`, `useDevice.ts`).
 
 ### Documentation sources
 
@@ -39,12 +39,18 @@ with new and existing files).
 
 ### `app/model/applicationController.ts` — extended
 - Central controller class `ApplicationController` (`createApplicationController` factory, `ApplicationSnapshot` type). Owns the snapshot and dispatches WebSocket messages.
-- Public methods cover server connect/disconnect, address-space browsing, robot create/bind/sync, robot goto (`callRobotGoto`, speed-capped by `capGotoSpeed`), end effector, actions, `callRawMethod`, `writeNodeValue`, and waypoint capture.
+- Public methods cover server connect/disconnect, `listAnnouncedServers`, address-space browsing, robot create/bind/sync, robot goto (`callRobotGoto`, speed-capped by `capGotoSpeed`), end effector, actions, `callRawMethod`, `writeNodeValue`, and waypoint capture.
+- Only discovered devices with `kind: "robot"` become URDF robots. `executeRobotAction` also runs the actions of other devices (a vision Pi) on their own id.
 - Details: file header and `applicationController.test.ts` (about 1600 lines of tests).
 
 ### `app/layout/DesktopLayout.tsx` — extended
 - `DesktopLayout`: the single screen. Nested `react-resizable-panels` groups hold the joint panel, `Viewport`, camera streams, the Layout1 (address space, node details, message log) or Layout2 (`TaskPanel`) switch, `CellWatchPanel` and `ServerManager`.
-- Wraps content in the providers for robot control, robot interaction, OPC UA server, Pi activity and task editor. Uses `LIVESTREAM_CAMERAS` from `features/viewport/model/sceneState.ts`.
+- Wraps content in the providers for robot control, robot interaction, OPC UA server and task editor.
+
+### `entities/server/model/store.ts`, `entities/server/model/types.ts` — extended
+- `ServerStoreState` additionally holds `announcedServers` (from `serversAnnounced`), `motionDevicesById` (every discovered device, any kind) and `deviceActionStates[deviceId][action]` (`DeviceActionRecord`: `requestId` plus the last `RobotActionState`, with `result` and `errorCode`).
+- A device's watcher states carry no request id; they are filed under the request that started the action. `isRoboticsServer` is true when the server has a device of kind `robot`.
+- Types: `RobotSessionInfo.kind` (`DeviceKind`), `RobotActionState.result` / `errorCode`, `MethodArgument.enumValues`.
 
 ### `entities/robot/model/store.ts` — extended
 - `RobotStoreState` (`byId`, `activeRobotId`), `initialRobotStoreState`, and `applyRobotMessage(state, ServerMessage)`, a pure reducer over server messages.
@@ -78,66 +84,75 @@ with new and existing files).
 
 ### `features/opcua-server/components/` — mixed
 - React UI for the OPC UA side. `index.ts` re-exports the six components used by `DesktopLayout`: `AddressSpaceTree`, `CameraStreamPanel`, `MessageLog`, `NodeDetailsPanel`, `ServerManager`, `CellWatchPanel`.
-- `ServerManager` auto-connects both Pis (`PI_1_SERVER_URL`, `PI_2_SERVER_URL`) on mount and lists other servers. Camera and calibration UI: `CameraView`, `CameraLiveImage`, `CameraZoomModal`, `CameraCalibrationModal`, `CameraPreview`. Vision and cell watch: `AutolocateActions`, `CellWatchPanel`, `RobotRunConfirm`, `TagMapSyncLine`, `PiStatusList`, `PiActivity`.
+- `ServerManager` asks the backend for the announced servers (`listAnnouncedServers`), connects and discovers each one once, and lists the servers that offer robots; manual entry is `ConnectOpcUa`. Camera and calibration UI: `CameraView`, `CameraLiveImage`, `CameraZoomModal`, `CameraCalibrationModal`, `CameraPreview`. Vision and cell watch: `AutolocateActions`, `CellWatchPanel`, `TagMapSyncLine`, `PiStatusList`, `PiActivity`.
+- `PiActivity`: shows what a Pi does (variable `busy_reason`, cell-watch state) and resets it (abort calibration and hand-eye, halt `vision_program`).
+- The components take a device (`RobotSessionInfo`) from `deviceByRole`, not a server URL.
 - Method and event UI: `RawMethodCallModal`, `EventSubscriptionPanel`, `VariableSubscriptionPanel`, `SaveRawImageButton`, `LastCalibrationBadge`, `ConnectOpcUa`.
 - Hooks used here are in `features/opcua-server/model/`. Behaviour details: `docs/vision-workflows.md`.
 
 ### `features/opcua-server/config/piServers.ts` — new
-- Pi endpoints (`PI_1_SERVER_URL`, `PI_2_SERVER_URL`, hard-coded `opc.tcp://10.10.38.x` addresses), namespace URIs and `LAYER_LABELS`.
-- `resolveVisionBinding(namespaceUris)` builds the NodeId set for a Pi (`VisionBinding`). An unknown namespace yields "unknown", and callers must refuse to run. Binding types: `CalibrationBinding`, `HandEyeBinding`, `CellWatchBinding`, `Layer2Binding`.
-- Also `CAMERA_OVERLAY_MODES`, `START_SINGLE_JOB_ERRORS` (error code map). All NodeId construction is centralised here, as `docs/vision-workflows.md` states.
+- `CAMERA_OVERLAY_MODES` (`off`, `apriltag`, `undistorted`, `tagreference`) and `CameraOverlayMode`.
+- `buildMjpegStreamUrl(serverUrl, port)` and `buildTagReferenceImageUrl(serverUrl, port)`: the host is taken from the OPC UA endpoint.
+- `DEVICE_HEALTH`: texts and tone for the `DeviceHealthEnumeration` values 0 to 4.
+- No NodeIds and no Pi URLs: the devices come from backend discovery.
+
+### `features/opcua-server/model/visionDevice.ts` — new
+- `DEVICE_ACTION` and `DEVICE_VARIABLE`: the snake_case keys of the Pi's actions and variables (`vision_program`, `save_raw_image`, `measure_tags`, `busy_reason`, `latest_camera_frame`, ...). The one place the app names them.
+- `deviceByRole(serverState, "ceiling" | "hand")`: the vision device whose serial number starts with `vision-ceiling-` or `vision-flange-`. `visionDevices`, `variableNodeId(device, key)` (`""` when not offered), `hasAction(device, key)`.
+
+### `features/opcua-server/model/deviceCall.ts` — new
+- `callDevice(controller, deviceId, action, inputs, { timeoutMs })`: runs the action through `executeRobotAction` (quiet), polls the device action state every 100 ms and returns a `DeviceCallOutcome`: `done` (`outputs`, `result`), `rejected` (`errorCode`, German `message`, `outputs`, `result`), `nothingToDo`, `missing`, `failed`, `timeout`.
+- Backend error codes `methodMissing` give `missing`, `nothingToDo` gives `nothingToDo`.
+- `describeFailure(outcome)`: German operator text, or null for `done` and `nothingToDo`.
+
+### `features/opcua-server/model/useDevice.ts` — new
+- `useDeviceCall(device)`: `{ busy, error, call }`; `call(action, inputs, timeoutMs)` wraps `callDevice` and keeps the last failure text.
+- `useDeviceVariable(device, key, parse)`: subscribes to a device variable and returns the parsed live value (node details first, then live values).
+- `useVisionServerUrls()`: server URLs of the discovered vision devices.
 
 ### `features/opcua-server/config/robotServers.ts` — new
 - `KNOWN_ROBOT_SERVER_URLS`: static list of robot server URLs shown in the server manager.
 
 ### `features/opcua-server/context/OpcuaServerContext.tsx` — extended
-- `OpcuaServerProvider` (props `controller`, `snapshot`) and `useOpcuaServer()`. Exposes server state plus `subscribeNode`, `unsubscribeNode`, `subscribeEvent`, `unsubscribeEvent`, `callRawMethod`, `writeNodeValue`, all delegating to `ApplicationController`.
-
-### `features/opcua-server/context/PiActivityContext.tsx` — new
-- `PiActivityProvider`, `usePiActivity()` (register, returns a remover), `usePiBlocker(serverUrl, ownerId)` (returns the activity holding the Pi, if another owner has one).
-
-### `features/opcua-server/model/piMethodCall.ts` — new
-- `callPiMethod(controller, serverUrl, nodeId, args)`: calls a Pi method and polls for its result (15 s timeout, 100 ms poll). Returns `PiCallOutcome` (`done`, `nothingToDo`, `failed`). An abort of an idle job counts as `nothingToDo`.
+- `OpcuaServerProvider` (props `controller`, `snapshot`) and `useOpcuaServer()`. Exposes server state plus `listAnnouncedServers`, `subscribeNode`, `unsubscribeNode`, `subscribeEvent`, `unsubscribeEvent`, `callRawMethod`, `writeNodeValue`, all delegating to `ApplicationController`.
 
 ### `features/opcua-server/model/useVisionJob.ts` — new
-- `useVisionJob`: runs one `StartSingleJob` on a Pi. Subscribes to the vision node's events, calls the method through `callRawMethod`, and returns `VisionJobState` (`idle`, `running`, `succeeded`, `failed`).
+- `useVisionJob(device)`: runs one job as the device action `vision_program` (`recipe_id`, `continuous: false`) and takes the payload from the final `ResultSet` (`latest_result_json`; a failed job still carries it). Returns `VisionJobState` (`idle`, `running`, `succeeded`, `failed`, `blockedBy` from `busy_reason`). `close()` halts the program.
 
 ### `features/opcua-server/model/visionResult.ts` — new
 - `parseVisionResult(raw)` turns the vision JSON into `VisionResult` (`detections`, `worldTags`, `VisionCameraLocalization`). Test: `visionResult.test.ts`.
 
 ### `features/opcua-server/model/useMjpegStreamUrl.ts` — new
-- `useMjpegStreamUrl(serverUrl)`: MJPEG URL built from the Pi's `CameraStreamHttpPort` node. Returns null while the port is 0 or the node is missing (older Pi builds).
+- `useMjpegStreamUrl(device)`: MJPEG URL built from the variable `camera_stream_http_port`. Returns null while the port is 0 or the variable is missing.
 
 ### `features/opcua-server/model/useMjpegWatchdog.ts` — new
 - `useMjpegWatchdog(imageRef, streamUrl)`: detects a frozen MJPEG stream by hashing the middle square of the picture and checks `/snapshot.jpg`. Reconnects on stall, returns a reconnect counter. Thresholds are module constants.
 
 ### `features/opcua-server/model/useCameraFrame.ts` — new
-- `useCameraFrame(serverUrl, enabled)`: base64 frame fallback from the Pi's frame nodes. Subscribes nothing while `enabled` is false (MJPEG in use).
+- `useCameraFrame(device, enabled)`: base64 frame fallback from the variable `latest_camera_frame`. Subscribes nothing while `enabled` is false (MJPEG in use).
 
 ### `features/opcua-server/model/useCameraHealth.ts` — new
-- `useCameraHealth(serverUrl)` reads the OPC UA `DeviceHealth` node. Returns `CameraHealthState`; `describeCameraHealth` maps it to text. Consumed by `CameraStreamPanel` and `PiStatusList`.
+- `useCameraHealth(device)` reads the variable `device_health`. Returns `CameraHealthState`; `describeCameraHealth` maps it to text. Consumed by `CameraStreamPanel` and `PiStatusList`.
 
 ### `features/opcua-server/model/useCameraCalibration.ts` and `cameraCalibration.ts` — new
-- `useCameraCalibration(serverUrl)`: drives the Pi's camera calibration (`start`, `capture`, `finish`, `abort`) and returns `CameraCalibrationState` with phase and progress.
+- `useCameraCalibration(device)`: drives the Pi's camera calibration (`start_calibration`, `capture_calibration_sample`, `finish_calibration`, `abort_calibration`; `start`, `capture`, `finish`, `abort`) and returns `CameraCalibrationState` with phase and progress.
 - `cameraCalibration.ts`: pure types and parsers (`CalibrationProgress`, `CalibrationResult`, `deriveCalibrationPhase`, `expectedProcessingMs`). Warning threshold `RMS_WARNING_THRESHOLD_PX` = 0.5 px; `MIN_FINISH_SAMPLES` = 3.
 
 ### `features/opcua-server/model/useHandEyeCalibration.ts` — new
-- `useHandEyeCalibration(serverUrl)`: hand-eye calibration commands (`start`, `capture`, `finish`, `abort`) through `callRawMethod`, with a command-ended counter to avoid missing fast replies.
+- `useHandEyeCalibration(device)`: hand-eye calibration commands (`start`, `capture`, `finish`, `abort`) through `callDevice`; status from the variable `hand_eye_status`.
 
 ### `features/opcua-server/model/useTagMapSync.ts` — new
-- `useTagMapSync(serverUrl)`: subscribes to the Pi's tag-map JSON node, compares it with the catalog, and sends the map via `SetTagMap`. Returns `TagMapSyncState` (`available`, `differences`, `sending`, `sent`, `waiting`, `error`). Error texts are German strings from `tagMapErrorText`.
+- `useTagMapSync(device)`: subscribes to the variable `tag_map_json`, compares it with the catalog, and sends the map with `set_tag_map`. Returns `TagMapSyncState` (`available`, `differences`, `sending`, `sent`, `waiting`, `error`). Error texts are German strings from `tagMapErrorText`.
 
 ### `features/opcua-server/model/useCellWatch.ts` — new
-- `useCellWatch(serverUrl)`: cell-watch start/stop (re-arm with a reference) on the ceiling Pi. Returns `CellWatchState` (`status`, `error`, start/stop calls). Consumed by `AutolocateActions` and `Viewport`.
+- `useCellWatch(device)`: cell-watch start/stop (`start_cell_watch`, `stop_cell_watch`) (re-arm with a reference) on the ceiling Pi. Returns `CellWatchState` (`status`, `error`, start/stop calls). Consumed by `AutolocateActions` and `Viewport`.
 
 ### `features/opcua-server/model/useCaseMeasurement.ts` and `useSaveRawImage.ts` — new
-- `useCaseMeasurement.ts`: parses `SaveUseCaseImage` result JSON into `UseCaseMeasurement` (accuracy zone `gruen`/`gelb`/`rot`/`ausserhalb`) and formats it.
-- `useSaveRawImage.ts`: `useSaveRawImage(serverUrl)` saves a raw or use-case image on the Pi. Error texts are German, mapped from `VisionErrorCode` values.
+- `useCaseMeasurement.ts`: parses the `ResultJson` output of `save_use_case_image` into `UseCaseMeasurement` (accuracy zone `gruen`/`gelb`/`rot`/`ausserhalb`) and formats it.
+- `useSaveRawImage.ts`: `useSaveRawImage(device)` saves a raw image on the Pi (`save_raw_image`). The error text is the Pi's German `VisionErrorCode` description (`describeFailure`).
 
-### `features/opcua-server/model/piActivity.ts`, `piConnection.ts`, `usePauseWhileRobotMoves.ts`, `useConnectServerWithFeedback.ts` — new
-- `piActivity.ts`: pure list helpers (`addPiActivity`, `removePiActivity`, `findBlockingPiActivity`) for the Pi busy state.
-- `piConnection.ts`: `isPiConnected(servers, url)`.
-- `usePauseWhileRobotMoves.ts`: pauses the Pi watch while the robot is moving (reason text "Roboter fährt", i.e. "robot is moving"). Used by `AutolocateActions`.
+### `features/opcua-server/model/usePauseWhileRobotMoves.ts`, `useConnectServerWithFeedback.ts` — new
+- `usePauseWhileRobotMoves.ts`: pauses the ceiling Pi's cell watch while the robot is moving (`pause_cell_watch` with `reason` "Roboter fährt", i.e. "robot is moving", and `max_pause_seconds`, renewed every 60 s; `resume_cell_watch` afterwards). Used by `AutolocateActions`.
 - `useConnectServerWithFeedback.ts`: connect-with-toast hook used by `ConnectOpcUa` and `AutolocateActions`.
 
 ### `features/viewport/components/` (other files) — mixed
@@ -150,7 +165,7 @@ with new and existing files).
 - Local JavaScript copy of the `urdf-loader` parser (`URDFLoader` class; imports `urdf-loader/src/URDFClasses`). The `.d.ts` gives it types. Used by `Viewport.tsx` and by `tag-tool/loadModule.ts`.
 
 ### `features/viewport/model/sceneState.ts` — extended
-- `useViewportSceneState()` returns the viewport scene state (settings, camera streams, pose previews, Layer 2 proposals). Defines `LIVESTREAM_CAMERAS` ("Kamera 1" and "Kamera 2", i.e. camera 1 and camera 2, on the two Pi URLs) and `CameraStreamSettings`.
+- `useViewportSceneState()` returns the viewport scene state (settings, camera streams, pose previews, Layer 2 proposals). Defines `CameraStreamSettings`; the stream settings are kept per vision Pi server URL.
 
 ### `features/viewport/model/robotIk.ts`, `robotIkModel.ts`, `robotIkConstraints.ts` — mixed
 - `robotIk.ts`: `solvePositionIk` and tool-point helpers (`findToolPoint`, `getToolPointWorldPosition`, `getToolPointWorldQuaternion`). Looks for end-effector link names such as `tool_point`, `tool0`, `tcp`.

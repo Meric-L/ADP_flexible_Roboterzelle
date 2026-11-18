@@ -1,9 +1,9 @@
 # webskillcomposition: cell modules (model and UI)
 
-Detailed reference for the cell-module code of webskillcomposition, branch `ADP_Lokalisierung`, as of 2026-11-16. Overview: [code-dokumentation.md](../code-dokumentation.md).
+Detailed reference for the cell-module code of webskillcomposition, branch `ADP_Lokalisierung`. Overview: [code-dokumentation.md](../code-dokumentation.md).
 
 
-Scope: `frontend/src/features/cell-modules/model/` (68 source files, 56 `*.test.ts` files), `config/`. `components/` is documented separately.
+Scope: `frontend/src/features/cell-modules/model/` (71 source files, 56 `*.test.ts` files), `config/`. `components/` is documented separately.
 
 Overview: the model folder holds pure TypeScript logic (geometry, planning, validation, state machines) plus React hooks (`use*.ts`). Tests use Vitest and sit next to their source. Layer 1 = cell-wide localization from the ceiling Pi; Layer 2 = the robot-driven run (approach, hand-eye, tag reference, pick and place). Concepts: `webskillcomposition/docs/vision-workflows.md` (docs/vision-workflows.md) (sections "Calibration and localization", "Module catalog and tag map", "Tag measurement and reference-edge setup"); system overview in `webskillcomposition/docs/architecture.md` (docs/architecture.md); payload shapes in `webskillcomposition/docs/data-and-interface-model.md` (docs/data-and-interface-model.md).
 
@@ -98,6 +98,11 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 - Decides whether the real robot may be driven for Layer 2 (`driveReadiness`) and builds the controller-backed drive dependencies.
 - Entry points: `driveReadiness`, `DriveReadiness`, `robotModelLoaded`, `controllerRobotDeps`.
+
+### `model/deviceMeasure.ts`
+
+- `callMeasure(...)`: calls a device method `(RequestJson) -> (ResultJson, Error)` through `callDevice` (`opcua-server/model/deviceCall`) and parses `outputs.ResultJson`. A refusal carries the answer's own `error` text, else the device's German enum text.
+- `failureReason(outcome, pi, detail?)`: operator text for an outcome that is not `done`. Entry points: `callMeasure`, `failureReason`, `MeasureCall`.
 
 ### `model/flangeTrajectory.ts`
 
@@ -197,12 +202,12 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/measureBoardCall.ts`
 
-- Request/response wrapper for measuring the chessboard on the Pi; a board not fully in view costs extra time per picture.
+- Request/response wrapper for measuring the chessboard on the Pi (device action `measure_board`, via `callMeasure`); a board not fully in view costs extra time per picture.
 - Entry points: `measureBoard`, `MeasureBoardOutcome`.
 
 ### `model/measureTagsCall.ts`
 
-- Request/response wrapper for measuring tags with the hand camera for a short window (longer than a few frames, shorter than a robot move).
+- Request/response wrapper for measuring tags with the hand camera for a short window (longer than a few frames, shorter than a robot move); device action `measure_tags`, via `callMeasure`.
 - Entry points: `measureTags`, `MeasureOutcome`.
 
 ### `model/modelEdges.ts`
@@ -370,8 +375,8 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/tagReferenceCall.ts`
 
-- Hand Pi tag measurement against reference edges: request/result/preview/view JSON schemas and parsers, and the call wrapper. Nothing here moves the robot.
-- Entry points: `tagReferenceRequestJson`, `parseTagReferenceResult`, `TagReferenceRequest`, `TagReferenceResult`, `TagReferenceCorrection`, `TagReferenceView`, `TagReferencePreviewStatus`.
+- Hand Pi tag measurement against reference edges: request/result/preview/view JSON schemas and parsers, and the call wrappers over `callMeasure` / `callDevice` (device actions `measure_tag_reference`, `plan_tag_reference_view`, `set_tag_reference_preview`). Nothing here moves the robot.
+- Entry points: `tagReferenceRequestJson`, `parseTagReferenceResult`, `measureTagReference`, `planTagReferenceView`, `setTagReferencePreview`, `TagReferenceRequest`, `TagReferenceResult`, `TagReferenceCorrection`, `TagReferenceView`, `TagReferencePreviewStatus`.
 - Pi-side counterpart named in the header: `src/vision_server/tagreference.py` (cell repo).
 
 ### `model/tagReferenceCall.test.ts`
@@ -483,7 +488,9 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 ### `model/usePickPlaceRun.ts`
 
 - React hook for the pick-and-place run: teach pick, select table, plan route, run place or return, status (`PickPlaceStatus`).
-- Entry points: `usePickPlaceRun`, `PickPlaceRun`, `RunKind`, `PlaceSource`, `DROP_HEIGHT_RANGE_MM`. Largest hook (about 1180 lines).
+- Entry points: `usePickPlaceRun`, `PickPlaceRun`, `RunKind`, `PlaceSource`, `DROP_HEIGHT_RANGE_MM`. Largest hook (about 1120 lines).
+- The photo of the placed cube is the device action `save_use_case_image` on the hand Pi (`callDevice`; `Series` is sent as a number).
+- Pick & Place is the group's use case only; it does not go to `dev`. The webskillcomposition team does the UI polish.
 
 ### `model/usePlaceRobots.ts`
 
@@ -502,7 +509,7 @@ Overview: the model folder holds pure TypeScript logic (geometry, planning, vali
 
 ### `model/useTagReferenceLive.ts`
 
-- Hooks subscribing to one node of a Pi while the edge preview is active (live values, image URL).
+- Hooks taking a device and subscribing to its variable `tag_reference_preview_status` while the edge preview is active (live values, image URL).
 - Entry points: `useTagReferencePreviewStatus`, `useTagReferenceImageUrl`.
 
 ### `model/vec3.ts`
@@ -569,7 +576,7 @@ Scope: `frontend/src/features/cell-modules/components/` (28 files, grouped by fe
 ### `components/Layer2CameraWindow.tsx`
 - Small floating window with only the hand camera, open while the Level 2 positioning drives. It closes by itself when the run ends.
 - Entry point: default export `Layer2CameraWindow`, built on `CameraView` and `CameraHealthBadge` from `opcua-server/components`.
-- Uses `opcua-server/model/useCameraHealth`, `opcua-server/config/piServers`.
+- Uses `opcua-server/model/useCameraHealth`, `opcua-server/model/visionDevice` (`deviceByRole`).
 - Rendered by `ApproachPlanPanel.tsx`.
 
 ### `components/Layer2GhostRobot.tsx`
@@ -607,7 +614,7 @@ Scope: `frontend/src/features/cell-modules/components/` (28 files, grouped by fe
 ### `components/TagReferenceWindow.tsx`
 - Floating window for the tag reference workflow, with the hand camera live view beside the list. It holds the on/off switches for the run options (step by step, measure all, robot-edge cross-check, saving the measurement log, debug image).
 - Entry point: default export `TagReferenceWindow`. Constant `SWITCHES` lists the switches; private `SwitchRow` renders one.
-- Uses `model/tagReferenceSettings` (`useTagReferenceSettings`, `tagReferenceSettings`), `model/tagReferenceLiveView` (`enterLiveView`), `opcua-server/components/CameraView`, `opcua-server/context/OpcuaServerContext`, `opcua-server/config/piServers`, and `shared/ui` (`FloatingWindow`, `DisclosureSection`, `Toggle`).
+- Uses `model/tagReferenceSettings` (`useTagReferenceSettings`, `tagReferenceSettings`), `model/tagReferenceLiveView` (`enterLiveView`), `opcua-server/components/CameraView`, `opcua-server/context/OpcuaServerContext`, `opcua-server/model/visionDevice` (`deviceByRole`, `variableNodeId`), `opcua-server/config/piServers` (type `CameraOverlayMode`), and `shared/ui` (`FloatingWindow`, `DisclosureSection`, `Toggle`).
 - Renders `TagReferencePanel`. Opened from `viewport/components/ViewportHeaderControls.tsx`.
 
 ### `components/TagReferencePanel.tsx`
@@ -653,8 +660,8 @@ Scope: `frontend/src/features/cell-modules/components/` (28 files, grouped by fe
 
 ### `components/HandCameraMarker.tsx`
 - Draws the hand camera at the pose given by the hand-eye calibration: a small box for the body and a view cone along the camera's +Z. It follows the twin's flange every frame.
-- Entry point: default export `HandCameraMarker({ sceneState })`. Pose source is `opcua-server/model/useHandEyeCalibration` (`HandEyeStatus.current` on Pi 2).
-- Uses `model/useCellRobot`, `robot-control/context/RobotControlContext`, `robot-control/model/robotModels`, `opcua-server/config/piServers`.
+- Entry point: default export `HandCameraMarker({ sceneState })`. Pose source is `opcua-server/model/useHandEyeCalibration` (`HandEyeStatus.current` on the hand Pi).
+- Uses `model/useCellRobot`, `robot-control/context/RobotControlContext`, `robot-control/model/robotModels`, `opcua-server/model/visionDevice` (`deviceByRole`).
 - Rendered by `viewport/components/Viewport.tsx`.
 
 ### `components/Layer2ProposalMarkers.tsx`

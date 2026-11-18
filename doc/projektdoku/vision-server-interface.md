@@ -87,14 +87,15 @@ Objects/
         ├── LatestCameraFrame                ns=<vision>;s=VisionMachine.LatestCameraFrame
         │                                    Base64 JPEG of the camera live stream, see section 10
         ├── CameraStreamMode                 ns=<vision>;s=VisionMachine.CameraStreamMode
-        │                                    **writable**: off | apriltag | calibration
+        │                                    **writable**: off | apriltag | undistorted | tagreference
         └── CameraStreamHttpPort             ns=<vision>;s=VisionMachine.CameraStreamHttpPort
                                              Int32: port of the MJPEG stream, 0 = none (section 10.2)
 ```
 
-The four calibration methods and the five value nodes are **additionally**
-reachable under `VisionProgram` — as references, not copies. Each stays one node
-with one value or one implementation.
+All custom methods and the operational nodes are **additionally** reachable under
+`VisionProgram` (methods as children, value nodes under `Status`, `LatestResultJson`
+under `ResultSet`) — as references, not copies. Each stays one node with one value or
+one implementation.
 
 Internal structure (Python package `src/vision_server/`):
 
@@ -327,8 +328,11 @@ within `stop_timeout` (5 s, `config.py`) does `Error=6` (`INTERNAL`) come back.
 
 ### Error codes (`Error`)
 
-The nodeset defines no enum for `Error`; these codes are project-specific and
-must be mirrored in the backend.
+The nodeset defines no enum for `Error`; these codes are project-specific. They are
+published as the OPC UA Enumeration DataType `VisionErrorCode` (`ns=<vision>;s=VisionErrorCode`,
+German `EnumValues` descriptions). Every method output named `Error` and
+`VisionProgram/ResultSet/ErrorCode` declare it; the value on the wire stays Int32.
+All method arguments have names.
 
 | Code | Name | Meaning | Do events follow? |
 | --- | --- | --- | --- |
@@ -1591,9 +1595,11 @@ used by Conveyor and CardDispenser:
 | `VisionProgram/ResultSet/ErrorCode` | read | error code from 13.2 |
 | `VisionProgram/ResultSet/ExecutionMode` | read | execution mode |
 
-In addition, `ResultSet` mirrors `LatestResultJson`, `LatestCameraFrame`,
-`CameraStreamMode` and `CalibrationProgress`, so that a generic client finds
-everything in one place. Complete details in
+In addition, `ResultSet` references `LatestResultJson`. The other operational nodes
+(`LatestCameraFrame`, `CameraStreamMode`, `CalibrationProgress`, ...) and `DeviceHealth`
+are `Organizes` references below `VisionProgram/Status`; `Status/BusyReason` is empty when
+the Pi is free. `Start` returns only after the state is `Running`, or `Ready` with a
+non-zero `ResultSet/ErrorCode`. Complete details in
 [`part10-programm-schnittstelle.md`](part10-programm-schnittstelle.md).
 
 ### 13.6 Operation
@@ -1618,9 +1624,8 @@ everything in one place. Complete details in
    show a traffic light subscribes to the state node; whoever wants to react to
    transitions additionally subscribes to the alarms.
 
-Point 5 is the only one still missing in the current backend implementation
-(`vision-system-integration.md`, risk R9). Point 6 is implemented in the frontend
-(traffic light in the camera panel).
+Point 5 is implemented in the webskillcomposition backend (`vision-system-integration.md`,
+risk R9). Point 6 is implemented in the frontend (traffic light in the camera panel).
 
 ## 14. Layer 2 run (Hand Pi only)
 
@@ -1639,8 +1644,8 @@ additionally linked under `VisionProgram`:
 
 | Element | NodeId | Signature / Type |
 | --- | --- | --- |
-| `StartLayer2Run` | `ns=<vision>;s=VisionMachine.StartLayer2Run` | `(RunJson: String) -> (Error: Int32)` |
-| `ReportRobotPose` | `ns=<vision>;s=VisionMachine.ReportRobotPose` | `(ReportJson: String) -> (Error: Int32)` |
+| `StartLayer2Run` | `ns=<vision>;s=VisionMachine.StartLayer2Run` | `(RequestJson: String) -> (Error: Int32)` |
+| `ReportRobotPose` | `ns=<vision>;s=VisionMachine.ReportRobotPose` | `(RequestJson: String) -> (Error: Int32)` |
 | `Layer2Target` | `ns=<vision>;s=VisionMachine.Layer2Target` | String, JSON `wsc.vision.layer2.target/1`, `""` when there is no target |
 | `Layer2Status` | `ns=<vision>;s=VisionMachine.Layer2Status` | String, JSON `wsc.vision.layer2.status/1` |
 
@@ -1940,7 +1945,7 @@ The nodes exist only with AprilTag and without `hand_eye_path`. They sit under
 | --- | --- |
 | `StartCellWatch` | `(OptionsJson: String) -> (Error: Int32)`, `wsc.vision.cellwatch.start/1` |
 | `StopCellWatch` | `() -> (Error: Int32)` |
-| `PauseCellWatch` | `(ReasonText: String, MaxPauseS: Double) -> (Error: Int32)` (since 22.10.2026) |
+| `PauseCellWatch` | `(Reason: String, MaxPauseSeconds: Double) -> (Error: Int32)` (since 22.10.2026) |
 | `ResumeCellWatch` | `() -> (Error: Int32)` (since 22.10.2026) |
 | `CellWatchStatus` | String, JSON `wsc.vision.cellwatch.status/1` |
 
@@ -2015,16 +2020,16 @@ The nodes exist only with AprilTag and without `hand_eye_path`. They sit under
 - **Pause from outside (`PauseCellWatch` / `ResumeCellWatch`, since 22.10.2026):** The
   frontend pauses monitoring while the robot is moving, because the arm and gripper
   occlude tags and would simulate changes. `PauseCellWatch("Roboter fährt", 0)` sets
-  `state: "paused"` with `message = ReasonText` (empty: "Ueberwachung pausiert"
+  `state: "paused"` with `message = Reason` (empty: "Ueberwachung pausiert"
   (monitoring paused)). While the pause applies, the Pi evaluates **no** image and records
-  nothing in the history. `MaxPauseS <= 0` means 600 s; more than 3600 s is cut down to
+  nothing in the history. `MaxPauseSeconds <= 0` means 600 s; more than 3600 s is cut down to
   3600. After expiry, monitoring continues on its own, even without `ResumeCellWatch`
   (frontend gone, robot still). `ResumeCellWatch` ends the pause. Afterwards all timers
   restart, all tags count as just seen, candidates (`pending`) are discarded, and
   confirmed messages (`changes`) remain until the usual hysteresis clears them. Both are
   idempotent: a second `PauseCellWatch` replaces reason and deadline, and
   `ResumeCellWatch` without a pause is `OK`. If monitoring is not running (`off`,
-  `failed`), the response is `INVALID_STATE`; `NaN`/`inf` as `MaxPauseS` is
+  `failed`), the response is `INVALID_STATE`; `NaN`/`inf` as `MaxPauseSeconds` is
   `INVALID_ARGUMENT`. Re-arming does not lift the pause, `StopCellWatch` does. The status
   has `manualPause: {reason, resumesAt}` for this, or `null`. The pause due to a job or
   calibration remains unaffected by it.
@@ -2270,11 +2275,11 @@ log on the Pi.
 
 | Element | NodeId | Signature / Type |
 | --- | --- | --- |
-| `SetTagReferencePreview` | `ns=<vision>;s=VisionMachine.SetTagReferencePreview` | `(RequestJson: String) -> (Error: Int32)` |
+| `SetTagReferencePreview` | `ns=<vision>;s=VisionMachine.SetTagReferencePreview` | `(OptionsJson: String) -> (Error: Int32)` |
 | `TagReferencePreviewStatus` | `ns=<vision>;s=VisionMachine.TagReferencePreviewStatus` | String (JSON), subscription possible, at most 3 Hz |
 | `GET /tagreference.jpg` | MJPEG port (`http://<host>:<port>/tagreference.jpg`) | JPEG, `Cache-Control: no-store`, CORS `*` |
 
-- **`SetTagReferencePreview`**: `RequestJson` is `wsc.vision.tagreference.request/1`
+- **`SetTagReferencePreview`**: `OptionsJson` is `wsc.vision.tagreference.request/1`
   (parser as for `MeasureTagReference`; `frames` and `view` are ignored). One tag on, `""`
   off. Error: `OK`, `INVALID_ARGUMENT` (invalid JSON, missing tag, invalid `overlay`),
   `INVALID_STATE` (not `Operational`, or no live-stream overlay). Never `BUSY`. Hand Pi
