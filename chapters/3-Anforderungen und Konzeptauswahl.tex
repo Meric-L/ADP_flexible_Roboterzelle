@@ -1,81 +1,258 @@
 \cleardoublepage
-
 \chapter{Anforderungsanalyse und Systemkonzeption}
 \label{ch:Kapt3}
 
-Die Literaturecherche hat eine Vielzahl möglicher technologien und kombinatuonsmöglichkeiten beleuchtet. Im nächsten Schritt gilt es diese einzugrenzen und für unseren SPezifischen Anwendungsfall auszuwählen. Hierzu müssen vor allem die gegebenen Rahmenbedingung die das Projekt eingrenzen und durch das PLCM vorgegeben sind berücksichtigt werden. Um diese externen Faktoren im Blick zu haben werden sie nun genauer beleuchetet.
+Die Literaturrecherche hat eine Vielzahl möglicher Technologien und Kombinationsmöglichkeiten beleuchtet. Im nächsten Schritt gilt es, diese einzugrenzen und für unseren spezifischen Anwendungsfall auszuwählen. Hierzu müssen vor allem die Rahmenbedingungen berücksichtigt werden, die das Projekt eingrenzen und durch das PLCM vorgegeben sind. Diese externen Faktoren werden im Folgenden zunächst erfasst (Abschnitt~\ref{sec:Erfassen externer Randbedingungen}). Anschließend werden daraus die Anforderungen an das System abgeleitet (Abschnitt~\ref{sec:Anforderungen an die modulare Roboterzelle}) und gewichtet, um darauf aufbauend Systemkonzepte zu entwickeln und zu bewerten (Abschnitt~\ref{sec:Entwicklung und Bewertung von Systemkonzepten}).
 
+% =====================================================================
 \section{Erfassen externer Randbedingungen}
 \label{sec:Erfassen externer Randbedingungen}
+% =====================================================================
 
-Leichte erweiterbarkeit
-Die Lokalisierung und einbindung neuer Module in den digitallen zwilling ist nur ein Teil des gesmten Forschungsziels der Modularen Fertigung und gleidert sich daher ein in ein dynamisches Projekt, welches nach abschluss des ADP nicht abgeschlossen ist sindern weiterentwickelt wird. Dies muss bei der Auslegung beachtet werden, da folgende Gruppen die erarbeiten Konzept übernehmen, modifieren und leicht verwenden können müsen. Hier wäre eine erweitereung des Arbeitsbereichs, einbundung neuer Module, mehrere Roboter gleichzietig mehere Tags an einem Modul, fahrende Roboter oder Menschen, die sich ebenfals in dem Arbeits bereich befuden denkbare nächste Ergänzungen. Das Erarbeitete Konzept muss daher leicht zu erweitern sein und von anderen Druppen gut nutzbar ohne, zuviel aufwand für die einbingunh unseres Konzepts benötigt. Eine entsprechnd aufschlussreche dokumentation ist daher ebenfalls elementar.
+Externe Randbedingungen sind Gegebenheiten, die wir im Rahmen des Projekts nicht beeinflussen können, sondern als gesetzt hinnehmen müssen. Sie lassen sich in vier Bereiche gliedern: den organisatorischen Projektrahmen, die Umgebung der Roboterzelle, die bereits vorhandene Hard- und Software sowie den übergeordneten Projektkontext.
+
+\subsection{Organisatorischer Projektrahmen}
+
+\paragraph{Budget}
+Alle Kosten des Projekts werden vom PLCM übernommen und müssen der Budgetplanung entsprechen. Der finanzielle Rahmen wurde auf 1000\,Euro festgelegt.
+
+\paragraph{Entwicklungszeit}
+Der zeitliche Rahmen der Arbeit ist auf etwa sechs Monate angesetzt (Mai bis Ende November). Davon waren etwa drei Monate für Vorbereitung, Bestellungen und die Abstimmung des Konzepts und drei weitere Monate für Umsetzung, Validierung und Dokumentation eingeplant.
+% TODO: "69 Tage, also knapp 10 Wochen" -- worauf bezieht sich das genau (reine Umsetzungsphase?)? Hier einordnen.
+An unser Projekt anschließend sollen darauf aufbauende ADPs ausgeschrieben werden. Die Umsetzung muss daher bis zum Fixtag abgeschlossen sein, da eine Verlängerung weitere Projekte in Verzug bringen würde.
+
+\subsection{Umgebungsbedingungen der Roboterzelle}
+
+\paragraph{Arbeitsbereich}
+Die Roboterzelle befindet sich im Hauptlabor des PLCM in einem ausgewiesenen Bereich von $2 \times 2$\,m, der zugleich den vorgesehenen Arbeitsbereich unserer Lokalisierung bildet. Um diesen herum ist ein größerer Bereich von etwa $4 \times 4$\,m durch Tische physisch begrenzt. Module, die nicht vollständig in den Arbeitsbereich passen, können daher auch teilweise oder ganz außerhalb des $2 \times 2$\,m-Bereichs platziert werden.
+
+\paragraph{Beleuchtung}
+Für visuelle Erkennungstechnologien ist die Beleuchtung von zentraler Bedeutung. Der Arbeitsbereich wird von vier LED-Deckenpanelen beleuchtet. Dies sorgt für eine konstante Ausleuchtung und macht die Erkennung unabhängig von der Tageszeit. Leichte Helligkeitsschwankungen durch Tageslicht sind messbar, wirken sich jedoch nicht sichtbar auf die Erkennungsquote aus (siehe Kapitel~\ref{TODO:Lichttest}).
+
+\paragraph{Geteilte Nutzung des Labors}
+Neben dem Forschungsprojekt zur modularen Fertigung sind weitere Versuche im Arbeitsbereich untergebracht. Es werden sich daher immer wieder Personen und Objekte im Arbeitsbereich befinden, die nicht mit der Lokalisierung zusammenhängen aber mit dem System in Berührung kommen. Zudem handelt es sich nicht um einen abgeschlossenen Bereich sodass wir nicht davon ausgehen können, das nur Personen die mit dem Projekt vertraut sind Zutritt haben. Dies muss in der Auslegung und im Sicherheitskonzept Beachtung finden.
+
+\paragraph{Mechanische Beanspruchung}
+Die Roboterzelle sowie kleinere Tischmodule werden innerhalb des Arbeitsbereichs regelmäßig verschoben. Kabel, die dabei im Weg hängen, können abgerissen werden und zu Schäden führen. Auf dem Boden befestigte Marker sind ebenfalls diesen Beanspruchungen ausgesetzt.
+
+\subsection{Bestehende Hard- und Software}
+
+\paragraph{Roboter}
+Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von $\pm 0{,}1$\,mm. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben.Als Endeffektor ist bereits ein Parallelgreifer montiert.
+
+\paragraph{Vorhandene Komponenten}
+Im Labor sind bereits Rechenleistung (Raspberry Pis), Kameras, Werkzeuge und Montagematerial vorhanden, die für das Projekt genutzt werden können.
+
+\paragraph{Web-Schnittstelle}
+Für die modulare Roboterzelle und die Prozessplanung wurde in vorherigen Arbeiten bereits eine Web-Schnittstelle zur Steuerung des Roboters implementiert. Über das bestehende Nodesystem lassen sich Abläufe codefrei zusammenstellen. In dieses System wird auch die Lokalisierung eingebunden.
+
+\paragraph{Kommunikation über OPC UA}
+Im Gesamtprojekt des digitalen Zwillings wird OPC UA bereits als Kommunikationsstandard zwischen den Robotern und dem Server verwendet.
+
+\subsection{Übergeordneter Projektkontext}
+
+Die Lokalisierung und Einbindung neuer Module in den digitalen Zwilling ist nur ein Teil des gesamten Forschungsziels der modularen Fertigung. Sie gliedert sich in ein dynamisches Projekt ein, das mit Abschluss dieses ADP nicht beendet ist, sondern von nachfolgenden Gruppen weiterentwickelt wird. Denkbare nächste Ergänzungen sind:
+\begin{itemize}
+    \item eine Erweiterung des Arbeitsbereichs auf das gesamte PLCM-Labor,
+    \item die Einbindung neuer Module,
+    \item mehrere Roboter gleichzeitig,
+    \item modulare Fertigungsplanung,
+    \item fahrende Roboter und Fahrerlose Transportsysteme sowie
+    \item Menschen, die sich ebenfalls im Arbeitsbereich befinden.
+\end{itemize}
+Darüber hinaus soll die modulare Fertigung perspektivisch in einem Industriebetrieb eingesetzt werden, dessen Bedingungen nicht denen im Labor entsprechen.
+
+% =====================================================================
+\section{Anforderungen an das Konzept ableiten}
+\label{sec:Anforderungen an das Konzept ableiten}
+% =====================================================================
+
+Aus den zuvor erfassten Randbedingungen leiten wir im Folgenden die Anforderungen an das Lokalisierungssystem ab. Tabelle~\ref{tab:anforderungen} fasst diese abschließend zusammen.
+
+\subsection{A1 -- Aufrüstbarkeit}
+Da nachfolgende Gruppen das erarbeitete Konzept übernehmen, anpassen und weiterentwickeln werden, muss es ohne grundlegende Änderungen erweiterbar sein (vgl. die in Abschnitt~\ref{sec:Erfassen externer Randbedingungen} genannten möglichen Ergänzungen). Daraus ergeben sich folgende Anforderungen:
+\begin{itemize}
+    \item \textbf{Abdeckung des Arbeitsbereichs:} Die Lokalisierung muss mindestens den vorgesehenen Arbeitsbereich von $2 \times 2$\,m abdecken (Festforderung). Wünschenswert ist eine Abdeckung des gesamten abgegrenzten Bereichs von $4 \times 4$\,m, sodass auch Module lokalisiert werden können, die über den Arbeitsbereich hinausragen. Darüber hinaus soll sich der erfasste Bereich mit möglichst geringem Aufwand vergrößern lassen.
+    \item \textbf{Erweiterbarkeit des Systems:} Zusätzliche Module, Roboter oder weitere zu erfassende Objekte sollen sich mit möglichst geringem Aufwand einbinden lassen.
+    \item \textbf{Nachnutzbarkeit:} Die Übernahme des Konzepts darf für nachfolgende Gruppen keinen unverhältnismäßigen Einarbeitungsaufwand bedeuten. Eine nachvollziehbare Dokumentation ist daher unerlässlich.
+\end{itemize}
+
+\subsection{A2 -- Kosteneffizienz}
+Die Gesamtkosten dürfen den Rahmen von 1000\,Euro nicht überschreiten; geringere Kosten sind zu bevorzugen. Um keine unnötigen Kosten zu verursachen, ist die Verwendung bereits vorhandenen Materials (Raspberry Pis, Kameras, Werkzeuge, Montagematerial) zu bevorzugen.
+
+\subsection{A3 -- Positioniergenauigkeit}
+Zur Validierung des Konzepts haben wir einen typischen und erprobten industriellen Anwendungsfall gewählt: Pick-and-Place. Dabei wird ein Objekt von einem Roboter an einer vorgegebenen Position aufgenommen und an einer vordefinierten Stelle abgelegt. Dieser Anwendungsfall ist universell und lässt sich über das bestehende Nodesystem codefrei nachbauen.
+
+Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von $313{,}29\,\mathrm{mm}^2$ bei einer Seitenlänge von $17{,}7$\,mm besitzen. Damit ist die Positionsgenauigkeit auf mindestens 8,85mm nach oben beschränkt. Überschreitet man diese Grenze kann der Greifer ins leere Greifen. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection}, ~\cite{Li2020SquarePickPlace}.
+
+Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von $\pm 0{,}1$\,mm. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu 8,51\,mm liegen kann. \cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von 20\,mm, die geringfügig über der Kantenlänge der Greifbacken von 17,7\,mm liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von $\pm 10$\,mm, was der halben Kantenlänge des Würfels entspricht.
+
+Die geforderte Positioniergenauigkeit von $\pm 3$\,mm liegt damit um etwa den Faktor drei unter der zulässigen Grenze und bietet ausreichend Reserve für weitere Fehlerquellen wie die Absolutgenauigkeit des Roboters.
+
+\subsection{A4 -- Echtzeitfähigkeit und Verfügbarkeit}
+Das System muss eine Veränderung an den Modulen, etwa das Hinzufügen, Entfernen oder Verschieben eines Moduls, innerhalb weniger Sekunden erkennen. Innerhalb desselben Zeitrahmens muss die aktualisierte Position des Moduls bereitstehen, gemessen von der Veränderung bis zur Bereitstellung des Ergebnisses. Da sich die Module zwischen zwei Prozessschritten nicht bewegen, sind die Echtzeitanforderungen vergleichsweise gering. Sie müssen nicht im Millisekundenbereich liegen, wie es etwa bei der Überwachung dynamischer Systeme der Fall wäre. Eine schnellere Reaktion verbessert vor allem die Nutzerfreundlichkeit, ist aber technisch nicht zwingend erforderlich.
+
+Zudem muss das System für den Dauerbetrieb ausgelegt sein und möglichst geringe Ausfallzeiten aufweisen. Nach einer Unterbrechung, etwa durch einen Neustart oder Stromausfall, soll es ohne größeren manuellen Aufwand wieder betriebsbereit sein.
+
+\subsection{A5 -- Robustheit}
+Im Arbeitsbereich halten sich regelmäßig Personen und projektfremde Objekte auf, zudem werden Roboterzelle und Module häufig verschoben. Das System muss daher unter diesen Bedingungen zuverlässig arbeiten und mit Störungen umgehen können. Daraus ergeben sich folgende Anforderungen:
+\begin{itemize}
+    \item \textbf{Umgang mit unvollständigen Informationen:} Kann ein Modul zeitweise nicht erfasst werden, etwa weil es durch Personen oder Objekte verdeckt ist, muss das System dies erkennen und darf keine fehlerhaften Positionsdaten ausgeben.
+    \item \textbf{Fehlererkennung bei Komponentenausfall:} Fällt eine Systemkomponente aus oder wird von der Anlage getrennt, muss das System den Ausfall erkennen und an den Nutzer melden, anstatt veraltete oder falsche Daten weiterzugeben.
+    \item \textbf{Mechanische Belastbarkeit:} Alle physischen Komponenten im Arbeitsbereich müssen den Belastungen im Laborbetrieb standhalten, insbesondere dem Verschieben von Roboterzelle und Modulen sowie dem Begehen der Fläche, ohne beschädigt zu werden oder ihre Funktion zu verlieren.
+\end{itemize}
+Auch wenn es sich um ein Forschungsprojekt in einem klar abgesteckten Rahmen handelt, soll das Konzept bereits erste Überlegungen zur Übertragbarkeit auf eine industrielle Umgebung berücksichtigen.
+
+\subsection{A6 -- Sicherheit}
+\label{subsec:Sicherheit}
+Obwohl der FR3 als Cobot ausgelegt ist, stellen Roboterbewegungen ein Sicherheitsrisiko für Personen im Arbeitsbereich dar. Da dieser nicht abgeschlossen ist, muss ein besonderes Augenmerk auf die Sicherheit gelegt werden:
+\begin{itemize}
+    \item Alle mechanischen Aufbauten müssen so gesichert sein, dass Personen nicht gefährdet werden, sei es durch Laser, spitze Teile, Verkabelung oder herunterfallende Gegenstände.
+    \item Fehler im Lokalisierungssystem (siehe A5) dürfen nicht zu unkontrollierten Roboterfahrten führen.
+    \item Der Roboter darf sich nicht automatisch bewegen, sondern benötigt stets die Bestätigung durch einen Menschen, der den Arbeitsbereich einsehen und prüfen kann.
+\end{itemize}
+
+\subsection{A7 -- Integration in bestehende Systeme}
+\label{subsec:Integration}
+Die Lokalisierung muss in die bestehende Infrastruktur des digitalen Zwillings eingebunden werden können. Dazu muss sie sich über das vorhandene Web-Frontend steuern lassen und ihre Ergebnisse über die im Projekt verwendeten Schnittstellen, insbesondere OPC UA, bereitstellen. Da diese Anforderung für jedes Konzept zwingend erfüllt sein muss, dient sie als Ausschlusskriterium und geht nicht in die Gewichtung ein.
+
+\subsection{A8 -- Umsetzbarkeit im Zeitrahmen}
+\label{subsec:Zeitrahmen}
+Das Konzept muss so gewählt werden, dass es innerhalb der verfügbaren Umsetzungszeit absehbar realisiert und funktionsfähig ist.
 
 
-Kosten
-Alle kosten für das Projekt werden vom PLCM übernommen und müssen entsprechend der Budget planung entsprechen. Um keine unnötigen Kosten zu verursachen, ist die verwednung von bereits bestehendem Material zu beforzugen und wird entsprecehnd auch in unserem Konzept berücksichtigt. Dies betrifft bereits vorhandene Rechnenleistung wie Raspberry PIs, Kameras, werkzeuge und Mantagematerial. Der finanzielle Rahmen des Projektes wurde mit 1000 Euro festgelegt. Geringere Kosten sind allerdings zu beforzugen.
-
-Robustheit
-Auch wenn es sich bei dem Projekt um ein Forschungsprojekt in einem sehr abgesteckten Rahmen hadelt sollte nicht vergessenw erden, dass die Modulare Fertigung später in einem Industriebetrieb eingesetzt wird. Hier sollten daher erste Schritte und Gedanken in die Spätere Umgebung mit einfließen, welche nicht den bei uns gegebenen Bedingung entsprecehn.
-
-Genauigkeit
-Für die Validierung des Konzepts haben wir uns einen Typischen und erprobten Industrie usecase herausgesucht. Dieser ist universell und lässt sich durch das bestehende nodesystem codefrei nachbauen. Beim Pick und Place wird ein Objekt aus einer vorgegeben Position von einem Roboter aufgehoben und an eine vordefinierte Stelle gelegt. Die benötigte Genauigkeit hierfür hängt von verschieden Faktoren wie Bauteilgeometrie, Zielerreichbarkeit oder Endefektor. Wir haben uns hier für den Bereits montieretn Paralelgreifer entschieden. Die griffbacken Haben eine quadratische Fläche von $313.29mm^2$ mit einer seiten Länge von 17,7mm. Wir haben uns wür ein Symetrisches bauteil entschieden, da hier die Verschiebung zum Ziel einfach messbar ist. Beispielhafte anwendungsfälle haben einen quadratisches Bauteil exemplarisch genutzt (QUELLE ANGEBEN). Nach untenhin ist unsere Genauigkeit von dem Roboter bestimmt, welcher laut datenblatt Eine Punt Widerholgenauigkeit von +-0.1mm. Die Absolutgenauigkeit wird nicht angeben obwohl es für unseren Usecase wichtiger ist die Absolute genauigkeit zu wissen. Unsere Recherche hat ergeben, das diese bei dem Franka R3 nicht besonders gut ist(Quelle suchen). Für unsere Positionierungsgenauigkeit kommen wir so auf +-3mm.
-
-
-Echtzeitfähigkeit
-Eine weitere wichtige Eigenschaft des Technischen systems ist die ectzeit fähigkeit. Das Überwachen der Module sollte eine Veränderung in einem Angemessenen Zeitrahmen von wenigen Sekunde Werkennen. Auch die Auswertung Daten und erkennen der Tags auf diesen Bildern sollte das system in angemessener Zeit von wenigen Sekunen schaffen. Die anfordeung an die echtzeit können daher entspannt werden und müssen nicht im Millibereich wie bei der Überwachung dynamischer systeme stattfinden. Jedr gewinn an geschwindigkeit ist fließt eher in die Nutzerfreundlichkeit als in ein Tatsächlichen technisch notwendigen Punkt.
-Das system sollte dauerhaft laufen und möglichst geringe unterbrechungszeiten besitzen um die 
-
-Sicherheit
-Der verwendete Roboter Franka R3 ist ein Cobot und ist somit für eine sichere Zusammenarbeit mit menschen ausgelegt. Dennoch besteht durch umherfahren des Roboters ein Sucherheitsrisiko, für menschen, die sich in dem SIcherheitsbereich befinden. Zudem müssen alle Mechnischen aufbauten gesichert werden, sodass Personen, die sich in dem Arbeitsbereich befinden nicht gefährdet werden, seinen dies Laser, Spitze teile, Verkabelungen herunterfallende Gegenstände. Hier muss ein besonderes augenmerk auf sicherheit gelegt werden, da es sich nicht um einen bgeschlossenen berech handelt. 
-
-Bereits bestehendes software und hardware
-Für die modulare Zoboterzelle und Prozessplanung wurde bereits durch vorherige arbeiten eine web Schnittstelle zur steuerung des Roboters implementiert. In das bestehende Forntend sollte auch unsere Lokalisierng eingebettet und gesteuert werden.
-
-Umgebungsbedingung der Roboterzelle
-Die Zelle ist im haupt Labor des PLCM aufgebaut und steht in einem Abgesteckten bereich von 2x2 Metern. Außerhalb des bereiches ist der Arbeitsbereich durch Tische physisch abgegrenzt. Damit ist der arbeitsbereich vorgegeben und beträgt 2x2 Meter. Module können aber auch leucht außerhalb dieses Bereiches platziert werden.
-
-Für visuelle erkennungtechnologien ist die Beleuchtung von zentraler bedeutung. Der beschreibene ARbeitsbereich wird von vier LED Deckenpanelen beleuchtet, was eine konstante Beleuchtung des Bereiches garantiert und die erkennung tagesunabhängig macht. Leichte helligkeitsschwankungen durch Tageslicht sind erkennbar, wirken sich aber nicht sichtbar auf die Erkunngsquote aus (Siehe Kapitel Lichttest).
-
-Neben dem Forschungsprojekt tu modularer Fertigung und die Lokalisierung sind auch andere Versuche in dem Arbeitsbereich untergebracht. Das bedeutet, dass in dem Arbeitsbereich immer wieder Personen und Objekte sein werden, welche nicht mit der Lokalisierung zusammen hängen und mit denen das Sytem umgehen muss. So muss eine fehlerbehandlug durch ein Verdecktes Tag, abgeschraubte kamera, oder ausgesteckter Raspberry Pi sichergestellt werden und darf zu keinen SIcherheitsrisiken durch unkontrollierte Roboterfahrten führen. Auch der Roboter Selber darf sich nicht automatisch bewegen sondern bedarf immer einer bestätigung durch einen Menschen, der den arbeitsbereich einsehen und prüfen kann.
-
-Weiterhin werden die Roboterzelle sowie kleinere Tiscmodule innerhalb des Arbeitsberehces verschoben. Kabel die Hier im weg hängen können faher abgerissen werden und zu svhäden führen. Auch Auf dem Boden Befestigte Merker müssen entsprechend robust sein, um diesen Beansprunchungen stand zu halten.
-
-OPCUA wird bereits in dem gesamten Projekt des Virtuellen Zwillings als Kommunikation zwischen Den Robotern und dem Server verwendet. Hier ist es Da sich die Lokalisierung in dieses integrieren soll, müssen auch diese SChnittstellen und Kommunikationsmethoden beachtet werden.
+\begin{table}[H]
+    \centering
+    \caption{Übersicht der Anforderungen und ihrer Herkunft}
+    \label{tab:anforderungen}
+    \begin{tabular}{l p{4.2cm} p{3.6cm} p{4.2cm}}
+        \hline
+        \textbf{ID} & \textbf{Anforderung} & \textbf{Zielwert} & \textbf{Abgeleitet aus} \\
+        \hline
+        A1 & Erweiterbarkeit \& Nachnutzbarkeit & Dokumentiert, modular & Projektkontext \\
+        A2 & Kosteneffizienz & $\leq 1000$\,€, Bestand nutzen & Budget, vorhandene Komponenten \\
+        A3 & Positioniergenauigkeit & $\pm 3$\,mm & Pick-and-Place, Greifer, Roboter \\
+        A4 & Echtzeitfähigkeit \& Verfügbarkeit & Reaktion in wenigen Sekunden, Dauerbetrieb & Nutzerfreundlichkeit \\
+        A5 & Robustheit & Fehlerbehandlung, robuste Montage & Geteilte Nutzung, mech. Beanspruchung \\
+        A6 & Sicherheit & Keine autonome Roboterbewegung & Offener Arbeitsbereich, Cobot \\
+        A7 & Integration & Web-Frontend, OPC UA & Bestehende Software \\
+        A8 & Umsetzbarkeit & Fertig bis zum Fixtag & Entwicklungszeit \\
+        \hline
+    \end{tabular}
+\end{table}
 
 
-Entwicklungszeit
-er zeitliche Rahmen der Arbeit ist auf etwa 6 Monate angesetzt Mai - Ende November geplant. Hiervon waren etwa 3 Monate für die vorbereitung bestellungen, und absprecehn des Konzept eingelant und 3 Monate für die umsetzt, validierung und Dokumentation. An unser Projekt anschließend wurden bereits neue ADPs ausgeschreiben weshalb die umsetzung bis zum Fixtag erfolgen muss und eine verländerung weitere Projekte in verzug bringt. Das Bedeutet konkret für das Konzept,das es in dieser Zeit absehbar umgesetzt und funktionsfähig ist.  69 Tage, also knapp 10 Wochen.
+% =====================================================================
+\section{Gewichtung der Anforderungen}
+\label{sec:Gewichtung der Anforderungen}
+% =====================================================================
+
+Nicht alle Anforderungen beeinflussen unser Konzept gleich stark. Deshalb gewichten wir sie für die Konzeptfindung. Für ein systematisches Vorgehen haben wir uns für einen Paarvergleich ~\ref{tab:paarvergleich}  entschieden, bei dem die Kriterien in einer Matrix paarweise miteinander verglichen werden. Dabei erhält jede Paarung
+\begin{itemize}
+    \item ein \enquote{$+$}, wenn die Anforderung in der Spalte wichtiger ist als die in der Zeile,
+    \item ein \enquote{$-$}, wenn sie weniger wichtig ist, und
+    \item ein \enquote{$=$}, wenn beide Kriterien gleich gewichtet werden.
+\end{itemize}
+Anschließend werden Punkte vergeben: $-$ entspricht 0 Punkten, $=$ entspricht 1 Punkt und $+$ entspricht 2 Punkten. Die Summe der Punkte wird in der letzten Spalte eingetragen.
+
+Festforderungen müssen von jedem Konzept erfüllt werden und dienen daher als Ausschlusskriterien. Im Paarvergleich werden ausschließlich Wunschforderungen gewichtet, da nur diese eine Differenzierung zwischen den Konzepten ermöglichen. Da es sich bei der Sicherheit (A6, Abschnitt~\ref{subsec:Sicherheit}) und der Integration in bestehende Systeme (A7, Abschnitt~\ref{subsec:Integration}) um Festforderungen handelt, die jedes Konzept zwingend erfüllen muss, werden sie im Paarvergleich nicht berücksichtigt.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Gewichtung der Anforderungen mittels Paarvergleich (Werte gerundet)}
+    \label{tab:paarvergleich}
+    \renewcommand{\arraystretch}{1.35}
+    \newcommand{\diag}{\cellcolor{gray!20}}
+    \newcommand{\rot}[1]{\multicolumn{1}{c}{\rotatebox{90}{#1}}}
+    \begin{tabular}{>{\raggedright\arraybackslash}p{3.6cm}
+                    *{7}{>{\centering\arraybackslash}p{0.55cm}}
+                    >{\centering\arraybackslash}p{0.9cm}
+                    >{\centering\arraybackslash}p{1.1cm}}
+        \toprule
+        & \rot{Identifikation der Module}
+        & \rot{Kalibrierbarkeit}
+        & \rot{Positions-/Rotationsgenauigkeit}
+        & \rot{Kosten}
+        & \rot{Aufrüstbarkeit}
+        & \rot{Robustheit}
+        & \rot{Entwicklungszeit}
+        & \rot{\textbf{Summe}}
+        & \rot{\textbf{Normiert}} \\
+        \midrule
+        Identifikation der Module         & \diag & +     & --    & +     & +     & =     & =     & 8  & 0,19 \\
+        Kalibrierbarkeit                  & --    & \diag & --    & --    & =     & =     & =     & 3  & 0,07 \\
+        Positions-/\newline Rotationsgenauigkeit
+                                          & +     & +     & \diag & +     & +     & +     & +     & 12 & 0,29 \\
+        Kosten                            & --    & +     & --    & \diag & --    & +     & =     & 5  & 0,12 \\
+        Aufrüstbarkeit                    & --    & =     & --    & +     & \diag & =     & =     & 5  & 0,12 \\
+        Robustheit                        & =     & =     & --    & --    & =     & \diag & =     & 4  & 0,09 \\
+        Entwicklungszeit                  & =     & =     & --    & =     & =     & =     & \diag & 5  & 0,12 \\
+        \midrule
+        \multicolumn{8}{r}{\textbf{Gesamt}} & \textbf{42} & \textbf{1,00} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Ergebnis der Gewichtung der Bewertungskriterien}
+    \label{tab:gewichtung}
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{l r}
+        \toprule
+        \textbf{Bewertungskriterium} & \textbf{Gewichtung} \\
+        \midrule
+        Identifikation der Module         & 19\,\% \\
+        Kalibrierbarkeit                  &  7\,\% \\
+        Positions-/Rotationsgenauigkeit   & 29\,\% \\
+        Kosten                            & 12\,\% \\
+        Aufrüstbarkeit                    & 12\,\% \\
+        Robustheit                        &  9\,\% \\
+        Entwicklungszeit                  & 12\,\% \\
+        \midrule
+        \textbf{Summe}                    & \textbf{100\,\%} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept (siehe Tabelle~\ref{tab:gewichtung}). Das Kernziel der Lokalisierung ist die Positions- und Rotationsgenauigkeit, die mit 29\,\% folgerichtig am stärksten gewichtet ist. Ebenso zentral ist die Identifikation der einzelnen Module, die mit 19\,\% an zweiter Stelle steht. Die Kriterien, die die praktische Umsetzbarkeit des Konzepts betreffen, also Kosten, Entwicklungszeit und Aufrüstbarkeit, liegen mit jeweils 12\,\% gleichauf. Robustheit und Kalibrierbarkeit sind zwar zu berücksichtigen, für die Konzeptauswahl jedoch nicht ausschlaggebend. Insgesamt zeigt sich, dass die beiden Kernfunktionen, das Lokalisieren und das Identifizieren der Module, zusammen knapp 50\,\% der Gewichtung ausmachen.
+
+Die Gewichtung wurde anschließend im Rahmen des Zwischenkolloquiums vorgestellt, mit den Teilnehmenden diskutiert und bestätigt.
+
+% =====================================================================
+\section{Konzeptentwicklung}
+\label{sec:Konzeptentwicklung}
+% =====================================================================
+Die Recherche der Lokalisierungstechnologien in Abschnitt~\ref{sec:Lokalisierungstechnologien} zeigt einen Zielkonflikt zwischen der erreichbaren Genauigkeit und dem abdeckbaren Arbeitsbereich. Magnetfeldbasierte Verfahren mit Hall-Sensor-Arrays erreichen hohe Genauigkeiten, etwa einen maximalen Positionsfehler von 1,4\,mm~\cite{KawatoKim2005} oder mittlere absolute Fehler von unter 0,04\,mm~\cite{Nemeth2025Hall}. Sie sind jedoch auf einen begrenzten Bereich in unmittelbarer Nähe des Sensorarrays beschränkt. UWB-basierte Systeme decken dagegen große industrielle Innenräume ab, erreichen dabei aber lediglich Positionsgenauigkeiten im Bereich von etwa 5 bis 30\,cm~\cite{Elsanhoury2022}. Bei RFID-Grid-Systemen hängt die Genauigkeit maßgeblich von der Tag-Dichte ab: Mit 100 Tags pro Quadratmeter ergeben sich mittlere Abweichungen von 4,7\,mm in $x$- und 22,8\,mm in $y$-Richtung~\cite{MiTakahashi2016}, wobei der Installationsaufwand mit der abzudeckenden Fläche steigt.
+
+Auch innerhalb einer Technologie zeigt sich dieser Zielkonflikt. Bei markerbasierten Kamerasystemen steigt der Positionsfehler mit zunehmendem Abstand zwischen Kamera und Marker. Über Abstände von 1 bis 6\,m gemittelt liegen die Positionsfehler etablierter Verfahren zwischen 11,5 und 15,9\,mm, während für ArUco3 bei einem Abstand von 1\,m ein Fehler von etwa 1,7\,mm erreicht wird~\cite{JuradoRodriguez2023}. Da die Werte unter unterschiedlichen Versuchsbedingungen ermittelt wurden, sind sie nicht direkt vergleichbar, verdeutlichen jedoch die grundlegende Tendenz: Eine hohe Genauigkeit lässt sich nur in einem kleinen Bereich erreichen, ein großer Bereich nur mit verminderter Genauigkeit abdecken.
+
+Aus diesem Grund wird die Lokalisierung in zwei Ebenen unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von $\pm 3$\,mm sicher.
+
+Aus den vorgestellten Technologien entwickeln wir drei sinnvolle Kombinationen
 
 
+% TODO: Folgende Stichpunkte aus dem Entwurf ausformulieren:
+%
+% Warum Level 1 und Level 2?
+%  - erweiterbar auf noch feinere Level (modular)
+%  - künftig grobe, ungenaue Abbildung des gesamten Labors möglich
+%  - Deckenmontage später leicht umzusetzen, da das Konzept darauf aufbaut
+%  - schnelle Bildauswertung, kein Fokusproblem, Höhen bereits bekannt
+%  - Reduktion auf ein 2D-Problem
+%
+% Offene Fragen:
+%  - Reicht Level 1 aus?
+%  - Reicht Level 2 aus?
+%
+% Wie wird die absolute Position bestimmt?
+%  - Winkel im Träger oder Welt-Tags?
 
-Warum Level 1 und level 2?
--erweiterbar auf noch feinere Level (modular)
--Großer ungenaue Abbildung des gesamten Labores in der Zukunft
--Deckenmontage später leicht umzusetzten, da konzept darauf aufbaut
-- Schnelle bildauswertung kein Fokus problem, Höhen bereits bekannt
--reduzieren auf 2d Problem
-
-- Reicht LV1 aus?
-- Reicht LV 2 aus?
-
-Wie wird die absolute Position bestimmt?
-Konzeptvorstellung
-Winkel im Träger
-oder welttags?
-
-
-\section{Anforderungen an die modulare Roboterzelle}
-\label{sec:Anforderungen an die modulare Roboterzelle}
-
-\section{Entwicklung und Bewertung von Systemkonzepten}
-\label{sec:Entwicklung und Bewertung von Systemkonzepten}
-
-Bewerten der Anforderungen
-Aus diesen Begebenheiten lassen sich die Ensprechenden Anforderungen ableiten. Im nächten schritt müssen wir diese gewichten da nicht alle unser Konzept gleich stark beeinflussen. Diese werden für die Konzeptfindung gewichtet. Für eine systemetische vorgehensweise haben wir uns für einen Paarvergleich der einzelnen Kriterien entschieden, wobei diese in einer Matrix miteinander verglichen werden. Dabei teilt man jeder Paarung ein + zu, wenn die ANforderung in der Spalte wichtiger ist als in der reihe. EIn - wenn es andersherum ist und ein = wenn bei kriterien gleich gewichtet werden. Anschließend zählt man - = 0 Punkte, =  = 1Punkt und + = 2 Punkte. Die sume der Pinkte wird in der Letzten SPallte aufgetragen
 
 \section{Auswahl des Systemkonzepts}
 \label{sec:Auswahl des Systemkonzepts}
+
+
 
 \section{Systemarchitektur des gewählten Konzepts}
 \label{sec:Systemarchitektur des gewählten Konzepts}
