@@ -58,13 +58,15 @@
   minalphanames=1
 ]{biblatex}
 \addbibresource{beispielbib.bib}
-
 % Keine automatische Groß-/Kleinschreibung:
 \DeclareFieldFormat{titlecase}{#1}
 \DeclareFieldFormat{sentencecase}{#1}
 
+% Kürzel: Quellen mit Autor wie bisher (z. B. [Sai26]). Quellen ohne Autor
+% (Normen, Datenblätter) bekommen im .bib ein shorthand = {Nummer}, fortlaufend
+% in Zitierreihenfolge; dann wird nur diese Nummer verwendet.
 \DeclareLabelalphaTemplate{
-  \labelelement{\field[strwidth=3,strside=left]{labelname}}
+  \labelelement{\field[final]{shorthand}\field[strwidth=3,strside=left]{labelname}}
   \labelelement{\field[strwidth=2,strside=right]{year}}
 }
 \DeclareFieldFormat{labelnumberwidth}{%
