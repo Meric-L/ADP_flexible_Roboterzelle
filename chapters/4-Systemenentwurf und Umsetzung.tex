@@ -6,46 +6,46 @@
 Nachdem die Anforderung und die Technologie in den letzten Kapiteln genauer erläutert wurde, wird in diesem Kapitel der Systementwurf vorgestellt. Die Auswahl der Komponenten begründet und sowie die Methodik und spezielle Umsetzung des Projekt beschrieben... Irgndwie so eine Einleitung
 \section{Gesamtarchitektur}
 \label{sec:gesamtarchitektur}
-Die Gesamtarchitektur ergbist sich aus zwei Eingängen:\\
-1. die Ergebnise aus der Konzeptbildung von Kapitel 2 nur kurz erwähnen und referenzieren, nicht nochmal erzählen. \\
-2. Bestehende Infrastruktur des Institut, Digitaler Zwilling im Webfrontend, WebSocket Backend. \\
-Daraus ergebensich vier Entwurfsprinizipien:
-1. Zwei Ebenen: Layer 1 lokalisiert grob von der Decke, Layer 2 verfeinert die Posen mit dem Roboter und einer Hand in Kamera. Layer 1 liefert startwerte layer 2 liefert feine Genauigkeit.\\
-2. Dezentrale Bildverabeitung mit definierten Minimalen schnittstellen zwischen Recheneinehit und Zentraler Recheneinheit(Backend)\\
-3. Standartisierte Schnittstellen, alle Geräte sprechen OPC-UA, Neue Komponenten lassen ohne Änderung einbringen. \\
-4. Mensch bestätigt und liefert Sicherheit der Zelle in der Zusammenarbeit mit dem Roboter. Gemesse Posen gehen als Vorschlag, ein Mensch kann prüfen und insbesondere die Sicherheit geben, dass kein Mensch oder Objekt im Weg der Roboter steht.\\
-5. Skalierbarkeit des Lokalisierungssystem durch Welt Tag und gemeinsamer Referenzen.\\
-Dann Richtung Umsetzung, wir haben gewählt, dass bestehende Front und Backend weiter zu nutzen, dafür nutzen wir das Frontend zur darstellung des digitalen Zwilling, sowie der Posenplanung, die Darstellung unserer wie unser gesamter Ablauf grob ist, hier nutzen wir auch das große Flussdiagramm wo einzelne Blöcke später nochmals aufgegriffen werden.
-verbunden mit dem Roboter genutzt werden, da der Pi mehr Power hat.
-\begin{figure}
+Die Gesamtarchitektur baut auf zwei Grundlagen auf. Die erste ist das in Kapitel~\ref{ch:Kapt3} gewählte Konzept mit zwei Lokalisierungsebenen. Die zweite ist die vorhandene Infrastruktur des Instituts (Abschnitt~\ref{sec:Erfassen externer Randbedingungen}): der digitale Zwilling im Web-Frontend, das zugehörige Backend und OPC UA als Kommunikationsstandard. Das neue System soll sich in diese Umgebung einfügen und sie nicht ersetzen. Daraus haben wir fünf Entwurfsprinzipien abgeleitet.
+
+\begin{itemize}
+    \item \textbf{Zwei Ebenen.} Die Deckenkamera (Layer~1) erfasst den ganzen Arbeitsbereich und liefert grobe Posen aller Module. Diese Posen sind die Startwerte für die Handkamera am Roboter (Layer~2). Sie misst jedes Modul aus der Nähe nach und liefert die geforderte Genauigkeit.
+    \item \textbf{Dezentrale Bildverarbeitung.} Jede Kamera hat einen eigenen Rechner, der die Bilder direkt vor Ort auswertet. Über das Netzwerk gehen nur die Ergebnisse, also wenige Zahlenwerte statt ganzer Bilder. Das hält die Netzlast gering und die Schnittstellen schlank \cite{Shi2016}.
+    \item \textbf{Einheitliche Schnittstellen.} Alle Geräte sprechen OPC UA. Ein neues Gerät mit derselben Schnittstelle lässt sich ohne Änderungen am übrigen System einbinden.
+    \item \textbf{Der Mensch entscheidet.} Gemessene Posen sind zunächst nur Vorschläge. Der Bediener prüft sie, bevor sie in den digitalen Zwilling übernommen werden. Vor jeder Roboterbewegung stellt er außerdem sicher, dass weder Personen noch Gegenstände im Weg sind.
+    \item \textbf{Gemeinsame Referenz.} Einige fest montierte und eingemessene Marker, die Weltmarker, legen das Weltkoordinatensystem fest. Jede Kamera bestimmt ihre eigene Lage an diesen Markern. So lassen sich weitere Kameras oder ein größerer Arbeitsbereich ergänzen, ohne das Bezugssystem neu festzulegen.
+\end{itemize}
+
+Abbildung~\ref{fig:komponentendiagramm} zeigt die Komponenten, die sich aus diesen Prinzipien ergeben. Die AprilTags teilen sich in Weltmarker und Modulmarker. Weltmarker sind fest und eingemessen, Modulmarker sitzen an den Modulen und werden mit ihnen bewegt. Die Deckenkamera und die Handkamera am Roboterflansch nehmen diese Marker auf. Jede Kamera hängt an einem eigenen Raspberry Pi. Auf beiden Pis läuft dasselbe Programm. Es erkennt die Marker, schätzt ihre Pose und stellt das Ergebnis über einen OPC-UA-Server bereit. Welche Rolle ein Pi übernimmt, legt allein seine Konfiguration fest. Die Wahl der Hardware wird in Abschnitt~\ref{sec:mechanik} begründet.
+
+Das bestehende Backend ist das Bindeglied. Es verbindet sich als OPC-UA-Client mit beiden Pis und mit dem Roboter. Alles, was es empfängt, gibt es per WebSocket an den digitalen Zwilling im Browser weiter. Dort liegen die 3D-Szene, der Modulkatalog und die Posenplanung. Kurz gesagt: Die Pis messen, der digitale Zwilling plant, und das Backend vermittelt dazwischen. Der gestrichelt dargestellte Videostream dient nur der Anzeige und gehört nicht zum Messablauf (siehe Abschnitt~\ref{sec:communikation_intergration}).
+
+% Notiz für Abschnitt Mechanik: Pi 5 an der Hand, da Roboterbewegung und Visual Servoing kurze Rechenzeiten brauchen.
+\begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{01_Komponentendiagramm_v2.pdf}
-    \caption{Komponentendiagramm des Gesamtsystems. Die gestrichelte Linie stellt dabei den optionalen Videostream der Kameras dar.}
-    \label{fig:placeholder}
+    \caption{Komponentendiagramm des Gesamtsystems. Die gestrichelte Linie stellt den optionalen Videostream der Kameras dar.}
+    \label{fig:komponentendiagramm}
 \end{figure}
 
-% \begin{algorithm}[htbp]
-% \caption{Gesamtablauf der Lokalisierung (Grobfassung)}
-% \label{alg:gesamtablauf}
-% \begin{algorithmic}[1]
-% \Require Zellkarte mit Modulkatalog und Weltmarkern
-% \Ensure Posen aller Module und der Roboterbasis im Weltkoordinatensystem
-% \State Geräte per Service Discovery finden
-% \If{Kalibrierung einer Kamera ungültig}
-%   \State kalibrieren
-% \EndIf
-% \State $P_1 \gets$ \Call{Layer1Scan}{} \Comment{grobe Posen aller Module}
-% \State $P_2 \gets$ \Call{Layer2Messfahrt}{$P_1$} \Comment{feine Posen, korrigierte Basis}
-% \If{Bediener gibt $P_2$ frei}
-%   \State Posen $P_2$ übernehmen
-% \Else
-%   \State Posen $P_1$ behalten
-% \EndIf
-% \While{keine Verschiebung der Module erkannt}
-%   \State Zelle überwachen
-% \EndWhile
-% \end{algorithmic}
-% \end{algorithm}
+Wie die Komponenten zusammenarbeiten, zeigt der Gesamtablauf in Abbildung~\ref{fig:gesamtablauf}. Jede Spalte steht für eine Komponente. Alle Nachrichten zwischen den Spalten laufen über das Backend.
+
+Zu Beginn legt der Bediener im Frontend die Zellkarte an. Sie enthält die Weltmarker und den Katalog der Module mit ihren Markern. Gleichzeitig findet das Backend die gestarteten Pis selbstständig im Netzwerk. Danach prüft jeder Pi, ob die Kalibrierung seiner Kamera noch gültig ist. Ist sie das nicht, wird die Kamera mithilfe des Roboters neu kalibriert (Abschnitt~\ref{sec:bildverarbeitung}).
+
+Anschließend startet der Bediener den Layer-1-Scan. Der Decken-Pi nimmt den Arbeitsbereich auf und schickt die Posen der erkannten Marker zurück. Das Frontend lädt damit die Module in die 3D-Szene. Diese groben Posen sind der Ausgangspunkt für alle weiteren Schritte.
+
+Auf Grundlage der Szene plant das Frontend die Messfahrt für Layer~2. Gleichzeitig übernimmt es über die Funktionen Take Control und Sync die Kontrolle über den Roboter. Bei der Messfahrt fährt der Roboter nacheinander Sichtpunkte vor den Modulen an. An jedem Sichtpunkt misst der Hand-Pi die Marker und gibt die Messwerte zurück. Wie sich der Roboter dabei auf den Marker ausrichtet, beschreibt Abschnitt~\ref{sec:servoing}.
+
+Aus den Messwerten entsteht ein Vorschlag mit präzisen Posen. Der Bediener entscheidet, ob er ihn übernimmt. Lehnt er ab, bleiben die Posen aus Layer~1 erhalten. Der digitale Zwilling bleibt also in jedem Fall in einem gültigen Zustand.
+
+Zum Schluss startet die Zellüberwachung auf dem Decken-Pi. Sie vergleicht laufend die erkannten Posen mit dem Stand im digitalen Zwilling. Wird ein Modul um \SI{15}{cm} oder mehr verschoben, beginnt der Ablauf mit einem neuen Scan von vorn. Kleinere Abweichungen lösen keinen neuen Scan aus.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\textwidth]{02_Gesamtablauf_v3.pdf}
+    \caption{Gesamtablauf der Lokalisierung, aufgeteilt auf Frontend, Decken-Pi, Hand-Pi und Roboter. Alle Nachrichten zwischen den Komponenten laufen über das Backend.}
+    \label{fig:gesamtablauf}
+\end{figure}
 
 \section{Mechanischer Aufbau}
 \label{sec:mechanik}
@@ -66,7 +66,21 @@ Dann das Positionsbasierte Servoing beschreiben, gibt es sicher ein Urpaper zu w
 
  \section{Kommunikation und Intergration}
  \label{sec:communikation_intergration}
- Was es gibt wurde schon behandelt, ich muss schauen was genau bei rum kommt und wo ich ansetze. OPC UA Maschine Vision Companion 1 und 2 beschreiben mit Quelle, Roboter besitzt eigene Companion, Schnittstelle bietet Part 10 Programm. Gateway beschreiben, darum späteren in der Umsetzung Backend als OPCUA client frontend kommuniziert nur mit backend. entkopplung eventuell warum man das macht. Was ein Aggretation Server ist was mNDS ist. mNDS meldet Dienste im lokalen Netz selbst an, das Backend kann so Geräte finden ohne feste Adresse, neue OPC UA Sever werden fließend eingebunden. Was genau für Datentypen gedacht sind, wenig bilder auf keinen Fall ein Stream. Daher in Umsetzung noch unseren Webstream erähnen, der für Demo Zwecke dient, aber keine direkte FUnktionalität besitzt. 
+ Wie OPC UA grundsätzlich funktioniert, wurde in Abschnitt~\ref{sec:Kommunikationstechnologien} beschrieben. Für dieses Projekt sind vor allem die Companion Specifications wichtig. Sie legen fest, wie ein bestimmter Gerätetyp seine Daten und Funktionen beschreibt. Für Bildverarbeitungssysteme gibt es OPC UA for Machine Vision. Teil~1 beschreibt, wie ein Bildverarbeitungssystem über eine feste Zustandsmaschine gesteuert wird und wie es seine Ergebnisse bereitstellt \cite{OPC40100-1}. Teil~2 ergänzt Angaben zum Gerät selbst und zu seinem Zustand, zum Beispiel ob es fehlerfrei arbeitet \cite{OPC40100-2}. Unabhängig vom Gerätetyp definiert OPC UA in Part~10 sogenannte Programme. Ein Programm ist ein Ablauf mit festen Zuständen, den ein Client starten, anhalten und zurücksetzen kann. Das Ergebnis liest er danach an einer festen Stelle aus \cite{OPC10000-10}.
+
+ Wenn viele Geräte zusammenarbeiten, muss außerdem klar sein, wer mit wem spricht. Wir setzen dafür auf ein Gateway: Genau ein Client, das Backend, verbindet sich mit allen OPC-UA-Servern. Das Frontend spricht nur mit dem Backend. So muss der Browser kein OPC UA beherrschen, und ein Gerät lässt sich austauschen, ohne dass sich am Frontend etwas ändert. Nach einem ähnlichen Prinzip arbeitet ein Aggregation Server. Er fasst mehrere OPC-UA-Server zu einem zusammen, sodass ein Client nur noch eine Adresse kennen muss \cite{Sain2026}. Damit Geräte auch ohne feste Adresse gefunden werden, sieht OPC UA einen Local Discovery Server (LDS) vor. Server melden sich dort an, Clients fragen dort nach. Über die Erweiterung mit Multicast DNS (mDNS) kündigen sich Server zusätzlich selbst im lokalen Netz an \cite{OPC10000-12}.
+
+ Zuletzt ist festzulegen, welche Daten über die Schnittstelle laufen. OPC UA eignet sich gut für kleine, strukturierte Werte wie Zustände, Befehle und Messergebnisse. Für große Datenmengen wie Bilder oder gar einen fortlaufenden Videostream ist es nicht gedacht. Über OPC UA tauschen wir deshalb nur Posen, Statuswerte und Fehlercodes aus.
+
+ Jeder Pi betreibt einen eigenen OPC-UA-Server auf Basis der Python-Bibliothek asyncua. Der Server bildet das Bildverarbeitungssystem nach Teil~1 der Machine-Vision-Spezifikation ab, einschließlich Zustandsmaschine und Ergebnisverwaltung. Den Gerätezustand meldet er nach Teil~2. Als einheitlicher Einstieg dient zusätzlich ein Programm nach Part~10 mit dem Namen \texttt{VisionProgram}. Darüber startet das Backend einen Messauftrag und liest anschließend das Ergebnis aus. Weitere Funktionen wie die Kalibrierung oder die Zellüberwachung sind als eigene Methoden am selben Server umgesetzt.
+
+ Ein Ergebnis enthält für jedes erkannte Modul eine Pose. Dazu gehören die Position in Metern, die Orientierung als Quaternion, das Bezugssystem und ein Wert für die Konfidenz. Die Ergebnisse werden als JSON-Text übertragen. Eigene strukturierte OPC-UA-Datentypen wären sauberer gewesen, wurden von der verwendeten Bibliothek aber nicht zuverlässig unterstützt. Fehler meldet der Pi als feste Fehlercodes. Zu jedem Code ist ein deutscher Klartext hinterlegt, den das Frontend dem Bediener direkt anzeigen kann.
+
+ Für das Auffinden der Pis nutzen wir die vorhandene Infrastruktur der Zelle. Beim Start meldet sich jeder Pi beim LDS der Zelle an und erneuert diese Anmeldung regelmäßig. Dadurch nimmt ihn der Aggregation Server der Zelle automatisch auf. Zusätzlich kündigt sich der Pi per mDNS an, sodass ihn das Backend über seine bereits vorhandene mDNS-Suche findet. Nach dem Verbinden sucht das Backend auf jedem Server nach Part-10-Programmen und bindet diese als Gerät ein. Ob es sich um den Decken- oder den Hand-Pi handelt, erkennt das Frontend an der Seriennummer. Ein weiterer Pi lässt sich so ohne Änderung am Frontend einbinden.
+
+ Der Roboter bringt einen eigenen OPC-UA-Server nach der Companion Specification für Robotik mit \cite{OPC40010-1}. Seine Ansteuerung über das Backend sowie Take Control und Sync waren bereits vorhanden und werden unverändert genutzt.
+
+ Zusätzlich bietet jeder Pi einen Livestream seiner Kamera an (gestrichelte Linie in Abbildung~\ref{fig:komponentendiagramm}). Der Stream ist kein Teil des Messsystems. Er dient nur dazu, das System bei Vorführungen anschaulich zu machen, und läuft getrennt vom übrigen Ablauf. Da OPC UA nicht für fortlaufende Bilddaten gedacht ist, nutzen wir hier einen einfachen HTTP-Stream im MJPEG-Format. Der Browser lädt ihn direkt vom Pi, ohne Umweg über das Backend. So belastet die Vorschau weder das Backend noch die OPC-UA-Verbindung. Für die Messung wird der Stream nicht gebraucht, sie arbeitet immer mit dem vollen Kamerabild.
 
  \section{Frontend Intergration in den Digitalen Zwilling}
  \label{sec:digitaler_zwilling}
