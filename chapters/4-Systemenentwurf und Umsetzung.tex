@@ -3,9 +3,10 @@
 \cleardoublepage
 
 \chapter{Systementwurf und Umsetzung}
+\label{ch:Systementwurf}
 Kapitel~\ref{ch:Kapt3} hat die Anforderungen festgelegt und das Konzept mit zwei Lokalisierungsebenen ausgewählt. In diesem Kapitel wird daraus ein konkretes System. Jeder Abschnitt beschreibt zuerst das methodische Vorgehen und danach, wie wir es umgesetzt haben.
 
-Abschnitt~\ref{sec:gesamtarchitektur} gibt einen Überblick über die Komponenten und den Gesamtablauf. Abschnitt~\ref{sec:mechanik} legt Kameras und Recheneinheiten aus. Abschnitt~\ref{sec:bildverarbeitung} beschreibt, wie aus einem Kamerabild die Pose eines Markers entsteht, und Abschnitt~\ref{sec:servoing}, wie der Roboter die Handkamera dafür gezielt ausrichtet. Abschnitt~\ref{sec:communikation_intergration} zeigt, wie die Komponenten miteinander kommunizieren, und Abschnitt~\ref{sec:digitaler_zwilling}, wie die Ergebnisse in den digitalen Zwilling gelangen.
+Abschnitt~\ref{sec:gesamtarchitektur} gibt einen Überblick über die Komponenten und den Gesamtablauf. Abschnitt~\ref{sec:hardwareauslegung} legt Kameras und Recheneinheiten aus. Abschnitt~\ref{sec:bildverarbeitung} beschreibt, wie aus einem Kamerabild die Pose eines Markers entsteht, und Abschnitt~\ref{sec:servoing}, wie der Roboter die Handkamera dafür gezielt ausrichtet. Abschnitt~\ref{sec:communikation_intergration} zeigt, wie die Komponenten miteinander kommunizieren, und Abschnitt~\ref{sec:digitaler_zwilling}, wie die Ergebnisse in den digitalen Zwilling gelangen.
 
 \section{Gesamtarchitektur}
 \label{sec:gesamtarchitektur}
@@ -19,7 +20,7 @@ Die Gesamtarchitektur baut auf zwei Grundlagen auf. Die erste ist das in Kapitel
     \item \textbf{Gemeinsame Referenz.} Einige fest montierte und eingemessene Marker, die Weltmarker, legen das Weltkoordinatensystem fest. Jede Kamera bestimmt ihre eigene Lage an diesen Markern. So lassen sich weitere Kameras, Roboter oder ein größerer Arbeitsbereich ergänzen, ohne das Bezugssystem neu festzulegen.
 \end{itemize}
 
-Abbildung~\ref{fig:komponentendiagramm} zeigt die Komponenten, die sich aus diesen Prinzipien ergeben. Die AprilTags teilen sich in Weltmarker und Modulmarker. Weltmarker sind fest und eingemessen, Modulmarker sitzen an den Modulen und werden mit ihnen bewegt. Ein Modul kann dabei mehrere Modulmarker tragen. Ist ein Marker verdeckt oder kann der Roboter ihn mit der Handkamera nicht erreichen, wird das Modul über einen anderen Marker bestimmt. Da die Lage jedes Markers am Modul bekannt ist, führt jeder von ihnen zur selben Modulpose. Die Deckenkamera und die Handkamera am Roboterflansch nehmen diese Marker auf. Jede Kamera hängt an einem eigenen Raspberry Pi. Auf beiden Pis läuft dasselbe Programm. Es erkennt die Marker, schätzt ihre Pose und stellt das Ergebnis über einen OPC-UA-Server bereit. Welche Rolle ein Pi übernimmt, legt allein seine Konfiguration fest. Die Wahl der Hardware wird in Abschnitt~\ref{sec:mechanik} begründet.
+Abbildung~\ref{fig:komponentendiagramm} zeigt die Komponenten, die sich aus diesen Prinzipien ergeben. Die AprilTags teilen sich in Weltmarker und Modulmarker. Weltmarker sind fest und eingemessen, Modulmarker sitzen an den Modulen und werden mit ihnen bewegt. Ein Modul kann dabei mehrere Modulmarker tragen. Ist ein Marker verdeckt oder kann der Roboter ihn mit der Handkamera nicht erreichen, wird das Modul über einen anderen Marker bestimmt. Da die Lage jedes Markers am Modul bekannt ist, führt jeder von ihnen zur selben Modulpose. Die Deckenkamera und die Handkamera am Roboterflansch nehmen diese Marker auf. Jede Kamera hängt an einem eigenen Raspberry Pi. Auf beiden Pis läuft dasselbe Programm. Es erkennt die Marker, schätzt ihre Pose und stellt das Ergebnis über einen OPC-UA-Server bereit. Welche Rolle ein Pi übernimmt, legt allein seine Konfiguration fest. Die Wahl der Hardware wird in Abschnitt~\ref{sec:hardwareauslegung} begründet.
 
 Das bestehende Backend ist das Bindeglied. Es verbindet sich als OPC-UA-Client mit beiden Pis und mit dem Roboter. Alles, was es empfängt, gibt es per WebSocket an den digitalen Zwilling im Browser weiter. Dort liegen die 3D-Szene, der Modulkatalog und die Posenplanung. Kurz gesagt: Die Pis messen, der digitale Zwilling plant, und das Backend vermittelt dazwischen. Der gestrichelt dargestellte Videostream dient nur der Anzeige und gehört nicht zum Messablauf (siehe Abschnitt~\ref{sec:communikation_intergration}).
 
@@ -31,7 +32,7 @@ Das bestehende Backend ist das Bindeglied. Es verbindet sich als OPC-UA-Client m
     \label{fig:komponentendiagramm}
 \end{figure}
 
-Wie die Komponenten zusammenarbeiten, zeigt der Gesamtablauf in Abbildung~\ref{fig:gesamtablauf}. Jede Spalte steht für eine Komponente. Alle Nachrichten zwischen den Spalten laufen über das Backend.
+Wie die Komponenten zusammenarbeiten, zeigt der Gesamtablauf in Abbildung~\ref{fig:gesamtablauf}. Jede Spalte steht für eine Komponente. Alle Nachrichten zwischen den Spalten laufen über das Backend. Die verwendeten Symbole erklärt Abbildung~\ref{fig:legende}.
 
 Zu Beginn legt der Bediener im Frontend die Zellkarte an. Sie enthält die Weltmarker und den Katalog der Module mit ihren Markern. Gleichzeitig findet das Backend die gestarteten Pis selbstständig im Netzwerk. Danach prüft jeder Pi, ob die Kalibrierung seiner Kamera noch gültig ist. Ist sie das nicht, wird die Kamera mithilfe des Roboters neu kalibriert (Abschnitt~\ref{sec:bildverarbeitung}).
 
@@ -42,6 +43,27 @@ Auf Grundlage der Szene plant das Frontend die Messfahrt für Layer~2. Gleichzei
 Aus den Messwerten entsteht ein Vorschlag mit präzisen Posen. Der Bediener entscheidet, ob er ihn übernimmt. Lehnt er ab, bleiben die Posen aus Layer~1 erhalten. Der digitale Zwilling bleibt also in jedem Fall in einem gültigen Zustand.
 
 Zum Schluss startet die Zellüberwachung auf dem Decken-Pi. Sie vergleicht laufend die erkannten Posen mit dem Stand im digitalen Zwilling. Wird ein Modul um \SI{15}{cm} oder mehr verschoben, beginnt der Ablauf mit einem neuen Scan von vorn. Kleinere Abweichungen lösen keinen neuen Scan aus.
+
+% Kompakte Legende der Ablaufdiagramme, nachgezeichnet nach 00_Legende_v3 (draw.io).
+% Erstellt mit Claude Opus 5.5, siehe KI-Hilfsmittel-Verzeichnis.
+\begin{figure}[htbp]
+    \centering
+    \footnotesize
+    \newcommand{\legsym}[1]{\tikz[baseline=0.07cm, line width=0.4pt, x=1cm, y=1cm]{#1}}
+    \begin{tabular}{@{}c@{\hspace{0.5em}}l@{\hspace{1.5em}}c@{\hspace{0.5em}}l@{}}
+        \legsym{\draw[rounded corners=0.18cm] (0,0) rectangle (1,0.36);} & Start / Ende
+        & \legsym{\draw (0,0) rectangle (1,0.36); \draw (0.1,0) -- (0.1,0.36); \draw (0.9,0) -- (0.9,0.36);} & Unterprozess (eigene Abbildung) \\[0.6ex]
+        \legsym{\draw (0,0) rectangle (1,0.36);} & Prozessschritt
+        & \legsym{\draw (0,0.36) -- (1,0.36) -- (0.86,0) -- (0.14,0) -- cycle;} & Bedienung im Frontend \\[0.6ex]
+        \legsym{\draw (0,0.18) -- (0.5,0.38) -- (1,0.18) -- (0.5,-0.02) -- cycle;} & Entscheidung (ja/nein)
+        & \legsym{\draw (0,0.18) -- (0.18,0.36) -- (0.82,0.36) arc (90:-90:0.18) -- (0.18,0) -- cycle;} & Anzeige (3D-Szene) \\[0.6ex]
+        \legsym{\draw[densely dashed] (0,0.18) -- (0.5,0.38) -- (1,0.18) -- (0.5,-0.02) -- cycle;} & Vereinfacht, nicht im Projektumfang
+        & \legsym{\draw[line width=0.8pt] (0,0.23) -- (1,0.23); \draw[line width=0.8pt] (0,0.13) -- (1,0.13);} & Parallele Abläufe beginnen/enden \\[0.8ex]
+        \multicolumn{4}{@{}l@{}}{\glqq via Backend\grqq: Aufruf bzw. Daten laufen über das Backend (OPC-UA-Gateway).}
+    \end{tabular}
+    \caption[Legende der Ablaufdiagramme]{Legende der Ablaufdiagramme in diesem Kapitel. Erstellt mit dem KI-Hilfsmittel Claude Opus 5.5 (Anthropic), siehe KI-Hilfsmittel-Verzeichnis.}
+    \label{fig:legende}
+\end{figure}
 
 \begin{figure}[htbp]
     \centering
