@@ -1,0 +1,73 @@
+
+\graphicspath{{Bilder/Kap4/}}
+\cleardoublepage
+
+\chapter{Systementwurf und Umsetzung}
+Nachdem die Anforderung und die Technologie in den letzten Kapiteln genauer erläutert wurde, wird in diesem Kapitel der Systementwurf vorgestellt. Die Auswahl der Komponenten begründet und sowie die Methodik und spezielle Umsetzung des Projekt beschrieben... Irgndwie so eine Einleitung
+\section{Gesamtarchitektur}
+\label{sec:gesamtarchitektur}
+Die Gesamtarchitektur ergbist sich aus zwei Eingängen:\\
+1. die Ergebnise aus der Konzeptbildung von Kapitel 2 nur kurz erwähnen und referenzieren, nicht nochmal erzählen. \\
+2. Bestehende Infrastruktur des Institut, Digitaler Zwilling im Webfrontend, WebSocket Backend. \\
+Daraus ergebensich vier Entwurfsprinizipien:
+1. Zwei Ebenen: Layer 1 lokalisiert grob von der Decke, Layer 2 verfeinert die Posen mit dem Roboter und einer Hand in Kamera. Layer 1 liefert startwerte layer 2 liefert feine Genauigkeit.\\
+2. Dezentrale Bildverabeitung mit definierten Minimalen schnittstellen zwischen Recheneinehit und Zentraler Recheneinheit(Backend)\\
+3. Standartisierte Schnittstellen, alle Geräte sprechen OPC-UA, Neue Komponenten lassen ohne Änderung einbringen. \\
+4. Mensch bestätigt und liefert Sicherheit der Zelle in der Zusammenarbeit mit dem Roboter. Gemesse Posen gehen als Vorschlag, ein Mensch kann prüfen und insbesondere die Sicherheit geben, dass kein Mensch oder Objekt im Weg der Roboter steht.\\
+5. Skalierbarkeit des Lokalisierungssystem durch Welt Tag und gemeinsamer Referenzen.\\
+Dann Richtung Umsetzung, wir haben gewählt, dass bestehende Front und Backend weiter zu nutzen, dafür nutzen wir das Frontend zur darstellung des digitalen Zwilling, sowie der Posenplanung, die Darstellung unserer wie unser gesamter Ablauf grob ist, hier nutzen wir auch das große Flussdiagramm wo einzelne Blöcke später nochmals aufgegriffen werden.
+verbunden mit dem Roboter genutzt werden, da der Pi mehr Power hat.
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{01_Komponentendiagramm_v2.pdf}
+    \caption{Komponentendiagramm des Gesamtsystems. Die gestrichelte Linie stellt dabei den optionalen Videostream der Kameras dar.}
+    \label{fig:placeholder}
+\end{figure}
+
+% \begin{algorithm}[htbp]
+% \caption{Gesamtablauf der Lokalisierung (Grobfassung)}
+% \label{alg:gesamtablauf}
+% \begin{algorithmic}[1]
+% \Require Zellkarte mit Modulkatalog und Weltmarkern
+% \Ensure Posen aller Module und der Roboterbasis im Weltkoordinatensystem
+% \State Geräte per Service Discovery finden
+% \If{Kalibrierung einer Kamera ungültig}
+%   \State kalibrieren
+% \EndIf
+% \State $P_1 \gets$ \Call{Layer1Scan}{} \Comment{grobe Posen aller Module}
+% \State $P_2 \gets$ \Call{Layer2Messfahrt}{$P_1$} \Comment{feine Posen, korrigierte Basis}
+% \If{Bediener gibt $P_2$ frei}
+%   \State Posen $P_2$ übernehmen
+% \Else
+%   \State Posen $P_1$ behalten
+% \EndIf
+% \While{keine Verschiebung der Module erkannt}
+%   \State Zelle überwachen
+% \EndWhile
+% \end{algorithmic}
+% \end{algorithm}
+
+\section{Mechanischer Aufbau}
+\label{sec:mechanik}
+HIer Verweise aus der Anforderungsanalyse nehmen, beispiel 3mm Genauigkeit daraus folgt wir brauchen die Layer 2 Kamera und so, eventuell nur verweis auf Kapitel~\ref{3}. Gefordert ist \SI{2}{m} $\times$ \SI{2}{m} Bereich darum muss die Kamera bei einer gewünschten Maximalen Taggröße von 8x8cm soviele Pixel haben haben. Da wir nur eine max Höhe von 3m haben und einen Bereich von 2x2m abdecken müssen ergibt sich unsere Brennweite zusammen mit der Sensorgröße. Diese Rechnung ist die Methodik, anschließend kommen wir mit der Umsetzung dann darauf was wir wirklich gewählt haben. Auf was für Werte wir damit kommen und so weiter. Auch ein paar Worte zu den Pis. Deckenkamera soll Tags zuverlässig erkennen, allerdings braucht es keine starke Recheneinheit, da die Latenz hochgewählt war. Pi5 in der Hand, da die Roboterbewegungn und das visuelle Servoing nicht zu hohe Zeiten haben sollen, wurde hier ein stärkerere Pi genommen, desweiteren können in Zukunft andere Visuelle Programme wie YOLO oder ähnliches 
+
+
+\section{Bildverarbeitung}
+\label{sec:bildverarbeitung}
+Methodik, erstmal wie ne Kamera funktioniert, das Lochmodell beschreiben,eventuell auch heir schon das FishAugen Modell von Kaneye oder wie der heißt beshreiben. Was Intrinsic ist was extrinsic ist. Markererkennung: ApriLTags funktionieren, in Stand der Technik wurde nie erzählt, dass man viereckige Konturen sucht. dann das die PosenSCHÄTZUNG, schätzung wichtiger begriff, mit intrinsic und Eckpunkten ein PnP solved, was der Reprojektionsfehler ist, das nutzen wir auch andauernd, warum Ansichten mehrdeutig sein können. Dazu noch wie , also wie 6 DoF hier entstehen. Die Koordinantentransformationskette, eventuell hier bisschen mit PseudoCode arbeiten, wie so die Pipeline ist ganz allgemein ist. Bild -> Tag Suche(wie macht das anschneiden -> Kanten finden -> Ecken finden (eventuell ist das auch ein Schritt) Mit schwächen von den Werten, in der Umsetzung dann die Layer 1 und Layer 2 diagramme, warum wir manche Werte gar nicht benutzen. Unsere Pipeline erklären, warum wir die Dinge so umgesetzt haben wie wir es haben, frag Claude und sag wenn du geschrieben hast, dann gebe ich noch bisschen Senf dazu.
+
+ICH GLAUBE DIE GANZE KALIBRIERUNG GEHÖRT SCHON HIER REIN UND SPÄTER IN DER VERIFKATION ZEIGEN WIR NUR WIE WIR DIE INTRINSIC VERIFIZIEREN? (Kommentar von Meric)
+
+\section{Visual Servoing}
+\label{sec:servoing}
+Was ist visual Servoing, warum nutzt man das, wie funktioneirt das. Also die Posenkette vom Roboter komplette Transformation durchgehen. $\mathbf{T}{\mathrm{Basis,Marker}} = \mathbf{T}{\mathrm{Basis,Flansch}}(\mathbf{q}),\mathbf{T}{\mathrm{Flansch,Kamera}},\mathbf{T}{\mathrm{Kamera,Marker}}$. Die Hand-Auge-Matrix löst $\mathbf{AX}=\mathbf{XB}$ 
+Dann das Positionsbasierte Servoing beschreiben, gibt es sicher ein Urpaper zu was wir verlinken können. Hier kann auch gut Pseudo Code einsetzen, eventuell auch später bei der Umsetzung den Pseudo Code und dann direkt wie wir es gemacht haben, es gibt auch ein Flussdiagramm dazu, muss du mal schauen ob pseudo Code und das Diagramm nimmst oder nur pseudocode, da Adrian sich den gewünscht hat.
+ Bei Umsetzung halt noch, dass wir das nutzen, da die Kalibierung in der Bildmitte immer am genausten ist, tags die gerade so am Bildrand sind somit besser aufgenommen werden können. der Roboter sich perfekt im arbeitsabstand positionieren kann, da sowohl intrisic als auch extrinsic der hand kamera zu einem großen teil auf einen festen arbeitsabstand optimiert wurden, dazu gibt es später auch noch Messungen muss du schauen wie man das macht, da man glaube nicht vorgreifen sollte.
+
+ \section{Kommunikation und Intergration}
+ \label{sec:communikation_intergration}
+ Was es gibt wurde schon behandelt, ich muss schauen was genau bei rum kommt und wo ich ansetze. OPC UA Maschine Vision Companion 1 und 2 beschreiben mit Quelle, Roboter besitzt eigene Companion, Schnittstelle bietet Part 10 Programm. Gateway beschreiben, darum späteren in der Umsetzung Backend als OPCUA client frontend kommuniziert nur mit backend. entkopplung eventuell warum man das macht. Was ein Aggretation Server ist was mNDS ist. mNDS meldet Dienste im lokalen Netz selbst an, das Backend kann so Geräte finden ohne feste Adresse, neue OPC UA Sever werden fließend eingebunden. Was genau für Datentypen gedacht sind, wenig bilder auf keinen Fall ein Stream. Daher in Umsetzung noch unseren Webstream erähnen, der für Demo Zwecke dient, aber keine direkte FUnktionalität besitzt. 
+
+ \section{Frontend Intergration in den Digitalen Zwilling}
+ \label{sec:digitaler_zwilling}
+ Kein Plan was hier rein soll, haben wir bis jetzt kein Digitalen Zwilling erklärt? Dann muss das alles hier gemacht werden. Hier haben wir gefühlt nichts gemacht das gab es schon. 

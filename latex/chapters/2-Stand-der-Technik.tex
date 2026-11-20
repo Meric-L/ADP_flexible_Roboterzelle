@@ -452,8 +452,38 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 \section{Modulare Roboterzellen}
 \label{sec:Modulare Roboterzellen}
 
+
+
 \section{Kommunikationstechnologien}
 \label{sec:Kommunikationstechnologien}
+
+Mit der zunehmenden Vernetzung industrieller Produktionssysteme steigt auch der Bedarf an zuverlässigem Informationsaustausch zwischen unterschiedlichen Hardware- und Softwarekomponenten. Besonders in verteilten Systemen, in denen Komponenten verschiedener Hersteller zusammenspielen, stellt die Interoperabilität eine zentrale Herausforderung dar. Standardisierte Kommunikationsprotokolle sind hierbei die Grundlage für die Integration solcher Komponenten und unterstützen damit die Flexibilität, Modularität und Erweiterbarkeit industrieller Anlagen \cite{Gonzalez2019,Profanter2019}.
+
+\paragraph{Industrial Ethernet}
+
+Unter Industrial Ethernet werden verschiedene Ethernet-basierte Kommunikationsprotokolle zusammengefasst, die in der industriellen Automatisierung eingesetzt werden. Beispiele dazu sind hierbei PROFINET, EtherCAT und EtherNet/IP. Sie dienen der Vernetzung industrieller Komponenten und können, je nach Protokollvariante, auch zeitkritische Kommunikationsanforderungen erfüllen. Ein wesentlicher Vorteil liegt in der breiten Unterstützung der Ethernet-Technologie durch unterschiedliche Hardwareplattformen und Betriebssysteme \cite{Halenar2023,Profanter2019}.
+
+\paragraph{OPC UA}
+
+Open Platform Communications Unified Architecture (OPC UA) ist ein plattformunabhängiger Kommunikationsstandard, der vor allem in der industriellen Automatisierung Anwendung findet und in der Normenreihe IEC 62541 spezifiziert ist. OPC UA basiert auf einer serviceorientierten Architektur und ermöglicht den herstellerübergreifenden Informationsaustausch zwischen unterschiedlichsten Systemkomponenten \cite{Gonzalez2019}.
+
+Die Kommunikation kann über eine Client-Server-Architektur erfolgen, das bedeutet, dass ein Server Informationen bereit stellt und Clients auf diese zugreifen. Neben der direkten Datenabfrage können Clients auch Änderungen von Variablen abonnieren. Zusätzlich unterstützt OPC UA das Publish-Subscribe-Modell \cite{Profanter2019,Hlayel2026}.
+
+Eine Besonderheit von OPC UA ist die semantische Beschreibung der bereitgestellten Daten mittels Informationsmodellen. Durch anwendungsspezifische Erweiterungen, die sogenannten Companion Specifications, lassen sich diese Modelle für verschiedene Einsatzbereiche wie die Robotik oder die industrielle Bildverarbeitung standardisieren. Darüber hinaus verfügt OPC UA über integrierte Sicherheitsmechanismen zur Authentifizierung und Verschlüsselung \cite{Gonzalez2019,Profanter2019}.
+
+\paragraph{MQTT}
+
+Message Queuing Telemetry Transport (MQTT) ist ein nachrichtenbasiertes Protokoll, das insbesondere im Internet of Things (IoT) verbreitet ist. Die Kommunikation folgt dem Publish-Subscribe-Prinzip und wird über eine zentrale Vermittlungsinstanz, den Broker, abgewickelt. Ein Publisher veröffentlicht Nachrichten unter bestimmten Topics, die der Broker an die jeweiligen Subscriber weiterleitet. MQTT zeichnet sich durch einen geringen Ressourcenbedarf und einen sparsamen Bandbreitenverbrauch aus. Verschiedene Quality-of-Service-Stufen (QoS) ermöglichen
+zudem eine gezielte Beeinflussung der Zuverlässigkeit der Nachrichtenübertragung \cite{Profanter2019,Hlayel2026}.
+
+\paragraph{WebSocket}
+
+WebSocket erlaubt einen kontinuierlichen, bidirektionalen Datenaustausch über eine bestehende TCP-Verbindung. Im Gegensatz zur klassischen HTTP-basierten Anfrage-Antwort-Kommunikation können sowohl Client als auch Server selbstständig Nachrichten über die geöffnete Verbindung senden. Diese Kommunikationsform wird als Full-Duplex bezeichnet \cite{Hlayel2026}.
+
+Obwohl WebSocket ursprünglich für die Kommunikation zwischen webbasierten Anwendungen und Servern entwickelt wurde, findet das Protokoll inzwischen auch in der industriellen Automatisierung Anwendung. Hlayel et al. untersuchen beispielsweise eine WebSocket-basierte Schnittstelle zwischen einer speicherprogrammierbaren Steuerung (SPS) und einem digitalen Zwilling. Die persistente Verbindung und der ereignisbasierte Datenaustausch ermöglichen in der untersuchten Architektur eine Kommunikation mit geringer Latenz \cite{Hlayel2026}.
+
+Die betrachteten Technologien unterscheiden sich vor allem in ihrer Kommunikationsarchitektur, ihrem Funktionsumfang und ihren typischen Anwendungsfeldern. Während Industrial Ethernet der netzwerkbasierten Vernetzung industrieller Komponenten dient, unterstützen OPC UA, MQTT und WebSocket den Datenaustausch auf Anwendungsebene \cite{Halenar2023,Profanter2019,Hlayel2026}. Aufgrund ihrer unterschiedlichen Aufgaben können die
+Technologien innerhalb eines industriellen Gesamtsystems ergänzend eingesetzt werden.
 
 \section{Lokalisierungstechnologien}
 \label{sec:Lokalisierungstechnologien}
@@ -487,9 +517,6 @@ Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado
 \end{figure}
 
 Die Untersuchung verdeutlicht somit, dass die Eignung eines Markererkennungsverfahrens sowohl von dessen Genauigkeit, Stabilität und Verarbeitungsgeschwindigkeit als auch von den konkreten Einsatzbedingungen abhängt. Insbesondere Abbildung \ref{fig:markeraccuracy} zeigt, dass bei geringen Kamera-Marker-Abständen deutlich niedrigere Positionsfehler erzielt werden als bei größeren Entfernungen. So lässt sich für ArUco3 bei einem Abstand von 1 m ein Positionsfehler von etwa 1,7 mm ablesen, während der über die verschiedenen Versuchsbedingungen gemittelte Positionsfehler 11,5 mm beträgt. Für Anwendungen mit Abständen unter 1 m erscheint daher eine weitere Verbesserung der Genauigkeit grundsätzlich möglich.
-
-YOLO LOKALISIERUNG NOch VORSTELLEN?
-
 
 \subsection{Ultrabreitbandbasierte Lokalisierung}
 
