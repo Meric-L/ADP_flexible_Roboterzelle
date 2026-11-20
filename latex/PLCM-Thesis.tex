@@ -51,8 +51,11 @@
 
 \usepackage[
   backend=biber,
-  style=ieee,           % IEEE: Einträge und Textverweise numerisch [1], [2], …
-  sorting=none          % Nummern in der Reihenfolge der ersten Zitierung
+  bibstyle=ieee,        % IEEE-Layout für Einträge
+  citestyle=alphabetic, % Textverweise benutzen labelalpha
+  sorting=none,
+  maxalphanames=1,
+  minalphanames=1
 ]{biblatex}
 \addbibresource{beispielbib.bib}
 
