@@ -21,7 +21,7 @@ Externe Randbedingungen sind Gegebenheiten, die wir im Rahmen des Projekts nicht
 \subsection{Organisatorischer Projektrahmen}
 
 \paragraph{Budget}
-Alle Kosten des Projekts werden vom PLCM übernommen und müssen der Budgetplanung entsprechen. Der finanzielle Rahmen wurde auf 1000\,Euro festgelegt.
+Alle Kosten des Projekts werden vom PLCM übernommen und müssen der Budgetplanung entsprechen. Der finanzielle Rahmen wurde auf \SI{1000}{\euro} festgelegt.
 
 % REVIEW Claude [V] "Fixtag" wird nicht erklärt -> Datum nennen. TODO "69 Tage" offen; A8 nennt 10 Wochen, hier 3 Monate Umsetzung -> Zahlen abgleichen.
 % REVIEW Claude [S] "An unser Projekt anschließend" -> "Im Anschluss an dieses Projekt".
@@ -33,7 +33,7 @@ An unser Projekt anschließend sollen darauf aufbauende ADPs ausgeschrieben werd
 \subsection{Umgebungsbedingungen der Roboterzelle}
 
 \paragraph{Arbeitsbereich}
-Die Roboterzelle befindet sich im Hauptlabor des PLCM in einem ausgewiesenen Bereich von $2 \times 2$\,m, der zugleich den vorgesehenen Arbeitsbereich unserer Lokalisierung bildet. Um diesen herum ist ein größerer Bereich von etwa $4 \times 4$\,m durch Tische physisch begrenzt. Module, die nicht vollständig in den Arbeitsbereich passen, können daher auch teilweise oder ganz außerhalb des $2 \times 2$\,m-Bereichs platziert werden.
+Die Roboterzelle befindet sich im Hauptlabor des PLCM in einem ausgewiesenen Bereich von \qtyproduct{2 x 2}{\metre}, der zugleich den vorgesehenen Arbeitsbereich unserer Lokalisierung bildet. Um diesen herum ist ein größerer Bereich von etwa \qtyproduct{4 x 4}{\metre} durch Tische physisch begrenzt. Module, die nicht vollständig in den Arbeitsbereich passen, können daher auch teilweise oder ganz außerhalb des \qtyproduct{2 x 2}{\metre}-Bereichs platziert werden.
 
 % REVIEW Claude [V] \ref{TODO:Lichttest} offen ("??" im PDF). [R] "LED-Deckenpanelen" -> "LED-Deckenpanels".
 \paragraph{Beleuchtung}
@@ -51,7 +51,7 @@ Die Roboterzelle sowie kleinere Tischmodule werden innerhalb des Arbeitsbereichs
 % REVIEW Claude [R] "nicht angegeben.Als" -> Leerzeichen fehlt.
 % REVIEW Claude [P] "Eine Absolutgenauigkeit, mit welchen Toleranzen ... wird nicht angegeben." -> "Eine Absolutgenauigkeit, also wie genau ein neu vorgegebener Punkt angefahren wird, nennt das Datenblatt nicht."
 \paragraph{Roboter}
-Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von $\pm 0{,}1$\,mm. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben.Als Endeffektor ist bereits ein Parallelgreifer montiert.
+Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben.Als Endeffektor ist bereits ein Parallelgreifer montiert.
 
 \paragraph{Vorhandene Komponenten}
 Im Labor sind bereits Rechenleistung (Raspberry Pis), Kameras, Werkzeuge und Montagematerial vorhanden, die für das Projekt genutzt werden können.
@@ -88,13 +88,13 @@ Aus den zuvor erfassten Randbedingungen leiten wir im Folgenden die Anforderunge
 \subsection{A1 -- Aufrüstbarkeit}
 Da nachfolgende Gruppen das erarbeitete Konzept übernehmen, anpassen und weiterentwickeln werden, muss es ohne grundlegende Änderungen erweiterbar sein (vgl. die in Abschnitt~\ref{sec:Erfassen externer Randbedingungen} genannten möglichen Ergänzungen). Daraus ergeben sich folgende Anforderungen:
 \begin{itemize}
-    \item \textbf{Abdeckung des Arbeitsbereichs:} Die Lokalisierung muss mindestens den vorgesehenen Arbeitsbereich von $2 \times 2$\,m abdecken (Festforderung). Wünschenswert ist eine Abdeckung des gesamten abgegrenzten Bereichs von $4 \times 4$\,m, sodass auch Module lokalisiert werden können, die über den Arbeitsbereich hinausragen. Darüber hinaus soll sich der erfasste Bereich mit möglichst geringem Aufwand vergrößern lassen.
+    \item \textbf{Abdeckung des Arbeitsbereichs:} Die Lokalisierung muss mindestens den vorgesehenen Arbeitsbereich von \qtyproduct{2 x 2}{\metre} abdecken (Festforderung). Wünschenswert ist eine Abdeckung des gesamten abgegrenzten Bereichs von \qtyproduct{4 x 4}{\metre}, sodass auch Module lokalisiert werden können, die über den Arbeitsbereich hinausragen. Darüber hinaus soll sich der erfasste Bereich mit möglichst geringem Aufwand vergrößern lassen.
     \item \textbf{Erweiterbarkeit des Systems:} Zusätzliche Module, Roboter oder weitere zu erfassende Objekte sollen sich mit möglichst geringem Aufwand einbinden lassen.
     \item \textbf{Nachnutzbarkeit:} Die Übernahme des Konzepts darf für nachfolgende Gruppen keinen unverhältnismäßigen Einarbeitungsaufwand bedeuten. Eine nachvollziehbare Dokumentation ist daher unerlässlich.
 \end{itemize}
 
 \subsection{A2 -- Kosteneffizienz}
-Die Gesamtkosten dürfen den Rahmen von 1000\,Euro nicht überschreiten; geringere Kosten sind zu bevorzugen. Um keine unnötigen Kosten zu verursachen, ist die Verwendung bereits vorhandenen Materials (Raspberry Pis, Kameras, Werkzeuge, Montagematerial) zu bevorzugen.
+Die Gesamtkosten dürfen den Rahmen von \SI{1000}{\euro} nicht überschreiten; geringere Kosten sind zu bevorzugen. Um keine unnötigen Kosten zu verursachen, ist die Verwendung bereits vorhandenen Materials (Raspberry Pis, Kameras, Werkzeuge, Montagematerial) zu bevorzugen.
 
 \subsection{A3 -- Positioniergenauigkeit}
 Zur Validierung des Konzepts haben wir einen typischen und erprobten industriellen Anwendungsfall gewählt: Pick-and-Place. Dabei wird ein Objekt von einem Roboter an einer vorgegebenen Position aufgenommen und an einer vordefinierten Stelle abgelegt. Dieser Anwendungsfall ist universell und lässt sich über das bestehende Nodesystem codefrei nachbauen.
@@ -103,14 +103,14 @@ Zur Validierung des Konzepts haben wir einen typischen und erprobten industriell
 % REVIEW Claude [R/G] "8,85mm" -> "8,85\,mm"; "Überschreitet man diese Grenze kann der Greifer ins leere Greifen" -> "Wird diese Grenze überschritten, greift der Greifer ins Leere." (Man-Satz, Komma, Groß).
 % REVIEW Claude [G] "Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen ..." -> "Auch vergleichbare Anwendungsfälle in der Literatur nutzen ..."; "~\cite{A}, ~\cite{B}" -> "\cite{A,B}".
 % REVIEW Claude [P] Fläche 313,29 mm^2 ist redundant zur Seitenlänge 17,7 mm.
-Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von $313{,}29\,\mathrm{mm}^2$ bei einer Seitenlänge von $17{,}7$\,mm besitzen. Damit ist die Positionsgenauigkeit auf mindestens 8,85mm nach oben beschränkt. Überschreitet man diese Grenze kann der Greifer ins leere Greifen. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection}, ~\cite{Li2020SquarePickPlace}.
+Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von \SI{313,29}{\square\milli\metre} bei einer Seitenlänge von \SI{17,7}{\milli\metre} besitzen. Damit ist die Positionsgenauigkeit auf mindestens \SI{8,85}{\milli\metre} nach oben beschränkt. Überschreitet man diese Grenze kann der Greifer ins leere Greifen. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection}, ~\cite{Li2020SquarePickPlace}.
 
 % REVIEW Claude [R] "liegen kann. \cite{...}" -> Zitat vor den Punkt. [I] "mittlere ... Positionierfehler ... bei bis zu 8,51 mm" mischt Mittelwert und Maximum -> Wortlaut der Quelle prüfen.
-Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von $\pm 0{,}1$\,mm. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu 8,51\,mm liegen kann. \cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von 20\,mm, die geringfügig über der Kantenlänge der Greifbacken von 17,7\,mm liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von $\pm 10$\,mm, was der halben Kantenlänge des Würfels entspricht.
+Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu \SI{8,51}{\milli\metre} liegen kann. \cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von \SI{20}{\milli\metre}, die geringfügig über der Kantenlänge der Greifbacken von \SI{17,7}{\milli\metre} liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von \SI{\pm 10}{\milli\metre}, was der halben Kantenlänge des Würfels entspricht.
 
 % REVIEW Claude [I] Logik: Reserve 10 - 3 = 7 mm ist kleiner als der Absolutfehler des FR3 (bis 8,5 mm). Das passt nur, weil Layer 2 über dieselbe Kinematik misst (Argument in Konzept A) -> hier kurz darauf verweisen.
 % REVIEW Claude [V] Warum genau 3 mm? Die Herleitung (z. B. Sicherheitsfaktor ca. 3) einen Satz deutlicher machen.
-Die geforderte Positioniergenauigkeit von $\pm 3$\,mm liegt damit um etwa den Faktor drei unter der zulässigen Grenze und bietet ausreichend Reserve für weitere Fehlerquellen wie die Absolutgenauigkeit des Roboters.
+Die geforderte Positioniergenauigkeit von \SI{\pm 3}{\milli\metre} liegt damit um etwa den Faktor drei unter der zulässigen Grenze und bietet ausreichend Reserve für weitere Fehlerquellen wie die Absolutgenauigkeit des Roboters.
 
 % REVIEW Claude [V] A4 taucht im Paarvergleich nicht auf (dort stattdessen Identifikation und Kalibrierbarkeit, die nicht als Anforderung hergeleitet sind) -> erklären oder angleichen.
 % REVIEW Claude [P] "innerhalb weniger Sekunden" -> konkreten Zielwert nennen (z. B. < 10 s), sonst in Kap. 6 nicht prüfbar.
@@ -157,8 +157,8 @@ Das Konzept muss innerhalb des zeitlichen Rahmens des ADP umsetzbar sein, da ans
         \textbf{ID} & \textbf{Anforderung} & \textbf{Zielwert} & \textbf{Abgeleitet aus} \\
         \hline
         A1 & Erweiterbarkeit \& Nachnutzbarkeit & Dokumentiert, modular & Projektkontext \\
-        A2 & Kosteneffizienz & $\leq 1000$\,€, Bestand nutzen & Budget, vorhandene Komponenten \\
-        A3 & Positioniergenauigkeit & $\pm 3$\,mm & Pick-and-Place, Greifer, Roboter \\
+        A2 & Kosteneffizienz & $\leq$\,\SI{1000}{\euro}, Bestand nutzen & Budget, vorhandene Komponenten \\
+        A3 & Positioniergenauigkeit & \SI{\pm 3}{\milli\metre} & Pick-and-Place, Greifer, Roboter \\
         A4 & Echtzeitfähigkeit \& Verfügbarkeit & Reaktion in wenigen Sekunden, Dauerbetrieb & Nutzerfreundlichkeit \\
         A5 & Robustheit & Fehlerbehandlung, robuste Montage & Geteilte Nutzung, mech. Beanspruchung \\
         A6 & Sicherheit & Keine autonome Roboterbewegung & Offener Arbeitsbereich, Cobot \\
@@ -236,20 +236,20 @@ Festforderungen müssen von jedem Konzept erfüllt werden und dienen daher als A
         \toprule
         \textbf{Bewertungskriterium} & \textbf{Gewichtung} \\
         \midrule
-        Identifikation der Module         & 19\,\% \\
-        Kalibrierbarkeit                  &  7\,\% \\
-        Positions-/Rotationsgenauigkeit   & 29\,\% \\
-        Kosten                            & 12\,\% \\
-        Aufrüstbarkeit                    & 12\,\% \\
-        Robustheit                        &  9\,\% \\
-        Entwicklungszeit                  & 12\,\% \\
+        Identifikation der Module         & \SI{19}{\percent} \\
+        Kalibrierbarkeit                  &  \SI{7}{\percent} \\
+        Positions-/Rotationsgenauigkeit   & \SI{29}{\percent} \\
+        Kosten                            & \SI{12}{\percent} \\
+        Aufrüstbarkeit                    & \SI{12}{\percent} \\
+        Robustheit                        &  \SI{9}{\percent} \\
+        Entwicklungszeit                  & \SI{12}{\percent} \\
         \midrule
-        \textbf{Summe}                    & \textbf{100\,\%} \\
+        \textbf{Summe}                    & \textbf{\SI{100}{\percent}} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept (siehe Tabelle~\ref{tab:gewichtung}). Das Kernziel der Lokalisierung ist die Positions- und Rotationsgenauigkeit, die mit 29\,\% folgerichtig am stärksten gewichtet ist. Ebenso zentral ist die Identifikation der einzelnen Module, die mit 19\,\% an zweiter Stelle steht. Die Kriterien, die die praktische Umsetzbarkeit des Konzepts betreffen, also Kosten, Entwicklungszeit und Aufrüstbarkeit, liegen mit jeweils 12\,\% gleichauf. Robustheit und Kalibrierbarkeit sind zwar zu berücksichtigen, für die Konzeptauswahl jedoch nicht ausschlaggebend. Insgesamt zeigt sich, dass die beiden Kernfunktionen, das Lokalisieren und das Identifizieren der Module, zusammen knapp 50\,\% der Gewichtung ausmachen.
+Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept (siehe Tabelle~\ref{tab:gewichtung}). Das Kernziel der Lokalisierung ist die Positions- und Rotationsgenauigkeit, die mit \SI{29}{\percent} folgerichtig am stärksten gewichtet ist. Ebenso zentral ist die Identifikation der einzelnen Module, die mit \SI{19}{\percent} an zweiter Stelle steht. Die Kriterien, die die praktische Umsetzbarkeit des Konzepts betreffen, also Kosten, Entwicklungszeit und Aufrüstbarkeit, liegen mit jeweils \SI{12}{\percent} gleichauf. Robustheit und Kalibrierbarkeit sind zwar zu berücksichtigen, für die Konzeptauswahl jedoch nicht ausschlaggebend. Insgesamt zeigt sich, dass die beiden Kernfunktionen, das Lokalisieren und das Identifizieren der Module, zusammen knapp \SI{50}{\percent} der Gewichtung ausmachen.
 
 Die Gewichtung wurde anschließend im Rahmen des Zwischenkolloquiums vorgestellt, mit den Teilnehmenden diskutiert und bestätigt.
 
@@ -257,13 +257,13 @@ Die Gewichtung wurde anschließend im Rahmen des Zwischenkolloquiums vorgestellt
 \section{Zwei-Ebenen-Ansatz}
 \label{sec:Zwei-Ebenen-Ansatz}
 % =====================================================================
-Die Recherche der Lokalisierungstechnologien in Abschnitt~\ref{sec:Lokalisierungstechnologien} zeigt einen Zielkonflikt zwischen der erreichbaren Genauigkeit und dem abdeckbaren Arbeitsbereich. Magnetfeldbasierte Verfahren mit Hall-Sensor-Arrays erreichen hohe Genauigkeiten, etwa einen maximalen Positionsfehler von 1,4\,mm~\cite{KawatoKim2005} oder mittlere absolute Fehler von unter 0,04\,mm~\cite{Nemeth2025Hall}. Sie sind jedoch auf einen begrenzten Bereich in unmittelbarer Nähe des Sensorarrays beschränkt. UWB-basierte Systeme decken dagegen große industrielle Innenräume ab, erreichen dabei aber lediglich Positionsgenauigkeiten im Bereich von etwa 5 bis 30\,cm~\cite{Elsanhoury2022}. Bei RFID-Grid-Systemen hängt die Genauigkeit maßgeblich von der Tag-Dichte ab: Mit 100 Tags pro Quadratmeter ergeben sich mittlere Abweichungen von 4,7\,mm in $x$- und 22,8\,mm in $y$-Richtung~\cite{MiTakahashi2016}, wobei der Installationsaufwand mit der abzudeckenden Fläche steigt.
+Die Recherche der Lokalisierungstechnologien in Abschnitt~\ref{sec:Lokalisierungstechnologien} zeigt einen Zielkonflikt zwischen der erreichbaren Genauigkeit und dem abdeckbaren Arbeitsbereich. Magnetfeldbasierte Verfahren mit Hall-Sensor-Arrays erreichen hohe Genauigkeiten, etwa einen maximalen Positionsfehler von \SI{1,4}{\milli\metre}~\cite{KawatoKim2005} oder mittlere absolute Fehler von unter \SI{0,04}{\milli\metre}~\cite{Nemeth2025Hall}. Sie sind jedoch auf einen begrenzten Bereich in unmittelbarer Nähe des Sensorarrays beschränkt. UWB-basierte Systeme decken dagegen große industrielle Innenräume ab, erreichen dabei aber lediglich Positionsgenauigkeiten im Bereich von etwa \SIrange{5}{30}{\centi\metre}~\cite{Elsanhoury2022}. Bei RFID-Grid-Systemen hängt die Genauigkeit maßgeblich von der Tag-Dichte ab: Mit 100 Tags pro Quadratmeter ergeben sich mittlere Abweichungen von \SI{4,7}{\milli\metre} in $x$- und \SI{22,8}{\milli\metre} in $y$-Richtung~\cite{MiTakahashi2016}, wobei der Installationsaufwand mit der abzudeckenden Fläche steigt.
 
-Auch innerhalb einer Technologie zeigt sich dieser Zielkonflikt. Bei markerbasierten Kamerasystemen steigt der Positionsfehler mit zunehmendem Abstand zwischen Kamera und Marker. Über Abstände von 1 bis 6\,m gemittelt liegen die Positionsfehler etablierter Verfahren zwischen 11,5 und 15,9\,mm, während für ArUco3 bei einem Abstand von 1\,m ein Fehler von etwa 1,7\,mm erreicht wird~\cite{JuradoRodriguez2023}. Da die Werte unter unterschiedlichen Versuchsbedingungen ermittelt wurden, sind sie nicht direkt vergleichbar, verdeutlichen jedoch die grundlegende Tendenz: Eine hohe Genauigkeit lässt sich nur in einem kleinen Bereich erreichen, ein großer Bereich nur mit verminderter Genauigkeit abdecken.
+Auch innerhalb einer Technologie zeigt sich dieser Zielkonflikt. Bei markerbasierten Kamerasystemen steigt der Positionsfehler mit zunehmendem Abstand zwischen Kamera und Marker. Über Abstände von \SIrange{1}{6}{\metre} gemittelt liegen die Positionsfehler etablierter Verfahren zwischen \num{11,5} und \SI{15,9}{\milli\metre}, während für ArUco3 bei einem Abstand von \SI{1}{\metre} ein Fehler von etwa \SI{1,7}{\milli\metre} erreicht wird~\cite{JuradoRodriguez2023}. Da die Werte unter unterschiedlichen Versuchsbedingungen ermittelt wurden, sind sie nicht direkt vergleichbar, verdeutlichen jedoch die grundlegende Tendenz: Eine hohe Genauigkeit lässt sich nur in einem kleinen Bereich erreichen, ein großer Bereich nur mit verminderter Genauigkeit abdecken.
 
 % REVIEW Claude [S] "in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt" -> "in zwei Ebenen unterteilt (Abbildung~\ref{fig:zwei_ebenen})".
 % REVIEW Claude [V] Die TODO-Stichpunkte am Kapitelende (Warum Level 1/2: 2D-Problem, Höhen bekannt, erweiterbar, Deckenmontage) gehören hierher.
-Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von $\pm 3$\,mm sicher.
+Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von \SI{\pm 3}{\milli\metre} sicher.
 
 \begin{figure}[htbp]
     \centering
@@ -295,7 +295,7 @@ In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühze
 
 % REVIEW Claude [I] "heben sich weitgehend auf" ist eine starke Aussage ohne Quelle. Gilt nur, wenn Mess- und Greifpose nah beieinander liegen -> abschwächen ("verringern sich") oder belegen.
 % REVIEW Claude [P] Absatz sehr lang: Kinematik-Argument als eigenen Absatz.
-\textbf{Vorteile.} Der wesentliche Vorteil dieser Kombination besteht darin, dass Level~1 und Level~2 auf derselben Codebasis aufbauen. Dies beschleunigt die Entwicklung deutlich, da nicht zwei unterschiedliche Verfahren implementiert und getestet werden müssen. Da die Kameras bereits vorhanden sind, ist das Konzept zudem sehr kostengünstig und liefert sowohl die Positionen als auch die Rotationen der Module. Darüber hinaus greifen beide Kameras auf dieselben Marker zu. Dies vereinfacht sowohl das Hinzufügen neuer Module als auch die Erweiterung des Arbeitsbereichs durch zusätzliche Kameras oder Roboter erheblich. Zusätzlich sind optische Marker passive Elemente, die weder eine Stromversorgung noch eine Datenverbindung benötigen. Ein weiterer Vorteil ergibt sich aus der Messung über den Roboterarm. Bei Pick-and-Place-Aufgaben hängt die erreichbare Präzision maßgeblich von der Roboterkinematik ab, deren Absolutgenauigkeit beim FR3 ohne Kalibrierung bei etwa 8,5\,mm liegt~\cite{Franzese2026Calibration}. Da die Kamera auf Level~2 am Roboterarm montiert ist, wird die Position des Markers direkt im Koordinatensystem des Roboters und über dieselbe kinematische Kette bestimmt, die anschließend auch für den Greifvorgang genutzt wird. Systematische Fehler der Kinematik wirken sich daher auf Messung und Greifvorgang gleichermaßen aus und heben sich weitgehend auf. Bei einer Messung durch ein externes System müsste die Position hingegen erst in das Roboterkoordinatensystem übertragen werden, wobei die Fehler der Kinematik vollständig in den Greifvorgang eingehen.
+\textbf{Vorteile.} Der wesentliche Vorteil dieser Kombination besteht darin, dass Level~1 und Level~2 auf derselben Codebasis aufbauen. Dies beschleunigt die Entwicklung deutlich, da nicht zwei unterschiedliche Verfahren implementiert und getestet werden müssen. Da die Kameras bereits vorhanden sind, ist das Konzept zudem sehr kostengünstig und liefert sowohl die Positionen als auch die Rotationen der Module. Darüber hinaus greifen beide Kameras auf dieselben Marker zu. Dies vereinfacht sowohl das Hinzufügen neuer Module als auch die Erweiterung des Arbeitsbereichs durch zusätzliche Kameras oder Roboter erheblich. Zusätzlich sind optische Marker passive Elemente, die weder eine Stromversorgung noch eine Datenverbindung benötigen. Ein weiterer Vorteil ergibt sich aus der Messung über den Roboterarm. Bei Pick-and-Place-Aufgaben hängt die erreichbare Präzision maßgeblich von der Roboterkinematik ab, deren Absolutgenauigkeit beim FR3 ohne Kalibrierung bei etwa \SI{8,5}{\milli\metre} liegt~\cite{Franzese2026Calibration}. Da die Kamera auf Level~2 am Roboterarm montiert ist, wird die Position des Markers direkt im Koordinatensystem des Roboters und über dieselbe kinematische Kette bestimmt, die anschließend auch für den Greifvorgang genutzt wird. Systematische Fehler der Kinematik wirken sich daher auf Messung und Greifvorgang gleichermaßen aus und heben sich weitgehend auf. Bei einer Messung durch ein externes System müsste die Position hingegen erst in das Roboterkoordinatensystem übertragen werden, wobei die Fehler der Kinematik vollständig in den Greifvorgang eingehen.
 
 % REVIEW Claude [V] \cite{TODO} offen (Tiefenfehler entlang der optischen Achse), z. B. JuradoRodriguez2023 oder Kalaitzakis2021 prüfen.
 % REVIEW Claude [P] "In der Praxis ist dieser Nachteil jedoch gering, da ..." schwer verständlich -> einfacher formulieren.
@@ -440,30 +440,30 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
     \textbf{Kalibrierbarkeit}\newline
     Anpassen des Systems an veränderte Umgebungsbedingungen
     & \textbf{1\,P:} Keine Kalibrierung möglich\newline
-      \textbf{2\,P:} Kalibrierung nur mit Demontage möglich, Zeitaufwand $>8$\,h (eine Person)\newline
-      \textbf{3\,P:} Kalibrierung ohne Demontage möglich, Zeitaufwand $<8$\,h (eine Person)\newline
-      \textbf{4\,P:} Kalibrierung ohne Demontage in $<2$\,h möglich (eine Person) \\
+      \textbf{2\,P:} Kalibrierung nur mit Demontage möglich, Zeitaufwand $>$\,\SI{8}{\hour} (eine Person)\newline
+      \textbf{3\,P:} Kalibrierung ohne Demontage möglich, Zeitaufwand $<$\,\SI{8}{\hour} (eine Person)\newline
+      \textbf{4\,P:} Kalibrierung ohne Demontage in $<$\,\SI{2}{\hour} möglich (eine Person) \\
     \midrule
     \textbf{Positions-/Rotationsgenauigkeit}\newline
     Bestimmung von Position und Rotation
     & \textbf{1\,P:} Position oder Orientierung nicht bestimmbar\newline
-      \textbf{2\,P:} Positionsgenauigkeit $<10$\,cm\newline
-      \textbf{3\,P:} Positionsgenauigkeit $<\pm10$\,mm\newline
-      \textbf{4\,P:} Positionsgenauigkeit $<\pm3$\,mm \\
+      \textbf{2\,P:} Positionsgenauigkeit $<$\,\SI{10}{\centi\metre}\newline
+      \textbf{3\,P:} Positionsgenauigkeit $<$\,\SI{\pm 10}{\milli\metre}\newline
+      \textbf{4\,P:} Positionsgenauigkeit $<$\,\SI{\pm 3}{\milli\metre} \\
     \midrule
     \textbf{Kosten}\newline
     Kosten des Gesamtsystems einschließlich der zu beschaffenden Hardware, Software und Montagevorrichtungen
-    & \textbf{1\,P:} 750--1000\,€\newline
-      \textbf{2\,P:} 500--749\,€\newline
-      \textbf{3\,P:} 250--499\,€\newline
-      \textbf{4\,P:} $<250$\,€ \\
+    & \textbf{1\,P:} \SIrange{750}{1000}{\euro}\newline
+      \textbf{2\,P:} \SIrange{500}{749}{\euro}\newline
+      \textbf{3\,P:} \SIrange{250}{499}{\euro}\newline
+      \textbf{4\,P:} $<$\,\SI{250}{\euro} \\
     \midrule
     \textbf{Aufrüstbarkeit}\newline
     Erweiterung des Arbeitsbereichs und Einbinden neuer Module
     & \textbf{1\,P:} Nicht aufrüstbar\newline
-      \textbf{2\,P:} Aufrüstung nur mit einem Arbeitsaufwand von $>8$\,h möglich (eine Person)\newline
-      \textbf{3\,P:} Aufrüstung in 4--8\,h möglich (eine Person)\newline
-      \textbf{4\,P:} Aufrüstung in $<4$\,h möglich (eine Person) \\
+      \textbf{2\,P:} Aufrüstung nur mit einem Arbeitsaufwand von $>$\,\SI{8}{\hour} möglich (eine Person)\newline
+      \textbf{3\,P:} Aufrüstung in \SIrange{4}{8}{\hour} möglich (eine Person)\newline
+      \textbf{4\,P:} Aufrüstung in $<$\,\SI{4}{\hour} möglich (eine Person) \\
     \midrule
     \textbf{Robustheit}\newline
     Einfluss externer Faktoren auf die Positionsbestimmung
@@ -501,29 +501,29 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
         & \textbf{Punkte} & \textbf{Nutzwert}
         & \textbf{Punkte} & \textbf{Nutzwert} \\
         \midrule
-        Identifikation der Module         & 19\,\% & 3 & 57  & 3 & 57  & 4 & 76  \\
-        Kalibrierbarkeit                  &  7\,\% & 3 & 21  & 2 & 14  & 1 & 7   \\
+        Identifikation der Module         & \SI{19}{\percent} & 3 & 57  & 3 & 57  & 4 & 76  \\
+        Kalibrierbarkeit                  &  \SI{7}{\percent} & 3 & 21  & 2 & 14  & 1 & 7   \\
         Positions-/\newline Rotationsgenauigkeit
-                                          & 29\,\% & 4 & 116 & 3 & 87  & 4 & 116 \\
-        Kosten                            & 12\,\% & 4 & 48  & 3 & 36  & 2 & 24  \\
-        Aufrüstbarkeit                    & 12\,\% & 4 & 48  & 2 & 24  & 2 & 24  \\
-        Robustheit                        &  9\,\% & 3 & 27  & 1 & 9   & 3 & 27  \\
-        Entwicklungszeit                  & 12\,\% & 4 & 48  & 1 & 12  & 2 & 24  \\
+                                          & \SI{29}{\percent} & 4 & 116 & 3 & 87  & 4 & 116 \\
+        Kosten                            & \SI{12}{\percent} & 4 & 48  & 3 & 36  & 2 & 24  \\
+        Aufrüstbarkeit                    & \SI{12}{\percent} & 4 & 48  & 2 & 24  & 2 & 24  \\
+        Robustheit                        &  \SI{9}{\percent} & 3 & 27  & 1 & 9   & 3 & 27  \\
+        Entwicklungszeit                  & \SI{12}{\percent} & 4 & 48  & 1 & 12  & 2 & 24  \\
         \midrule
-        \textbf{Summe}                    & \textbf{100\,\%}
+        \textbf{Summe}                    & \textbf{\SI{100}{\percent}}
                                           & 25 & \textbf{365}
                                           & 15 & \textbf{239}
                                           & 18 & \textbf{298} \\
         \textbf{Technische Wertigkeit}    &
-                                          & \multicolumn{2}{c}{\textbf{91,3\,\%}}
-                                          & \multicolumn{2}{c}{\textbf{59,8\,\%}}
-                                          & \multicolumn{2}{c}{\textbf{74,5\,\%}} \\
+                                          & \multicolumn{2}{c}{\textbf{\SI{91,3}{\percent}}}
+                                          & \multicolumn{2}{c}{\textbf{\SI{59,8}{\percent}}}
+                                          & \multicolumn{2}{c}{\textbf{\SI{74,5}{\percent}}} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
 % REVIEW Claude [V] Es fehlt der Schlusssatz mit der Entscheidung ("Konzept A wird umgesetzt") und evtl. eine kurze Prüfung, ob C bei anderer Gewichtung gewinnen würde.
-Konzept~A erreicht mit einer technischen Wertigkeit von 91,3\,\% das beste Ergebnis, gefolgt von Konzept~C mit 74,5\,\% und Konzept~B mit 59,8\,\%. Gegenüber Konzept~B ergibt sich der Vorsprung aus nahezu allen Kriterien. Ausschlaggebend sind insbesondere die Positions- und Rotationsgenauigkeit, da Konzept~A sowohl Position als auch Rotation zuverlässig bestimmt und der Übergang zwischen beiden Ebenen unkritisch ist, sowie die deutlich kürzere Entwicklungszeit. Gegenüber Konzept~C ist Konzept~A in den Kernfunktionen gleichwertig und bei der Identifikation der Module sogar unterlegen. Der Vorsprung entsteht hier vor allem durch die praktische Umsetzbarkeit. Die gemeinsame Codebasis beider Ebenen, die Nutzung vorhandener Hardware und passiver Marker führen zu geringeren Kosten, einer kürzeren Entwicklungszeit und einer einfacheren Erweiterbarkeit. Da diese Kriterien auf Schätzungen beruhen, ist der Abstand zu Konzept~C mit Vorsicht zu interpretieren.
+Konzept~A erreicht mit einer technischen Wertigkeit von \SI{91,3}{\percent} das beste Ergebnis, gefolgt von Konzept~C mit \SI{74,5}{\percent} und Konzept~B mit \SI{59,8}{\percent}. Gegenüber Konzept~B ergibt sich der Vorsprung aus nahezu allen Kriterien. Ausschlaggebend sind insbesondere die Positions- und Rotationsgenauigkeit, da Konzept~A sowohl Position als auch Rotation zuverlässig bestimmt und der Übergang zwischen beiden Ebenen unkritisch ist, sowie die deutlich kürzere Entwicklungszeit. Gegenüber Konzept~C ist Konzept~A in den Kernfunktionen gleichwertig und bei der Identifikation der Module sogar unterlegen. Der Vorsprung entsteht hier vor allem durch die praktische Umsetzbarkeit. Die gemeinsame Codebasis beider Ebenen, die Nutzung vorhandener Hardware und passiver Marker führen zu geringeren Kosten, einer kürzeren Entwicklungszeit und einer einfacheren Erweiterbarkeit. Da diese Kriterien auf Schätzungen beruhen, ist der Abstand zu Konzept~C mit Vorsicht zu interpretieren.
 
 
 
@@ -554,7 +554,7 @@ Konzept~A erreicht mit einer technischen Wertigkeit von 91,3\,\% das beste Ergeb
 
 \section{Autokalibrierung lv 1 und 2}
 \section{3D Druck teile, Würfel, Würfelhalterung, Tag Halterung, Aufnahme platten im greifer, Camera Halterung, laserlot, }
-\section{8x8 Tags können in einem Radius von 3m um die 1lv Kamera erkannt werden}
+\section{8x8 Tags können in einem Radius von \SI{3}{\metre} um die 1lv Kamera erkannt werden}
 \section{Mehrposen Bilder vs einposen bilder}
 
 % TODO: Folgende Stichpunkte aus dem Entwurf ausformulieren:
