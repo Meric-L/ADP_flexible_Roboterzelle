@@ -449,6 +449,8 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 \end{itemize}
 \end{sloppypar}
 
+% REVIEW Claude [Legende] R=Rechtschreibung G=Grammatik P=Prägnanz V=Vollständigkeit S=Stil I=Inhalt/Logik. Nur Kommentare, Text unverändert.
+% REVIEW Claude [V] Abschnitt 2.13 ist leer. Füllen (was macht eine modulare/rekonfigurierbare Zelle aus, warum braucht sie Lokalisierung) oder streichen.
 \section{Modulare Roboterzellen}
 \label{sec:Modulare Roboterzellen}
 
@@ -457,18 +459,23 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 \section{Kommunikationstechnologien}
 \label{sec:Kommunikationstechnologien}
 
+% REVIEW Claude [S] Stil 2.14/2.15: sachlich-unpersönlich, viele Nominalisierungen ("stellt ... eine zentrale Herausforderung dar"), lange Sätze.
+% REVIEW Claude     Deutlich formeller als Kap. 4 (kurze Sätze, aktiv) und Kap. 3 (oft "wir"). Ton im Team einheitlich festlegen.
 Mit der zunehmenden Vernetzung industrieller Produktionssysteme steigt auch der Bedarf an zuverlässigem Informationsaustausch zwischen unterschiedlichen Hardware- und Softwarekomponenten. Besonders in verteilten Systemen, in denen Komponenten verschiedener Hersteller zusammenspielen, stellt die Interoperabilität eine zentrale Herausforderung dar. Standardisierte Kommunikationsprotokolle sind hierbei die Grundlage für die Integration solcher Komponenten und unterstützen damit die Flexibilität, Modularität und Erweiterbarkeit industrieller Anlagen \cite{Gonzalez2019,Profanter2019}.
 
 \paragraph{Industrial Ethernet}
 
+% REVIEW Claude [P] "Beispiele dazu sind hierbei" doppelt gemoppelt -> "Beispiele sind PROFINET, EtherCAT und EtherNet/IP."
 Unter Industrial Ethernet werden verschiedene Ethernet-basierte Kommunikationsprotokolle zusammengefasst, die in der industriellen Automatisierung eingesetzt werden. Beispiele dazu sind hierbei PROFINET, EtherCAT und EtherNet/IP. Sie dienen der Vernetzung industrieller Komponenten und können, je nach Protokollvariante, auch zeitkritische Kommunikationsanforderungen erfüllen. Ein wesentlicher Vorteil liegt in der breiten Unterstützung der Ethernet-Technologie durch unterschiedliche Hardwareplattformen und Betriebssysteme \cite{Halenar2023,Profanter2019}.
 
 \paragraph{OPC UA}
 
 Open Platform Communications Unified Architecture (OPC UA) ist ein plattformunabhängiger Kommunikationsstandard, der vor allem in der industriellen Automatisierung Anwendung findet und in der Normenreihe IEC 62541 spezifiziert ist. OPC UA basiert auf einer serviceorientierten Architektur und ermöglicht den herstellerübergreifenden Informationsaustausch zwischen unterschiedlichsten Systemkomponenten \cite{Gonzalez2019}.
 
+% REVIEW Claude [R] "bereit stellt" -> "bereitstellt". [P] "erfolgen, das bedeutet, dass" -> in zwei Sätze teilen.
 Die Kommunikation kann über eine Client-Server-Architektur erfolgen, das bedeutet, dass ein Server Informationen bereit stellt und Clients auf diese zugreifen. Neben der direkten Datenabfrage können Clients auch Änderungen von Variablen abonnieren. Zusätzlich unterstützt OPC UA das Publish-Subscribe-Modell \cite{Profanter2019,Hlayel2026}.
 
+% REVIEW Claude [V] Optional: ein Satz, dass OPC UA eigene Discovery-Dienste hat (LDS/mDNS, OPC 10000-12). Kap. 4.5 nutzt das und müsste dann weniger erklären.
 Eine Besonderheit von OPC UA ist die semantische Beschreibung der bereitgestellten Daten mittels Informationsmodellen. Durch anwendungsspezifische Erweiterungen, die sogenannten Companion Specifications, lassen sich diese Modelle für verschiedene Einsatzbereiche wie die Robotik oder die industrielle Bildverarbeitung standardisieren. Darüber hinaus verfügt OPC UA über integrierte Sicherheitsmechanismen zur Authentifizierung und Verschlüsselung \cite{Gonzalez2019,Profanter2019}.
 
 \paragraph{MQTT}
@@ -482,20 +489,24 @@ WebSocket erlaubt einen kontinuierlichen, bidirektionalen Datenaustausch über e
 
 Obwohl WebSocket ursprünglich für die Kommunikation zwischen webbasierten Anwendungen und Servern entwickelt wurde, findet das Protokoll inzwischen auch in der industriellen Automatisierung Anwendung. Hlayel et al. untersuchen beispielsweise eine WebSocket-basierte Schnittstelle zwischen einer speicherprogrammierbaren Steuerung (SPS) und einem digitalen Zwilling. Die persistente Verbindung und der ereignisbasierte Datenaustausch ermöglichen in der untersuchten Architektur eine Kommunikation mit geringer Latenz \cite{Hlayel2026}.
 
+% REVIEW Claude [V] Fazit gut. Es fehlt die Überleitung, was davon im Projekt relevant ist (OPC UA vorgegeben, WebSocket im bestehenden System, vgl. A7 in Kap. 3).
 Die betrachteten Technologien unterscheiden sich vor allem in ihrer Kommunikationsarchitektur, ihrem Funktionsumfang und ihren typischen Anwendungsfeldern. Während Industrial Ethernet der netzwerkbasierten Vernetzung industrieller Komponenten dient, unterstützen OPC UA, MQTT und WebSocket den Datenaustausch auf Anwendungsebene \cite{Halenar2023,Profanter2019,Hlayel2026}. Aufgrund ihrer unterschiedlichen Aufgaben können die
 Technologien innerhalb eines industriellen Gesamtsystems ergänzend eingesetzt werden.
 
 \section{Lokalisierungstechnologien}
 \label{sec:Lokalisierungstechnologien}
+% REVIEW Claude [V] Platzhalter: Einleitung fehlt (Überblick optisch / funkbasiert / feldbasiert, Vergleichskriterien Genauigkeit und Reichweite).
 Einleitungstext zu den unterschiedlichen Techniken ergänzen
 \subsection{Visuelle Lokalisierung}
 
 Visuelle Lokalisierungsverfahren ermöglichen die Bestimmung der Position und Orientierung von Objekten anhand von Bildinformationen. Hierzu werden Kameras eingesetzt, deren Bilddaten mithilfe geeigneter Bildverarbeitungsalgorithmen ausgewertet werden. Eine Möglichkeit zur Lokalisierung besteht in der Verwendung sogenannter Fiducial Marker. Dabei handelt es sich um künstlich erzeugte, visuell eindeutig identifizierbare Markierungen, die an den zu lokalisierenden Objekten angebracht werden. Durch die Erkennung dieser Marker innerhalb eines Kamerabildes können sowohl eine eindeutige Identifikation des jeweiligen Objekts als auch die Bestimmung seiner räumlichen Lage erfolgen \cite{Kalaitzakis2021}.
 
+% REVIEW Claude [R] "Augmented Realitiy" -> "Augmented Reality".
 Fiducial Marker lassen sich hinsichtlich ihrer geometrischen Gestaltung und ihres Erkennungsverfahrens unterscheiden. Zu den grundlegenden Kategorien zählen kreisförmige, quadratische und topologische Marker sowie auf Deep Learning basierende Ansätze. Kreisförmige Marker besitzen aufgrund ihrer Geometrie Eigenschaften, die bei perspektivischen Verzerrungen vorteilhaft sein können. Quadratische Marker sind insbesondere in der Robotik und im Bereich der Augmented Realitiy weit verbreitet. Topologische Marker ermöglichen die Darstellung einer großen Anzahl unterschiedlicher Identifikationsmuster, während lernbasierte Verfahren trainierte Modelle zur Erkennung und Identifikation der Markierungen einsetzen \cite{Kuzmenko2025}. Abbildung \ref{fig:markerarten} zeigt eine Übersicht der verschiedenen Fiducial-Marker-Typen.
 
 \begin{figure}[H]
     \centering
+    % REVIEW Claude [S] Quellenangabe in Bildunterschriften uneinheitlich: hier \cite nach dem Punkt, bei Hall-Array "(aus \cite, Abb. 1)". Ein Schema festlegen.
     \includegraphics[width=0.9\textwidth]{Bilder/Kapt2/marker-overview.jpg}
     \caption{Übersicht verschiedener Fiducial-Marker-Systeme.
     \cite{Kuzmenko2025}}
@@ -504,6 +515,9 @@ Fiducial Marker lassen sich hinsichtlich ihrer geometrischen Gestaltung und ihre
 
 Für die industrielle Robotik sind insbesondere quadratische Fiducial Marker relevant. Zu den etablierten Verfahren zählen AprilTag, ArUco und ARTag. Diese verwenden charakteristische Muster, anhand derer einzelne Marker identifiziert und ihre Position sowie Orientierung relativ zur Kamera bestimmt werden können. Voraussetzung für eine zuverlässige Positionsbestimmung ist neben der bekannten Markergröße eine geeignete Kalibrierung des Kamerasystems \cite{Kalaitzakis2021}.
 
+% REVIEW Claude [P] Sehr langer Absatz (ca. 15 Sätze): in Ergebnisse und Einflussfaktoren teilen.
+% REVIEW Claude [S] "Jurado-Rodriguez et al. (2023)" mit Jahr, "Elsanhoury et al." usw. ohne Jahr -> einheitlich.
+% REVIEW Claude [I] AprilTag schneidet hier schlechter ab als ArUco3, das System nutzt aber AprilTag. Die Begründung (z. B. stabilste Eckpunkte) fehlt bisher in Kap. 3/4.
 Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado-Rodriguez et al. (2023) anhand experimenteller Untersuchungen verglichen. Dabei wurden insgesamt 13 Markererkennungsverfahren hinsichtlich ihrer Positionsgenauigkeit, Erkennungsreichweite, Robustheit gegenüber Verdeckungen und Verarbeitungsgeschwindigkeit untersucht. Die Ergebnisse zeigen, dass insbesondere ArUco3 bei der Positionsbestimmung eine hohe Genauigkeit erreicht. Mit einem mittleren Positionsfehler von 11,5 mm erzielte ArUco3 das beste Ergebnis, gefolgt von STag mit 12,9 mm und ArUco mit 13,2 mm. AprilTag3 und AprilTag2 erreichten dagegen mittlere Positionsfehler von 14,9 mm beziehungsweise 15,9 mm. Diese Werte wurden über die untersuchten Aufnahmen bei unterschiedlichen Aufnahmebedingungen ermittelt, wobei Kamera-Marker-Abstände zwischen 1 und 6 m betrachtet wurden. Die angegebenen mittleren Positionsfehler sind daher nicht als konstante Genauigkeitswerte der jeweiligen Markerverfahren zu verstehen. Auch hinsichtlich der Verarbeitungsgeschwindigkeit zeigte ArUco3 mit 106,1 Bildern pro Sekunde die höchste Leistung. Bei der Untersuchung der zeitlichen Stabilität der erkannten Markerecken erzielten hingegen AprilTag3 und AprilTag2 die besten Ergebnisse. Die erzielbare Positionsgenauigkeit hängt darüber hinaus wesentlich von den jeweiligen Versuchsbedingungen ab. Insbesondere der Abstand zwischen Kamera und Marker, die Markerkantenlänge, die Kameraauflösung sowie der Betrachtungswinkel beeinflussen die Genauigkeit der Positionsbestimmung. Abbildung \ref{fig:markeraccuracy} zeigt den Einfluss des Kamera-Marker-Abstands und des Betrachtungswinkels auf den Positionsfehler der untersuchten Markerverfahren. Dabei ist zu erkennen, dass der Positionsfehler mit zunehmendem Abstand sowie bei abnehmendem Betrachtungswinkel tendenziell ansteigt. Insbesondere ArUco3 weist über einen großen Teil der untersuchten Abstände und Betrachtungswinkel vergleichsweise geringe Positionsfehler auf \cite{JuradoRodriguez2023}.
 
 \begin{figure}[H]
@@ -516,14 +530,18 @@ Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado
     \label{fig:markeraccuracy}
 \end{figure}
 
+% REVIEW Claude [P] "erscheint daher ... grundsätzlich möglich" ist vage. Klarer: "Unter 1 m sind Fehler im Millimeterbereich zu erwarten" (= Begründung für Layer 2).
 Die Untersuchung verdeutlicht somit, dass die Eignung eines Markererkennungsverfahrens sowohl von dessen Genauigkeit, Stabilität und Verarbeitungsgeschwindigkeit als auch von den konkreten Einsatzbedingungen abhängt. Insbesondere Abbildung \ref{fig:markeraccuracy} zeigt, dass bei geringen Kamera-Marker-Abständen deutlich niedrigere Positionsfehler erzielt werden als bei größeren Entfernungen. So lässt sich für ArUco3 bei einem Abstand von 1 m ein Positionsfehler von etwa 1,7 mm ablesen, während der über die verschiedenen Versuchsbedingungen gemittelte Positionsfehler 11,5 mm beträgt. Für Anwendungen mit Abständen unter 1 m erscheint daher eine weitere Verbesserung der Genauigkeit grundsätzlich möglich.
 
 \subsection{Ultrabreitbandbasierte Lokalisierung}
 
+% REVIEW Claude [R] "schmalbandigen FUnktechnologie" -> "schmalbandigen Funktechnologien". [S] Einheiten mal "500 MHz", mal "20\%", in Kap. 3 mit \, -> einheitlich (\SI).
 Ultra-Wideband (UWB) ist eine funkbasierte Technologie, die zur drahtlosen Kommunikation und zur Positionsbestimmung von Objekten eingesetzt werden kann. Im Gegensatz zu schmalbandigen FUnktechnologie nutzt UWB Signale mit einer besonders großen Bandbreite von mindestens 500 MHz beziehungsweise einer relativen Bandbreite von mindestens 20\%. Insbesondere bei impulsbasierten UWB-Verfahren ermöglichen kurze Funkimpulse eine hohe zeitliche Auflösung der Signallaufzeitmessung und damit eine vergleichsweise präzise Abstandsmessung \cite{Elsanhoury2022}.
 
+% REVIEW Claude [R] "ausgesattet" -> "ausgestattet", "Entferung" -> "Entfernung".
 Die Positionsbestimmung erfolgt typischerweise mithilfe mehrerer Referenzstationen, sogenannter Anchors, deren räumliche Positionen bekannt sind. Das zu lokalisierende Objekt wird mit einem UWB-Sender beziehungsweise Tag ausgesattet, der Funksignale mit den Referenzstationen austauscht. Aus den empfangenen Signalen können mithilfe unterschiedlicher Verfahren Informationen über die Entferung zu den einzelnen Referenzstationen gewonnen werden. Zu den verbreiteten Methoden zählen Time of Arrival (ToA), Time Difference of Arrival (TDoA) und Two-Way Ranging (TWR). Während ToA auf der Messung der absoluten Signallaufzeit basiert, werden bei TDoA die Laufzeitunterschiede zwischen mehreren Empfangsstationen ausgewertet. TWR ermöglicht dagegen die Entfernungsschätzung anhand eines Signalaustauschs zwischen zwei Geräten \cite{Elsanhoury2022}.
 
+% REVIEW Claude [R] "Ausbreitungsfeschwindigkeit" -> "Ausbreitungsgeschwindigkeit", "Laufzet" -> "Laufzeit".
 Bei der laufzeitbasierten Entfernungsmessung ergibt sich der Abstand zwischen Sender und Empfänger grundsätzlich aus der Ausbreitungsfeschwindigkeit des Funksignals und dessen Laufzet:
 
 \begin{equation}
@@ -532,10 +550,12 @@ Bei der laufzeitbasierten Entfernungsmessung ergibt sich der Abstand zwischen Se
 \end{equation}
 
 
+% REVIEW Claude [P] Details zur Trilateration (3 vs. 4 Anker, Zeitabweichung) sind für die Arbeit kaum relevant, da UWB nicht gewählt wird -> auf 1-2 Sätze kürzen.
 Dabei bezeichnet \(d\) die Entfernung zwischen Sender und Empfänger, \(c\) die Lichtgeschwindigkeit und \(\Delta t\) die einfache Signallaufzeit. Bei Two-Way Ranging (TWR) wird diese unter Berücksichtigung der Antwortverzögerung aus der gemessenen Hin- und Rücklaufzeit ermittelt. Durch die Kombination mehrerer Entfernungsmessungen zu bekannten Referenzstationen kann anschließend mithilfe der Trilateration die Position des Objekts bestimmt werden. Für die dreidimensionale Positionsbestimmung werden typischerweise mindestens vier geeignet angeordnete Referenzstationen eingesetzt. Bei bekannten Entfernungen können unter geeigneten geometrischen Bedingungen auch drei Referenzstationen ausreichen, sofern die Mehrdeutigkeit der Positionslösung aufgelöst werden kann. Muss zusätzlich eine unbekannte Zeitabweichung geschätzt werden, sind weitere unabhängige Messungen erforderlich. Die Genauigkeit der Positionsschätzung hängt dabei unter anderem von der räumlichen Anordnung der Referenzstationen und der Genauigkeit der einzelnen Entfernungsmessungen ab
 \cite{Elsanhoury2022}.
 
 
+% REVIEW Claude [R] "Lokalisieungsverfahren" -> "Lokalisierungsverfahren", "Umgebundsbedingen" -> "Umgebungsbedingungen", "Abscahttungen" -> "Abschattungen".
 Ein wesentlicher Vorteil der UWB-Technologie liegt in ihrer vergleichsweise hohen Genauigkeit gegenüber vielen anderen funkbasierten Lokalisieungsverfahren. Elsanhoury et al. beschreiben für Anwendungen in der Indoor-Logistik Positionsgenauigkeiten im Bereich von etwa 5 bis 30 cm. Die tatsächlich erreichbare Genauigkeit ist jedoch von der eingesetzten Hardware, dem Lokalisierungsverfahren und den Umgebundsbedingen abhängig. Insbesondere in industriellen Umgebungen können metallische Objekte und andere Hindernisse durch Signalreflexionen und Abscahttungen die Positionsbestimmung beeinträchtigen. Neben den laufzeitbasierten Verfahren kann die Positionsbestimmung auch anhand der Einfallswinkel empfangener Funksignale (Angle of Arrival, AoA) oder der empfangenen Signalstärke (Received Signal Strength, RSS) erfolgen. Während bei AoA die Einfallsrichtung des Signals bestimmt wird, dient bei RSS die empfangene Signalstärke zur Abschätzung der Entfernung zwischen Sender und Empfänger \cite{Elsanhoury2022}. Abbildung \ref{fig:uwb_localization} veranschaulicht die unterschiedlichen Verfahren der funkbasierten Positionsbestimmung anhand von Einfallswinkeln, Entfernungen und Signallaufzeitdifferenzen.
 
 \begin{figure}[H]
@@ -550,6 +570,7 @@ Ein wesentlicher Vorteil der UWB-Technologie liegt in ihrer vergleichsweise hohe
     \label{fig:uwb_localization}
 \end{figure}
 
+% REVIEW Claude [R] "vergleichswiese" -> "vergleichsweise".
 Eine besondere Herausforderung stellen sogenannte Non-Line-of-Sight-Bedingungen (NLOS) dar, bei denen keine direkte Sichtverbindung zwischen Sender und Empfänger besteht. In solchen Situationen können Funksignale über reflektierte Ausbreitungswege empfangen werden, wodurch sich die gemessene Signallaufzeit gegenüber dem direkten Übertragungsweg erhöht. Dies kann zu systematischen Fehlern bei der Entfernungsschätzung und damit zu einer ungenauen Positionsbestimmung führen. Trotz der vergleichswiese guten Eigenschaften von UWB bei Mehrwegausbreitung können solche Fehler nicht vollständig vermieden werden \cite{Elsanhoury2022}.
 
 UWB-basierte Lokalisierungssysteme werden insbesondere zur Positionsbestimmung von Fahrzeugen, mobilen Robotern, Materialien und anderen Ressourcen in industriellen Innenräumen eingesetzt. Die Technologie ermöglicht eine funkbasierte Ortung ohne kamerabasierte Erkennung und ist daher nicht unmittelbar von den Beleuchtungsverhältnissen abhängig. Allerdings erfordert die Positionsbestimmung die Installation geeigneter Referenzstationen sowie die Ausstattung der zu lokalisierenden Objekte mit entsprechender Hardware \cite{Elsanhoury2022}.
@@ -560,8 +581,11 @@ Zusammenfassend stellt UWB eine Möglichkeit zur flexiblen Positionsbestimmung v
 
 \subsection{Feldbasierte Lokalisierung}
 
+% REVIEW Claude [V] Platzhalter: Mini-Einleitung zu feldbasierten Verfahren fehlt.
 MINI EINLEITUNG ERGÄNZEN
 
+% REVIEW Claude [S] Überschrift "RFID Grid", im Text "RFID-Grid" -> einheitlich mit Bindestrich.
+% REVIEW Claude [S] \subsubsection = 4. Gliederungsebene (2.15.3.1). Vorlage (2.6): "Unterkapitel maximal bis zur dritten" Ebene -> evtl. \paragraph nutzen.
 \subsubsection{RFID Grid}
 
 Radio Frequency Identification (RFID) ist eine funkbasierte Technologie, mit der sich Objekte kontaktlos über elektromagnetische Felder identifizieren lassen. Ein typisches System besteht aus einem Lesegerät (Reader) mit Antenne und einem Transponder, dem RFID-Tag. Jeder der verwendeten RFID-Tags besitzt eine eindeutige Kennung, die das Lesegerät erfasst und einem bestimmten Objekt oder einer bekannten Position zuordnen kann. Bei passiven Tags erfolgt die Energieversorgung ausschließlich über das Feld des Readers, sodass keine eigene Stromquelle nötig ist \cite{MiTakahashi2016}.
@@ -613,6 +637,8 @@ Ein Vorteil der magnetfeldbasierten Lokalisierung besteht darin, dass keine opti
 
 Hall-Sensor-Arrays stellen somit eine Möglichkeit zur kontaktlosen Lokalisierung magnetisch markierter Objekte dar. Die untersuchten Verfahren zeigen, dass sowohl die Positionsbestimmung als auch unter geeigneten Bedingungen die Erfassung der Orientierung möglich ist. Bei einer Übertragung auf die Lokalisierung modularer Komponenten innerhalb einer Roboterzelle wären insbesondere die Anordnung der Sensoren, die Positionierung der Magnete sowie mögliche magnetische Störeinflüsse zu berücksichtigen. Die in den Untersuchungen erzielten Genauigkeiten sind dabei an die jeweiligen experimentellen Bedingungen gebunden und können nicht ohne Weiteres auf eine andere Systemkonfiguration übertragen werden.
 
+% REVIEW Claude [V] 2.15.4 ist leer. Inhaltlich steht der Vergleich am Anfang von 3.4 (Zielkonflikt Genauigkeit/Bereich).
+% REVIEW Claude     Vorschlag: hier eine Tabelle (Genauigkeit, Bereich, Infrastruktur, Orientierung ja/nein) und in 3.4 nur darauf verweisen, oder Abschnitt streichen.
 \subsection{Gegenüberstellung der Lokalisierungstechnologien}
 
 

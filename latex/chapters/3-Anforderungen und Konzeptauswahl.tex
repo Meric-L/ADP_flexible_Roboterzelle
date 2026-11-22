@@ -2,9 +2,16 @@
 \chapter{Anforderungsanalyse und Systemkonzeption}
 \label{ch:Kapt3}
 
+% REVIEW Claude [Legende] R=Rechtschreibung G=Grammatik P=Prägnanz V=Vollständigkeit S=Stil I=Inhalt/Logik. Nur Kommentare, Text unverändert.
+% REVIEW Claude [S] Gesamteindruck: klare Linie Randbedingungen -> Anforderungen -> Gewichtung -> Konzepte -> Bewertung, gut nachvollziehbar.
+% REVIEW Claude     Stil liegt zwischen Kap. 2 (unpersönlich, lange Sätze) und Kap. 4 (kurz, aktiv). 19x "wir/unser"; Vorlage (2.9.1) verbietet Ich/Wir-Sätze -> im Team klären.
+% REVIEW Claude     Begriffe uneinheitlich: "Ebene" (3.4), "Level 1/2" (Konzepte, Tabellen), "Layer" (Kap. 4), "lv" (Stichworte) -> einen Begriff festlegen.
+% REVIEW Claude [V] \ref{sec:Anforderungen an die modulare Roboterzelle} und \ref{sec:Entwicklung und Bewertung von Systemkonzepten} gibt es nicht (im PDF "??").
+% REVIEW Claude     Vorhandene Labels: sec:Anforderungen an das Konzept ableiten, sec:Gewichtung der Anforderungen, sec:Zwei-Ebenen-Ansatz, sec:Nutzwertanalyse.
 Die Literaturrecherche hat eine Vielzahl möglicher Technologien und Kombinationsmöglichkeiten beleuchtet. Im nächsten Schritt gilt es, diese einzugrenzen und für unseren spezifischen Anwendungsfall auszuwählen. Hierzu müssen vor allem die Rahmenbedingungen berücksichtigt werden, die das Projekt eingrenzen und durch das PLCM vorgegeben sind. Diese externen Faktoren werden im Folgenden zunächst erfasst (Abschnitt~\ref{sec:Erfassen externer Randbedingungen}). Anschließend werden daraus die Anforderungen an das System abgeleitet (Abschnitt~\ref{sec:Anforderungen an die modulare Roboterzelle}) und gewichtet, um darauf aufbauend Systemkonzepte zu entwickeln und zu bewerten (Abschnitt~\ref{sec:Entwicklung und Bewertung von Systemkonzepten}).
 
 % =====================================================================
+% REVIEW Claude [S] Überschriften gemischt: Verbform ("Erfassen externer Randbedingungen", "Anforderungen an das Konzept ableiten") vs. Nomen ("Gewichtung der Anforderungen", "Nutzwertanalyse") -> einheitlich.
 \section{Erfassen externer Randbedingungen}
 \label{sec:Erfassen externer Randbedingungen}
 % =====================================================================
@@ -16,6 +23,8 @@ Externe Randbedingungen sind Gegebenheiten, die wir im Rahmen des Projekts nicht
 \paragraph{Budget}
 Alle Kosten des Projekts werden vom PLCM übernommen und müssen der Budgetplanung entsprechen. Der finanzielle Rahmen wurde auf 1000\,Euro festgelegt.
 
+% REVIEW Claude [V] "Fixtag" wird nicht erklärt -> Datum nennen. TODO "69 Tage" offen; A8 nennt 10 Wochen, hier 3 Monate Umsetzung -> Zahlen abgleichen.
+% REVIEW Claude [S] "An unser Projekt anschließend" -> "Im Anschluss an dieses Projekt".
 \paragraph{Entwicklungszeit}
 Der zeitliche Rahmen der Arbeit ist auf etwa sechs Monate angesetzt (Mai bis Ende November). Davon waren etwa drei Monate für Vorbereitung, Bestellungen und die Abstimmung des Konzepts und drei weitere Monate für Umsetzung, Validierung und Dokumentation eingeplant.
 % TODO: "69 Tage, also knapp 10 Wochen" -- worauf bezieht sich das genau (reine Umsetzungsphase?)? Hier einordnen.
@@ -26,9 +35,11 @@ An unser Projekt anschließend sollen darauf aufbauende ADPs ausgeschrieben werd
 \paragraph{Arbeitsbereich}
 Die Roboterzelle befindet sich im Hauptlabor des PLCM in einem ausgewiesenen Bereich von $2 \times 2$\,m, der zugleich den vorgesehenen Arbeitsbereich unserer Lokalisierung bildet. Um diesen herum ist ein größerer Bereich von etwa $4 \times 4$\,m durch Tische physisch begrenzt. Module, die nicht vollständig in den Arbeitsbereich passen, können daher auch teilweise oder ganz außerhalb des $2 \times 2$\,m-Bereichs platziert werden.
 
+% REVIEW Claude [V] \ref{TODO:Lichttest} offen ("??" im PDF). [R] "LED-Deckenpanelen" -> "LED-Deckenpanels".
 \paragraph{Beleuchtung}
 Für visuelle Erkennungstechnologien ist die Beleuchtung von zentraler Bedeutung. Der Arbeitsbereich wird von vier LED-Deckenpanelen beleuchtet. Dies sorgt für eine konstante Ausleuchtung und macht die Erkennung unabhängig von der Tageszeit. Leichte Helligkeitsschwankungen durch Tageslicht sind messbar, wirken sich jedoch nicht sichtbar auf die Erkennungsquote aus (siehe Kapitel~\ref{TODO:Lichttest}).
 
+% REVIEW Claude [G] Kommas/Schreibung: "zusammenhängen, aber"; "Bereich, sodass"; "ausgehen können, dass nur Personen, die mit dem Projekt vertraut sind, Zutritt haben" (das -> dass).
 \paragraph{Geteilte Nutzung des Labors}
 Neben dem Forschungsprojekt zur modularen Fertigung sind weitere Versuche im Arbeitsbereich untergebracht. Es werden sich daher immer wieder Personen und Objekte im Arbeitsbereich befinden, die nicht mit der Lokalisierung zusammenhängen aber mit dem System in Berührung kommen. Zudem handelt es sich nicht um einen abgeschlossenen Bereich sodass wir nicht davon ausgehen können, das nur Personen die mit dem Projekt vertraut sind Zutritt haben. Dies muss in der Auslegung und im Sicherheitskonzept Beachtung finden.
 
@@ -37,6 +48,8 @@ Die Roboterzelle sowie kleinere Tischmodule werden innerhalb des Arbeitsbereichs
 
 \subsection{Bestehende Hard- und Software}
 
+% REVIEW Claude [R] "nicht angegeben.Als" -> Leerzeichen fehlt.
+% REVIEW Claude [P] "Eine Absolutgenauigkeit, mit welchen Toleranzen ... wird nicht angegeben." -> "Eine Absolutgenauigkeit, also wie genau ein neu vorgegebener Punkt angefahren wird, nennt das Datenblatt nicht."
 \paragraph{Roboter}
 Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von $\pm 0{,}1$\,mm. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben.Als Endeffektor ist bereits ein Parallelgreifer montiert.
 
@@ -46,6 +59,7 @@ Im Labor sind bereits Rechenleistung (Raspberry Pis), Kameras, Werkzeuge und Mon
 \paragraph{Web-Schnittstelle}
 Für die modulare Roboterzelle und die Prozessplanung wurde in vorherigen Arbeiten bereits eine Web-Schnittstelle zur Steuerung des Roboters implementiert. Über das bestehende Nodesystem lassen sich Abläufe codefrei zusammenstellen. In dieses System wird auch die Lokalisierung eingebunden.
 
+% REVIEW Claude [V] Nur ein Satz. Kap. 4.5 verweist auf die "vorhandene Infrastruktur der Zelle": hier ergänzen, dass Roboter über ihre Robotics-Companion angebunden sind und LDS + Aggregation Server existieren.
 \paragraph{Kommunikation über OPC UA}
 Im Gesamtprojekt des digitalen Zwillings wird OPC UA bereits als Kommunikationsstandard zwischen den Robotern und dem Server verwendet.
 
@@ -69,6 +83,8 @@ Darüber hinaus soll die modulare Fertigung perspektivisch in einem Industriebet
 
 Aus den zuvor erfassten Randbedingungen leiten wir im Folgenden die Anforderungen an das Lokalisierungssystem ab. Tabelle~\ref{tab:anforderungen} fasst diese abschließend zusammen.
 
+% REVIEW Claude [S] Benennung uneinheitlich: A1 "Aufrüstbarkeit", Tab. Anforderungen "Erweiterbarkeit & Nachnutzbarkeit", Paarvergleich "Aufrüstbarkeit".
+% REVIEW Claude [V] Fest-/Wunschforderung steht nur bei A1 (2x2 m = Festforderung). 3.3 argumentiert damit -> für alle A1-A8 angeben (z. B. Spalte F/W in Tab. Anforderungen).
 \subsection{A1 -- Aufrüstbarkeit}
 Da nachfolgende Gruppen das erarbeitete Konzept übernehmen, anpassen und weiterentwickeln werden, muss es ohne grundlegende Änderungen erweiterbar sein (vgl. die in Abschnitt~\ref{sec:Erfassen externer Randbedingungen} genannten möglichen Ergänzungen). Daraus ergeben sich folgende Anforderungen:
 \begin{itemize}
@@ -83,12 +99,21 @@ Die Gesamtkosten dürfen den Rahmen von 1000\,Euro nicht überschreiten; geringe
 \subsection{A3 -- Positioniergenauigkeit}
 Zur Validierung des Konzepts haben wir einen typischen und erprobten industriellen Anwendungsfall gewählt: Pick-and-Place. Dabei wird ein Objekt von einem Roboter an einer vorgegebenen Position aufgenommen und an einer vordefinierten Stelle abgelegt. Dieser Anwendungsfall ist universell und lässt sich über das bestehende Nodesystem codefrei nachbauen.
 
+% REVIEW Claude [I] Zwei Grenzen: erst 8,85 mm (halbe Backenbreite), dann +-10 mm (halbe Würfelkante, nächster Absatz). Klarstellen, welche gilt und warum.
+% REVIEW Claude [R/G] "8,85mm" -> "8,85\,mm"; "Überschreitet man diese Grenze kann der Greifer ins leere Greifen" -> "Wird diese Grenze überschritten, greift der Greifer ins Leere." (Man-Satz, Komma, Groß).
+% REVIEW Claude [G] "Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen ..." -> "Auch vergleichbare Anwendungsfälle in der Literatur nutzen ..."; "~\cite{A}, ~\cite{B}" -> "\cite{A,B}".
+% REVIEW Claude [P] Fläche 313,29 mm^2 ist redundant zur Seitenlänge 17,7 mm.
 Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von $313{,}29\,\mathrm{mm}^2$ bei einer Seitenlänge von $17{,}7$\,mm besitzen. Damit ist die Positionsgenauigkeit auf mindestens 8,85mm nach oben beschränkt. Überschreitet man diese Grenze kann der Greifer ins leere Greifen. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection}, ~\cite{Li2020SquarePickPlace}.
 
+% REVIEW Claude [R] "liegen kann. \cite{...}" -> Zitat vor den Punkt. [I] "mittlere ... Positionierfehler ... bei bis zu 8,51 mm" mischt Mittelwert und Maximum -> Wortlaut der Quelle prüfen.
 Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von $\pm 0{,}1$\,mm. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu 8,51\,mm liegen kann. \cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von 20\,mm, die geringfügig über der Kantenlänge der Greifbacken von 17,7\,mm liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von $\pm 10$\,mm, was der halben Kantenlänge des Würfels entspricht.
 
+% REVIEW Claude [I] Logik: Reserve 10 - 3 = 7 mm ist kleiner als der Absolutfehler des FR3 (bis 8,5 mm). Das passt nur, weil Layer 2 über dieselbe Kinematik misst (Argument in Konzept A) -> hier kurz darauf verweisen.
+% REVIEW Claude [V] Warum genau 3 mm? Die Herleitung (z. B. Sicherheitsfaktor ca. 3) einen Satz deutlicher machen.
 Die geforderte Positioniergenauigkeit von $\pm 3$\,mm liegt damit um etwa den Faktor drei unter der zulässigen Grenze und bietet ausreichend Reserve für weitere Fehlerquellen wie die Absolutgenauigkeit des Roboters.
 
+% REVIEW Claude [V] A4 taucht im Paarvergleich nicht auf (dort stattdessen Identifikation und Kalibrierbarkeit, die nicht als Anforderung hergeleitet sind) -> erklären oder angleichen.
+% REVIEW Claude [P] "innerhalb weniger Sekunden" -> konkreten Zielwert nennen (z. B. < 10 s), sonst in Kap. 6 nicht prüfbar.
 \subsection{A4 -- Echtzeitfähigkeit und Verfügbarkeit}
 Das System muss eine Veränderung an den Modulen, etwa das Hinzufügen, Entfernen oder Verschieben eines Moduls, innerhalb weniger Sekunden erkennen. Innerhalb desselben Zeitrahmens muss die aktualisierte Position des Moduls bereitstehen, gemessen von der Veränderung bis zur Bereitstellung des Ergebnisses. Da sich die Module zwischen zwei Prozessschritten nicht bewegen, sind die Echtzeitanforderungen vergleichsweise gering. Sie müssen nicht im Millisekundenbereich liegen, wie es etwa bei der Überwachung dynamischer Systeme der Fall wäre. Eine schnellere Reaktion verbessert vor allem die Nutzerfreundlichkeit, ist aber technisch nicht zwingend erforderlich.
 
@@ -104,6 +129,7 @@ Im Arbeitsbereich halten sich regelmäßig Personen und projektfremde Objekte au
 \end{itemize}
 Auch wenn es sich um ein Forschungsprojekt in einem klar abgesteckten Rahmen handelt, soll das Konzept bereits erste Überlegungen zur Übertragbarkeit auf eine industrielle Umgebung berücksichtigen.
 
+% REVIEW Claude [G] "Da dieser nicht abgeschlossen ist" -> Bezug unklar (gemeint: der Arbeitsbereich, nicht der FR3).
 \subsection{A6 -- Sicherheit}
 \label{subsec:Sicherheit}
 Obwohl der FR3 als Cobot ausgelegt ist, stellen Roboterbewegungen ein Sicherheitsrisiko für Personen im Arbeitsbereich dar. Da dieser nicht abgeschlossen ist, muss ein besonderes Augenmerk auf die Sicherheit gelegt werden:
@@ -123,6 +149,7 @@ Das Konzept muss innerhalb des zeitlichen Rahmens des ADP umsetzbar sein, da ans
 
 \begin{table}[H]
     \centering
+    % REVIEW Claude [V] Spalte Fest-/Wunschforderung fehlt (s. A1). [S] Text "1000\,Euro", Tabelle "\,€" -> einheitlich.
     \caption{Übersicht der Anforderungen und ihrer Herkunft}
     \label{tab:anforderungen}
     \begin{tabular}{l p{4.2cm} p{3.6cm} p{4.2cm}}
@@ -147,6 +174,9 @@ Das Konzept muss innerhalb des zeitlichen Rahmens des ADP umsetzbar sein, da ans
 \label{sec:Gewichtung der Anforderungen}
 % =====================================================================
 
+% REVIEW Claude [I] Definition vertauscht: Laut Text gibt es "+", wenn die *Spalte* wichtiger ist, gezählt wird aber für die *Zeile*
+% REVIEW Claude     (Positionsgenauigkeit hat in ihrer Zeile nur "+" und 12 Punkte). Richtig: "+, wenn die Anforderung der Zeile wichtiger ist als die der Spalte".
+% REVIEW Claude [S] "Paarvergleich ~\ref{tab:paarvergleich}" -> "Paarvergleich (Tabelle~\ref{tab:paarvergleich})".
 Nicht alle Anforderungen beeinflussen unser Konzept gleich stark. Deshalb gewichten wir sie für die Konzeptfindung. Für ein systematisches Vorgehen haben wir uns für einen Paarvergleich ~\ref{tab:paarvergleich}  entschieden, bei dem die Kriterien in einer Matrix paarweise miteinander verglichen werden. Dabei erhält jede Paarung
 \begin{itemize}
     \item ein \enquote{$+$}, wenn die Anforderung in der Spalte wichtiger ist als die in der Zeile,
@@ -155,10 +185,13 @@ Nicht alle Anforderungen beeinflussen unser Konzept gleich stark. Deshalb gewich
 \end{itemize}
 Anschließend werden Punkte vergeben: $-$ entspricht 0 Punkten, $=$ entspricht 1 Punkt und $+$ entspricht 2 Punkten. Die Summe der Punkte wird in der letzten Spalte eingetragen.
 
+% REVIEW Claude [V] Kriterien im Paarvergleich (Identifikation, Kalibrierbarkeit, ...) entsprechen nicht A1-A8 -> Zuordnung erklären oder Tab. Anforderungen ergänzen.
 Festforderungen müssen von jedem Konzept erfüllt werden und dienen daher als Ausschlusskriterien. Im Paarvergleich werden ausschließlich Wunschforderungen gewichtet, da nur diese eine Differenzierung zwischen den Konzepten ermöglichen. Da es sich bei der Sicherheit (A6, Abschnitt~\ref{subsec:Sicherheit}) und der Integration in bestehende Systeme (A7, Abschnitt~\ref{subsec:Integration}) um Festforderungen handelt, die jedes Konzept zwingend erfüllen muss, werden sie im Paarvergleich nicht berücksichtigt.
 
 \begin{table}[htbp]
     \centering
+    % REVIEW Claude [I] Nachgerechnet: Matrix stimmig (spiegelbildlich), Summen korrekt, gesamt 42.
+    % REVIEW Claude     Rundung: Robustheit 4/42 = 0,095 -> 0,10 (10 %), nicht 0,09. Vermutlich auf 1,00 hingerechnet -> eine Nachkommastelle mehr oder Hinweis "Rundungsdifferenz". Betrifft auch Tab. Gewichtung und Nutzwertanalyse.
     \caption{Gewichtung der Anforderungen mittels Paarvergleich (Werte gerundet)}
     \label{tab:paarvergleich}
     \renewcommand{\arraystretch}{1.35}
@@ -195,6 +228,7 @@ Festforderungen müssen von jedem Konzept erfüllt werden und dienen daher als A
 
 \begin{table}[htbp]
     \centering
+    % REVIEW Claude [P] Inhalt doppelt zur Spalte "Normiert" in Tab. Paarvergleich -> eine der beiden Darstellungen reicht.
     \caption{Ergebnis der Gewichtung der Bewertungskriterien}
     \label{tab:gewichtung}
     \renewcommand{\arraystretch}{1.3}
@@ -227,6 +261,8 @@ Die Recherche der Lokalisierungstechnologien in Abschnitt~\ref{sec:Lokalisierung
 
 Auch innerhalb einer Technologie zeigt sich dieser Zielkonflikt. Bei markerbasierten Kamerasystemen steigt der Positionsfehler mit zunehmendem Abstand zwischen Kamera und Marker. Über Abstände von 1 bis 6\,m gemittelt liegen die Positionsfehler etablierter Verfahren zwischen 11,5 und 15,9\,mm, während für ArUco3 bei einem Abstand von 1\,m ein Fehler von etwa 1,7\,mm erreicht wird~\cite{JuradoRodriguez2023}. Da die Werte unter unterschiedlichen Versuchsbedingungen ermittelt wurden, sind sie nicht direkt vergleichbar, verdeutlichen jedoch die grundlegende Tendenz: Eine hohe Genauigkeit lässt sich nur in einem kleinen Bereich erreichen, ein großer Bereich nur mit verminderter Genauigkeit abdecken.
 
+% REVIEW Claude [S] "in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt" -> "in zwei Ebenen unterteilt (Abbildung~\ref{fig:zwei_ebenen})".
+% REVIEW Claude [V] Die TODO-Stichpunkte am Kapitelende (Warum Level 1/2: 2D-Problem, Höhen bekannt, erweiterbar, Deckenmontage) gehören hierher.
 Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von $\pm 3$\,mm sicher.
 
 \begin{figure}[htbp]
@@ -239,6 +275,9 @@ Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} un
 
 \subsection{Konzeptvariation}
 \label{subsec:Konzeptvariation}
+% REVIEW Claude [R] "unvenvetionell" -> "unkonventionell", "ergebnisse" -> "Ergebnisse", "berist von vorherin" -> "bereits von vornherein".
+% REVIEW Claude [G] Erster Satz ist ein Bandwurmsatz -> teilen. Komma nach "Kasten" streichen.
+% REVIEW Claude [V] Quelle für den morphologischen Kasten fehlt (z. B. VDI 2221 oder Pahl/Beitz). Warum genau diese drei Kombinationen (z. B. UWB nicht)? Ein Satz Begründung.
 In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühzeitig auf eine bestimmte Technologie festzulegen, da dies den Lösungsraum einschränken kann und somit Lösungen die unvenvetionell erscheinen aber eventuell die besten ergebnisse liefern berist von vorherin ausgeschlossen werden. Um eine Voreingenommenheit gegenüber einer favorisierten Lösung zu vermeiden, werden in Anlehnung an den morphologischen Kasten, unterschiedliche Konzeptvarianten durch die Kombination der vorgestellten Technologien für Layer 1 und Layer 2 erarbeitet. Diese werden anschließend anhand der im Paarvergleich gewichteten Kriterien gegeneinander abgewogen. Die drei betrachteten Konzeptvarianten werden im Folgenden kurz vorgestellt.
 
 \subsection{Konzept A: Optische Marker auf beiden Ebenen}
@@ -249,12 +288,17 @@ In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühze
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.5\textwidth]{Bilder/Kapt3/KonzeptA.png}
+    % REVIEW Claude [S] "Schematische Abbildung Konzept A" -> "Schematische Darstellung von Konzept A" (auch B, C). PNG statt Vektorgrafik (Vorlage 2.9.3 verlangt Vektorgrafiken).
     \caption{Schematische Abbildung Konzept A}
     \label{fig:KonzeptA}
 \end{figure}
 
+% REVIEW Claude [I] "heben sich weitgehend auf" ist eine starke Aussage ohne Quelle. Gilt nur, wenn Mess- und Greifpose nah beieinander liegen -> abschwächen ("verringern sich") oder belegen.
+% REVIEW Claude [P] Absatz sehr lang: Kinematik-Argument als eigenen Absatz.
 \textbf{Vorteile.} Der wesentliche Vorteil dieser Kombination besteht darin, dass Level~1 und Level~2 auf derselben Codebasis aufbauen. Dies beschleunigt die Entwicklung deutlich, da nicht zwei unterschiedliche Verfahren implementiert und getestet werden müssen. Da die Kameras bereits vorhanden sind, ist das Konzept zudem sehr kostengünstig und liefert sowohl die Positionen als auch die Rotationen der Module. Darüber hinaus greifen beide Kameras auf dieselben Marker zu. Dies vereinfacht sowohl das Hinzufügen neuer Module als auch die Erweiterung des Arbeitsbereichs durch zusätzliche Kameras oder Roboter erheblich. Zusätzlich sind optische Marker passive Elemente, die weder eine Stromversorgung noch eine Datenverbindung benötigen. Ein weiterer Vorteil ergibt sich aus der Messung über den Roboterarm. Bei Pick-and-Place-Aufgaben hängt die erreichbare Präzision maßgeblich von der Roboterkinematik ab, deren Absolutgenauigkeit beim FR3 ohne Kalibrierung bei etwa 8,5\,mm liegt~\cite{Franzese2026Calibration}. Da die Kamera auf Level~2 am Roboterarm montiert ist, wird die Position des Markers direkt im Koordinatensystem des Roboters und über dieselbe kinematische Kette bestimmt, die anschließend auch für den Greifvorgang genutzt wird. Systematische Fehler der Kinematik wirken sich daher auf Messung und Greifvorgang gleichermaßen aus und heben sich weitgehend auf. Bei einer Messung durch ein externes System müsste die Position hingegen erst in das Roboterkoordinatensystem übertragen werden, wobei die Fehler der Kinematik vollständig in den Greifvorgang eingehen.
 
+% REVIEW Claude [V] \cite{TODO} offen (Tiefenfehler entlang der optischen Achse), z. B. JuradoRodriguez2023 oder Kalaitzakis2021 prüfen.
+% REVIEW Claude [P] "In der Praxis ist dieser Nachteil jedoch gering, da ..." schwer verständlich -> einfacher formulieren.
 \textbf{Nachteile.} Die größte Schwäche des Konzepts ist die Anfälligkeit für Verdeckungen durch Personen, Gegenstände oder den bewegten Roboterarm selbst. Wird ein Marker teilweise verdeckt, können das Modul oder dessen ID gegebenenfalls nicht erkannt werden. Eine fehlerhafte Erkennung ist dagegen sehr unwahrscheinlich, da die Marker mit einer Fehlerkorrektur kodiert sind und eine Erkennung in der Regel entweder vollständig gelingt oder ausbleibt. Da beide Ebenen dieselbe Technologie verwenden, unterliegen sie zudem denselben Störeinflüssen. Verschlechtern sich beispielsweise die Lichtverhältnisse so stark, dass keine Marker mehr erkannt werden, kann keine Ebene den Ausfall der anderen ausgleichen. In der Praxis ist dieser Nachteil jedoch gering, da die Positionierung ohnehin auf beide Ebenen angewiesen ist und bereits der Ausfall einer einzelnen Ebene die Lokalisierung verhindert. Ein weiterer Nachteil ist die vergleichsweise lange Dauer der Level-2-Lokalisierung, da der Roboterarm jedes Modul einzeln anfahren muss, um Bilder aufzunehmen. Da zwei Kameras eingesetzt werden, sind zudem zwei Kalibrierungen erforderlich: eine extrinsische Kalibrierung der Deckenkamera zum Roboter sowie eine Hand-Auge-Kalibrierung der Kamera am Roboterarm. Dies erhöht den Einrichtungsaufwand, und Fehler in der Kalibrierung wirken sich unmittelbar auf die Genauigkeit der Lokalisierung aus. Darüber hinaus ist bei der markerbasierten Positionsbestimmung die Entfernung entlang der optischen Achse der Kamera am fehleranfälligsten~\cite{TODO}. Bei der senkrechten Draufsicht auf Level~1 entspricht diese Richtung der Höhe der Module. Da die Höhen der Module jedoch bekannt sind und sich die Lokalisierung auf Level~1 auf ein zweidimensionales Problem reduzieren lässt, wirkt sich dieser Fehler nur begrenzt auf die Positionsbestimmung in der Ebene aus.
 
 \subsection{Konzept B: Optische Marker und Hall-Sensor-Array}
@@ -353,6 +397,8 @@ In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühze
 \section{Nutzwertanalyse}
 \label{sec:Nutzwertanalyse}
 
+% REVIEW Claude [I] Gl. (Nutzwert) nutzt normierte Gewichte g_i (Summe 1), die Tabelle rechnet mit Prozent (Summe 100) -> Nutzwert 3,65 statt 365. Einheitlich machen.
+% REVIEW Claude [R] "liefert ist" -> "liefert, ist"; "abweichen.Um" -> Leerzeichen fehlt.
 Um die Konzeptvarianten miteinander vergleichen zu können, wird eine Nutzwertanalyse durchgeführt. Dazu wird für jedes Bewertungskriterium eine Punkteskala von 1 bis 4 definiert, die festlegt, welche Bedingungen ein Konzept erfüllen muss, um eine bestimmte Punktzahl zu erhalten. Die Bedingungen sind dabei abgestuft: Je vollständiger ein Konzept die Anforderung erfüllt, desto mehr Punkte erhält es. Anschließend wird jedes Konzept anhand dieser Skalen bewertet. Die vergebenen Punkte werden mit den im Paarvergleich ermittelten Gewichten (Tabelle~\ref{tab:gewichtung}) multipliziert und aufsummiert. Daraus ergibt sich für jedes Konzept ein Nutzwert:
 \begin{equation}
     N_k = \sum_{i=1}^{n} g_i \cdot p_{ik}
@@ -367,6 +413,7 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
 
 {\small
 \renewcommand{\arraystretch}{1.3}
+% REVIEW Claude [S] Skala Entwicklungszeit: "$<10--12$ Wochen" uneindeutig -> "10--12 Wochen". Positionsgenauigkeit: "<10 cm" vs. "<+-10 mm" -> +- einheitlich.
 \begin{xltabular}{\textwidth}{>{\raggedright\arraybackslash}p{5.4cm}
                               >{\raggedright\arraybackslash}X}
     \caption{Punkteskalen der Bewertungskriterien für die Nutzwertanalyse}
@@ -436,6 +483,9 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
 
 \begin{table}[htbp]
     \centering
+    % REVIEW Claude [I] Nachgerechnet: alle Produkte, Summen (365/239/298) und Wertigkeiten (91,3/59,8/74,5 %) stimmen.
+    % REVIEW Claude [I] Konzept C, Kalibrierbarkeit 1 P ("Keine Kalibrierung möglich") passt nicht zum Text (Einmessen aufwendig, aber möglich) -> eher 2 P.
+    % REVIEW Claude     Konzept B, Robustheit 1 P ("liefert unbemerkt falsche Positionen") ist im Text so nicht begründet.
     \caption{Nutzwertanalyse der Konzeptvarianten}
     \label{tab:nutzwertanalyse}
     \small
@@ -472,10 +522,13 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
     \end{tabular}
 \end{table}
 
+% REVIEW Claude [V] Es fehlt der Schlusssatz mit der Entscheidung ("Konzept A wird umgesetzt") und evtl. eine kurze Prüfung, ob C bei anderer Gewichtung gewinnen würde.
 Konzept~A erreicht mit einer technischen Wertigkeit von 91,3\,\% das beste Ergebnis, gefolgt von Konzept~C mit 74,5\,\% und Konzept~B mit 59,8\,\%. Gegenüber Konzept~B ergibt sich der Vorsprung aus nahezu allen Kriterien. Ausschlaggebend sind insbesondere die Positions- und Rotationsgenauigkeit, da Konzept~A sowohl Position als auch Rotation zuverlässig bestimmt und der Übergang zwischen beiden Ebenen unkritisch ist, sowie die deutlich kürzere Entwicklungszeit. Gegenüber Konzept~C ist Konzept~A in den Kernfunktionen gleichwertig und bei der Identifikation der Module sogar unterlegen. Der Vorsprung entsteht hier vor allem durch die praktische Umsetzbarkeit. Die gemeinsame Codebasis beider Ebenen, die Nutzung vorhandener Hardware und passiver Marker führen zu geringeren Kosten, einer kürzeren Entwicklungszeit und einer einfacheren Erweiterbarkeit. Da diese Kriterien auf Schätzungen beruhen, ist der Abstand zu Konzept~C mit Vorsicht zu interpretieren.
 
 
 
+% REVIEW Claude [V] Ab hier nur Stichwortliste. Vieles ist inzwischen in Kap. 4 abgedeckt: Systemarchitektur -> 4.1; Aggregation Server, MDNS, Livestream, Part10/Companion -> 4.5.
+% REVIEW Claude     "Autokalibrierung lv 1 und 2" steht doppelt. Liste aufteilen: was gehört ins Konzept (Kap. 3), was in die Umsetzung (Kap. 4/5).
 \section{Systemarchitektur des gewählten Konzepts}
 \label{sec:Systemarchitektur des gewählten Konzepts}
 
