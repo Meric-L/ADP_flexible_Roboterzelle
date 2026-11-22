@@ -95,6 +95,7 @@ Das System muss eine Veränderung an den Modulen, etwa das Hinzufügen, Entferne
 Zudem muss das System für den Dauerbetrieb ausgelegt sein und möglichst geringe Ausfallzeiten aufweisen. Nach einer Unterbrechung, etwa durch einen Neustart oder Stromausfall, soll es ohne größeren manuellen Aufwand wieder betriebsbereit sein.
 
 \subsection{A5 -- Robustheit}
+\label{subsec:Robustheit}
 Im Arbeitsbereich halten sich regelmäßig Personen und projektfremde Objekte auf, zudem werden Roboterzelle und Module häufig verschoben. Das System muss daher unter diesen Bedingungen zuverlässig arbeiten und mit Störungen umgehen können. Daraus ergeben sich folgende Anforderungen:
 \begin{itemize}
     \item \textbf{Umgang mit unvollständigen Informationen:} Kann ein Modul zeitweise nicht erfasst werden, etwa weil es durch Personen oder Objekte verdeckt ist, muss das System dies erkennen und darf keine fehlerhaften Positionsdaten ausgeben.
@@ -117,8 +118,7 @@ Obwohl der FR3 als Cobot ausgelegt ist, stellen Roboterbewegungen ein Sicherheit
 Die Lokalisierung muss in die bestehende Infrastruktur des digitalen Zwillings eingebunden werden können. Dazu muss sie sich über das vorhandene Web-Frontend steuern lassen und ihre Ergebnisse über die im Projekt verwendeten Schnittstellen, insbesondere OPC UA, bereitstellen. Da diese Anforderung für jedes Konzept zwingend erfüllt sein muss, dient sie als Ausschlusskriterium und geht nicht in die Gewichtung ein.
 
 \subsection{A8 -- Umsetzbarkeit im Zeitrahmen}
-\label{subsec:Zeitrahmen}
-Das Konzept muss so gewählt werden, dass es innerhalb der verfügbaren Umsetzungszeit absehbar realisiert und funktionsfähig ist.
+Das Konzept muss innerhalb des zeitlichen Rahmens des ADP umsetzbar sein, da anschließende Projekte bereits geplant sind. Darüber hinaus soll die Umsetzung möglichst innerhalb von 10 Wochen abgeschlossen sein, um ausreichend Zeit für Validierung und Dokumentation zu gewährleisten.
 
 
 \begin{table}[H]
@@ -220,37 +220,259 @@ Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept 
 Die Gewichtung wurde anschließend im Rahmen des Zwischenkolloquiums vorgestellt, mit den Teilnehmenden diskutiert und bestätigt.
 
 % =====================================================================
-\section{Konzeptentwicklung}
-\label{sec:Konzeptentwicklung}
+\section{Zwei-Ebenen-Ansatz}
+\label{sec:Zwei-Ebenen-Ansatz}
 % =====================================================================
 Die Recherche der Lokalisierungstechnologien in Abschnitt~\ref{sec:Lokalisierungstechnologien} zeigt einen Zielkonflikt zwischen der erreichbaren Genauigkeit und dem abdeckbaren Arbeitsbereich. Magnetfeldbasierte Verfahren mit Hall-Sensor-Arrays erreichen hohe Genauigkeiten, etwa einen maximalen Positionsfehler von 1,4\,mm~\cite{KawatoKim2005} oder mittlere absolute Fehler von unter 0,04\,mm~\cite{Nemeth2025Hall}. Sie sind jedoch auf einen begrenzten Bereich in unmittelbarer Nähe des Sensorarrays beschränkt. UWB-basierte Systeme decken dagegen große industrielle Innenräume ab, erreichen dabei aber lediglich Positionsgenauigkeiten im Bereich von etwa 5 bis 30\,cm~\cite{Elsanhoury2022}. Bei RFID-Grid-Systemen hängt die Genauigkeit maßgeblich von der Tag-Dichte ab: Mit 100 Tags pro Quadratmeter ergeben sich mittlere Abweichungen von 4,7\,mm in $x$- und 22,8\,mm in $y$-Richtung~\cite{MiTakahashi2016}, wobei der Installationsaufwand mit der abzudeckenden Fläche steigt.
 
 Auch innerhalb einer Technologie zeigt sich dieser Zielkonflikt. Bei markerbasierten Kamerasystemen steigt der Positionsfehler mit zunehmendem Abstand zwischen Kamera und Marker. Über Abstände von 1 bis 6\,m gemittelt liegen die Positionsfehler etablierter Verfahren zwischen 11,5 und 15,9\,mm, während für ArUco3 bei einem Abstand von 1\,m ein Fehler von etwa 1,7\,mm erreicht wird~\cite{JuradoRodriguez2023}. Da die Werte unter unterschiedlichen Versuchsbedingungen ermittelt wurden, sind sie nicht direkt vergleichbar, verdeutlichen jedoch die grundlegende Tendenz: Eine hohe Genauigkeit lässt sich nur in einem kleinen Bereich erreichen, ein großer Bereich nur mit verminderter Genauigkeit abdecken.
 
-Aus diesem Grund wird die Lokalisierung in zwei Ebenen unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von $\pm 3$\,mm sicher.
+Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} unterteilt, die jeweils nur eine Aufgabe übernehmen. Die erste Ebene deckt den gesamten Arbeitsbereich ab und bestimmt die Position der Module mit grober Genauigkeit. Die zweite Ebene stellt in einem kleinen Bereich die geforderte Genauigkeit von $\pm 3$\,mm sicher.
 
-Aus den vorgestellten Technologien entwickeln wir drei sinnvolle Kombinationen
-
-
-% TODO: Folgende Stichpunkte aus dem Entwurf ausformulieren:
-%
-% Warum Level 1 und Level 2?
-%  - erweiterbar auf noch feinere Level (modular)
-%  - künftig grobe, ungenaue Abbildung des gesamten Labors möglich
-%  - Deckenmontage später leicht umzusetzen, da das Konzept darauf aufbaut
-%  - schnelle Bildauswertung, kein Fokusproblem, Höhen bereits bekannt
-%  - Reduktion auf ein 2D-Problem
-%
-% Offene Fragen:
-%  - Reicht Level 1 aus?
-%  - Reicht Level 2 aus?
-%
-% Wie wird die absolute Position bestimmt?
-%  - Winkel im Träger oder Welt-Tags?
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.4\textwidth]{Bilder/Kapt3/zwei_ebenen_konzept.pdf}
+    \caption{Zwei-Ebenen-Konzept der Lokalisierung}
+    \label{fig:zwei_ebenen}
+\end{figure}
 
 
-\section{Auswahl des Systemkonzepts}
-\label{sec:Auswahl des Systemkonzepts}
+\subsection{Konzeptvariation}
+\label{subsec:Konzeptvariation}
+In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühzeitig auf eine bestimmte Technologie festzulegen, da dies den Lösungsraum einschränken kann und somit Lösungen die unvenvetionell erscheinen aber eventuell die besten ergebnisse liefern berist von vorherin ausgeschlossen werden. Um eine Voreingenommenheit gegenüber einer favorisierten Lösung zu vermeiden, werden in Anlehnung an den morphologischen Kasten, unterschiedliche Konzeptvarianten durch die Kombination der vorgestellten Technologien für Layer 1 und Layer 2 erarbeitet. Diese werden anschließend anhand der im Paarvergleich gewichteten Kriterien gegeneinander abgewogen. Die drei betrachteten Konzeptvarianten werden im Folgenden kurz vorgestellt.
+
+\subsection{Konzept A: Optische Marker auf beiden Ebenen}
+\label{subsec:konzeptA}
+
+\textbf{Aufbau.} Konzept~A verwendet auf beiden Ebenen dieselbe Lokalisierungstechnologie, bei der optische Marker mit einer Kamera erfasst werden. Für Level~1 ist eine Kamera fest oberhalb des Arbeitsbereichs montiert. Sie deckt den geforderten Arbeitsbereich ab und liefert daher eine eher grobe Lokalisierung. Für eine ausreichend genaue Positionsbestimmung muss die Kamera nahe an die Marker herangeführt werden. Die Lokalisierung auf Level~2 erfolgt daher durch eine Kamera am Roboterarm. Dadurch lässt sich der Abstand zum Marker flexibel einstellen, sodass alle Module im Arbeitsbereich des Roboters genau lokalisiert werden können, indem der Roboterarm ihre Positionen anfährt. Module, die der Roboter nicht erreicht, sind lediglich mit der Genauigkeit von Level~1 bekannt. Dies stellt jedoch keinen wesentlichen Nachteil dar, da eine genaue Position nur für Module erforderlich ist, mit denen der Roboter direkt interagiert. Für eine Kollisionsvermeidung reicht die grobe Lokalisierung aus.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt3/KonzeptA.png}
+    \caption{Schematische Abbildung Konzept A}
+    \label{fig:KonzeptA}
+\end{figure}
+
+\textbf{Vorteile.} Der wesentliche Vorteil dieser Kombination besteht darin, dass Level~1 und Level~2 auf derselben Codebasis aufbauen. Dies beschleunigt die Entwicklung deutlich, da nicht zwei unterschiedliche Verfahren implementiert und getestet werden müssen. Da die Kameras bereits vorhanden sind, ist das Konzept zudem sehr kostengünstig und liefert sowohl die Positionen als auch die Rotationen der Module. Darüber hinaus greifen beide Kameras auf dieselben Marker zu. Dies vereinfacht sowohl das Hinzufügen neuer Module als auch die Erweiterung des Arbeitsbereichs durch zusätzliche Kameras oder Roboter erheblich. Zusätzlich sind optische Marker passive Elemente, die weder eine Stromversorgung noch eine Datenverbindung benötigen. Ein weiterer Vorteil ergibt sich aus der Messung über den Roboterarm. Bei Pick-and-Place-Aufgaben hängt die erreichbare Präzision maßgeblich von der Roboterkinematik ab, deren Absolutgenauigkeit beim FR3 ohne Kalibrierung bei etwa 8,5\,mm liegt~\cite{Franzese2026Calibration}. Da die Kamera auf Level~2 am Roboterarm montiert ist, wird die Position des Markers direkt im Koordinatensystem des Roboters und über dieselbe kinematische Kette bestimmt, die anschließend auch für den Greifvorgang genutzt wird. Systematische Fehler der Kinematik wirken sich daher auf Messung und Greifvorgang gleichermaßen aus und heben sich weitgehend auf. Bei einer Messung durch ein externes System müsste die Position hingegen erst in das Roboterkoordinatensystem übertragen werden, wobei die Fehler der Kinematik vollständig in den Greifvorgang eingehen.
+
+\textbf{Nachteile.} Die größte Schwäche des Konzepts ist die Anfälligkeit für Verdeckungen durch Personen, Gegenstände oder den bewegten Roboterarm selbst. Wird ein Marker teilweise verdeckt, können das Modul oder dessen ID gegebenenfalls nicht erkannt werden. Eine fehlerhafte Erkennung ist dagegen sehr unwahrscheinlich, da die Marker mit einer Fehlerkorrektur kodiert sind und eine Erkennung in der Regel entweder vollständig gelingt oder ausbleibt. Da beide Ebenen dieselbe Technologie verwenden, unterliegen sie zudem denselben Störeinflüssen. Verschlechtern sich beispielsweise die Lichtverhältnisse so stark, dass keine Marker mehr erkannt werden, kann keine Ebene den Ausfall der anderen ausgleichen. In der Praxis ist dieser Nachteil jedoch gering, da die Positionierung ohnehin auf beide Ebenen angewiesen ist und bereits der Ausfall einer einzelnen Ebene die Lokalisierung verhindert. Ein weiterer Nachteil ist die vergleichsweise lange Dauer der Level-2-Lokalisierung, da der Roboterarm jedes Modul einzeln anfahren muss, um Bilder aufzunehmen. Da zwei Kameras eingesetzt werden, sind zudem zwei Kalibrierungen erforderlich: eine extrinsische Kalibrierung der Deckenkamera zum Roboter sowie eine Hand-Auge-Kalibrierung der Kamera am Roboterarm. Dies erhöht den Einrichtungsaufwand, und Fehler in der Kalibrierung wirken sich unmittelbar auf die Genauigkeit der Lokalisierung aus. Darüber hinaus ist bei der markerbasierten Positionsbestimmung die Entfernung entlang der optischen Achse der Kamera am fehleranfälligsten~\cite{TODO}. Bei der senkrechten Draufsicht auf Level~1 entspricht diese Richtung der Höhe der Module. Da die Höhen der Module jedoch bekannt sind und sich die Lokalisierung auf Level~1 auf ein zweidimensionales Problem reduzieren lässt, wirkt sich dieser Fehler nur begrenzt auf die Positionsbestimmung in der Ebene aus.
+
+\subsection{Konzept B: Optische Marker und Hall-Sensor-Array}
+\label{subsec:konzeptB}
+
+\textbf{Aufbau.} Wie Konzept~A verwendet Konzept~B für die Groblokalisierung eine fest installierte Kamera, die den Arbeitsbereich überwacht. Für die Feinlokalisierung wird hingegen ein Hall-Sensor-Array eingesetzt, das am Endeffektor des Roboterarms befestigt ist. Die Module sind dazu neben einem optischen Marker zusätzlich mit einem Permanentmagneten ausgestattet.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt3/KonzeptB.png}
+    \caption{Schematische Abbildung Konzept B}
+    \label{fig:KonzeptB}
+\end{figure}
+
+\textbf{Vorteile.} Der Vorteil dieser Kombination liegt in der hohen Genauigkeit magnetfeldbasierter Verfahren (vgl. Abschnitt~\ref{sec:Lokalisierungstechnologien}). Zudem funktioniert die Feinlokalisierung auch bei schlechten Lichtverhältnissen und ist unempfindlich gegenüber optischen Verdeckungen. Da das Sensorarray am Roboterarm befestigt ist, wird die Position des Magneten wie bei Konzept~A über dieselbe kinematische Kette bestimmt, die auch für den Greifvorgang genutzt wird. Systematische Fehler der Roboterkinematik heben sich dadurch ebenfalls weitgehend auf (vgl. Abschnitt~\ref{subsec:konzeptA}).
+
+\textbf{Nachteile.} Die Auswertung der Sensorsignale und die Rückrechnung auf die Position sind jedoch komplex. Sie erfordern an die jeweilige Geometrie angepasste Modelle, die beispielsweise aus Datensätzen gelernt werden können. Dieser Schritt ist sehr aufwendig und erschwert das Hinzufügen neuer Module deutlich. Darüber hinaus besitzen die betrachteten Hall-Sensoren nur eine sehr geringe Reichweite. Die Magnete der Module müssen daher nicht nur von der Deckenkamera erfasst werden, sondern auch für den Roboterarm erreichbar sein, da das Sensorarray nahezu bis an den Magneten herangeführt werden muss. Diese zusätzliche Einschränkung verkleinert den tatsächlich überwachbaren Bereich deutlich. Aus der geringen Reichweite ergibt sich ein weiteres Problem: Der Erfassungsbereich des Hall-Sensor-Arrays ist kleiner als die Positionsunsicherheit der Groblokalisierung, sodass sich die Genauigkeitsbereiche von Level~1 und Level~2 nicht überschneiden. Im ungünstigsten Fall reicht die Groblokalisierung daher nicht aus, um das Sensorarray in den Erfassungsbereich des Magneten zu führen, sodass dieser nicht gefunden wird. Dem lässt sich zwar mit einer standardisierten Suchbewegung des Roboterarms entgegenwirken, dies verlängert jedoch die Dauer der Lokalisierung. Zudem ist das System durch den Einsatz von Hall-Sensoren anfällig für magnetische Störungen. Ferromagnetische Bauteile oder stromdurchflossene Leiter in der Umgebung können das Messergebnis verfälschen~\cite{Song2026Magnetic}. Solche Störquellen sind zudem schwer zu identifizieren, da für die Fehlersuche spezielle Messausrüstung erforderlich ist.
+
+\subsection{Konzept C: RFID-Grid und optische Marker}
+\label{subsec:konzeptC}
+
+\textbf{Aufbau.} Konzept~C ersetzt die kamerabasierte Groblokalisierung auf Level~1 durch ein RFID-Grid, das im gesamten Arbeitsbereich am Boden ausgelegt wird. An der Unterseite jedes Moduls ist ein RFID-Reader angebracht, der die Tags im Boden ausliest. Die Feinlokalisierung auf Level~2 erfolgt wie bei Konzept~A über optische Marker und eine Kamera am Roboterarm.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt3/KonzeptC.png}
+    \caption{Schematische Abbildung Konzept C}
+    \label{fig:KonzeptC}
+\end{figure}
+
+\textbf{Vorteile.} Über die Dichte des Grids lässt sich die Auflösung der Groblokalisierung an die Anforderungen anpassen. Die Identifikation der Module ist sehr einfach, da jeder Reader eindeutig einem Modul zugeordnet ist. Zudem entfällt auf Level~1 die Problematik der Verdeckung, da RFID nicht optisch arbeitet.
+
+\textbf{Nachteile.} Problematisch ist jedoch die Bestimmung der absoluten Position der Tags. Da jedes Tag von Hand platziert werden muss, können sich Platzierungsfehler aufsummieren, und das Einmessen jedes einzelnen Tags ist sehr aufwendig. Zudem liefert ein einzelner Reader lediglich die Information, welches Tag sich unter dem Modul befindet, nicht jedoch dessen Orientierung. Zur Bestimmung der Rotation wären daher mindestens zwei Reader pro Modul erforderlich. Da bereits jedes neue Modul mindestens einen eigenen Reader benötigt, skaliert das Konzept im größeren Maßstab schlecht. Hinzu kommt, dass jeder Reader eine Stromversorgung und eine Datenverbindung benötigt. Dies erfordert zusätzliche Kabel oder Akkus an den verschiebbaren Modulen. Darüber hinaus muss der gesamte Arbeitsbereich mit Tags ausgelegt sein. Diese müssen den Belastungen durch darüber bewegte Module, Gegenstände und Personen dauerhaft standhalten und dürfen nicht verrutschen.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Übersicht der Konzeptvarianten mit ihren Vor- und Nachteilen}
+    \label{tab:hybridkonzepte}
+    \footnotesize
+    \renewcommand{\arraystretch}{1.3}
+    \newcolumntype{L}{>{\raggedright\arraybackslash}X}
+    \newcommand{\pkt}[1]{\par\noindent\hangindent=0.8em\hangafter=1\textbullet~#1}
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{1.3cm}
+                                 >{\raggedright\arraybackslash}p{1.9cm}
+                                 >{\raggedright\arraybackslash}p{1.9cm}
+                                 L L}
+        \toprule
+        \textbf{Konzept}
+        & \textbf{Level 1 (global)}
+        & \textbf{Level 2 (lokal)}
+        & \textbf{Vorteile}
+        & \textbf{Nachteile} \\
+        \midrule
+        A
+        & Optische Marker (Deckenkamera)
+        & Optische Marker (Kamera am Roboterarm)
+        & \pkt{Gemeinsame Codebasis beider Ebenen}
+          \pkt{Kostengünstig}
+          \pkt{Liefert Position und Rotation}
+          \pkt{Gleiche Marker auf beiden Ebenen}
+          \pkt{Passive Marker ohne Strom- und Datenverbindung}
+          \pkt{Messung über die Roboterkinematik}
+        & \pkt{Anfällig für Verdeckungen durch Personen, Gegenstände und den Roboterarm}
+          \pkt{Beide Ebenen unterliegen denselben Störeinflüssen, z.\,B. Lichtverhältnissen}
+          \pkt{Lange Dauer der Level-2-Lokalisierung}
+          \pkt{Zwei Kalibrierungen erforderlich}
+          \pkt{Entfernung entlang der optischen Achse am fehleranfälligsten} \\
+        \midrule
+        B
+        & Optische Marker (Deckenkamera)
+        & Hall-Sensor-Array (am Roboterarm)
+        & \pkt{Hohe Genauigkeit magnetfeldbasierter Verfahren}
+          \pkt{Level~2 unabhängig von Lichtverhältnissen und optischen Verdeckungen}
+          \pkt{Messung über die Roboterkinematik}
+        & \pkt{Komplexe Auswertung mit geometrieabhängigen Modellen}
+          \pkt{Hinzufügen neuer Module aufwendig}
+          \pkt{Sehr geringe Reichweite}
+          \pkt{Erfassungsbereich kleiner als die Unsicherheit von Level~1}
+          \pkt{Anfällig für magnetische Störungen} \\
+        \midrule
+        C
+        & RFID-Grid (Reader am Modul)
+        & Optische Marker (Kamera am Roboterarm)
+        & \pkt{Auflösung über die Dichte des Grids anpassbar}
+          \pkt{Einfache Identifikation der Module}
+          \pkt{Keine Verdeckungsproblematik auf Level~1}
+        & \pkt{Aufwendiges Einmessen der Tags}
+          \pkt{Keine Orientierung mit einem Reader}
+          \pkt{Eigener Reader pro Modul}
+          \pkt{Strom- und Datenverbindung an verschiebbaren Modulen nötig}
+          \pkt{Tags müssen dauerhaft belastbar und rutschfest im Boden verlegt sein} \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+\section{Nutzwertanalyse}
+\label{sec:Nutzwertanalyse}
+
+Um die Konzeptvarianten miteinander vergleichen zu können, wird eine Nutzwertanalyse durchgeführt. Dazu wird für jedes Bewertungskriterium eine Punkteskala von 1 bis 4 definiert, die festlegt, welche Bedingungen ein Konzept erfüllen muss, um eine bestimmte Punktzahl zu erhalten. Die Bedingungen sind dabei abgestuft: Je vollständiger ein Konzept die Anforderung erfüllt, desto mehr Punkte erhält es. Anschließend wird jedes Konzept anhand dieser Skalen bewertet. Die vergebenen Punkte werden mit den im Paarvergleich ermittelten Gewichten (Tabelle~\ref{tab:gewichtung}) multipliziert und aufsummiert. Daraus ergibt sich für jedes Konzept ein Nutzwert:
+\begin{equation}
+    N_k = \sum_{i=1}^{n} g_i \cdot p_{ik}
+    \label{eq:nutzwert}
+\end{equation}
+Dabei bezeichnet $N_k$ den Nutzwert des Konzepts $k$, $g_i$ das normierte Gewicht der Anforderung $i$, $p_{ik}$ die Punktzahl des Konzepts $k$ im Kriterium $i$ und $n$ die Anzahl der Kriterien. Das Konzept mit dem höchsten Nutzwert erfüllt die Anforderungen insgesamt am besten. Eine weitere Kennzahl, die dieses Verfahren liefert ist die technische Wertigkeit. Sie setzt den Nutzwert ins Verhältnis zum bestmöglichen Ergebnis:
+\begin{equation}
+    W_k = \frac{N_k}{p_{\max} \cdot \sum_{i=1}^{n} g_i}
+    \label{eq:wertigkeit}
+\end{equation}
+Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für die einzelnen Konzepte zum Zeitpunkt der Bewertung keine konkreten Messdaten vorliegen. Die tatsächlichen Eigenschaften können daher im Verlauf der Umsetzung von diesen Annahmen abweichen.Um diese Unsicherheit zu verringern, stützen sich die Bewertungen soweit möglich auf Literaturwerte (vgl. Abschnitt~\ref{sec:Lokalisierungstechnologien}) sowie Diskussionen im Team und mit den Betreuern. Zudem wurde die Bewertung im Rahmen des Zwischenkolloquiums vorgestellt.
+
+{\small
+\renewcommand{\arraystretch}{1.3}
+\begin{xltabular}{\textwidth}{>{\raggedright\arraybackslash}p{5.4cm}
+                              >{\raggedright\arraybackslash}X}
+    \caption{Punkteskalen der Bewertungskriterien für die Nutzwertanalyse}
+    \label{tab:punkteskala} \\
+    \toprule
+    \textbf{Bewertungskriterium} & \textbf{Bewertungsskala} \\
+    \midrule
+    \endfirsthead
+    \multicolumn{2}{l}{\textit{Fortsetzung von Tabelle~\ref{tab:punkteskala}}} \\
+    \toprule
+    \textbf{Bewertungskriterium} & \textbf{Bewertungsskala} \\
+    \midrule
+    \endhead
+    \bottomrule
+    \endlastfoot
+
+    \textbf{Identifikation der Module}\newline
+    Feststellen einer eindeutigen ID für jedes Modul
+    & \textbf{1\,P:} Keine Identifikation möglich\newline
+      \textbf{2\,P:} Nur einzelne Module manuell identifizierbar\newline
+      \textbf{3\,P:} Alle Module unter Idealbedingungen automatisiert identifizierbar (exakte Positionierung, optimale Ausleuchtung)\newline
+      \textbf{4\,P:} Alle Module unter realen Produktionsbedingungen automatisiert, eindeutig und zuverlässig identifizierbar (unvorhersehbare Positionierung, Verschmutzung, veränderte Beleuchtung) \\
+    \midrule
+    \textbf{Kalibrierbarkeit}\newline
+    Anpassen des Systems an veränderte Umgebungsbedingungen
+    & \textbf{1\,P:} Keine Kalibrierung möglich\newline
+      \textbf{2\,P:} Kalibrierung nur mit Demontage möglich, Zeitaufwand $>8$\,h (eine Person)\newline
+      \textbf{3\,P:} Kalibrierung ohne Demontage möglich, Zeitaufwand $<8$\,h (eine Person)\newline
+      \textbf{4\,P:} Kalibrierung ohne Demontage in $<2$\,h möglich (eine Person) \\
+    \midrule
+    \textbf{Positions-/Rotationsgenauigkeit}\newline
+    Bestimmung von Position und Rotation
+    & \textbf{1\,P:} Position oder Orientierung nicht bestimmbar\newline
+      \textbf{2\,P:} Positionsgenauigkeit $<10$\,cm\newline
+      \textbf{3\,P:} Positionsgenauigkeit $<\pm10$\,mm\newline
+      \textbf{4\,P:} Positionsgenauigkeit $<\pm3$\,mm \\
+    \midrule
+    \textbf{Kosten}\newline
+    Kosten des Gesamtsystems einschließlich der zu beschaffenden Hardware, Software und Montagevorrichtungen
+    & \textbf{1\,P:} 750--1000\,€\newline
+      \textbf{2\,P:} 500--749\,€\newline
+      \textbf{3\,P:} 250--499\,€\newline
+      \textbf{4\,P:} $<250$\,€ \\
+    \midrule
+    \textbf{Aufrüstbarkeit}\newline
+    Erweiterung des Arbeitsbereichs und Einbinden neuer Module
+    & \textbf{1\,P:} Nicht aufrüstbar\newline
+      \textbf{2\,P:} Aufrüstung nur mit einem Arbeitsaufwand von $>8$\,h möglich (eine Person)\newline
+      \textbf{3\,P:} Aufrüstung in 4--8\,h möglich (eine Person)\newline
+      \textbf{4\,P:} Aufrüstung in $<4$\,h möglich (eine Person) \\
+    \midrule
+    \textbf{Robustheit}\newline
+    Einfluss externer Faktoren auf die Positionsbestimmung
+    & \textbf{1\,P:} liefert bei Störungen unbemerkt falsche Positionen\newline
+      \textbf{2\,P:} erkennt Störungen, fällt dann aber vollständig aus\newline
+      \textbf{3\,P:} erkennt Störungen und meldet sie, Lokalisierung der nicht betroffenen Module läuft weiter\newline
+      \textbf{4\,P:} wie 3 P, zusätzlich unempfindlich gegenüber teilweisen Verdeckungen \\
+    \midrule
+    \textbf{Entwicklungszeit}\newline
+    Voraussichtliche Dauer für Konstruktion, Montage, Inbetriebnahme und Verifikation
+    & \textbf{1\,P:} $>12$ Wochen übersteigt den zeitlichen Rahmen des ADP\newline
+      \textbf{2\,P:} $<10--12$ Wochen\newline
+      \textbf{3\,P:} $<8--10$ Wochen\newline
+      \textbf{4\,P:} $<8$ Wochen \\
+\end{xltabular}
+}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Nutzwertanalyse der Konzeptvarianten}
+    \label{tab:nutzwertanalyse}
+    \small
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{>{\raggedright\arraybackslash}p{3.6cm} c cc cc cc}
+        \toprule
+        & & \multicolumn{2}{c}{\textbf{Konzept A}}
+          & \multicolumn{2}{c}{\textbf{Konzept B}}
+          & \multicolumn{2}{c}{\textbf{Konzept C}} \\
+        \cmidrule(lr){3-4} \cmidrule(lr){5-6} \cmidrule(lr){7-8}
+        \textbf{Bewertungskriterium} & \textbf{Gewichtung}
+        & \textbf{Punkte} & \textbf{Nutzwert}
+        & \textbf{Punkte} & \textbf{Nutzwert}
+        & \textbf{Punkte} & \textbf{Nutzwert} \\
+        \midrule
+        Identifikation der Module         & 19\,\% & 3 & 57  & 3 & 57  & 4 & 76  \\
+        Kalibrierbarkeit                  &  7\,\% & 3 & 21  & 2 & 14  & 1 & 7   \\
+        Positions-/\newline Rotationsgenauigkeit
+                                          & 29\,\% & 4 & 116 & 3 & 87  & 4 & 116 \\
+        Kosten                            & 12\,\% & 4 & 48  & 3 & 36  & 2 & 24  \\
+        Aufrüstbarkeit                    & 12\,\% & 4 & 48  & 2 & 24  & 2 & 24  \\
+        Robustheit                        &  9\,\% & 3 & 27  & 1 & 9   & 3 & 27  \\
+        Entwicklungszeit                  & 12\,\% & 4 & 48  & 1 & 12  & 2 & 24  \\
+        \midrule
+        \textbf{Summe}                    & \textbf{100\,\%}
+                                          & 25 & \textbf{365}
+                                          & 15 & \textbf{239}
+                                          & 18 & \textbf{298} \\
+        \textbf{Technische Wertigkeit}    &
+                                          & \multicolumn{2}{c}{\textbf{91,3\,\%}}
+                                          & \multicolumn{2}{c}{\textbf{59,8\,\%}}
+                                          & \multicolumn{2}{c}{\textbf{74,5\,\%}} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Konzept~A erreicht mit einer technischen Wertigkeit von 91,3\,\% das beste Ergebnis, gefolgt von Konzept~C mit 74,5\,\% und Konzept~B mit 59,8\,\%. Gegenüber Konzept~B ergibt sich der Vorsprung aus nahezu allen Kriterien. Ausschlaggebend sind insbesondere die Positions- und Rotationsgenauigkeit, da Konzept~A sowohl Position als auch Rotation zuverlässig bestimmt und der Übergang zwischen beiden Ebenen unkritisch ist, sowie die deutlich kürzere Entwicklungszeit. Gegenüber Konzept~C ist Konzept~A in den Kernfunktionen gleichwertig und bei der Identifikation der Module sogar unterlegen. Der Vorsprung entsteht hier vor allem durch die praktische Umsetzbarkeit. Die gemeinsame Codebasis beider Ebenen, die Nutzung vorhandener Hardware und passiver Marker führen zu geringeren Kosten, einer kürzeren Entwicklungszeit und einer einfacheren Erweiterbarkeit. Da diese Kriterien auf Schätzungen beruhen, ist der Abstand zu Konzept~C mit Vorsicht zu interpretieren.
 
 
 
@@ -275,11 +497,28 @@ Aus den vorgestellten Technologien entwickeln wir drei sinnvolle Kombinationen
 \section{Machbar uterstützung}
 \section{BOM}
 \section{Generieren der Tags, kalibierboards, Alle tags, Papir, Laminiert, Gedruckt, Gelasert etc}
+\section{Worldtag}
 
 \section{Autokalibrierung lv 1 und 2}
 \section{3D Druck teile, Würfel, Würfelhalterung, Tag Halterung, Aufnahme platten im greifer, Camera Halterung, laserlot, }
 \section{8x8 Tags können in einem Radius von 3m um die 1lv Kamera erkannt werden}
 \section{Mehrposen Bilder vs einposen bilder}
+
+% TODO: Folgende Stichpunkte aus dem Entwurf ausformulieren:
+%
+% Warum Level 1 und Level 2?
+%  - erweiterbar auf noch feinere Level (modular)
+%  - künftig grobe, ungenaue Abbildung des gesamten Labors möglich
+%  - Deckenmontage später leicht umzusetzen, da das Konzept darauf aufbaut
+%  - schnelle Bildauswertung, kein Fokusproblem, Höhen bereits bekannt
+%  - Reduktion auf ein 2D-Problem
+%
+% Offene Fragen:
+%  - Reicht Level 1 aus?
+%  - Reicht Level 2 aus?
+%
+% Wie wird die absolute Position bestimmt?
+%  - Winkel im Träger oder Welt-Tags?
 
 
 
