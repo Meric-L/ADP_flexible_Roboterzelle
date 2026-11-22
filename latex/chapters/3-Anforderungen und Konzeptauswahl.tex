@@ -35,23 +35,21 @@ An unser Projekt anschließend sollen darauf aufbauende ADPs ausgeschrieben werd
 \paragraph{Arbeitsbereich}
 Die Roboterzelle befindet sich im Hauptlabor des PLCM in einem ausgewiesenen Bereich von \qtyproduct{2 x 2}{\metre}, der zugleich den vorgesehenen Arbeitsbereich unserer Lokalisierung bildet. Um diesen herum ist ein größerer Bereich von etwa \qtyproduct{4 x 4}{\metre} durch Tische physisch begrenzt. Module, die nicht vollständig in den Arbeitsbereich passen, können daher auch teilweise oder ganz außerhalb des \qtyproduct{2 x 2}{\metre}-Bereichs platziert werden.
 
-% REVIEW Claude [V] \ref{TODO:Lichttest} offen ("??" im PDF). [R] "LED-Deckenpanelen" -> "LED-Deckenpanels".
+% REVIEW Claude [V] \ref{TODO:Lichttest} offen ("??" im PDF).
 \paragraph{Beleuchtung}
-Für visuelle Erkennungstechnologien ist die Beleuchtung von zentraler Bedeutung. Der Arbeitsbereich wird von vier LED-Deckenpanelen beleuchtet. Dies sorgt für eine konstante Ausleuchtung und macht die Erkennung unabhängig von der Tageszeit. Leichte Helligkeitsschwankungen durch Tageslicht sind messbar, wirken sich jedoch nicht sichtbar auf die Erkennungsquote aus (siehe Kapitel~\ref{TODO:Lichttest}).
+Für visuelle Erkennungstechnologien ist die Beleuchtung von zentraler Bedeutung. Der Arbeitsbereich wird von vier LED-Deckenpanels beleuchtet. Dies sorgt für eine konstante Ausleuchtung und macht die Erkennung unabhängig von der Tageszeit. Leichte Helligkeitsschwankungen durch Tageslicht sind messbar, wirken sich jedoch nicht sichtbar auf die Erkennungsquote aus (siehe Kapitel~\ref{TODO:Lichttest}).
 
-% REVIEW Claude [G] Kommas/Schreibung: "zusammenhängen, aber"; "Bereich, sodass"; "ausgehen können, dass nur Personen, die mit dem Projekt vertraut sind, Zutritt haben" (das -> dass).
 \paragraph{Geteilte Nutzung des Labors}
-Neben dem Forschungsprojekt zur modularen Fertigung sind weitere Versuche im Arbeitsbereich untergebracht. Es werden sich daher immer wieder Personen und Objekte im Arbeitsbereich befinden, die nicht mit der Lokalisierung zusammenhängen aber mit dem System in Berührung kommen. Zudem handelt es sich nicht um einen abgeschlossenen Bereich sodass wir nicht davon ausgehen können, das nur Personen die mit dem Projekt vertraut sind Zutritt haben. Dies muss in der Auslegung und im Sicherheitskonzept Beachtung finden.
+Neben dem Forschungsprojekt zur modularen Fertigung sind weitere Versuche im Arbeitsbereich untergebracht. Es werden sich daher immer wieder Personen und Objekte im Arbeitsbereich befinden, die nicht mit der Lokalisierung zusammenhängen, aber mit dem System in Berührung kommen. Zudem handelt es sich nicht um einen abgeschlossenen Bereich, sodass wir nicht davon ausgehen können, dass nur Personen, die mit dem Projekt vertraut sind, Zutritt haben. Dies muss in der Auslegung und im Sicherheitskonzept Beachtung finden.
 
 \paragraph{Mechanische Beanspruchung}
 Die Roboterzelle sowie kleinere Tischmodule werden innerhalb des Arbeitsbereichs regelmäßig verschoben. Kabel, die dabei im Weg hängen, können abgerissen werden und zu Schäden führen. Auf dem Boden befestigte Marker sind ebenfalls diesen Beanspruchungen ausgesetzt.
 
 \subsection{Bestehende Hard- und Software}
 
-% REVIEW Claude [R] "nicht angegeben.Als" -> Leerzeichen fehlt.
 % REVIEW Claude [P] "Eine Absolutgenauigkeit, mit welchen Toleranzen ... wird nicht angegeben." -> "Eine Absolutgenauigkeit, also wie genau ein neu vorgegebener Punkt angefahren wird, nennt das Datenblatt nicht."
 \paragraph{Roboter}
-Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben.Als Endeffektor ist bereits ein Parallelgreifer montiert.
+Als Roboter kommt ein Franka Research~3 (FR3) zum Einsatz. Dieser ist als Cobot für die sichere Zusammenarbeit mit Menschen ausgelegt. Laut Datenblatt \cite{Franka2025Datenblatt} besitzt er eine Punktwiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Eine Absolutgenauigkeit, mit welchen Toleranzen ein vordefinierter neuer Punkt erreicht wird, wird nicht angegeben. Als Endeffektor ist bereits ein Parallelgreifer montiert.
 
 \paragraph{Vorhandene Komponenten}
 Im Labor sind bereits Rechenleistung (Raspberry Pis), Kameras, Werkzeuge und Montagematerial vorhanden, die für das Projekt genutzt werden können.
@@ -100,13 +98,11 @@ Die Gesamtkosten dürfen den Rahmen von \SI{1000}{\euro} nicht überschreiten; g
 Zur Validierung des Konzepts haben wir einen typischen und erprobten industriellen Anwendungsfall gewählt: Pick-and-Place. Dabei wird ein Objekt von einem Roboter an einer vorgegebenen Position aufgenommen und an einer vordefinierten Stelle abgelegt. Dieser Anwendungsfall ist universell und lässt sich über das bestehende Nodesystem codefrei nachbauen.
 
 % REVIEW Claude [I] Zwei Grenzen: erst 8,85 mm (halbe Backenbreite), dann +-10 mm (halbe Würfelkante, nächster Absatz). Klarstellen, welche gilt und warum.
-% REVIEW Claude [R/G] "8,85mm" -> "8,85\,mm"; "Überschreitet man diese Grenze kann der Greifer ins leere Greifen" -> "Wird diese Grenze überschritten, greift der Greifer ins Leere." (Man-Satz, Komma, Groß).
-% REVIEW Claude [G] "Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen ..." -> "Auch vergleichbare Anwendungsfälle in der Literatur nutzen ..."; "~\cite{A}, ~\cite{B}" -> "\cite{A,B}".
 % REVIEW Claude [P] Fläche 313,29 mm^2 ist redundant zur Seitenlänge 17,7 mm.
-Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von \SI{313,29}{\square\milli\metre} bei einer Seitenlänge von \SI{17,7}{\milli\metre} besitzen. Damit ist die Positionsgenauigkeit auf mindestens \SI{8,85}{\milli\metre} nach oben beschränkt. Überschreitet man diese Grenze kann der Greifer ins leere Greifen. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch beispielhafte Anwendungsfälle die unserem Aufbau ähneln in der Literatur nutzen exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection}, ~\cite{Li2020SquarePickPlace}.
+Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von \SI{313,29}{\square\milli\metre} bei einer Seitenlänge von \SI{17,7}{\milli\metre} besitzen. Damit ist die Positionsgenauigkeit auf mindestens \SI{8,85}{\milli\metre} nach oben beschränkt. Wird diese Grenze überschritten, greift der Greifer ins Leere. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch in der Literatur nutzen Anwendungsfälle, die unserem Aufbau ähneln, exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection,Li2020SquarePickPlace}.
 
-% REVIEW Claude [R] "liegen kann. \cite{...}" -> Zitat vor den Punkt. [I] "mittlere ... Positionierfehler ... bei bis zu 8,51 mm" mischt Mittelwert und Maximum -> Wortlaut der Quelle prüfen.
-Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu \SI{8,51}{\milli\metre} liegen kann. \cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von \SI{20}{\milli\metre}, die geringfügig über der Kantenlänge der Greifbacken von \SI{17,7}{\milli\metre} liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von \SI{\pm 10}{\milli\metre}, was der halben Kantenlänge des Würfels entspricht.
+% REVIEW Claude [I] "mittlere ... Positionierfehler ... bei bis zu 8,51 mm" mischt Mittelwert und Maximum -> Wortlaut der Quelle prüfen.
+Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu \SI{8,51}{\milli\metre} liegen kann~\cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von \SI{20}{\milli\metre}, die geringfügig über der Kantenlänge der Greifbacken von \SI{17,7}{\milli\metre} liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von \SI{\pm 10}{\milli\metre}, was der halben Kantenlänge des Würfels entspricht.
 
 % REVIEW Claude [I] Logik: Reserve 10 - 3 = 7 mm ist kleiner als der Absolutfehler des FR3 (bis 8,5 mm). Das passt nur, weil Layer 2 über dieselbe Kinematik misst (Argument in Konzept A) -> hier kurz darauf verweisen.
 % REVIEW Claude [V] Warum genau 3 mm? Die Herleitung (z. B. Sicherheitsfaktor ca. 3) einen Satz deutlicher machen.
@@ -129,10 +125,9 @@ Im Arbeitsbereich halten sich regelmäßig Personen und projektfremde Objekte au
 \end{itemize}
 Auch wenn es sich um ein Forschungsprojekt in einem klar abgesteckten Rahmen handelt, soll das Konzept bereits erste Überlegungen zur Übertragbarkeit auf eine industrielle Umgebung berücksichtigen.
 
-% REVIEW Claude [G] "Da dieser nicht abgeschlossen ist" -> Bezug unklar (gemeint: der Arbeitsbereich, nicht der FR3).
 \subsection{A6 -- Sicherheit}
 \label{subsec:Sicherheit}
-Obwohl der FR3 als Cobot ausgelegt ist, stellen Roboterbewegungen ein Sicherheitsrisiko für Personen im Arbeitsbereich dar. Da dieser nicht abgeschlossen ist, muss ein besonderes Augenmerk auf die Sicherheit gelegt werden:
+Obwohl der FR3 als Cobot ausgelegt ist, stellen Roboterbewegungen ein Sicherheitsrisiko für Personen im Arbeitsbereich dar. Da der Arbeitsbereich nicht abgeschlossen ist, muss ein besonderes Augenmerk auf die Sicherheit gelegt werden:
 \begin{itemize}
     \item Alle mechanischen Aufbauten müssen so gesichert sein, dass Personen nicht gefährdet werden, sei es durch Laser, spitze Teile, Verkabelung oder herunterfallende Gegenstände.
     \item Fehler im Lokalisierungssystem (siehe A5) dürfen nicht zu unkontrollierten Roboterfahrten führen.
@@ -275,10 +270,8 @@ Aus diesem Grund wird die Lokalisierung in zwei Ebenen ~\ref{fig:zwei_ebenen} un
 
 \subsection{Konzeptvariation}
 \label{subsec:Konzeptvariation}
-% REVIEW Claude [R] "unvenvetionell" -> "unkonventionell", "ergebnisse" -> "Ergebnisse", "berist von vorherin" -> "bereits von vornherein".
-% REVIEW Claude [G] Erster Satz ist ein Bandwurmsatz -> teilen. Komma nach "Kasten" streichen.
 % REVIEW Claude [V] Quelle für den morphologischen Kasten fehlt (z. B. VDI 2221 oder Pahl/Beitz). Warum genau diese drei Kombinationen (z. B. UWB nicht)? Ein Satz Begründung.
-In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühzeitig auf eine bestimmte Technologie festzulegen, da dies den Lösungsraum einschränken kann und somit Lösungen die unvenvetionell erscheinen aber eventuell die besten ergebnisse liefern berist von vorherin ausgeschlossen werden. Um eine Voreingenommenheit gegenüber einer favorisierten Lösung zu vermeiden, werden in Anlehnung an den morphologischen Kasten, unterschiedliche Konzeptvarianten durch die Kombination der vorgestellten Technologien für Layer 1 und Layer 2 erarbeitet. Diese werden anschließend anhand der im Paarvergleich gewichteten Kriterien gegeneinander abgewogen. Die drei betrachteten Konzeptvarianten werden im Folgenden kurz vorgestellt.
+In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühzeitig auf eine bestimmte Technologie festzulegen. Dies kann den Lösungsraum einschränken, sodass Lösungen, die unkonventionell erscheinen, aber eventuell die besten Ergebnisse liefern, bereits von vornherein ausgeschlossen werden. Um eine Voreingenommenheit gegenüber einer favorisierten Lösung zu vermeiden, werden in Anlehnung an den morphologischen Kasten unterschiedliche Konzeptvarianten durch die Kombination der vorgestellten Technologien für Layer 1 und Layer 2 erarbeitet. Diese werden anschließend anhand der im Paarvergleich gewichteten Kriterien gegeneinander abgewogen. Die drei betrachteten Konzeptvarianten werden im Folgenden kurz vorgestellt.
 
 \subsection{Konzept A: Optische Marker auf beiden Ebenen}
 \label{subsec:konzeptA}
@@ -398,18 +391,17 @@ In der Konzeptphase technischer Entwicklungen ist es wichtig, sich nicht frühze
 \label{sec:Nutzwertanalyse}
 
 % REVIEW Claude [I] Gl. (Nutzwert) nutzt normierte Gewichte g_i (Summe 1), die Tabelle rechnet mit Prozent (Summe 100) -> Nutzwert 3,65 statt 365. Einheitlich machen.
-% REVIEW Claude [R] "liefert ist" -> "liefert, ist"; "abweichen.Um" -> Leerzeichen fehlt.
 Um die Konzeptvarianten miteinander vergleichen zu können, wird eine Nutzwertanalyse durchgeführt. Dazu wird für jedes Bewertungskriterium eine Punkteskala von 1 bis 4 definiert, die festlegt, welche Bedingungen ein Konzept erfüllen muss, um eine bestimmte Punktzahl zu erhalten. Die Bedingungen sind dabei abgestuft: Je vollständiger ein Konzept die Anforderung erfüllt, desto mehr Punkte erhält es. Anschließend wird jedes Konzept anhand dieser Skalen bewertet. Die vergebenen Punkte werden mit den im Paarvergleich ermittelten Gewichten (Tabelle~\ref{tab:gewichtung}) multipliziert und aufsummiert. Daraus ergibt sich für jedes Konzept ein Nutzwert:
 \begin{equation}
     N_k = \sum_{i=1}^{n} g_i \cdot p_{ik}
     \label{eq:nutzwert}
 \end{equation}
-Dabei bezeichnet $N_k$ den Nutzwert des Konzepts $k$, $g_i$ das normierte Gewicht der Anforderung $i$, $p_{ik}$ die Punktzahl des Konzepts $k$ im Kriterium $i$ und $n$ die Anzahl der Kriterien. Das Konzept mit dem höchsten Nutzwert erfüllt die Anforderungen insgesamt am besten. Eine weitere Kennzahl, die dieses Verfahren liefert ist die technische Wertigkeit. Sie setzt den Nutzwert ins Verhältnis zum bestmöglichen Ergebnis:
+Dabei bezeichnet $N_k$ den Nutzwert des Konzepts $k$, $g_i$ das normierte Gewicht der Anforderung $i$, $p_{ik}$ die Punktzahl des Konzepts $k$ im Kriterium $i$ und $n$ die Anzahl der Kriterien. Das Konzept mit dem höchsten Nutzwert erfüllt die Anforderungen insgesamt am besten. Eine weitere Kennzahl, die dieses Verfahren liefert, ist die technische Wertigkeit. Sie setzt den Nutzwert ins Verhältnis zum bestmöglichen Ergebnis:
 \begin{equation}
     W_k = \frac{N_k}{p_{\max} \cdot \sum_{i=1}^{n} g_i}
     \label{eq:wertigkeit}
 \end{equation}
-Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für die einzelnen Konzepte zum Zeitpunkt der Bewertung keine konkreten Messdaten vorliegen. Die tatsächlichen Eigenschaften können daher im Verlauf der Umsetzung von diesen Annahmen abweichen.Um diese Unsicherheit zu verringern, stützen sich die Bewertungen soweit möglich auf Literaturwerte (vgl. Abschnitt~\ref{sec:Lokalisierungstechnologien}) sowie Diskussionen im Team und mit den Betreuern. Zudem wurde die Bewertung im Rahmen des Zwischenkolloquiums vorgestellt.
+Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für die einzelnen Konzepte zum Zeitpunkt der Bewertung keine konkreten Messdaten vorliegen. Die tatsächlichen Eigenschaften können daher im Verlauf der Umsetzung von diesen Annahmen abweichen. Um diese Unsicherheit zu verringern, stützen sich die Bewertungen soweit möglich auf Literaturwerte (vgl. Abschnitt~\ref{sec:Lokalisierungstechnologien}) sowie Diskussionen im Team und mit den Betreuern. Zudem wurde die Bewertung im Rahmen des Zwischenkolloquiums vorgestellt.
 
 {\small
 \renewcommand{\arraystretch}{1.3}
