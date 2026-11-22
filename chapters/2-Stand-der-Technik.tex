@@ -2,6 +2,8 @@
 \chapter{Stand der Technik und der Forschung}
 \label{ch:Stand_der_Technik}
 
+\textbf{Vorschlag:} Dieses Kapitel stellt die technischen Grundlagen vor, auf denen die Arbeit aufbaut. Zunächst wird beschrieben, was modulare Roboterzellen auszeichnet (Abschnitt~\ref{sec:Modulare Roboterzellen}). Anschließend werden gängige Technologien für die Kommunikation zwischen industriellen Komponenten betrachtet (Abschnitt~\ref{sec:Kommunikationstechnologien}) und verschiedene Verfahren zur Lokalisierung von Objekten vorgestellt (Abschnitt~\ref{sec:Lokalisierungstechnologien}).
+
 \section{Art der Abschlussarbeit}
 Je nach Art der Abschlussarbeit muss die Vorlage eigenständig angepasst werden. 
 Der Typ der Arbeit wird auf der Titelseite in der \textit{Documentclass} in der Datei \textit{PLCM-Thesis.tex} angepasst.  
@@ -449,33 +451,31 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 \end{itemize}
 \end{sloppypar}
 
-% REVIEW Claude [Legende] R=Rechtschreibung G=Grammatik P=Prägnanz V=Vollständigkeit S=Stil I=Inhalt/Logik. Nur Kommentare, Text unverändert.
-% REVIEW Claude [V] Abschnitt 2.13 ist leer. Füllen (was macht eine modulare/rekonfigurierbare Zelle aus, warum braucht sie Lokalisierung) oder streichen.
+
 \section{Modulare Roboterzellen}
 \label{sec:Modulare Roboterzellen}
-
+%REVIEW MERIC: Hier fehlt noch eine Einleitung, die erklärt was in diesem Kapitel auf eine zu kommt
 
 
 \section{Kommunikationstechnologien}
 \label{sec:Kommunikationstechnologien}
 
-% REVIEW Claude [S] Stil 2.14/2.15: sachlich-unpersönlich, viele Nominalisierungen ("stellt ... eine zentrale Herausforderung dar"), lange Sätze.
-% REVIEW Claude     Deutlich formeller als Kap. 4 (kurze Sätze, aktiv) und Kap. 3 (oft "wir"). Ton im Team einheitlich festlegen.
+% Wir müssen uns glaube noch bisschen auf einen Stil einigen. Hier sehr professionell, hab es mehr prägnant geschrieben
 Mit der zunehmenden Vernetzung industrieller Produktionssysteme steigt auch der Bedarf an zuverlässigem Informationsaustausch zwischen unterschiedlichen Hardware- und Softwarekomponenten. Besonders in verteilten Systemen, in denen Komponenten verschiedener Hersteller zusammenspielen, stellt die Interoperabilität eine zentrale Herausforderung dar. Standardisierte Kommunikationsprotokolle sind hierbei die Grundlage für die Integration solcher Komponenten und unterstützen damit die Flexibilität, Modularität und Erweiterbarkeit industrieller Anlagen \cite{Gonzalez2019,Profanter2019}.
 
 \paragraph{Industrial Ethernet}
 
-% REVIEW Claude [P] "Beispiele dazu sind hierbei" doppelt gemoppelt -> "Beispiele sind PROFINET, EtherCAT und EtherNet/IP."
-Unter Industrial Ethernet werden verschiedene Ethernet-basierte Kommunikationsprotokolle zusammengefasst, die in der industriellen Automatisierung eingesetzt werden. Beispiele dazu sind hierbei PROFINET, EtherCAT und EtherNet/IP. Sie dienen der Vernetzung industrieller Komponenten und können, je nach Protokollvariante, auch zeitkritische Kommunikationsanforderungen erfüllen. Ein wesentlicher Vorteil liegt in der breiten Unterstützung der Ethernet-Technologie durch unterschiedliche Hardwareplattformen und Betriebssysteme \cite{Halenar2023,Profanter2019}.
+
+Unter Industrial Ethernet werden verschiedene Ethernet-basierte Kommunikationsprotokolle zusammengefasst, die in der industriellen Automatisierung eingesetzt werden. Beispiele sind hierbei PROFINET, EtherCAT und EtherNet/IP. Sie dienen der Vernetzung industrieller Komponenten und können, je nach Protokollvariante, auch zeitkritische Kommunikationsanforderungen erfüllen. Ein wesentlicher Vorteil liegt in der breiten Unterstützung der Ethernet-Technologie durch unterschiedliche Hardwareplattformen und Betriebssysteme \cite{Halenar2023,Profanter2019}.
 
 \paragraph{OPC UA}
 
 Open Platform Communications Unified Architecture (OPC UA) ist ein plattformunabhängiger Kommunikationsstandard, der vor allem in der industriellen Automatisierung Anwendung findet und in der Normenreihe IEC 62541 spezifiziert ist. OPC UA basiert auf einer serviceorientierten Architektur und ermöglicht den herstellerübergreifenden Informationsaustausch zwischen unterschiedlichsten Systemkomponenten \cite{Gonzalez2019}.
 
-% REVIEW Claude [R] "bereit stellt" -> "bereitstellt". [P] "erfolgen, das bedeutet, dass" -> in zwei Sätze teilen.
-Die Kommunikation kann über eine Client-Server-Architektur erfolgen, das bedeutet, dass ein Server Informationen bereit stellt und Clients auf diese zugreifen. Neben der direkten Datenabfrage können Clients auch Änderungen von Variablen abonnieren. Zusätzlich unterstützt OPC UA das Publish-Subscribe-Modell \cite{Profanter2019,Hlayel2026}.
+% REVIEW Meric: Würde 2 Sätze draus machen: Die Kommunikation kann über eine Client Server architektur erfolgen. Dabie stellt ein Server Informatonen bereit und Clients greifen auf diese zu.
+Die Kommunikation kann über eine Client-Server-Architektur erfolgen, das bedeutet, dass ein Server Informationen bereitstellt und Clients auf diese zugreifen. Neben der direkten Datenabfrage können Clients auch Änderungen von Variablen abonnieren. Zusätzlich unterstützt OPC UA das Publish-Subscribe-Modell \cite{Profanter2019,Hlayel2026}.
 
-% REVIEW Claude [V] Optional: ein Satz, dass OPC UA eigene Discovery-Dienste hat (LDS/mDNS, OPC 10000-12). Kap. 4.5 nutzt das und müsste dann weniger erklären.
+
 Eine Besonderheit von OPC UA ist die semantische Beschreibung der bereitgestellten Daten mittels Informationsmodellen. Durch anwendungsspezifische Erweiterungen, die sogenannten Companion Specifications, lassen sich diese Modelle für verschiedene Einsatzbereiche wie die Robotik oder die industrielle Bildverarbeitung standardisieren. Darüber hinaus verfügt OPC UA über integrierte Sicherheitsmechanismen zur Authentifizierung und Verschlüsselung \cite{Gonzalez2019,Profanter2019}.
 
 \paragraph{MQTT}
@@ -489,14 +489,13 @@ WebSocket erlaubt einen kontinuierlichen, bidirektionalen Datenaustausch über e
 
 Obwohl WebSocket ursprünglich für die Kommunikation zwischen webbasierten Anwendungen und Servern entwickelt wurde, findet das Protokoll inzwischen auch in der industriellen Automatisierung Anwendung. Hlayel et al. untersuchen beispielsweise eine WebSocket-basierte Schnittstelle zwischen einer speicherprogrammierbaren Steuerung (SPS) und einem digitalen Zwilling. Die persistente Verbindung und der ereignisbasierte Datenaustausch ermöglichen in der untersuchten Architektur eine Kommunikation mit geringer Latenz \cite{Hlayel2026}.
 
-% REVIEW Claude [V] Fazit gut. Es fehlt die Überleitung, was davon im Projekt relevant ist (OPC UA vorgegeben, WebSocket im bestehenden System, vgl. A7 in Kap. 3).
+%REVIEW Meric: Eventueller Kreuzverweis auf Relevanz der Technologien zu einem späteren Kapitel, die KI macht das super gerne bei John seiner Masterthesis und ich fande das eigt ganz gut in einem begrenzten Rahmen.
 Die betrachteten Technologien unterscheiden sich vor allem in ihrer Kommunikationsarchitektur, ihrem Funktionsumfang und ihren typischen Anwendungsfeldern. Während Industrial Ethernet der netzwerkbasierten Vernetzung industrieller Komponenten dient, unterstützen OPC UA, MQTT und WebSocket den Datenaustausch auf Anwendungsebene \cite{Halenar2023,Profanter2019,Hlayel2026}. Aufgrund ihrer unterschiedlichen Aufgaben können die
 Technologien innerhalb eines industriellen Gesamtsystems ergänzend eingesetzt werden.
 
 \section{Lokalisierungstechnologien}
 \label{sec:Lokalisierungstechnologien}
-% REVIEW Claude [V] Platzhalter: Einleitung fehlt (Überblick optisch / funkbasiert / feldbasiert, Vergleichskriterien Genauigkeit und Reichweite).
-Einleitungstext zu den unterschiedlichen Techniken ergänzen
+\textbf{Vorschlag:} Für die Lokalisierung von Objekten gibt es verschiedene technische Ansätze, die sich vor allem im Messprinzip unterscheiden. Im Folgenden werden visuelle, ultrabreitbandbasierte und feldbasierte Verfahren vorgestellt. Im Mittelpunkt stehen dabei die erreichbare Genauigkeit, die Größe des abdeckbaren Bereichs und der nötige Installationsaufwand. Abschließend werden die Verfahren gegenübergestellt.
 \subsection{Visuelle Lokalisierung}
 
 Visuelle Lokalisierungsverfahren ermöglichen die Bestimmung der Position und Orientierung von Objekten anhand von Bildinformationen. Hierzu werden Kameras eingesetzt, deren Bilddaten mithilfe geeigneter Bildverarbeitungsalgorithmen ausgewertet werden. Eine Möglichkeit zur Lokalisierung besteht in der Verwendung sogenannter Fiducial Marker. Dabei handelt es sich um künstlich erzeugte, visuell eindeutig identifizierbare Markierungen, die an den zu lokalisierenden Objekten angebracht werden. Durch die Erkennung dieser Marker innerhalb eines Kamerabildes können sowohl eine eindeutige Identifikation des jeweiligen Objekts als auch die Bestimmung seiner räumlichen Lage erfolgen \cite{Kalaitzakis2021}.
@@ -581,8 +580,7 @@ Zusammenfassend stellt UWB eine Möglichkeit zur flexiblen Positionsbestimmung v
 
 \subsection{Feldbasierte Lokalisierung}
 
-% REVIEW Claude [V] Platzhalter: Mini-Einleitung zu feldbasierten Verfahren fehlt.
-MINI EINLEITUNG ERGÄNZEN
+\textbf{Vorschlag:} Feldbasierte Verfahren bestimmen die Lage eines Objekts über ein elektromagnetisches oder magnetisches Feld. Gemessen wird dabei nur in einem begrenzten Nahbereich um das Lesegerät oder den Sensor. Im Folgenden werden mit dem RFID-Grid und dem Hall-Sensor-Array zwei Vertreter dieses Prinzips vorgestellt.
 
 % REVIEW Claude [S] Überschrift "RFID Grid", im Text "RFID-Grid" -> einheitlich mit Bindestrich.
 % REVIEW Claude [S] \subsubsection = 4. Gliederungsebene (2.15.3.1). Vorlage (2.6): "Unterkapitel maximal bis zur dritten" Ebene -> evtl. \paragraph nutzen.
