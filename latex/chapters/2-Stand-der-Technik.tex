@@ -451,11 +451,46 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 \end{itemize}
 \end{sloppypar}
 
+\section{Modulare Fertigung}
+\label{sec:Modulare Fertigung}
+
+\section{PLCM: Vision und aktueller Stand}
+\label{sec:PLCM Vision}
+% DAS Kapitel safe nochmal umbenennen
 
 \section{Modulare Roboterzellen}
 \label{sec:Modulare Roboterzellen}
 %REVIEW MERIC: Hier fehlt noch eine Einleitung, die erklärt was in diesem Kapitel auf eine zu kommt
 
+\subsubsection{Mössner FlexCube}
+
+Der Mössner FlexCube (MFC) ist eine modular aufgebaute Roboterbearbeitungszelle der Firma August Mössner GmbH \& Co. KG (siehe Abbildung~\ref{fig:MoessnerFlexCube}). Die Roboterzelle ist für verschiedenste Prozesse, wie beispielsweise Fräsen, Bohren und Schleifen geeignet. Die Zelle besteht aus weitgehend unabhängigen, konfigurierbaren Modulen, die bei veränderten Anforderungen getauscht werden können \cite{MoessnerFlexCube}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Bilder/Kapt2/moessner-flex-cube.jpg}
+    \caption{Modulare Roboterzelle Mössner FlexCube \cite{MoessnerGIFA2023}}
+    \label{fig:MoessnerFlexCube}
+\end{figure}
+
+Die Modularität des FlexCube umfasst vor allem, den eingesetzten Roboter, die Werkstückaufnahme, das Werkzeugsystem und die Späneentsorgung. Dabei können Roboter verschiedenster Hersteller wie ABB, FANUC, und KUKA eingesetzt werden. Die Bodenplatte der Roboterzelle ist modular gestaltet und ermöglicht den Austausch der Roboter und Werkstückaufnahmen. Je nach Anwendungsfall stehen unterschiedliche Bearbeitungsspindeln, Werkzeugwechsler sowie Werk- und Drehtische zur Verfügung \cite{MoessnerFlexCube}.
+
+Zusätzlich bietet der Hersteller die Integration kamerabasierter Erkennungssysteme sowie einen digitalen Zwilling zur Simulation und Bewertung von Bearbeitungsprozessen an \cite{MoessnerFlexCube}.
+
+\subsubsection{PoPCoRN}
+
+Im Rahmen des Forschungsprojekts PoPCoRN wird eine rekonfigurierbare Roboterzelle untersucht, bei der Prozessmodule innerhalb weniger Minuten hinzugefügt werden können (siehe Abbildung ~\ref{fig:PoPCoRN}) oder entfernt werden können. Durch standardisierte Anschlüsse und Steuerfunktionen wird eine flexible Anpassung der Zelle an unterschiedliche Fertigungsaufgaben ermöglicht \cite{Bennulf2025}.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Bilder/Kapt2/popcorn-aufbau.png}
+    \caption{Modulare Plug-and-Produce-Roboterzelle an der University West in Schweden \cite{Bennulf2025}}
+    \label{fig:PoPCoRN}
+\end{figure}
+
+Bennulf et al. stellen ein Konzept vor, das die automatische Kalibrierung der Modulposition mit der Aktualisierung eines digitalen Zwillings verbindet. Hierzu wird eine am Roboter montierte Kamera verwendet, die ein asymmetrisches Kreismuster auf dem jeweiligen Prozessmodul erfasst. Aus den Bilddaten werden Position und Orientierung des Moduls bestimmt. Die ermittelten Kalibrierungsdaten können anschließend zur Aktualisierung des digitalen Modells und zur automatisierten Bahnplanung verwendet werden \cite{Bennulf2025}.
+
+Die kamerabasierte Kalibrierung wurde an einem physischen Demonstrator experimentell untersucht. Dabei erzielten die Autoren einen maximalen Translationsfehler von etwa 0,43 mm auf einer einzelnen Achse und einen mittleren Fehler von weniger als 0,051 mm \cite{Bennulf2025}.
 
 \section{Kommunikationstechnologien}
 \label{sec:Kommunikationstechnologien}
@@ -463,12 +498,12 @@ Um die Kompilierungszeit der einzelnen Dateien zu verringern, kann die Ausarbeit
 % Wir müssen uns glaube noch bisschen auf einen Stil einigen. Hier sehr professionell, hab es mehr prägnant und einfach geschrieben
 Mit der zunehmenden Vernetzung industrieller Produktionssysteme steigt auch der Bedarf an zuverlässigem Informationsaustausch zwischen unterschiedlichen Hardware- und Softwarekomponenten. Besonders in verteilten Systemen, in denen Komponenten verschiedener Hersteller zusammenspielen, stellt die Interoperabilität eine zentrale Herausforderung dar. Standardisierte Kommunikationsprotokolle sind hierbei die Grundlage für die Integration solcher Komponenten und unterstützen damit die Flexibilität, Modularität und Erweiterbarkeit industrieller Anlagen \cite{Gonzalez2019,Profanter2019}.
 
-\paragraph{Industrial Ethernet}
+\subsubsection{Industrial Ethernet}
 
 
 Unter Industrial Ethernet werden verschiedene Ethernet-basierte Kommunikationsprotokolle zusammengefasst, die in der industriellen Automatisierung eingesetzt werden. Beispiele sind hierbei PROFINET, EtherCAT und EtherNet/IP. Sie dienen der Vernetzung industrieller Komponenten und können, je nach Protokollvariante, auch zeitkritische Kommunikationsanforderungen erfüllen. Ein wesentlicher Vorteil liegt in der breiten Unterstützung der Ethernet-Technologie durch unterschiedliche Hardwareplattformen und Betriebssysteme \cite{Halenar2023,Profanter2019}.
 
-\paragraph{OPC UA}
+\subsubsection{OPC UA}
 
 Open Platform Communications Unified Architecture (OPC UA) ist ein plattformunabhängiger Kommunikationsstandard, der vor allem in der industriellen Automatisierung Anwendung findet und in der Normenreihe IEC 62541 spezifiziert ist. OPC UA basiert auf einer serviceorientierten Architektur und ermöglicht den herstellerübergreifenden Informationsaustausch zwischen unterschiedlichsten Systemkomponenten \cite{Gonzalez2019}.
 
@@ -478,12 +513,12 @@ Die Kommunikation kann über eine Client-Server-Architektur erfolgen, das bedeut
 
 Eine Besonderheit von OPC UA ist die semantische Beschreibung der bereitgestellten Daten mittels Informationsmodellen. Durch anwendungsspezifische Erweiterungen, die sogenannten Companion Specifications, lassen sich diese Modelle für verschiedene Einsatzbereiche wie die Robotik oder die industrielle Bildverarbeitung standardisieren. Darüber hinaus verfügt OPC UA über integrierte Sicherheitsmechanismen zur Authentifizierung und Verschlüsselung \cite{Gonzalez2019,Profanter2019}.
 
-\paragraph{MQTT}
+\subsubsection{MQTT}
 
 Message Queuing Telemetry Transport (MQTT) ist ein nachrichtenbasiertes Protokoll, das insbesondere im Internet of Things (IoT) verbreitet ist. Die Kommunikation folgt dem Publish-Subscribe-Prinzip und wird über eine zentrale Vermittlungsinstanz, den Broker, abgewickelt. Ein Publisher veröffentlicht Nachrichten unter bestimmten Topics, die der Broker an die jeweiligen Subscriber weiterleitet. MQTT zeichnet sich durch einen geringen Ressourcenbedarf und einen sparsamen Bandbreitenverbrauch aus. Verschiedene Quality-of-Service-Stufen (QoS) ermöglichen
 zudem eine gezielte Beeinflussung der Zuverlässigkeit der Nachrichtenübertragung \cite{Profanter2019,Hlayel2026}.
 
-\paragraph{WebSocket}
+\subsubsection{WebSocket}
 
 WebSocket erlaubt einen kontinuierlichen, bidirektionalen Datenaustausch über eine bestehende TCP-Verbindung. Im Gegensatz zur klassischen HTTP-basierten Anfrage-Antwort-Kommunikation können sowohl Client als auch Server selbstständig Nachrichten über die geöffnete Verbindung senden. Diese Kommunikationsform wird als Full-Duplex bezeichnet \cite{Hlayel2026}.
 
@@ -514,9 +549,8 @@ Fiducial Marker lassen sich hinsichtlich ihrer geometrischen Gestaltung und ihre
 Für die industrielle Robotik sind insbesondere quadratische Fiducial Marker relevant. Zu den etablierten Verfahren zählen AprilTag, ArUco und ARTag. Diese verwenden charakteristische Muster, anhand derer einzelne Marker identifiziert und ihre Position sowie Orientierung relativ zur Kamera bestimmt werden können. Voraussetzung für eine zuverlässige Positionsbestimmung ist neben der bekannten Markergröße eine geeignete Kalibrierung des Kamerasystems \cite{Kalaitzakis2021}.
 
 %REVIEW Meric: Langer Absatz, eventuell in Ergebnisse und Einflussfaktoren teilen.
-% REVIEW Meric: "Jurado-Rodriguez et al. (2023)" mit Jahr, würde das jahr löschen machen wir sonst auch nicht oder wir machen es überall
 % REVIEW Meric: AprilTag schneidet hier schlechter ab als ArUco, wir müssen uns noch eine Brügungun aus dem Arsch ziehen warum wir doch AprilTags genommen haben. @sven @Ming
-Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado-Rodriguez et al (2023). anhand experimenteller Untersuchungen verglichen. Dabei wurden insgesamt 13 Markererkennungsverfahren hinsichtlich ihrer Positionsgenauigkeit, Erkennungsreichweite, Robustheit gegenüber Verdeckungen und Verarbeitungsgeschwindigkeit untersucht. Die Ergebnisse zeigen, dass insbesondere ArUco3 bei der Positionsbestimmung eine hohe Genauigkeit erreicht. Mit einem mittleren Positionsfehler von \SI{11,5}{\milli\metre} erzielte ArUco3 das beste Ergebnis, gefolgt von STag mit \SI{12,9}{\milli\metre} und ArUco mit \SI{13,2}{\milli\metre}. AprilTag3 und AprilTag2 erreichten dagegen mittlere Positionsfehler von \SI{14,9}{\milli\metre} beziehungsweise \SI{15,9}{\milli\metre}. Diese Werte wurden über die untersuchten Aufnahmen bei unterschiedlichen Aufnahmebedingungen ermittelt, wobei Kamera-Marker-Abstände zwischen \num{1} und \SI{6}{\metre} betrachtet wurden. Die angegebenen mittleren Positionsfehler sind daher nicht als konstante Genauigkeitswerte der jeweiligen Markerverfahren zu verstehen. % REVIEW Meric: Wie sonst?
+Die Leistungsfähigkeit verschiedener Fiducial-Marker-Verfahren wurde von Jurado-Rodriguez et al. anhand experimenteller Untersuchungen verglichen. Dabei wurden insgesamt 13 Markererkennungsverfahren hinsichtlich ihrer Positionsgenauigkeit, Erkennungsreichweite, Robustheit gegenüber Verdeckungen und Verarbeitungsgeschwindigkeit untersucht. Die Ergebnisse zeigen, dass insbesondere ArUco3 bei der Positionsbestimmung eine hohe Genauigkeit erreicht. Mit einem mittleren Positionsfehler von \SI{11,5}{\milli\metre} erzielte ArUco3 das beste Ergebnis, gefolgt von STag mit \SI{12,9}{\milli\metre} und ArUco mit \SI{13,2}{\milli\metre}. AprilTag3 und AprilTag2 erreichten dagegen mittlere Positionsfehler von \SI{14,9}{\milli\metre} beziehungsweise \SI{15,9}{\milli\metre}. Diese Werte wurden über die untersuchten Aufnahmen bei unterschiedlichen Aufnahmebedingungen ermittelt, wobei Kamera-Marker-Abstände zwischen \num{1} und \SI{6}{\metre} betrachtet wurden. Die angegebenen mittleren Positionsfehler sind daher nicht als konstante Genauigkeitswerte der jeweiligen Markerverfahren zu verstehen. % REVIEW Meric: Wie sonst?
 Auch hinsichtlich der Verarbeitungsgeschwindigkeit zeigte ArUco3 mit 106,1 Bildern pro Sekunde die höchste Leistung. Bei der Untersuchung der zeitlichen Stabilität der erkannten Markerecken erzielten hingegen AprilTag3 und AprilTag2 die besten Ergebnisse. Die erzielbare Positionsgenauigkeit hängt darüber hinaus wesentlich von den jeweiligen Versuchsbedingungen ab. Insbesondere der Abstand zwischen Kamera und Marker, die Markerkantenlänge, die Kameraauflösung sowie der Betrachtungswinkel beeinflussen die Genauigkeit der Positionsbestimmung. %REVIEW Meric: Hab das Gefühl, wenn wir das hier so benennen müssen wir das bei uns ein wenig mehr prüfen für Kapital 5
 Abbildung \ref{fig:markeraccuracy} zeigt den Einfluss des Kamera-Marker-Abstands und des Betrachtungswinkels auf den Positionsfehler der untersuchten Markerverfahren. Dabei ist zu erkennen, dass der Positionsfehler mit zunehmendem Abstand sowie bei abnehmendem Betrachtungswinkel tendenziell ansteigt. Insbesondere ArUco3 weist über einen großen Teil der untersuchten Abstände und Betrachtungswinkel vergleichsweise geringe Positionsfehler auf \cite{JuradoRodriguez2023}. %REVIEW Meric: Warum ist ArUco hier eigt die ganze das beste, wir müssen das uns irgendwie zurecht legen, warum wir AprilTags genutzt haben. Andere Quellen oder so haha
 
@@ -532,6 +566,7 @@ Abbildung \ref{fig:markeraccuracy} zeigt den Einfluss des Kamera-Marker-Abstands
 %REVIEW Meric: Auch das scheiß Diagramm sagt, dass wir rmit ArUco3 besser währen, laut dem Diagramm kommen wir mit AprilTags net mal auf unsere geforderte Auflösung. Hab langsam das gefühl wir müssen neue Tags drucken und den Code minimal umbauen vielleicht klappt es dann am Ende
 
 % REVIEW Meric: "erscheint daher grundsätzlich möglich" ist vage. Würde sowas wie daraus sieht man, dass Verbesserung der Lokalisierung bis zu unter einem mm ge anu sind.
+% REVIEW John: ich denke man sollte auf jeden Fall wie der AprilTag bei diesen Versuchen aussah, also was die Kantenlaenge war, da es ein Essenzieller Parameter auch bei unserer Untersuchung war.
 Die Untersuchung verdeutlicht somit, dass die Eignung eines Markererkennungsverfahrens sowohl von dessen Genauigkeit, Stabilität und Verarbeitungsgeschwindigkeit als auch von den konkreten Einsatzbedingungen abhängt. Insbesondere Abbildung \ref{fig:markeraccuracy} zeigt, dass bei geringen Kamera-Marker-Abständen deutlich niedrigere Positionsfehler erzielt werden als bei größeren Entfernungen. So lässt sich für ArUco3 bei einem Abstand von \SI{1}{\metre} ein Positionsfehler von etwa \SI{1,7}{\milli\metre} ablesen, während der über die verschiedenen Versuchsbedingungen gemittelte Positionsfehler \SI{11,5}{\milli\metre} beträgt. Für Anwendungen mit Abständen unter \SI{1}{\metre} erscheint daher eine weitere Verbesserung der Genauigkeit grundsätzlich möglich.
 
 \subsection{Ultrabreitbandbasierte Lokalisierung}
@@ -554,7 +589,6 @@ Dabei bezeichnet \(d\) die Entfernung zwischen Sender und Empfänger, \(c\) die 
 \cite{Elsanhoury2022}.
 
 
-%REVIEW Meric: Entweder oben Jahr löschen oder hier und sonst hinzufügen
 %REVIEW Meric: IST AoA und RSS relevant insbesondere RSS klingt sehr ungenau, weil ich schätze es fällt mit r^3 ab. Hier eventuell prägantner
 Ein wesentlicher Vorteil der UWB-Technologie liegt in ihrer vergleichsweise hohen Genauigkeit gegenüber vielen anderen funkbasierten Lokalisierungsverfahren. Elsanhoury et al. beschreiben für Anwendungen in der Indoor-Logistik Positionsgenauigkeiten im Bereich von etwa \SIrange{5}{30}{\centi\metre}. Die tatsächlich erreichbare Genauigkeit ist jedoch von der eingesetzten Hardware, dem Lokalisierungsverfahren und den Umgebungsbedingungen abhängig. Insbesondere in industriellen Umgebungen können metallische Objekte und andere Hindernisse durch Signalreflexionen und Abschattungen die Positionsbestimmung beeinträchtigen. Neben den laufzeitbasierten Verfahren kann die Positionsbestimmung auch anhand der Einfallswinkel empfangener Funksignale (Angle of Arrival, AoA) oder der empfangenen Signalstärke (Received Signal Strength, RSS) erfolgen. Während bei AoA die Einfallsrichtung des Signals bestimmt wird, dient bei RSS die empfangene Signalstärke zur Abschätzung der Entfernung zwischen Sender und Empfänger \cite{Elsanhoury2022}. Abbildung \ref{fig:uwb_localization} veranschaulicht die unterschiedlichen Verfahren der funkbasierten Positionsbestimmung anhand von Einfallswinkeln, Entfernungen und Signallaufzeitdifferenzen.
 
