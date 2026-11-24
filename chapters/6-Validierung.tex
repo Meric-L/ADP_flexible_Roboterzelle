@@ -1,8 +1,92 @@
 \cleardoublepage
-\chapter{Verifikation \& Validierung}
-\label{ch:VerifikationValidierung}
+\chapter{Verifikation}
+\label{ch:Verifikation}
 
-Nach der Implementierung des Konzepts wird in diesem Kapitel überprüft, inwieweit das umgesetzte System die zu Beginn gestellten Anforderungen erfüllt. Dieser Schritt ist entscheidend, da die Bewertung der Konzepte in Abschnitt~\ref{sec:Nutzwertanalyse} auf Schätzungen beruhte. Die Überprüfung gliedert sich in zwei Teile. In der Verifikation wird geprüft, ob das System die in Abschnitt~\ref{sec:Anforderungen an das Konzept ableiten} formulierten Anforderungen erfüllt. In der anschließenden Validierung wird untersucht, ob das System seinen Einsatzzweck erfüllt. Hierzu wird es im Rahmen eines Pick-and-Place-Versuchs unter realen Laborbedingungen erprobt. Die Ergebnisse bilden die Grundlage für das abschließende Fazit sowie den Ausblick auf Erweiterungs- und Verbesserungsmöglichkeiten.
+Nach der Implementierung des Konzepts wird in diesem Kapitel überprüft, inwieweit das umgesetzte System die zu Beginn gestellten Anforderungen erfüllt. Dieser Schritt ist entscheidend, da die Bewertung der Konzepte in Abschnitt~\ref{sec:Nutzwertanalyse} auf Schätzungen beruhte. Bei der Verifikation wird geprüft, ob das System die in Abschnitt~\ref{sec:Anforderungen an das Konzept ableiten} formulierten Anforderungen erfüllt. Hier wird auch das Gesamtsystem in einem Pic-and-Place versuch getestet. Die Ergebnisse bilden die Grundlage für das abschließende Fazit sowie den Ausblick auf Erweiterungs- und Verbesserungsmöglichkeiten. 
+
+
+\section{Identifikation der Module}
+\label{sec:Identifikation der Module_Verifikation}
+Durch die Verwendung von AprilTags wird die ID eines Moduls bei jeder Erkennung zusammen mit dessen Position bestimmt. Die Identifikation erfordert somit keinen zusätzlichen Verarbeitungsschritt.
+
+Zur Verifikation der Identifikationsfähigkeit wird ein DIN-A4-Blatt mit AprilTags (tag36h11) der Kantenlängen 8, 6, 4 und 2\,cm ausgedruckt.
+Dieses wird zunächst im größten im System auftretenden Abstand zur Deckenkamera, auf dem Boden in 2,7\,m Entfernung, platziert. In diesem Abstand werden die Tags bis zu einer Kantenlänge von 6\,cm einschließlich ihrer ID zuverlässig erkannt. Bei einem Abstand von 1,7\,m werden zusätzlich die Tags mit 4\,cm Kantenlänge korrekt erkannt. Tags mit einer Kantenlänge von 2cm und kleiner wurden in keinem der getesten Abstände mehr erkannt.
+Tags mit einer Kantenlänge von 8\,cm werden darüber hinaus auch in einem Abstand von 3\,m innerhalb eines Radius von [TODO]\,m um die Kamera korrekt erkannt. Damit ist die Erkennung der ID im definierten Arbeitsbereich bei allen auftretenden Abständen möglich.
+
+Zusätzlich wird die Erkennung unter veränderten Beleuchtungsbedingungen untersucht. Als Referenz dient die maximale Helligkeit der vier LED-Panels über dem Arbeitsbereich, die als 100\,\% Beleuchtung definiert wird. Die Basisbeleuchtung von 0\,\% entspricht dem reinen Umgebungslicht, das durch die Fenster einfällt und von Tageszeit und Wetter abhängt. Da die Messungen am frühen Morgen durchgeführt werden, ist dieser Anteil im Vergleich zur Raumbeleuchtung gering. Durch manuelles Dimmen der Deckenlampen werden schrittweise geringere Beleuchtungsstufen eingestellt, wobei Tags und Position unverändert bleiben. Die Helligkeit wird jeweils am weißen Rand der Tags bestimmt. % TODO: Wie? Mittlerer Grauwert im Bild oder Luxmeter?
+Der Versuch wird sowohl für Level~1 als auch für Level~2 durchgeführt. Beide Kameras verfügen über eine automatische Belichtungseinstellung, die auch in laufenden Betrieb verwendet wird. Die Test werden daher mit dieser Einstellung durchgeführt um einen tatsächlichen Betrieb nachzustellen. Bild x zeigt den unterschied in der Beleuchtung mit und ohne dieser Einstellung.  Pro Beleuchtungsstufe werden fünf Bilder aufgenommen und jeweils mit dem ArUco-Modul von OpenCV sowie mit der Bibliothek \textit{pupil-apriltags} ausgewertet. Letztere liefert zusätzlich ein Gütemaß für jede Erkennung (\textit{decision margin}). Für OpenCV wird stattdessen die Erkennungsrate über die fünf Bilder als Maß für die Zuverlässigkeit herangezogen.
+% TODO: Ergebnisse des Lichtversuchs ergänzen (ab welcher Stufe bricht die Erkennung ein? Abbildung?)
+%todo dunbkelte beleuchtung mit und ohne auto beleuchtung
+
+
+
+1 P: Keine Identifikation möglich
+2 P: Nur einzelne Module manuell identifizierbar
+3 P: Alle Module unter Idealbedingungen automatisiert identifizierbar (exakte
+Positionierung, optimale Ausleuchtung)
+4 P: Alle Module unter realen Produktionsbedingungen automatisiert,
+eindeutig und zuverlässig identifizierbar (unvorhersehbare Positionierung,
+Verschmutzung, veränderte Beleuchtung)
+
+Lichttest
+
+\section{Robustheit}
+\label{sec:Robustheit_Verifikation}
+1 P: liefert bei Störungen unbemerkt falsche Positionen
+2 P: erkennt Störungen, fällt dann aber vollständig aus
+3 P: erkennt Störungen und meldet sie, Lokalisierung der nicht betroffenen
+Module läuft weiter
+4 P: wie 3 P, zusätzlich unempfindlich gegenüber teilweisen Verdeckungen
+
+Lichttest + Verdeckung klären
+Lv2 Wiederholgenauigkeit
+
+
+\section{Kalibrierbarkeit}
+\label{sec:Kalibrierbarkeit_Verifikation}
+1 P: Keine Kalibrierung möglich
+2 P: Kalibrierung nur mit Demontage möglich, Zeitaufwand > 8 h (eine
+Person)
+3 P: Kalibrierung ohne Demontage möglich, Zeitaufwand < 8 h (eine Person)
+4 P: Kalibrierung ohne Demontage in < 2 h möglich (eine Person)
+
+Wie lange dauert ein Kalibrier durchgang?
+Lineal test zeigt ergebnisse vor und nach Kalibrierung
+
+\section{Kosten}
+\label{sec:Kosten_Verifikation}
+1 P: 750 bis 1000 €
+2 P: 500 bis 749 €
+3 P: 250 bis 499 €
+4 P: < 25
+BOM aufzeigen
+
+\section{Entwicklungszeit}
+\label{sec:Entwicklungszeit_Verifikation}
+1 P: > 12 Wochen übersteigt den zeitlichen Rahmen des ADP
+2 P: < 10 −−12 Wochen
+3 P: < 8 −−10 Wochen
+4 P: < 8 Wochen
+
+Wie lange haben wir für die Umnsetzuing gebraucht + Zeitplan
+
+\section{Positionsgenauigkeit und Rotationsgenauigkeit}
+\label{sec:Positionsgenauigkeit und Rotationsgenauigkeit_Verifikation}
+Usecase
+
+Alle unsere Positionierungsversuche
+
+
+\section{Aufrüstbarkeit}
+\label{sec:Aufrüstbarkeit_Verifikation}
+1 P: Nicht aufrüstbar
+2 P: Aufrüstung nur mit einem Arbeitsaufwand von > 8 h möglich (eine
+Person)
+3 P: Aufrüstung in 4 bis 8 h möglich (eine Person)
+4 P: Aufrüstung in < 4 h möglich (eine Person
+
+Wie lange dauert es ein neues Modul einzubauen?
+
 
 
 
