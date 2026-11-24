@@ -2,6 +2,8 @@
 \chapter{Anforderungsanalyse und Systemkonzeption}
 \label{ch:Kapt3}
 
+
+
 % REVIEW Meric Stil liegt zwischen mir und Philip, glaube das ist aber ein guter Mittelweg an den wir uns anpassen sollten
 %REVIEW Meric: Viel "wir/unser" laut Vorlage sollen wir das nicht machen, da nochmal umschreiben
 %REVIEW Meric: Einheitlich Layer Ebenen, Level wir brauchen nur einen Begriff und nicht 2.
@@ -116,7 +118,7 @@ Zur Validierung des Konzepts haben wir einen typischen und erprobten industriell
 
 
 %REVIEW Meric: Streich die Fläche, die Seitenlänge passt, die sind aber nciht quadratisch
-Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von \SI{313,29}{\square\milli\metre} bei einer Seitenlänge von \SI{17,7}{\milli\metre} besitzen. Damit ist die Positionsgenauigkeit auf mindestens \SI{8,85}{\milli\metre} nach oben beschränkt. Wird diese Grenze überschritten, greift der Greifer ins Leere. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel und der Verschiebungswinkel einfach messbar ist. Auch in der Literatur nutzen Anwendungsfälle, die unserem Aufbau ähneln, exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection,Li2020SquarePickPlace}.
+Die hierfür benötigte Genauigkeit hängt von verschiedenen Faktoren ab, etwa der Bauteilgeometrie, der Zielerreichbarkeit oder dem Endeffektor. Wir verwenden den bereits montierten Parallelgreifer, dessen Greifbacken eine quadratische Fläche von \SI{313,29}{\square\milli\metre} bei einer Seitenlänge von \SI{17,7}{\milli\metre} besitzen. Damit ist die Positionsgenauigkeit auf mindestens \SI{8,85}{\milli\metre} nach oben beschränkt. Wird diese Grenze überschritten, greift der Greifer ins Leere. Als Bauteil wählen wir ein symmetrisches, quadratisches Teil, da hier die Verschiebung zum Ziel einfach messbar ist. Auch in der Literatur nutzen Anwendungsfälle, die unserem Aufbau ähneln, exemplarisch ein quadratisches Bauteil~\cite{Kreis2023PlacementCorrection,Li2020SquarePickPlace}.
 
 %REVIEW Meric: Was genau sagt die Quelle? maximal oder mittlere Positionierfehler. Finde den Absatz verwirrend geschrieben, viel Zahle wo gehört welche hin, was wilslt du mir mit welcher sagen. Wahrscheinlich weil du irgendwie auf die 3mm kommen willst die wir anzielen. Da müssen wir als Team glaube nochmal ran.
 Nach unten ist die erreichbare Genauigkeit durch den Roboter begrenzt. Für unseren Anwendungsfall ist dabei die Absolutgenauigkeit wichtiger als die Wiederholgenauigkeit von \SI{\pm 0,1}{\milli\metre}. Unsere Recherche hat ergeben, dass der mittlere absolute Positionierfehler beim FR3 unkalibriert bei bis zu \SI{8,51}{\milli\metre} liegen kann~\cite{Franzese2026Calibration}. Als Testobjekt verwenden wir einen Würfel mit einer Kantenlänge von \SI{20}{\milli\metre}, die geringfügig über der Kantenlänge der Greifbacken von \SI{17,7}{\milli\metre} liegt. Als Kriterium für einen sicheren Griff fordern wir, dass mindestens die Hälfte der Backenfläche am Bauteil anliegt. Dies ist so lange erfüllt, wie die Mitte der Greifbacke innerhalb der Würfelkante liegt. Daraus ergibt sich eine maximal zulässige Positionsabweichung von \SI{\pm 10}{\milli\metre}, was der halben Kantenlänge des Würfels entspricht.
@@ -241,7 +243,30 @@ Festforderungen müssen von jedem Konzept erfüllt werden und dienen daher als A
     \end{tabular}
 \end{table}
 
-Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept (siehe Tabelle~\ref{tab:paarvergleich}). Das Kernziel der Lokalisierung ist die Positions- und Rotationsgenauigkeit, die mit \SI{29}{\percent} folgerichtig am stärksten gewichtet ist. Ebenso zentral ist die Identifikation der einzelnen Module, die mit \SI{19}{\percent} an zweiter Stelle steht. Die Kriterien, die die praktische Umsetzbarkeit des Konzepts betreffen, also Kosten, Entwicklungszeit und Aufrüstbarkeit, liegen mit jeweils \SI{12}{\percent} gleichauf. Robustheit und Kalibrierbarkeit sind zwar zu berücksichtigen, für die Konzeptauswahl jedoch nicht ausschlaggebend. Insgesamt zeigt sich, dass die beiden Kernfunktionen, das Lokalisieren und das Identifizieren der Module, zusammen knapp \SI{50}{\percent} der Gewichtung ausmachen.
+%REVIEW Meric: Entweder normiert raus oder nur die Tabelle weg oder nicht, sonst doppeln wir uns. 
+\begin{table}[htbp]
+    \centering
+    \caption{Ergebnis der Gewichtung der Bewertungskriterien}
+    \label{tab:gewichtung}
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{l r}
+        \toprule
+        \textbf{Bewertungskriterium} & \textbf{Gewichtung} \\
+        \midrule
+        Identifikation der Module         & \SI{19}{\percent} \\
+        Kalibrierbarkeit                  &  \SI{7}{\percent} \\
+        Positions-/Rotationsgenauigkeit   & \SI{29}{\percent} \\
+        Kosten                            & \SI{12}{\percent} \\
+        Aufrüstbarkeit                    & \SI{12}{\percent} \\
+        Robustheit                        &  \SI{9}{\percent} \\
+        Entwicklungszeit                  & \SI{12}{\percent} \\
+        \midrule
+        \textbf{Summe}                    & \textbf{\SI{100}{\percent}} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Aus dem Paarvergleich ergeben sich die zentralen Anforderungen an unser Konzept (siehe Tabelle~\ref{tab:gewichtung}). Das Kernziel der Lokalisierung ist die Positions- und Rotationsgenauigkeit, die mit \SI{29}{\percent} folgerichtig am stärksten gewichtet ist. Ebenso zentral ist die Identifikation der einzelnen Module, die mit \SI{19}{\percent} an zweiter Stelle steht. Die Kriterien, die die praktische Umsetzbarkeit des Konzepts betreffen, also Kosten, Entwicklungszeit und Aufrüstbarkeit, liegen mit jeweils \SI{12}{\percent} gleichauf. Robustheit und Kalibrierbarkeit sind zwar zu berücksichtigen, für die Konzeptauswahl jedoch nicht ausschlaggebend. Insgesamt zeigt sich, dass die beiden Kernfunktionen, das Lokalisieren und das Identifizieren der Module, zusammen knapp \SI{50}{\percent} der Gewichtung ausmachen.
 
 %REVIEW Meric: Würde ich net schreiben. Hat nichts in der Ausarbeitung zu suchen.
 Die Gewichtung wurde anschließend im Rahmen des Zwischenkolloquiums vorgestellt, mit den Teilnehmenden diskutiert und bestätigt.
@@ -265,6 +290,7 @@ Aus diesem Grund wird die Lokalisierung in zwei Ebenen unterteilt, die jeweils n
     \caption{Zwei-Ebenen-Konzept der Lokalisierung}
     \label{fig:zwei_ebenen}
 \end{figure}
+
 
 \subsection{Konzeptvariation}
 \label{subsec:Konzeptvariation}
@@ -396,7 +422,8 @@ Der Erfassungsbereich des Hall-Sensor-Arrays ist kleiner als die Positionsunsich
 \section{Nutzwertanalyse}
 \label{sec:Nutzwertanalyse}
 
-Um die Konzeptvarianten miteinander vergleichen zu können, wird eine Nutzwertanalyse durchgeführt. Dazu wird für jedes Bewertungskriterium eine Punkteskala von 1 bis 4 definiert, die festlegt, welche Bedingungen ein Konzept erfüllen muss, um eine bestimmte Punktzahl zu erhalten. Die Bedingungen sind dabei abgestuft: Je vollständiger ein Konzept die Anforderung erfüllt, desto mehr Punkte erhält es. Anschließend wird jedes Konzept anhand dieser Skalen bewertet. Die vergebenen Punkte werden mit den im Paarvergleich ermittelten Gewichten (Tabelle~\ref{tab:paarvergleich}) multipliziert und aufsummiert. Daraus ergibt sich für jedes Konzept ein Nutzwert:
+
+Um die Konzeptvarianten miteinander vergleichen zu können, wird eine Nutzwertanalyse durchgeführt. Dazu wird für jedes Bewertungskriterium eine Punkteskala von 1 bis 4 definiert, die festlegt, welche Bedingungen ein Konzept erfüllen muss, um eine bestimmte Punktzahl zu erhalten. Die Bedingungen sind dabei abgestuft: Je vollständiger ein Konzept die Anforderung erfüllt, desto mehr Punkte erhält es. Anschließend wird jedes Konzept anhand dieser Skalen bewertet. Die vergebenen Punkte werden mit den im Paarvergleich ermittelten Gewichten (Tabelle~\ref{tab:gewichtung}) multipliziert und aufsummiert. Daraus ergibt sich für jedes Konzept ein Nutzwert:
 \begin{equation}
     N_k = \sum_{i=1}^{n} g_i \cdot p_{ik}
     \label{eq:nutzwert}
@@ -408,6 +435,9 @@ Dabei bezeichnet $N_k$ den Nutzwert des Konzepts $k$, $g_i$ das normierte Gewich
 \end{equation}
 %Review Meric: Würde die Betreuer und das Team glaube nicht so erwähnen klingt nicht so wissenschaftlich, aber gerne andere Meinung dazu. Auf jeden fall das zwischenkolloq net.
 Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für die einzelnen Konzepte zum Zeitpunkt der Bewertung keine konkreten Messdaten vorliegen. Die tatsächlichen Eigenschaften können daher im Verlauf der Umsetzung von diesen Annahmen abweichen. Um diese Unsicherheit zu verringern, stützen sich die Bewertungen soweit möglich auf Literaturwerte (vgl. Abschnitt~\ref{sec:Lokalisierungstechnologien}) sowie Diskussionen im Team und mit den Betreuern. Zudem wurde die Bewertung im Rahmen des Zwischenkolloquiums vorgestellt.
+
+%Review Meric: Konzept C Kalibrierbarkeit, im Test klingt es eher danach dass es anstregend ist durch das Einmessen würde 2 geben
+%Review Meric: KOnzept B Robustheit 1 = unbemerkte falsche Posen, da muss glaube noch ein Satz im Konzept B dazu fallen, warum das passiert
 
 {\small
 \renewcommand{\arraystretch}{1.3}
@@ -517,6 +547,8 @@ Kritisch anzumerken ist, dass die Punktevergabe auf Schätzungen beruht, da für
     \end{tabular}
 \end{table}
 
+
+%Review Meric: Ein Satz Konzept A wird daher umgesetzt. Somit ist das Ergebnis der Nutzwertanalyse dass Konzept A für dieses Projekt das beste Ergebnis liefert. Irgendwie so
 Konzept~A erreicht mit einer technischen Wertigkeit von \SI{91,3}{\percent} das beste Ergebnis, gefolgt von Konzept~C mit \SI{74,5}{\percent} und Konzept~B mit \SI{59,8}{\percent}. Gegenüber Konzept~B ergibt sich der Vorsprung aus nahezu allen Kriterien. Ausschlaggebend sind insbesondere die Positions- und Rotationsgenauigkeit, da Konzept~A sowohl Position als auch Rotation zuverlässig bestimmt und der Übergang zwischen beiden Ebenen unkritisch ist, sowie die deutlich kürzere Entwicklungszeit. Gegenüber Konzept~C ist Konzept~A in den Kernfunktionen gleichwertig und bei der Identifikation der Module sogar unterlegen. Der Vorsprung entsteht hier vor allem durch die praktische Umsetzbarkeit. Die gemeinsame Codebasis beider Ebenen, die Nutzung vorhandener Hardware und passiver Marker führen zu geringeren Kosten, einer kürzeren Entwicklungszeit und einer einfacheren Erweiterbarkeit. Da diese Kriterien auf Schätzungen beruhen, ist der Abstand zu Konzept~C mit Vorsicht zu interpretieren.
 
 
