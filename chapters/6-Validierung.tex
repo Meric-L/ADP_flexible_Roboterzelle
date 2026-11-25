@@ -7,28 +7,188 @@ Nach der Implementierung des Konzepts wird in diesem Kapitel überprüft, inwiew
 
 \section{Identifikation der Module}
 \label{sec:Identifikation der Module_Verifikation}
-Durch die Verwendung von AprilTags wird die ID eines Moduls bei jeder Erkennung zusammen mit dessen Position bestimmt. Die Identifikation erfordert somit keinen zusätzlichen Verarbeitungsschritt.
 
-Zur Verifikation der Identifikationsfähigkeit wird ein DIN-A4-Blatt mit AprilTags (tag36h11) der Kantenlängen 8, 6, 4 und 2\,cm ausgedruckt.
-Dieses wird zunächst im größten im System auftretenden Abstand zur Deckenkamera, auf dem Boden in 2,7\,m Entfernung, platziert. In diesem Abstand werden die Tags bis zu einer Kantenlänge von 6\,cm einschließlich ihrer ID zuverlässig erkannt. Bei einem Abstand von 1,7\,m werden zusätzlich die Tags mit 4\,cm Kantenlänge korrekt erkannt. Tags mit einer Kantenlänge von 2cm und kleiner wurden in keinem der getesten Abstände mehr erkannt.
-Tags mit einer Kantenlänge von 8\,cm werden darüber hinaus auch in einem Abstand von 3\,m innerhalb eines Radius von [TODO]\,m um die Kamera korrekt erkannt. Damit ist die Erkennung der ID im definierten Arbeitsbereich bei allen auftretenden Abständen möglich.
+Durch die Verwendung von AprilTags wird die ID eines Moduls bei jeder Erkennung zusammen mit dessen Position bestimmt. Die Identifikation erfordert somit keinen zusätzlichen Verarbeitungsschritt. Für die höchste Bewertungsstufe muss das System alle Module unter realen Produktionsbedingungen automatisiert, eindeutig und zuverlässig identifizieren (vgl. Tabelle~\ref{tab:punkteskala}). Zur Verifikation werden daher drei Einflussfaktoren untersucht: der Abstand zwischen Kamera und Tag, die Beleuchtung sowie Verdeckungen des Tags.
 
-Zusätzlich wird die Erkennung unter veränderten Beleuchtungsbedingungen untersucht. Als Referenz dient die maximale Helligkeit der vier LED-Panels über dem Arbeitsbereich, die als 100\,\% Beleuchtung definiert wird. Die Basisbeleuchtung von 0\,\% entspricht dem reinen Umgebungslicht, das durch die Fenster einfällt und von Tageszeit und Wetter abhängt. Da die Messungen am frühen Morgen durchgeführt werden, ist dieser Anteil im Vergleich zur Raumbeleuchtung gering. Durch manuelles Dimmen der Deckenlampen werden schrittweise geringere Beleuchtungsstufen eingestellt, wobei Tags und Position unverändert bleiben. Die Helligkeit wird jeweils am weißen Rand der Tags bestimmt. % TODO: Wie? Mittlerer Grauwert im Bild oder Luxmeter?
-Der Versuch wird sowohl für Level~1 als auch für Level~2 durchgeführt. Beide Kameras verfügen über eine automatische Belichtungseinstellung, die auch in laufenden Betrieb verwendet wird. Die Test werden daher mit dieser Einstellung durchgeführt um einen tatsächlichen Betrieb nachzustellen. Bild x zeigt den unterschied in der Beleuchtung mit und ohne dieser Einstellung.  Pro Beleuchtungsstufe werden fünf Bilder aufgenommen und jeweils mit dem ArUco-Modul von OpenCV sowie mit der Bibliothek \textit{pupil-apriltags} ausgewertet. Letztere liefert zusätzlich ein Gütemaß für jede Erkennung (\textit{decision margin}). Für OpenCV wird stattdessen die Erkennungsrate über die fünf Bilder als Maß für die Zuverlässigkeit herangezogen.
-% TODO: Ergebnisse des Lichtversuchs ergänzen (ab welcher Stufe bricht die Erkennung ein? Abbildung?)
-%todo dunbkelte beleuchtung mit und ohne auto beleuchtung
+% =====================================================================
+\subsection{Erkennungsreichweite}
+% =====================================================================
 
+Zur Bestimmung der minimal erkennbaren Taggröße wird ein DIN-A4-Blatt mit AprilTags der Familie tag36h11 und den Kantenlängen 8, 6, 4, 2 und 1\,cm ausgedruckt und an festgelegten Stellen im Arbeitsbereich platziert. Anschließend wird geprüft, bis zu welcher Kantenlänge die Tags in den jeweiligen Abständen von der Kamera auf Level~1 und Level~2 korrekt identifiziert werden.
 
+Für die Deckenkamera tritt der größte Abstand in den Ecken des Arbeitsbereichs auf. Das Testblatt wird daher in alle vier Ecken gelegt. In allen Ecken werden die Tags bis zu einer Kantenlänge von 6\,cm einschließlich ihrer ID korrekt erkannt. Senkrecht unter der Kamera, in einem Abstand von 2,7\,m, gilt dies ebenfalls für Tags bis 6\,cm Kantenlänge. Bei einem Abstand von 1,7\,m, was dem ABstand zwischen dem Robotertisch und der Deckenkamera entspricht, werden zusätzlich Tags mit 4\,cm Kantenlänge erkannt. Tags mit einer Kantenlänge von 2\,cm und kleiner werden in keinem der getesteten Abstände erkannt.
 
-1 P: Keine Identifikation möglich
-2 P: Nur einzelne Module manuell identifizierbar
-3 P: Alle Module unter Idealbedingungen automatisiert identifizierbar (exakte
-Positionierung, optimale Ausleuchtung)
-4 P: Alle Module unter realen Produktionsbedingungen automatisiert,
-eindeutig und zuverlässig identifizierbar (unvorhersehbare Positionierung,
-Verschmutzung, veränderte Beleuchtung)
+Für die Handkamera lässt sich kein eindeutiger maximaler Abstand angeben, da das Robotermodul an beliebiger Stelle in der Zelle platziert werden kann. Als ungünstigster Fall wird angenommen, dass das Robotermodul in einer Ecke des Arbeitsbereichs steht und Tags am Boden der diagonal gegenüberliegenden Ecke erfasst werden sollen. Neben dem großen Abstand verringert hier der flache Blickwinkel die im Bild abgebildete Tagfläche zusätzlich. Unter diesen Bedingungen werden Tags bis zu einer Kantenlänge von [TODO]\,cm korrekt identifiziert.
 
-Lichttest
+Damit ist die Identifikation der Module für Tags ab einer Kantenlänge von 6\,cm im gesamten Arbeitsbereich möglich.
+
+% =====================================================================
+\subsection{Einfluss der Beleuchtung}
+% =====================================================================
+
+Zur Untersuchung des Einflusses der Beleuchtung wird die maximale Helligkeit der vier LED-Panels über dem Arbeitsbereich als Beleuchtungsstufe von 100\,\% definiert. Die Stufe von 0\,\% entspricht dem reinen Umgebungslicht, das durch die Fenster einfällt und von Tageszeit und Wetter abhängt. Da die Messungen am frühen Morgen durchgeführt werden, ist dieser Anteil im Vergleich zur Raumbeleuchtung gering. Durch manuelles Dimmen der Deckenlampen werden schrittweise geringere Beleuchtungsstufen eingestellt, während Tag und Kameraposition unverändert bleiben. Wichtig ist zu beachten, dass die Stufen nur die Reihenfolge abnehmender Helligkeit angeben und zwischen den beiden Kameras nicht direkt vergleichbar sind, da sie manuell und in getrennten Messreihen eingestellt wurden.
+
+Beide Kameras verfügen über eine automatische Belichtungsregelung, die auch im laufenden Betrieb verwendet wird. Um den realen Betrieb abzubilden, werden die Versuche mit aktivierter Belichtungsregelung durchgeführt. Abbildung~\ref{fig:lichttest_belichtung} zeigt den Einfluss dieser Regelung auf die Bildhelligkeit bei 0\,\% Beleuchtung. Pro Beleuchtungsstufe werden 25 Bilder aufgenommen und jeweils mit dem ArUco-Modul von OpenCV sowie mit der Bibliothek \textit{pupil-apriltags} ausgewertet. Als Maß für die Zuverlässigkeit dient die Erkennungsrate, also der Anteil der Bilder, in denen der Tag erkannt wird.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[t]{0.35\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Bilder/Kapt6/Decken_Kamera_Lichttest_Fix.png}
+        \caption{Deckenkamera, feste Belichtung}
+        \label{fig:Decke_Lichttest_Fix}
+    \end{subfigure}
+    \hspace{0.8cm}
+    \begin{subfigure}[t]{0.35\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Bilder/Kapt6/Decken_Kamera_Lichttest_Auto.png}
+        \caption{Deckenkamera, automatische Belichtung}
+        \label{fig:Decke_Lichttest_Auto}
+    \end{subfigure}
+
+    \vspace{0.4cm}
+
+    \begin{subfigure}[t]{0.35\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Bilder/Kapt6/Hand_Kamera_Lichttest_Fix.png}
+        \caption{Handkamera, feste Belichtung}
+        \label{fig:Hand_Lichttest_Fix}
+    \end{subfigure}
+    \hspace{0.8cm}
+    \begin{subfigure}[t]{0.35\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Bilder/Kapt6/Hand_Kamera_Lichttest_Auto.png}
+        \caption{Handkamera, automatische Belichtung}
+        \label{fig:Hand_Lichttest_Auto}
+    \end{subfigure}
+
+    \caption{Aufnahmen bei 0\,\% Beleuchtung mit fester Belichtung (Einstellung bei 100\,\% Beleuchtung) und mit automatischer Belichtung}
+    \label{fig:lichttest_belichtung}
+\end{figure}
+
+Zur Beschreibung der Bildqualität wird zusätzlich der Michelson-Kontrast zwischen den weißen und schwarzen Bereichen des Tags bestimmt:
+\begin{equation}
+    C_M = \frac{I_{\max} - I_{\min}}{I_{\max} + I_{\min}}
+    \label{eq:michelson}
+\end{equation}
+Dabei bezeichnet $C_M$ den Michelson-Kontrast, $I_{\max}$ den mittleren Grauwert der weißen und $I_{\min}$ den mittleren Grauwert der schwarzen Bereiche des Tags. Der Kontrast liegt zwischen 0 und 1, wobei 0 keinem und 1 dem maximal möglichen Kontrast entspricht. Abbildung~\ref{fig:Tags_Lichttest} zeigt die Aufnahmen beider Kameras bei voller und ausgeschalteter Beleuchtung.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Bilder/Kapt6/helligkeit_kompakt_kontrast.png}
+    \caption{Aufnahmen des Tags durch Decken- und Handkamera bei 100\,\% und 0\,\% Beleuchtung mit dem jeweils gemessenen Michelson-Kontrast}
+    \label{fig:Tags_Lichttest}
+\end{figure}
+
+Wie Abbildung~\ref{fig:Licht_test_kontrast} zeigt, steigt der Kontrast mit abnehmender Beleuchtung an. Physikalisch sinkt die Leuchtdichte der weißen und schwarzen Bereiche proportional zur Beleuchtung, sodass der Kontrast des gedruckten Tags konstant bleibt. Die Veränderung entsteht daher durch die nichtlineare Bildverarbeitung der Kameras. Die Grauwerte sind auf den Bereich von 0 bis 255 begrenzt. Bei der Handkamera liegen die weißen Bereiche bereits bei voller Beleuchtung im Sättigungsbereich, obwohl sie physikalisch kein reines Weiß darstellen. Sinkt die Beleuchtung, bleibt ihr Grauwert daher nahezu unverändert, während die schwarzen Bereiche deutlich dunkler abgebildet werden. Bei der Handkamera sinkt der Grauwert der weißen Bereiche zwischen voller und ausgeschalteter Beleuchtung lediglich um 0,1\,\%, der der schwarzen Bereiche hingegen um 37,5\,\%. Bei der Deckenkamera sinken die Grauwerte um 28,2\,\% beziehungsweise 63,7\,\%. Da die schwarzen Bereiche in beiden Fällen überproportional abnehmen, steigt der Kontrast.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt6/plot_michelson_stufen.png}
+    \caption{Michelson-Kontrast des Tags über die Beleuchtungsstufen}
+    \label{fig:Licht_test_kontrast}
+\end{figure}
+
+Ein höherer Kontrast führt jedoch nicht zu einer messbaren Verbesserung der Erkennung, da diese bereits bei voller Beleuchtung vollständig gelingt. Wie Abbildung~\ref{fig:Licht_test_erkennungsrate} zeigt, wird der Tag in jeder Beleuchtungsstufe ohne Bitfehler erkannt (siehe \ref{fig:Licht_test_erkennungsrate}). Die Auswertung mit \textit{pupil-apriltags} liefert identische Ergebnisse und ist zur besseren Übersicht nicht zusätzlich dargestellt.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt6/plot_erkennungsrate_stufen.png}
+    \caption{Erkennungsrate des Tags über die Beleuchtungsstufen (Auswertung mit OpenCV)}
+    \label{fig:Licht_test_erkennungsrate}
+\end{figure}
+
+Die geringere Lichtmenge gleichen die Kameras durch eine höhere Verstärkung (\textit{Gain}) aus, die das Bildrauschen ebenfalls verstärkt. Dies wirkt sich auf die Stabilität der Positionsbestimmung aus (Abbildung~\ref{fig:Licht_test_positionsbestimmung}). Bei der Handkamera steigt die mittlere Verschiebung der erkannten Tagposition zwischen den Aufnahmen mit abnehmender Beleuchtung von 0,02\,mm auf 0,05\,mm, bei der Deckenkamera von 0,25\,mm auf knapp 1\,mm. Da sich der Tag zwischen den Aufnahmen nicht bewegt, sind diese Verschiebungen ausschließlich auf das Bildrauschen zurückzuführen. Die Deckenkamera weist dabei auf allen Beleuchtungsstufen ein deutlich stärkeres Rauschen der Positionsbestimmung auf als die Handkamera.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.5\textwidth]{Bilder/Kapt6/plot_jitter_xy_stufen.png}
+    \caption{Mittlere Verschiebung der erkannten Tagposition in der $x$-$y$-Ebene innerhalb der 25 Aufnahmen je Beleuchtungsstufe}
+    \label{fig:Licht_test_positionsbestimmung}
+\end{figure}
+
+Die Identifikation der Module ist somit über den gesamten untersuchten Beleuchtungsbereich zuverlässig möglich.
+
+% =====================================================================
+\subsection{Einfluss von Verdeckungen}
+% =====================================================================
+
+Der Einfluss von Verdeckungen wird simulativ untersucht. Dazu werden je ein Bild der Decken- und der Handkamera in ihrer tatsächlichen Auflösung gezielt teilweise verdeckt und mit derselben Konfiguration ausgewertet, die im realen System implementiert ist. Simuliert werden Verdeckungen an unterschiedlichen Positionen des Tags mit schwarzen und weißen Verdeckungsobjekten (Abbildung~\ref{fig:verdeckungs_test}). Tabelle~\ref{tab:verdeckung} fasst den Verdeckungsgrad zusammen, ab dem die Erkennung ausfällt.
+
+Dabei sind zwei Mechanismen zu unterscheiden: Ob ein Tag erkannt wird, hängt von der Verdeckung des äußeren Rahmens ab. Ob seine ID korrekt ausgelesen wird, hängt von der Verdeckung der inneren Datenfelder ab.
+
+Die Versuche E1a bis E2 untersuchen die Verdeckung des Rahmens. Sie zeigen, dass insbesondere weiße Verdeckungen in der Mitte einer Kante die Erkennung unmittelbar verhindern: Bereits eine Verdeckung von 0,5\,\% der Kantenlänge führt zum Ausfall. Weiße Verdeckungen unterbrechen den dunklen Rahmen und stellen damit die kritischste der untersuchten Verdeckungsarten dar. Schwarze Verdeckungen sind hingegen deutlich unkritischer, da sie mit dem schwarzen Rahmen verschmelzen.
+
+Die Versuche E3 bis E5 untersuchen die Verdeckung der Datenfelder. Sie zeigen, dass nicht die verdeckte Fläche entscheidend ist, sondern die Anzahl der dadurch verfälschten Datenbits. Die zulässige Anzahl korrigierbarer Bitfehler wird in OpenCV über den Parameter \texttt{errorCorrectionRate} festgelegt. Im implementierten System ist dieser auf 0,6 eingestellt. Für die Tag-Familie tag36h11 entspricht dies bis zu drei korrigierbaren Bitfehlern, ab dem vierten Bitfehler wird die Erkennung verworfen. % TODO: In Tabelle E5 versagt die Deckenkamera bereits bei 3 Bits. Prüfen!
+In keinem der simulierten Versuche wird eine falsche ID ausgegeben. Bei zu vielen Bitfehlern wird die Erkennung stattdessen verworfen, was dem gewünschten Verhalten entspricht.
+
+Wird ein Tag nicht erkannt, werden weder eine Position noch eine ID ausgegeben. Kritisch ist jedoch eine schwarze Verdeckung entlang einer Außenkante, die mit dem Rahmen verschmilzt. Der Tag wird dann zwar erkannt, erscheint aber größer, als er tatsächlich ist. Da die Entfernung zur Kamera aus der abgebildeten Taggröße berechnet wird, verfälscht dies vor allem die Position entlang der optischen Achse, die $z$-Komponente. Diese ist ohnehin die am ungenauesten bestimmte Komponente (vgl. Abschnitt~[TODO]) und wird für die Positionierung nicht verwendet. Die Identifikation des Moduls ist davon nicht betroffen.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Verdeckungsgrad, ab dem die Erkennung ausfällt, für verschiedene Verdeckungsarten}
+    \label{tab:verdeckung}
+    \small
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{>{\raggedright\arraybackslash}p{5.4cm} l c c}
+        \toprule
+        \textbf{Versuch (Bezugsgröße)} & \textbf{Farbe}
+        & \textbf{Deckenkamera} & \textbf{Handkamera} \\
+        \midrule
+        \multirow{2}{=}{E1a -- Kante, ab Ecke (Kantenlänge)}
+            & weiß    & 6,5\,\%   & 35,5\,\% \\
+            & schwarz & 93,5\,\%* & 93,5\,\%* \\
+        \midrule
+        \multirow{2}{=}{E1b -- Kante, mittig (Kantenlänge)}
+            & weiß    & 0,5\,\%   & 0,5\,\% \\
+            & schwarz & 87,5\,\%* & 87\,\%* \\
+        \midrule
+        \multirow{2}{=}{E1c -- Zwei Kanten, L-Form (Kantenlänge)}
+            & weiß    & 10,5\,\%  & 12,5\,\%* \\
+            & schwarz & 93\,\%    & 92,5\,\%* \\
+        \midrule
+        \multirow{2}{=}{E1d -- Vier Kanten, mittig (Kantenlänge)}
+            & weiß    & 0,5\,\%   & 0,5\,\% \\
+            & schwarz & 84\,\%*   & 24\,\%* \\
+        \midrule
+        \multirow{2}{=}{E2 -- Ecke (Tag-Fläche)}
+            & weiß    & 1,6\,\%   & 2,4\,\% \\
+            & schwarz & 16,4\,\%  & kein Ausfall ($>25$\,\%) \\
+        \midrule
+        \multirow{2}{=}{E3 -- Datenfeld, Streifen (Tag-Fläche)}
+            & weiß    & 2,3\,\%   & 4,5\,\% \\
+            & schwarz & 13,9\,\%  & 23,3\,\% \\
+        \midrule
+        \multirow{2}{=}{E4 -- Zufällige Datenzellen (Datenfeld, 36 Zellen)}
+            & weiß    & 11,1\,\% (4 Zellen) & 11,1\,\% (4 Zellen) \\
+            & schwarz & 11,1\,\% (4 Zellen) & 11,1\,\% (4 Zellen) \\
+        \midrule
+        E5 -- Invertierte Bits (Datenfeld, \texttt{errorCorrectionRate} 0,6)
+            & --      & 8,3\,\% (3 Bits)    & 11,1\,\% (4 Bits) \\
+        \bottomrule
+    \end{tabular}
+
+    \vspace{0.2cm}
+    \parbox{\textwidth}{\footnotesize
+        * Das Tag fällt hier nicht sauber aus. Bei stärkerer Verdeckung wird es zeitweise wieder erkannt.}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Bilder/Kapt6/bericht_verdeckungstests.pdf}
+    \caption{Simulierte Verdeckungsfälle der Versuche E1 bis E5}
+    \label{fig:verdeckungs_test}
+\end{figure}
+
+% =====================================================================
+\subsection{Bewertung}
+% =====================================================================
+
+Die Versuche zeigen, dass die Module bei allen im Arbeitsbereich auftretenden Abständen sowie über den gesamten untersuchten Beleuchtungsbereich automatisiert und zuverlässig identifiziert werden. Eine falsche ID wird in keinem der Versuche ausgegeben, sodass die Identifikation eindeutig ist. Einschränkungen ergeben sich bei Verdeckungen des Tagrahmens, insbesondere durch helle Objekte, die eine Erkennung bereits bei geringem Verdeckungsgrad verhindern. In diesem Fall wird das Modul jedoch nicht falsch, sondern gar nicht identifiziert. Der Einfluss von Verschmutzungen wurde nicht gesondert untersucht, lässt sich aber durch die simulierten Verdeckungen der Datenfelder abschätzen.
+
+% TODO: Bewertungsstufe festlegen und an Nutzwertanalyse anpassen (siehe Hinweis im Chat).
+Damit erreicht das umgesetzte System in der Anforderung \emph{Identifikation der Module} die Bewertungsstufe [TODO] und bestätigt die in der Konzeptbewertung getroffene Einschätzung.
+
 
 \section{Robustheit}
 \label{sec:Robustheit_Verifikation}
@@ -84,6 +244,8 @@ Alle unsere Positionierungsversuche
 Person)
 3 P: Aufrüstung in 4 bis 8 h möglich (eine Person)
 4 P: Aufrüstung in < 4 h möglich (eine Person
+
+Der von der Fischauge abgedeckte bereich istz ja größer. ALso sehr leicht erweiterbar
 
 Wie lange dauert es ein neues Modul einzubauen?
 
