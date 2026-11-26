@@ -263,6 +263,29 @@ against real nodes: `CHECK_FUNCTION → NORMAL → OFF_SPEC → FAILURE`.
 observing state changes and timings in UaExpert) is still outstanding — until then it is proven that
 the state machine computes, not that it sees the real hang.
 
+### Nachtrag 26.11.2026 — ausgefallene Kamera beendet den Prozess nicht mehr sofort
+
+Die Angaben oben zu `FAILURE`, `CHECK_FUNCTION` und zum `os._exit(1)` bei `max_reopen_attempts`
+(Zeilen zu Werten, Konfiguration „Important for operation“, Failure cases) beschreiben den Stand vom
+22.09.2026 und sind überholt. Neues Verhalten:
+
+- Die Zuordnung in `device_health()` lautet in dieser Reihenfolge: `gave_up` oder nicht laufend →
+  `FAILURE`; `reopen_attempts > 0` (bis zum nächsten guten Bild) → `FAILURE`; kein Kamera-Handle oder
+  noch kein Bild (nur erstes Öffnen und Einlaufen) → `CHECK_FUNCTION`; Bild älter als `stale_frame_s`
+  → `OFF_SPEC`; sonst `NORMAL`. `CHECK_FUNCTION` gibt es damit nur noch beim Start, eine ausgefallene
+  Kamera zeigt `FAILURE` („Ausgefallen“).
+- Nach Erschöpfung von `max_reopen_attempts` beendet sich der Prozess nicht mehr. Der OPC-UA-Server
+  bleibt oben, hält `FAILURE` und versucht alle `failed_retry_interval_s` (neu, Standard 5 s), die
+  Kamera erneut zu öffnen. Das erste gute Bild setzt alles zurück, `DeviceHealth` geht auf `NORMAL`;
+  Abonnenten sehen Ausfall und Erholung live, ohne Reconnect und ohne Neuladen des Frontends.
+- Erst wenn die Kamera `give_up_after_s` (neu, Standard 300 s; `0` = altes sofortiges Beenden;
+  `None` = nie) ausgefallen bleibt, schreibt der Prozess ein letztes `FAILURE` und beendet sich, damit
+  systemd ihn neu startet. Das ist das letzte Mittel gegen eine hängende libcamera/einen hängenden Treiber.
+- Die Alarmmeldung für `CHECK_FUNCTION` lautet jetzt „Kamera wird geoeffnet“.
+- Unverändert: Startet der Server ganz ohne Kamera, wird `FAILURE` geschrieben und gehalten; im
+  Kaltstart gibt es keinen Kamera-Retry.
+- Neue Felder in `CameraStreamConfig`: `failed_retry_interval_s` (5.0), `give_up_after_s` (300.0).
+
 ## After completion
 
 - Status set to `done`, actual interfaces entered.

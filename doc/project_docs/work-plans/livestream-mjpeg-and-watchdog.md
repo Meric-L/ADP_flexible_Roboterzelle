@@ -65,6 +65,13 @@ browser machine.
 | `stale_frame_s` | 2.0 | a frame older than this is no longer a live image: the node is cleared once, MJPEG viewers get nothing stale |
 | `overlay_timeout_s` | 2.0 | if the overlay hangs longer, the raw image is sent out |
 
+**Nachtrag 2026-11-26:** The `max_reopen_attempts` row above and the „process exits hard“ rule in
+the failure cases are superseded. After the reopening budget is used up, the server stays up with
+`FAILURE` and retries opening the camera every `failed_retry_interval_s` (default 5.0 s, new). The
+first good frame resets everything. Only after `give_up_after_s` (new, default 300.0 s; `0` = exit at
+once, `None` = never) without a good frame does the process write a last `FAILURE` and exit, so that
+systemd restarts it. A camera missing at cold start is not retried.
+
 Applies equally to all camera backends (Picamera2, RealSense, OpenCV), because
 the watchdog sits in the shared capture loop.
 

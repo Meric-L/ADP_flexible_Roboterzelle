@@ -78,7 +78,7 @@ The runtime of the vision server: `runner/` assembles the OPC UA address space m
 ### `src/vision_server/runner/health.py`
 
 - `_start_camera_health(...)`: if the asset model has `device_health` nodes, creates `CameraHealthPublisher` for the owning camera and writes `DeviceHealth`. Without a camera it writes `FAILURE`.
-- Health alarms are attached through `HealthAlarms` when the alarm nodes exist. The camera's give-up handler is set to `camera.exit_process`.
+- Health alarms are attached through `HealthAlarms` when the alarm nodes exist. The camera's give-up handler is set to `camera.exit_process`; it runs only after `give_up_after_s` without a good frame, not at the first exhausted reopen budget.
 - `_camera_config_of(...)`: returns the camera configuration the source actually uses.
 
 ### `src/vision_server/runner/measure_board.py`

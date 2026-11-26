@@ -8,6 +8,7 @@ ersetzt; so laesst sich ein `capture_array()` nachstellen, das wie auf Pi 1
 import asyncio
 import threading
 import unittest
+from dataclasses import replace
 
 from vision_server.camera import SharedCamera
 from vision_server.profiles import CameraStreamConfig
@@ -18,7 +19,12 @@ FAST_CONFIG = CameraStreamConfig(
     frame_timeout_s=0.05,
     max_capture_failures=3,
     max_reopen_attempts=2,
+    # Die bisherigen Aufgabe-Tests: sofort aufgeben, sobald das Budget erschoepft ist.
+    give_up_after_s=0.0,
 )
+
+#: Nach erschoepftem Budget weiter versuchen statt den Prozess zu beenden.
+RETRY_CONFIG = replace(FAST_CONFIG, give_up_after_s=None, failed_retry_interval_s=0.02)
 
 
 class ScriptedCamera(SharedCamera):
@@ -148,10 +154,71 @@ class _ScriptedCameraTest(unittest.IsolatedAsyncioTestCase):
             camera.release.set()
             await camera.close()
 
-    def _camera(self, behaviours: list[str]) -> ScriptedCamera:
-        camera = ScriptedCamera(behaviours)
+    def _camera(
+        self, behaviours: list[str], config: CameraStreamConfig = FAST_CONFIG
+    ) -> ScriptedCamera:
+        camera = ScriptedCamera(behaviours, config)
         self._cameras = [*getattr(self, "_cameras", []), camera]
         return camera
+
+
+class FailedCameraRetryTest(_ScriptedCameraTest):
+    """Eine ausgefallene Kamera beendet den Prozess nicht mehr sofort.
+
+    Der OPC-UA-Server bleibt oben, damit FAILURE und die spaetere Erholung bei den
+    Abonnenten ankommen, ohne dass sie die Verbindung neu aufbauen muessen.
+    """
+
+    async def test_keeps_retrying_and_recovers_when_the_camera_returns(self):
+        # 0 haengt, 1 haengt, 2 fehlt (Budget erschoepft), 3 fehlt, 4 liefert wieder.
+        camera = self._camera(
+            ["hang", "hang", "fail_open", "fail_open", "ok"], RETRY_CONFIG
+        )
+        await camera.open()
+
+        await _wait_until(lambda: camera.latest_frame is not None)
+
+        self.assertEqual(camera.latest_frame.image, "bild-4")
+        self.assertEqual(camera.gave_up, 0)
+        status = camera.status(now=asyncio.get_running_loop().time())
+        self.assertEqual(status.reopen_attempts, 0)
+        self.assertFalse(status.gave_up)
+
+    async def test_stays_failed_and_running_while_no_frame_comes(self):
+        camera = self._camera(["hang", "fail_open"], RETRY_CONFIG)
+        await camera.open()
+
+        await _wait_until(
+            lambda: len(camera.opened) >= 3 + RETRY_CONFIG.max_reopen_attempts
+        )
+        status = camera.status(now=asyncio.get_running_loop().time())
+
+        self.assertEqual(camera.gave_up, 0)
+        self.assertTrue(status.running)
+        self.assertFalse(status.gave_up)
+        self.assertGreater(status.reopen_attempts, RETRY_CONFIG.max_reopen_attempts)
+
+    async def test_retries_slowly_once_the_budget_is_exhausted(self):
+        config = replace(RETRY_CONFIG, failed_retry_interval_s=10.0)
+        camera = self._camera(["hang", "fail_open"], config)
+        await camera.open()
+
+        await _wait_until(lambda: len(camera.opened) == 1 + config.max_reopen_attempts)
+        await asyncio.sleep(0.2)
+
+        # Waehrend der Pause kein weiterer Versuch.
+        self.assertEqual(len(camera.opened), 1 + config.max_reopen_attempts)
+
+    async def test_gives_up_only_after_give_up_after_s(self):
+        config = replace(RETRY_CONFIG, give_up_after_s=0.15)
+        camera = self._camera(["hang", "fail_open"], config)
+        await camera.open()
+
+        await _wait_until(lambda: camera.gave_up == 1)
+
+        # Vor dem Aufgeben wurde mehrfach langsam weiter versucht.
+        self.assertGreater(len(camera.opened), 2 + config.max_reopen_attempts)
+        self.assertTrue(camera.status(now=asyncio.get_running_loop().time()).gave_up)
 
 
 class StatusTest(_ScriptedCameraTest):

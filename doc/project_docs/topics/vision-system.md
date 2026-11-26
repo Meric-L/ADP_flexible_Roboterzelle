@@ -75,12 +75,24 @@ controls raise `ValueError` at startup, not during operation.
 (`camera.py`, defaults in `profiles.py`):
 
 - every capture has `frame_timeout_s` (3 s); on a hang the camera is reopened;
-- after `max_reopen_attempts` (2) failed reopenings the process exits and systemd restarts it;
+- after `max_reopen_attempts` (2) reopenings without a frame in between, the camera counts as failed
+  (`FAILURE`). The OPC UA server stays up, keeps `FAILURE`, and retries opening the camera every
+  `failed_retry_interval_s` (5 s). The first good frame resets everything: `DeviceHealth` goes to
+  `NORMAL`, and subscribers see failure and recovery live, without a reconnect;
+- only if the camera stays failed for `give_up_after_s` (300 s; `0` = exit at once as before,
+  `None` = never) does the process write a last `FAILURE` and exit; systemd restarts it. This is the
+  last resort against a wedged libcamera or driver. A camera missing at cold start is not retried:
+  `FAILURE` stays and the process keeps running;
 - the camera state is published as OPC 40100-2 `DeviceHealth` plus DI alarms (`camera_health.py`).
+  Mapping, in this order: `gave_up` or not running → `FAILURE`; `reopen_attempts > 0` (until the next
+  good frame) → `FAILURE`; no camera handle or no frame yet (first open and warm-up only) →
+  `CHECK_FUNCTION` ("Kamera wird geoeffnet"); frame older than `stale_frame_s` → `OFF_SPEC`;
+  otherwise `NORMAL`.
   The live stream keeps publishing the last image, so a frozen picture is no error signal; the
   frontend's camera light is.
 
 Search the log: `journalctl -u opcua-server.service | grep -E "haengt|neu geoeffnet|Kamerazustand|beende den Prozess"`.
+The exit message (`beende den Prozess`) appears only after `give_up_after_s` has run out.
 Frequent entries usually mean hardware (ribbon cable).
 
 ## Camera controls (Picamera2)

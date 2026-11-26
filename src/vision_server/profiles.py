@@ -191,8 +191,16 @@ class CameraStreamConfig:
     frame_timeout_s: float = 3.0
     #: Consecutive capture errors before the camera is reopened; a timeout counts fully.
     max_capture_failures: int = 3
-    #: Reopens without a frame in between before the process exits and systemd restarts it.
+    #: Reopens without a frame in between before the camera counts as failed; it then
+    #: keeps retrying every `failed_retry_interval_s`.
     max_reopen_attempts: int = 2
+    #: Pause between reopen attempts once the camera counts as failed (budget exhausted).
+    failed_retry_interval_s: float = 5.0
+    #: How long the camera may stay failed without a single frame before the process exits
+    #: and systemd restarts it (last resort against a wedged libcamera/driver that only a
+    #: fresh process clears). `0` = exit at once when the budget is exhausted, `None` =
+    #: never exit.
+    give_up_after_s: float | None = 300.0
     #: Image age from which `DeviceHealth` reports OFF_SPEC (`camera_health.py`). Affects
     #: only the state assessment, not the stream.
     stale_frame_s: float = 2.0

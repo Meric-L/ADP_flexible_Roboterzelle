@@ -214,13 +214,14 @@ More: [long reference, section 10](vision-server-interface.md#10-camera-live-str
 | Value | Name | Meaning |
 | --- | --- | --- |
 | 0 | `NORMAL` | fresh camera image |
-| 1 | `FAILURE` | camera dead; the server process exits and systemd restarts it |
-| 2 | `CHECK_FUNCTION` | start value; camera opening or being reopened |
+| 1 | `FAILURE` | camera failed (reopening budget used up, or no camera at start-up); retried, recovers on the next good image; the server ends only after `give_up_after_s` (300 s) |
+| 2 | `CHECK_FUNCTION` | start-up only; camera being opened for the first time |
 | 3 | `OFF_SPEC` | image older than 2 s, hang suspected |
 
 - When the camera hangs, the live image **freezes** instead of disappearing; only
   `DeviceHealth` tells the state.
-- After `FAILURE`, expect the connection to drop and reconnect.
+- During `FAILURE` the connection stays up. Only if the camera stays failed for `give_up_after_s`
+  does the server end; then the connection drops and must be reconnected.
 - The value is written only on change. Matching alarms (`FailureAlarm`,
   `OffSpecAlarm`, `CheckFunctionAlarm`) are emitted by `VisionMachine`. Details:
   [long reference, section 11.4](vision-server-interface.md#114-state-devicehealth).

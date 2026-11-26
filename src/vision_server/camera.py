@@ -80,7 +80,7 @@ class CameraStatus:
     consecutive_failures: int
     #: Re-openings without a frame in between; 0 means "healthy".
     reopen_attempts: int
-    #: The reopen budget is exhausted, the process terminates shortly.
+    #: The camera stayed failed for `give_up_after_s`, the process terminates shortly.
     gave_up: bool
     #: Age of the newest frame in seconds, `None` before the first capture.
     frame_age_s: float | None
@@ -148,6 +148,8 @@ def _list_realsense_color_profiles() -> str:
 
 def exit_process() -> None:
     """Terminate the process hard so that systemd (`Restart=always`) restarts it.
+
+    Last resort of the watchdog, only after `give_up_after_s` without a frame.
 
     `os._exit` instead of `sys.exit`: a normal exit waits at shutdown for all executor
     threads -- and thus for the one that hangs in `capture_array()`. The process would
@@ -346,6 +348,8 @@ class SharedCamera:
         #: state, and `status()` would have to derive it a second time.
         self._failures = 0
         self._reopens = 0
+        #: Loop time at which the reopen budget was first exhausted; `None` while healthy.
+        self._failed_since: float | None = None
         self._last_outcome = "none"
         self._gave_up = False
         #: Size of the `lores` stream once Picamera2 is configured with it; otherwise
@@ -597,7 +601,10 @@ class SharedCamera:
 
         Escalation: failures are counted; from `max_capture_failures` on (a hang counts as
         full immediately) the camera is reopened; after `max_reopen_attempts` reopenings
-        without a frame in between, it gives up.
+        without a frame in between it counts as failed and is retried every
+        `failed_retry_interval_s`. Only after `give_up_after_s` without a single frame
+        does it give up and the process exits (`None` = never, `0` = at once). The first
+        frame resets everything.
         """
         loop = asyncio.get_running_loop()
         interval = 1.0 / self._config.capture_fps
@@ -607,6 +614,7 @@ class SharedCamera:
             if outcome == "ok":
                 self._failures = 0
                 self._reopens = 0
+                self._failed_since = None
             elif outcome == "hung":
                 self._failures = self._config.max_capture_failures
             else:
@@ -615,9 +623,24 @@ class SharedCamera:
                 self._failures = 0
                 self._reopens += 1
                 if self._reopens > self._config.max_reopen_attempts:
+                    now = loop.time()
+                    if self._failed_since is None:
+                        self._failed_since = now
+                        _log.error(
+                            "Kamera nach %d Neu-Oeffnungen ohne Bild -- gilt als "
+                            "ausgefallen, neuer Versuch alle %.0f s",
+                            self._config.max_reopen_attempts,
+                            self._config.failed_retry_interval_s,
+                        )
+                    give_up_after = self._config.give_up_after_s
+                    if give_up_after is None or now - self._failed_since < give_up_after:
+                        await asyncio.sleep(self._config.failed_retry_interval_s)
+                        await self._reopen(self._reopens)
+                        continue
                     _log.critical(
-                        "Kamera nach %d Neu-Oeffnungen ohne Bild -- beende den Prozess, "
-                        "systemd startet ihn neu",
+                        "Kamera seit %.0f s ohne Bild (%d Neu-Oeffnungen erfolglos) -- "
+                        "beende den Prozess, systemd startet ihn neu",
+                        now - self._failed_since,
                         self._config.max_reopen_attempts,
                     )
                     self._gave_up = True
@@ -640,11 +663,14 @@ class SharedCamera:
         with its executor. A failure leaves `_camera` as `None`; the next pass then
         escalates further.
         """
-        _log.warning(
-            "Kamera haengt, oeffne sie neu (Versuch %d/%d)",
-            attempt,
-            self._config.max_reopen_attempts,
-        )
+        if attempt <= self._config.max_reopen_attempts:
+            _log.warning(
+                "Kamera haengt, oeffne sie neu (Versuch %d/%d)",
+                attempt,
+                self._config.max_reopen_attempts,
+            )
+        else:
+            _log.warning("Kamera weiter ausgefallen, oeffne sie neu (Versuch %d)", attempt)
         camera, self._camera = self._camera, None
         executor, self._executor = self._executor, None
         if executor is not None:

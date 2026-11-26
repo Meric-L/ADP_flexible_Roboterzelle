@@ -52,8 +52,27 @@ class DeviceHealthMappingTest(unittest.TestCase):
     def test_warmup_without_a_frame_is_check_function(self):
         self.assertEqual(DeviceHealth.CHECK_FUNCTION, self._health(frame_age_s=None))
 
-    def test_a_reopen_in_progress_is_check_function(self):
-        self.assertEqual(DeviceHealth.CHECK_FUNCTION, self._health(has_handle=False))
+    def test_the_first_open_is_check_function(self):
+        self.assertEqual(
+            DeviceHealth.CHECK_FUNCTION,
+            self._health(has_handle=False, frame_age_s=None),
+        )
+
+    def test_a_reopen_in_progress_is_failure(self):
+        """Der Watchdog musste eingreifen: kein gueltiges Bild, Ende offen."""
+        self.assertEqual(
+            DeviceHealth.FAILURE,
+            self._health(has_handle=False, reopen_attempts=1, frame_age_s=4.0),
+        )
+
+    def test_a_reopened_camera_without_a_new_frame_is_failure(self):
+        """Auch nach erschoepftem Budget, waehrend langsam weiter versucht wird."""
+        for overrides in (
+            {"reopen_attempts": 1, "frame_age_s": 5.0},
+            {"reopen_attempts": 3, "has_handle": False, "frame_age_s": 60.0},
+            {"reopen_attempts": 1, "frame_age_s": None},
+        ):
+            self.assertEqual(DeviceHealth.FAILURE, self._health(**overrides))
 
     def test_a_stale_frame_is_off_spec(self):
         """Ein Haenger, der sich noch selbst heilen kann -- gelb, nicht rot."""
@@ -81,6 +100,7 @@ class DeviceHealthMappingTest(unittest.TestCase):
             {},
             {"frame_age_s": None},
             {"has_handle": False},
+            {"reopen_attempts": 1},
             {"frame_age_s": 99.0},
             {"running": False},
             {"gave_up": True},

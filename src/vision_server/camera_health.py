@@ -1,7 +1,7 @@
 """Camera state as `DeviceHealth` per OPC 40100-2 (AMCM).
 
-The watchdog in `camera.py` knows whether the camera delivers images, hangs, or is
-currently being reopened. This module translates that into DI's
+The watchdog in `camera.py` knows whether the camera delivers images, hangs, or had to
+be reopened. This module translates that into DI's
 `DeviceHealthEnumeration` and writes it to the state nodes of the asset view
 (`asset_model.py`). This way a generic OPC UA client without knowledge of this repo
 can see whether the camera is working.
@@ -55,7 +55,7 @@ ALARM_SEVERITY: dict[DeviceHealth, int] = {
 ALARM_MESSAGE: dict[DeviceHealth, str] = {
     DeviceHealth.FAILURE: "Kamera liefert kein Bild",
     DeviceHealth.OFF_SPEC: "Kamerabild ist veraltet",
-    DeviceHealth.CHECK_FUNCTION: "Kamera wird geoeffnet oder neu gestartet",
+    DeviceHealth.CHECK_FUNCTION: "Kamera wird geoeffnet",
 }
 
 
@@ -66,15 +66,21 @@ def device_health(status: CameraStatus, *, stale_frame_s: float) -> DeviceHealth
     transient one, finally the normal case. Reasoning per line from NAMUR NE 107
     resp. OPC 10000-100:
 
-    * `gave_up` -- the reopen budget is exhausted, the process terminates right
-      away. No valid output signal, and nobody is working on it: FAILURE.
+    * `gave_up` -- the camera stayed failed for `give_up_after_s`, the process
+      terminates right away. No valid output signal, and nobody is working on it:
+      FAILURE.
     * not `running` -- the camera was never opened or the source did not come up.
       The same case, different cause.
-    * no handle -- a `_reopen` is in progress. NE 107 literally names CHECK_FUNCTION
-      "output signal temporarily invalid due to on-going work on the device".
+    * `reopen_attempts > 0` -- the watchdog already had to reopen the camera and no
+      frame has arrived since (reset by the next good frame). This covers the reopen in
+      progress, a failed reopen and the slow retry phase. Once the watchdog had to
+      intervene and no frame came back, the output signal is invalid and nobody can say
+      when it returns: FAILURE, not CHECK_FUNCTION.
+    * no handle -- only the very first open; CHECK_FUNCTION.
     * no frame yet -- warm-up. Not an error, just no image yet; that is why
-      CHECK_FUNCTION is also the initial value of the nodes.
-    * frame too old -- the watchdog has detected a stall but does not escalate yet.
+      CHECK_FUNCTION is also the initial value of the nodes. CHECK_FUNCTION is thus
+      reserved for the initial warm-up.
+    * frame too old -- the watchdog has detected a stall but does not intervene yet.
       The self-diagnosis reports a deviation: OFF_SPEC. FAILURE would be defensible,
       but stalls demonstrably heal themselves (see
       `test_a_frame_between_hangs_resets_the_reopen_budget`); with OFF_SPEC an HMI can
@@ -87,6 +93,8 @@ def device_health(status: CameraStatus, *, stale_frame_s: float) -> DeviceHealth
     if status.gave_up:
         return DeviceHealth.FAILURE
     if not status.running:
+        return DeviceHealth.FAILURE
+    if status.reopen_attempts > 0:
         return DeviceHealth.FAILURE
     if not status.has_handle:
         return DeviceHealth.CHECK_FUNCTION
@@ -257,8 +265,9 @@ class CameraHealthPublisher:
     ) -> Callable[[], Awaitable[None]]:
         """Build the camera's `on_give_up` handler: FAILURE, then `then`.
 
-        Needed because the default handler tears down the process immediately with
-        `os._exit` -- a polling task would never see `gave_up`. The write therefore runs
+        Fires only after `give_up_after_s` without a frame. Needed because the default
+        handler tears down the process immediately with `os._exit` -- a polling task
+        would never see `gave_up`. The write therefore runs
         with a time limit, and `then` is called in any case.
         """
 

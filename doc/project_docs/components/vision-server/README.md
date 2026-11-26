@@ -18,7 +18,7 @@ The OPC UA server (OPC 40100 Machine Vision) on each of the cell's two Raspberry
 
 **Startup.** `server.py` builds a `VisionServerConfig` and calls `runner.install_vision_machine` (`runner/install.py`), which runs the steps in a fixed order (one module per step in `runner/`, shared state in `runner/wiring.py`). The sources are opened first; only if all open does the state machine enter `Operational` (`VisionStateMachines` in `state_machine.py`). Then `server.py` announces the server via mDNS and registers it with the discovery server (`discovery/mdns.py`, `discovery/lds.py`).
 
-**Camera.** `SharedCamera` (`camera.py`) is one camera shared by detection and live stream. `camera_health.py` publishes `DeviceHealth` (NAMUR NE 107) from the frame age; if the camera is dead the process exits and systemd restarts it.
+**Camera.** `SharedCamera` (`camera.py`) is one camera shared by detection and live stream. `camera_health.py` publishes `DeviceHealth` (NAMUR NE 107) from the frame age; if the camera stays failed the server keeps running with `FAILURE` and retries opening it; only after `give_up_after_s` (300 s) without a good frame the process exits and systemd restarts it.
 
 **Jobs and recipes.** `JobRunner` (`job.py`) runs one job at a time (`StartSingleJob`, `StartContinuous`, `Stop`, `Abort`, `Halt`, `Reset`). The `RecipeId` selects a detection source (`detection/__init__.py`):
 

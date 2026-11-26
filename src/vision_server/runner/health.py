@@ -77,8 +77,8 @@ async def _start_camera_health(
         _camera_config_of(space, source),
         alarms=alarms,
     )
-    # The watchdog kills the process when it gives up; a last FAILURE should still go out
-    # before that.
+    # The watchdog kills the process only after `give_up_after_s` without a frame; a last
+    # FAILURE should still go out before that.
     source.camera.set_give_up_handler(publisher.give_up_handler(exit_process))
     publisher.start()
     _log.info(

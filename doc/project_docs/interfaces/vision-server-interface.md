@@ -902,8 +902,8 @@ the wire as `Int32`.
 | Value | Name | When | Color in HMI |
 | --- | --- | --- | --- |
 | 0 | `NORMAL` | Fresh camera image | green |
-| 1 | `FAILURE` | Camera never opened, or finally given up — the process terminates right away | red |
-| 2 | `CHECK_FUNCTION` | Warm-up, or the camera is being reopened | yellow |
+| 1 | `FAILURE` | Reopening budget (`max_reopen_attempts`) used up without a frame since, or no camera at start-up. Retried every `failed_retry_interval_s`; recovers live on the next good frame. The process ends only after `give_up_after_s` without a frame | red |
+| 2 | `CHECK_FUNCTION` | Start-up only: no camera handle or first frame yet ("Kamera wird geoeffnet") | yellow |
 | 3 | `OFF_SPEC` | Image older than `stale_frame_s` — hang detected, not yet escalated | yellow |
 | 4 | `MAINTENANCE_REQUIRED` | **Is never written** — there is no wear counter | — |
 
@@ -911,10 +911,16 @@ The typical course of a hang, with the default values from `CameraStreamConfig`:
 
 ```
 NORMAL ──(image older than stale_frame_s = 2 s)──> OFF_SPEC
-       ──(watchdog triggers after frame_timeout_s = 3 s, reopens)──> CHECK_FUNCTION
+       ──(watchdog triggers after frame_timeout_s = 3 s, reopens)──> FAILURE
        ──(camera delivers again)──> NORMAL
-       ──(2 reopenings without an image)──> FAILURE, then process abort
+       ──(2 reopenings without an image)──> FAILURE stays, reopen retried every
+          failed_retry_interval_s = 5 s
+       ──(no image for give_up_after_s = 300 s)──> last FAILURE, then process exit
 ```
+
+`FAILURE` already applies from the first reopening on, not only after the budget is used up.
+The process exit is a last resort (default `give_up_after_s` = 300 s; `0` exits at once, `None`
+never exits). It is meant against a wedged libcamera or driver.
 
 The **`OFF_SPEC` window is `frame_timeout_s − stale_frame_s` wide**, so with the
 default values 1.0 s. Therefore the publisher polls every `health_interval_s` =
@@ -937,10 +943,11 @@ watchdog intervenes. Anyone who wants it differently changes exactly one line in
   being built, the camera is not yet open; `NORMAL` would be an assertion that
   would stand unchallenged until the first image.
 
-- **`FAILURE` may be the last sign of life.** If the watchdog gives up, `FAILURE`
-  is written and the process ends immediately afterwards, so that systemd restarts
-  it. The session therefore breaks off right after. A client should expect the
-  connection to drop after `FAILURE` and reconnect.
+- **`FAILURE` does not end the session.** While the camera is failed, the server stays
+  up, keeps `FAILURE`, and retries the camera. The first good image sets `NORMAL`
+  again, live and without a reconnect. Only if the camera stays failed for
+  `give_up_after_s` does the watchdog write a last `FAILURE` and the process ends, so
+  that systemd restarts it. A client then sees the connection drop and must reconnect.
 - **Resolve namespace indices at runtime** (11.2). The BrowseName of `DeviceHealth`
   lies in the **DI** namespace, that of `Health` in the **AMCM** namespace, and the
   NodeIds in the vision namespace — three different indices on one path.
@@ -1569,7 +1576,7 @@ namespace, likewise emitted by `VisionMachine`:
 | --- | --- | --- |
 | `FailureAlarmType` | 900 | camera delivers no image |
 | `OffSpecAlarmType` | 500 | camera image is stale |
-| `CheckFunctionAlarmType` | 300 | camera is being opened or restarted |
+| `CheckFunctionAlarmType` | 300 | camera is being opened for the first time (start-up) |
 
 At most one is active; `NORMAL` clears the previous one without firing a new one.
 `SourceNode` names the affected component. Full details in 11.4.
@@ -1617,8 +1624,9 @@ non-zero `ResultSet/ErrorCode`. Complete details in
 2. Subscribe to `VisionMachine`, **with** an event type list.
 3. Call `StartSingleJob`, evaluate `Error`, note the `JobId`.
 4. Receive `ResultReadyEvent`, read `ResultContent[0]` as JSON, and assign it via `jobId`.
-5. Survive a connection drop and reconnect — the server can deliberately terminate
-   itself when the camera hangs (11.4) and is then restarted by systemd.
+5. Survive a connection drop and reconnect — the server ends itself only when the camera
+   stays failed for `give_up_after_s` (11.4) and is then restarted by systemd. A failed
+   camera alone does not drop the connection.
 6. **Read the camera state from `DeviceHealth`, not from the image.** When the camera
    hangs, the live image freezes instead of disappearing (11.4). Whoever wants to
    show a traffic light subscribes to the state node; whoever wants to react to
