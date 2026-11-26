@@ -4,34 +4,42 @@
 \setcounter{page}{1}
 \pagenumbering{arabic}
 
-Dies ist die Vorlage zum Zitieren nach den Richtlinien der IEEE Editorial Style Manual (IEEE-Style).
-
-Das Literaturverzeichnis ist nach Chronologie geordnet.  Die Referenz, die im Text zuerst genannt wird, steht auch im Literaturverzeichnis zuerst. 
-
-
-Damit Kompilierung funktioniert, muss 
-\begin{enumerate}
-    \item unter Menu als Compiler \glqq LulaTeX\grqq~und als Main document \glqq PLCM-Thesis.tex\grqq~ausgewählt werden (siehe Abb.~\ref{fig:Kompilierung}) sowie 
-    \item in einer tex-Datei neuer Text eingefügt werden.
-\end{enumerate}
-
-\begin{figure}[H]
-	\begin{center}
-		\centering
-        \includegraphics[width=\textwidth]{Bilder/Kapt1/Kompilierung.png}
-		\caption{\centering Kompilierungseinstellungen}
-		\label{fig:Kompilierung}
-	\end{center}
-\end{figure}
-
 \section{Motivation}
 \label{sec:Motivation}
+
+Produzierende Unternehmen sehen sich zunehmend mit einer steigenden Produktvielfalt, kürzeren Produktlebenszyklen und schwankenden Stückzahlen konfrontiert. Klassische, starr verkettete Fertigungsanlagen sind auf diese Bedingungen nur begrenzt ausgelegt, da jede Anpassung mit aufwendigen Umbauten und hohen Kosten verbunden ist. Gefragt sind daher wandlungsfähige Produktionssysteme, die sich mit geringem Aufwand an neue Anforderungen anpassen lassen \cite{Borgmann2026,Trautner2026}.
+
+Einen Ansatz hierfür bieten modulare und rekonfigurierbare Roboterzellen. Anstatt eine Zelle für einen einzelnen Prozess auszulegen, wird sie aus funktional abgegrenzten Modulen aufgebaut, die je nach Aufgabe ergänzt, ausgetauscht oder neu angeordnet werden können. Auf diese Weise lassen sich unterschiedliche Fertigungs- und Montageaufgaben, etwa Pick-and-Place-Vorgänge, in derselben Zelle umsetzen.
+
+Die Rekonfiguration einer Roboterzelle beschränkt sich jedoch nicht auf ihren mechanischen Aufbau. Wird ein Modul hinzugefügt oder versetzt, müssen auch die Steuerungs- und Kommunikationsstrukturen der Zelle angepasst werden \cite{Trautner2026}. Insbesondere muss nach jedem Umbau bekannt sein, welches Modul sich an welcher Stelle befindet und wie es ausgerichtet ist. Nur dann stimmen digitales Abbild und Roboterprogramm mit der realen Zelle überein, und der Roboter kann die Module zuverlässig anfahren \cite{Bennulf2025}.
 
 \section{Konkretisierung der Aufgabenstellung}
 \label{sec:Konkretisierung der Aufgabenstellung}
 
+Die Aufgabenstellung dieser Arbeit sieht den Aufbau einer modularen Roboterzelle vor, die flexibel für unterschiedliche Prozesse ausgelegt werden kann. Roboter, Sensoren, Aktoren und weitere Geräte sollen dabei zu einem erweiterbaren Gesamtsystem integriert werden.
+
+Zu diesem Projekt bestehen bereits Bausteine einer modularen Zelle mit einem kollaborierenden Roboter, dessen digitalem Zwilling in einer webbasierten Bedienoberfläche sowie OPC~UA als einheitlichem Kommunikationsstandard zwischen den Komponenten. Offen ist hingegen, wie die Zelle Kenntnis über ihren eigenen Aufbau erlangt. Solange Module nach einem Umbau manuell eingemessen und im digitalen Zwilling nachgetragen werden müssen, bleibt jede Rekonfiguration eine zeitaufwendige und fehleranfällige Handarbeit. Der eigentliche Vorteil der Modularität, die schnelle Anpassung an neue Aufgaben, kommt so nicht zum Tragen.
+
+Aus diesem Grund konkretisiert die vorliegende Arbeit die Aufgabenstellung auf die automatische Identifikation und Lokalisierung der Module sowie deren Einbindung in den digitalen Zwilling. Die in der Aufgabenstellung geforderten Arbeitsschritte, von der Recherche über die Konzeption, die Integration geeigneter Sensorik und den Aufbau mit vorhandenen Komponenten bis hin zu Funktionsprüfung und Verifikation, werden auf diesen Schwerpunkt angewendet.
+
 \section{Zielsetzung}
 \label{sec:Zielsetzung}
 
+Ziel dieser Arbeit ist die Konzeption und prototypische Umsetzung eines Systems, das die Module einer rekonfigurierbaren Roboterzelle automatisch identifiziert, mit einer Genauigkeit von \SI{\pm 3}{\milli\metre} lokalisiert und in den bestehenden digitalen Zwilling überführt. Daraus ergeben sich die folgenden Teilziele:
+
+\begin{enumerate}
+    \item Recherche des Stands der Technik zu modularen Roboterzellen sowie zu Kommunikations- und Lokalisierungstechnologien,
+    \item Ableitung der Anforderungen an das System und systematische Auswahl eines geeigneten Konzepts,
+    \item Auswahl und Integration geeigneter Sensorik sowie Anbindung an die bestehende Infrastruktur über OPC~UA unter bevorzugter Nutzung vorhandener Komponenten,
+    \item Aufbau des Systems in der Roboterzelle und Demonstration seiner Funktion an einem Pick-and-Place-Anwendungsfall sowie
+    \item Verifikation des umgesetzten Systems anhand der zuvor definierten Anforderungen.
+\end{enumerate}
+
+Die Arbeit konzentriert sich auf die Lokalisierung der Module.
+Ebenso wird kein vollständiges Sicherheitskonzept für die Roboterzelle erarbeitet. Stattdessen erfolgen Roboterbewegungen ausschließlich nach Bestätigung durch einen Bediener, der den Arbeitsbereich einsehen kann (Human-in-the-Loop).
+
 \section{Aufbau der Arbeit}
 \label{sec:Aufbau}
+% TODO: Am Schluss abgleichen, da sich Kapitel 4 und 5 noch ändern.
+
+Die Arbeit folgt dem Vorgehen von der Recherche über die Konzeption bis zur Umsetzung und Überprüfung des Systems. Kapitel~\ref{ch:Stand_der_Technik} stellt die Grundlagen der modularen Fertigung vor und gibt einen Überblick über bestehende modulare Roboterzellen sowie über relevante Kommunikations- und Lokalisierungstechnologien. Darauf aufbauend erfasst Kapitel~\ref{ch:Kapt3} die Randbedingungen des Projekts, leitet die Anforderungen an das System ab und wählt mithilfe einer Nutzwertanalyse aus mehreren Konzeptvarianten das umzusetzende Konzept aus. Kapitel~\ref{ch:Systementwurf} beschreibt den Entwurf und die Umsetzung des Systems, von der Gesamtarchitektur über die Hardwareauslegung und die Bildverarbeitung bis zur Kommunikation und der Einbindung in den digitalen Zwilling. Kapitel~\ref{ch:Realisierung der modularen Roboterzelle} zeigt die Anwendung des Systems in der Roboterzelle. In Kapitel~\ref{ch:Verifikation} wird überprüft, inwieweit das umgesetzte System die gestellten Anforderungen erfüllt, unter anderem anhand eines Pick-and-Place-Versuchs. Kapitel~\ref{ch:FazitAusblick} fasst die Ergebnisse zusammen und gibt einen Ausblick auf mögliche Weiterentwicklungen.
