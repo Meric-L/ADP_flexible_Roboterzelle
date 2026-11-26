@@ -557,6 +557,19 @@ Konzept~A erreicht mit einer technischen Wertigkeit von \SI{91,3}{\percent} das 
 \label{sec:Systemarchitektur des gewählten Konzepts}
 
 \section{Modulkatalog}
+\label{sec:Modulkatalog}
+%TODO John: Nochmal anschauen
+Die Raspberry Pis übermitteln zu jedem erkannten AprilTag lediglich dessen ID und Pose. Welches Modul sich hinter einer ID verbirgt, ist ausschließlich im Modulkatalog des digitalen Zwillings hinterlegt. Ein neues Modul wird daher allein durch einen Katalogeintrag in das System aufgenommen, ohne Änderungen an den Kameras oder am Programmcode.
+
+Ein Eintrag umfasst eine eindeutige Modul-ID, einen Namen, ein 3D-Modell sowie einen oder mehrere AprilTags. Unterschieden wird zwischen Modulen, Robotern und WorldTags: Für Roboter ist zusätzlich die Adresse ihres OPC-UA-Servers hinterlegt, für WorldTags ihre eingemessene Pose im Weltkoordinatensystem.
+
+Die 3D-Modelle werden aus einem festen Verzeichnis der Webanwendung geladen, in dem die verfügbaren Dateien automatisch zur Auswahl angeboten werden. Unterstützt werden die gängigen Formate URDF, glTF, Collada und STL, sodass sowohl CAD-Exporte als auch bestehende Robotermodelle verwendet werden können. Das Modell legt zugleich das Koordinatensystem des Moduls fest. Hierzu wird auf dem Modell ein Ursprung gewählt, typischerweise eine Ecke, an der auch am realen Modul gemessen werden kann. Alle Tag-Positionen beziehen sich auf diesen Punkt.
+
+Die Lage eines Tags auf dem Modul wird direkt am 3D-Modell festgelegt. Aus der Geometrie des Modells werden die großen ebenen Flächen mit ihren Kanten und Ecken ermittelt. Der Bediener wählt die Fläche, auf der der Tag angebracht ist, und gibt dessen Lage so an, wie sie am realen Modul mit einem Lineal gemessen wird: entweder als zwei Abstände von einer Ecke oder als Abstände von zwei Kanten. Daraus werden Position und Orientierung des Tags im Modulkoordinatensystem berechnet. Da eine manuelle Messung nur begrenzt genau ist, wird jeder Tag anschließend mit der Handkamera eingemessen (siehe Abschnitt~\ref{TODO:Tag einmessen}). Wird ein Tag nachträglich verändert, verliert er diese Messung und muss erneut eingemessen werden.
+
+Um Fehlkonfigurationen zu vermeiden, wird jeder Eintrag vor dem Speichern geprüft. So muss jede Tag-ID im gesamten Katalog eindeutig sein und darf nicht als WorldTag vergeben sein, da das System ein solches Modul sonst als festen Bezugspunkt der Welt interpretieren würde. Weicht die Größe eines Tags von der Größe ab, die die Kameras annehmen, wird der Bediener gewarnt.
+
+Der Katalog wird im Backend als JSON-Datei gespeichert, sodass alle Browser denselben Stand sehen. Jede Änderung wird mit einer Revisionsnummer versehen. Speichern zwei Bediener gleichzeitig, wird die spätere Änderung abgelehnt und der aktuelle Stand neu geladen, sodass keine Änderung unbemerkt überschrieben wird. Da die Datei im Repository liegt, sind alle Änderungen am Katalog zudem versioniert und nachvollziehbar.
 \section{Aggregation Server}
 \section{Tag einmessen und Platzieren /Kantenerkennung}
 \section{Autokalibrierung lv 1 und 2}
