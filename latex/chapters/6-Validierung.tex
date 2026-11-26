@@ -232,6 +232,27 @@ Wie lange haben wir für die Umnsetzuing gebraucht + Zeitplan
 
 \section{Positionsgenauigkeit und Rotationsgenauigkeit}
 \label{sec:Positionsgenauigkeit und Rotationsgenauigkeit_Verifikation}
+
+\subsection{Messrauschen der Deckenkamera}
+\label{subsec:Messrauschen_Decke}
+
+Jede Messung schwankt leicht, auch wenn sich nichts bewegt. Diese Schwankung ist das Messrauschen. Es legt fest, wie genau eine einzelne Messung höchstens sein kann. Für die Deckenkamera wurde es an einer ruhenden Szene bestimmt. Die Kamera nahm zwei Minuten lang alle fünf Sekunden ein Bild auf, insgesamt 25 Bilder. Jedes Bild wurde mit derselben Tagerkennung und Posenberechnung ausgewertet wie im laufenden System. Im Bild lagen zwei ModulTags mit \qty{80}{\milli\metre} und vier WorldTags mit \qty{200}{\milli\metre} Kantenlänge, in \qtyrange{1,7}{3,0}{\metre} Abstand zur Kamera.
+
+Quer zur Blickrichtung und entlang der Blickrichtung bestimmt die Kamera die Lage eines Tags unterschiedlich gut. Quer zur Blickrichtung folgt die Position direkt aus der Lage des Tags im Bild. Den Abstand zur Kamera leitet sie dagegen nur aus der scheinbaren Größe des Tags ab. Schon kleine Schwankungen der erkannten Ecken verändern diese Größe und damit den berechneten Abstand. Abbildung~\ref{fig:positionsrauschen_decke} zeigt das Rauschen deshalb getrennt nach diesen beiden Richtungen.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics{Bilder/Kapt6/positionsrauschen_decke.pdf}
+    \caption{Messrauschen der Deckenkamera je Tag als Standardabweichung über 25 Aufnahmen einer ruhenden Szene, getrennt nach den Richtungen quer zur Blickrichtung und entlang der Blickrichtung (logarithmische Achse)}
+    \label{fig:positionsrauschen_decke}
+\end{figure}
+
+Bei den ModulTags liegt das Rauschen quer zur Blickrichtung unter \qty{0,1}{\milli\metre}. Entlang der Blickrichtung ist es mit \qtyrange{1,9}{2,7}{\milli\metre} etwa 20- bis 35-mal größer. Bei den WorldTags ist das Rauschen in beiden Richtungen rund zehnmal höher. Quer zur Blickrichtung erreicht es etwa \qty{1}{\milli\metre}, entlang der Blickrichtung \qtyrange{24}{37}{\milli\metre}. Die Ursache liegt in der Feinbestimmung der Ecken auf Bruchteile eines Pixels. Bei den kleinen ModulTags arbeitet sie zuverlässig. Bei den großen WorldTags greift sie in den meisten Aufnahmen nicht, sodass die Ecken um ganze Pixel springen.
+
+Quer zur Blickrichtung ist das Rauschen damit klein gegenüber der geforderten Genauigkeit von \qty{\pm 3}{\milli\metre}. Entlang der Blickrichtung ist es deutlich größer, vor allem bei den WorldTags. Über diese bestimmt die Deckenkamera ihre eigene Lage im Raum. Dieser Anteil geht deshalb in die Fehlerbetrachtung der Positionsgenauigkeit ein.
+
+% TODO Handkamera (Layer 2): Rauschmessung (ein Tag, eine Stellung, 30 Bilder) wird am 27.11.2026 wiederholt, danach hier ergänzen.
+
 Usecase
 
 Alle unsere Positionierungsversuche
