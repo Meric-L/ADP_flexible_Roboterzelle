@@ -274,7 +274,7 @@ its own message set) does not exist: devices reuse the robot model with a `kind`
 | `opcua/network_discovery.py` | `NetworkDiscovery`: mDNS browse of `_opcua-tcp._tcp.local.`, `WSC_MDNS=0` disables it, dependency `zeroconf` |
 | `opcua/asyncua_discovery.py` | `discover_program_device_descriptors`: Part 10 program objects under `Objects` become devices; `read_method_arguments` resolves enumeration DataTypes into `MethodArgument.enum_values` |
 | `opcua/method_calls.py` | `to_jsonable` handles asyncua `Event` (B3); `map_method_outputs` pairs outputs with their argument names |
-| `opcua/server_connection.py` | event subscriptions with custom event types (B2); reconnect with a fresh client and `restore_subscriptions`; keepalive `check_alive`; request timeout 120 s for slow Pi methods |
+| `opcua/server_connection.py` | event subscriptions with custom event types (B2); reconnect with a fresh client and `restore_subscriptions`; keepalive `check_alive`; request timeout 120 s for slow Pi methods; unsubscribing sends nothing on a lost connection and is otherwise limited to `UNSUBSCRIBE_TIMEOUT_S` (5 s) |
 | `models/robot.py`, `models/opcua.py`, `models/messages.py` | `RobotSessionInfo.kind`, `RobotActionState.result` and `error_code`, `MethodArgument.enum_values`, `listAnnouncedServers` / `serversAnnounced`, `SubscribeEventCommand.event_type_node_ids` |
 | `runtime/action_execution.py` | method actions return named outputs and fail on a non-zero `Error`; program actions snapshot the `ResultSet` before `Start` |
 | `runtime/application_service.py` | program watcher reads the final `ResultSet`; `methodMissing` / `nothingToDo` error codes; server liveness watch `_watch_server_liveness` |
@@ -416,7 +416,7 @@ message type exists.
 | R6 | discovery cache never invalidated | bindings are rebuilt on every discovery of a server; enum texts are cached per session and DataType |
 | R7 | exception in a background task disappears silently | open in general; Pi methods report error codes and status JSON |
 | R8 | orchestrator sends to a dead WS connection | moot: no backend orchestrator |
-| R9 | **no reconnect/watchdog** — subscriptions die silently on disconnect | **resolved**: `_watch_server_liveness` + `check_alive`, reconnect with a fresh client, `restore_subscriptions` restores node and event subscriptions |
+| R9 | **no reconnect/watchdog** — subscriptions die silently on disconnect | **resolved**: `_watch_server_liveness` + `check_alive`, reconnect with a fresh client, `restore_subscriptions` restores node and event subscriptions. 2026-11-26: after a Pi restart, `unsubscribeNode` on the dead connection waited 120 s per variable and blocked the page's live events (`robotsDiscovered`), so the Pi stayed "off" for minutes. Unsubscribing is now local on a lost connection and otherwise limited to 5 s |
 | R10 | backend becomes a motion source without an interlock | moot: motion is started from the frontend after an operator confirmation |
 | R11 | units/conventions: mm↔m, xyzw↔wxyz, `T_base_cam`↔`T_cam_base` | ongoing: `frameId` on every pose, schema version, tests on the transforms |
 | R12 | result-handle leak | moot: `ResultManagement` methods are not used (4.2) |

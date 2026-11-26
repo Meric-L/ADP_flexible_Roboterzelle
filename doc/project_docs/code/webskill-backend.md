@@ -68,7 +68,7 @@ Origin per heading: **new**, **extended** (existing module with our additions), 
 
 ### `backend/src/backend/opcua/` — existing, extended
 
-- `server_connection.py` (extended): `AsyncUaServerConnection` wraps the asyncua `Client`. It handles connect, disconnect, discovery, and the data-change and event subscriptions. new: reconnect with a fresh client and restore of subscriptions, keepalive, custom event types.
+- `server_connection.py` (extended): `AsyncUaServerConnection` wraps the asyncua `Client`. It handles connect, disconnect, discovery, and the data-change and event subscriptions. new: reconnect with a fresh client and restore of subscriptions, keepalive, custom event types. Unsubscribing does not wait for a dead server: on a connection marked lost the subscription is only dropped locally, otherwise the delete is limited to `UNSUBSCRIBE_TIMEOUT_S` (5 s). This keeps the page's serial WS loop, and so its live events, from stalling.
 - `asyncua_discovery.py` (extended): browses the OPC UA address space. It finds motion devices, skills, methods, and node details.
   - `discover_program_device_descriptors`: every Part 10 program object directly under `Objects` is a device. `kind` is `vision` when the MachineVision namespace is present, else `device`. Actions: the program (key `vision_program` for kind `vision`) and its method children; variables: the children of `Status` and `ResultSet`. A method only referenced by the program gets its own name as path.
   - `read_method_arguments` resolves Enumeration DataTypes (`EnumValues`, else `EnumStrings`) into `MethodArgument.enum_values`, cached per session and DataType.

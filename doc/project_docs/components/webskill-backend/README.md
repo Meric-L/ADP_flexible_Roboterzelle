@@ -41,6 +41,7 @@ The backend holds no workflow logic. Sequencing, IK and robot driving run in the
 - Skill state text maps to `idle`, `halted`, `reset`, `failed` or `running`.
 - Timeouts: connect 120 s, discover 600 s, long-action warning 60 s.
 - A liveness watch reconnects with a fresh client and restores subscriptions.
+- Unsubscribing never blocks on a dead server: nothing is sent on a lost connection, otherwise at most 5 s (`UNSUBSCRIBE_TIMEOUT_S`). Otherwise a restarted vision Pi showed as off for minutes.
 
 | Error `code` (event `error`) | OPC UA cause |
 | --- | --- |
