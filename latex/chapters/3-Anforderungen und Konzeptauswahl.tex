@@ -558,6 +558,7 @@ Konzept~A erreicht mit einer technischen Wertigkeit von \SI{91,3}{\percent} das 
 
 \section{Modulkatalog}
 \label{sec:Modulkatalog}
+%Kommentar MEric: Das ist doppelt in 4.6.2 wird der auch schon beleuchtet.
 %TODO John: Nochmal anschauen
 Die Raspberry Pis übermitteln zu jedem erkannten AprilTag lediglich dessen ID und Pose. Welches Modul sich hinter einer ID verbirgt, ist ausschließlich im Modulkatalog des digitalen Zwillings hinterlegt. Ein neues Modul wird daher allein durch einen Katalogeintrag in das System aufgenommen, ohne Änderungen an den Kameras oder am Programmcode.
 
@@ -570,29 +571,29 @@ Die Lage eines Tags auf dem Modul wird direkt am 3D-Modell festgelegt. Aus der G
 Um Fehlkonfigurationen zu vermeiden, wird jeder Eintrag vor dem Speichern geprüft. So muss jede Tag-ID im gesamten Katalog eindeutig sein und darf nicht als WorldTag vergeben sein, da das System ein solches Modul sonst als festen Bezugspunkt der Welt interpretieren würde. Weicht die Größe eines Tags von der Größe ab, die die Kameras annehmen, wird der Bediener gewarnt.
 
 Der Katalog wird im Backend als JSON-Datei gespeichert, sodass alle Browser denselben Stand sehen. Jede Änderung wird mit einer Revisionsnummer versehen. Speichern zwei Bediener gleichzeitig, wird die spätere Änderung abgelehnt und der aktuelle Stand neu geladen, sodass keine Änderung unbemerkt überschrieben wird. Da die Datei im Repository liegt, sind alle Änderungen am Katalog zudem versioniert und nachvollziehbar.
-\section{Aggregation Server}
-\section{Tag einmessen und Platzieren /Kantenerkennung}
-\section{Autokalibrierung lv 1 und 2}
-\section{Livestream}
-\section{MDNS}
-\section{OPCUA Part10 + part2 Programm}
-\section{Companion und statemachine}
-\section{Webskills}
-\section{Kollision detection}
-\section{Posenplanung - keine Trajektorienplanung}
-\section{Ausgangsstellung}
-\section{Take controll und sync nicht selbst gebaut sondern genutzt}
-\section{Zellüberwachung erkennen von Veränderungen}
-\section{Kinematik und umrechenn der Koordinatensysteme}
-\section{Machbar uterstützung}
-\section{BOM}
-\section{Generieren der Tags, kalibierboards, Alle tags, Papir, Laminiert, Gedruckt, Gelasert etc}
-\section{Worldtag}
+% \section{Aggregation Server}
+% \section{Tag einmessen und Platzieren /Kantenerkennung}
+% \section{Autokalibrierung lv 1 und 2}
+% \section{Livestream}
+% \section{MDNS}
+% \section{OPCUA Part10 + part2 Programm}
+% \section{Companion und statemachine}
+% \section{Webskills}
+% \section{Kollision detection}
+% \section{Posenplanung - keine Trajektorienplanung}
+% \section{Ausgangsstellung}
+% \section{Take controll und sync nicht selbst gebaut sondern genutzt}
+% \section{Zellüberwachung erkennen von Veränderungen}
+% \section{Kinematik und umrechenn der Koordinatensysteme}
+% \section{Machbar uterstützung}
+% \section{BOM}
+% \section{Generieren der Tags, kalibierboards, Alle tags, Papir, Laminiert, Gedruckt, Gelasert etc}
+% \section{Worldtag}
 
-\section{Autokalibrierung lv 1 und 2}
-\section{3D Druck teile, Würfel, Würfelhalterung, Tag Halterung, Aufnahme platten im greifer, Camera Halterung, laserlot, }
-\section{8x8 Tags können in einem Radius von \SI{3}{\metre} um die 1lv Kamera erkannt werden}
-\section{Mehrposen Bilder vs einposen bilder}
+% \section{Autokalibrierung lv 1 und 2}
+% \section{3D Druck teile, Würfel, Würfelhalterung, Tag Halterung, Aufnahme platten im greifer, Camera Halterung, laserlot, }
+% \section{8x8 Tags können in einem Radius von \SI{3}{\metre} um die 1lv Kamera erkannt werden}
+% \section{Mehrposen Bilder vs einposen bilder}
 
 % TODO: Folgende Stichpunkte aus dem Entwurf ausformulieren:
 %
