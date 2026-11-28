@@ -233,6 +233,74 @@ Wie lange haben wir für die Umnsetzuing gebraucht + Zeitplan
 \section{Positionsgenauigkeit und Rotationsgenauigkeit}
 \label{sec:Positionsgenauigkeit und Rotationsgenauigkeit_Verifikation}
 
+% SKIZZE (28.11.2026): Methodik und Auswertekette stehen, die Unterabschnitte je Kettenglied
+% enthalten nur Vorgehen und TODOs. Ergebnisse werden Schritt für Schritt ergänzt.
+% Grundlage: ~/ADP/PLAN_FEHLERFORTPFLANZUNG.md, Nummern der Messungen wie in ~/ADP/messdaten/MESSUNGEN.md.
+
+Anforderung A3 fordert eine Positioniergenauigkeit von \qty{\pm 3}{\milli\metre}. Wir werten sie so aus, dass \qty{95}{\percent} der Ablagen innerhalb eines Kreises mit \qty{3}{\milli\metre} Radius um den Sollpunkt liegen müssen. Geprüft wird das im Anwendungsfall, der Ablage eines Würfels auf einer Zielscheibe. Dieser Versuch zeigt, ob das Ziel erreicht wird. Er zeigt aber nicht, woher eine Abweichung kommt. Deshalb untersuchen wir zusätzlich die gesamte Messkette Glied für Glied.
+
+Die Genauigkeit setzt sich aus zwei Teilen zusammen. Die Präzision beschreibt, wie stark wiederholte Messungen streuen. Die Richtigkeit beschreibt, wie weit ihr Mittelwert vom Sollwert entfernt ist. Beim Roboter entspricht das der Wiederholgenauigkeit und der Positioniergenauigkeit nach ISO~9283. % TODO Quelle ISO 9283 (nicht frei zugänglich) oder Sekundärquelle klären
+Die Unsicherheiten bestimmen wir nach dem Leitfaden GUM~\cite{JCGM100}. Eine Unsicherheit vom Typ~A stammt aus eigenen Messreihen und wird als Standardabweichung angegeben. Eine Unsicherheit vom Typ~B stammt aus anderen Quellen, etwa aus einem Datenblatt. Ist dort nur eine Grenze $\pm a$ angegeben, setzen wir eine Rechteckverteilung mit $u = a/\sqrt{3}$ an.
+
+Die Untersuchung folgt vier Schritten:
+\begin{enumerate}
+    \item \textbf{Messmittel:} Das Rauschen beider Kameras wird an einer ruhenden Szene bestimmt. Es ist die untere Grenze dessen, was alle weiteren Messungen auflösen können.
+    \item \textbf{Glieder der Kette:} Jedes Glied wird einzeln untersucht, getrennt nach zufälligem und systematischem Anteil.
+    \item \textbf{Gesamtkette:} Im Anwendungsfall wird die Abweichung der Ablage vom Ziel gemessen.
+    \item \textbf{Abgleich:} Aus den Einzelbeiträgen wird eine Vorhersage für die Ablage berechnet und mit der gemessenen Abweichung verglichen.
+\end{enumerate}
+
+Für den Abgleich pflanzen wir die Einzelbeiträge durch die Kette fort. Kleine Winkelfehler lassen sich dabei linearisieren. Ein Punkt im Abstand $r$ vom Drehpunkt verschiebt sich dann um $\delta p \approx \delta t + \delta\theta \cdot r$. Diese lineare Rechnung liefert die Rangfolge der Fehlerquellen. Der radiale Fehler der Ablage ist jedoch nicht normalverteilt. Seine Verteilung und der \qty{95}{\percent}-Radius werden deshalb zusätzlich mit einer Monte-Carlo-Simulation nach~\cite{JCGM101} bestimmt. Stimmen beide Rechnungen überein, ist die Linearisierung bestätigt.
+
+Die gemessene Abweichung der Ablage zerlegen wir in drei Ebenen. Die erste ist die Wiederholbarkeit je Pose, also die Streuung bei mehrfacher Ablage in derselben Tischlage. Die zweite ist ein Fehler, der je Tischlage fest ist, sich aber von Lage zu Lage ändert. Die dritte ist ein konstanter Versatz, der in allen Lagen gleich ist. Die erste Ebene beschreibt die Präzision, die beiden anderen die Richtigkeit.
+
+Eine unabhängige Referenz mit höherer Genauigkeit stand nicht zur Verfügung. Die absolute Lage der Module wurde mit einem Lasermessgerät mit einer Genauigkeit von \qty{\pm 2}{\milli\metre} erfasst. Diese Messung dient nur zur Plausibilitätsprüfung. % TODO Lasermessung: Daten und Art der Genauigkeitsangabe (Grenze oder Standardabweichung) nachreichen (Meric)
+Die Ablage selbst wird relativ gemessen, mit einem Kontrollfoto der Handkamera, das Zielscheibe und Würfel zugleich zeigt.
+
+\subsection{Auswertekette}
+\label{subsec:Auswertekette}
+
+% TODO Abbildung: Messkette als Blockbild (Layer 1 grün, Layer 2 gelb), Glieder wie in Tabelle tab:auswertekette.
+% TODO Klären: Gleichungen hier lassen oder in Kapitel 4 (Posenberechnung) und hier nur verweisen.
+
+Der Ablagepunkt im Koordinatensystem der Roboterbasis ergibt sich aus der Lage der Basis und des Moduls im Weltkoordinatensystem sowie dem Ablagepunkt im Modul:
+\begin{equation}
+    \mathbf{p}_{B} = \left({}^{W}\mathbf{T}_{B}\right)^{-1} \, {}^{W}\mathbf{T}_{M} \, \mathbf{c}_{M}
+    \label{eq:ablagepunkt}
+\end{equation}
+Dabei ist ${}^{A}\mathbf{T}_{B}$ die Lage von $B$ im System $A$. $W$ steht für die Welt, $B$ für die Roboterbasis, $M$ für das Modul. Der Ablagepunkt $\mathbf{c}_{M}$ stammt aus dem Modulkatalog.
+
+Bei Layer~1 bestimmt die Deckenkamera ${}^{W}\mathbf{T}_{M}$ und ${}^{W}\mathbf{T}_{B}$ aus demselben Bild. Fehler in der Lage der Kamera wirken daher auf beide Größen ähnlich und heben sich teilweise auf. % TODO Klären: Wie genau wird die Basis in Layer 1 bestimmt (Roboter-Tags?)
+Bei Layer~2 misst die Handkamera den Modul-Tag aus mehreren Ansichten. Je Ansicht gilt:
+\begin{equation}
+    {}^{B}\mathbf{T}_{\mathrm{Tag}} = \mathbf{F}(\mathbf{q}) \, \mathbf{X} \, {}^{C}\mathbf{T}_{\mathrm{Tag}}
+    \label{eq:layer2_ansicht}
+\end{equation}
+Dabei ist $\mathbf{F}(\mathbf{q})$ die Vorwärtskinematik bei den Gelenkwinkeln $\mathbf{q}$, $\mathbf{X}$ das Ergebnis der Hand-Auge-Kalibrierung und ${}^{C}\mathbf{T}_{\mathrm{Tag}}$ die Lage des Tags in der Kamera. Da das Ergebnis über die Basis in die Welt und für die Ablage wieder zurück gerechnet wird, kürzt sich ${}^{W}\mathbf{T}_{B}$ in Gleichung~\eqref{eq:ablagepunkt} heraus. Die Verankerung der Basis wirkt bei Layer~2 also nicht auf die Ablage.
+
+Tabelle~\ref{tab:auswertekette} ordnet jedem Glied der Kette den Versuch zu, mit dem es untersucht wird. Die Unterabschnitte folgen dieser Reihenfolge.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Glieder der Messkette und zugehörige Versuche}
+    \label{tab:auswertekette}
+    \begin{tabularx}{\textwidth}{@{}l c X l@{}}
+        \toprule
+        Glied & Layer & Versuch & Anteil \\
+        \midrule
+        Messrauschen Deckenkamera & 1 & ruhende Szene, 25 Bilder & zufällig \\
+        Messrauschen Handkamera & 2 & ruhende Szene je WorldTag, je 30 Bilder & zufällig \\
+        Intrinsik Deckenkamera & 1 & Linealtest & systematisch \\
+        Intrinsik Handkamera & 2 & Distanzstück- und Seitentest & systematisch \\
+        Hand-Auge-Kalibrierung & 2 & Kalibrierläufe, Höhentest, Drehtest & beide \\
+        Roboter & 2 & Wiederholgenauigkeit, Rückkehr, Kinematiktest & beide \\
+        Lokalisierung der Module & 1, 2 & wiederholte Scans im Anwendungsfall, Lasermessung & beide \\
+        Katalog, Greifen, Prüfmessung & 1, 2 & Nachmessung, Anwendungsfall & beide \\
+        Gesamtkette & 1, 2 & Anwendungsfall (Reihe 11, Vergleich Reihe 10) & gesamt \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
 \subsection{Messrauschen der Deckenkamera}
 \label{subsec:Messrauschen_Decke}
 
@@ -253,11 +321,79 @@ Die Messpunkte liegen bei allen Tags auf einer schmalen Ellipse. Ihre lange Achs
 
 Quer zur Blickrichtung ist das Messrauschen gegenüber der geforderten Positioniergenauigkeit von \qty{\pm 3}{\milli\metre} vernachlässigbar. Entlang der Blickrichtung erreicht es dagegen eine relevante Größe, insbesondere bei den WorldTags. Über diese bestimmt die Deckenkamera ihre eigene Lage im Raum. Dieser Anteil wird daher in der Fehlerbetrachtung der Positionsgenauigkeit berücksichtigt.
 
-% TODO Handkamera (Layer 2): Rauschmessung (ein Tag, eine Stellung, 30 Bilder) wird am 27.11.2026 wiederholt, danach hier ergänzen.
+\subsection{Messrauschen der Handkamera}
+\label{subsec:Messrauschen_Hand}
 
-Usecase
+Das Messrauschen der Handkamera wird auf dieselbe Weise bestimmt wie bei der Deckenkamera. Der Roboter steht still, die Handkamera nimmt einen WorldTag mehrfach auf, und jede Aufnahme wird einzeln ausgewertet. Da die Deckenkamera dieselben WorldTags sieht, lässt sich das Rauschen beider Kameras an denselben Tags vergleichen.
 
-Alle unsere Positionierungsversuche
+% TODO Daten: ~/ADP/messdaten/03_messkette/LV2_Messrauschen/lauf_004 bis lauf_008, je 30 Bilder,
+%   WorldTags 583 (zweimal: lauf_004 11:32, lauf_005 15:16), 584, 585, 586, Abstand ca. 1,0 bis 1,3 m, 27.11.2026.
+% TODO Auswertung wie Deckenkamera: Streuung quer und entlang der Blickrichtung, gleiche Abbildungsart, Systemdetektor.
+% TODO Ergebnis und Vergleich mit Deckenkamera (gleiche Tags 583 bis 586).
+
+\subsection{Intrinsische Kalibrierung der Kameras}
+\label{subsec:Intrinsik}
+
+Die intrinsische Kalibrierung legt fest, wie die Kamera einen Punkt im Raum auf das Bild abbildet. Ein Fehler darin wirkt vor allem als Maßstabsfehler und ist systematisch. Er zeigt sich daher nicht im Rauschen. Zur Prüfung werden Strecken mit bekannter Länge gemessen und mit dem Sollwert verglichen.
+
+% TODO Deckenkamera: Linealtest (Messung 14, ~/ADP/messdaten/05_linealtest), Auswertung durch Sven. Gültige Messungen und Soll-Abstände klären.
+% TODO Handkamera: Distanzstück- und Seitentest (Messungen 6 und 7), Maßstabsfehler mit eigener Kalibrierung gegen Werks-Intrinsik.
+
+\subsection{Hand-Auge-Kalibrierung}
+\label{subsec:HandAuge}
+
+Die Hand-Auge-Kalibrierung $\mathbf{X}$ verbindet die Handkamera mit dem Flansch des Roboters. Ein Fehler in ihrer Drehung wirkt über den Abstand zwischen Kamera und Tag als Verschiebung. Er hängt daher von der Stellung des Roboters ab. Untersucht werden die Streuung zwischen mehreren Kalibrierläufen und die verbleibende Abweichung der aktiven Kalibrierung.
+
+% TODO Daten: 7 Kalibrierläufe (Messung 12/13, ~/ADP/messdaten/04_handauge_kalibrierung),
+%   Höhentest (Messung 8, 03_messkette/hoehentest, Lauf 6), Drehtest in drei Arbeitsabständen (Messung 9, Reihen 900/902/904, noch nicht ausgewertet).
+
+\subsection{Roboter}
+\label{subsec:Roboter_Genauigkeit}
+
+Die Handkamera misst über die Kinematik des Roboters. Für die Ablage zählt daher nicht der volle Absolutfehler des Roboters, sondern nur der Unterschied zwischen der Stellung bei der Messung und der Stellung bei der Ablage. Untersucht werden die Wiederholgenauigkeit, die Rückkehr aus verschiedenen Stellungen und die Abweichung bei verschiedenen Gelenkstellungen.
+
+% TODO Daten: Wiederholgenauigkeit (Messung 2), Rückkehrgenauigkeit (Messung 3), Kinematiktest (Messung 5), Datenblatt FR3 und Franzese2026Calibration.
+% TODO Doppelzählung vermeiden: Kinematiktest enthält Kinematik und Hand-Auge zusammen.
+
+\subsection{Lokalisierung der Module}
+\label{subsec:Lokalisierung_Genauigkeit}
+
+In diesem Glied wird die Lage eines Moduls aus den vorherigen Gliedern zusammengesetzt. Bei Layer~1 hat jeder Versuch im Anwendungsfall einen neuen Scan der Deckenkamera. Die Versuche je Tischlage sind damit Wiederholungen derselben Messung. Daraus ergibt sich die Streuung von Modullage und Basis sowie deren Zusammenhang. Bei Layer~2 wird die Streuung des zusammengeführten Ergebnisses aus mehreren Ansichten betrachtet. Die Lasermessung der Module dient als Plausibilitätsprüfung der absoluten Lage.
+
+% TODO Daten: Reihe 11 (Layer-1-Scans je Pose), Reihe 10 zum Vergleich; Lasermessung (Meric reicht nach).
+% TODO Kovarianz Modul/Basis bei Layer 1 berechnen.
+
+\subsection{Katalog, Greifen und Prüfmessung}
+\label{subsec:Katalog_Greifen}
+
+Zwischen der gemessenen Lage des Tags und der Ablage liegen weitere Größen: die Lage des Tags am Modul und der Ablagepunkt aus dem Katalog, die Lage des Würfels im Greifer und das Absetzen. Hinzu kommt die Unsicherheit des Kontrollfotos selbst. Diese Größen werden aus Nachmessungen und aus dem Anwendungsfall abgeschätzt.
+
+% TODO Werte: Katalog/Tag am Tisch <= 1 mm (Typ B), Zielscheibe ca. 1 mm, Würfel im Greifer (mit Greifer drehender Anteil),
+%   Greifen/Absetzen zufällig aus Streuung je Pose, Prüfmessung (synthetisch <= 0,01 mm, real nicht geprüft).
+
+\subsection{Gesamtkette im Anwendungsfall}
+\label{subsec:Gesamtkette}
+
+Im Anwendungsfall legt der Roboter einen Würfel auf eine Zielscheibe auf dem Modul ab. Gemessen wird die Abweichung vom Ziel in beiden Richtungen der Ebene sowie die Verdrehung. In jeder Tischlage wird je fünfmal nur mit Layer~1 und fünfmal mit Layer~2 abgelegt. So lassen sich beide Layer unter gleichen Bedingungen vergleichen. Die Ergebnisse werden in die drei Ebenen aus Wiederholbarkeit, lageabhängigem Fehler und konstantem Versatz zerlegt.
+
+% TODO Daten: Reihe 11 (~/ADP/messdaten/02_use_case_reihen/main_use-case/reihe_011, sieben Posen inkl. Pose 1 neu und 180°-Test),
+%   Versuch 41 ausklammern. Reihe 10 als Vergleich (zwischendurch evtl. Systemänderungen, klären welche).
+% TODO Rotationsgenauigkeit (Verdrehung des Würfels) hier mit auswerten.
+
+\subsection{Fehlerfortpflanzung und Abgleich}
+\label{subsec:Fehlerfortpflanzung}
+
+Die Ergebnisse der einzelnen Glieder werden in einem Unsicherheitsbudget zusammengefasst und mit Gleichung~\eqref{eq:ablagepunkt} bis zur Ablage fortgepflanzt. Die Vorhersage wird für jede Ebene mit der Messung im Anwendungsfall verglichen. Bleibt ein Anteil unerklärt, weist er auf eine Fehlerquelle hin, die in den Einzelversuchen nicht erfasst wurde.
+
+% TODO Budgettabelle (8 bis 10 Zeilen: Größe, Typ, u, Beitrag), vollständige Tabelle im Anhang.
+% TODO Abbildungen: Budget-Balken je Layer; Verteilung radialer Fehler (Monte Carlo) mit gemessenen Radien und 3-mm-Linie; Vorhersage gegen Messung je Pose.
+
+\subsection{Bewertung}
+\label{subsec:Bewertung_Genauigkeit}
+
+% TODO Bewertung A3 nach den drei Ebenen. Arbeitshypothese (HYPOTHESE_ENDGENAUIGKEIT.md): Präzision von Layer 2 erfüllt ±3 mm,
+%   Richtigkeit nicht (konstanter Versatz und lageabhängiger Kalibrierrest, systematisch). Folgerung für Ausblick: besseres Kalibrierkonzept.
+% TODO Bewertungsstufe nach Punkteskala festlegen.
 
 
 \section{Aufrüstbarkeit}
