@@ -1,10 +1,241 @@
 \cleardoublepage
+% Anhang D zu Abschnitt 4.2 (Hardwareauslegung). Entwurf erstellt mit Claude
+% Opus 5.5 (Anthropic) aus den Besprechungsfolien vom 19.07. und 31.08.2026,
+% siehe KI-Hilfsmittel-Verzeichnis. Vorher: leere Vorlage "Datenblätter".
 \ifdocenglish
-    \chapter{Data sheets}
+    \chapter{Camera mount}
 \else
-    \chapter{Datenblätter}
+    \chapter{Auslegung der Kamerahalterung}
 \fi
+\label{app:Mechanik}
 
-\label{app:Datenblätter}
+\section{Abschätzung des Holz-Kragarms}
+\label{app:mech-holz}
+Betrachtet wird ein Kantholz als Kragarm, an der Säule eingespannt, mit der Kamera als Einzellast an der Spitze. Tabelle~\ref{tab:mech-holz} zeigt die Annahmen \tocite{dataholz.eu, Datenblatt Vollholz C24}.
+% Quelle: https://www.dataholz.eu/fileadmin/dataholz/media/baustoffe/Datenblaetter_de/vh_de_01.pdf
 
+\begin{table}[H]
+    \centering
+    \caption{Annahmen für den Holz-Kragarm}
+    \label{tab:mech-holz}
+    \begin{tabular}{llr}
+        \toprule
+        \textbf{Größe} & \textbf{Symbol} & \textbf{Wert} \\
+        \midrule
+        Länge             & $L$       & \SI{3}{\metre} \\
+        Kantenlänge       & $a$       & \SI{0,08}{\metre} \\
+        Endlast (Masse)   & $m$       & \SI{0,1}{\kilo\gram} \\
+        Holzart           & --        & Fichte / Kiefer C24 \\
+        Elastizitätsmodul & $E$       & \SI[per-mode=symbol]{11000}{\newton\per\square\milli\metre} \\
+        Rohdichte         & $\rho$    & \SI[per-mode=symbol]{420}{\kilo\gram\per\cubic\metre} \\
+        Biegefestigkeit   & $f_{m,k}$ & \SI[per-mode=symbol]{24}{\newton\per\square\milli\metre} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
 
+Für den Querschnitt gilt
+\begin{equation}
+    A = a^2 = \SI{6,4e-3}{\square\metre}, \qquad
+    I = \frac{a^4}{12} = \SI{3,413e-6}{\metre\tothe{4}}, \qquad
+    W = \frac{a^3}{6} = \SI{8,533e-5}{\cubic\metre},
+\end{equation}
+die Biegesteifigkeit beträgt $EI = \SI{3,755e4}{\newton\square\metre}$. Mit der Streckenlast aus dem Eigengewicht und der Endlast
+\begin{equation}
+    q = \rho \, g \, A = \SI[per-mode=symbol]{26,37}{\newton\per\metre}, \qquad
+    F = m \, g = \SI{0,981}{\newton}
+\end{equation}
+ergibt sich die Durchbiegung an der Spitze zu
+\begin{equation}
+    \delta_F = \frac{F L^3}{3 E I} = \SI{0,235}{\milli\metre}, \qquad
+    \delta_q = \frac{q L^4}{8 E I} = \SI{7,111}{\milli\metre}, \qquad
+    \delta = \delta_F + \delta_q = \SI{7,35}{\milli\metre}.
+\end{equation}
+An der Einspannung wirken
+\begin{equation}
+    M = F L + \frac{q L^2}{2} = \SI{121,6}{\newton\metre}, \qquad
+    V = F + q L = \SI{80,09}{\newton}, \qquad
+    \sigma = \frac{M}{W} = \SI[per-mode=symbol]{1,43}{\newton\per\square\milli\metre} \ll f_{m,k}.
+\end{equation}
+Das Eigengewicht verursacht \SI{97}{\percent} der Durchbiegung.
+
+\section{Sicherheitsabschätzung der Säulenhalterung}
+\label{app:mech-sicherheit}
+Der Mast liegt in zwei Kontaktebenen $S_1$ (oben) und $S_3$ (unten) an der Säule an. Beide liegen um $d$ auseinander, in jeder zieht ein Gurt mit der Kraft $F_s$. Der Ausleger greift in $S_1$ an, die Strebe verbindet $S_3$ mit dem Ausleger im Punkt $S_2$. Im Grundriss steht der Ausleger um $\gamma$ schräg zur Wandnormale. Die Achse $x$ ist die Wandnormale, $y$ zeigt senkrecht nach oben und $z$ entlang der Wand. Tabelle~\ref{tab:mech-werte} zeigt die Werte.
+
+\begin{table}[H]
+    \centering
+    \caption{Werte der Sicherheitsabschätzung}
+    \label{tab:mech-werte}
+    \begin{tabular}{llr}
+        \toprule
+        \textbf{Größe} & \textbf{Bedeutung} & \textbf{Wert} \\
+        \midrule
+        $a$                 & Ausleger bis Strebenanschluss & \SI{120}{\milli\metre} \\
+        $L$                 & Gesamtausladung & \SI{2000}{\milli\metre} \\
+        $b = L - a$         & Überstand des Auslegers & \SI{1880}{\milli\metre} \\
+        $d$                 & Masthöhe, Gurtabstand & \SI{300}{\milli\metre} \\
+        $\gamma$            & Anstellwinkel im Grundriss & \SI{45}{\degree} \\
+        \midrule
+        $m_{\mathrm{Nutz}}$ & Raspberry Pi \SI{50}{\gram} + Kamera \SI{200}{\gram} & \SI{250}{\gram} \\
+        $\rho'$             & Metergewicht der Profile & \SI[per-mode=symbol]{0,93}{\kilo\gram\per\metre} \\
+        $m_1$               & Ausleger, \SI{2,0}{\metre} & \SI{1860}{\gram} \\
+        $m_2$               & Strebe & \SI{185}{\gram} \\
+        $m_3$               & Mast \SI{0,3}{\metre} + 2 Gelenke je \SI{130}{\gram} & \SI{539}{\gram} \\
+        $\mu$               & Reibwert Beton--Stahl & \num{0,86} \\
+        $k$                 & Faktor der Gurtführung, vereinfacht & 1 \\
+        $\nu$               & geforderte Sicherheit & 3 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+\Add{[OFFEN: $a = \SI{120}{\milli\metre}$ prüfen, im Foto sitzt der Strebenanschluss weiter außen. $a$ geht nur über das Gewicht der Strebe ein, das Ergebnis ändert sich kaum.]}
+
+Die Gewichtskräfte betragen $F_g = \SI{2,453}{\newton}$ für die Nutzlast sowie $F_{g1} = \SI{18,247}{\newton}$, $F_{g2} = \SI{1,815}{\newton}$ und $F_{g3} = \SI{5,288}{\newton}$ für Ausleger, Strebe und Mast. Damit ist
+\begin{equation}
+    G = F_{g1} + F_{g2} + F_{g3} = \SI{25,349}{\newton}, \qquad
+    F_V = F_g + G = \SI{27,802}{\newton}.
+\end{equation}
+Das Kippmoment beträgt
+\begin{equation}
+    M_{\mathrm{kipp}} = (a + b)\left(F_g + \frac{F_{g1}}{2}\right) + \frac{a \, F_{g2}}{2}
+    = \SI{23,152}{\newton\metre} + \SI{0,109}{\newton\metre} = \SI{23,260}{\newton\metre}.
+\end{equation}
+Wegen $\gamma$ zerfällt es in zwei Anteile. $M_K = M_{\mathrm{kipp}} \cos\gamma = \SI{16,448}{\newton\metre}$ wirkt um die Wandtangente und wird durch die Normalkräfte $N_1$, $N_3$ aufgenommen. $M_T = M_{\mathrm{kipp}} \sin\gamma = \SI{16,448}{\newton\metre}$ wirkt um die Wandnormale und kann nur durch Reibung aufgenommen werden.
+
+Mit den Reibkräften $f_1$, $f_3$ in den Kontaktebenen lauten die Gleichgewichtsbedingungen
+\begin{align}
+    \textstyle\sum F_x &= N_1 + N_3 - 2F_s = 0, &
+    \textstyle\sum M_x^{(S_1)} &= M_T - d\,f_{3z} = 0, \\
+    \textstyle\sum F_y &= f_{1y} + f_{3y} - (F_g + G) = 0, &
+    \textstyle\sum M_z^{(S_1)} &= d\,(N_3 - F_s) - M_K = 0, \\
+    \textstyle\sum F_z &= f_{1z} + f_{3z} = 0 .
+\end{align}
+Daraus folgt
+\begin{equation}
+    N_3 = F_s + \frac{M_K}{d}, \qquad N_1 = F_s - \frac{M_K}{d}, \qquad
+    f_{3z} = -f_{1z} = \frac{M_T}{d}, \qquad f_{1y} + f_{3y} = F_V .
+\end{equation}
+
+Geprüft werden vier Fälle. Beim Klaffen darf die obere Ebene nicht abheben ($N_1 \ge 0$). Beim Rutschen muss die Reibung beider Ebenen die Vertikallast tragen. Bei der Torsion wird $M_T$ durch ein Reibkräftepaar mit dem Hebelarm $d$ abgestützt. Bei der kombinierten Reibung wirken beide Reibanteile zugleich:
+\begin{equation}
+    F_{s,\mathrm{kipp}} \ge \frac{M_K}{k\,d}, \quad
+    F_{s,\mathrm{rutsch}} \ge \frac{F_V}{2\,\mu\,k}, \quad
+    F_{s,\mathrm{tors}} \ge \frac{M_T}{\mu\,k\,d}, \quad
+    F_{s,\mathrm{reib}} \ge \frac{f_{\mathrm{res}}}{\mu\,k}
+\end{equation}
+mit
+\begin{equation}
+    f_{\mathrm{res}} = \sqrt{\left(\frac{F_V}{2}\right)^2 + \left(\frac{M_T}{d}\right)^2} .
+\end{equation}
+Die erforderliche Gurtkraft ist damit
+\begin{equation}
+    F_{s,\mathrm{erf}} = \nu \cdot \max\left\{ \frac{M_K}{k\,d},\;
+    \frac{f_{\mathrm{res}}}{\mu\,k} \right\} .
+\end{equation}
+Tabelle~\ref{tab:mech-nachweise} zeigt die Werte ohne Sicherheitsfaktor. Maßgebend ist die kombinierte Reibung mit $F_s = \SI{65,77}{\newton}$.
+
+\begin{table}[H]
+    \centering
+    \caption{Erforderliche Gurtkraft je Nachweis ohne Sicherheitsfaktor}
+    \label{tab:mech-nachweise}
+    \begin{tabular}{llrr}
+        \toprule
+        \textbf{Nachweis} & \textbf{Formel} & \textbf{$k = 1$} & \textbf{$k = 2$} \\
+        \midrule
+        Klaffen            & $M_K/(k\,d)$                & \SI{54,83}{\newton} & \SI{27,41}{\newton} \\
+        Rutschen allein    & $F_V/(2\mu k)$              & \SI{16,16}{\newton} & \SI{8,08}{\newton} \\
+        Torsion allein     & $M_T/(\mu k\,d)$            & \SI{63,75}{\newton} & \SI{31,88}{\newton} \\
+        Reibung kombiniert & $f_{\mathrm{res}}/(\mu k)$  & \SI{65,77}{\newton} & \SI{32,88}{\newton} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Verwendet werden Ratschengurte mit \SI{25}{\milli\metre} Breite und \SI{4}{\metre} Länge. Ihre Zugkraft beträgt \SI{800}{daN}, die Handkraft \SI{50}{daN} und die Vorspannkraft \SI{80}{daN}, also $F_{s,\max} = \SI{784,5}{\newton}$. Für die Dauer wird mit $N_{\mathrm{dauer}} = \SI{640}{\newton}$ gerechnet. \Add{[OFFEN: Herleitung von $N_{\mathrm{dauer}}$]} Ein Gurt würde reichen, für das Kräftepaar werden zwei gebraucht.
+
+Wird die Entlastung der oberen Ebene durch $M_K$ mitgerechnet, ergeben sich der kleinste zulässige Reibwert und die vorhandene Sicherheit zu
+\begin{equation}
+    \mu_{\min,\mathrm{kons}} = \frac{\nu \, f_{\mathrm{res}}}{N_{\mathrm{dauer}} - \nu \, M_K/d}
+    = \frac{\SI{169,68}{\newton}}{\SI{640}{\newton} - \SI{164,48}{\newton}} = \num{0,357},
+    \qquad
+    \nu_{\mathrm{vorh}} = \frac{\mu \, N_{\mathrm{dauer}}}{f_{\mathrm{res}} + \mu \, M_K/d} = \num{5,31} .
+    \label{eq:mech-kons}
+\end{equation}
+
+\begin{table}[H]
+    \centering
+    \caption{Ergebnis der Sicherheitsabschätzung}
+    \label{tab:mech-ergebnis}
+    \begin{tabular}{ll}
+        \toprule
+        \textbf{Kriterium} & \textbf{Ergebnis} \\
+        \midrule
+        Maßgebender Nachweis     & konservativ, Gleichung~\eqref{eq:mech-kons} \\
+        Ausnutzungsgrad          & \SI{56,5}{\percent} \\
+        Vorhandene Sicherheit    & $\nu_{\mathrm{vorh}} = \num{5,31}$ \\
+        Erforderliche Gurtanzahl & 1 je Ebene, 2 insgesamt \\
+        Nutzlastreserve          & Faktor \num{4,7} \\
+        Reibwertreserve          & bis $\mu = \num{0,36}$ \\
+        \midrule
+        Gesamtbewertung          & Nachweis erfüllt mit deutlicher Reserve \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Als zusätzliche Sicherung dient ein Schlauchschellenband mit \SI{12}{\milli\metre} Bandbreite. Der Hersteller gibt für den größten Durchmesser von \SIrange{140}{160}{\milli\metre} ein Anzugsdrehmoment von \SI{5}{\newton\metre} an \tocite{Datenblatt Torro 12 W4/W5}.
+% Quelle: https://www.xps-store.de/media/4e/33/fc/1678440885/163341_6_torro_datenblatt.pdf
+ Die Säule ist deutlich größer. Weil sich das Drehmoment auf die Schneckenschraube bezieht, wurde der Wert trotzdem verwendet.
+
+\section{Kriechverhalten von Druckwerkstoffen}
+\label{app:mech-kriechen}
+Tabelle~\ref{tab:mech-kriechen-pla} zeigt die Kriechverformung von PLA nach drei Stunden, Tabelle~\ref{tab:mech-kriechen-rang} die Rangfolge der Werkstoffe \tocite{Dogan 2022, S.~455, Abb.~4}. Die Werte sind aus dem Diagramm abgelesen und damit Näherungen. Bei \SI{60}{\degreeCelsius} enden die Kurven im Bruch.
+
+\begin{table}[H]
+    \centering
+    \caption{Kriechverformung von PLA nach drei Stunden}
+    \label{tab:mech-kriechen-pla}
+    \begin{tabular}{lrr}
+        \toprule
+        \textbf{Temperatur} & \textbf{\SI{10}{\mega\pascal}} & \textbf{\SI{20}{\mega\pascal}} \\
+        \midrule
+        \SI{25}{\degreeCelsius} & ca.~\SI{70}{\micro\metre}  & ca.~\SI{290}{\micro\metre} \\
+        \SI{40}{\degreeCelsius} & ca.~\SI{130}{\micro\metre} & ca.~\SI{1850}{\micro\metre} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Rangfolge der Druckwerkstoffe nach Kriechverhalten}
+    \label{tab:mech-kriechen-rang}
+    \begin{tabular}{cll}
+        \toprule
+        \textbf{Rang} & \textbf{Werkstoff} & \textbf{Bewertung} \\
+        \midrule
+        1  & PC    & am besten \\
+        2  & CPE   & gut \\
+        3  & ABS   & gut bei mäßiger Temperatur und Last \\
+        4  & TPLA  & etwa halb so viel Kriechen wie PLA \\
+        5  & PLA   & schlecht, nur für geringe Last und Temperatur \\
+        -- & Nylon & verzieht sich stark, bricht aber nicht \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Lage der WorldTags}
+\label{app:mech-worldtags}
+Die vier WorldTags (tag36h11, \SI{200}{\milli\metre}) liegen auf dem Boden. Ihre Lage wurde am 02.11.2026 eingemessen (Tabelle~\ref{tab:mech-worldtags}). Tag~583 ist der Ursprung des Weltkoordinatensystems. \Add{[OFFEN: Messverfahren]}
+
+\begin{table}[H]
+    \centering
+    \caption{Lage der WorldTags im Weltkoordinatensystem}
+    \label{tab:mech-worldtags}
+    \begin{tabular}{lrr}
+        \toprule
+        \textbf{Tag} & \textbf{$x$ in \si{\milli\metre}} & \textbf{$y$ in \si{\milli\metre}} \\
+        \midrule
+        583 & \num{0,0}     & \num{0,0} \\
+        584 & \num{1594,4}  & \num{4,4} \\
+        585 & \num{1580,3}  & \num{1752,1} \\
+        586 & \num{-10,4}   & \num{1753,3} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
